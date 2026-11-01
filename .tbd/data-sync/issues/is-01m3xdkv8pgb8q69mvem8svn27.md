@@ -3,9 +3,9 @@ type: is
 id: is-01m3xdkv8pgb8q69mvem8svn27
 title: "Landing gate: restore STRUCTURED_CACHE_SIZE=0 and the diff document hook on non-patch files to 0.11.0"
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m3wgefqnj91f8avyyv4x8t5w
 hold: null
 hold_until: null
 created_at: 2026-10-02T04:23:01.128Z
-updated_at: 2026-11-01T16:06:25.763Z
+updated_at: 2026-11-01T18:00:00.011Z
 started_at: 2026-11-01T16:06:25.762Z
+closed_at: 2026-11-01T18:00:00.010Z
+close_reason: "Fixed in #267. Reviewed independently on main on 2026-11-01 (mb-cwdr); its changelog entry exists, and the gate re-run is recorded on mb-2g6f."
+resolution: null
+duplicate_of: null
 ---
 Found by the landing-gate data differential (20,234 comparisons of v0.11.0 against the stack on regular folders, zero unexplained) and reproduced on the tip 8879c4de. (1) STRUCTURED_CACHE_SIZE=0: cachetools.LRUCache(maxsize=0) raises on every store where functools.lru_cache(maxsize=0) cached nothing, so /api/plugin/structured/parsed answers plugin_error. (2) /api/plugin/diff/document answers 404 for a file not named .patch or .diff; v0.11.0 parsed any file, and a third-party plugin can route other names to the diff kind. Both introduced by commit 5682448f. Fix as a new layer above #265 on branch codex/v012-gate-fixes-2, with an independent review, then re-run the three landing-gate checks on the new tip.
 

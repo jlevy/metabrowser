@@ -5,7 +5,7 @@ title: One rollup control row, or a written reason for two
 kind: chore
 status: in_progress
 priority: 3
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
 delegate: claude-code@spud10.local
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 hold: null
 hold_until: null
 created_at: 2026-08-21T21:54:37.460Z
-updated_at: 2026-11-01T16:21:29.463Z
+updated_at: 2026-11-01T17:59:55.291Z
 started_at: 2026-11-01T16:21:29.462Z
 ---
 The folder Overview and the Treemap both drive the same rollup state, and both build their own control row for it.
@@ -24,3 +24,7 @@ Overview now mounts one row carrying both halves — `rollupControls.mount(contr
 That is defensible on its own, but it means the parts argument exists for exactly one caller, and the two surfaces present the same pair of controls with different adjacency. Worth deciding deliberately: either the Treemap adopts the single row and the parts argument goes away, or the split stays and the reason is written down beside it.
 
 The wider pattern is the thing to look for. Two independent derivations of one quantity is what produced the measure bug fixed in #62: Overview computed its breakpoints against its own host while KPress computed the same boundary against the preview pane, and they crossed 75rem about 25px apart. Places worth a look: the treemap's own width tokens against the Overview column, the folder totals against the treemap's totals heading, and any other `@container` query that is not the shared `kpress-doc`.
+
+## Notes
+
+2026-11-01: fixed in PR #276, open, CI green at its last read. Close when it merges; its required review has not run.

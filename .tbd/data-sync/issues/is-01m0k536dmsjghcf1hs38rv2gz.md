@@ -5,7 +5,7 @@ title: Say which population the type distribution counts
 kind: task
 status: in_progress
 priority: 2
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
 delegate: claude-code@spud10.local
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 hold: null
 hold_until: null
 created_at: 2026-08-21T21:54:37.107Z
-updated_at: 2026-11-01T16:05:49.734Z
+updated_at: 2026-11-01T17:59:53.529Z
 started_at: 2026-11-01T16:05:49.733Z
 ---
 The type distribution in File Overview counts against a population the reader has to infer, and two people in one session inferred it wrong.
@@ -26,3 +26,7 @@ Measured on this repository with Show ignored off: the distribution reports Java
 Say it rather than leaving it to be worked out. A caption on the distribution naming its population and count — "Share of Total (8,533 files)" against "Share of Files (536 files)" — switching with the checkbox, is one line and removes the ambiguity. Marking the matching tally row is the alternative and is probably weaker: it needs a visual treatment that does not read as selection.
 
 Whichever is chosen, the caption is the accessible answer too: the correspondence is currently available only by comparing numbers across two tables.
+
+## Notes
+
+2026-11-01: fixed in PR #275, open, CI green at its last read. Close when it merges; its required review has not run.

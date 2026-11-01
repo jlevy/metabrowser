@@ -5,7 +5,7 @@ title: "Inert Markdown: the server keeps a link scheme's case and the page lower
 kind: bug
 status: in_progress
 priority: 4
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels: []
@@ -14,7 +14,11 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-01T13:21:56.294Z
-updated_at: 2026-11-01T16:05:44.916Z
+updated_at: 2026-11-01T17:59:45.198Z
 started_at: 2026-11-01T16:05:44.915Z
 ---
 Found while adding the hostile-link corpus in PR #258: for a link written 'HTTP://example.com', inert_html.py keeps the scheme's case and static/inert-html.js lowercases it. Both keep the link, and both refuse the hostile schemes in tests/fixtures/inert-html-hostile-links.json, so this is not a safety issue; but the two layers are meant to produce the same markup (the allowlist parity tests compare them), and the corpus uses lowercase for the two kept links to keep exact-markup parity. Make the layers agree (lowercase in both, as URL parsers do) and add a mixed-case kept link to the corpus.
+
+## Notes
+
+2026-11-01: fixed in PR #273, open, CI green at its last read. Close when it merges; its required review has not run.

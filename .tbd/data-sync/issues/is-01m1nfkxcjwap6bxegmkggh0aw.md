@@ -5,14 +5,14 @@ title: Guard against test fixtures inheriting GIT_DIR into git init
 kind: task
 status: in_progress
 priority: 2
-version: 2
+version: 3
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-09-04T05:52:41.355Z
-updated_at: 2026-11-01T16:05:47.344Z
+updated_at: 2026-11-01T17:59:49.381Z
 started_at: 2026-11-01T16:05:47.343Z
 ---
 Three fixtures ran 'git init' with the ambient environment inherited, so under the pre-push hook — where git exports GIT_DIR and GIT_WORK_TREE pointing at the real repository, taking precedence over cwd — the fixture repo was built in the wrong place. Observed destructively: a linked worktree came back with every tracked file reading as untracked and two commits titled 'first commit' and 'second commit' on its branch.
@@ -22,3 +22,7 @@ Fixed in tests/test_cli_show_mode.py (git_root), tests/golden/cli-api-git.tryscr
 metabrowser.git.process._REPO_PINNING_GIT_VARS is the canonical list and its comment describes exactly this failure; production spawns already scrub it.
 
 AGENTS.md says to prefer a check to a sentence. A test that walks tests/ for fixtures invoking 'git init' and asserts each scrubs the pinning variables would make this structural rather than remembered. Only reproducible from a linked worktree under the hook, which is why it survived.
+
+## Notes
+
+2026-11-01: fixed in PR #274, open, CI green at its last read. Close when it merges; its required review has not run.

@@ -5,7 +5,7 @@ title: /view/.hidden/ shows 'Could not load file types.' and a skeleton that nev
 kind: bug
 status: in_progress
 priority: 3
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: claude-code@spud10.local
 labels: []
@@ -14,7 +14,11 @@ parent_id: is-01m36k3w9vgwy97c9hcj2sqrs5
 hold: null
 hold_until: null
 created_at: 2026-10-02T22:46:20.564Z
-updated_at: 2026-11-01T16:05:48.709Z
+updated_at: 2026-11-01T17:59:51.703Z
 started_at: 2026-11-01T16:05:48.708Z
 ---
 Found by the browser differential; identical on 0.11.0 and the stack, so not a landing regression. Opening a dot-folder view leaves the overview skeleton unfinished with the error text. Decide whether a hidden folder is viewable and make the view either render or say why not.
+
+## Notes
+
+2026-11-01: fixed in PR #275, open, CI green at its last read. Close when it merges; its required review has not run.

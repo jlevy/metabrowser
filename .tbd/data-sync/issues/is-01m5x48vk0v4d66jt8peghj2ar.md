@@ -5,14 +5,14 @@ title: "Update the seven tbd doc-forks #219 brought in"
 kind: chore
 status: in_progress
 priority: 3
-version: 2
+version: 3
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-10-26T22:11:07.483Z
-updated_at: 2026-11-01T16:05:50.765Z
+updated_at: 2026-11-01T17:59:43.405Z
 started_at: 2026-11-01T16:05:50.764Z
 ---
 Merging #219 on 2026-10-26 brought in `.tbd/doc-forks/`, which forks seven of tbd's shortcut docs so the repository can carry its own PR-sizing guidance. The base snapshots under `.tbd/doc-forks/base/shortcut/` were captured against the tbd of 2026-09-23, and the installed tbd is now 0.10.0, so `tbd sync` reports:
@@ -24,3 +24,7 @@ Run `tbd docs update`, re-read each fork to keep the local PR-sizing guidance th
 Not a blocker and not a build failure: it is drift in generated documentation, and nothing in the build, CI, test or publishing path reads these files. It is recorded because AGENTS.md says the tbd-generated hook configs, session scripts and agent skills are committed exactly as generated, and warns that a local edit survives only until the next upgrade reverts it and "someone has to notice". This is the noticing.
 
 Checked on the merged result before #219 landed: devtools.public_hygiene, devtools.check_supply_chain, devtools.check_parity and the flowmark format check (with --no-cache) all pass with these files present, so nothing is gated on the drift.
+
+## Notes
+
+2026-11-01: fixed in PR #272, open, CI green at its last read. Close when it merges; its required review has not run.

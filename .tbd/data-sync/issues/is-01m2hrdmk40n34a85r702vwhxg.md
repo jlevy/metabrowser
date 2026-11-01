@@ -5,7 +5,7 @@ title: Keep the flat-stress budget file from drifting off the release gate
 kind: task
 status: in_progress
 priority: 2
-version: 3
+version: 4
 delegate: claude-code@spud10.local
 labels:
   - performance
@@ -14,7 +14,7 @@ parent_id: is-01m2hs64m7nfagfxyf7b0hxrhr
 hold: null
 hold_until: null
 created_at: 2026-09-15T05:25:17.028Z
-updated_at: 2026-11-01T16:21:29.111Z
+updated_at: 2026-11-01T17:59:54.712Z
 started_at: 2026-11-01T16:21:29.110Z
 ---
 `explorations/performance-loop/performance-budgets-flat-stress.toml` is the release
@@ -27,3 +27,7 @@ files' `[requirements]` tables are equal and that their `[metrics]` tables diffe
 the keys the stress file's header declares.
 
 Done when: a check enforces it and fails on an undeclared divergence in either direction.
+
+## Notes
+
+2026-11-01: fixed in PR #276, open, CI green at its last read. Close when it merges; its required review has not run.
