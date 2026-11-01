@@ -160,11 +160,94 @@
 .github-pull-merge[data-state="conflicting"] {
   color: var(--status-error);
 }
-/* A text's Markdown is plain allowlisted markup with no KPress styling of its own. */
-.github-pull-markdown > :first-child {
+/* A text's Markdown is plain allowlisted markup (inert_html.py) with no KPress styling of
+   its own, under the shell's reset, which takes every margin and padding away. So its
+   spacing is set here: KPress's own paragraph margin and list indent, in em so a text
+   keeps them at any size, with lists tighter than a document's, as a comment is short. */
+.github-pull-markdown p,
+.github-pull-markdown ul,
+.github-pull-markdown ol,
+.github-pull-markdown dl,
+.github-pull-markdown pre,
+.github-pull-markdown blockquote,
+.github-pull-markdown table,
+.github-pull-markdown details {
+  margin: 0.75em 0;
+}
+/* Below the page's own title (1.5em), and the same in a review comment, where the page's
+   section rule for its own h2 would otherwise size a text's. */
+.github-pull-markdown h1,
+.github-pull-markdown h2,
+.github-pull-markdown h3,
+.github-pull-markdown h4,
+.github-pull-markdown h5,
+.github-pull-markdown h6 {
+  margin: 1.25em 0 0.5em;
+  line-height: 1.25;
+}
+.github-pull-markdown h1 {
+  font-size: 1.35em;
+}
+.github-pull-markdown h2 {
+  font-size: 1.2em;
+}
+.github-pull-markdown h3 {
+  font-size: 1.1em;
+}
+.github-pull-markdown h4,
+.github-pull-markdown h5,
+.github-pull-markdown h6 {
+  font-size: 1em;
+}
+/* A heading sits with what it heads. */
+.github-pull-markdown :is(h1, h2, h3, h4, h5, h6) + * {
   margin-top: 0;
 }
-.github-pull-markdown > :last-child {
+.github-pull-markdown hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+/* Room for a list's markers, which sit outside its items' text. */
+.github-pull-markdown ul,
+.github-pull-markdown ol,
+.github-pull-markdown dd {
+  padding-left: 1.8em;
+}
+.github-pull-markdown li + li {
+  margin-top: 0.25em;
+}
+.github-pull-markdown li > ul,
+.github-pull-markdown li > ol {
+  margin: 0.25em 0 0;
+}
+/* A loose list's paragraphs space its items; its two ends are the list's own margins. */
+.github-pull-markdown li:first-child > p:first-child {
+  margin-top: 0;
+}
+.github-pull-markdown li:last-child > p:last-child {
+  margin-bottom: 0;
+}
+/* The card's padding is the space around a text, so its first and last block have none of
+   their own. A text arrives as <div><div>...: KPress's two wrappers, whose classes the
+   allowlist removed, and a table has a wrapper of its own beneath them. */
+.github-pull-markdown > :first-child,
+.github-pull-markdown > div:first-child > :first-child,
+.github-pull-markdown > div:first-child > div:first-child > :first-child,
+.github-pull-markdown > div:first-child > div:first-child > div:first-child > :first-child {
+  margin-top: 0;
+}
+.github-pull-markdown > :last-child,
+.github-pull-markdown > div:last-child > :last-child,
+.github-pull-markdown > div:last-child > div:last-child > :last-child,
+.github-pull-markdown > div:last-child > div:last-child > div:last-child > :last-child {
+  margin-bottom: 0;
+}
+/* Margins collapse through a quote and a disclosure, and a table cell keeps them. */
+.github-pull-markdown :is(blockquote, details, dd, th, td) > :first-child {
+  margin-top: 0;
+}
+.github-pull-markdown :is(blockquote, details, dd, th, td) > :last-child {
   margin-bottom: 0;
 }
 .github-pull-markdown pre {
@@ -174,7 +257,7 @@
   overflow-x: auto;
 }
 .github-pull-markdown blockquote {
-  margin: 0 0 0 4px;
+  margin-left: 4px;
   padding-left: 12px;
   border-left: 3px solid var(--border);
   color: var(--muted);
