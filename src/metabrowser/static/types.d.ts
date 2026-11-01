@@ -862,6 +862,7 @@ type MetabrowserFolderEnvelope = {
   dir: {
     gitignored: boolean;
     mtime: number | null;
+    not_indexed?: "hidden" | "symlink";
     state: "pending" | "complete";
     total_files: number | null;
     total_size: number | null;
@@ -2289,7 +2290,7 @@ declare global {
    * again. `failed` is a commit route that failed, which says nothing about the commit.
    */
   type MetabrowserMissingCommitModel = {
-    state: "pending" | "not_found" | "fetch_failed" | "failed";
+    state: "pending" | "not_found" | "not_full" | "fetch_failed" | "failed";
     title: string;
     detail: string;
     retry: boolean;

@@ -179,51 +179,37 @@ def _command_exercises(command: str, surface: str, cli: str) -> bool:
     return False
 
 
-_REFRESH_ENDED: Final = re.compile(r"Error: the refresh ended with \w+")
+# One command of an in-process transcript, as ``tests/golden_harness.py`` ``block`` writes it.
+_IN_PROCESS_COMMAND: Final = re.compile(r"^# (.+)\nexit: (\S+)\n--- stdout ---$", re.MULTILINE)
 
 
-def _route_answered(command: GoldenCommand, surface: str) -> bool:
-    """Whether the route answered 202 in a command that exited non-zero for the work it began.
+def _route_evidence_commands(name: str, text: str) -> list[GoldenCommand]:
+    """The commands of one golden a parity row names: a tryscript or an in-process ``.txt``.
 
-    A one-shot ``POST`` that starts work prints the route's answer, waits for the work,
-    prints the status ``after:`` it, and exits 1 when the work failed. The route was
-    reached and answered; what failed is what it started, which the transcript also
-    shows. So the route's own ``status:`` line is what counts, and only in exactly that
-    shape, each part of which rules out a non-zero exit that means something else:
-
-    - ``status: 202`` directly under the route's ``api:`` line. Any other status is not
-      "work started";
-    - an ``after: /api/…`` line directly followed by ``status: 2xx``. The follow-up was
-      read, and read successfully;
-    - the last line is ``Error: the refresh ended with <outcome>``. A body truncated
-      mid-response and a refresh that did not finish each end with a different error,
-      and neither says how the work ended.
+    Some route invocations are shown honestly only in process, such as a refresh that
+    completes with a fake ``gh``. ``devtools/check_goldens.py`` fails a ``.txt`` no test
+    compares, so a row cannot cite a stale one. Route evidence reads a command and its
+    exit status, so the output is not collected here. An exit that is not a number is
+    how a transcript writes a process that was killed, which is not success.
     """
 
-    output = [line for line in command.output if line]
-    for index, line in enumerate(output):
-        if not line.startswith("api: "):
-            continue
-        if not _route_token_matches(line.removeprefix("api: "), surface):
-            continue
-        if output[index + 1 : index + 2] != ["status: 202"]:
-            return False
-        followed = any(
-            re.fullmatch(r"after: /api/\S+", first) is not None
-            and re.fullmatch(r"status: 2\d\d", second) is not None
-            for first, second in zip(output[index + 2 :], output[index + 3 :], strict=False)
-        )
-        return followed and _REFRESH_ENDED.fullmatch(output[-1]) is not None
-    return False
+    if not name.endswith(".txt"):
+        return _console_commands(text)
+    return [
+        GoldenCommand(command=found[1], output=(), status=0 if found[2] == "0" else 1)
+        for found in _IN_PROCESS_COMMAND.finditer(text)
+    ]
 
 
-def _exercises(golden: str, surface: str, cli: str, *, successful_only: bool) -> bool:
+def _exercises(
+    commands: list[GoldenCommand], surface: str, cli: str, *, successful_only: bool
+) -> bool:
     """Whether a transcript attempts, or successfully runs, a route surface."""
 
     return any(
-        (not successful_only or command.status == 0 or _route_answered(command, surface))
+        (not successful_only or command.status == 0)
         and _command_exercises(command.command, surface, cli)
-        for command in _console_commands(golden)
+        for command in commands
     )
 
 
@@ -750,10 +736,10 @@ def check() -> list[str]:
                 if not path.exists():
                     problems.append(f"{row.surface}: golden {golden} does not exist")
                     continue
-                content = path.read_text(encoding="utf-8")
-                if not _exercises(content, row.surface, row.cli, successful_only=False):
+                commands = _route_evidence_commands(golden, path.read_text(encoding="utf-8"))
+                if not _exercises(commands, row.surface, row.cli, successful_only=False):
                     problems.append(f"{row.surface}: golden {golden} never exercises it")
-                if _exercises(content, row.surface, row.cli, successful_only=True):
+                if _exercises(commands, row.surface, row.cli, successful_only=True):
                     successful_evidence = True
             if goldens and not successful_evidence:
                 problems.append(f"{row.surface}: evidence has no successful exact route invocation")

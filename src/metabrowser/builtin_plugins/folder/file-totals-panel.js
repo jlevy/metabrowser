@@ -7,7 +7,7 @@ import {
 
 /** @typedef {import("./folder-totals.js").FolderTotals} FolderTotals */
 /** @typedef {{metric: "size" | "files", includeIgnored: boolean}} FolderRollupState */
-/** @typedef {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => FolderRollupState, subscribe: (listener: (state: FolderRollupState) => void) => () => void}} FolderRollupControls */
+/** @typedef {{mount: (container: HTMLElement) => () => void, get: () => FolderRollupState, subscribe: (listener: (state: FolderRollupState) => void) => () => void}} FolderRollupControls */
 
 /**
  * Mount immediate directory totals with the shared Files / Bytes chooser.
@@ -141,6 +141,7 @@ export function mountFileTotalsPanel(
 
   return Object.freeze({
     dispose,
+    stopLoading: () => totalsView.stopLoading(),
     /** @param {{raw?: unknown}} nextContext */
     update(nextContext) {
       // A folder envelope refreshed mid-crawl still carries the walker's

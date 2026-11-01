@@ -21,9 +21,10 @@ or invented mtime. ``/api/tree`` also carries whole-tree ``extensions``,
 that index. ``types`` and ``min_size`` keep ancestor trees of matching blobs
 and emit subtree ``filtered`` totals. Type matching uses the same bounded
 compound-tail logical extension as filesystem inventory. ``include_ignored=0`` is a
-no-op because ignore is absent. SPA file nodes and blob ``/api/file``
-envelopes emit that tail as ``ext``; ``logical_ext`` is only the inner
-extension of a compressed name on tree nodes. Blob file envelopes omit
+no-op because ignore is absent. SPA file nodes emit that tail as ``ext``;
+``logical_ext`` is only the inner extension of a compressed name on tree nodes.
+Blob ``/api/file`` envelopes emit the name's last extension as ``ext``, as a
+folder's do, and choose the kind from it (:func:`blob_logical_ext`). They omit
 compressed identity because blobs are stored bytes with no gzip smudge.
 Markdown blob envelopes include parsed YAML ``frontmatter`` and
 ``frontmatter_error``. Text blobs use the same first-window and highlight
@@ -907,7 +908,9 @@ def _parse_info_header(oid: str, header: bytes) -> _ObjectInfo:
     return _ObjectInfo(oid=oid, kind=kind, size=size)
 
 
-def _iter_ls_tree_records(payload: bytes) -> tuple[tuple[str, GitEntryKind, str, bytes], ...]:
+def iter_ls_tree_records(payload: bytes) -> tuple[tuple[str, GitEntryKind, str, bytes], ...]:
+    """``(mode, kind, oid, name)`` of each record of one ``ls-tree -z`` frame."""
+
     records: list[tuple[str, GitEntryKind, str, bytes]] = []
     offset = 0
     length = len(payload)
@@ -939,7 +942,7 @@ def _index_blob_records(payload: bytes) -> list[tuple[bytes, str]] | None:
     """Blob names and OIDs of one ``ls-tree -r`` frame. ``None`` past the index bound."""
 
     blobs: list[tuple[bytes, str]] = []
-    for _mode, kind, oid, name in _iter_ls_tree_records(payload):
+    for _mode, kind, oid, name in iter_ls_tree_records(payload):
         if kind != "blob":
             continue
         blobs.append((name, oid))
@@ -1143,12 +1146,6 @@ class GitTreeSource:
         """The largest blob this pin reads whole; a larger one is read in windows."""
 
         return self._max_blob_bytes
-
-    async def read_blob_oid(self, oid: str) -> bytes:
-        async with self._pool.checkout() as reader:
-            return await reader.read_blob(
-                require_full_oid(oid), max_blob_bytes=self._max_blob_bytes
-            )
 
     async def read_blob_window(self, oid: str, *, offset: int, max_bytes: int) -> tuple[bytes, int]:
         """A bounded window of one blob and the blob's size, at any blob size.

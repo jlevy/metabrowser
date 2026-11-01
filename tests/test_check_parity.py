@@ -987,77 +987,90 @@ def test_a_nonzero_route_command_is_not_successful_evidence(
     assert any("/api/tree" in problem and "no successful exact" in problem for problem in problems)
 
 
-_ANSWERED = "api: /api/tree\nstatus: 202\n{}\n"
-_AWAITED = "after: /api/status\nstatus: 200\n{}\n"
-_ENDED = "Error: the refresh ended with gh_failed"
+def _in_process_block(command: str, exit_status: str = "0", stdout: str = "") -> str:
+    return f"# {command}\nexit: {exit_status}\n--- stdout ---\n{stdout}--- stderr ---\n"
 
 
 @pytest.mark.parametrize(
-    ("output", "counts"),
+    ("transcript", "problem"),
     [
-        # The route answered 202; the refresh it started failed, which exits 1.
-        (_ANSWERED + _AWAITED + _ENDED, True),
-        # A 2xx status and a non-zero exit with nothing awaited is a truncated body.
-        ("api: /api/tree\nstatus: 200\n{\nError: failed mid-response", False),
-        # A YAML body that holds an `after` key, truncated mid-response.
+        (_in_process_block("metab root --api /api/tree --data body.json"), None),
+        # One passing command among others is enough, as it is in a tryscript.
         (
-            "api: /api/tree\nstatus: 202\nrefresh: started\nafter: /api/status\nstatus: 200\n"
-            "Error: /api/tree answered HTTP 202 and then failed mid-response; "
-            "the body above is truncated",
-            False,
+            _in_process_block("metab root --walk")
+            + _in_process_block("metab 'root' --api /api/tree"),
+            None,
         ),
-        # The follow-up itself failed, so nothing says how the work ended.
-        (_ANSWERED + "after: /api/status\nstatus: 500\n{}\n" + _ENDED, False),
-        # The refresh did not finish: the exit status is the timeout's.
+        (_in_process_block("metab root --api /api/tree", "1"), "no successful exact"),
+        # A transcript writes a process that was killed with a word for its exit.
+        (_in_process_block("metab root --api /api/tree", "killed"), "no successful exact"),
+        (_in_process_block("metab root --api /api/treetop"), "never exercises it"),
+        (_in_process_block("printf /api/tree"), "never exercises it"),
+        # What a command printed is not a command that ran, whatever it looks like.
         (
-            _ANSWERED + _AWAITED + "Error: the refresh did not finish within 120s and was stopped",
-            False,
+            _in_process_block("metab root --walk", stdout="metab root --api /api/tree\n"),
+            "never exercises it",
         ),
-        # 204 is not "work started".
-        ("api: /api/tree\nstatus: 204\n" + _AWAITED + _ENDED, False),
-        # An `after:` line that names no route, or whose status is not the next line.
-        (_ANSWERED + "after: later\nstatus: 200\n{}\n" + _ENDED, False),
-        (_ANSWERED + "after: /api/status\n{}\nstatus: 200\n" + _ENDED, False),
-        ("api: /api/tree\nstatus: 409\n{}\n" + _AWAITED + _ENDED, False),
-        # Another route's answer is not this route's.
-        ("api: /api/treetop\nstatus: 202\n{}\n" + _AWAITED + _ENDED, False),
+        # Nothing runs a console block in a `.txt`, so it is not evidence here.
+        ("```console\n$ metab root --api /api/tree\n{}\n```\n", "never exercises it"),
     ],
     ids=[
-        "answered-then-awaited",
-        "truncated",
-        "truncated-yaml-with-after-key",
-        "after-route-failed",
-        "refresh-timed-out",
-        "no-content",
-        "after-names-no-route",
-        "after-status-not-adjacent",
-        "refused",
-        "another-route",
+        "exits-0",
+        "second-of-two",
+        "exits-1",
+        "killed",
+        "route-suffix",
+        "another-program",
+        "only-in-output",
+        "console-block",
     ],
 )
-def test_a_route_that_answered_before_its_awaited_work_failed_is_evidence(
-    output: str,
-    counts: bool,
+def test_a_named_in_process_golden_is_held_to_the_same_route_rules(
+    transcript: str,
+    problem: str | None,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     only_tree: None,
 ) -> None:
     golden_dir = tmp_path / "golden"
-    _write_golden(
-        golden_dir,
-        "awaited.tryscript.md",
-        f"```console\n$ metab root --api /api/tree --data body.json\n{output}\n? 1\n```\n",
-    )
+    _write_golden(golden_dir, "session.txt", transcript)
     monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
     monkeypatch.setattr(
         check_parity,
         "MAP_DOC",
-        _write_map(tmp_path, "| `/api/tree` | covered | `--api` | `awaited.tryscript.md` |"),
+        _write_map(tmp_path, "| `/api/tree` | covered | `--api` | `session.txt` |"),
     )
 
     problems = check_parity.check()
 
-    assert any("no successful exact" in problem for problem in problems) is not counts
+    if problem is None:
+        assert problems == []
+    else:
+        assert any("/api/tree" in found and problem in found for found in problems)
+
+
+def test_a_failing_tryscript_is_supplemented_by_a_named_in_process_golden(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    """The route that needs this: a subprocess shows it failing, in process it completes."""
+
+    golden_dir = tmp_path / "golden"
+    _write_golden(
+        golden_dir,
+        "failed.tryscript.md",
+        "```console\n$ metab root --api /api/tree\nstatus: 202\n? 1\n```\n",
+    )
+    _write_golden(golden_dir, "session.txt", _in_process_block("metab root --api /api/tree"))
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(
+            tmp_path, "| `/api/tree` | covered | `--api` | `failed.tryscript.md`, `session.txt` |"
+        ),
+    )
+
+    assert check_parity.check() == []
 
 
 @pytest.mark.parametrize(

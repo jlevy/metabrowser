@@ -333,6 +333,46 @@ def test_parsed_endpoint_answers_truncated_for_a_compressed_file_past_a_resource
     assert body["size"] == ARTIFACT_MAX_COMPRESSED_BYTES + 1
 
 
+def test_parsed_endpoint_still_reads_under_a_zero_cap(
+    tmp_path: Path, structured_app: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Zero is a bound the read accepts, which a negative cap never reaches.
+
+    Anything with content is past it, as under a negative cap. An empty file fits, so it
+    parses, and a file that cannot be opened fails the read: the negative-cap test below
+    has both answering ``truncated``. This pins today's answers. 0.11.0 answered
+    ``truncated`` for the unopenable file too, because it compared the size first.
+    """
+
+    monkeypatch.setattr(structured_sidekick, "STRUCTURED_PARSE_MAX_BYTES", 0)
+    monkeypatch.setattr(structured_parser, "_PAYLOAD_CACHE", LRUCache(maxsize=8))
+    for name, content in {
+        "small.json": b'{"a": 1}\n',
+        "config.yaml": b"a: 1\n",
+        "small.json.gz": gzip.compress(b'{"a": 1}\n'),
+        "empty.json": b"",
+        "empty.yaml": b"",
+    }.items():
+        (tmp_path / name).write_bytes(content)
+
+    for name in ("small.json", "config.yaml", "small.json.gz"):
+        body = _parsed(structured_app, name)
+        assert (body["truncated"], body["parsed"], body["parse_error"]) == (True, None, None), name
+
+    body = _parsed(structured_app, "empty.yaml")
+    assert (body["truncated"], body["parsed"], body["parse_error"]) == (False, None, None)
+    body = _parsed(structured_app, "empty.json")
+    assert (body["truncated"], body["parsed"]) == (False, None)
+    assert body["parse_error"] == "ValueError: Empty strings are not legal JSON5"
+
+    locked = tmp_path / "locked.json"
+    locked.write_bytes(b'{"a": 1}\n')
+    locked.chmod(0)
+    if not os.access(locked, os.R_OK):  # A superuser reads it anyway.
+        response = structured_app.get("/api/plugin/structured/parsed", params={"path": locked.name})
+        assert response.status_code == 404
+
+
 @pytest.mark.parametrize("cap", [-1, -2, -5000])
 def test_parsed_endpoint_answers_truncated_for_every_file_under_a_negative_cap(
     cap: int, tmp_path: Path, structured_app: TestClient, monkeypatch: pytest.MonkeyPatch

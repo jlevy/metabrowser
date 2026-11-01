@@ -225,9 +225,11 @@ const envelope = {
     ],
   },
 };
+/** What the next rollups answer instead of `envelope`, when a step sets it. */
+let rollupOverride = null;
 sandbox.fetch = async (url) => {
   fetchCalls.push(String(url));
-  return { ok: true, json: async () => JSON.parse(JSON.stringify(envelope)) };
+  return rollupOverride ?? { ok: true, json: async () => JSON.parse(JSON.stringify(envelope)) };
 };
 
 vm.createContext(sandbox);
@@ -285,6 +287,7 @@ vm.runInContext(
      container.composition = undefined;
      container.compositionPalette = undefined;
      return {
+       stopLoading() { container.stoppedLoading = true; },
        update(next) { container.value = next; },
        updateMetric(next) { container.metric = next; },
        updateComposition(next, palette) {
@@ -884,6 +887,99 @@ sandbox.MetabrowserNavigationRoute.attachController({
       `${fetchCalls.length}/${watch.stale()}`,
     );
     watch.dispose();
+  }
+
+  // ── A rollup with nothing to draw never leaves the loading skeleton ──
+  {
+    const answers = {
+      "a refused request": { ok: false, status: 404 },
+      "an index finished without the folder": {
+        ok: true,
+        json: async () => ({ index_status: "done", node: null }),
+      },
+      "a failed index": { ok: true, json: async () => ({ index_status: "failed", node: null }) },
+    };
+    for (const [name, answer] of Object.entries(answers)) {
+      rollupOverride = answer;
+      const pane = makeElement();
+      pane.viewport = makeElement();
+      pane.status = makeElement();
+      pane.totals = makeElement();
+      pane.rollupControls = makeElement();
+      sandbox.MetabrowserViewState.setActive(pane, true);
+      const shown = mb
+        .getRegisteredView("folder", "treemap")
+        .render(pane, { path: "gone", kind: "folder", raw: {} });
+      await new Promise((resolve) => setImmediate(resolve));
+      check(
+        `treemap: ${name} says the map is unavailable`,
+        pane.viewport.innerHTML.includes("Treemap unavailable.") &&
+          !pane.viewport.innerHTML.includes("tm-loading"),
+        pane.viewport.innerHTML,
+      );
+      check(`treemap: ${name} stops the totals loading`, pane.totals.stoppedLoading === true);
+      shown.dispose();
+    }
+    // A capped index: the folders it reached draw under the notice, and one it stopped
+    // before finishing has nothing more coming.
+    for (const [name, node, drawn] of [
+      ["a reached folder", envelope.node, true],
+      ["a folder past the cap", { path: "gone", state: "pending", total_files: 0 }, false],
+    ]) {
+      rollupOverride = {
+        ok: true,
+        json: async () => ({
+          ...JSON.parse(JSON.stringify(envelope)),
+          index_status: "truncated",
+          truncated: true,
+          node,
+        }),
+      };
+      const pane = makeElement();
+      pane.viewport = makeElement();
+      pane.status = makeElement();
+      pane.totals = makeElement();
+      pane.rollupControls = makeElement();
+      sandbox.MetabrowserViewState.setActive(pane, true);
+      const shown = mb
+        .getRegisteredView("folder", "treemap")
+        .render(pane, { path: "", kind: "folder", raw: {} });
+      await new Promise((resolve) => setImmediate(resolve));
+      check(
+        `treemap: ${name} on a capped index carries the notice`,
+        pane.status.textContent.startsWith("Index capped at 500,000 files"),
+        pane.status.textContent,
+      );
+      check(
+        `treemap: ${name} on a capped index leaves no skeleton`,
+        !pane.viewport.innerHTML.includes("tm-loading") &&
+          pane.viewport.innerHTML.includes("Treemap unavailable.") === !drawn,
+        pane.viewport.innerHTML,
+      );
+      shown.dispose();
+    }
+    // A scan still running has more to say, so its skeleton stays.
+    rollupOverride = {
+      ok: true,
+      json: async () => ({ index_status: "scanning", node: null }),
+    };
+    const pane = makeElement();
+    pane.viewport = makeElement();
+    pane.status = makeElement();
+    pane.totals = makeElement();
+    pane.rollupControls = makeElement();
+    sandbox.MetabrowserViewState.setActive(pane, true);
+    const shown = mb
+      .getRegisteredView("folder", "treemap")
+      .render(pane, { path: "gone", kind: "folder", raw: {} });
+    await new Promise((resolve) => setImmediate(resolve));
+    check(
+      "treemap: a running scan keeps its skeleton",
+      pane.viewport.innerHTML.includes("tm-loading") && pane.totals.stoppedLoading !== true,
+      pane.viewport.innerHTML,
+    );
+    shown.dispose();
+    rollupOverride = null;
   }
 
   await mb.fetchRollup("override", { remaining_top: 9 });

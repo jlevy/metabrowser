@@ -42,36 +42,31 @@ export function createFolderRollupControls(mb) {
     return () => subscribers.delete(subscriber);
   }
 
-  /** @param {HTMLElement} container @param {{metric?: boolean, ignored?: boolean}} [parts] */
-  function mount(container, parts = {}) {
+  /** @param {HTMLElement} container */
+  function mount(container) {
     const controls = mb.filterControls;
     if (!controls) {
       throw new Error("metabrowser folder plugin: filter controls are unavailable");
     }
     const filterControls = controls;
-    const showMetric = parts.metric !== false;
     // A pinned revision has no ignore state, so every file is counted either
     // way and a switch for it would change nothing.
-    const showIgnored = parts.ignored !== false && mb.sourceKind?.() !== "git_revision";
+    const showIgnored = mb.sourceKind?.() !== "git_revision";
     container.classList.add("folder-rollup-controls");
 
     /** @param {FolderRollupState} state */
     function render(state) {
-      container.innerHTML = `${
-        showMetric
-          ? filterControls.groupHtml({
-              key: "folder-rollup-metric",
-              select: "one",
-              layout: "joined",
-              label: "Measure file rollups by",
-              options: [
-                { value: "files", label: "Files" },
-                { value: "size", label: "Bytes" },
-              ],
-              value: state.metric,
-            })
-          : ""
-      }${
+      container.innerHTML = `${filterControls.groupHtml({
+        key: "folder-rollup-metric",
+        select: "one",
+        layout: "joined",
+        label: "Measure file rollups by",
+        options: [
+          { value: "files", label: "Files" },
+          { value: "size", label: "Bytes" },
+        ],
+        value: state.metric,
+      })}${
         showIgnored
           ? filterControls.checkHtml({
               key: "folder-rollup-ignored",

@@ -12,6 +12,7 @@ from typing import Any
 
 from metabrowser import server
 from metabrowser.inventory_engine.contract import (
+    DiscoveryBudget,
     EngineVersion,
     IndexState,
     ObservationKind,
@@ -24,7 +25,7 @@ from metabrowser.inventory_engine.contract import (
 from metabrowser.inventory_engine.coordinator import CoordinatedRead, HostCursor, HostVersion
 from metabrowser.inventory_engine.runtime import default_inventory_config
 from metabrowser.settings import ROLLUP_MAX_TOP
-from metabrowser.wire_models import validate_rollup_node
+from metabrowser.wire_models import validate_rollup_envelope, validate_rollup_node
 from tests.inventory_harness import InventoryHarness, inventory_harness
 
 # Tests that compare validators across requests hold the inventory version still.
@@ -97,6 +98,45 @@ def test_rollup_route_envelope_and_wire_shape(tmp_path: Path) -> None:
         for group in body["file_type_breakdown"]["groups"]
         for family in group["families"]
     } == {"markdown", "python"}
+
+
+def test_rollup_route_reports_a_truncated_index(tmp_path: Path) -> None:
+    """The discovery budget stops the walk: the envelope says so and counts what it kept."""
+    for index in range(5):
+        (tmp_path / f"file-{index}.py").write_text("x" * 8)
+    server._set_root_dir(tmp_path)
+    config = replace(_WATCH_OFF, budget=DiscoveryBudget(max_files=2))
+
+    async def run() -> dict[str, Any]:
+        async with inventory_harness(tmp_path, config=config) as harness:
+            return await _body(harness, {"path": ""})
+
+    body = asyncio.run(run())
+    validate_rollup_envelope(body)
+    assert body["truncated"] is True
+    assert body["index_status"] == "truncated"
+    assert body["max_files"] == 2
+    assert body["indexed_files"] == 2
+    assert body["node"]["total_files"] == 2
+
+
+def test_tree_and_recent_report_a_truncated_index(tmp_path: Path) -> None:
+    """The other two routes that read the same status, and what the file tree's note needs."""
+    for index in range(5):
+        (tmp_path / f"file-{index}.py").write_text("x" * 8)
+    server._set_root_dir(tmp_path)
+    config = replace(_WATCH_OFF, budget=DiscoveryBudget(max_files=2))
+
+    async def run() -> tuple[dict[str, Any], dict[str, Any]]:
+        async with inventory_harness(tmp_path, config=config) as harness:
+            tree = await server.api_tree(_request(harness.app, {"depth": "0"}))
+            recent = await server.api_recent(_request(harness.app, {"window": "all"}))
+            return json.loads(bytes(tree.body)), json.loads(bytes(recent.body))
+
+    tree, recent = asyncio.run(run())
+    assert tree["tally_cache_status"] == "truncated"
+    assert tree["tally_cache_max_files"] == 2
+    assert recent["tally_cache_status"] == "truncated"
 
 
 def test_rollup_route_runs_aggregation_off_the_event_loop(

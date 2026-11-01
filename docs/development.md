@@ -916,7 +916,8 @@ A push from a linked worktree is the case that exports `GIT_DIR`; one from the p
 checkout does not, which is why the bug can look unreproducible.
 The pre-push command in `lefthook.yml` and `tests/conftest.py` each clear the list for
 everything they start, and `tests/test_git_hook_environment.py` checks both, along with
-the console goldens that build repositories.
+the console goldens that build repositories and every Python fixture that runs
+`git init`.
 
 **`npm` refuses to install.** npm 11.10 and newer enforce the `before` and
 `minimum-release-age` settings and error when a shell environment sets both.

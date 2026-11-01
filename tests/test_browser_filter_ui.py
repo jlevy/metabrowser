@@ -85,12 +85,9 @@ def test_treemap_uses_shared_controls_for_metric_and_scope() -> None:
 
     # Both views mount one row carrying both halves, because the measure and
     # the gitignore switch are the same kind of choice about the same numbers
-    # and splitting them meant each silently moved the other's. No parts
-    # argument is what asks for both, so the absence of one is the assertion.
+    # and splitting them meant each silently moved the other's.
     assert "rollupControls.mount(controls)" in overview_panel
     assert "rollupControls.mount(rollupControlsHost)" in treemap
-    assert "metric: true" not in treemap
-    assert "ignored: true" not in treemap
     # And neither body owns a control row any more.
     for body in (file_totals, file_types):
         assert "rollupControls.mount(" not in body

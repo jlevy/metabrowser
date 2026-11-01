@@ -16,6 +16,7 @@ from pathlib import Path
 from metabrowser.diff.apply import TreeEntry, TreeSnapshot
 from metabrowser.diff.format import EntryType
 from metabrowser.git.process import _REPO_PINNING_GIT_VARS
+from metabrowser.git.tree_source import iter_ls_tree_records
 from tests.required_tools import require_git
 
 _EPOCH_ONE = "2026-01-01T00:00:00 +0000"
@@ -96,11 +97,7 @@ def materialize_tree(root: Path, revision: str) -> TreeSnapshot:
     """Read one committed tree into the corpus tree shape, byte-exactly."""
     listing = git(root, "ls-tree", "-r", "-z", "--full-tree", revision)
     entries: dict[str, TreeEntry] = {}
-    for record in listing.split(b"\0"):
-        if not record:
-            continue
-        meta, path_raw = record.split(b"\t", 1)
-        mode_raw, obj_type, oid = meta.decode("ascii").split(" ")
+    for mode_raw, obj_type, oid, path_raw in iter_ls_tree_records(listing):
         path = path_raw.decode("utf-8", "surrogateescape")
         if obj_type == "commit":
             entries[path] = TreeEntry(EntryType.submodule, mode_raw, oid.encode("ascii"))

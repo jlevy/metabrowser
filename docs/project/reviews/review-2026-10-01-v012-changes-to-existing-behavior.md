@@ -30,6 +30,52 @@ claims, is what exposed it.
 The paragraph after the table says which row and why.
 Nothing else in this record was changed.
 
+**Addendum, 2026-11-01.** Written for the reader asked to sign this record; nothing
+above or below it was changed.
+[#272](https://github.com/jlevy/metabrowser/pull/272) adds `CHANGELOG.md` entries for
+both rows of the table of deliberate changes with no entry: `/api/stream` under Page
+lifecycle, and `--end-of-options` under Content trust.
+So once #272 is on `main`, that table and the sentence above it describe the tree this
+record was checked on: a search of the file for `end-of-options` and `rotated` now finds
+those entries, not nothing.
+The sign-off’s “a request to add entries” is answered by them, and signing accepts the
+two changes as those entries state them.
+The `--end-of-options` entry leaves out the row’s “No response differed”, but the claim
+was checked again and stands.
+Of the 157 rows the re-run’s data differential reports as deliberate with no entry, 149
+are this change, and all of their 702 elements are the Git command line the harness
+records (`fx.calls`), not a route’s answer or a command’s output.
+This record’s statement that the `/api/plugin/diff/comparison` entry does not say other
+requests are refused was also checked, on `c934a0b4`, and was true: the file’s only
+mention of `base_policy` was the sentence that the route honors `merge_base`. #272 adds
+the refusal to that entry, as the code in `builtin_plugins/diff/sidekick.py` has it, and
+running both cases answered 400 `diff_comparison`. One more statement has been overtaken
+and is left as written: A Known Defect says the fix is #262, held out of the stack.
+#268 carries the fix and #262 was closed unmerged, and `mb-tdmd` is closed, with Back in
+Safari and Firefox checked under `mb-etqi`. One row needs reading more widely than it
+states. The row on `/api/plugin/structured/parsed` for a file it cannot open names
+0.11.0’s answer as a 200 with a `PermissionError`, which was run at the default limit.
+For an uncompressed file larger than `STRUCTURED_PARSE_MAX_BYTES`, as any such file with
+content is at a limit of zero, 0.11.0 did not open it and answered `truncated`; it now
+answers the same 404 `content_unavailable`. Run on 2026-11-01 at limits of 0 and 1
+against v0.11.0’s source.
+Signing that row accepts this case too, and `CHANGELOG.md` now states it.
+This list also has no row for a compressed patch, so that change is stated here for
+signing.
+`/api/plugin/diff/document` on a `.patch.gz` now reads the patch the file holds,
+where v0.11.0 parsed the compressed bytes and answered 200 with 0 files for every
+`.patch.gz`, a valid one included.
+A compressed file whose stream cannot be decoded now answers 404 `diff_document`, “This
+file is not available.”, where v0.11.0 answered that same 200 with 0 files.
+With the damage in the first 512 KiB that `/api/file` reads, both builds show the file
+as bytes.
+With the damage past that, as in an 8.5 MB patch whose gzip is cut at 80%, both
+say `kind: diff`, so the Diff view now shows that message where v0.11.0 showed an empty
+change set. Run on 2026-11-01 against v0.11.0’s source, except the view’s message, which
+is read from the plugin’s code.
+`CHANGELOG.md` states it under Fixes: “A compressed patch is read as the patch it
+holds.”
+
 **Scope:** What a user or a plugin author sees differently on something v0.11.0 already
 did: a regular folder served or inspected, the CLI, the Plugin SDK, and the package’s
 requirements. New features are listed only where they show on a regular folder.

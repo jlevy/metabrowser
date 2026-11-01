@@ -308,11 +308,18 @@ class GitOutputTooLargeError(GitError):
 
 
 class UnsupportedGitVersionError(GitError):
-    """The installed Git is below the acquisition security floor."""
+    """The acquisition security floor refuses this host's Git.
 
-    def __init__(self, detected: str, required: str) -> None:
+    *detected* is the first line ``git version`` printed, empty when it printed nothing
+    usable, and ``None`` when no ``git`` is on ``PATH``: that has no version to blame,
+    so it says what is missing and which release to install.
+    """
+
+    def __init__(self, detected: str | None, required: str) -> None:
         super().__init__(
-            f"unsupported Git version ({detected or 'unparseable'}); "
+            f"git was not found on PATH; acquisition requires Git {required}"
+            if detected is None
+            else f"unsupported Git version ({detected or 'unparseable'}); "
             f"acquisition requires {required}"
         )
         self.detected = detected
@@ -929,10 +936,11 @@ def detect_git_version() -> tuple[tuple[int, int, int] | None, str]:
 
 
 def require_acquisition_git() -> tuple[int, int, int]:
-    """Return the installed Git version, or raise if it is below the floor."""
+    """Return the installed Git version, or raise if it is absent or below the floor."""
     version, raw = detect_git_version()
     if version is None or not acquisition_allowed(version):
-        raise UnsupportedGitVersionError(raw, required_acquisition_version_label())
+        detected = None if git_executable() is None else raw
+        raise UnsupportedGitVersionError(detected, required_acquisition_version_label())
     return version
 
 

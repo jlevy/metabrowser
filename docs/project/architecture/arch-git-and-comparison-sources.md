@@ -27,8 +27,10 @@ and `type_presets` rows, `tally_cache_status`, and a `summary` from the same ind
 `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
 totals. Git type matching uses the same bounded compound-tail logical extension as
 filesystem inventory.
-SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; `logical_ext` is
-only the inner extension of a compressed name on tree nodes.
+SPA file nodes emit that tail as `ext`; `logical_ext` is only the inner extension of a
+compressed name on tree nodes.
+Blob `/api/file` envelopes emit the name’s last extension as `ext`, as a folder’s do,
+and choose the file’s kind from it, so `run.codex.jsonl` is `.jsonl` on either source.
 Blob file envelopes omit compressed identity because blobs are stored bytes with no gzip
 smudge. Git markdown `/api/file` envelopes include parsed YAML `frontmatter` and
 `frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping.
@@ -335,8 +337,10 @@ and `type_presets` rows, `tally_cache_status`, and a `summary` from the same ind
 `types` and `min_size` keep ancestor trees of matching blobs and emit subtree `filtered`
 totals. Git type matching uses the same bounded compound-tail logical extension as
 filesystem inventory.
-SPA file nodes and blob `/api/file` envelopes emit that tail as `ext`; `logical_ext` is
-only the inner extension of a compressed name on tree nodes.
+SPA file nodes emit that tail as `ext`; `logical_ext` is only the inner extension of a
+compressed name on tree nodes.
+Blob `/api/file` envelopes emit the name’s last extension as `ext`, as a folder’s do,
+and choose the file’s kind from it, so `run.codex.jsonl` is `.jsonl` on either source.
 Blob file envelopes omit compressed identity because blobs are stored bytes with no gzip
 smudge. Git markdown `/api/file` envelopes include parsed YAML `frontmatter` and
 `frontmatter_error`; KPress on a pin uses that parse rather than an empty mapping.

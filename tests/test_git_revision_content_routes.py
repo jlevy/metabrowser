@@ -438,7 +438,7 @@ def test_git_tree_matches_logical_extensions_not_name_suffix(tmp_path: Path) -> 
             )
             assert min_js.status_code == 200
             min_js_body = min_js.json()
-            assert min_js_body["ext"] == ".min.js"
+            assert min_js_body["ext"] == ".js"
             assert "logical_ext" not in min_js_body
             notmd = await client.get("/api/file", params={"path": by_name["notmd"]["path"]})
             assert notmd.status_code == 200
@@ -446,7 +446,7 @@ def test_git_tree_matches_logical_extensions_not_name_suffix(tmp_path: Path) -> 
             gz_file = await client.get("/api/file", params={"path": gz["path"]})
             assert gz_file.status_code == 200
             gz_body = gz_file.json()
-            assert gz_body["ext"] == ".jsonl.gz"
+            assert gz_body["ext"] == ".gz"
             assert "logical_ext" not in gz_body
             assert "compressed" not in gz_body
 

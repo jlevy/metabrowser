@@ -323,7 +323,12 @@ def outside_link(href: str | None, base: str | None) -> str | None:
         scheme = urlsplit(absolute).scheme
     except ValueError:
         return None
-    return absolute if scheme in {"http", "https"} else None
+    if scheme not in {"http", "https"}:
+        return None
+    # As a browser's URL parser writes it, which is what the page's layer keeps. urlsplit
+    # reads a scheme in lower case, but urljoin hands back as written an address whose
+    # scheme is not its base's.
+    return scheme + absolute[len(scheme) :]
 
 
 def link_href(href: str | None, base: str | None) -> tuple[str, bool] | None:
