@@ -366,7 +366,8 @@ GitHub URLs and HTTPS:
   cannot load anything, restyle or cover the page, reach the application’s own handlers,
   or clobber a global.
   An image is a link to it rather than loaded, links open on GitHub in a new tab, only
-  `http` and `https` ones kept, and code blocks show as plain text without highlighting.
+  `http` and `https` ones kept, with the scheme in lower case in the Markdown route’s
+  answer too, and code blocks show as plain text without highlighting.
   A text’s paragraphs, headings, lists, quotes, code, tables, and details have their own
   spacing and list indent inside the card, with none above the first block or below the
   last. A review comment’s file opens at the served head, at its line, and it shows the
