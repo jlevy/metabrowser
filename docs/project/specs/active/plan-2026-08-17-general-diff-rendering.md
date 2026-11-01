@@ -108,10 +108,10 @@ They stop being blockers for this plan.
 ### What already exists
 
 - The research document, with an adopted layered IR and a tooling comparison.
-- `git/process.py`, `git/log.py`, `git/detail.py`, and `/api/git/` on the unmerged Git
-  graph branch. `git/detail.py` already returns per-file change records with status,
-  additions, deletions, binary flags, and rename similarity — Layer 3 for one source,
-  under a different name.
+- `git/process.py`, `git/log.py`, `git/detail.py`, and `/api/git/`, from the Git graph
+  work, now on `main`. `git/detail.py` already returns per-file change records with
+  status, additions, deletions, binary flags, and rename similarity — Layer 3 for one
+  source, under a different name.
 - `registerNavPanel`, the shell seam the Changes surface mounts through.
 - A bead tree under `mb-ypme` that assumed the plugin framing and needs refiling.
 
