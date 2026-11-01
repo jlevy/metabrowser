@@ -101,6 +101,7 @@ from metabrowser.file_kinds import (
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.folder_discovery import discover_folder
+from metabrowser.fs_paths import is_visible_segment
 from metabrowser.git.history import close_history_sessions
 from metabrowser.git.routes import GIT_ROUTES
 from metabrowser.gz_io import (
@@ -2562,12 +2563,28 @@ async def _api_folder_envelope(
     `readme_path` names a direct-child README for Overview panel discovery.
     Served no-store: the envelope is tiny and its aggregates change
     while a scan is running.
+
+    A hidden folder has no such envelope. The inventory's scope leaves hidden
+    path components out, so `/api/tree` and `/api/rollup` answer 404 for one and
+    its aggregates would be pending forever. The answer says so; a file inside
+    one still opens at its own address.
     """
 
     key = parse_inventory_path(subpath)
     if key is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
     subpath = key
+    if not is_visible_segment(subpath):
+        return JSONResponse(
+            {
+                "summary": "Could not open this folder.",
+                "error": (
+                    "Metabrowser does not index hidden folders, so this one has no view. "
+                    "A file inside it still opens at its own address."
+                ),
+            },
+            status_code=404,
+        )
     runtime = _inventory_runtime_for(request)
     coordinated = await runtime.coordinator.read(
         ReadRequest(queries=(EntryQuery(query_id="folder", path=subpath),))

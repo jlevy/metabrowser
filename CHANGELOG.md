@@ -990,6 +990,24 @@ Fixes:
   The tooltip does not appear when its anchor has left the document, and one still up
   for another row is put away.
 
+- A hidden folder’s address now says why it has no view.
+  `/view/.hidden/` used to show “Could not load file types.”
+  beside a skeleton that never finished, because `/api/file` answered with a folder
+  envelope whose aggregates stayed pending forever: the inventory leaves hidden folders
+  out, and `/api/tree` and `/api/rollup` already answered 404. `/api/file` now answers
+  404 with the reason, which the page shows.
+  Such a folder’s README therefore no longer appears at the folder’s address, and every
+  file in it still opens at its own.
+  `.logs` and `.state`, which the inventory does list, are ordinary folders as before.
+
+- File Overview and Treemap no longer keep a loading skeleton when the rollup cannot
+  supply one. A failed or refused request, or an index that finished without the folder,
+  now stops the totals’ skeleton and the Treemap’s, which says “Treemap unavailable.”;
+  changing Files or Bytes or Show ignored after a failure keeps the failure’s message
+  instead of bringing the skeleton back; and a refresh that fails while nothing has been
+  counted says so and offers Retry where the request can be retried.
+  A scan that is still running keeps its skeletons.
+
 ## 0.11.0
 
 Content trust:

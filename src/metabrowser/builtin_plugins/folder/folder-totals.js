@@ -333,6 +333,8 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
   let currentPalette = null;
   /** @type {"files" | "size"} */
   let currentMetric = initialMetric === "size" ? "size" : "files";
+  // Whether pending totals are still on their way. See stopLoading.
+  let awaitingTotals = true;
 
   function ensureTable() {
     if (table) {
@@ -427,9 +429,10 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
       ignoredRow = null;
       allRow = null;
       metricHeader = null;
-      root.innerHTML =
-        '<div class="folder-totals-loading mb-delayed-loading" aria-hidden="true"></div>' +
-        '<span class="sr-only">Loading file totals…</span>';
+      root.innerHTML = awaitingTotals
+        ? '<div class="folder-totals-loading mb-delayed-loading" aria-hidden="true"></div>' +
+          '<span class="sr-only">Loading file totals…</span>'
+        : "";
       return;
     }
     ensureTable();
@@ -467,11 +470,21 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     render();
   }
 
+  /**
+   * The rollup answered or failed without totals, and whatever shows that says
+   * why. A skeleton here would keep promising numbers nothing is going to send.
+   * Totals that do arrive later, from a retry or the index, still take its place.
+   */
+  function stopLoading() {
+    awaitingTotals = false;
+    render();
+  }
+
   function dispose() {
     mb.tooltip.hide();
     root.replaceChildren();
   }
 
   render();
-  return Object.freeze({ dispose, update, updateComposition, updateMetric });
+  return Object.freeze({ dispose, stopLoading, update, updateComposition, updateMetric });
 }

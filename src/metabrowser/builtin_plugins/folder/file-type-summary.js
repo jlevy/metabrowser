@@ -10,7 +10,9 @@ import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file-type-
  * @param {SummaryPalette} palette
  * @param {{acquire(path: string): {publish(value: unknown): void, release(): void}}} projectionPool
  * @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls
- * @param {{signal?: AbortSignal}} options
+ * @param {{signal?: AbortSignal, onNoTotals?: () => void}} options `onNoTotals` is called when
+ *   the rollup answers or fails without totals and this body says why, so a sibling can stop
+ *   waiting for them.
  */
 export function mountFileTypeSummary(
   container,
@@ -28,6 +30,9 @@ export function mountFileTypeSummary(
   let showIgnored = controlsState.includeIgnored;
   /** @type {ReturnType<typeof normalizeRollupEnvelope> | null} */
   let envelope = null;
+  // The last request failed with nothing to show. Its message stays until a
+  // rollup answers: a control change must not bring the loading skeleton back.
+  let loadFailed = false;
   const formatters = {
     formatFileCount: mb.formatFileCount,
     formatInteger: mb.formatInteger,
@@ -47,6 +52,9 @@ export function mountFileTypeSummary(
   const view = mountDistributionView(container, model, palette, metricClasses, mb.fileTypeIcon);
 
   function render() {
+    if (loadFailed) {
+      return;
+    }
     model = buildFileTypeSummaryModel(
       envelope,
       showIgnored,
@@ -73,12 +81,15 @@ export function mountFileTypeSummary(
     updateDistributionView(view, nextModel);
     envelope = nextEnvelope;
     model = nextModel;
+    loadFailed = false;
     if (nextEnvelope.totals) {
       // Publish while the crawl is still running too. Sibling panels read
       // ``indexStatus`` and label their numbers as in-progress, so holding
       // the projection back until the scan finished only meant they showed
       // a loading state for the whole crawl instead of counts that refine.
       projection.publish(nextEnvelope);
+    } else if (nextModel.state === "failed" || nextModel.state === "unavailable") {
+      options.onNoTotals?.();
     }
   }
 
@@ -94,7 +105,7 @@ export function mountFileTypeSummary(
       ext_rank: "dual",
       /** @param {unknown} error */
       onError(error) {
-        if (envelope) {
+        if (envelope?.totals) {
           const status = view.body.querySelector(".file-type-summary-status");
           if (status) {
             status.textContent = "Could not refresh file types; showing the previous totals.";
@@ -115,6 +126,8 @@ export function mountFileTypeSummary(
         view.body.querySelector("[data-file-types-retry]")?.addEventListener("click", () => {
           void watch.refresh();
         });
+        loadFailed = true;
+        options.onNoTotals?.();
       },
     },
     applyEnvelope,

@@ -141,6 +141,7 @@ export function mountFileTotalsPanel(
 
   return Object.freeze({
     dispose,
+    stopLoading: () => totalsView.stopLoading(),
     /** @param {{raw?: unknown}} nextContext */
     update(nextContext) {
       // A folder envelope refreshed mid-crawl still carries the walker's

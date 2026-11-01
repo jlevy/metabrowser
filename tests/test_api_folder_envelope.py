@@ -137,3 +137,34 @@ def test_missing_path_still_404(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     _, response = _api_file(tmp_path, "nope")
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize("path", [".hidden", ".hidden/", ".hidden/sub", "shown/.hidden"])
+def test_hidden_folder_answers_why_it_has_no_view(tmp_path: Path, path: str) -> None:
+    """The inventory leaves hidden folders out, so an envelope would stay pending forever."""
+    (tmp_path / ".hidden" / "sub").mkdir(parents=True)
+    (tmp_path / "shown" / ".hidden").mkdir(parents=True)
+    server._set_root_dir(tmp_path)
+    body, response = _api_file(tmp_path, path)
+    assert response.status_code == 404
+    assert body["summary"] == "Could not open this folder."
+    assert "hidden folders" in body["error"]
+
+
+def test_file_in_a_hidden_folder_still_opens(tmp_path: Path) -> None:
+    (tmp_path / ".hidden").mkdir()
+    (tmp_path / ".hidden" / "notes.txt").write_text("plain\n")
+    server._set_root_dir(tmp_path)
+    body, response = _api_file(tmp_path, ".hidden/notes.txt")
+    assert response.status_code == 200
+    assert body["kind"] == "text"
+
+
+def test_allowlisted_dot_folder_is_an_ordinary_folder(tmp_path: Path) -> None:
+    (tmp_path / ".logs").mkdir()
+    (tmp_path / ".logs" / "run.txt").write_text("plain\n")
+    server._set_root_dir(tmp_path)
+    body, response = _api_file(tmp_path, ".logs")
+    assert response.status_code == 200
+    assert body["kind"] == "folder"
+    assert body["dir"]["state"] == "complete"

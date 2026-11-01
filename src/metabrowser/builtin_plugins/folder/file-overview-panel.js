@@ -68,7 +68,7 @@ export function mountFileOverviewPanel(
     palette,
     projectionPool,
     rollupControls,
-    options,
+    { ...options, onNoTotals: () => totals.stopLoading() },
   );
 
   let disposed = false;
