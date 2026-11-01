@@ -21,6 +21,13 @@ Page lifecycle:
   reconnects use explicit ETag validation.
   A live log deleted or truncated while the page was away stops showing as live on
   return.
+- `GET /api/stream` asked to resume past the end of the file now ends the stream: it
+  sends `event: closed` with `data: {"reason": "rotated"}` and stops.
+  0.11.0 clamped the cursor to the file’s size and kept streaming, so a client saw
+  `: heartbeat` and resumed at the wrong offset, although a cursor past the end means
+  the file was rotated or truncated under the reader.
+  This is the route’s side of the live-log entry above, which a plugin or script reading
+  `/api/stream` directly sees.
 
 Plugin SDK:
 
@@ -726,6 +733,17 @@ Content trust:
   three more files for it, which `metab --plugin markdown` lists among its assets:
   `inert-render.js`, `inert-toc.js`, and `place-rendered.js`, which places a render and
   imports the other two on the first inert one.
+
+- Two more modules are requested on every view of their kind, with nothing visible
+  changing on a folder: `/plugin-static/markdown/place-rendered.js` on every Markdown
+  view, for the reason above, and `/plugin-static/diff/diff-view-file.js` on every diff
+  view, which decides the View file controls and offers none on a folder, which has no
+  pin.
+
+- The comparison adapter resolves a revision with
+  `git rev-parse --verify --end-of-options <rev>^{commit}`, so a revision that begins
+  with `-` is an argument and not an option.
+  A revision that names a commit resolves as before.
 
 - With active content off the application page carries a Content-Security-Policy:
   scripts run only from the application’s `/static/` and `/plugin-static/` paths and the
