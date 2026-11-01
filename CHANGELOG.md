@@ -357,14 +357,14 @@ GitHub URLs and HTTPS:
   not be opened at startup and serving fell back to the default branch, the page offers
   to switch to the head (`refs/pull/<n>/head`) and reloads on it.
   Descriptions and comments render as Markdown through KPress’s sanitized mode, one text
-  at a time as it scrolls into view, never from GitHub’s own HTML, and are then reduced
-  to an allowlist of plain markup, on the server and again in the page: paragraphs,
-  headings, emphasis, code, quotes, lists, tables, and details, with no class, `id`,
-  `data-*`, style, or event attribute.
-  SVG, MathML, media, frames, forms, stylesheets, and scripts are removed with their
-  content, and no KPress script or stylesheet is loaded for a comment, so a comment
-  cannot load anything, restyle or cover the page, reach the application’s own handlers,
-  or clobber a global.
+  at a time a screen before it scrolls into view, so a fast scroll does not show raw
+  Markdown, never from GitHub’s own HTML, and are then reduced to an allowlist of plain
+  markup, on the server and again in the page: paragraphs, headings, emphasis, code,
+  quotes, lists, tables, and details, with no class, `id`, `data-*`, style, or event
+  attribute. SVG, MathML, media, frames, forms, stylesheets, and scripts are removed with
+  their content, and no KPress script or stylesheet is loaded for a comment, so a
+  comment cannot load anything, restyle or cover the page, reach the application’s own
+  handlers, or clobber a global.
   An image is a link to it rather than loaded, links open on GitHub in a new tab, only
   `http` and `https` ones kept, with the scheme in lower case in the Markdown route’s
   answer too, and code blocks show as plain text without highlighting.

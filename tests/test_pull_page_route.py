@@ -102,6 +102,26 @@ def _style_rules() -> dict[str, str]:
     return rules
 
 
+def test_a_text_is_asked_for_one_pane_ahead_and_no_further() -> None:
+    """A margin only widens the observer's root, so the root must be what scrolls.
+
+    The window does not scroll here: ``body`` is ``overflow: hidden`` and the preview pane
+    is the scroller. With no root, a text past the pane's edge is clipped by the pane
+    before the window's margin applies, and the margin does nothing. Which texts that
+    reaches is geometry and needs a browser; the session runs the concurrency bound.
+    """
+
+    source = PAGE_JS.read_text(encoding="utf-8")
+    assert 'export const MARKDOWN_AHEAD = "100% 0px";' in source
+    assert 'root: container.closest("[data-kpress-viewport]"), rootMargin: MARKDOWN_AHEAD' in source
+    # Only the description is asked for at once, or a page with no observer at all.
+    assert source.count('part === "body" || observer === null') == 2
+    styles = (PAGE_JS.parent.parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
+    assert re.search(r"\n\.preview-pane \{[^}]*overflow-y: auto;", styles)
+    with TestClient(app) as client:
+        assert 'id="preview-pane" data-kpress-viewport' in client.get("/pull/7").text
+
+
 def test_a_comment_with_no_line_links_to_its_file_with_no_fragment() -> None:
     """Whether a comment has a line is the session's; what paint does without one is here."""
 

@@ -28,9 +28,15 @@ export const FAST_POLL_MS = 1000;
 export const SLOW_POLL_MS = 30000;
 // Markdown renders asked for at once. A render is one bounded body through KPress:
 // 4 to 7 ms warm for a short comment (KPress 0.3.5, measured 2026-09-24 in-process on a
-// loaded development machine), and a text scrolls into view before it is asked for, so
-// two keep a long conversation filling in without queueing ahead of the page's polls.
+// loaded development machine), and a text nears the view before it is asked for, so two
+// keep a long conversation filling in without queueing ahead of the page's polls.
 export const MARKDOWN_CONCURRENCY = 2;
+// How far from the view a text's Markdown is asked for: one pane's height above and below
+// it, as an IntersectionObserver margin. A text asked for only once it is on screen shows
+// its raw Markdown until the answer comes, which a fast scroll can catch. A render request
+// took about 10 to 15 ms in a browser (2026-11-01), so one screen ahead is plenty, and it
+// stays lazy: what is further off is not asked for until the reader comes nearer.
+export const MARKDOWN_AHEAD = "100% 0px";
 // How much of a review comment's diff hunk it shows; the rest is behind a disclosure.
 // GitHub's `diff_hunk` runs from the hunk's `@@` line to the commented line, which is
 // last, however long the hunk: on pallets/click#3030 (read 2026-11-01), 37 hunks of up to
@@ -905,8 +911,8 @@ export function createPullController(deps, options) {
   }
 
   /**
-   * Ask for one part's Markdown once per record. The glue asks when the part is on
-   * screen, so a long conversation renders what a reader reaches.
+   * Ask for one part's Markdown once per record. The glue asks when the part is within
+   * `MARKDOWN_AHEAD` of the view, so a long conversation renders what a reader reaches.
    *
    * @param {string} part
    */
@@ -1155,17 +1161,23 @@ export function mountPullPage(container, ctx, mb) {
   let diffHandle = null;
   /** @type {HTMLElement | null} */
   let diffHost = null;
+  // Rooted in the pane that scrolls, which the shell marks. With no root the root is the
+  // window, and a margin on it does nothing here: a text past the pane's edge is clipped
+  // by the pane on its way to the window, before the window's margin is applied.
   const observer =
     typeof IntersectionObserver === "function"
-      ? new IntersectionObserver((entries) => {
-          for (const entry of entries) {
-            const part = entry.isIntersecting ? entry.target.getAttribute("data-part") : null;
-            if (part !== null) {
-              observer?.unobserve(entry.target);
-              controller.requestMarkdown(part);
+      ? new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              const part = entry.isIntersecting ? entry.target.getAttribute("data-part") : null;
+              if (part !== null) {
+                observer?.unobserve(entry.target);
+                controller.requestMarkdown(part);
+              }
             }
-          }
-        })
+          },
+          { root: container.closest("[data-kpress-viewport]"), rootMargin: MARKDOWN_AHEAD },
+        )
       : null;
 
   /** @param {string} iso */
