@@ -8,17 +8,15 @@ table, so this test fails the build instead of letting it drift.
 
 from __future__ import annotations
 
-import re
 import tomllib
 from pathlib import Path
 from typing import Any
 
+from devtools import check_parity
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MAP_DOC = REPO_ROOT / "docs/project/architecture/arch-views-models-routes.md"
 BUILTIN_PLUGINS = REPO_ROOT / "src/metabrowser/builtin_plugins"
-SERVER = REPO_ROOT / "src/metabrowser/server.py"
-GIT_ROUTES = REPO_ROOT / "src/metabrowser/git/routes.py"
-CACHE_ROUTES = REPO_ROOT / "src/metabrowser/cache/routes.py"
 
 
 def _doc() -> str:
@@ -87,18 +85,18 @@ def test_container_kinds_match_the_map() -> None:
 
 
 def test_browser_and_data_routes_match_the_route_table() -> None:
+    """The map names every route ``check_parity`` counts, so the two agree on what one is.
+
+    That is each ``/api/``, browser-address, ``/raw``, and ``/_debug`` route anywhere in
+    the package, plus the plugin hooks, with placeholders cut off. The root redirect and
+    the two static-asset mounts are not selections, and neither check counts them.
+    """
+
     doc = _doc()
-    server = SERVER.read_text(encoding="utf-8")
-    registered = set(re.findall(r'Route\("([^"]+)"', server))
-    registered |= set(re.findall(r'Route\("([^"]+)"', GIT_ROUTES.read_text(encoding="utf-8")))
-    registered |= set(re.findall(r'Route\("([^"]+)"', CACHE_ROUTES.read_text(encoding="utf-8")))
-    assert "/api/cache/source/{slug}" in registered
-    for route in registered:
-        if route in ("/", "/_debug/tasks"):
-            continue  # A redirect and an opt-in diagnostic, not selections.
-        # Route patterns carry placeholders; the map documents the shape.
-        stem = route.split("{", 1)[0].rstrip("/")
-        assert stem in doc, f"route {route!r} is served but missing from the map"
+    registered = check_parity.registered_surfaces()
+    assert {"/api/cache/source", "/api/events", "/api/plugin/diff/document"} <= registered
+    for surface in registered:
+        assert surface in doc, f"route {surface!r} is served but missing from the map"
 
 
 def test_documented_plugin_hooks_exist() -> None:
