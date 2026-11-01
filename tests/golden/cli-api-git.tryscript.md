@@ -246,6 +246,23 @@ Error: /api/git/commit/0000000000000000000000000000000000000000 returned HTTP 40
 ? 1
 ```
 
+## Test: a revision that is not a full commit ID is refused by name
+
+A short ID or a ref name in a `/commit/` address reaches this route.
+It is not looked up, and the answer’s `revision_not_full` is what the page says so from.
+
+```console
+$ metab gitroot --api /api/git/commit/703de1c
+api: /api/git/commit/703de1c
+status: 400
+{
+  "error": "revision must be a full 40- or 64-character object id",
+  "code": "revision_not_full"
+}
+Error: /api/git/commit/703de1c returned HTTP 400
+? 1
+```
+
 ## Test: the comparison hook resolves a revision
 
 `cli-api-plugins` pins this hook’s refusal when neither endpoint is named.

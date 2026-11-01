@@ -350,6 +350,8 @@ sandbox.METABROWSER_SETTINGS = {
 
 const openedPaths = [];
 sandbox.dispatchEvent = () => {};
+sandbox.addEventListener = () => {};
+sandbox.removeEventListener = () => {};
 // Navigation goes through the documented namespace. The panel used to dispatch
 // `metabrowser:open-path`, which the SDK 0.2 break removed with no shim.
 sandbox.MetabrowserNavigationRoute = {

@@ -1015,6 +1015,15 @@ Fixes:
   handlers in this release had also removed the clickable node the accessibility tree
   showed. A click on a row does what it did.
 
+- Back or Forward onto a `/commit/` entry shows the commit.
+  With a file opened in-page over a commit, Back changed the address and left the file
+  showing, because the Git panel restored a commit only when the page loaded.
+
+- A `/commit/` address with a short commit ID or a ref name now says it needs the full
+  ID, in place of “Could not load this commit.”
+  `/api/git/commit/<rev>` still refuses such a revision with 400, and its answer now
+  carries the `revision_not_full` code.
+
 ## 0.11.0
 
 Content trust:
