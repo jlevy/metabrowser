@@ -884,6 +884,28 @@ Step 2 of 5.3 names it.
 **Not run.** 4.8 and 4.9, which clone from github.com: their text follows #261’s
 description.
 
+## Addendum (2026-11-01)
+
+The two test tiers CI does not run, on `main` at `c934a0b4`, above #268. Run on macOS
+26.5.2, Git 2.50.1, and `gh` 2.98.0, signed in.
+[CI 40415189089](https://github.com/jlevy/metabrowser/actions/runs/40415189089) passed
+on that commit, all nine jobs.
+
+| Step | What ran | Result |
+| --- | --- | --- |
+| 1.2 | `make test-macos` | 19 passed, none skipped |
+| 1.2 | `make test-live-github` | 7 passed, none skipped: `tests/test_github_live_smoke.py` and `tests/test_github_pull_live_smoke.py`. This is the first run of this tier in this record |
+
+On the same commit, one browser measurement backs the runbook’s new check 12 of 3.4:
+`explorations/page-connections/measure.mjs walk`, in Chrome 152.0.7977.83, headless,
+with the back/forward cache on, over eleven full page loads in one tab of that step’s
+folder. No page waited for a connection: the longest wait was 69 ms and the slowest page
+was ready in 562 ms, at a load average of 7 to 8. Back, the type filter, and Safari and
+Firefox were not measured.
+
+Otherwise these results are the automated tiers only.
+The manual rows, and the checks only a person can make, were not run on this commit.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
