@@ -3,15 +3,19 @@ type: is
 id: is-01m5wd8d441bkardnt96jafage
 title: Bring the v0.12 landing documents up to date for a merged, unreleased main
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m402dbhn3zsc1h896f3xnrsq
+hold: null
+hold_until: null
 created_at: 2026-10-26T15:28:55.427Z
-updated_at: 2026-10-26T15:28:55.427Z
+updated_at: 2026-11-01T16:05:50.080Z
+started_at: 2026-11-01T16:05:50.079Z
 ---
 The landing documents landed in #260 and now describe the state BEFORE the merge. They tell a reader there is a stack to land, gates owed on a stack tip, and #267 and #260 still to be appended to stack 218. The stack merged on 2026-10-04 and #268 landed above all of it.
 

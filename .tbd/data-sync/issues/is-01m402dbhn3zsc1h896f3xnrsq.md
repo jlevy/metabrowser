@@ -5,7 +5,7 @@ title: v0.12 release stability and manual acceptance
 kind: epic
 status: open
 priority: 1
-version: 21
+version: 23
 labels:
   - release:v0.12.0
 dependencies: []
@@ -30,7 +30,9 @@ child_order_hints:
   - is-01m5wd8d441bkardnt96jafage
   - is-01m5wd8dgya8tphw2zjb6dffzk
   - is-01m5wdbsy6z6d95sgg03kwmm76
+  - is-01m6bxr2wp9rfr7aety12fhnb5
+  - is-01m6bxr39wqdq908871w6kczym
 created_at: 2026-10-03T05:04:57.396Z
-updated_at: 2026-10-26T15:30:46.852Z
+updated_at: 2026-11-01T16:05:43.355Z
 ---
 Track all post-landing stability work after PR #260: dependency audit, main CI, PR #262 review remediation and merge decision, mirror heading layout, remaining review evidence, runbook corrections, complete automated verification and manual QA. A green merge or CI run alone does not establish release acceptance. Preserve explicit pass/fail/untested results and human-only checks.

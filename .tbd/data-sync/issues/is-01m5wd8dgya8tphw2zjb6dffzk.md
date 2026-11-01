@@ -3,14 +3,18 @@ type: is
 id: is-01m5wd8dgya8tphw2zjb6dffzk
 title: A missing git is reported as an unparseable Git version
 kind: bug
-status: open
+status: in_progress
 priority: 3
-version: 1
+version: 2
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m402dbhn3zsc1h896f3xnrsq
+hold: null
+hold_until: null
 created_at: 2026-10-26T15:28:55.837Z
-updated_at: 2026-10-26T15:28:55.837Z
+updated_at: 2026-11-01T16:05:45.632Z
+started_at: 2026-11-01T16:05:45.631Z
 ---
 On a host with no `git` on PATH at all, asking for a Git source reports the version floor rather than the absence:
 

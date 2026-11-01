@@ -3,13 +3,17 @@ type: is
 id: is-01m5x48vk0v4d66jt8peghj2ar
 title: "Update the seven tbd doc-forks #219 brought in"
 kind: chore
-status: open
+status: in_progress
 priority: 3
-version: 1
+version: 2
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
+hold: null
+hold_until: null
 created_at: 2026-10-26T22:11:07.483Z
-updated_at: 2026-10-26T22:11:07.483Z
+updated_at: 2026-11-01T16:05:50.765Z
+started_at: 2026-11-01T16:05:50.764Z
 ---
 Merging #219 on 2026-10-26 brought in `.tbd/doc-forks/`, which forks seven of tbd's shortcut docs so the repository can carry its own PR-sizing guidance. The base snapshots under `.tbd/doc-forks/base/shortcut/` were captured against the tbd of 2026-09-23, and the installed tbd is now 0.10.0, so `tbd sync` reports:
 

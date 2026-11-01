@@ -3,13 +3,17 @@ type: is
 id: is-01m1nfkxcjwap6bxegmkggh0aw
 title: Guard against test fixtures inheriting GIT_DIR into git init
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
+hold: null
+hold_until: null
 created_at: 2026-09-04T05:52:41.355Z
-updated_at: 2026-09-04T05:52:41.355Z
+updated_at: 2026-11-01T16:05:47.344Z
+started_at: 2026-11-01T16:05:47.343Z
 ---
 Three fixtures ran 'git init' with the ambient environment inherited, so under the pre-push hook — where git exports GIT_DIR and GIT_WORK_TREE pointing at the real repository, taking precedence over cwd — the fixture repo was built in the wrong place. Observed destructively: a linked worktree came back with every tracked file reading as untracked and two commits titled 'first commit' and 'second commit' on its branch.
 

@@ -3,15 +3,19 @@ type: is
 id: is-01m0k536dmsjghcf1hs38rv2gz
 title: Say which population the type distribution counts
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
 spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
+hold: null
+hold_until: null
 created_at: 2026-08-21T21:54:37.107Z
-updated_at: 2026-08-21T21:54:37.107Z
+updated_at: 2026-11-01T16:05:49.734Z
+started_at: 2026-11-01T16:05:49.733Z
 ---
 The type distribution in File Overview counts against a population the reader has to infer, and two people in one session inferred it wrong.
 
