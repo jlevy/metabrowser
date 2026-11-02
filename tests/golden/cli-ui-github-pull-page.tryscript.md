@@ -63,7 +63,7 @@ $ node tests/dom/github-pull-page-session.js
       "paint": {
         "status": "absent",
         "tab": "conversation",
-        "message": "No data for this pull request is cached yet.",
+        "message": "This pull request has not been fetched yet.",
         "canRefresh": true,
         "freshness": null,
         "failure": null,
@@ -135,13 +135,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -241,13 +241,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -285,13 +285,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "files",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -328,13 +328,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -374,13 +374,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 5 min ago by gh:octo-reader · may be out of date",
+        "freshness": "Fetched 5 min ago by octo-reader · may be out of date",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -420,13 +420,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 5 min ago by gh:octo-reader",
+        "freshness": "Refreshing… · fetched 5 min ago by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -475,13 +475,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -530,13 +530,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -611,13 +611,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "files",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -654,7 +654,7 @@ $ node tests/dom/github-pull-page-session.js
       "paint": {
         "status": "absent",
         "tab": "conversation",
-        "message": "No data for this pull request is cached yet.",
+        "message": "This pull request has not been fetched yet.",
         "canRefresh": true,
         "freshness": null,
         "failure": null,

@@ -147,4 +147,6 @@ def test_folder_headers_share_the_tight_divider_spacing_token() -> None:
     core_css = (REPO_ROOT / "src/metabrowser/static/styles.css").read_text(encoding="utf-8")
 
     assert "--section-heading-divider-gap: 5px" in core_css
-    assert "padding: 0 0 var(--section-heading-divider-gap)" in overview_css
+    # The heading's type and rule are the shared primitive; only its space below is local.
+    assert "padding: 0 0 var(--section-heading-divider-gap)" in core_css
+    assert "--section-heading-divider-gap" not in overview_css

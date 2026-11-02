@@ -256,6 +256,7 @@
                                    (source views, logs, raw JSON)
        --micro-font-size     10px  deliberately-minimized marks (the
                                    brand line)
+       --page-title-font-size 24px the title of a page no file stands behind
      One exception: .compression-badge draws a 7px glyph — iconography,
      not text, and not part of the ramp.
 
@@ -281,6 +282,7 @@
   --tooltip-font-size: var(--body-font-size);
   --tooltip-detail-font-size: var(--ui-small-font-size);
   --micro-font-size: 10px;
+  --page-title-font-size: 24px;
   --document-body-font-size: 15px;
   --kpress-host-font-size-base: var(--document-body-font-size);
   --mono-block-font-size: var(--ui-small-font-size);
@@ -1447,6 +1449,47 @@ body {
 .section-disclosure-trigger[aria-expanded="true"]::after,
 .metabrowser-kpress-host .kpress details[open] > summary::after {
   transform: rotate(90deg);
+}
+/* ── Section heading — the title of a section in a stack ─────────
+   The tab bar's uppercase, bold, tracked grammar at the body size, over a neutral rule.
+   A use site owns the space around it; the type and the rule are here. */
+.section-heading {
+  padding: 0 0 var(--section-heading-divider-gap);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  line-height: 1.25;
+  text-transform: var(--label-text-transform);
+}
+/* ── Fold expander — a run of content withheld until asked for ───
+   The tree's disclosure vocabulary on a full-width row: the registry's chevron, at row
+   height, hovering with the shared token like every other clickable row. */
+.fold-expander {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: var(--ui-row-height);
+  padding: 0 10px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--highlight-bg);
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+  text-align: left;
+  cursor: pointer;
+}
+.fold-expander:hover {
+  background: var(--hover-bg);
+}
+.fold-expander:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
 }
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a

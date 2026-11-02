@@ -72,9 +72,9 @@ export const TABS = Object.freeze(["", "files"]);
 /** @type {Readonly<Record<string, string>>} */
 const ABSENCE = Object.freeze({
   no_pull_request: "This server serves no pull request.",
-  not_cached: "No data for this pull request is cached yet.",
-  schema_mismatch: "The cached data for this pull request is from another version.",
-  unreadable: "The cached data for this pull request could not be read.",
+  not_cached: "This pull request has not been fetched yet.",
+  schema_mismatch: "The saved copy of this pull request is from another version.",
+  unreadable: "The saved copy of this pull request could not be read.",
 });
 
 /** @type {Readonly<Record<string, string>>} */
@@ -88,9 +88,9 @@ const REVIEW_STATES = Object.freeze({
 
 /** @type {Readonly<Record<string, string>>} */
 const MERGEABLE = Object.freeze({
-  mergeable: "No conflicts with the base branch",
-  conflicting: "Conflicts with the base branch",
-  unknown: "Merge status unknown",
+  mergeable: "No conflicts with the base branch.",
+  conflicting: "Conflicts with the base branch.",
+  unknown: "Merge status unknown.",
 });
 
 /** @type {Readonly<Record<string, string>>} */
@@ -588,7 +588,7 @@ export function describePull(envelope, page) {
     model.message =
       envelope.state === "pending"
         ? "Fetching the pull request…"
-        : (ABSENCE[envelope.reason ?? ""] ?? "No data for this pull request is cached.");
+        : (ABSENCE[envelope.reason ?? ""] ?? ABSENCE.not_cached);
     model.canRefresh =
       envelope.state === "absent" && envelope.reason !== "no_pull_request" && !envelope.refreshing;
     return model;
@@ -597,9 +597,11 @@ export function describePull(envelope, page) {
   model.message = page.error ?? null;
   model.canRefresh = envelope.state === "stale" && !envelope.refreshing;
   const age = relativeAge(record.fetched_at ?? null, page.nowMs);
+  // The account the record was read as, without the tool that read it.
+  const reader = text(record.reader).replace(/^gh:/, "");
   model.freshness = envelope.refreshing
-    ? `Refreshing… · fetched ${age} by ${text(record.reader)}`
-    : `Fetched ${age} by ${text(record.reader)}${envelope.state === "stale" ? " · may be out of date" : ""}`;
+    ? `Refreshing… · fetched ${age} by ${reader}`
+    : `Fetched ${age} by ${reader}${envelope.state === "stale" ? " · may be out of date" : ""}`;
   const pull = record.pull ?? {};
   const crossRepository = pull.head?.repository !== pull.base?.repository;
   const state = displayState(pull);
@@ -1385,10 +1387,18 @@ export function mountPullPage(container, ctx, mb) {
         )
       : null;
 
-  /** @param {string} iso */
-  const when = (iso) => {
+  /**
+   * An age, from the one primitive, with the exact time in its tooltip.
+   *
+   * @param {string} iso
+   */
+  const age = (iso) => {
     const at = Date.parse(iso);
-    return Number.isFinite(at) ? mb.formatTimestamp(at / 1000) : iso;
+    if (!Number.isFinite(at)) {
+      return h("span", {}, [iso]);
+    }
+    const { label, className } = mb.formatAge(at / 1000);
+    return h("span", { class: className, "data-tip-text": mb.formatTimestamp(at / 1000) }, [label]);
   };
 
   /**
@@ -1410,9 +1420,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     element.append(h("div", { class: "github-pull-plain" }, [value]));
     if (truncated) {
-      element.append(
-        h("p", { class: "github-pull-note" }, ["This text was cut; the rest is on GitHub."]),
-      );
+      element.append(notice("warning", ["This text was cut; the rest is on GitHub."]));
     }
     texts.set(part, element);
     if (part === "body" || observer === null) {
@@ -1460,11 +1468,11 @@ export function mountPullPage(container, ctx, mb) {
   function fileLink(path, line) {
     const wire = mb.sourceKind() === "git_revision" && path !== "" ? gitPathWire(path) : null;
     if (wire === null) {
-      return h("code", {}, [path]);
+      return h("span", { class: "github-pull-file" }, [path]);
     }
     const target = { path: wire, ...(line === null ? {} : { fragment: `L${line}` }) };
     const link = h("a", { href: mb.navigation.href(target), class: "github-pull-file" }, [
-      h("code", {}, [line === null ? path : `${path}:${line}`]),
+      line === null ? path : `${path}:${line}`,
     ]);
     link.addEventListener("click", (event) => {
       if (!isPlainClick(event)) {
@@ -1566,14 +1574,17 @@ export function mountPullPage(container, ctx, mb) {
           h("span", {}, [
             pull.actor === null ? null : h("strong", {}, [pull.actor]),
             `${pull.actor === null ? "" : " "}${pull.action} `,
-            h("code", {}, [pull.base]),
+            branch(pull.base),
             " from ",
-            h("code", {}, [pull.head]),
+            branch(pull.head),
           ]),
         ]),
-        h("div", { class: "github-pull-meta github-pull-quiet" }, [
-          `Opened ${when(pull.created)} · updated ${when(pull.updated)}`,
-          pull.closed && pull.closedLabel ? ` · ${pull.closedLabel} ${when(pull.closed)}` : "",
+        h("div", { class: "github-pull-quiet" }, [
+          "Opened ",
+          age(pull.created),
+          " · updated ",
+          age(pull.updated),
+          ...(pull.closed && pull.closedLabel ? [` · ${pull.closedLabel} `, age(pull.closed)] : []),
           " · ",
           outside(pull.htmlUrl, "", ["View on GitHub"]),
           " · ",
@@ -1668,7 +1679,8 @@ export function mountPullPage(container, ctx, mb) {
       h("section", { class: "github-pull-card" }, [
         h("div", { class: "github-pull-card-head" }, [
           h("strong", {}, [pull.author]),
-          ` opened ${when(pull.created)}`,
+          " opened ",
+          age(pull.created),
         ]),
         textBlock("body", pull.text, pull.truncated),
       ]),
@@ -1680,7 +1692,7 @@ export function mountPullPage(container, ctx, mb) {
       } else {
         head.append(" commented");
       }
-      head.append(item.at === null ? " (pending)" : ` ${when(item.at)}`);
+      head.append(" ", item.at === null ? "(pending)" : age(item.at));
       const card = h("section", { class: `github-pull-card github-pull-${item.kind}` }, [head]);
       if (item.text.trim() !== "" || item.kind === "comment") {
         card.append(textBlock(item.part, item.text, item.truncated));
@@ -1689,7 +1701,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     if (model.reviewComments.length > 0) {
       const threads = h("section", { class: "github-pull-section" }, [
-        h("h2", {}, [`Review comments (${model.reviewComments.length})`]),
+        h("h2", { class: "section-heading" }, [`Review comments (${model.reviewComments.length})`]),
       ]);
       for (const comment of model.reviewComments) {
         const head = h("div", { class: "github-pull-card-head" }, [
@@ -1698,7 +1710,8 @@ export function mountPullPage(container, ctx, mb) {
           comment.outdated ? badge("outdated", "outdated", "review") : null,
           " ",
           h("strong", {}, [comment.author]),
-          ` ${comment.reply ? "replied" : "commented"} ${when(comment.at)}`,
+          ` ${comment.reply ? "replied" : "commented"} `,
+          age(comment.at),
         ]);
         const card = h(
           "div",
@@ -1709,10 +1722,17 @@ export function mountPullPage(container, ctx, mb) {
           const { earlier, shown: tail } = comment.hunk;
           if (earlier.length > 0) {
             // Native, so opening it asks nothing of the page and a repaint just closes it.
+            const lines = `line${earlier.length === 1 ? "" : "s"}`;
             card.append(
               h("details", { class: "github-pull-hunk-earlier" }, [
-                h("summary", { class: "section-disclosure-trigger" }, [
-                  `${earlier.length} earlier lines`,
+                h("summary", { class: "fold-expander" }, [
+                  chevron(),
+                  h("span", { class: "github-pull-fold-closed" }, [
+                    `${earlier.length} earlier ${lines}`,
+                  ]),
+                  h("span", { class: "github-pull-fold-open" }, [
+                    `Hide ${earlier.length} ${lines}`,
+                  ]),
                 ]),
                 hunkLines(earlier),
               ]),
@@ -1720,7 +1740,7 @@ export function mountPullPage(container, ctx, mb) {
           }
           card.append(hunkLines(tail));
           if (comment.hunkTruncated) {
-            card.append(h("p", { class: "github-pull-note" }, ["The start of this hunk was cut."]));
+            card.append(notice("warning", ["The start of this hunk was cut."]));
           }
         }
         card.append(textBlock(comment.part, comment.text, comment.truncated));
@@ -1729,7 +1749,9 @@ export function mountPullPage(container, ctx, mb) {
       sections.push(threads);
     }
     const summary = model.checks;
-    const checksSection = h("section", { class: "github-pull-section" }, [h("h2", {}, ["Checks"])]);
+    const checksSection = h("section", { class: "github-pull-section" }, [
+      h("h2", { class: "section-heading" }, ["Checks"]),
+    ]);
     if (summary === null) {
       checksSection.append(
         h("p", { class: "github-pull-quiet" }, ["No checks or statuses reported."]),
@@ -1762,7 +1784,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     sections.push(checksSection);
     for (const note of model.notes) {
-      sections.push(h("p", { class: "github-pull-note" }, [note]));
+      sections.push(notice("warning", [note]));
     }
     body.replaceChildren(...sections);
   }
@@ -1809,7 +1831,7 @@ export function mountPullPage(container, ctx, mb) {
     if (comparison === null || action === "unavailable") {
       disposeDiff();
       body.replaceChildren(
-        h("p", { class: "github-pull-note" }, [
+        notice("error", [
           "Files changed is unavailable: the pull request's base could not be compared with its head.",
         ]),
       );
@@ -1823,12 +1845,12 @@ export function mountPullPage(container, ctx, mb) {
       ]);
       offer.addEventListener("click", () => void mountDiff(comparison));
       body.querySelector(".github-pull-newer-offer")?.remove();
-      body.prepend(
-        h("p", { class: "github-pull-note github-pull-newer-offer" }, [
-          `The pull request now ends at ${comparison.right.slice(0, 12)}. `,
-          offer,
-        ]),
-      );
+      const said = notice(null, [
+        `The pull request now ends at ${comparison.right.slice(0, 12)}. `,
+        offer,
+      ]);
+      said.classList.add("github-pull-newer-offer");
+      body.prepend(said);
     }
   }
 

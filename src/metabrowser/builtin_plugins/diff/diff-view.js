@@ -784,7 +784,7 @@ function scheduleFileEnhancement(view, state) {
 function renderFoldControl(group, hiddenRows, renderRow, state, key) {
   let expanded = state.expandedFolds.has(key);
   const hidden = hiddenRows.length;
-  const control = el("button", "diff-fold-control");
+  const control = el("button", "fold-expander diff-fold-control");
   control.setAttribute("type", "button");
   control.setAttribute("aria-expanded", String(expanded));
   control.setAttribute("aria-controls", group.getAttribute("id") || "");

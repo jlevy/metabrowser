@@ -441,7 +441,8 @@ Useful helpers include:
   `Makefile` and compressed logical names included;
 - `highlightSyntax(source, language, options)` for bounded DOM-free token runs when a
   custom renderer, such as a diff, must project tokens itself;
-- `formatSize`, `formatInteger`, `formatFileCount`, `formatTimestamp`, and `sizeHtml`;
+- `formatSize`, `formatInteger`, `formatFileCount`, `formatAge`, `formatTimestamp`, and
+  `sizeHtml`;
 - `countClass(value)` and `sizeClass(value)` for the same magnitude-driven emphasis
   classes used by core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and
@@ -458,12 +459,18 @@ Useful helpers include:
   Compare a file rollup’s `registry` identity before combining it with labels or colors
   from this projection;
 - `icons` and `icons.withClass`;
-- `filterControls` for the host’s accessible filter chips and menus;
+- `filterControls` for the host’s accessible filter chips and menus, and for any
+  exclusive choice among labelled values, a filter or not;
 - `chart(container, type, data, options)`;
 - `ensureAsset(name)`;
 - `ensureKindAssets(kind)`;
 - `sourceKind()` for the served source (`filesystem` or `git_revision`);
 - `perf.measure` and `perf.measureAsync`.
+
+A view that draws tabs of its own uses the host’s primitive, `.tab-btn` in a `.tab-bar`,
+and a tab that is an address is `<a class="tab-btn" href>`. A plugin stylesheet may
+position them but does not restyle them; see
+[The Tab Bar](design-system.md#the-tab-bar).
 
 `ensureAsset(name)` loads a vendored library that the shell does not put on every page,
 and resolves once its globals are present.
