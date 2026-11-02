@@ -1339,6 +1339,8 @@ export function mountPullPage(container, ctx, mb) {
   const header = h("div", { class: "github-pull-header" });
   const body = h("div", { class: "github-pull-body" });
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
+  // Between the header and the body, as wide as the pane, as a file's views are.
+  const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Pull request" });
   container.replaceChildren(header, body, live);
 
   /** @type {PullModel | null} */
@@ -1488,7 +1490,53 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {string} state @param {string} label @param {string} [kind] */
   const badge = (state, label, kind = "state") =>
-    h("span", { class: `github-pull-badge github-pull-${kind}`, "data-state": state }, [label]);
+    h(
+      "span",
+      { class: `file-header-badge github-pull-badge github-pull-${kind}`, "data-state": state },
+      [`${label.charAt(0).toUpperCase()}${label.slice(1)}`],
+    );
+
+  /**
+   * A box about the content, on the shell's primitive; its severity is its border.
+   *
+   * @param {"warning" | "error" | null} severity
+   * @param {Array<Node | string>} children
+   */
+  const notice = (severity, children) =>
+    h(
+      "div",
+      {
+        class: "notice github-pull-notice",
+        ...(severity === null ? {} : { "data-severity": severity }),
+      },
+      children,
+    );
+
+  /** A branch, as the ref chip names one. @param {string} name */
+  const branch = (name) =>
+    h("span", { class: "git-ref git-ref-remote", "data-tip-text": name }, [name]);
+
+  /** The registry's disclosure chevron: the shell's constant, not the pull request's text. */
+  function chevron() {
+    const svg = new DOMParser().parseFromString(mb.icons.toggle || "", "text/html").body
+      .firstElementChild;
+    return svg === null
+      ? null
+      : h("span", { class: "github-pull-fold-chevron", "aria-hidden": "true" }, [
+          document.importNode(svg, true),
+        ]);
+  }
+
+  /** One link per tab, kept across paints so a poll does not take focus from one. */
+  const tabLinks = [
+    { id: "", label: "Conversation" },
+    { id: "files", label: "Files changed" },
+  ].map(({ id, label }) => {
+    const link = pageLink({ number, tab: id }, "tab-btn", [label]);
+    link.setAttribute("role", "tab");
+    tabBar.append(link);
+    return { id, link };
+  });
 
   /** @param {PullModel} model */
   function paintHeader(model) {
@@ -1572,20 +1620,16 @@ export function mountPullPage(container, ctx, mb) {
       status.append(h("span", { class: "github-pull-offer" }, [model.headOffer.text, " ", button]));
     }
     children.push(status);
-    if (model.pull !== null) {
-      const tabs = h("div", { class: "github-pull-tabs", role: "tablist" });
-      for (const [id, label] of [
-        ["", "Conversation"],
-        ["files", "Files changed"],
-      ]) {
-        const button = pageLink({ number: model.number, tab: id }, "github-pull-tab", [label]);
-        button.setAttribute("role", "tab");
-        button.setAttribute("aria-selected", String(model.tab === id));
-        tabs.append(button);
-      }
-      children.push(tabs);
-    }
     header.replaceChildren(...children.filter((child) => child !== null));
+    if (model.pull === null) {
+      tabBar.remove();
+    } else {
+      for (const { id, link } of tabLinks) {
+        link.classList.toggle("active", model.tab === id);
+        link.setAttribute("aria-selected", String(model.tab === id));
+      }
+      header.after(tabBar);
+    }
     live.textContent = [model.message, model.failure].filter(Boolean).join(" ");
   }
 

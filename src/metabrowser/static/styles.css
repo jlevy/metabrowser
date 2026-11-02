@@ -2802,15 +2802,26 @@ html[data-prose-font="sans"] {
   color: var(--muted);
   cursor: pointer;
   user-select: var(--toggle-user-select);
-  border-bottom: 2px solid transparent;
+  border-bottom: var(--tab-active-border-width) solid transparent;
   margin-bottom: -1px;
   font-family: var(--font-sans);
   transition:
     color var(--transition-fast),
     border-color var(--transition-fast);
 }
+/* A tab that is an address: a link, so back, forward, and open in a new tab work.
+   What a <button> gets from the browser is stated here, so the two are the same tab. */
+a.tab-btn {
+  line-height: normal;
+  text-align: center;
+  text-decoration: none;
+}
 .tab-btn:hover {
   color: var(--text);
+}
+.tab-btn:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
 }
 .tab-btn.active {
   color: var(--text);

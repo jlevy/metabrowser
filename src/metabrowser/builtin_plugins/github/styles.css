@@ -1,17 +1,20 @@
 /* The served pull request's page (pull-page.js). Colors are design tokens. */
 
 .github-pull {
+  /* How far a card's text sits inside its border. A card's border box is the measure plus
+     two of these, as `.kpress-long-text`'s is, so its text box is a Markdown file's. */
+  --github-pull-text-inset: var(--pane-header-padding-x);
+  --github-pull-gap: 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px 32px;
-  max-width: 1100px;
+  padding: 0;
   color: var(--text);
 }
 .github-pull-header {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding: var(--content-padding-y) var(--content-padding-x);
 }
 .github-pull-title {
   margin: 0;
@@ -91,25 +94,11 @@
 .github-pull-failure {
   color: var(--status-warning-strong);
 }
-.github-pull-tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
-}
-.github-pull-tab {
-  padding: 6px 12px;
-  border-bottom: 2px solid transparent;
-  color: var(--muted);
-  text-decoration: none;
-}
-.github-pull-tab[aria-selected="true"] {
-  border-bottom-color: var(--link);
-  color: var(--text);
-}
 .github-pull-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--github-pull-gap);
+  padding: var(--content-padding-y) var(--content-padding-x);
 }
 .github-pull-card {
   border: 1px solid var(--border);
