@@ -438,6 +438,80 @@ def test_a_list_stops_growing_at_its_cap_and_says_so(
     assert again.rows == listed.rows
 
 
+def _closed(number: int) -> dict[str, Any]:
+    return {**generated_item(number), "state": "closed", "closed_at": "2026-09-17T12:00:00Z"}
+
+
+def _asked_conditionally(calls: list[list[str]]) -> dict[str, bool]:
+    """Each page a job asked for, and whether it sent ``If-None-Match``."""
+
+    return {
+        call[-1]: any(arg.startswith("If-None-Match") for arg in call)
+        for call in calls
+        if call[0] == "api"
+    }
+
+
+def test_a_full_last_page_is_read_whole_since_a_304_cannot_say_what_follows_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    """A pull request that closes goes in at its created rank, under every row held.
+
+    Here that is a new page 2 below a page 1 whose body has not changed, so GitHub would
+    answer page 1's ETag ``304``, and a ``304`` carries no ``Link``. A transcript could show
+    this, but what it pins is the sequence of requests that lets ``complete`` be believed.
+    """
+
+    first, second = list_page("closed", 1), list_page("closed", 2)
+    page_one = [_closed(number) for number in range(200, 100, -1)]
+    _answer(tmp_path, monkeypatch, _answers({first: ok(first, page_one)}))
+    listed = asyncio.run(refresh_pull_list(repository, "closed"))
+    assert (listed.pages, listed.complete, len(listed.rows)) == (1, True, 100)
+    assert _asked_conditionally(_asked(tmp_path)) == {first: False}
+
+    # Nothing has changed: the page is still read whole, and the list still complete.
+    unchanged = asyncio.run(refresh_pull_list(repository, "closed"))
+    assert (unchanged.pages, unchanged.complete, unchanged.rows) == (1, True, listed.rows)
+    assert _asked_conditionally(_asked(tmp_path)) == {first: False}
+
+    # Pull request 3 closes. The same body, now with a next page.
+    pages = {
+        first: ok(first, page_one, next_link("repos/octo/demo/pulls", 1)),
+        second: ok(second, [_closed(3)]),
+    }
+    _answer(tmp_path, monkeypatch, _answers(pages))
+    moved = asyncio.run(refresh_pull_list(repository, "closed"))
+    assert (moved.pages, moved.complete, len(moved.rows)) == (1, False, 100)
+    assert _asked_conditionally(_asked(tmp_path)) == {first: False}
+
+    # So the reader can reach it.
+    extended = asyncio.run(refresh_pull_list(repository, "closed", more=True))
+    assert (extended.pages, extended.complete, len(extended.rows)) == (2, True, 101)
+    assert _asked_conditionally(_asked(tmp_path)) == {second: False}
+
+    # A page that is not last, and a short last page, stay conditional: a pull request that
+    # goes in below a short page changes its body, so its 304 says all there is to say.
+    settled = asyncio.run(refresh_pull_list(repository, "closed"))
+    assert (settled.pages, settled.complete, settled.rows) == (2, True, extended.rows)
+    assert _asked_conditionally(_asked(tmp_path)) == {first: True, second: True}
+
+
+def test_a_last_page_that_lost_an_item_may_have_been_full(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    """Its mark holds fewer than a hundred numbers, and GitHub may have sent a hundred."""
+
+    first = list_page("all", 1)
+    items = [generated_item(number) for number in range(200, 100, -1)]
+    items[50] = {"number": "not a number"}
+    _answer(tmp_path, monkeypatch, _answers({first: ok(first, items)}))
+    listed = asyncio.run(refresh_pull_list(repository, "all"))
+    assert (listed.complete, listed.truncated, len(listed.rows)) == (True, True, 99)
+    _asked(tmp_path)
+    asyncio.run(refresh_pull_list(repository, "all"))
+    assert _asked_conditionally(_asked(tmp_path)) == {first: False}
+
+
 # ── One page of a list ─────────────────────────────────────────
 
 

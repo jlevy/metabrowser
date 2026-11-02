@@ -11,7 +11,9 @@
 
 Each full-size page goes out with its own ``If-None-Match`` when the same reader read it
 last, and a ``304`` reuses that page's rows, which GitHub does not count against the
-primary rate limit. A page that fails fails the job, and the file stays as it was.
+primary rate limit. The one exception is a complete list's last page when it may be full,
+which is read whole: see :func:`_page_etag`. A page that fails fails the job, and the file
+stays as it was.
 
 The list is assembled over the job's duration and is not atomic. A pull request that opens
 or closes between two page reads can appear twice, which the number dedupes, or be missed
@@ -155,23 +157,42 @@ def _reused_page(previous: PullList, number: int) -> _Page:
 
     mark = previous.etags[number - 1]
     held = {row.number: row for row in previous.rows}
-    # An unchanged last page says what it said about what follows it.
+    # A 304 carries no Link, so this is what the file knew: :func:`_page_etag` asks whole any
+    # last page that could have gained a next one with its body unchanged.
     has_next = number < previous.pages or not previous.complete
     return _Page(mark, tuple(held[each] for each in mark.numbers), has_next)
+
+
+def _page_etag(previous: PullList | None, number: int) -> str | None:
+    """The ETag to ask page *number* with, or ``None`` to read it whole.
+
+    A pull request that closes or reopens goes into ``closed`` or ``open`` at its created
+    rank, which can be below every row a list holds. Below a page that is short, that
+    changes the page's body. Below a page that is full, it starts a new page and leaves
+    the body as it was, so GitHub answers ``304``, with no ``Link``, and the list would go
+    on saying ``complete`` with no way for a reader to reach the rest. So a complete list's
+    last page is read whole when it may be full, as a mark that lost an item may have been.
+    That is one counted request a refresh, for a list whose rows are a multiple of a hundred.
+    """
+
+    if previous is None or number > previous.pages:
+        return None
+    mark = previous.etags[number - 1]
+    may_be_full = len(mark.numbers) == API_PAGE_SIZE or mark.truncated
+    return None if previous.complete and number == previous.pages and may_be_full else mark.etag
 
 
 async def _read_page(
     repository: ListedRepository, name: PullListName, number: int, previous: PullList | None
 ) -> _Page:
-    """Full-size page *number*. *previous*, by the same reader, makes it conditional."""
+    """Full-size page *number*. *previous*, by the same reader, may make it conditional."""
 
-    mark = previous.etags[number - 1] if previous is not None and number <= previous.pages else None
     try:
         read = await read_list(
             f"repos/{repository.owner}/{repository.repo}/pulls",
             key=None,
             cap=API_PAGE_SIZE,
-            etag=mark.etag if mark is not None else None,
+            etag=_page_etag(previous, number),
             now=pull_list.utc_now,
             query=f"state={name}&sort=created&direction=desc",
             first_page=number,
