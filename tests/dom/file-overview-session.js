@@ -11,7 +11,8 @@
 // is a stand-in for the few calls they make, and `mb.watchRollup` is the SDK's, whose
 // `fetch` here answers what each step says instead of asking a server: the rollups below
 // have the shape `/api/rollup` answers, which cli-api.tryscript.md pins. The folder header's
-// tally is lifted verbatim from app.js, which cannot load without a document.
+// tally and the file list's note on a capped index are lifted verbatim from app.js, which
+// cannot load without a document.
 //
 // Each step prints what is on screen: the totals, the distribution's text, starting with
 // its caption, and whether it offers Retry. Exits 1 on a failed invariant.
@@ -588,6 +589,23 @@ const rollupError = (status) =>
     assert(shown["still scanning"].skeleton, "a scanning folder's header stopped loading");
     assert(!shown.hidden.skeleton && !shown.symlink.skeleton, "a tally waits for nothing");
     transcript["the folder header's tally"] = shown;
+
+    // The file list says the same of a capped index. Its count helper writes the noun, and
+    // the route may not name the limit.
+    const noteHtml = vm.runInNewContext(
+      `${["formatCount", "treeTruncationNoteHtml"].map(lift).join("\n")}
+       treeTruncationNoteHtml;`,
+    );
+    const note = (maxFiles) => noteHtml(maxFiles).replace(/<[^>]*>/g, "");
+    const notes = { "3 files": note(3), "1 file": note(1), "no limit named": note(undefined) };
+    assert(
+      notes["3 files"] ===
+        "File list incomplete. Metabrowser stopped after 3 files, so some files and folders are not shown.",
+      `the capped note: ${notes["3 files"]}`,
+    );
+    assert(notes["1 file"].includes("stopped after 1 file,"), `one file: ${notes["1 file"]}`);
+    assert(notes["no limit named"].includes("its file limit"), notes["no limit named"]);
+    transcript["the file list's note on a capped index"] = notes;
   }
 
   console.warn = originalWarn;
