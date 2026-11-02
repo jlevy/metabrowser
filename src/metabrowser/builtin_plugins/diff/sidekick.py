@@ -273,7 +273,9 @@ async def comparison_handler(request: Request) -> JSONResponse:
         # One diff run and one parse for the whole set (review R3): a
         # commit click costs O(1) subprocesses, not O(files).
         hydration = (
-            await source.hydrate(resolved, hydrate_ids) if hydrate_ids else PatchHydration({})
+            await source.hydrate(resolved, hydrate_ids, manifest=manifest)
+            if hydrate_ids
+            else PatchHydration({})
         )
     except DiffSourceError as exc:
         # The source's own refusals carry user-facing messages: unknown

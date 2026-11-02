@@ -10,10 +10,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
+from base64 import b64decode
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from metabrowser.diff.adapters import git as adapter
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.apply import apply_change_set
@@ -23,6 +27,8 @@ from metabrowser.diff.format import (
     ChangeSetDocument,
     ChangeSetManifest,
     FileChange,
+    FilePatch,
+    ResolvedComparison,
     dump_document,
     validate_document,
 )
@@ -225,3 +231,164 @@ def test_store_location_content_reads_through_the_batch_pool(
         assert str(store) not in body.decode("utf-8", "replace")
 
     asyncio.run(_run())
+
+
+# ── The limited patch is the unrestricted patch ─────────────────────
+#
+# The route limits the diff to the files it serves. What it serves must be what the whole
+# diff says about those files, byte for byte, renames and copies included.
+
+
+def _patch_bytes(patches: dict[str, FilePatch]) -> dict[str, Any]:
+    return {file_id: patch.model_dump(mode="json") for file_id, patch in patches.items()}
+
+
+def _whole_run(source: GitDiffSource, resolved: ResolvedComparison) -> dict[str, Any]:
+    """Every ready file, which asks for no pathspec: the unrestricted run."""
+    manifest = asyncio.run(source.manifest(resolved))
+    ready = [c.id for c in manifest.files if c.availability is Availability.ready]
+    asked = [c.id for c in manifest.files]
+    assert len(ready) < len(asked), "the fixture is meant to hold a binary file"
+    document = asyncio.run(source._parsed_patch(resolved, None))
+    found, left_out = source._patches_from(
+        document, [c for c in manifest.files if c.availability is Availability.ready]
+    )
+    assert left_out == []
+    return _patch_bytes(found)
+
+
+def test_each_file_alone_is_what_the_whole_diff_says(repo: tuple[Path, str, str]) -> None:
+    root, base, target = repo
+    source = GitDiffSource(root)
+    resolved = asyncio.run(source.resolve({"left": base, "right": target}))
+    manifest = asyncio.run(source.manifest(resolved))
+    whole = _whole_run(source, resolved)
+    kinds = set()
+    for change in manifest.files:
+        if change.availability is not Availability.ready:
+            continue
+        kinds.add(change.kind)
+        alone = asyncio.run(source.hydrate(resolved, [change.id], manifest=manifest))
+        assert alone.left_out == ()
+        assert _patch_bytes(alone.patches) == {change.id: whole[change.id]}
+    assert {ChangeKind.renamed, ChangeKind.copied, ChangeKind.type_changed} <= kinds
+
+
+def test_a_page_of_files_is_what_the_whole_diff_says(repo: tuple[Path, str, str]) -> None:
+    root, base, target = repo
+    source = GitDiffSource(root)
+    resolved = asyncio.run(source.resolve({"left": base, "right": target}))
+    manifest = asyncio.run(source.manifest(resolved))
+    whole = _whole_run(source, resolved)
+    ready = [c.id for c in manifest.files if c.availability is Availability.ready]
+    for start in range(len(ready)):
+        page = ready[start : start + 3]
+        limited = asyncio.run(source.hydrate(resolved, page, manifest=manifest))
+        assert _patch_bytes(limited.patches) == {file_id: whole[file_id] for file_id in page}
+
+
+def test_the_manifest_is_the_two_listings_it_replaced(repo: tuple[Path, str, str]) -> None:
+    """One run prints what the two runs printed, end to end, so it parses to the same files."""
+    root, base, target = repo
+    common = ["-M50", "-C", "--diff-merges=first-parent", base, target]
+    raw = git(root, "diff", "--raw", "-z", "--no-abbrev", *common)
+    numstat = git(root, "diff", "--numstat", "-z", *common)
+    one = git(root, "diff", "--raw", "--numstat", "-z", "--no-abbrev", *common)
+    assert one == raw + numstat
+    records, rest = GitDiffSource._parse_raw(one.split(b"\0"))
+    assert len(records) == raw.count(b":")
+    assert GitDiffSource._parse_numstat(rest) == GitDiffSource._parse_numstat(numstat.split(b"\0"))
+
+
+def _limit_fixture(tmp_path: Path) -> tuple[Path, str, str]:
+    """Two renames with edits, in a repository whose rename limit stops the whole run."""
+    root = tmp_path / "limit"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "diff.renameLimit", "1")
+    body = "".join(f"line {number}\n" for number in range(40))
+    (root / "one.txt").write_text(body)
+    (root / "two.txt").write_text("other\n" + body)
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    base = git(root, "rev-parse", "HEAD").decode().strip()
+    (root / "one.txt").rename(root / "one-moved.txt")
+    (root / "two.txt").rename(root / "two-moved.txt")
+    (root / "one-moved.txt").write_text(body + "more\n")
+    (root / "two-moved.txt").write_text("another\n" + body)
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "target")
+    return root, base, git(root, "rev-parse", "HEAD").decode().strip()
+
+
+def test_past_the_rename_limit_the_unrestricted_run_answers(tmp_path: Path) -> None:
+    """The one way the runs differ. The whole run lists adds and deletes; a limited one of
+    one add and one delete is under the limit and pairs them, which matches nothing."""
+    root, base, target = _limit_fixture(tmp_path)
+    source = GitDiffSource(root)
+    resolved = asyncio.run(source.resolve({"left": base, "right": target}))
+    manifest = asyncio.run(source.manifest(resolved))
+    assert {c.kind for c in manifest.files} == {ChangeKind.added, ChangeKind.deleted}
+    whole = _whole_run_of_all(source, resolved)
+    paths = {(c.new or c.old).path: c.id for c in manifest.files}  # pyright: ignore[reportOptionalMemberAccess]
+    pair = [paths["one.txt"], paths["one-moved.txt"]]
+    limited = asyncio.run(source.hydrate(resolved, pair, manifest=manifest))
+    assert limited.left_out == ()
+    assert _patch_bytes(limited.patches) == {file_id: whole[file_id] for file_id in pair}
+
+
+def _whole_run_of_all(source: GitDiffSource, resolved: ResolvedComparison) -> dict[str, Any]:
+    manifest = asyncio.run(source.manifest(resolved))
+    document = asyncio.run(source._parsed_patch(resolved, None))
+    found, left_out = source._patches_from(document, list(manifest.files))
+    assert left_out == []
+    return _patch_bytes(found)
+
+
+def test_a_name_that_is_not_utf8_reaches_git_as_its_bytes(tmp_path: Path) -> None:
+    """Written with fast-import, because a filesystem such as APFS refuses such a name."""
+    root = tmp_path / "names"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    name = b"calf\xe9 *.txt"
+
+    def commit(mark: int, parent: bytes, keep: bytes, named: bytes) -> bytes:
+        return b"".join(
+            [
+                b"commit refs/heads/main\n",
+                b"mark :%d\n" % mark,
+                b"committer T <t@example.com> 1700000000 +0000\n",
+                b"data 1\nx\n",
+                parent,
+                b"M 100644 inline keep.txt\ndata %d\n%s\n" % (len(keep), keep),
+                b'M 100644 inline "calf\\351 *.txt"\ndata %d\n%s\n' % (len(named), named),
+            ]
+        )
+
+    stream = commit(1, b"", b"one\n", b"old\n") + commit(2, b"from :1\n", b"two\n", b"new\n")
+    subprocess.run(["git", "-C", str(root), "fast-import", "--quiet"], input=stream, check=True)
+    base = git(root, "rev-parse", "main~1").decode().strip()
+    target = git(root, "rev-parse", "main").decode().strip()
+
+    source = GitDiffSource(root)
+    resolved = asyncio.run(source.resolve({"left": base, "right": target}))
+    manifest = asyncio.run(source.manifest(resolved))
+    named = next(c for c in manifest.files if c.new is not None and c.new.path_b64 is not None)
+    assert named.new is not None and b64decode(str(named.new.path_b64)) == name
+    hydrated = asyncio.run(source.hydrate(resolved, [named.id], manifest=manifest))
+    assert hydrated.left_out == ()
+    assert [line.text for line in hydrated.patches[named.id].hunks[0].lines] == ["old", "new"]
+
+
+def test_past_the_argument_bound_the_diff_runs_unrestricted(
+    repo: tuple[Path, str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, base, target = repo
+    source = GitDiffSource(root)
+    resolved = asyncio.run(source.resolve({"left": base, "right": target}))
+    manifest = asyncio.run(source.manifest(resolved))
+    change = next(c for c in manifest.files if c.availability is Availability.ready)
+    monkeypatch.setattr(adapter, "MAX_PATHSPEC_BYTES", 1)
+    assert adapter._pathspec([change]) is None
+    hydrated = asyncio.run(source.hydrate(resolved, [change.id], manifest=manifest))
+    assert hydrated.left_out == () and change.id in hydrated.patches

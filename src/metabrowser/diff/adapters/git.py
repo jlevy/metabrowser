@@ -1,8 +1,8 @@
 """Git source: File Diff Format from revisions in a local repository.
 
 Every subprocess goes through ``git/process.py``'s bounded runner. The
-raw change list comes from ``git diff --raw -z`` — the same NUL framing
-the history surface parses, with the same quirks — and per-file patches
+raw change list comes from ``git diff --raw --numstat -z`` — the same NUL
+framing the history surface parses, with the same quirks — and per-file patches
 come from a path-limited ``git diff`` fed through the *patch-file*
 parser. Reusing that parser is the point of having one format: git's
 own output must round-trip through the neutral model or the model is
@@ -14,6 +14,9 @@ Merges are compared against their first parent
 
 from __future__ import annotations
 
+import asyncio
+import os
+from base64 import b64decode
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
@@ -58,6 +61,12 @@ MAX_MANIFEST_FILES = 2000
 """Manifest cap. A 2000-file change set is far past reviewable; beyond it
 the manifest reports `truncated` with a cursor rather than growing without
 bound, matching the patch-file parser's section cap."""
+
+MAX_PATHSPEC_BYTES = 128 * 1024
+"""Past this much of paths the patch runs unrestricted. Git's argument list shares the
+kernel's limit with the environment: `getconf ARG_MAX` is 1 MiB on macOS, measured
+2026-11-02, and Linux's is usually 2 MiB. The comparison route asks for at most 50 paths or
+one, and the CLI asks for every file, where a pathspec buys nothing anyway."""
 
 _NULL_OID = "0" * 40
 _STATUS_KINDS = {
@@ -112,6 +121,20 @@ def _side(path_raw: bytes, mode_text: str, oid: str) -> EntrySide:
     return EntrySide(
         path=path, path_b64=path_b64, entry_type=_entry_type(mode), mode=mode, content=content
     )
+
+
+def _pathspec(changes: Sequence[FileChange]) -> list[str] | None:
+    """Every path of *changes*, or None when it is too long to be an argument list."""
+    paths: dict[str, None] = {}
+    for change in changes:
+        for side in (change.old, change.new):
+            if side is not None:
+                # A name that is not UTF-8 reaches Git as its own bytes.
+                exact = os.fsdecode(b64decode(side.path_b64)) if side.path_b64 else side.path
+                paths[exact] = None
+    if sum(len(os.fsencode(path)) + 1 for path in paths) > MAX_PATHSPEC_BYTES:
+        return None
+    return list(paths)
 
 
 class GitDiffSource:
@@ -210,10 +233,14 @@ class GitDiffSource:
 
     async def manifest(self, resolved: ResolvedComparison) -> ChangeSetManifest:
         endpoints = self._endpoints(resolved)
-        raw = await run_git_at(
+        # One run for both listings, so renames and copies are detected once. Its output is
+        # the two listings' bytes end to end. Measured 2026-11-02 on a comparison of 1,183
+        # files at load average 15: 1,293 ms as two runs, 705 ms as one; 57 and 28 ms on 42.
+        listed = await run_git_at(
             [
                 "diff",
                 "--raw",
+                "--numstat",
                 "-z",
                 "--no-abbrev",
                 "-M50",
@@ -223,16 +250,13 @@ class GitDiffSource:
             ],
             self._location,
         )
-        numstat = await run_git_at(
-            ["diff", "--numstat", "-z", "-M50", "-C", "--diff-merges=first-parent", *endpoints],
-            self._location,
-        )
+        records, numstat = self._parse_raw(listed.split(b"\0"))
         counts = self._parse_numstat(numstat)
         files: list[FileChange] = []
         total_add = total_del = 0
         exact = True
         truncated = False
-        for index, record in enumerate(self._parse_raw(raw), start=1):
+        for index, record in enumerate(records, start=1):
             if index > MAX_MANIFEST_FILES:
                 truncated = True
                 break
@@ -299,16 +323,19 @@ class GitDiffSource:
 
     @staticmethod
     def _parse_raw(
-        raw: bytes,
-    ) -> list[tuple[str, str, str, str, str, int | None, bytes | None, bytes | None]]:
-        """``--raw -z`` records: header NUL path [NUL path2] NUL ...
+        tokens: list[bytes],
+    ) -> tuple[
+        list[tuple[str, str, str, str, str, int | None, bytes | None, bytes | None]], list[bytes]
+    ]:
+        """``--raw -z`` records: header NUL path [NUL path2] NUL ..., and the tokens after.
 
         The first record can arrive with a leading newline between the
         format section and the raw section — the quirk the history
-        surface documents — so headers are lstripped.
+        surface documents — so headers are lstripped. A record is read by its
+        shape, so a path starting with ``:`` stays a path, and the first token
+        that opens no record is where ``--numstat`` starts.
         """
         records: list[tuple[str, str, str, str, str, int | None, bytes | None, bytes | None]] = []
-        tokens = raw.split(b"\0")
         cursor = 0
         while cursor < len(tokens):
             header = tokens[cursor].lstrip(b"\n")
@@ -355,16 +382,15 @@ class GitDiffSource:
                     )
                 )
                 cursor += 2
-        return records
+        return records, tokens[cursor:]
 
     @staticmethod
-    def _parse_numstat(raw: bytes) -> dict[bytes, tuple[int, int] | None]:
+    def _parse_numstat(tokens: list[bytes]) -> dict[bytes, tuple[int, int] | None]:
         """``--numstat -z``: additions TAB deletions TAB path (or NUL old NUL new).
 
         Binary files report ``-`` counts and map to None.
         """
         counts: dict[bytes, tuple[int, int] | None] = {}
-        tokens = raw.split(b"\0")
         cursor = 0
         while cursor < len(tokens):
             head = tokens[cursor].lstrip(b"\n")
@@ -395,41 +421,77 @@ class GitDiffSource:
         return patches[file_id]
 
     async def file_patches(
-        self, resolved: ResolvedComparison, file_ids: Sequence[str]
+        self,
+        resolved: ResolvedComparison,
+        file_ids: Sequence[str],
+        *,
+        manifest: ChangeSetManifest | None = None,
     ) -> dict[str, FilePatch]:
         """The patches of *file_ids*, all of them or an error."""
-        hydration = await self.hydrate(resolved, file_ids)
+        hydration = await self.hydrate(resolved, file_ids, manifest=manifest)
         if hydration.left_out:
             raise DiffSourceError(f"file {hydration.left_out[0]!r} not found in the produced diff")
         return hydration.patches
 
     async def hydrate(
-        self, resolved: ResolvedComparison, file_ids: Sequence[str]
+        self,
+        resolved: ResolvedComparison,
+        file_ids: Sequence[str],
+        *,
+        manifest: ChangeSetManifest | None = None,
     ) -> PatchHydration:
         """Hydrate any number of files from one diff run and one parse.
 
         A file the diff did not produce is left out and named, so one section the parser
-        cannot read does not cost the reader every other file of the comparison.
+        cannot read does not cost the reader every other file of the comparison. Pass the
+        *manifest* a caller already holds; it is a whole comparison's work to compute.
 
-        The whole diff, unrestricted: limiting a rename to its own two
-        paths makes git split it into a delete and an add, so section
-        selection happens here rather than through a pathspec. Running
-        it once per comparison — not once per file — is what keeps a
-        50-file commit click at subprocess cost O(1); cross-request
-        caching remains the future service's job. Bounded by run_git's
-        output cap.
+        The diff is limited to the files' own paths, both sides of a rename or a copy, so
+        Git still pairs them: its candidates are a subset of the whole run's, each file's
+        true partner among them, and ``-C`` turns off the basename heuristic that made an
+        answer depend on what else was changed. A pair's hunks follow from its two blobs.
+        The one way the runs can differ is that the whole comparison was past
+        ``diff.renameLimit`` and listed an add and a delete that the limited run, with few
+        candidates, pairs. Those sections do not match the manifest, so they cannot be taken
+        for the wrong file, and the unrestricted run answers for them.
         """
-        manifest = await self.manifest(resolved)
-        by_id = {entry.id: entry for entry in manifest.files}
+        listed = manifest if manifest is not None else await self.manifest(resolved)
+        by_id = {entry.id: entry for entry in listed.files}
         missing = [file_id for file_id in file_ids if file_id not in by_id]
         if missing:
             raise DiffSourceError(f"no file {missing[0]!r} in this comparison")
-        endpoints = self._endpoints(resolved)
+        changes = [by_id[file_id] for file_id in file_ids]
+        pathspec = None if len(file_ids) == len(listed.files) else _pathspec(changes)
+        document = await self._parsed_patch(resolved, pathspec)
+        patches, left_out = self._patches_from(document, changes)
+        if left_out and pathspec is not None:
+            document = await self._parsed_patch(resolved, None)
+            found, left_out = self._patches_from(document, left_out)
+            patches.update(found)
+        return PatchHydration(patches=patches, left_out=tuple(change.id for change in left_out))
+
+    async def _parsed_patch(
+        self, resolved: ResolvedComparison, pathspec: list[str] | None
+    ) -> ChangeSetDocument:
         out = await run_git_at(
-            ["diff", "-M50", "-C", "--diff-merges=first-parent", *endpoints],
+            [
+                # Paths here are names, never patterns: `*` and `:(top)` mean themselves.
+                "--literal-pathspecs",
+                "diff",
+                "-M50",
+                "-C",
+                "--diff-merges=first-parent",
+                *self._endpoints(resolved),
+                *([] if pathspec is None else ["--", *pathspec]),
+            ],
             self._location,
         )
-        document = parse_unified_patch(out)
+        return await asyncio.to_thread(parse_unified_patch, out)
+
+    def _patches_from(
+        self, document: ChangeSetDocument, changes: Sequence[FileChange]
+    ) -> tuple[dict[str, FilePatch], list[FileChange]]:
+        """The sections of *document* that are these changes, and the changes with none."""
 
         def side_key(side: EntrySide | None) -> tuple[str | None, str | None]:
             return (side.path if side else None, side.path_b64 if side else None)
@@ -444,9 +506,9 @@ class GitDiffSource:
                 parsed_by_sides.setdefault(key, parsed)
 
         result: dict[str, FilePatch] = {}
-        left_out: list[str] = []
-        for file_id in file_ids:
-            change = by_id[file_id]
+        left_out: list[FileChange] = []
+        for change in changes:
+            file_id = change.id
             wanted = (side_key(change.old), side_key(change.new))
             parsed = parsed_by_sides.get(wanted)
             if parsed is not None:
@@ -459,8 +521,8 @@ class GitDiffSource:
                 if merged is not None:
                     result[file_id] = FilePatch(file_id=file_id, hunks=merged, truncated=False)
                     continue
-            left_out.append(file_id)
-        return PatchHydration(patches=result, left_out=tuple(left_out))
+            left_out.append(change)
+        return result, left_out
 
     @staticmethod
     def _merge_type_change_sections(
