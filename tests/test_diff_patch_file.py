@@ -415,21 +415,21 @@ def test_a_path_holding_the_prefix_needs_only_the_header() -> None:
 def test_quoted_paths_with_no_hunks_are_kept() -> None:
     """A patch written by a stock Git quotes a name that is not ASCII, each side on its own."""
     document = parse_unified_patch(
-        b'diff --git "a/caf\\303\\251.sh" "b/caf\\303\\251.sh"\n'
+        b'diff --git "a/na\\303\\257ve.sh" "b/na\\303\\257ve.sh"\n'
         b"old mode 100644\n"
         b"new mode 100755\n"
         b'diff --git "a/say \\"hi\\".txt" "b/say \\"hi\\".txt"\n'
         b"deleted file mode 100644\n"
         b"index e69de29..0000000\n"
-        b'diff --git a/plain.txt "b/caf\\303\\251.txt"\n'
+        b'diff --git a/plain.txt "b/na\\303\\257ve.txt"\n'
         b"similarity index 100%\n"
         b"rename from plain.txt\n"
-        b'rename to "caf\\303\\251.txt"\n'
+        b'rename to "na\\303\\257ve.txt"\n'
     )
     chmod, deleted, renamed = document.manifest.files
-    assert chmod.new is not None and chmod.new.path == "café.sh"
+    assert chmod.new is not None and chmod.new.path == "naïve.sh"
     assert deleted.old is not None and deleted.old.path == 'say "hi".txt'
-    assert renamed.new is not None and renamed.new.path == "café.txt"
+    assert renamed.new is not None and renamed.new.path == "naïve.txt"
     assert document.resolved.warnings == ()
 
 

@@ -1485,3 +1485,53 @@ def test_the_commit_count_is_kept_only_within_its_bound(value: object, kept: int
                 PullRequest.model_validate(stored)
         else:
             assert PullRequest.model_validate(stored).commits == kept
+
+
+def test_the_parts_are_in_flight_together_and_read_as_they_did_in_sequence(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Five requests at once, and a record whose bytes do not say in what order they answered."""
+    real = pulls.gh_api
+    running = 0
+    most = 0
+    seen: list[str] = []
+
+    async def counted(path: str, **kwargs: Any) -> Any:
+        nonlocal running, most
+        running += 1
+        most = max(most, running)
+        seen.append(path)
+        # Later parts answer sooner, the opposite of the order they were asked in.
+        await asyncio.sleep(0.05 / len(seen))
+        try:
+            return await real(path, **kwargs)
+        finally:
+            running -= 1
+
+    monkeypatch.setattr(pulls, "gh_api", counted)
+    stand.answer(scenario(stand.origin))
+    record = stand.refresh(7)
+    assert most == 5, "the pull is read first, for its head, and then the other five together"
+    assert seen[0] == "repos/octo/demo/pulls/7"
+    # The ETags are written in the order the parts are named, whichever answered first.
+    parts = [
+        "/issues/7/comments",
+        "/pulls/7/reviews",
+        "/pulls/7/comments",
+        "/check-runs",
+        "/status",
+    ]
+    written = [next(i for i, part in enumerate(parts) if part in p) for p in list(record.etags)[1:]]
+    assert written == sorted(written) and len(written) > 1
+
+
+def test_the_first_refusal_in_order_is_the_one_raised(stand: _Stand) -> None:
+    """A refusal reads as it did in sequence, whichever part got its answer first."""
+    answers = scenario(stand.origin)
+    refused = {"status": 404, "body": {"message": "Not Found"}}
+    answers = _api(answers, page("repos/octo/demo/pulls/7/reviews"), refused)
+    answers = _api(answers, page("repos/octo/demo/pulls/7/comments"), {"status": 500, "body": {}})
+    stand.answer(answers)
+    with pytest.raises(pulls.PullDataError) as raised:
+        stand.refresh(7)
+    assert raised.value.state == "not_found_or_private"

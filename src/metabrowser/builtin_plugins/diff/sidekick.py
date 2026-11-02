@@ -401,8 +401,10 @@ def _past_the_bounds(files: list[FileChange], hydration: PatchHydration) -> list
     """Say what became of the files one run could not hydrate."""
     if not hydration.too_large and not hydration.deferred:
         return files
-    states = {file_id: Availability.too_large for file_id in hydration.too_large}
-    states.update({file_id: Availability.deferred for file_id in hydration.deferred})
+    states = {
+        **dict.fromkeys(hydration.too_large, Availability.too_large),
+        **dict.fromkeys(hydration.deferred, Availability.deferred),
+    }
     return [
         change.model_copy(update={"availability": states[change.id]})
         if change.id in states

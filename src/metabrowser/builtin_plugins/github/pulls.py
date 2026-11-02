@@ -537,6 +537,13 @@ def _degrade(exc: PullDataError) -> bool:
     return exc.state in _PART_FAILURES
 
 
+@dataclass(frozen=True, slots=True)
+class _Unavailable:
+    """A part of the pull request that could not be read, and the record stands without."""
+
+    state: PullDataState
+
+
 async def _read_api(
     owner: str, repo: str, number: int, *, previous: PullRecord | None, reader: str
 ) -> PullRecord:
@@ -570,75 +577,121 @@ async def _read_api(
             etags[pull_path] = response.etag
 
     head = pull.head.sha
-    comments = await _read_list_of(
-        f"{base}/issues/{number}/comments",
-        key=None,
-        cap=MAX_ISSUE_COMMENTS,
-        previous=previous,
-        name="issue_comments",
-        build=_issue_comment,
-        etags=etags,
-    )
-    reviews = await _read_list_of(
-        f"{base}/pulls/{number}/reviews",
-        key=None,
-        cap=MAX_REVIEWS,
-        previous=previous,
-        name="reviews",
-        build=_review,
-        etags=etags,
-    )
-    review_comments = await _read_list_of(
-        f"{base}/pulls/{number}/comments",
-        key=None,
-        cap=MAX_REVIEW_COMMENTS,
-        previous=previous,
-        name="review_comments",
-        build=_review_comment,
-        etags=etags,
-    )
-    try:
-        check_runs = await _read_list_of(
-            f"{base}/commits/{head}/check-runs",
-            key="check_runs",
-            cap=MAX_CHECK_RUNS,
-            previous=previous,
-            name="check_runs",
-            build=_check_run,
-            etags=etags,
-        )
-    except PullDataError as exc:
-        if not _degrade(exc):
-            raise
-        check_runs = _ListParts[CheckRun]((), False, False)
-        unavailable["check_runs"] = exc.state
-
     status_path = _first_page(f"{base}/commits/{head}/status")
     status_etag = previous.etags.get(status_path) if previous is not None else None
-    status: CombinedStatus | None = None
-    statuses_cut = False
-    try:
-        response = await _get(status_path, etag=status_etag)
-        if response.status == 304:
-            if previous is None or status_etag is None:
-                raise _unconditional_304()
-            status, statuses_cut = previous.status, previous.truncated.statuses
-            etags[status_path] = status_etag
-        else:
+
+    async def read_check_runs(part_etags: dict[str, str]) -> _ListParts[CheckRun] | _Unavailable:
+        try:
+            return await _read_list_of(
+                f"{base}/commits/{head}/check-runs",
+                key="check_runs",
+                cap=MAX_CHECK_RUNS,
+                previous=previous,
+                name="check_runs",
+                build=_check_run,
+                etags=part_etags,
+            )
+        except PullDataError as exc:
+            if not _degrade(exc):
+                raise
+            return _Unavailable(exc.state)
+
+    async def read_status(
+        part_etags: dict[str, str],
+    ) -> tuple[CombinedStatus | None, bool] | _Unavailable:
+        try:
+            response = await _get(status_path, etag=status_etag)
+            if response.status == 304:
+                if previous is None or status_etag is None:
+                    raise _unconditional_304()
+                part_etags[status_path] = status_etag
+                return previous.status, previous.truncated.statuses
             try:
-                status, statuses_cut = _status(_json(response))
+                read = _status(_json(response))
             except _READ_FAILURES as exc:
                 raise PullDataError(
                     "gh_failed", "GitHub answered with a status Metabrowser cannot read"
                 ) from exc
             if response.etag is not None:
-                etags[status_path] = response.etag
-    except _PageTooLargeError:
-        unavailable["status"] = "gh_failed"
-    except PullDataError as exc:
-        if not _degrade(exc):
-            raise
-        unavailable["status"] = exc.state
+                part_etags[status_path] = response.etag
+            return read
+        except _PageTooLargeError:
+            return _Unavailable("gh_failed")
+        except PullDataError as exc:
+            if not _degrade(exc):
+                raise
+            return _Unavailable(exc.state)
+
+    # The five parts are in flight together, each `gh` spawn its own connection: 0.44 to 0.93 s
+    # each, 3.0 to 4.0 s in sequence, measured 2026-11-02, the same whether it answers 304 or
+    # 200. Five is far inside GitHub's documented limit of 100 concurrent requests, and it is
+    # the same requests the sequence made, each page of a long list still after the one before.
+    # Each part has its own ETags and the first failure in this order is the one raised, so a
+    # record and a refusal read as they did in sequence.
+    part_etags: tuple[dict[str, str], ...] = ({}, {}, {}, {}, {})
+    reading_comments = asyncio.ensure_future(
+        _read_list_of(
+            f"{base}/issues/{number}/comments",
+            key=None,
+            cap=MAX_ISSUE_COMMENTS,
+            previous=previous,
+            name="issue_comments",
+            build=_issue_comment,
+            etags=part_etags[0],
+        )
+    )
+    reading_reviews = asyncio.ensure_future(
+        _read_list_of(
+            f"{base}/pulls/{number}/reviews",
+            key=None,
+            cap=MAX_REVIEWS,
+            previous=previous,
+            name="reviews",
+            build=_review,
+            etags=part_etags[1],
+        )
+    )
+    reading_review_comments = asyncio.ensure_future(
+        _read_list_of(
+            f"{base}/pulls/{number}/comments",
+            key=None,
+            cap=MAX_REVIEW_COMMENTS,
+            previous=previous,
+            name="review_comments",
+            build=_review_comment,
+            etags=part_etags[2],
+        )
+    )
+    reading_runs = asyncio.ensure_future(read_check_runs(part_etags[3]))
+    reading_status = asyncio.ensure_future(read_status(part_etags[4]))
+    # A cancellation of this read cancels all five. Whether each answered is read below.
+    await asyncio.gather(
+        reading_comments,
+        reading_reviews,
+        reading_review_comments,
+        reading_runs,
+        reading_status,
+        return_exceptions=True,
+    )
+    comments = reading_comments.result()
+    reviews = reading_reviews.result()
+    review_comments = reading_review_comments.result()
+    read_runs = reading_runs.result()
+    read_state = reading_status.result()
+    for part in part_etags:
+        etags.update(part)
+
+    if isinstance(read_runs, _Unavailable):
+        check_runs = _ListParts[CheckRun]((), False, False)
+        unavailable["check_runs"] = read_runs.state
+    else:
+        check_runs = read_runs
+    status: CombinedStatus | None = None
+    statuses_cut = False
+    if isinstance(read_state, _Unavailable):
+        unavailable["status"] = read_state.state
+    else:
+        status, statuses_cut = read_state
 
     parts = (comments, reviews, review_comments, check_runs)
     return PullRecord(

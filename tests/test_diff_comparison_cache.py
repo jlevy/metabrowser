@@ -11,6 +11,7 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 
 import pytest
 from httpx2 import Response
@@ -201,11 +202,10 @@ def _plain_request(**params: str) -> Any:
         def get(self, key: str, default: str = "") -> str:
             return params.get(key, default)
 
-    class _Request:
-        query_params = _Query()
-        headers: dict[str, str] = {}
-
-    return _Request()
+    request = Mock(spec=["query_params", "headers"])
+    request.query_params = _Query()
+    request.headers = {}
+    return request
 
 
 def test_a_stores_default_branch_attributes_change_nothing(

@@ -27,6 +27,7 @@ closed.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -44,6 +45,7 @@ from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.cli.acquire_cli import _ACQUIRE_CLI_ERRORS, acquire_for_cli
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
+from metabrowser.cli.clone_report import saying_while_waiting
 from metabrowser.cli.common import apply_log_level, maybe_cli_logging
 from metabrowser.cli.hangup import run_cancelling_on_hangup
 from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
@@ -182,10 +184,12 @@ async def _select(source: GitSource, *, allow_pending: bool, serving: bool = Fal
     source from the cache and, after a clone, that the server is next.
     """
 
-    published = await acquire_for_cli(
-        source, announce_hit=serving, then="starting the server" if serving else ""
-    )
     selection = source.selection
+    pull_number = selection.pull_request if selection is not None else None
+    then = "" if not serving else "starting the server"
+    if serving and pull_number is not None:
+        then = f"reading pull request {pull_number}"
+    published = await acquire_for_cli(source, announce_hit=serving, then=then)
     if selection is None or selection.kind == "repository":
         return _Selected(
             published, published.default_revision, published.default_remote_ref, None, False
@@ -202,7 +206,13 @@ async def _select(source: GitSource, *, allow_pending: bool, serving: bool = Fal
             inside = await resolve_in_mirror(published, selection)
             if isinstance(inside, UnresolvedSelection) and inside.needs_fetch:
                 fetch = "always"
-        pull = await open_pull_for_cli(published, number, fetch=fetch)
+        reading = (
+            saying_while_waiting(f"reading pull request {number}")
+            if serving
+            else contextlib.nullcontext()
+        )
+        async with reading:
+            pull = await open_pull_for_cli(published, number, fetch=fetch)
         companion = await served_pull_request_for(published, number)
         head = pull.resolution() if selection.kind == "pull_request" else None
         if head is not None:

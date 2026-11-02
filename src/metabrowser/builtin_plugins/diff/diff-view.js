@@ -1710,7 +1710,7 @@ function renderDeferred(file, loaded, view) {
     // The server looked and has a reason: a file past the bound of one patch.
     file.body.append(el("div", "diff-availability", AVAILABILITY_COPY[String(only.availability)]));
   } else if (!only || patch === undefined) {
-    return failDeferred(file, new Error("the comparison returned no hunks for this file"), view);
+    return failDeferred(file, new Error("the comparison returned no hunks for this file"));
   } else if (/** @type {unknown[]} */ (patch.hunks).length === 0) {
     file.body.append(el("div", "diff-availability", "No content changes."));
   } else {
@@ -1727,10 +1727,9 @@ function renderDeferred(file, loaded, view) {
 /**
  * @param {DeferredFile} file
  * @param {unknown} error
- * @param {MountedDiffState} view
  * @returns {JumpOutcome}
  */
-function failDeferred(file, error, view) {
+function failDeferred(file, error) {
   reportLoad(
     "file hydration",
     {
@@ -1803,7 +1802,7 @@ function hydrationHost(view) {
     fail(id, error) {
       const file = fileOf(id);
       settleDeferred(file, view);
-      failDeferred(file, error, view);
+      failDeferred(file, error);
     },
     abandon: (id) => stopLoading(fileOf(id)),
     frame: (callback) =>
