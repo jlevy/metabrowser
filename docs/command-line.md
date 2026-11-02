@@ -69,14 +69,14 @@ looks accepted while being ignored.
 | `--walk` | Dump the inventory walker’s result |
 | `--diff SPEC` | Show a change set between two snapshots |
 | `--check-api` | Run the navigation scenario as a pass/fail check |
-| `--no-serve` | Acquire a `file://` Git source into the cache without starting a server |
+| `--no-serve` | Acquire a `file://` or `https://` Git source into the cache without starting a server |
 | `--remote HOST` | Serve a remote directory over an SSH tunnel |
 | `--plugins`, `--plugin NAME`, `--doctor` | Inspect installed plugins |
 
 Most modes are read-only.
-`--no-serve` writes a cache entry for a `file://` source.
+`--no-serve` writes a cache entry for a Git source.
 `--api` writes only when the route it names writes, which today means
-`/api/kpress/export`.
+`/api/kpress/export` and, in the cache, the refresh routes.
 
 ## Serving
 
@@ -352,17 +352,24 @@ size limit, which the refusal states, set so a slow network still finishes withi
 900-second acquisition deadline.
 On a faster network, export `METABROWSER_MAX_FIRST_CLONE_KB` with a larger number of
 kilobytes to go past it; the deadline still applies.
+[Large repositories](reviewing-pull-requests.md#large-repositories) gives a measured
+cost and what a mirror stores.
 A first clone reports where it goes and how far it has got; see
 [What a clone prints](#what-a-clone-prints).
 
 ### Pull requests
 
+This is the reference for the commands; for the workflow in a browser, see
+[Reviewing pull requests](reviewing-pull-requests.md).
+
 A pull-request URL pins the pull request’s head commit and reads its data:
 
 ```shell
-metab https://github.com/owner/repo/pull/123 --api /api/plugin/github/pull
-metab https://github.com/owner/repo/pull/123/files --show README.md
 metab https://github.com/owner/repo/pull/123 --no-serve
+metab https://github.com/owner/repo/pull/123 --show /pull/123
+metab https://github.com/owner/repo/pull/123 --show /pull/123/files
+metab https://github.com/owner/repo/pull/123 --show README.md
+metab https://github.com/owner/repo/pull/123 --api /api/plugin/github/pull
 ```
 
 The first `--show` or `--api` of a pull request reads it with `gh api` (the description,
@@ -371,33 +378,94 @@ through GitHub’s `refs/pull/<n>/head`, a fork’s included, and caches the rec
 Later ones answer from that cache without running `gh` or reaching the network, so they
 work offline. `--no-serve` refreshes the record, sending the ETags it holds so an
 unchanged part costs GitHub nothing against the rate limit.
-A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s.
+A one-shot `--api /api/plugin/github/pull-refresh --data <file with {}>` also refreshes
+it, waits, prints the record under `after:`, and exits 1 when the refresh failed.
+
+A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s. A
+`/pull/<n>/files` URL selects the same pull request as `/pull/<n>`, so it serves the
+same page; `--show /pull/<n>/files` is the way to ask for Files changed.
+Other pull-request pages, such as `/pull/<n>/checks`, and a repository’s `/pulls` list
+are refused. Each command opens one pull request: `--show /pull/<other>` answers
+`this source serves pull request <n>`, and a folder or a checkout answers
+`this source serves no pull request`.
+
+`--show /pull/<n>` reports the page’s kind and a summary of its record, after the
+selection lines that `--show` and `--api` print on stderr:
+
+```console
+$ metab https://github.com/pallets/click/pull/3866 --show /pull/3866
+selection: pull_request
+pin: b90faad1788bc030bb3320938f07c9189f42d7d0 (pull request 3866 head)
+pull_request: 3866 (merged; fetched 2026-11-02T21:49:31Z by gh:your-login)
+show: /pull/3866
+route: /pull/3866
+kind: pull-request
+views: pull-request (default)
+model: pull envelope; state=current pull_state=merged fetched_at=2026-11-02T21:49:31Z reader=gh:your-login issue_comments=6 reviews=1 review_comments=0 check_runs=11 statuses=1 tab=conversation
+```
 
 `/api/plugin/github/pull` reports the record with a state: `current` within a minute of
 its fetch, `stale` after, or `absent` with a reason.
 Its `comparison_route` is Files changed, the merge base of the base branch and the head
 to the head, as GitHub shows it; issue it with `--api` to get the diff.
+`--diff` does not open an `https://` source, so this route is the way to read one.
+`--api` prints two header lines before the envelope, which `tail -n +3` drops for a tool
+such as `jq`:
+
+```shell
+URL=https://github.com/owner/repo/pull/123
+ROUTE=$(metab "$URL" --api /api/plugin/github/pull | tail -n +3 | jq -r .comparison_route)
+metab "$URL" --api "$ROUTE" | tail -n +3 |
+  jq -r '.manifest.files[] | "\(.kind) \(.new.path // .old.path) +\(.additions) -\(.deletions)"'
+```
+
+The answer is a
+[File Diff Format](project/architecture/file-diff-format/file-diff-format.md) document:
+`manifest.files` lists the changed files, and `patches`, keyed by each file’s `id`,
+holds its hunks.
+
+`--show <path>` reports a file at the head without printing it.
+To read the file, run Git in the mirror, using `pin` and `location` from
+`/api/source/status`, and expand a leading `~` in `location` yourself:
+
+```shell
+git -C <location> show <pin>:README.md
+```
 
 `metab <pull-request URL>` without `--no-serve` serves the head and keeps the record
 fresh beside the mirror: a stale one is refreshed when serving starts and when a stale
 page becomes visible, and `POST /api/plugin/github/pull-refresh` (a JSON object body)
 refreshes it on request and returns at once, with `pending` while no record exists yet.
 A newer head is offered as the source’s `latest` rather than switched to.
+The server serves that one pull request on the port its `Serving` line reports, so
+several run side by side from one cache, one process for each.
 
 Reading pull requests needs `gh` 2.81.0 or newer, signed in with `gh auth login`,
 because `gh api` refuses requests while signed out.
-A pull request that cannot be read does not fail the command.
+A pull request that cannot be read does not fail the command, so a script reads the
+`pull_request` line or the route’s `state` rather than the exit status.
 With a record cached, the pin stays at the record’s head and the `pull_request` line
 adds why the refresh failed.
 Without one, `/pull/<n>` pins the default branch and `/pull/<n>/commits/<id>` pins that
-commit if the mirror has it, and the `pull_request` line says why: `gh_missing`,
-`gh_too_old`, `not_logged_in`, `rate_limited` with the time the limit resets when GitHub
-gives one, `not_found_or_private`, `network_error`, `account_changed` when the active
-account changed during the read, `head_mismatch` when the pull request kept moving,
-`gh_failed` for an answer that cannot be read, `fetch_failed` or `git_failed` when Git
-failed, `record_too_large`, or `cache_unwritable`. Check runs or statuses GitHub
-refuses, and a comparison whose base cannot be fetched, are listed in the record’s
-`unavailable`, and the rest of the record stands.
+commit if the mirror has it, and the `pull_request` line says why:
+
+| Name | Meaning |
+| --- | --- |
+| `gh_missing` | `gh` is not on `PATH` |
+| `gh_too_old` | `gh` is older than the version above |
+| `not_logged_in` | `gh` is not signed in to github.com |
+| `rate_limited` | GitHub’s rate limit, with the time it resets when GitHub gives one |
+| `not_found_or_private` | The pull request does not exist, or the account cannot read it |
+| `network_error` | `gh` could not reach GitHub |
+| `account_changed` | The active `gh` account changed during the read |
+| `head_mismatch` | The pull request kept moving during the read |
+| `gh_failed` | An answer from `gh` could not be read |
+| `fetch_failed`, `git_failed` | Git failed |
+| `record_too_large` | The record is over the size a record may have |
+| `cache_unwritable` | The record could not be written to the cache |
+
+Check runs or statuses GitHub refuses, and a comparison whose base cannot be fetched,
+are listed in the record’s `unavailable`, and the rest of the record stands.
 
 `--api /api/cache/…` on a `file://` URL acquires as a side effect, then issues the route
 against an empty throwaway directory so cache inspection cannot expose origin objects
