@@ -1,8 +1,8 @@
 ## <RECORD n> is the record of pull request n, equal to the last one printed in full above; a record that differs is printed in full.
-# metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull
+# metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull
+api: /api/plugin/github/pull?number=7
 status: 200
 {
   "state": "current",
@@ -10,6 +10,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "number": 7,
   "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,
@@ -221,7 +222,7 @@ gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
 gh auth status
-# metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh --data refresh.json
+# metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh --data reader.json
 exit: 0
 --- stdout ---
 api: /api/plugin/github/pull-refresh
@@ -234,6 +235,7 @@ status: 202
     "source": "https://github.com/octo/demo",
     "number": 7,
     "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "pin_ref": "refs/pull/7/head",
     "fetched_at": "2026-09-17T12:00:00Z",
     "fresh_for_s": 60.0,
     "refreshing": true,
@@ -246,9 +248,9 @@ status: 202
     "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
     "record": "<RECORD 7>"
   },
-  "status_route": "/api/plugin/github/pull"
+  "status_route": "/api/plugin/github/pull?number=7"
 }
-after: /api/plugin/github/pull
+after: /api/plugin/github/pull?number=7
 status: 200
 {
   "state": "current",
@@ -256,6 +258,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "number": 7,
   "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,
@@ -294,10 +297,10 @@ selection: commit
 pin: f7c5a9918657080d6aeb455902615b6e17df760a (commit)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
-# metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull
+# metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull
+api: /api/plugin/github/pull?number=7
 status: 200
 {
   "state": "current",
@@ -305,6 +308,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "number": 7,
   "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,
@@ -337,6 +341,235 @@ using the clone of https://github.com/octo/demo cached in <HOME>, fetched less t
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/7 (If-None-Match)
+## A repository URL, and a pull request no URL named: asked for by a request that is not a reader's, nothing starts; asked for by a reader's, it is fetched.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=10'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull?number=10
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "number": 10,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "pin_ref": "refs/remotes/origin/topic",
+  "fetched_at": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "comparison_route": null,
+  "record": null
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data automatic.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 200
+{
+  "refresh": "not_cached",
+  "pull": {
+    "state": "absent",
+    "reason": "not_cached",
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "pin": "c691256511d05858850bc7684ae062fea0d41132",
+    "pin_ref": "refs/remotes/origin/topic",
+    "fetched_at": null,
+    "fresh_for_s": 60.0,
+    "refreshing": false,
+    "last_refresh": null,
+    "comparison_route": null,
+    "record": null
+  },
+  "status_route": "/api/plugin/github/pull?number=10"
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data reader.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "pin": "c691256511d05858850bc7684ae062fea0d41132",
+    "pin_ref": "refs/remotes/origin/topic",
+    "fetched_at": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "comparison_route": null,
+    "record": null
+  },
+  "status_route": "/api/plugin/github/pull?number=10"
+}
+after: /api/plugin/github/pull?number=10
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 10,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "pin_ref": "refs/remotes/origin/topic",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/diff/comparison?left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base",
+  "record": {
+    "schema_version": 2,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
+      "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
+      "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
+      "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+    },
+    "pull": {
+      "number": 10,
+      "title": "WIP: draft the next page",
+      "body": "Not ready.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "merged_by": null,
+      "commits": 1,
+      "merge_commit_sha": null,
+      "mergeable": "conflicting",
+      "labels": [],
+      "author": "maintainer",
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "c691256511d05858850bc7684ae062fea0d41132",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "wip",
+        "sha": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "repository": "octo/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/10"
+    },
+    "issue_comments": [],
+    "reviews": [],
+    "review_comments": [],
+    "check_runs": [],
+    "status": {
+      "state": "pending",
+      "statuses": []
+    },
+    "comparison": {
+      "base": "c691256511d05858850bc7684ae062fea0d41132",
+      "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "base_from": "base_branch"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {}
+  }
+}
+--- stderr ---
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/10
+gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
+gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1
+gh auth status
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data automatic.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pull": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "pin": "c691256511d05858850bc7684ae062fea0d41132",
+    "pin_ref": "refs/remotes/origin/topic",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "fresh_for_s": 60.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": "/api/plugin/diff/comparison?left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base",
+    "record": "<RECORD 10>"
+  },
+  "status_route": "/api/plugin/github/pull?number=10"
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api /api/source/status
+exit: 0
+--- stdout ---
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref": "refs/remotes/origin/topic",
+  "ref_name": "topic",
+  "name": "demo",
+  "origin": "https://github.com/octo/demo",
+  "location": "<HOME>/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "refreshable": true,
+  "latest": "c691256511d05858850bc7684ae062fea0d41132",
+  "ref_on_origin": true,
+  "last_fetch_at": "2026-09-17T12:00:00Z",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "refreshing": false,
+  "stale": false,
+  "pull_request": null,
+  "selection_state": null,
+  "selection_href": null
+}
+--- stderr ---
+--- gh ---
 # metab https://github.com/octo/demo/pull/8 --no-serve
 exit: 0
 --- stdout ---
@@ -379,31 +612,10 @@ gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
 gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1
 gh auth status
-# metab https://github.com/octo/demo/pull/10 --no-serve
+# metab https://github.com/octo/demo/pull/8 --api '/api/plugin/github/pull?number=8'
 exit: 0
 --- stdout ---
-acquired: https://github.com/octo/demo
-slug: github-com--octo--demo--46386669dc01
-store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
-revision: c691256511d05858850bc7684ae062fea0d41132
-selection: pull_request
-pin: 7a7d6596e515735d244dc1d942463c95851e139c (pull request 10 head)
-pull_request: 10 (draft; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
---- stderr ---
-using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
---- gh ---
-gh auth status
-gh api repos/octo/demo/pulls/10
-gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
-gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
-gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
-gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1
-gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1
-gh auth status
-# metab https://github.com/octo/demo/pull/8 --api /api/plugin/github/pull
-exit: 0
---- stdout ---
-api: /api/plugin/github/pull
+api: /api/plugin/github/pull?number=8
 status: 200
 {
   "state": "current",
@@ -411,6 +623,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "number": 8,
   "pin": "8ae27617c9c475851b67ee69433d008836d112ba",
+  "pin_ref": "refs/pull/8/head",
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,
@@ -622,10 +835,10 @@ using the clone of https://github.com/octo/demo cached in <HOME>, fetched less t
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/11
-# metab https://github.com/octo/demo/pull/11 --api /api/plugin/github/pull
+# metab https://github.com/octo/demo/pull/11 --api '/api/plugin/github/pull?number=11'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull
+api: /api/plugin/github/pull?number=11
 status: 200
 {
   "state": "absent",
@@ -633,6 +846,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "number": 11,
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "pin_ref": "refs/remotes/origin/topic",
   "fetched_at": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
@@ -724,10 +938,10 @@ gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/8ae27617c9c475851b67ee69433d008836d112ba/status?per_page=100&page=1
 gh auth status
-# metab https://github.com/octo/demo/pull/11 --api /api/plugin/github/pull
+# metab https://github.com/octo/demo/pull/11 --api '/api/plugin/github/pull?number=11'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull
+api: /api/plugin/github/pull?number=11
 status: 200
 {
   "state": "absent",
@@ -735,6 +949,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "number": 11,
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "pin_ref": "refs/remotes/origin/topic",
   "fetched_at": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
@@ -752,10 +967,10 @@ selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
 pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub CLI (gh) is not on PATH (gh_missing); the pin is the default branch)
 --- gh ---
-# metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull
+# metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pull
+api: /api/plugin/github/pull?number=7
 status: 200
 {
   "state": "current",
@@ -763,6 +978,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "number": 7,
   "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,

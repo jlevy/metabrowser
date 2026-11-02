@@ -1,6 +1,6 @@
-"""Text of the served pull request rendered as Markdown, from the cached record alone.
+"""Text of a pull request rendered as Markdown, from the cached record alone.
 
-``GET /api/plugin/github/pull-markdown?part=<part>`` renders one text of the record
+``GET /api/plugin/github/pull-markdown?number=<n>&part=<part>`` renders one text of the record
 through the KPress adapter, the renderer every Markdown file goes through, in its
 sanitized trust mode: raw HTML in the text is cleaned, never trusted, and GitHub's own
 ``body_html`` is never read. KPress keeps what a document of its own may use, so
@@ -24,7 +24,7 @@ from typing import Any, Final
 
 from metabrowser import kpress_adapter
 from metabrowser.builtin_plugins.github.pull_record import PullRecord
-from metabrowser.builtin_plugins.github.pull_route import ServedPullView, cached_pull_record
+from metabrowser.builtin_plugins.github.pull_route import PullView, cached_pull_record
 from metabrowser.inert_html import harden
 
 PART_PATTERN: Final = re.compile(r"^(?:body|(?:issue_comment|review|review_comment)/[0-9]{1,20})$")
@@ -45,16 +45,16 @@ def part_text(record: PullRecord, part: str) -> str | None:
     return next((item.body for item in items if item.id == wanted), None)
 
 
-def render_part(view: ServedPullView | None, part: str) -> tuple[int, dict[str, Any]]:
+def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
     """The status and body for one part. Blocking and bounded; run it off the loop."""
 
     if PART_PATTERN.fullmatch(part) is None:
         return 400, {"error": "name a part of the pull request", "code": "invalid_part"}
-    if view is None:
-        return 409, {"error": "this server serves no pull request", "code": "no_pull_request"}
-    published = view.served.published
-    number = view.served.number
-    record, _dumped = cached_pull_record(published.home, published.slug, number)
+    if view.host is None:
+        return 409, {"error": "this server serves no GitHub repository", "code": "not_github"}
+    served = view.host.pulls
+    number = view.number
+    record, _dumped = cached_pull_record(served.home, served.slug, number)
     if not isinstance(record, PullRecord):
         return 404, {"error": "no record of this pull request is cached", "code": record}
     text = part_text(record, part)

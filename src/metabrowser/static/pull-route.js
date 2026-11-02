@@ -1,6 +1,6 @@
 // The pull-request page's routes and its host.
 //
-// `/pull/<n>[/files]` is the served pull request's address space (Browser URL Grammar).
+// `/pull/<n>[/files]` is the pull requests' address space (Browser URL Grammar).
 // Only an address under `/pull/` reaches this code, so it is no startup script of any
 // other page. The server writes it into the shell of a pull-request address, where the
 // page needs it before it can show anything; a page that reaches such an address
@@ -17,7 +17,7 @@
   const PULL_TABS = Object.freeze(["", "files"]);
 
   /**
-   * Encode the served pull request's page: `/pull/<n>` for its conversation,
+   * Encode a pull request's page: `/pull/<n>` for its conversation,
    * `/pull/<n>/files` for its Files changed.
    *
    * @param {number} number
@@ -84,7 +84,7 @@
   }
 
   /**
-   * The shell's host for the served pull request's page. It decides what a
+   * The shell's host for a pull request's page. It decides what a
    * `/pull/<n>[/files]` route does to the pane -- switch the shown page's tab, or claim
    * the pane and mount a page -- keeps the page's tab in the URL, and disposes a render
    * a later claim superseded. The shell supplies the pane and the history; nothing here

@@ -1,4 +1,4 @@
-// Browserless session: the served pull request's page, driven through the production
+// Browserless session: a pull request's page, driven through the production
 // browser code.
 //
 // The page talks to the server through three GitHub plugin routes and the pin route.
@@ -218,7 +218,7 @@ function createPage(runtime, options) {
       }
       if (route.startsWith("/api/plugin/github/pull-markdown")) {
         log.push(`GET ${route}`);
-        const part = decodeURIComponent(route.split("?part=")[1]);
+        const part = decodeURIComponent(route.split("&part=")[1]);
         const answer = server.markdown.get(part) ?? recorded["markdown missing"];
         return new Promise((resolve) => server.held.push(() => resolve(answer)));
       }
@@ -750,12 +750,7 @@ async function main() {
     }),
   );
 
-  // What a page for another number, and the links a rendered text keeps, would show.
-  const other = runtime.describePull(recorded.current.body, {
-    number: 8,
-    tab: "",
-    nowMs: page.clock.now,
-  });
+  // The links a rendered text keeps.
   const base = record.pull.html_url;
   const links = [
     "docs/new.md",
@@ -818,7 +813,6 @@ async function main() {
       {
         steps,
         states,
-        otherNumber: { status: other.status, message: other.message, served: other.served },
         links,
         wire: runtime.gitPathWire("src/app.txt"),
         pageDefense: inert,

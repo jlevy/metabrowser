@@ -1,5 +1,6 @@
-// The served pull request's page: header, conversation, reviews, review comments,
-// checks, and Files changed, from the cached record alone.
+// A pull request's page: header, conversation, reviews, review comments, checks, and
+// Files changed, from the cached record alone. The number is the page's one input, and
+// every route it asks names it, so a page for any number opens the same way.
 //
 // Every decision lives here without a DOM. `describePull` turns one answer of
 // `GET /api/plugin/github/pull` into what the page shows; `createPullController` owns
@@ -69,7 +70,7 @@ export const TABS = Object.freeze(["", "files"]);
 
 /** @type {Readonly<Record<string, string>>} */
 const ABSENCE = Object.freeze({
-  no_pull_request: "This server serves no pull request.",
+  not_github: "This server serves no GitHub repository.",
   not_cached: "No data for this pull request is cached yet.",
   schema_mismatch: "The cached data for this pull request is from another version.",
   unreadable: "The cached data for this pull request could not be read.",
@@ -111,8 +112,9 @@ const TRUNCATED = Object.freeze({
  * @typedef {{
  *   state: "absent" | "pending" | "current" | "stale",
  *   reason: string | null,
- *   number: number | null,
+ *   number: number,
  *   pin: string | null,
+ *   pin_ref: string | null,
  *   fetched_at: string | null,
  *   refreshing: boolean,
  *   last_refresh: {outcome: string, message: string | null, reset_at: string | null, at: string} | null,
@@ -164,7 +166,7 @@ const TRUNCATED = Object.freeze({
  * @typedef {{
  *   number: number,
  *   tab: string,
- *   status: "loading" | "absent" | "pending" | "current" | "stale" | "other_number" | "unavailable",
+ *   status: "loading" | "absent" | "pending" | "current" | "stale" | "unavailable",
  *   recordAt: string | null,
  *   message: string | null,
  *   refreshing: boolean,
@@ -184,7 +186,6 @@ const TRUNCATED = Object.freeze({
  *   notes: string[],
  *   comparison: {left: string, right: string, headMoved: boolean} | null,
  *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
- *   served: number | null,
  * }} PullModel
  */
 
@@ -562,17 +563,10 @@ export function describePull(envelope, page) {
     notes: [],
     comparison: null,
     headOffer: null,
-    served: null,
   };
   if (envelope === null) {
     // Nothing read yet: the page shows a spinner, and an error once a read failed.
     model.status = page.error ? "unavailable" : "loading";
-    return model;
-  }
-  if (envelope.number !== null && envelope.number !== page.number) {
-    model.status = "other_number";
-    model.message = `This server serves pull request #${envelope.number}.`;
-    model.served = envelope.number;
     return model;
   }
   model.status = envelope.state;
@@ -588,7 +582,7 @@ export function describePull(envelope, page) {
         ? "Fetching the pull request…"
         : (ABSENCE[envelope.reason ?? ""] ?? "No data for this pull request is cached.");
     model.canRefresh =
-      envelope.state === "absent" && envelope.reason !== "no_pull_request" && !envelope.refreshing;
+      envelope.state === "absent" && envelope.reason !== "not_github" && !envelope.refreshing;
     return model;
   }
   model.recordAt = typeof record.fetched_at === "string" ? record.fetched_at : null;
@@ -675,9 +669,8 @@ function isEnvelope(value) {
   return (
     typeof envelope.state === "string" &&
     typeof envelope.refreshing === "boolean" &&
-    (envelope.number === null ||
-      envelope.number === undefined ||
-      (Number.isInteger(envelope.number) && Number(envelope.number) > 0)) &&
+    Number.isInteger(envelope.number) &&
+    Number(envelope.number) > 0 &&
     (envelope.record === null || typeof envelope.record === "object")
   );
 }
@@ -703,6 +696,7 @@ function isEnvelope(value) {
  * @param {{number: number, tab: string}} options
  */
 export function createPullController(deps, options) {
+  const pullRoute = `${PULL_ROUTE}?number=${options.number}`;
   /** @type {PullEnvelope | null} */
   let envelope = null;
   /** @type {string | null} */
@@ -802,7 +796,7 @@ export function createPullController(deps, options) {
     polling = true;
     const request = ++sent;
     try {
-      const response = await deps.request("GET", PULL_ROUTE, { etag });
+      const response = await deps.request("GET", pullRoute, { etag });
       if (disposed) {
         return;
       }
@@ -833,7 +827,9 @@ export function createPullController(deps, options) {
     }
     const request = ++sent;
     try {
-      const response = await deps.request("POST", REFRESH_ROUTE, { body: {} });
+      const response = await deps.request("POST", REFRESH_ROUTE, {
+        body: { number: options.number, retry: true },
+      });
       const body = /** @type {{pull?: unknown, error?: unknown} | null} */ (response.body);
       if (response.status === 202 && body !== null && isEnvelope(body.pull)) {
         accept(body.pull, request);
@@ -899,7 +895,11 @@ export function createPullController(deps, options) {
       const part = /** @type {string} */ (queue.shift());
       inFlight += 1;
       void deps
-        .request("GET", `${MARKDOWN_ROUTE}?part=${encodeURIComponent(part)}`, {})
+        .request(
+          "GET",
+          `${MARKDOWN_ROUTE}?number=${options.number}&part=${encodeURIComponent(part)}`,
+          {},
+        )
         .then((response) => {
           const body = /** @type {Record<string, any> | null} */ (response.body);
           if (
@@ -1546,13 +1546,6 @@ export function mountPullPage(container, ctx, mb) {
     }
     if (model.message !== null) {
       status.append(h("span", { class: "github-pull-message" }, [model.message]));
-    }
-    if (model.served !== null) {
-      status.append(
-        pageLink({ number: model.served, tab: model.tab }, "github-pull-served", [
-          `Open pull request #${model.served}`,
-        ]),
-      );
     }
     if (model.failure !== null) {
       status.append(h("span", { class: "github-pull-failure" }, [model.failure]));

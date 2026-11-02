@@ -8,6 +8,7 @@
       "source": "https://github.com/octo/demo",
       "number": 7,
       "pin": "c691256511d05858850bc7684ae062fea0d41132",
+      "pin_ref": "refs/remotes/origin/topic",
       "fetched_at": null,
       "fresh_for_s": 60.0,
       "refreshing": false,
@@ -27,6 +28,7 @@
         "source": "https://github.com/octo/demo",
         "number": 7,
         "pin": "c691256511d05858850bc7684ae062fea0d41132",
+        "pin_ref": "refs/remotes/origin/topic",
         "fetched_at": null,
         "fresh_for_s": 60.0,
         "refreshing": true,
@@ -34,7 +36,7 @@
         "comparison_route": null,
         "record": null
       },
-      "status_route": "/api/plugin/github/pull"
+      "status_route": "/api/plugin/github/pull?number=7"
     }
   },
   "pending": {
@@ -46,6 +48,7 @@
       "source": "https://github.com/octo/demo",
       "number": 7,
       "pin": "c691256511d05858850bc7684ae062fea0d41132",
+      "pin_ref": "refs/remotes/origin/topic",
       "fetched_at": null,
       "fresh_for_s": 60.0,
       "refreshing": true,
@@ -63,6 +66,7 @@
       "source": "https://github.com/octo/demo",
       "number": 7,
       "pin": "c691256511d05858850bc7684ae062fea0d41132",
+      "pin_ref": "refs/remotes/origin/topic",
       "fetched_at": "2026-09-17T12:00:00Z",
       "fresh_for_s": 60.0,
       "refreshing": false,
@@ -304,6 +308,7 @@
       "source": "https://github.com/octo/demo",
       "number": 7,
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:00:00Z",
       "fresh_for_s": 60.0,
       "refreshing": false,
@@ -328,6 +333,7 @@
       "source": "https://github.com/octo/demo",
       "number": 7,
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:00:00Z",
       "fresh_for_s": 60.0,
       "refreshing": false,
@@ -354,6 +360,7 @@
         "source": "https://github.com/octo/demo",
         "number": 7,
         "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "pin_ref": "refs/pull/7/head",
         "fetched_at": "2026-09-17T12:00:00Z",
         "fresh_for_s": 60.0,
         "refreshing": true,
@@ -368,7 +375,7 @@
           "same_as": "current"
         }
       },
-      "status_route": "/api/plugin/github/pull"
+      "status_route": "/api/plugin/github/pull?number=7"
     }
   },
   "stale_refreshing": {
@@ -380,6 +387,7 @@
       "source": "https://github.com/octo/demo",
       "number": 7,
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:00:00Z",
       "fresh_for_s": 60.0,
       "refreshing": true,
@@ -404,6 +412,7 @@
       "source": "https://github.com/octo/demo",
       "number": 7,
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:05:00Z",
       "fresh_for_s": 60.0,
       "refreshing": false,
@@ -588,6 +597,7 @@
       "source": "https://github.com/octo/demo",
       "number": 7,
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:06:00Z",
       "fresh_for_s": 60.0,
       "refreshing": false,
@@ -1035,6 +1045,7 @@
       "source": "https://github.com/octo/demo",
       "number": 8,
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:06:00Z",
       "fresh_for_s": 60.0,
       "refreshing": false,
@@ -1148,6 +1159,7 @@
       "source": "https://github.com/octo/demo",
       "number": 9,
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:06:00Z",
       "fresh_for_s": 60.0,
       "refreshing": false,
@@ -1263,6 +1275,7 @@
       "source": "https://github.com/octo/demo",
       "number": 8,
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:06:00Z",
       "fresh_for_s": 60.0,
       "refreshing": false,

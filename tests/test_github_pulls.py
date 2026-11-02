@@ -55,7 +55,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     write_pull_record,
     write_pull_refresh,
 )
-from metabrowser.builtin_plugins.github.pull_route import pull_state
+from metabrowser.builtin_plugins.github.pull_route import PullView, pull_state
 from metabrowser.builtin_plugins.github.pulls import PullDataError, open_pull_request
 from metabrowser.builtin_plugins.github.served_pull import (
     MAX_KEPT_PULLS,
@@ -549,6 +549,11 @@ def pinned_pull(stand: _Stand) -> Iterator[tuple[_Stand, TestClient]]:
         git_repo.clear_repo_cache()
 
 
+def _read(client: TestClient, number: int, *, etag: str | None = None) -> Any:
+    headers = {} if etag is None else {"if-none-match": etag}
+    return client.get("/api/plugin/github/pull", params={"number": number}, headers=headers)
+
+
 def _changed(body: dict[str, Any]) -> set[str]:
     return {
         (change.get("new") or change.get("old"))["path"] for change in body["manifest"]["files"]
@@ -560,12 +565,13 @@ def test_the_pull_route_and_the_comparison_it_names(
 ) -> None:
     stand, client = pinned_pull
     origin = stand.origin
-    envelope = client.get("/api/plugin/github/pull").json()
+    envelope = _read(client, 7).json()
     assert (envelope["state"], envelope["number"], envelope["pin"]) == (
         "current",
         7,
         origin["fork_head"],
     )
+    assert envelope["pin_ref"] == "refs/pull/7/head"
     assert envelope["record"]["reader"] == f"gh:{READER}"
     comparison = client.get(envelope["comparison_route"])
     assert comparison.status_code == 200
@@ -592,16 +598,16 @@ def test_the_pull_route_answers_an_unchanged_record_with_a_304(
     pinned_pull: tuple[_Stand, TestClient],
 ) -> None:
     stand, client = pinned_pull
-    first = client.get("/api/plugin/github/pull")
+    first = _read(client, 7)
     etag = first.headers["etag"]
-    unchanged = client.get("/api/plugin/github/pull", headers={"if-none-match": etag})
+    unchanged = _read(client, 7, etag=etag)
     assert (unchanged.status_code, unchanged.content) == (304, b"")
     assert unchanged.headers["cache-control"] == "no-store"
     # Aging past the freshness window changes the state, and so the tag.
     stand.monkeypatch.setattr(
         pulls, "utc_now", lambda: FETCHED_AT + timedelta(seconds=FRESHNESS_WINDOW_S + 1)
     )
-    aged = client.get("/api/plugin/github/pull", headers={"if-none-match": etag})
+    aged = _read(client, 7, etag=etag)
     assert (aged.status_code, aged.json()["state"]) == (200, "stale")
     assert aged.headers["etag"] != etag
 
@@ -616,15 +622,16 @@ def test_the_pull_route_answers_an_unchanged_record_with_a_304(
         ("review/", (400, "invalid_part")),
         (f"issue_comment/{'1' * 21}", (400, "invalid_part")),
         # A part's name is judged before anything is read, so these two reach the next
-        # check, which finds no served pull request.
-        ("body", (409, "no_pull_request")),
-        ("review_comment/1", (409, "no_pull_request")),
+        # check, which finds no GitHub repository.
+        ("body", (409, "not_github")),
+        ("review_comment/1", (409, "not_github")),
     ],
 )
 def test_the_markdown_route_names_a_part_before_it_reads_anything(
     part: str, answer: tuple[int, str]
 ) -> None:
-    status, body = render_part(None, part)
+    nothing = PullView(number=7, host=None, pin=None, pin_ref=None, refreshing=False, kept=None)
+    status, body = render_part(nothing, part)
     assert (status, body["code"]) == answer
 
 
@@ -636,8 +643,8 @@ def test_a_record_that_is_gone_or_replaced_stops_being_answered(
     stand, client = pinned_pull
 
     def answers() -> tuple[tuple[str, str | None, Any], tuple[int, str | None]]:
-        envelope = client.get("/api/plugin/github/pull").json()
-        text = client.get("/api/plugin/github/pull-markdown", params={"part": "body"})
+        envelope = _read(client, 7).json()
+        text = client.get("/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"})
         return (
             (envelope["state"], envelope["reason"], envelope["record"]),
             (text.status_code, text.json().get("code")),
@@ -671,7 +678,9 @@ def test_the_markdown_route_drops_the_kpress_icon_sprite(
 
     monkeypatch.setattr(kpress_adapter, "render_kpress_view", spy)
     _stand, client = pinned_pull
-    html = client.get("/api/plugin/github/pull-markdown", params={"part": "body"}).json()["html"]
+    html = client.get(
+        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
+    ).json()["html"]
     assert len(raw) == 1 and "<symbol" in raw[0]
     for gone in ("<svg", "<symbol", "<use"):
         assert gone not in html, gone
@@ -966,6 +975,7 @@ def test_the_route_parses_a_record_again_only_when_it_changed(
 
 _JSON = {"content-type": "application/json"}
 _REFRESH_ROUTE = "/api/plugin/github/pull-refresh"
+_ASK_7 = {"number": 7, "retry": True}
 
 
 def test_a_fetch_takes_the_mirror_fetch_lock_and_hands_it_to_git(
@@ -1138,7 +1148,7 @@ def test_the_refresh_route_starts_or_joins_one_job(
         await asyncio.to_thread(release.wait, 30)
 
     monkeypatch.setattr(served, "refresh", held)
-    first = client.post(_REFRESH_ROUTE, json={}, headers=_JSON)
+    first = client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON)
     assert (first.status_code, first.headers["cache-control"]) == (202, "no-store")
     body = first.json()
     assert (body["refresh"], body["pull"]["number"], body["pull"]["refreshing"]) == (
@@ -1146,13 +1156,13 @@ def test_the_refresh_route_starts_or_joins_one_job(
         7,
         True,
     )
-    assert client.post(_REFRESH_ROUTE, json={}, headers=_JSON).json()["refresh"] == "joined"
-    assert client.get("/api/plugin/github/pull").json()["refreshing"] is True
+    assert client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON).json()["refresh"] == "joined"
+    assert _read(client, 7).json()["refreshing"] is True
     assert client.get("/api/source/status").json()["refreshing"] is True
     release.set()
     settle(client)
     assert runs == [7]
-    assert client.get("/api/plugin/github/pull").json()["refreshing"] is False
+    assert _read(client, 7).json()["refreshing"] is False
 
 
 def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
@@ -1160,16 +1170,30 @@ def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
 ) -> None:
     _stand, client = pinned_pull
     assert client.get(_REFRESH_ROUTE).status_code == 405
-    for content, status in ((b"[]", 400), (b"{", 400), (b'{"x": "' + b"y" * 2000 + b'"}', 413)):
+    for content, status in (
+        (b"[]", 400),
+        (b"{", 400),
+        (b'{"x": "' + b"y" * 2000 + b'"}', 413),
+        # The number is required, whole, and within what a pull request's number can be.
+        (b"{}", 400),
+        (b'{"retry": true}', 400),
+        (b'{"number": "7"}', 400),
+        (b'{"number": true}', 400),
+        (b'{"number": 0}', 400),
+        (b'{"number": 7.5}', 400),
+        (b'{"number": 10000000000}', 400),
+        (b'{"number": 7, "retry": "yes"}', 400),
+        (b'{"number": 7, "state": "open"}', 400),
+    ):
         refused = client.post(_REFRESH_ROUTE, content=content, headers=_JSON)
         assert (refused.status_code, refused.json()["code"]) == (status, "invalid_request")
     # The application's own guards: another origin, a body not declared as JSON, and a
     # page for a pin the server no longer serves.
     other = {**_JSON, "origin": "https://example.invalid"}
-    assert client.post(_REFRESH_ROUTE, json={}, headers=other).status_code == 403
+    assert client.post(_REFRESH_ROUTE, json=_ASK_7, headers=other).status_code == 403
     plain = {"content-type": "text/plain"}
     assert client.post(_REFRESH_ROUTE, content=b"{}", headers=plain).status_code == 415
-    outdated = client.post(_REFRESH_ROUTE, json={}, headers={**_JSON, PIN_HEADER: "0" * 40})
+    outdated = client.post(_REFRESH_ROUTE, json=_ASK_7, headers={**_JSON, PIN_HEADER: "0" * 40})
     assert (outdated.status_code, outdated.json()["code"]) == (409, "pin_changed")
 
 
@@ -1219,17 +1243,17 @@ def test_a_served_pull_request_pins_its_head_and_refreshes_beside_the_mirror(
         with TestClient(app) as client:
             status = settle(client)
             assert (status["pin"], status["pull_request"], status["stale"]) == (earlier, 7, False)
-            envelope = client.get("/api/plugin/github/pull").json()
+            envelope = _read(client, 7).json()
             assert (envelope["state"], envelope["pin"]) == ("current", earlier)
             assert envelope["record"]["pull"]["head"]["sha"] == earlier
 
             _move_pull_head(stand, head)
             stand.answer(scenario(stand.origin))
-            started = client.post(_REFRESH_ROUTE, json={}, headers=_JSON)
+            started = client.post(_REFRESH_ROUTE, json=_ASK_7, headers=_JSON)
             assert started.status_code == 202 and started.json()["pull"]["refreshing"] is True
             status = settle(client)
             assert (status["pin"], status["latest"]) == (earlier, head)
-            envelope = client.get("/api/plugin/github/pull").json()
+            envelope = _read(client, 7).json()
             assert envelope["last_refresh"]["outcome"] == "succeeded"
             assert (envelope["pin"], envelope["record"]["pull"]["head"]["sha"]) == (earlier, head)
 
@@ -1268,7 +1292,7 @@ def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
         assert result.exit_code == 0, result.output
         with TestClient(app) as client:
             assert settle(client)["ref"] == "refs/pull/7/head"
-            base = client.get("/api/plugin/github/pull").json()["record"]["comparison"]["base"]
+            base = _read(client, 7).json()["record"]["comparison"]["base"]
 
             def pin(body: dict[str, str]) -> dict[str, Any]:
                 answer = client.post("/api/source/pin", json=body, headers=_JSON)
@@ -1525,7 +1549,10 @@ def test_a_one_shot_refresh_still_running_after_its_wait_is_an_error(tmp_path: P
             "skipped",
             fmt="json",
             normalize_root=tmp_path,
-            after=("/api/plugin/github/pull", ApiResponse(200, json.dumps(running).encode())),
+            after=(
+                "/api/plugin/github/pull?number=7",
+                ApiResponse(200, json.dumps(running).encode()),
+            ),
         )
 
 

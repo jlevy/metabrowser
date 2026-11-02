@@ -7761,7 +7761,7 @@ function deliverNavigationFragment(target) {
 
 // ── Pull-request page ──────────────────────────────────────────
 //
-// /pull/<n>[/files] is the served pull request's address space. Its page is the view a
+// /pull/<n>[/files] is the pull requests' address space. Its page is the view a
 // plugin registers for the `pull-request` kind, the GitHub plugin's. The host in
 // pull-route.js decides what a route does -- switch the shown page's tab or mount a
 // page -- and keeps the tab in the URL; the shell supplies the pane, loads that plugin,

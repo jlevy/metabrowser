@@ -137,19 +137,6 @@ def _describe_comparison(payload: dict[str, Any], inner: str) -> str:
     return f"comparison envelope; {detail}"
 
 
-def _require_served_pull(payload: dict[str, Any], number: int, display_path: str) -> None:
-    """Refuse a pull-request page for a number this server does not serve.
-
-    The page says the same: it shows only the served pull request's record.
-    """
-
-    served = payload.get("number")
-    if served is None:
-        raise CLIError(f"{display_path}: this source serves no pull request")
-    if served != number:
-        raise CLIError(f"{display_path}: this source serves pull request {served}")
-
-
 def _describe_pull(payload: dict[str, Any], tab: str) -> str:
     """Summarize the pull envelope the page renders: its state and what the record holds."""
 
@@ -381,9 +368,9 @@ async def _ashow_prepared(
         route = "/api/plugin/diff/comparison"
         needs_index = False
     elif pull is not None:
-        # The page renders the served pull request's cached record, which the GitHub
-        # plugin's pull route answers; Files changed is the comparison it names.
-        route, params = "/api/plugin/github/pull", {}
+        # The page renders the pull request's cached record, which the GitHub plugin's
+        # pull route answers for any number; Files changed is the comparison it names.
+        route, params = "/api/plugin/github/pull", {"number": str(pull[0])}
         needs_index = False
     elif filesystem_root is None:
         from metabrowser.git.content_routes import decode_git_view_path
@@ -466,7 +453,6 @@ async def _ashow_prepared(
         model = _describe_comparison(payload, inner)
     elif pull is not None:
         number, tab = pull
-        _require_served_pull(payload, number, display_path)
         shown_route = format_pull_href(number, tab)
         kind = "pull-request"
         views = server._views_for_kind(kind)

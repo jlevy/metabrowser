@@ -181,8 +181,14 @@ def decode_safe_commit_route(raw_path: bytes) -> tuple[str, str] | None:
     return revision, "/".join(inner_segments)
 
 
+def parse_pull_number(text: str) -> int | None:
+    """The pull-request number *text* spells, or ``None``: the one grammar for all of them."""
+
+    return int(text) if _PULL_NUMBER.fullmatch(text) is not None else None
+
+
 def format_pull_href(number: int, tab: str = "") -> str:
-    """Return the served pull request's page, ``/pull/<n>`` or ``/pull/<n>/files``."""
+    """Return a pull request's page, ``/pull/<n>`` or ``/pull/<n>/files``."""
 
     if _PULL_NUMBER.fullmatch(str(number)) is None or tab not in PULL_ROUTE_TABS:
         raise ValueError("pull route requires a pull-request number and a known tab")
@@ -192,9 +198,8 @@ def format_pull_href(number: int, tab: str = "") -> str:
 def decode_safe_pull_route(raw_path: bytes) -> tuple[int, str] | None:
     """Decode ``/pull/<n>[/files]`` into (number, tab), or ``None``.
 
-    The page belongs to the pull request the server serves; which one that is, and
-    whether it is cached, is the pull route's answer, not this gate's. A trailing slash
-    names the same page.
+    Whether the pull request is cached, or the server has any, is the pull route's
+    answer, not this gate's. A trailing slash names the same page.
     """
 
     if not raw_path.startswith(PULL_ROUTE_PREFIX.encode()):

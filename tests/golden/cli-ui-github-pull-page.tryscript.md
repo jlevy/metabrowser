@@ -6,9 +6,9 @@ env:
 ---
 # Golden Test: Pull-Request Page
 
-The served pull request’s page at `/pull/<n>` renders the cached record the GitHub
-plugin’s pull route answers: header, state, merge status, labels, the conversation with
-review states, review comments with their file, line, and diff hunk, checks, and notes.
+A pull request’s page at `/pull/<n>` renders the cached record the GitHub plugin’s pull
+route answers: header, state, merge status, labels, the conversation with review states,
+review comments with their file, line, and diff hunk, checks, and notes.
 It polls that route while the page is visible, quickly while a refresh runs or the
 record is pending and slowly otherwise, with `If-None-Match` so an unchanged answer is a
 304 and repaints nothing.
@@ -33,9 +33,9 @@ apart from neutral ones.
 Pull requests 7 and 9 come from forks, so both sides carry their owner, as in
 github.com’s “into cli:trunk from 00200200:fix/…”; pull request 8 is from the same
 repository, so both sides are bare branch names.
-The last lines show a page for a number the server does not serve, which links a
-rendered text keeps (made absolute against the pull request’s github.com page, http and
-https only), and the `/view/` address a review comment’s file opens at.
+The last lines show which links a rendered text keeps (made absolute against the pull
+request’s github.com page, http and https only), and the `/view/` address a review
+comment’s file opens at.
 `hunks` is what a review comment shows of its diff hunk, which ends at the commented
 line: the last eight lines, or back to the start of a multi-line comment’s range, with
 the rest behind a disclosure, and each line classed so an addition or deletion is
@@ -56,7 +56,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "open with nothing cached",
       "requests": [
-        "GET /api/plugin/github/pull"
+        "GET /api/plugin/github/pull?number=7"
       ],
       "timer": "slow",
       "paints": 2,
@@ -82,7 +82,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "an unchanged answer is a 304",
       "requests": [
-        "GET /api/plugin/github/pull (If-None-Match)"
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
       ],
       "timer": "slow",
       "paints": 0,
@@ -91,7 +91,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "fetch it",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -117,7 +117,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "still fetching",
       "requests": [
-        "GET /api/plugin/github/pull"
+        "GET /api/plugin/github/pull?number=7"
       ],
       "timer": "fast",
       "paints": 0,
@@ -126,7 +126,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "the record arrives",
       "requests": [
-        "GET /api/plugin/github/pull (If-None-Match)"
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
       ],
       "timer": "slow",
       "paints": 1,
@@ -172,8 +172,8 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "a reader reaches four texts; two renders run at once",
       "requests": [
-        "GET /api/plugin/github/pull-markdown?part=body",
-        "GET /api/plugin/github/pull-markdown?part=issue_comment%2F3341937855"
+        "GET /api/plugin/github/pull-markdown?number=7&part=body",
+        "GET /api/plugin/github/pull-markdown?number=7&part=issue_comment%2F3341937855"
       ],
       "timer": "slow",
       "paints": 0,
@@ -189,8 +189,8 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "the renders arrive",
       "requests": [
-        "GET /api/plugin/github/pull-markdown?part=review%2F3279967139",
-        "GET /api/plugin/github/pull-markdown?part=review_comment%2F2383608906"
+        "GET /api/plugin/github/pull-markdown?number=7&part=review%2F3279967139",
+        "GET /api/plugin/github/pull-markdown?number=7&part=review_comment%2F2383608906"
       ],
       "timer": "slow",
       "paints": 0,
@@ -213,7 +213,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "a part the record lacks stays plain",
       "requests": [
-        "GET /api/plugin/github/pull-markdown?part=issue_comment%2F1"
+        "GET /api/plugin/github/pull-markdown?number=7&part=issue_comment%2F1"
       ],
       "timer": "slow",
       "paints": 0,
@@ -232,7 +232,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "reloaded on the head, nothing is offered",
       "requests": [
-        "GET /api/plugin/github/pull (If-None-Match)"
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
       ],
       "timer": "slow",
       "paints": 1,
@@ -365,7 +365,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "the record goes stale",
       "requests": [
-        "GET /api/plugin/github/pull (If-None-Match)"
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
       ],
       "timer": "slow",
       "paints": 1,
@@ -411,7 +411,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "refresh the stale page",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true}"
       ],
       "timer": "fast",
       "paints": 1,
@@ -457,7 +457,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "still refreshing",
       "requests": [
-        "GET /api/plugin/github/pull"
+        "GET /api/plugin/github/pull?number=7"
       ],
       "timer": "fast",
       "paints": 0,
@@ -466,7 +466,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "a refresh that changed no text keeps the conversation",
       "requests": [
-        "GET /api/plugin/github/pull (If-None-Match)"
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
       ],
       "timer": "slow",
       "paints": 1,
@@ -512,7 +512,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "a render of the older record is dropped",
       "requests": [
-        "GET /api/plugin/github/pull-markdown?part=body"
+        "GET /api/plugin/github/pull-markdown?number=7&part=body"
       ],
       "timer": "slow",
       "paints": 0,
@@ -521,7 +521,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "another refresh brought a comment full of markup",
       "requests": [
-        "GET /api/plugin/github/pull (If-None-Match)"
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
       ],
       "timer": "slow",
       "paints": 1,
@@ -568,7 +568,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "the hook sends the comment inert",
       "requests": [
-        "GET /api/plugin/github/pull-markdown?part=issue_comment%2F3341937856"
+        "GET /api/plugin/github/pull-markdown?number=7&part=issue_comment%2F3341937856"
       ],
       "timer": "slow",
       "paints": 0,
@@ -586,7 +586,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "shown again, it polls at once",
       "requests": [
-        "GET /api/plugin/github/pull (If-None-Match)"
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
       ],
       "timer": "slow",
       "paints": 0,
@@ -602,7 +602,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "a page opened in the background reads once",
       "requests": [
-        "GET /api/plugin/github/pull"
+        "GET /api/plugin/github/pull?number=7"
       ],
       "timer": null,
       "paints": 2,
@@ -647,7 +647,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "a page opened on a tab it does not have shows the conversation",
       "requests": [
-        "GET /api/plugin/github/pull"
+        "GET /api/plugin/github/pull?number=7"
       ],
       "timer": "slow",
       "paints": 2,
@@ -707,11 +707,6 @@ $ node tests/dom/github-pull-page-session.js
         "skipped": 1
       }
     }
-  },
-  "otherNumber": {
-    "status": "other_number",
-    "message": "This server serves pull request #7.",
-    "served": 7
   },
   "links": [
     {

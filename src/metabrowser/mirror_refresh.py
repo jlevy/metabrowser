@@ -87,6 +87,8 @@ ELSEWHERE_POLL_S: Final = 1.0
 ELSEWHERE_WAIT_S: Final = GIT_ACQUISITION_TIMEOUT_S
 
 type StartedOrJoined = Literal["started", "joined"]
+# How a request for a pull request's refresh was answered.
+type PullJobStart = StartedOrJoined
 # How a request for the fetch a missing commit waits for was answered: the mirror's
 # fetch was started or joined, or the mirror is ``"fresh"`` and none was asked for.
 type CommitFetch = Literal["started", "joined", "fresh"]
@@ -737,6 +739,17 @@ class MirrorSession:
     def companion_refreshing(self) -> bool:
         return self.companion is not None and self._coordinator.running(self.companion.key)
 
+    def request_pull_refresh(self, number: int) -> PullJobStart:
+        """Start or join the refresh of pull request *number*, whichever it is."""
+
+        return self._start_pull_job(number)
+
+    def pull_refreshing(self, number: int) -> bool:
+        """Whether the refresh of pull request *number* is running, with no read."""
+
+        pulls = self.pull_requests
+        return pulls is not None and self._coordinator.running(pulls.key(number))
+
     def _start_pull_job(self, number: int) -> StartedOrJoined:
         pulls = self.pull_requests
         assert pulls is not None
@@ -1100,6 +1113,7 @@ __all__ = [
     "MirrorRef",
     "MirrorSession",
     "OpenedSelection",
+    "PullJobStart",
     "PullRequestSet",
     "RecordedFreshness",
     "RefKind",

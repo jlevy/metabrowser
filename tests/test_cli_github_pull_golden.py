@@ -38,6 +38,7 @@ from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import GitCommandError
 from tests.github_pull_fixture import (
     CANONICAL,
+    DEFAULT_BRANCH,
     FETCHED_AT,
     Origin,
     account,
@@ -64,6 +65,7 @@ pytestmark = [
 ]
 
 PULL = f"{CANONICAL}/pull"
+ROUTE = "/api/plugin/github/pull"
 # A record as the CLI prints it inside an envelope: the key, then the object up to the
 # brace that closes it, which is the first one at the key's own indentation.
 _RECORD = re.compile(r'^( *)"record": (\{\n.*?\n\1\})', re.MULTILINE | re.DOTALL)
@@ -116,6 +118,14 @@ class _Session:
         return result
 
 
+def _body(tmp_path: Path, **fields: Any) -> str:
+    """A request body in the sandbox, which the transcript names by its file alone."""
+
+    body = tmp_path / ("reader.json" if fields.get("retry") else "automatic.json")
+    body.write_text(json.dumps(fields) + "\n", encoding="utf-8")
+    return str(body)
+
+
 def _with(answers: dict[str, Any], **changes: Any) -> dict[str, Any]:
     return {**answers, **changes}
 
@@ -135,7 +145,7 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
         "## <RECORD n> is the record of pull request n, equal to the last one printed in "
         "full above; a record that differs is printed in full.\n"
     )
-    first = session.run(f"{PULL}/7", "--api", "/api/plugin/github/pull")
+    first = session.run(f"{PULL}/7", "--api", f"{ROUTE}?number=7")
     assert first.exit_code == 0, first.stderr
     envelope = first.payload()
     assert envelope["state"] == "current"
@@ -146,15 +156,11 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     # The route a page posts to, through a refresh that completes: the one-shot command
     # prints the 202, waits, prints the record after it, and exits 0. A subprocess
     # transcript cannot show this, because it has no `gh` and no origin to fetch from.
-    body = tmp_path / "refresh.json"
-    body.write_text("{}\n", encoding="utf-8")
     routed = session.run(
-        f"{PULL}/7", "--api", "/api/plugin/github/pull-refresh", "--data", str(body)
+        f"{PULL}/7", "--api", f"{ROUTE}-refresh", "--data", _body(tmp_path, number=7, retry=True)
     )
     assert routed.exit_code == 0, routed.stderr
-    started, _after, ended = routed.stdout.partition(
-        "after: /api/plugin/github/pull\nstatus: 200\n"
-    )
+    started, _after, ended = routed.stdout.partition(f"after: {ROUTE}?number=7\nstatus: 200\n")
     assert started.startswith("api: /api/plugin/github/pull-refresh\nstatus: 202\n")
     assert json.loads(started[started.index("{") :])["refresh"] == "started"
     assert json.loads(ended)["state"] == "current"
@@ -168,7 +174,7 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     session.answer(
         _with(online, api_failure={"stderr": "error connecting to api.github.com\n", "exit": 1})
     )
-    offline = session.run(f"{PULL}/7", "--api", "/api/plugin/github/pull")
+    offline = session.run(f"{PULL}/7", "--api", f"{ROUTE}?number=7")
     assert offline.exit_code == 0, offline.stderr
     assert offline.payload()["record"] == envelope["record"]
     stale = session.run(f"{PULL}/7", "--no-serve")
@@ -176,9 +182,41 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     assert "(network_error))" in stale.stdout
 
     session.answer(online)
-    for number in (8, 9, 10):
+    # A repository URL names no pull request. A number with no record is only read: no
+    # request of this kind asks gh until a reader's own says to, and then the page is there.
+    session.blocks.append(
+        "## A repository URL, and a pull request no URL named: asked for by a request that "
+        "is not a reader's, nothing starts; asked for by a reader's, it is fetched.\n"
+    )
+    untouched = session.run(CANONICAL, "--api", f"{ROUTE}?number=10")
+    assert untouched.payload()["reason"] == "not_cached"
+    automatic = session.run(
+        CANONICAL, "--api", f"{ROUTE}-refresh", "--data", _body(tmp_path, number=10)
+    )
+    assert automatic.exit_code == 0, automatic.stderr
+    assert '"refresh": "not_cached"' in automatic.stdout
+    assert logged_gh_calls(tmp_path) == []
+    fetched = session.run(
+        CANONICAL, "--api", f"{ROUTE}-refresh", "--data", _body(tmp_path, number=10, retry=True)
+    )
+    assert fetched.exit_code == 0, fetched.stderr
+    # Fresh now, so the same automatic request is not due.
+    not_due = session.run(
+        CANONICAL, "--api", f"{ROUTE}-refresh", "--data", _body(tmp_path, number=10)
+    )
+    assert not_due.exit_code == 0, not_due.stderr
+    assert '"refresh": "not_due"' in not_due.stdout
+    assert logged_gh_calls(tmp_path) == []
+    # The pin is still the default branch, and status names no pull request.
+    status = session.run(CANONICAL, "--api", "/api/source/status").payload()
+    assert (status["pull_request"], status["ref"]) == (
+        None,
+        f"refs/remotes/origin/{DEFAULT_BRANCH}",
+    )
+
+    for number in (8, 9):
         assert session.run(f"{PULL}/{number}", "--no-serve").exit_code == 0
-    merged = session.run(f"{PULL}/8", "--api", "/api/plugin/github/pull")
+    merged = session.run(f"{PULL}/8", "--api", f"{ROUTE}?number=8")
     assert merged.payload()["record"]["comparison"] == {
         "base": origin["base"],
         "head": origin["merged_head"],
@@ -248,7 +286,7 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     # With no reset time to give, the refusal's stamp says null, and is kept: the route
     # answers from it, so the next command within the window does not ask gh again.
     session.answer(secondary)
-    limited = session.run(f"{PULL}/11", "--api", "/api/plugin/github/pull")
+    limited = session.run(f"{PULL}/11", "--api", f"{ROUTE}?number=11")
     last = limited.payload()["last_refresh"]
     assert (last["outcome"], last["reset_at"]) == ("rate_limited", None)
 
@@ -293,13 +331,13 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     assert mismatch.exit_code == 0 and "(head_mismatch))" in mismatch.stdout
 
     monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.gh_executable", lambda: None)
-    missing = session.run(f"{PULL}/11", "--api", "/api/plugin/github/pull")
+    missing = session.run(f"{PULL}/11", "--api", f"{ROUTE}?number=11")
     assert (
         missing.exit_code == 0 and "(gh_missing); the pin is the default branch)" in missing.stderr
     )
     assert missing.payload()["reason"] == "not_cached"
     # The cached record outlived every failed refresh.
-    kept = session.run(f"{PULL}/7", "--api", "/api/plugin/github/pull")
+    kept = session.run(f"{PULL}/7", "--api", f"{ROUTE}?number=7")
     assert kept.exit_code == 0 and kept.payload()["record"] == envelope["record"]
 
     # The records and refresh stamps lie beside the source's own records, where the
@@ -313,6 +351,6 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     rendered = label_home(Labels().apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
-    # One full print of each distinct record: pull request 7's and pull request 8's.
-    assert session.in_full == [7, 8]
+    # One full print of each distinct record: pull request 7's, 10's, and 8's.
+    assert session.in_full == [7, 10, 8]
     check_golden("cli-github-pull-refresh.txt", rendered)

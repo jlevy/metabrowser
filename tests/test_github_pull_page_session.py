@@ -1,4 +1,4 @@
-"""The pull-request page session runs production browser code on what a served PR answers.
+"""The pull-request page session runs production browser code on what a server answers.
 
 ``tests/dom/github-pull-page-session.js`` drives the GitHub plugin's
 ``builtin_plugins/github/pull-page.js`` -- what the page shows, its polling, the refresh a
@@ -12,10 +12,10 @@ responses. Serving began on the default branch, as it does when the pull request
 be opened at startup. The page opened with nothing cached, fetched the record, read its
 Markdown, switched the pin to the head the record names, went stale, refreshed to a
 record with the same text, and refreshed again to one with a hostile comment, recorded
-both as the hook answers it and as KPress alone renders it. The same server then served
+both as the hook answers it and as KPress alone renders it. The same server then fetched
 pull requests 8 and 9, merged and closed, and read each once, for the header's wording
-in those states and a skipped check, then read 8 again once GitHub named no merger. The first test here replays that story and fails
-when the recording no longer matches.
+in those states and a skipped check, then read 8 again once GitHub named no merger. The
+first test here replays that story and fails when the recording no longer matches.
 
 The clock is fixed, so fetch times are literal. Entity tags are the session's own, since
 the server's are scoped to the build; which answers share one is kept. The Markdown is
@@ -36,6 +36,7 @@ import json
 import os
 import re
 import threading
+import time
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -173,6 +174,18 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
     return recorded
 
 
+def _fetched(client: TestClient, number: int) -> dict[str, Any]:
+    """Pull request *number* after a reader's fetch of it has ended.
+
+    Status follows the mirror and the attended pull request, so this one is watched here.
+    """
+
+    client.post(_REFRESH, json={"number": number, "retry": True}, headers=JSON_BODY)
+    while client.get(_PULL, params={"number": number}).json()["refreshing"]:
+        time.sleep(0.01)
+    return _answer(client.get(_PULL, params={"number": number}))
+
+
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> dict[str, Any]:
     home = tmp_path / "home"
     monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
@@ -220,6 +233,8 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             session = mirror_session(app)
             served = None if session is None else session.companion
             assert isinstance(served, ServedPull)
+            read_7 = {"number": 7}
+            ask_7 = {"number": 7, "retry": True}
             original = served.refresh
             release = threading.Event()
 
@@ -229,17 +244,19 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 await original()
 
             monkeypatch.setattr(served, "refresh", held)
-            recorded["absent"] = _answer(client.get(_PULL))
+            recorded["absent"] = _answer(client.get(_PULL, params=read_7))
             # Asked again with that answer's tag, an absent pull request is a 304: a page
             # polling one must not repaint on every poll. The session plays its own 304,
             # so this answer is checked here and not recorded.
             tag = {"if-none-match": recorded["absent"]["etag"]}
-            assert client.get(_PULL, headers=tag).status_code == 304
-            recorded["refresh_started"] = _answer(client.post(_REFRESH, json={}, headers=JSON_BODY))
-            recorded["pending"] = _answer(client.get(_PULL))
+            assert client.get(_PULL, params=read_7, headers=tag).status_code == 304
+            recorded["refresh_started"] = _answer(
+                client.post(_REFRESH, json=ask_7, headers=JSON_BODY)
+            )
+            recorded["pending"] = _answer(client.get(_PULL, params=read_7))
             release.set()
             settle(client)
-            recorded["current"] = _answer(client.get(_PULL))
+            recorded["current"] = _answer(client.get(_PULL, params=read_7))
             record = recorded["current"]["body"]["record"]
             for part in (
                 "body",
@@ -248,26 +265,28 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 f"review_comment/{record['review_comments'][0]['id']}",
             ):
                 recorded[f"markdown {part.split('/')[0]}"] = _answer(
-                    client.get(_MARKDOWN, params={"part": part})
+                    client.get(_MARKDOWN, params={**read_7, "part": part})
                 )
             recorded["markdown missing"] = _answer(
-                client.get(_MARKDOWN, params={"part": "issue_comment/1"})
+                client.get(_MARKDOWN, params={**read_7, "part": "issue_comment/1"})
             )
             # The record names a head the fallback pin is not; the page offers it.
             recorded["switch_to_head"] = _switch(
                 client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=JSON_BODY)
             )
-            recorded["on_head"] = _answer(client.get(_PULL))
+            recorded["on_head"] = _answer(client.get(_PULL, params=read_7))
 
             # Five minutes on, the record is stale; a refresh finds nothing changed.
             clock[0] = FETCHED_AT + timedelta(minutes=5)
-            recorded["stale"] = _answer(client.get(_PULL))
+            recorded["stale"] = _answer(client.get(_PULL, params=read_7))
             release.clear()
-            recorded["refresh_again"] = _answer(client.post(_REFRESH, json={}, headers=JSON_BODY))
-            recorded["stale_refreshing"] = _answer(client.get(_PULL))
+            recorded["refresh_again"] = _answer(
+                client.post(_REFRESH, json=ask_7, headers=JSON_BODY)
+            )
+            recorded["stale_refreshing"] = _answer(client.get(_PULL, params=read_7))
             release.set()
             settle(client)
-            recorded["refreshed_unchanged"] = _answer(client.get(_PULL))
+            recorded["refreshed_unchanged"] = _answer(client.get(_PULL, params=read_7))
 
             # A minute later a refresh reads one more comment, which carries markup
             # KPress's sanitized mode keeps and the page must not load.
@@ -285,11 +304,11 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             answers["api"][comments_path] = ok(comments_path, [*comments, added])
             for name, value in install_fake_gh(tmp_path, answers).items():
                 monkeypatch.setenv(name, value)
-            client.post(_REFRESH, json={}, headers=JSON_BODY)
+            client.post(_REFRESH, json=ask_7, headers=JSON_BODY)
             settle(client)
-            recorded["refreshed"] = _answer(client.get(_PULL))
+            recorded["refreshed"] = _answer(client.get(_PULL, params=read_7))
             recorded["markdown added"] = _answer(
-                client.get(_MARKDOWN, params={"part": f"issue_comment/{added['id']}"})
+                client.get(_MARKDOWN, params={**read_7, "part": f"issue_comment/{added['id']}"})
             )
             # What KPress alone makes of the same text, before the hook hardens it: the
             # input the page's own defense, neutralizeFragment, is played on.
@@ -299,17 +318,10 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 "body": {"tree": html_tree(_prose(_kpress_render(HOSTILE_COMMENT)))},
             }
 
-            # The same server, handed the stand-in's merged and then its closed pull
-            # request as the one it serves, as the CLI hands it one for a /pull/<n> URL,
-            # and each read once: what the header says in a state other than open. The
-            # server's batch readers belong to this session's event loop, so the answers
-            # are recorded here rather than from a second server.
-            assert session is not None
+            # The same server, asked for the stand-in's merged and then its closed pull
+            # request, each read once: what the header says in a state other than open.
             for number, name in ((8, "merged"), (9, "closed")):
-                client.portal.call(session.attend, number)  # pyright: ignore[reportOptionalMemberAccess]
-                client.post(_REFRESH, json={}, headers=JSON_BODY)
-                settle(client)
-                recorded[name] = _answer(client.get(_PULL))
+                recorded[name] = _fetched(client, number)
 
             # GitHub then answers pull request 8 with no merger, and a refresh reads it.
             merged_path = "repos/octo/demo/pulls/8"
@@ -317,10 +329,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             answers["api"][merged_path] = ok(merged_path, unattributed)
             for name, value in install_fake_gh(tmp_path, answers).items():
                 monkeypatch.setenv(name, value)
-            client.portal.call(session.attend, 8)  # pyright: ignore[reportOptionalMemberAccess]
-            client.post(_REFRESH, json={}, headers=JSON_BODY)
-            settle(client)
-            recorded["merged_unattributed"] = _answer(client.get(_PULL))
+            recorded["merged_unattributed"] = _fetched(client, 8)
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()

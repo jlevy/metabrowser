@@ -135,7 +135,7 @@ def _no_gh_path(tmp_path: Path) -> str:
 
 def _check_files_changed(home: Path, number: int, *, merged: bool) -> dict[str, Any]:
     envelope = _envelope(
-        _run(home, f"{REPO_URL}/pull/{number}", "--api", "/api/plugin/github/pull")
+        _run(home, f"{REPO_URL}/pull/{number}", "--api", f"/api/plugin/github/pull?number={number}")
     )
     record = envelope["record"]
     pull = record["pull"]
@@ -168,7 +168,7 @@ def test_live_merged_pull_request_from_a_fork(tmp_path: Path) -> None:
             home,
             f"{REPO_URL}/pull/{MERGED_FROM_FORK}",
             "--api",
-            "/api/plugin/github/pull",
+            f"/api/plugin/github/pull?number={MERGED_FROM_FORK}",
             path=_no_gh_path(tmp_path),
         )
     )

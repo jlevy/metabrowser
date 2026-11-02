@@ -9,22 +9,22 @@ sdk_version = "0.7"
 # the pull-request routes and the pull-request page's view, which is all the shell loads
 # index.js for.
 
-# The served pull request's cached record, with a typed absent, pending, current, or
-# stale state. Answers from the cache alone; only a refresh fetches.
+# One pull request's cached record, by number, with a typed absent, pending, current,
+# or stale state. Answers from the cache alone; only a refresh fetches.
 [[data_hook]]
 route = "pull"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_handler"
 methods = ["GET"]
 
-# Start or join the served pull request's refresh in the refresh coordinator. A POST
-# with a JSON object body, behind the same-origin guard; it returns at once.
+# Start or join one pull request's refresh in the refresh coordinator. A POST with a
+# JSON object body naming its number, behind the same-origin guard; it returns at once.
 [[data_hook]]
 route = "pull-refresh"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_refresh_handler"
 methods = ["POST"]
 
-# One text of the served pull request's cached record -- its description or one
-# comment or review -- rendered as Markdown through KPress in its sanitized mode.
+# One text of a pull request's cached record -- its description or one comment or
+# review -- rendered as Markdown through KPress in its sanitized mode.
 [[data_hook]]
 route = "pull-markdown"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_markdown_handler"
@@ -45,7 +45,7 @@ route = "pulls-refresh"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pulls_refresh_handler"
 methods = ["POST"]
 
-# The served pull request's page at /pull/<n>[/files]. No file is ever this kind: the
+# A pull request's page at /pull/<n>[/files]. No file is ever this kind: the
 # shell selects it for the pull-request route and mounts this view there.
 [[view]]
 kind = "pull-request"
