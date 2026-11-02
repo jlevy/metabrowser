@@ -113,13 +113,14 @@ function viewFileHost() {
  * What makes this page's View file opener, or null on a page with no pin.
  *
  * diff-view-file.js loads here, for a pinned page's first diff, and not with the plugin's
- * module tree: a served folder has no controls and never calls it. Measured 2026-11-01
- * in Chrome 152 on a served folder's first diff view: as a static import it was a seventh
- * module, 4,042 bytes transferred and 10,842 decoded, that the plugin could not evaluate
- * without. Without it the view requests the six modules v0.11.0 did. A pin pays one
- * local request, which render starts beside the diff's own so the two overlap, and its
- * controls still arrive with the mount. A failed import is the view's to report: render
- * says the diff did not load, and logs which request failed.
+ * module tree: a served folder has no controls and never calls it. As a static import it
+ * was a seventh module on a served folder's first diff view, which the plugin could not
+ * evaluate without. Without it the view requests the six modules v0.11.0 did. Measured
+ * 2026-11-02 in Chrome 152 on a pinned page's first diff: 4,135 bytes transferred and
+ * 11,161 decoded. A pin pays that one local request, which render starts beside the diff's
+ * own, and in that measurement it finished before the comparison did. Its controls still
+ * arrive with the mount. A failed import is the view's to report: render says the diff did
+ * not load, and logs which request failed.
  *
  * @returns {Promise<import("./diff-view-file.js").ViewFileOpenerFactory | null>}
  */
