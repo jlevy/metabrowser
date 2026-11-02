@@ -1048,7 +1048,7 @@ Fixes:
   Space opens and closes it as a click does.
   A keyboard could not reach a row in 0.11.0 either, and moving the rows off inline
   handlers in this release had also removed the clickable node the accessibility tree
-  showed. A click on a row does what it did.
+  showed. A click on a row opens it as it did, and now also focuses it.
 
 - Back or Forward onto a `/commit/` entry shows the commit.
   With a file opened in-page over a commit, Back changed the address and left the file
