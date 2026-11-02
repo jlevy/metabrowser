@@ -8,7 +8,7 @@ list opens as fast offline as online. It answers one of:
   ``unreadable``);
 - ``pending``: no list yet, and a refresh is running;
 - ``current``: a list fetched within the refresh coordinator's freshness window, by the
-  account the last refresh ran as;
+  account the last refresh ran as to its end;
 - ``stale``: an older list, or one fetched by another account, still shown and labelled
   with its ``reader``.
 
@@ -281,11 +281,23 @@ def _window(
     return shown, shown[-1]["number"] if more and shown else None
 
 
+def _another_reader(listed: PullList, stamp: PullRefreshStamp | None) -> bool:
+    """Whether the last refresh shows the active account is not the one that fetched *listed*.
+
+    A stamp names the account its job started as, so one that ended ``account_changed``
+    says this whichever it names. A stamp older than the list was written before it and
+    says nothing of it: a process that stops between the two writes leaves one.
+    """
+
+    if stamp is None or pull_list.parse_stamp(stamp.at) < pull_list.parse_stamp(listed.fetched_at):
+        return False
+    return stamp.outcome == "account_changed" or stamp.reader not in (None, listed.reader)
+
+
 def _state(listed: PullList, stamp: PullRefreshStamp | None) -> ListState:
     age = pull_list.utc_now() - pull_list.parse_stamp(listed.fetched_at)
     fresh = age <= timedelta(seconds=FRESHNESS_WINDOW_S)
-    another_reader = stamp is not None and stamp.reader not in (None, listed.reader)
-    return "current" if fresh and not another_reader else "stale"
+    return "current" if fresh and not _another_reader(listed, stamp) else "stale"
 
 
 def _last_refresh(stamp: PullRefreshStamp | None) -> LastRefresh | None:

@@ -325,9 +325,9 @@ async def refresh_pull_list(
         )
         await asyncio.to_thread(write_list_refresh, repository.home, repository.slug, name, stamp)
         raise
-    succeeded = PullRefreshStamp(
-        outcome="succeeded", at=utc_stamp(pull_list.utc_now()), reader=reader
-    )
+    # As of the moment the list is as of. ``more`` keeps ``fetched_at``, and the age the route
+    # calls stale and the window an automatic refresh waits for are one clock.
+    succeeded = PullRefreshStamp(outcome="succeeded", at=listed.fetched_at, reader=reader)
     await asyncio.to_thread(write_list_refresh, repository.home, repository.slug, name, succeeded)
     return listed
 

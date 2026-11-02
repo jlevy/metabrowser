@@ -297,7 +297,6 @@ def test_golden_pull_list_failures(
             ),
         ),
         ("gh_failed", _api(online, first_path, {"status": 200, "raw": "not JSON"})),
-        ("account_changed", _with(online, auth=[account(), account(ANOTHER_READER)])),
     ]
     for state, answers in failures:
         session.answer(answers)
@@ -305,6 +304,15 @@ def test_golden_pull_list_failures(
         assert refused.exit_code == 1, (state, refused.stdout)
         assert _after(refused)["last_refresh"]["outcome"] == state
         assert _after(refused)["fetched"] == 100, state
+        assert _after(refused)["state"] == "current", state
+
+    # The account changed during the pages. The list is young, and the stamp names the
+    # account the job started as, which is the list's, but the active one is another's.
+    session.answer(_with(online, auth=[account(), account(ANOTHER_READER)]))
+    switched = session.post({"retry": True})
+    assert switched.exit_code == 1
+    assert _after(switched)["last_refresh"]["outcome"] == "account_changed"
+    assert (_after(switched)["state"], _after(switched)["fetched"]) == ("stale", 100)
 
     with monkeypatch.context() as patched:
         patched.setattr(gh, "gh_executable", lambda: None)

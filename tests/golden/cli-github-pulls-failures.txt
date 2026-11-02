@@ -413,7 +413,7 @@ status: 202
 after: /api/plugin/github/pulls?state=all&limit=0
 status: 200
 {
-  "state": "current",
+  "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
   "list": "all",
@@ -451,7 +451,7 @@ status: 202
 {
   "refresh": "started",
   "pulls": {
-    "state": "current",
+    "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
     "list": "all",

@@ -641,6 +641,101 @@ def test_an_automatic_refresh_waits_a_window_and_for_a_reset(
     assert refresh_is_due(kept, now=FETCHED_AT + timedelta(seconds=seconds)) is due
 
 
+def _a_list(**changes: Any) -> PullList:
+    fields: dict[str, Any] = {
+        "schema_version": PULL_LIST_SCHEMA,
+        "source": CANONICAL,
+        "list": "all",
+        "fetched_at": "2026-09-17T12:00:00Z",
+        "reader": f"gh:{READER}",
+        "pages": 1,
+        "complete": False,
+        "truncated": False,
+        "etags": (ListPageMark(etag=None, numbers=(), truncated=False),),
+        "rows": (),
+    }
+    return PullList(**(fields | changes))
+
+
+@pytest.mark.parametrize(
+    ("stamp", "state"),
+    [
+        (None, "current"),
+        # The reader who fetched it, whatever else has gone wrong since.
+        ({"outcome": "succeeded", "reader": f"gh:{READER}"}, "current"),
+        ({"outcome": "network_error", "reader": f"gh:{READER}"}, "current"),
+        # No account was read, so the stamp says nothing of one.
+        ({"outcome": "not_logged_in"}, "current"),
+        # Another account has run since it was fetched.
+        ({"outcome": "network_error", "reader": "gh:other"}, "stale"),
+        # The account changed during the pages, so the stamp names the one it started as,
+        # which may be this list's, and the one active now is not.
+        ({"outcome": "account_changed", "reader": f"gh:{READER}"}, "stale"),
+        ({"outcome": "account_changed", "reader": "gh:other"}, "stale"),
+    ],
+)
+def test_what_a_young_list_is_called_by_how_its_last_refresh_ended(
+    monkeypatch: pytest.MonkeyPatch, stamp: dict[str, Any] | None, state: str
+) -> None:
+    """Every row of the rule, without a fake ``gh`` account switch for each."""
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
+    kept = None if stamp is None else PullRefreshStamp(at="2026-09-17T12:00:00Z", **stamp)
+    assert pull_list_route._state(_a_list(), kept) == state  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "stamp",
+    [
+        {"outcome": "network_error", "reader": "gh:other"},
+        {"outcome": "account_changed", "reader": f"gh:{READER}"},
+    ],
+)
+def test_a_stamp_older_than_the_list_says_nothing_of_it(
+    monkeypatch: pytest.MonkeyPatch, stamp: dict[str, Any]
+) -> None:
+    """A process that stops between the two writes leaves the last job's stamp beside its list.
+
+    No transcript can stop a process there.
+    """
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
+    earlier = PullRefreshStamp(at="2026-09-17T11:58:00Z", **stamp)
+    assert pull_list_route._state(_a_list(), earlier) == "current"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_more_ages_the_list_and_the_window_by_one_clock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    home: Path,
+    repository: ListedRepository,
+) -> None:
+    """A list that reads ``stale`` is one an automatic request may refresh.
+
+    **Load more** keeps ``fetched_at``, since it read no held page again, so its stamp is
+    as of that moment too. The transcript's clock moves in whole blocks, and this needs a
+    ``more`` late in a window.
+    """
+
+    pages = {
+        **_page(1, [generated_item(number) for number in range(200, 100, -1)], more=True),
+        **_page(2, [generated_item(number) for number in range(100, 0, -1)]),
+    }
+    _answer(tmp_path, monkeypatch, _answers(pages))
+    asyncio.run(refresh_pull_list(repository, "all"))
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=59))
+    extended = asyncio.run(refresh_pull_list(repository, "all", more=True))
+    assert (extended.pages, extended.fetched_at) == (2, "2026-09-17T12:00:00Z")
+    automatic = RefreshRequest("all", more=False, retry=False)
+    assert refresh_wanted(ListView(repository, None, False), automatic) is False
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=61))
+    stamp = read_list_refresh(home, SOURCE.slug, "all")
+    assert pull_list_route._state(extended, stamp) == "stale"  # pyright: ignore[reportPrivateUsage]
+    assert refresh_wanted(ListView(repository, None, False), automatic) is True
+
+
 _RATE_LIMITED = {"outcome": "rate_limited", "reset_at": "2026-09-17T13:00:00Z"}
 
 
@@ -691,24 +786,9 @@ def test_what_each_request_may_start(
 
     if listing is not None:
         pages = MAX_LIST_PAGES if listing == "at_cap" else 1
-        write_pull_list(
-            home,
-            SOURCE.slug,
-            PullList(
-                schema_version=PULL_LIST_SCHEMA,
-                source=CANONICAL,
-                list="all",
-                fetched_at="2026-09-17T12:00:00Z",
-                reader=f"gh:{READER}",
-                pages=pages,
-                complete=listing == "complete",
-                truncated=False,
-                etags=tuple(
-                    ListPageMark(etag=None, numbers=(), truncated=False) for _page in range(pages)
-                ),
-                rows=(),
-            ),
-        )
+        mark = ListPageMark(etag=None, numbers=(), truncated=False)
+        kept_list = _a_list(pages=pages, complete=listing == "complete", etags=(mark,) * pages)
+        write_pull_list(home, SOURCE.slug, kept_list)
     kept = PullRefreshStamp(at="2026-09-17T12:00:00Z", **stamp)
     write_list_refresh(home, SOURCE.slug, "all", kept)
     monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=seconds))
