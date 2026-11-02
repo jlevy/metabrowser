@@ -148,6 +148,30 @@ def test_a_hunk_is_painted_as_text_in_a_native_disclosure() -> None:
     assert "tintOnFirstOpen(disclosure, plain, earlier, hunkLines);" in source
 
 
+def test_one_box_scrolls_all_of_a_hunk() -> None:
+    """The lines above the cut and below it move together, under a label that stays put.
+
+    With a scroller each, a wide hunk had a scrollbar in its middle. On pallets/click#3030,
+    in the ``docs/options.md`` comment with its 7 earlier lines open, in headless Chrome:
+    the box has a ``scrollWidth`` of 1,859 px in 1,047, the only scroller in the card; at
+    ``scrollLeft`` 200 both parts' lines move 200 px and the label none; every line is
+    1,859 px wide; and with the disclosure closed the box does not scroll.
+    """
+
+    source = PAGE_JS.read_text(encoding="utf-8")
+    assert 'const box = h("div", { class: "github-pull-hunk-box" });' in source
+    assert "box.append(disclosure);" in source and "box.append(hunkLines(tail));" in source
+    rules = _style_rules()
+    assert "overflow-x: auto" in rules[".github-pull-hunk-box"]
+    assert "overflow" not in rules[".github-pull-hunk"]
+    assert "overflow" not in rules[".github-pull-hunk-earlier"]
+    # As wide as the widest line of either part, so a tint reaches the end of a scrolled line.
+    for selector in (".github-pull-hunk-box", ".github-pull-hunk"):
+        assert "grid-template-columns: minmax(max-content, 1fr)" in rules[selector]
+    label = rules[".github-pull-hunk-earlier > summary"]
+    assert "position: sticky" in label and "left: 0" in label and "width: fit-content" in label
+
+
 def _vertical_margins(declarations: str) -> tuple[str, str]:
     """The top and bottom of a rule's ``margin`` shorthand: its last, which is what wins."""
 

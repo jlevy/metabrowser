@@ -1493,6 +1493,8 @@ export function mountPullPage(container, ctx, mb) {
         );
         if (!comment.reply && comment.hunk !== null) {
           const { earlier, earlierLines, shown: tail } = comment.hunk;
+          // One box scrolls all of a hunk sideways, however far it is opened.
+          const box = h("div", { class: "github-pull-hunk-box" });
           if (earlierLines > 0) {
             // Native, so the browser opens and closes it and a repaint just closes it.
             const plain = hunkLines([{ kind: "context", text: earlier }]);
@@ -1503,9 +1505,10 @@ export function mountPullPage(container, ctx, mb) {
               plain,
             ]);
             tintOnFirstOpen(disclosure, plain, earlier, hunkLines);
-            card.append(disclosure);
+            box.append(disclosure);
           }
-          card.append(hunkLines(tail));
+          box.append(hunkLines(tail));
+          card.append(box);
           if (comment.hunkTruncated) {
             card.append(h("p", { class: "github-pull-note" }, ["The start of this hunk was cut."]));
           }
