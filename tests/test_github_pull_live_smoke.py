@@ -182,3 +182,37 @@ def test_live_open_pull_request(tmp_path: Path) -> None:
     if not listed:
         pytest.skip(f"{REPOSITORY} has no open pull request today")
     _check_files_changed(tmp_path / "home", listed[0]["number"], merged=False)
+
+
+def test_live_list_of_pull_requests(tmp_path: Path) -> None:
+    """The list against GitHub's own, and again with no gh. A read alone fetches nothing."""
+
+    require_admitted_git()
+    _require_signed_in_gh()
+    home = tmp_path / "home"
+    route = "/api/plugin/github/pulls"
+    absent = _envelope(_run(home, REPO_URL, "--api", route))
+    assert (absent["state"], absent["reason"]) == ("absent", "not_cached")
+
+    body = tmp_path / "refresh.json"
+    body.write_text('{"state": "all"}\n', encoding="utf-8")
+    refreshed = _run(home, REPO_URL, "--api", f"{route}-refresh", "--data", str(body))
+    assert refreshed.returncode == 0, (refreshed.stdout, refreshed.stderr)
+
+    listed = _envelope(_run(home, REPO_URL, "--api", route))
+    github = _gh_json(
+        f"repos/{REPOSITORY}/pulls?state=all&sort=created&direction=desc&per_page=100"
+    )
+    assert listed["state"] == "current"
+    assert listed["reader"].startswith("gh:")
+    assert listed["fetched"] == len(github)
+    # A pull request can open between the two reads, so the older rows are compared.
+    numbers = {row["number"]: row for row in listed["rows"]}
+    merged = numbers[MERGED_FROM_FORK]
+    assert merged["merged"] is True and merged["state"] == "closed"
+    assert merged["head_repository"] != REPOSITORY
+    assert {item["number"] for item in github[-50:]} <= set(numbers)
+
+    # Offline from gh's point of view: the cached list answers, and gh is not asked.
+    again = _envelope(_run(home, REPO_URL, "--api", route, path=_no_gh_path(tmp_path)))
+    assert again["rows"] == listed["rows"]
