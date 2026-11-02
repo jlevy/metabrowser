@@ -86,7 +86,8 @@
       // The SDK's delegated copy listener runs it; it reads the hidden <code> below.
       copyBtn.setAttribute("data-mb-copy", "wrap");
       mb.ownDelegate(copyBtn);
-      copyBtn.setAttribute("title", "Copy as YAML");
+      copyBtn.setAttribute("data-tip-text", "Copy as YAML");
+      copyBtn.setAttribute("aria-label", "Copy as YAML");
       copyBtn.innerHTML = mb.icons.copy || "Copy";
       wrapper.appendChild(copyBtn);
       const copyPayload = window.document.createElement("code");

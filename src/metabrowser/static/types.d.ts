@@ -685,7 +685,7 @@ type MetabrowserFilterControls = {
     className?: string;
     key: string;
     label: string;
-    title?: string;
+    tip?: string;
   }): string;
   clearHtml(spec?: { className?: string; label?: string }): string;
   escapeHtml(value: unknown): string;

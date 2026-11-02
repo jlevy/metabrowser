@@ -963,6 +963,11 @@ Fixes:
   A selected theme or font segment showed no focus at all, and a tab the browser’s own.
   Nothing else on a plain-folder page changes: at rest, its pixels are the same.
 
+- The filter drawer’s toggle, a diff’s copy button, and a structured view’s copy button
+  no longer show the browser’s tooltip beside the app’s. The drawer’s tooltip now
+  follows its state, the structured view’s button has an accessible name, and Overview’s
+  Show ignored has the tooltip it was written with.
+
 - A diff in a narrow pane no longer hides its additions.
   Split needs 44 ems of width, and below that its right column was off-screen behind a
   sideways scroll, so an added line read as a blank gap.

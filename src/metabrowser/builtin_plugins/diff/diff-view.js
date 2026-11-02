@@ -997,7 +997,6 @@ function renderFileBar(change, toggleId, bodyId, view) {
     copy.setAttribute("data-mb-copy-label", "Copy path");
     api?.ownDelegate?.(copy);
     copy.setAttribute("data-tip-text", "Copy path");
-    copy.setAttribute("title", "Copy path");
     copy.setAttribute("aria-label", "Copy path");
     const svg = shellIcon("copy");
     if (svg) {

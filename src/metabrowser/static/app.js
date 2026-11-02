@@ -4723,7 +4723,7 @@ function applyDrawerOpenState() {
       (filterDrawerOpen ? "Hide more filters" : "Show more filters") +
         (count > 0 ? ` (${count} active)` : ""),
     );
-    toggle.setAttribute("title", filterDrawerOpen ? "Fewer filters" : "More filters");
+    toggle.dataset.tipText = filterDrawerOpen ? "Fewer filters" : "More filters";
   }
 }
 
