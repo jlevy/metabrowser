@@ -21,6 +21,8 @@
 // pull request's github.com page, kept only for http(s), and opened in a new tab with
 // rel="noopener noreferrer"; and no KPress script or stylesheet is loaded for a text.
 
+import { createComparisonPrefetch } from "./comparison-prefetch.js";
+
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
 // otherwise bounds how late a page learns of a refresh another tab started.
@@ -60,6 +62,10 @@ export const LANDING_SETTLE_MS = 2000;
 const PLACE_BLOCKS = ".github-pull-card, .github-pull-section, .diff-file";
 // The key of a place in `history.state`, which no other code of the shell writes into.
 const PLACE_KEY = "pullPlace";
+
+// How long an idle browser may take before Files changed is fetched anyway. A page rendering
+// its conversation is not idle, and the comparison should not wait for all of it.
+const PREFETCH_IDLE_TIMEOUT_MS = 300;
 
 const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
@@ -1718,6 +1724,36 @@ export function mountPullPage(container, ctx, mb) {
     diffFor = null;
   }
 
+  const prefetch = createComparisonPrefetch({
+    load: (comparison, signal) =>
+      mb.fetchPluginData(
+        "diff",
+        "comparison",
+        {
+          left: comparison.left,
+          right: comparison.right,
+          base_policy: "merge_base",
+          build: window.METABROWSER_SETTINGS?.BUILD_TAG,
+        },
+        { signal },
+      ),
+    warm() {
+      void mb.ensureKindAssets("diff").catch(() => {});
+    },
+    schedule: (callback) =>
+      typeof window.requestIdleCallback === "function"
+        ? { idle: window.requestIdleCallback(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }) }
+        : { timer: window.setTimeout(callback, PREFETCH_IDLE_TIMEOUT_MS) },
+    cancel(handle) {
+      const { idle, timer } = /** @type {{idle?: number, timer?: number}} */ (handle);
+      if (idle !== undefined) {
+        window.cancelIdleCallback(idle);
+      }
+      window.clearTimeout(timer);
+    },
+    isVisible: () => document.visibilityState === "visible",
+  });
+
   /** @param {{left: string, right: string}} comparison */
   async function mountDiff(comparison) {
     disposeDiff();
@@ -1725,6 +1761,7 @@ export function mountPullPage(container, ctx, mb) {
     diffHost = host;
     diffFor = comparison;
     body.replaceChildren(host);
+    const raw = prefetch.take(comparison);
     await mb.ensureKindAssets("diff");
     const view = mb.getRegisteredView("diff", "diff");
     if (diffHost !== host) {
@@ -1734,9 +1771,14 @@ export function mountPullPage(container, ctx, mb) {
       host.textContent = "The diff plugin is unavailable.";
       return;
     }
+    const prefetched = await raw;
+    if (diffHost !== host) {
+      return;
+    }
     const handle = /** @type {{dispose?: () => void} | null} */ (
       await view.render(host, {
         comparison: { left: comparison.left, right: comparison.right, base_policy: "merge_base" },
+        ...(prefetched === undefined ? {} : { raw: prefetched }),
       })
     );
     if (diffHost !== host) {
@@ -1794,6 +1836,9 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     disposeDiff();
+    if (model.comparison !== null) {
+      prefetch.want(model.comparison);
+    }
     const key = conversationKey(model);
     const action = conversationAction(
       { key: bodyKey, recordAt: markdownRecord },
@@ -1875,6 +1920,7 @@ export function mountPullPage(container, ctx, mb) {
       observer?.disconnect();
       place?.dispose();
       controller.dispose();
+      prefetch.dispose();
       disposeDiff();
     },
   });

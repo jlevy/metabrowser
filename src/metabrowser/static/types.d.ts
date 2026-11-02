@@ -2769,6 +2769,8 @@ declare global {
     /** Container kinds by extension; see arch-nav-containers.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {
+      /** This build's tag, which a request names to be told its answer cannot change. */
+      BUILD_TAG?: string;
       CAPABILITIES?: {
         active_content: boolean;
         mutations: boolean;

@@ -36,6 +36,7 @@ function comparisonKey(comparison) {
 // Every comparison request names this build, so the browser may keep an answer that cannot
 // change without asking again: the server says so only for an address that names its build.
 const BUILD_TAG = window.METABROWSER_SETTINGS?.BUILD_TAG;
+/** @type {Record<string, string>} */
 const BUILD_PARAM = typeof BUILD_TAG === "string" ? { build: BUILD_TAG } : {};
 
 /** @param {string} key @returns {Record<string, string>} */
