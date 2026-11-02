@@ -480,11 +480,30 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
     render();
   }
 
+  /**
+   * A later answer said the scan is still running, so the skeleton is honest again. A scan
+   * says so on every refresh, and a repaint each time would restart the skeleton's quiet
+   * period and put away a tooltip, so only the change repaints.
+   */
+  function resumeLoading() {
+    if (!awaitingTotals) {
+      awaitingTotals = true;
+      render();
+    }
+  }
+
   function dispose() {
     mb.tooltip.hide();
     root.replaceChildren();
   }
 
   render();
-  return Object.freeze({ dispose, stopLoading, update, updateComposition, updateMetric });
+  return Object.freeze({
+    dispose,
+    resumeLoading,
+    stopLoading,
+    update,
+    updateComposition,
+    updateMetric,
+  });
 }

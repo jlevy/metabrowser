@@ -192,13 +192,22 @@
 .github-pull-card > .github-pull-notice {
   margin-block: 0;
 }
+/* One scroller for all of a hunk, so a disclosure's lines and the tail below them move
+   together, and every line as wide as the widest of both, so a tint reaches the end of a
+   scrolled line. */
+.github-pull-hunk-box,
 .github-pull-hunk {
-  /* Every line as wide as the widest, so a tint reaches the end of a scrolled line. */
   display: grid;
   grid-template-columns: minmax(max-content, 1fr);
-  padding: var(--pane-header-padding-y) 0;
+}
+.github-pull-hunk-box {
+  /* What the fold's width below is measured against. */
+  container-type: inline-size;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
+}
+.github-pull-hunk {
+  padding: var(--pane-header-padding-y) 0;
   font-family: var(--font-mono);
   font-size: var(--mono-block-font-size);
 }
@@ -225,6 +234,13 @@
   padding-inline: var(--github-pull-text-inset);
   border-top: 0;
   list-style: none;
+}
+/* As wide as the box shows, so it is still the full-width row a fold is, with room to stay
+   put in as the lines beneath it scroll. */
+.github-pull-hunk-earlier > summary {
+  position: sticky;
+  left: 0;
+  width: 100cqi;
 }
 .github-pull-hunk-earlier > .fold-expander::-webkit-details-marker {
   display: none;
@@ -260,8 +276,10 @@
     transition-duration: 1ms;
   }
 }
+/* What the hunk's own rule drew before there was a box: the end of the earlier lines. */
 .github-pull-hunk-earlier > .github-pull-hunk {
   padding-top: 0;
+  border-bottom: 1px solid var(--border);
 }
 .github-pull-section {
   display: flex;

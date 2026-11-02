@@ -1204,7 +1204,7 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     assert page.count('h("h2", { class: "section-heading" }') == 2
     assert 'h("summary", { class: "fold-expander" }' in page
     # A hunk's fold states its size and then the inverse, as a fold does.
-    assert "earlier ${lines}" in page and "`Hide ${earlier.length} ${lines}`" in page
+    assert "earlier ${lines}" in page and "`Hide ${earlierLines} ${lines}`" in page
     assert "section-disclosure-trigger" not in page
     github = plugins / "github/styles.css"
     for selector, declarations in _rules_of(github):

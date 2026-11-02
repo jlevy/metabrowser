@@ -7,6 +7,7 @@ import gzip
 import json
 import os
 import threading
+import zlib
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -15,6 +16,7 @@ import pytest
 
 from metabrowser import server
 from metabrowser.builtin_plugins.diff import sidekick
+from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES
 from metabrowser.diff.format import validate_document
 from metabrowser.source import ContentHandle, FilesystemContentSource
 from tests.diff_fixture_repo import build_diff_fixture
@@ -324,3 +326,47 @@ def test_a_compressed_file_that_cannot_be_decoded_is_the_same_404(tmp_path: Path
     assert (status, body["error"]) == (404, "diff_document")
     status, body = _children("broken.patch.gz")
     assert (status, body["error"]) == (404, "diff_children")
+
+
+def _gzip_cut_after(data: bytes, decoded_bytes: int) -> bytes:
+    """A gzip stream of *data* that ends, undecodably, after *decoded_bytes* of it."""
+
+    compressor = zlib.compressobj(wbits=31)
+    return compressor.compress(data[:decoded_bytes]) + compressor.flush(zlib.Z_SYNC_FLUSH)
+
+
+def test_damage_past_what_the_hooks_read_of_a_compressed_patch_is_not_reached(
+    tmp_path: Path,
+) -> None:
+    """The 404 above holds only as far as the hooks decode, which ``MAX_PATCH_BYTES`` bounds.
+
+    Past that they answer the patch they read, marked truncated, the same as for an
+    undamaged patch that long. ``CHANGELOG.md`` states both sides of the bound.
+    """
+
+    server._set_root_dir(tmp_path)
+    section = (
+        "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1,500 +1,500 @@\n"
+        + f"-{'o' * 1000}\n+{'n' * 1000}\n" * 500
+    ).encode()
+    patch = section * (MAX_PATCH_BYTES // len(section) + 2)
+    margin = 64 * 1024
+    (tmp_path / "inside.patch.gz").write_bytes(_gzip_cut_after(patch, MAX_PATCH_BYTES - margin))
+    (tmp_path / "past.patch.gz").write_bytes(_gzip_cut_after(patch, MAX_PATCH_BYTES + margin))
+    (tmp_path / "whole.patch.gz").write_bytes(gzip.compress(patch))
+
+    status, body = _document("inside.patch.gz")
+    assert (status, body["error"]) == (404, "diff_document")
+    status, body = _children("inside.patch.gz")
+    assert (status, body["error"]) == (404, "diff_children")
+
+    status, past = _document("past.patch.gz")
+    assert status == 200, past
+    document = validate_document(past)
+    assert document.manifest.truncated
+    assert "input truncated at parser bounds" in document.resolved.warnings
+    status, whole = _document("whole.patch.gz")
+    assert status == 200, whole
+    assert past["manifest"]["totals"] == whole["manifest"]["totals"]
+    status, body = _children("past.patch.gz")
+    assert (status, body["truncated"]) == (200, True)

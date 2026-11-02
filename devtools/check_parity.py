@@ -180,7 +180,8 @@ def _command_exercises(command: str, surface: str, cli: str) -> bool:
 
 
 # One command of an in-process transcript, as ``tests/golden_harness.py`` ``block`` writes it.
-_IN_PROCESS_COMMAND: Final = re.compile(r"^# (.+)\nexit: (\S+)\n--- stdout ---$", re.MULTILINE)
+# ``block`` also refuses a stream that holds this, because nothing here can tell them apart.
+IN_PROCESS_COMMAND: Final = re.compile(r"^# (.+)\nexit: (\S+)\n--- stdout ---$", re.MULTILINE)
 
 
 def _route_evidence_commands(name: str, text: str) -> list[GoldenCommand]:
@@ -188,16 +189,18 @@ def _route_evidence_commands(name: str, text: str) -> list[GoldenCommand]:
 
     Some route invocations are shown honestly only in process, such as a refresh that
     completes with a fake ``gh``. ``devtools/check_goldens.py`` fails a ``.txt`` no test
-    compares, so a row cannot cite a stale one. Route evidence reads a command and its
-    exit status, so the output is not collected here. An exit that is not a number is
-    how a transcript writes a process that was killed, which is not success.
+    compares, so a row cannot cite a stale one, and the harness that writes one refuses
+    output shaped like a command, so every header here is a command that ran. Route
+    evidence reads a command and its exit status, so the output is not collected here.
+    An exit that is not a number is how a transcript writes a process that was killed,
+    which is not success.
     """
 
     if not name.endswith(".txt"):
         return _console_commands(text)
     return [
         GoldenCommand(command=found[1], output=(), status=0 if found[2] == "0" else 1)
-        for found in _IN_PROCESS_COMMAND.finditer(text)
+        for found in IN_PROCESS_COMMAND.finditer(text)
     ]
 
 

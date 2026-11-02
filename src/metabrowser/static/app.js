@@ -1446,7 +1446,7 @@ function reconcileMountedTree(nextTree, chromeHtml) {
 
 function treeTruncationNoteHtml(maxFiles) {
   var reason = maxFiles
-    ? `Metabrowser stopped after ${formatCount(maxFiles)} files`
+    ? `Metabrowser stopped after ${formatCount(maxFiles)}`
     : "Metabrowser reached its file limit";
   return (
     '<div class="notice tree-truncation-note" data-severity="warning" role="status">' +
