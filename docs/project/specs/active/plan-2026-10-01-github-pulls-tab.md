@@ -574,7 +574,13 @@ Jobs run on the server’s `RefreshCoordinator`, keyed by the slug.
 - When the checkout’s `HEAD` is the pull request’s head, the page says so and links the
   root.
 
-**Files changed.** Step 5 has two cases:
+**Files changed.** Step 5 has two cases.
+Both are decided differently by
+[Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
+(2026-11-02): Files changed on a folder server reads an overlay store that borrows the
+served checkout’s objects, never the checkout directly, because the diff commands honor
+a checkout’s `diff.external` and textconv drivers and a direct read cannot bring missing
+commits. The text below stands until that plan’s step 4 rewrites it.
 
 - **The commits are in the checkout.** The page checks for the base and head commits
   with a read-only Git command and shows the diff through the existing comparison route,
