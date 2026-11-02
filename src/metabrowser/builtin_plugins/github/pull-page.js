@@ -19,7 +19,9 @@
 // class, id, data, style, or event attribute survives, nor any SVG, media, stylesheet,
 // frame, or form; an image becomes a link to it; a link is made absolute against the
 // pull request's github.com page, kept only for http(s), and opened in a new tab with
-// rel="noopener noreferrer"; and no KPress script or stylesheet is loaded for a text.
+// rel="noopener noreferrer"; and no KPress script is loaded for a text. KPress's
+// stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes in a
+// KPress article of its own making, so a text reads as the same Markdown in a file does.
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -1336,7 +1338,7 @@ export function mountPullPage(container, ctx, mb) {
   const number = typeof ctx.number === "number" ? ctx.number : 0;
   const open = typeof ctx.open === "function" ? ctx.open : () => {};
   container.classList.add("github-pull");
-  const header = h("div", { class: "github-pull-header" });
+  const header = h("div", { class: "github-pull-header github-pull-column" });
   const body = h("div", { class: "github-pull-body" });
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   // Between the header and the body, as wide as the pane, as a file's views are.
@@ -1421,26 +1423,36 @@ export function mountPullPage(container, ctx, mb) {
     return element;
   }
 
+  /** KPress's stylesheets, once. A text stays readable under the shell's if they fail. */
+  /** @type {Promise<void> | null} */
+  let documentStyles = null;
+
   /**
    * @param {string} part
    * @param {Record<string, any>} rendered
    */
   function renderMarkdown(part, rendered) {
-    void inertReady.then((inert) => {
+    documentStyles ??= mb.loadKpressAssets(rendered.assets).catch(() => {});
+    void Promise.all([inertReady, documentStyles]).then(([inert]) => {
       const element = texts.get(part);
       const plain = element?.querySelector(":scope > .github-pull-plain");
       if (!element || !plain || inert === null) {
         return;
       }
-      const holder = h("div", { class: "github-pull-markdown" });
       // KPress's Markdown HTML, reduced to the allowlist on the server; GitHub's own
-      // body_html is never used, and no KPress script or stylesheet is loaded for it.
+      // body_html is never used, and no KPress script is loaded for it.
       // static/inert-html.js parses it into an inert template and inserts only nodes
       // rebuilt from the same allowlist, links made absolute against the pull request.
-      holder.replaceChildren(
-        ...inert.sanitizeHtml(String(rendered.html), shown?.pull?.htmlUrl ?? "https://github.com/"),
+      // The article and the classes on its tables and code blocks are the page's own.
+      const nodes = inert.sanitizeHtml(
+        String(rendered.html),
+        shown?.pull?.htmlUrl ?? "https://github.com/",
       );
-      plain.replaceWith(holder);
+      plain.replaceWith(
+        h("div", { class: "metabrowser-kpress-host" }, [
+          h("article", { class: "kpress kpress-inert" }, [inert.kpressProse(nodes, document)]),
+        ]),
+      );
     });
   }
 
@@ -1824,6 +1836,8 @@ export function mountPullPage(container, ctx, mb) {
   function paint(model) {
     shown = model;
     paintHeader(model);
+    // The conversation reads in the column; a diff takes the pane.
+    body.classList.toggle("github-pull-column", model.tab !== "files");
     if (model.pull === null) {
       disposeDiff();
       texts.clear();

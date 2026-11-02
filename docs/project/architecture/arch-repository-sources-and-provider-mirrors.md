@@ -578,6 +578,8 @@ each text as Markdown through `GET /api/plugin/github/pull-markdown?part=<part>`
 renders one text of the cached record through KPress’s sanitized mode and then reduces
 it to an allowlist of plain markup, on the server and again in the page, so nothing in
 it loads, restyles the page, reaches the application’s handlers, or names an element.
+The page sets the result in a KPress article of its own making, under KPress’s
+stylesheets, so a text reads as the same Markdown in a file does.
 Files changed is the diff plugin’s view over the record’s comparison, passed as two
 endpoints with `base_policy=merge_base`.
 

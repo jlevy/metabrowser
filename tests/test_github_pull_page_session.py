@@ -20,7 +20,8 @@ when the recording no longer matches.
 The clock is fixed, so fetch times are literal. Entity tags are the session's own, since
 the server's are scoped to the build; which answers share one is kept. The Markdown is
 cut down to the rendered text: KPress's icon sprite and asset manifest are KPress's
-contract, pinned by its own render goldens, and would tie this recording to its version.
+contract, pinned by its own render goldens, and would tie this recording to its version,
+and its stylesheets' manifest is left out for the same reason.
 Every pull envelope carries the whole record, and the story reads one record many
 times, so the recording holds each distinct record once: an answer whose record an
 earlier answer carried names that answer, ``{"same_as": "current"}``, and the session
@@ -88,6 +89,8 @@ def _answer(response: Any) -> dict[str, Any]:
     """One response as the page sees it: status, entity tag, and body."""
 
     body = None if response.status_code == 304 else response.json()
+    if isinstance(body, dict):
+        body.pop("assets", None)
     return {"status": response.status_code, "etag": response.headers.get("etag"), "body": body}
 
 

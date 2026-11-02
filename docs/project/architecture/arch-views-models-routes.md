@@ -224,17 +224,19 @@ are one path segment, hence the name.
 only with `fetched_at`, and answers a matching `If-None-Match` with `304`, so the
 pull-request page polls it as cheaply as the status route.
 `github/pull-markdown?part=<part>` renders one text of the cached record through KPress
-in its sanitized mode and answers only the resulting HTML, with the record’s
-`fetched_at` and the part: `body`, or `issue_comment/<id>`, `review/<id>`, or
-`review_comment/<id>`. It never fetches; a part the record lacks is `unknown_part`.
-KPress keeps what a document of its own may use, so the hook reduces that HTML to an
-allowlist (`src/metabrowser/inert_html.py`, with links made absolute against the pull
-request’s page): plain text markup (paragraphs, headings, emphasis, code, quotes, lists,
-tables, details, `div`, `span`) with no attributes but a link’s `href` (http or https,
-absolute against the pull request’s github.com page, in a new tab), `ol[start]`, a table
-cell’s `colspan`, `rowspan`, and `align`, and `details[open]`. Scripts, styles, SVG,
-MathML, media, frames, forms, and stylesheets go with their content; an image becomes a
-link to it; any other tag is unwrapped to its text.
+in its sanitized mode and answers the resulting HTML, with the record’s `fetched_at` and
+the part: `body`, or `issue_comment/<id>`, `review/<id>`, or `review_comment/<id>`. It
+also answers the manifest of KPress’s stylesheets, the same for every text, so the page
+sets a text in the rules a Markdown file reads under.
+It never fetches; a part the record lacks is `unknown_part`. KPress keeps what a
+document of its own may use, so the hook reduces that HTML to an allowlist
+(`src/metabrowser/inert_html.py`, with links made absolute against the pull request’s
+page): plain text markup (paragraphs, headings, emphasis, code, quotes, lists, tables,
+details, `div`, `span`) with no attributes but a link’s `href` (http or https, absolute
+against the pull request’s github.com page, in a new tab), `ol[start]`, a table cell’s
+`colspan`, `rowspan`, and `align`, and `details[open]`. Scripts, styles, SVG, MathML,
+media, frames, forms, and stylesheets go with their content; an image becomes a link to
+it; any other tag is unwrapped to its text.
 KPress’s asset list is not sent, so no script KPress adds for a text’s content loads.
 The page applies the same allowlist again, rebuilding the nodes it inserts.
 See
@@ -485,7 +487,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `markdown.standard-link-semantics` | interaction | `builtin_plugins/markdown/links.js#createTrustedStandardLinkResolutionContext`, `builtin_plugins/markdown/link-enhancer.js#enhanceRenderedLinks` | `/api/kpress/render` | `node tests/dom/markdown-functional-session.js` | `cli-ui-markdown-functional.tryscript.md` |
 | `markdown.worker-preprocessing` | interaction | `builtin_plugins/markdown/markdown-worker-client.js#acquireMarkdownWorkerClient`, `builtin_plugins/markdown/markdown-worker-client.js#createMarkdownWorkerClient`, `builtin_plugins/markdown/wiki-parser.js#preprocessObsidianWiki`, `builtin_plugins/markdown/rendered.js#mountRenderedMarkdown` | `/api/file`, `/api/kpress/render` | `node tests/dom/markdown-functional-session.js` | `cli-ui-markdown-functional.tryscript.md` |
 | `markdown.transclusion-lifecycle` | interaction | `builtin_plugins/markdown/transclusion.js#createTransclusionBudget`, `builtin_plugins/markdown/transclusion.js#mountWikiTransclusion` | `/api/catalog`, `/api/file`, `/api/kpress/render` | `node tests/dom/markdown-functional-session.js` | `cli-ui-markdown-functional.tryscript.md` |
-| `markdown.untrusted-inert-render` | interaction | `static/inert-html.js#sanitizeNodes`, `static/inert-html.js#allowedAttributes`, `static/inert-html.js#keepsImage`, `builtin_plugins/markdown/inert-render.js#isInertRender` | `/api/kpress/render` | `node tests/dom/inert-html-session.js` | `cli-ui-inert-markdown.tryscript.md` |
+| `markdown.untrusted-inert-render` | interaction | `static/inert-html.js#sanitizeNodes`, `static/inert-html.js#kpressProse`, `static/inert-html.js#allowedAttributes`, `static/inert-html.js#keepsImage`, `builtin_plugins/markdown/inert-render.js#isInertRender` | `/api/kpress/render` | `node tests/dom/inert-html-session.js` | `cli-ui-inert-markdown.tryscript.md` |
 | `markdown.untrusted-inert-toc` | interaction | `builtin_plugins/markdown/inert-toc.js#inertTocEntries`, `builtin_plugins/markdown/inert-toc.js#buildInertToc`, `builtin_plugins/markdown/inert-toc.js#wireInertToc`, `builtin_plugins/markdown/inert-render.js#placeRendered`, `builtin_plugins/markdown/inert-render.js#inertArticle` | `/api/kpress/render` | `node tests/dom/markdown-inert-toc-session.js` | `cli-ui-inert-toc.tryscript.md` |
 | `markdown.aggregate-root-budget` | interaction | `builtin_plugins/markdown/reconciliation-coordinator.js#createMarkdownEnhancementBudget`, `builtin_plugins/markdown/dom-traversal.js#matchingDescendants`, `builtin_plugins/markdown/link-enhancer.js#enhanceRenderedLinks` | `/api/catalog`, `/api/kpress/render` | `node tests/dom/markdown-functional-session.js` | `cli-ui-markdown-functional.tryscript.md` |
 | `image.raw-preview` | interaction | `static/view-composition.js#createLifecycle`, `builtin_plugins/image/index.js#renderImage` | `/api/file` | `node tests/dom/image-preview-session.js` | `cli-ui-image-preview.tryscript.md` |

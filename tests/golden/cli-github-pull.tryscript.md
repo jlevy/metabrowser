@@ -948,7 +948,8 @@ Error: /pull/7: this source serves no pull request
 
 `pull-markdown` renders one text of the record through KPress in its sanitized mode: the
 description (`body`), or one comment, review, or review comment by ID. The answer is the
-record’s fetch time, the part, and its rendered HTML.
+record’s fetch time, the part, its rendered HTML, and the manifest of KPress’s
+stylesheets, the same for every text.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=body'
@@ -961,7 +962,10 @@ status: 200
   "number": 7,
   "fetched_at": "2026-09-17T12:00:00Z",
   "part": "body",
-  "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
+  "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>",
+  "assets": {
+...
+  }
 }
 ? 0
 ```
