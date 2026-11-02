@@ -189,6 +189,10 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
     assert (_after(extended)["fetched"], _after(extended)["complete"]) == (102, True)
     assert _numbers(session.get("?limit=2&after=7")) == [6, 5]
 
+    # Nothing more to read: asking again would reread what is held, so it waits a window.
+    no_more = session.post({"more": True})
+    assert json.loads(no_more.stdout.split("status: 200\n")[1])["refresh"] == "not_due"
+
     # A refresh rereads each page it holds, conditionally, and a 304 reuses its rows.
     session.advance(61)
     assert session.get("?limit=0").payload()["state"] == "stale"
@@ -240,7 +244,9 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
     assert (labelled["state"], labelled["reader"]) == ("stale", "gh:octo-reader")
 
     # One that succeeds replaces the whole file, sends no other reader's ETag, and starts
-    # again from the first page, for Load more as for a refresh.
+    # again from the first page, for Load more as for a refresh. This list has no more to
+    # read, so its Load more waits a window as a refresh would.
+    session.advance(61)
     session.answer(_with(online, auth=account(ANOTHER_READER)))
     replaced = _after(session.post({"more": True}))
     assert (replaced["reader"], replaced["fetched"]) == (f"gh:{ANOTHER_READER}", 100)
@@ -281,18 +287,6 @@ def test_golden_pull_list_failures(
             ),
         ),
         (
-            "rate_limited",
-            _api(
-                online,
-                first_path,
-                {
-                    "status": 429,
-                    "headers": {"Retry-After": "120"},
-                    "body": {"message": "slow down"},
-                },
-            ),
-        ),
-        (
             "not_found_or_private",
             _api(online, first_path, {"status": 404, "body": {"message": "Not Found"}}),
         ),
@@ -324,7 +318,26 @@ def test_golden_pull_list_failures(
     offline = session.get("?limit=1")
     assert offline.exit_code == 0 and offline.payload()["fetched"] == 100
 
-    # A rate limit with a reset time holds automatic requests past the window, until it.
+    # A limit with a time on it holds a reader's Retry and Load more as well, asking gh
+    # nothing, since each request GitHub refuses moves the time on. Past it they run.
+    slow_down = {
+        "status": 429,
+        "headers": {"Retry-After": "120"},
+        "body": {"message": "slow down"},
+    }
+    session.answer(_api(online, first_path, slow_down))
+    limited = session.post({"retry": True})
+    assert limited.exit_code == 1
+    assert _after(limited)["last_refresh"]["outcome"] == "rate_limited"
+    session.answer(online)
+    for body in ({"retry": True}, {"more": True}):
+        waited = session.post(body)
+        assert waited.exit_code == 0
+        assert json.loads(waited.stdout.split("status: 200\n")[1])["refresh"] == "not_due"
+    session.advance(121)
+    assert _after(session.post({"retry": True}))["last_refresh"]["outcome"] == "succeeded"
+
+    # It holds automatic requests past the window too, until that time.
     session.answer(_api(online, first_path, limited_primary))
     assert session.post({"retry": True}).exit_code == 1
     session.advance(61)

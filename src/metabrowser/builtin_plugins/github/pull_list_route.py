@@ -46,6 +46,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
     ListedRepository,
     PullList,
     can_extend,
+    rate_limit_holds,
     read_list_refresh,
     read_pull_list,
     refresh_is_due,
@@ -399,14 +400,30 @@ async def _run_refresh(repository: ListedRepository, name: PullListName, *, more
 def refresh_wanted(view: ListView, ask: RefreshRequest) -> bool:
     """Whether *ask* may start a refresh. Blocking and bounded; run it off the loop.
 
-    A reader's own action always may. An automatic request may when the list's stamp says
-    one is due.
+    While GitHub's limit holds nothing may, a reader's own action included: it would be a
+    request GitHub asked not to get, and each refusal moves the time on. The route cannot
+    ask ``gh`` who is active, so an account that was not limited waits too.
+
+    Otherwise a reader's **Retry** may, and a **Load more** that has a page to read. A
+    **Load more** that does not, on a complete list or one at its cap, could only reread
+    every page held, so it waits for the list's stamp to say one is due, as an automatic
+    request does.
     """
 
-    if ask.more or ask.retry or view.repository is None:
+    repository = view.repository
+    if repository is None:
         return True
-    stamp = read_list_refresh(view.repository.home, view.repository.slug, ask.name)
-    return refresh_is_due(stamp, now=pull_list.utc_now())
+    now = pull_list.utc_now()
+    stamp = read_list_refresh(repository.home, repository.slug, ask.name)
+    if rate_limit_holds(stamp, now=now):
+        return False
+    if ask.retry:
+        return True
+    if ask.more:
+        listed, _rows = _cached_list(repository.home, repository.slug, ask.name)
+        if not isinstance(listed, PullList) or can_extend(listed):
+            return True
+    return refresh_is_due(stamp, now=now)
 
 
 def start_refresh(view: ListView, ask: RefreshRequest, *, wanted: bool) -> ListRefreshStart:

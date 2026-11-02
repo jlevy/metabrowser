@@ -299,18 +299,28 @@ def read_list_refresh(home: Path, slug: str, name: PullListName) -> PullRefreshS
     return _UNWRITTEN_STAMPS.get(str(home / relative)) or read_refresh_stamp(home, relative)
 
 
+def rate_limit_holds(stamp: PullRefreshStamp | None, *, now: datetime) -> bool:
+    """Whether GitHub said when it will answer again, and that time has not come."""
+
+    return (
+        stamp is not None
+        and stamp.outcome == "rate_limited"
+        and stamp.reset_at is not None
+        and now < parse_stamp(stamp.reset_at)
+    )
+
+
 def refresh_is_due(stamp: PullRefreshStamp | None, *, now: datetime) -> bool:
     """Whether an automatic refresh may start: not tried within the window, or before a limit lifts.
 
     A refresh that succeeded or failed within :data:`FRESHNESS_WINDOW_S` counts the same,
     so a failing ``gh`` is asked once a window rather than on every poll, and after
-    ``rate_limited`` no attempt runs before ``reset_at``. A reader's own action, such as
-    **Load more** or **Retry**, does not ask this.
+    ``rate_limited`` no attempt runs before ``reset_at``.
     """
 
     if stamp is None:
         return True
-    if stamp.outcome == "rate_limited" and stamp.reset_at and now < parse_stamp(stamp.reset_at):
+    if rate_limit_holds(stamp, now=now):
         return False
     return now - parse_stamp(stamp.at) > timedelta(seconds=FRESHNESS_WINDOW_S)
 
@@ -335,6 +345,7 @@ __all__ = [
     "PullListRow",
     "can_extend",
     "parse_stamp",
+    "rate_limit_holds",
     "read_list_refresh",
     "read_pull_list",
     "refresh_is_due",

@@ -48,9 +48,12 @@ from metabrowser.builtin_plugins.github.pull_list import (
 from metabrowser.builtin_plugins.github.pull_list_refresh import refresh_pull_list
 from metabrowser.builtin_plugins.github.pull_list_route import (
     ListRequestError,
+    ListView,
+    RefreshRequest,
     list_window,
     listed_repository,
     refresh_request,
+    refresh_wanted,
 )
 from metabrowser.builtin_plugins.github.pull_record import MAX_LABELS, PullRefreshStamp
 from metabrowser.cache.acquire import PublishedSource, acquire_source
@@ -431,7 +434,15 @@ def test_a_list_stops_growing_at_its_cap_and_says_so(
     assert (listed.pages, len(listed.rows), listed.complete) == (MAX_LIST_PAGES, 1000, False)
     _asked(tmp_path)
 
-    # Asking again rereads what is held, and never page 11.
+    # The route holds a further click to the window, since it could only reread all ten.
+    view = ListView(repository, None, False)
+    ask = RefreshRequest("all", more=True, retry=False)
+    assert refresh_wanted(view, ask) is False
+    assert _asked(tmp_path) == []
+
+    # A job asked for more anyway, past the window, rereads what is held, and never page 11.
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=61))
+    assert refresh_wanted(view, ask) is True
     again = asyncio.run(refresh_pull_list(repository, "all", more=True))
     paths = _api_paths(_asked(tmp_path))
     assert paths == [list_page("all", number) for number in range(1, MAX_LIST_PAGES + 1)]
@@ -628,6 +639,81 @@ def test_an_automatic_refresh_waits_a_window_and_for_a_reset(
 ) -> None:
     kept = None if stamp is None else PullRefreshStamp(at="2026-09-17T12:00:00Z", **stamp)
     assert refresh_is_due(kept, now=FETCHED_AT + timedelta(seconds=seconds)) is due
+
+
+_RATE_LIMITED = {"outcome": "rate_limited", "reset_at": "2026-09-17T13:00:00Z"}
+
+
+@pytest.mark.parametrize(
+    ("stamp", "listing", "ask", "seconds", "wanted"),
+    [
+        # An automatic request waits a window.
+        ({"outcome": "succeeded"}, "growing", {}, 60, False),
+        ({"outcome": "succeeded"}, "growing", {}, 61, True),
+        # A reader's Retry does not.
+        ({"outcome": "network_error"}, "growing", {"retry": True}, 0, True),
+        # Nor a Load more on a list that can grow, or on no list at all, which reads page 1.
+        ({"outcome": "succeeded"}, "growing", {"more": True}, 0, True),
+        ({"outcome": "succeeded"}, None, {"more": True}, 0, True),
+        # One another account fetched can grow too, and that job starts from page 1 instead.
+        ({"outcome": "succeeded", "reader": "gh:other"}, "growing", {"more": True}, 0, True),
+        # A Load more that could only reread what is held waits, like an automatic request.
+        ({"outcome": "succeeded"}, "complete", {"more": True}, 60, False),
+        ({"outcome": "succeeded"}, "complete", {"more": True}, 61, True),
+        ({"outcome": "succeeded"}, "at_cap", {"more": True}, 60, False),
+        ({"outcome": "succeeded"}, "at_cap", {"more": True}, 61, True),
+        # A reader's Retry on a list that cannot grow is still a reader's Retry.
+        ({"outcome": "succeeded"}, "complete", {"retry": True}, 0, True),
+        # While GitHub's limit holds nothing may ask, a reader included, and not past it.
+        (_RATE_LIMITED, "growing", {}, 0, False),
+        (_RATE_LIMITED, "growing", {"retry": True}, 0, False),
+        (_RATE_LIMITED, "growing", {"more": True}, 0, False),
+        (_RATE_LIMITED, "growing", {"retry": True, "more": True}, 3599, False),
+        (_RATE_LIMITED, "growing", {"retry": True}, 3600, True),
+        (_RATE_LIMITED, "growing", {"more": True}, 3600, True),
+        # No time to wait for: a reader may ask, and an automatic request waits a window.
+        ({"outcome": "rate_limited"}, "growing", {"retry": True}, 0, True),
+        ({"outcome": "rate_limited"}, "growing", {"more": True}, 0, True),
+        ({"outcome": "rate_limited"}, "growing", {}, 60, False),
+    ],
+)
+def test_what_each_request_may_start(
+    home: Path,
+    repository: ListedRepository,
+    monkeypatch: pytest.MonkeyPatch,
+    stamp: dict[str, Any],
+    listing: str | None,
+    ask: dict[str, bool],
+    seconds: int,
+    wanted: bool,
+) -> None:
+    """Every row of the rule at once, which a transcript would take a clock move per row for."""
+
+    if listing is not None:
+        pages = MAX_LIST_PAGES if listing == "at_cap" else 1
+        write_pull_list(
+            home,
+            SOURCE.slug,
+            PullList(
+                schema_version=PULL_LIST_SCHEMA,
+                source=CANONICAL,
+                list="all",
+                fetched_at="2026-09-17T12:00:00Z",
+                reader=f"gh:{READER}",
+                pages=pages,
+                complete=listing == "complete",
+                truncated=False,
+                etags=tuple(
+                    ListPageMark(etag=None, numbers=(), truncated=False) for _page in range(pages)
+                ),
+                rows=(),
+            ),
+        )
+    kept = PullRefreshStamp(at="2026-09-17T12:00:00Z", **stamp)
+    write_list_refresh(home, SOURCE.slug, "all", kept)
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=seconds))
+    request = RefreshRequest("all", ask.get("more", False), ask.get("retry", False))
+    assert refresh_wanted(ListView(repository, None, False), request) is wanted
 
 
 def test_a_stamp_the_cache_will_not_take_is_kept_for_the_process(

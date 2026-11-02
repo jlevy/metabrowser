@@ -181,9 +181,10 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     The body may name ``state`` (``all`` by default), ``more``, which extends the list by
     one GitHub page, after the running refresh if it joins one, and ``retry``, a reader's
     own click. ``refresh`` says whether this request ``started`` the job or ``joined`` one
-    that was running, answered ``202``, or that an automatic request is ``not_due``: tried
-    within the freshness window, or before GitHub's limit lifts, answered ``200``.
-    ``pulls`` is the envelope as of that moment without its rows.
+    that was running, answered ``202``, or that it is ``not_due``, answered ``200``: before
+    GitHub's limit lifts, whoever asked, or tried within the freshness window, for an
+    automatic request or a ``more`` with no page to read. ``pulls`` is the envelope as of
+    that moment without its rows.
     """
 
     from metabrowser.builtin_plugins.github.pull_list_route import (
