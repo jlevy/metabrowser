@@ -416,13 +416,12 @@ its fetch, `stale` after, or `absent` with a reason.
 Its `comparison_route` is Files changed, the merge base of the base branch and the head
 to the head, as GitHub shows it; issue it with `--api` to get the diff.
 `--diff` does not open an `https://` source, so this route is the way to read one.
-`--api` prints two header lines before the envelope, which `tail -n +3` drops for a tool
-such as `jq`:
+`--format json` prints the envelope alone, for a tool such as `jq`:
 
 ```shell
 URL=https://github.com/owner/repo/pull/123
-ROUTE=$(metab "$URL" --api /api/plugin/github/pull | tail -n +3 | jq -r .comparison_route)
-metab "$URL" --api "$ROUTE" | tail -n +3 |
+ROUTE=$(metab "$URL" --api /api/plugin/github/pull --format json | jq -r .comparison_route)
+metab "$URL" --api "$ROUTE" --format json |
   jq -r '.manifest.files[] | "\(.kind) \(.new.path // .old.path) +\(.additions) -\(.deletions)"'
 ```
 
@@ -574,7 +573,8 @@ metab ./notes --api '/api/git/log?limit=5'
 metab ./notes --api /api/cache/layout
 metab ./notes --api '/api/cache/sources?limit=20'
 
-# YAML instead of JSON.
+# Only the envelope, as JSON or YAML, for a tool to parse.
+metab ./notes --api /api/git/refs --format json
 metab ./notes --api /api/git/refs --format yaml
 
 # A route that takes a POST body.
@@ -593,6 +593,10 @@ status: 200
   "views": [ ... ]
 }
 ```
+
+With `--format json` or `--format yaml`, stdout is the envelope alone, so it parses.
+A body that is not JSON is one string, and a refresh that waits prints only the status
+it ended with, the answer the output above would print under `after:`.
 
 The exit status is non-zero when the route answers outside 2xx, so a script can act on
 failure without parsing the body.

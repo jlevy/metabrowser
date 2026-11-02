@@ -958,6 +958,12 @@ Content source:
 
 Fixes:
 
+- `metab --api <route> --format json` or `--format yaml` prints the envelope alone, so
+  stdout parses; a body that is not JSON is one string, and a refresh that waits prints
+  only the status it ended with.
+  An explicit format used to print the `api:` and `status:` lines above the envelope
+  too. Without `--format`, the output is unchanged.
+
 - Choosing with the keyboard works past the first key press.
   In Files / Bytes and Split / Unified, an arrow key changed the choice and left focus
   nowhere, so the next key did nothing.

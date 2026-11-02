@@ -632,7 +632,8 @@ def _metab(
         help="Output format: text (human report) | json | yaml. "
         "Walk and diff: json/yaml dump the exact data the browser consumes. "
         "Show: json reports the four layers as an object. "
-        "Api: json (default) or yaml renders the envelope.",
+        "Api: json or yaml prints the envelope alone, so stdout parses; "
+        "unset prints the route and status above it, as JSON.",
         rich_help_panel=_PANEL_SHARED,
     ),
     stream: bool = typer.Option(
@@ -872,14 +873,17 @@ def _metab(
         assert api is not None
         from metabrowser.cli.api_cli import run_api
 
+        # Only the unset default is reinterpreted; an explicit --format text is refused
+        # above rather than silently becoming json. Unset is the transcript every golden
+        # pins; a format asked for is that document alone on stdout, for a tool to parse.
+        api_fmt, api_headers = ("json", True) if fmt == "text" else (fmt, False)
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
             run_api(
                 classified,
                 route=api,
-                # Only the unset default is reinterpreted; an explicit --format text
-                # is refused above rather than silently becoming json.
-                fmt="json" if fmt == "text" else fmt,
+                fmt=api_fmt,
+                headers=api_headers,
                 data=data,
                 plugins_dir=plugins_dir,
                 log_level=log_level,
@@ -895,7 +899,8 @@ def _metab(
                 run_api_after_acquire(
                     classified,
                     route=api,
-                    fmt="json" if fmt == "text" else fmt,
+                    fmt=api_fmt,
+                    headers=api_headers,
                     data=data,
                     plugins_dir=plugins_dir,
                     log_level=log_level,
@@ -910,7 +915,8 @@ def _metab(
                 run_pin_api(
                     classified,
                     route=api,
-                    fmt="json" if fmt == "text" else fmt,
+                    fmt=api_fmt,
+                    headers=api_headers,
                     data=data,
                     plugins_dir=plugins_dir,
                     log_level=log_level,
