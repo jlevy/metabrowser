@@ -147,12 +147,19 @@ def test_a_hunk_is_painted_as_text_in_a_native_disclosure() -> None:
 
 
 def _vertical_margins(declarations: str) -> tuple[str, str]:
-    """The top and bottom of a rule's ``margin`` shorthand."""
+    """The top and bottom of a rule's ``margin`` shorthand: its last, which is what wins."""
 
-    found = re.search(r"(?:^|;|\s)margin:\s*([^;]+);", declarations)
-    assert found is not None, declarations
-    sides = found.group(1).split()
+    found = re.findall(r"(?:^|;|\s)margin:\s*([^;]+);", declarations)
+    assert found, declarations
+    sides = found[-1].split()
     return sides[0], sides[2] if len(sides) > 2 else sides[0]
+
+
+def test_a_later_margin_is_the_one_read() -> None:
+    """``_style_rules`` joins a selector's rules in source order, and the cascade takes the last."""
+
+    assert _vertical_margins("margin: 0.75em 0;\n  margin: 0;\n") == ("0", "0")
+    assert _vertical_margins("margin: 1.25em 0 0.5em;\n  line-height: 1.25;") == ("1.25em", "0.5em")
 
 
 def test_nothing_in_the_pages_stylesheet_can_reach_another_page() -> None:
