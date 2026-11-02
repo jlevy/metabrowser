@@ -28,7 +28,7 @@ from pydantic import ValidationError
 from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
-from metabrowser.builtin_plugins.github import pulls
+from metabrowser.builtin_plugins.github import gh_lists, pulls
 from metabrowser.builtin_plugins.github.gh import (
     GhError,
     GhResponse,
@@ -789,7 +789,7 @@ def test_an_oversized_page_is_asked_for_again_smaller(
 
 def test_a_list_stops_at_its_page_cap(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
     # Requests, not items: pages asked for again smaller spend the same allowance.
-    monkeypatch.setattr(pulls, "_EXTRA_PAGE_REQUESTS", 0)
+    monkeypatch.setattr(gh_lists, "EXTRA_PAGE_REQUESTS", 0)
     monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.GH_API_MAX_BYTES", 4000)
     answers = scenario(stand.origin)
     base = "repos/octo/demo/pulls/7/reviews"
