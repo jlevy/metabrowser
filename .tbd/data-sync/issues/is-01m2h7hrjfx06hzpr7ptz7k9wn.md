@@ -3,11 +3,11 @@ type: is
 id: is-01m2h7hrjfx06hzpr7ptz7k9wn
 title: "GitHub pull-request list for a mirrored repository: bounded list data from gh"
 kind: feature
-status: open
+status: in_progress
 priority: 1
-version: 22
+version: 24
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
-delegate: null
+delegate: claude-code@spud10
 labels: []
 dependencies:
   - type: blocks
@@ -24,12 +24,14 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-09-15T00:30:26.382Z
-updated_at: 2026-11-02T21:40:40.843Z
+updated_at: 2026-11-02T22:34:14.966Z
 started_at: 2026-09-16T21:10:44.906Z
 ---
 Publish a bounded query-keyed ChangeRequestIndex after direct PR hydration works. Keep rows summary-only and record normalized query identity, deterministic ordering, per-page provenance, observation window and remote consistency, dedupe, bounds, cursors, and honest coverage. Store one repository/auth-scoped index reused by all attached clones and managed URL sources; listing fetches no Git refs. Cover continuation, moving pages, reauth isolation, stale/offline state, missing direct item, and no-ref-fetch.
 
 ## Notes
+
+2026-11-02: step 1 built on claude/pulls-1-list-data, PR https://github.com/jlevy/metabrowser/pull/279 (head 1108bd99). Checkpoint verified against pallets/markupsafe and offline with a failing gh; the GET alone reads the cache, so a POST pulls-refresh comes first (asked in the PR). Open until it merges.
 
 2026-11-02: reopened by the user's decision to build the Pulls tab now, above the v0.12 stack. The plan spec is the authority; this bead's older text is background. Its older blockers are all closed. This is Delivery step 1.
 

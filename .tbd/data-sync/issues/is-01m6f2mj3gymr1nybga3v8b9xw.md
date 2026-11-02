@@ -3,9 +3,9 @@ type: is
 id: is-01m6f2mj3gymr1nybga3v8b9xw
 title: "Address PR #273 reviews A,B: pull page hunks, tests, and bot comments"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 10
+version: 11
 labels: []
 dependencies: []
 parent_id: is-01m6ezswyn87jm4x9jvax0vdzm
@@ -20,5 +20,9 @@ child_order_hints:
   - is-01m6f2mxjw3m7e9mpedga7j4ac
   - is-01m6f2my0bz2mvdrn5d0j9wqhj
 created_at: 2026-11-02T21:28:53.615Z
-updated_at: 2026-11-02T21:29:05.802Z
+updated_at: 2026-11-02T22:33:30.979Z
+closed_at: 2026-11-02T22:33:30.978Z
+close_reason: Every finding of reviews A and B and every Qodo inline comment has a disposition; replies posted; CI green at 20946945. mb-479j stays open as a deferral.
+resolution: null
+duplicate_of: null
 ---

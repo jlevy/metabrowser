@@ -3,9 +3,9 @@ type: is
 id: is-01m6f2kp2dkv14cykagykcmqet
 title: "Address PR #276 review A and qodo inline comments: parity framing, budget declarations, test prose, stale body"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 9
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -20,6 +20,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:28:24.909Z
-updated_at: 2026-11-02T21:29:08.754Z
+updated_at: 2026-11-02T21:49:03.060Z
 started_at: 2026-11-02T21:29:08.753Z
+closed_at: 2026-11-02T21:49:03.059Z
+close_reason: "Every finding has a disposition and the replies are posted: https://github.com/jlevy/metabrowser/pull/276#issuecomment-6589319967 and https://github.com/jlevy/metabrowser/pull/276#issuecomment-6589320474. Head 5c6567e, CI run 41530107623 green. The PR is conflicting with its moved base; that is the coordinator's forward merge."
+resolution: null
+duplicate_of: null
 ---

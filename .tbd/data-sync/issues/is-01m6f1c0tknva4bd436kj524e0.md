@@ -3,9 +3,9 @@ type: is
 id: is-01m6f1c0tknva4bd436kj524e0
 title: "Address PR #272 reviews A and the qodo inline comments: two overstated sentences, two upstream shortcut comments"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 9
 delegate: claude-code@spud10
 labels: []
 dependencies: []
@@ -20,7 +20,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:06:45.202Z
-updated_at: 2026-11-02T21:26:41.419Z
+updated_at: 2026-11-02T23:27:06.673Z
 started_at: 2026-11-02T21:06:52.393Z
+closed_at: 2026-11-02T23:27:06.672Z
+close_reason: "All of PR #272's review findings have dispositions; the open deferral mb-6koa is tracked separately and waits on a tbd release."
+resolution: null
+duplicate_of: null
 ---
 Addressing pass for https://github.com/jlevy/metabrowser/pull/272#pullrequestreview-5743247737 and the two qodo-code-review[bot] inline comments, at pinned head 385e1b6d. Native stack 278, bottom layer.
