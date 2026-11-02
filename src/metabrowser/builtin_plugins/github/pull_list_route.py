@@ -45,6 +45,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
     MAX_LIST_ROWS,
     ListedRepository,
     PullList,
+    can_extend,
     read_list_refresh,
     read_pull_list,
     refresh_is_due,
@@ -375,12 +376,21 @@ def envelope_etag(
     return build_scoped_etag(f"pulls-{digest[:32]}")
 
 
+# The jobs a reader asked for more of while they ran, by job key, each dropped when the next
+# job for its key starts. Read and written only on the event loop, so a job that finds its
+# key absent ends before another request can add it.
+_MORE_ASKED: set[str] = set()
+
+
 async def _run_refresh(repository: ListedRepository, name: PullListName, *, more: bool) -> None:
     # Here, not at the top: answering from the cache starts no gh, and loads none of it.
     from metabrowser.builtin_plugins.github.pull_list_refresh import refresh_pull_list
 
     try:
-        await refresh_pull_list(repository, name, more=more)
+        listed = await refresh_pull_list(repository, name, more=more)
+        # A job that read the next page has answered the reader's second click too.
+        if not more and _job_key(repository, name) in _MORE_ASKED and can_extend(listed):
+            await refresh_pull_list(repository, name, more=True)
     except PullDataError:
         # Its stamp says how it ended, and the route reports that.
         return
@@ -402,14 +412,20 @@ def refresh_wanted(view: ListView, ask: RefreshRequest) -> bool:
 def start_refresh(view: ListView, ask: RefreshRequest, *, wanted: bool) -> ListRefreshStart:
     """Start the refresh *ask* names, or join the one running. Runs on the event loop.
 
-    A request :func:`refresh_wanted` turned down starts nothing and answers ``not_due``.
+    A ``more`` that joins a job is kept, and that job reads the next page after its refresh,
+    so ``joined`` means the same to a reader whatever was running: the list will have it
+    when ``refreshing`` is false, unless ``last_refresh`` says why not. A request
+    :func:`refresh_wanted` turned down starts nothing and answers ``not_due``.
     """
 
     repository, coordinator = view.repository, view.coordinator
     assert repository is not None and coordinator is not None
     key = _job_key(repository, ask.name)
     if coordinator.running(key):
+        if ask.more and wanted:
+            _MORE_ASKED.add(key)
         return "joined"
+    _MORE_ASKED.discard(key)
     if not wanted:
         return "not_due"
     return coordinator.start(key, partial(_run_refresh, repository, ask.name, more=ask.more))

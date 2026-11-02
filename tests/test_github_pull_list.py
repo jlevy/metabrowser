@@ -679,12 +679,16 @@ def _settle(client: TestClient, state: str = "all") -> dict[str, Any]:
 def _held_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[threading.Event, list[tuple[str, bool]]]:
+    """Each job's first read waits for the event, and then runs against the fake ``gh``."""
+
     release = threading.Event()
     runs: list[tuple[str, bool]] = []
+    real = pull_list_refresh.refresh_pull_list
 
-    async def held(repository: ListedRepository, name: Any, *, more: bool = False) -> None:
+    async def held(repository: ListedRepository, name: Any, *, more: bool = False) -> PullList:
         runs.append((name, more))
         await asyncio.to_thread(release.wait, 30)
+        return await real(repository, name, more=more)
 
     monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", held)
     return release, runs
@@ -702,7 +706,7 @@ def test_a_request_while_a_refresh_runs_joins_it(
         assert (first.status_code, first.headers["cache-control"]) == (202, "no-store")
         assert first.json()["refresh"] == "started"
         assert first.json()["pulls"]["state"] == "pending"
-        again = client.post(REFRESH, json={"state": "all", "more": True}, headers=_JSON)
+        again = client.post(REFRESH, json={"state": "all", "retry": True}, headers=_JSON)
         assert (again.status_code, again.json()["refresh"]) == (202, "joined")
         # Each list is its own job.
         other = client.post(REFRESH, json={"state": "open"}, headers=_JSON)
@@ -713,6 +717,103 @@ def test_a_request_while_a_refresh_runs_joins_it(
     _settle(client)
     _settle(client, "open")
     assert sorted(runs) == [("all", False), ("open", False)]
+
+
+def test_a_more_that_joins_a_refresh_extends_the_list_after_it(
+    served: tuple[TestClient, PublishedSource], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A reader's **Load more** during the list's automatic refresh is not lost.
+
+    The whole of it is one job, so ``refreshing`` stays true until the page is in the list.
+    """
+
+    client, _published = served
+    release, runs = _held_refresh(monkeypatch)
+    try:
+        assert client.post(REFRESH, json={}, headers=_JSON).json()["refresh"] == "started"
+        joined = client.post(REFRESH, json={"more": True}, headers=_JSON)
+        assert (joined.status_code, joined.json()["refresh"]) == (202, "joined")
+        assert client.get(f"{PULLS}?limit=0").json()["refreshing"] is True
+    finally:
+        release.set()
+    after = _settle(client)
+    assert runs == [("all", False), ("all", True)]
+    assert (after["fetched"], after["complete"]) == (102, True)
+    assert _api_paths(_asked(tmp_path)) == [list_page("all", 1), list_page("all", 2)]
+
+    # It was asked of that job alone: the next job extends nothing.
+    assert client.post(REFRESH, json={"retry": True}, headers=_JSON).json()["refresh"] == "started"
+    _settle(client)
+    assert runs == [("all", False), ("all", True), ("all", False)]
+
+
+def test_a_more_that_joins_a_more_is_the_same_page(
+    served: tuple[TestClient, PublishedSource], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two clicks while one page is being read ask for that page, and not for two."""
+
+    client, _published = served
+    release, runs = _held_refresh(monkeypatch)
+    try:
+        assert client.post(REFRESH, json={"more": True}, headers=_JSON).json()["refresh"] == (
+            "started"
+        )
+        assert client.post(REFRESH, json={"more": True}, headers=_JSON).json()["refresh"] == (
+            "joined"
+        )
+    finally:
+        release.set()
+    _settle(client)
+    assert runs == [("all", True)]
+
+
+def test_a_more_that_joins_a_refresh_that_fails_runs_nothing_further(
+    served: tuple[TestClient, PublishedSource],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    pull_origin: Origin,
+) -> None:
+    """The stamp says the refresh failed, which is the answer the reader's **Retry** is for."""
+
+    client, _published = served
+    _answer(
+        tmp_path,
+        monkeypatch,
+        scenario(pull_origin) | {"auth": {"stdout": '{"hosts":{}}\n', "exit": 0}},
+    )
+    release, runs = _held_refresh(monkeypatch)
+    try:
+        client.post(REFRESH, json={}, headers=_JSON)
+        client.post(REFRESH, json={"more": True}, headers=_JSON)
+    finally:
+        release.set()
+    after = _settle(client)
+    assert runs == [("all", False)]
+    assert after["last_refresh"]["outcome"] == "not_logged_in"
+
+
+def test_a_more_that_joins_a_refresh_that_completes_the_list_reads_nothing_further(
+    served: tuple[TestClient, PublishedSource],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    pull_origin: Origin,
+) -> None:
+    """The list the job ended with has no next page, so there is nothing to extend it with."""
+
+    client, _published = served
+    path = list_page("all", 1)
+    answers = scenario(pull_origin)
+    answers["api"] = {**answers["api"], path: ok(path, [generated_item(7)])}
+    _answer(tmp_path, monkeypatch, answers)
+    release, runs = _held_refresh(monkeypatch)
+    try:
+        client.post(REFRESH, json={}, headers=_JSON)
+        client.post(REFRESH, json={"more": True}, headers=_JSON)
+    finally:
+        release.set()
+    after = _settle(client)
+    assert runs == [("all", False)]
+    assert (after["fetched"], after["complete"]) == (1, True)
 
 
 def test_a_read_never_starts_anything(
