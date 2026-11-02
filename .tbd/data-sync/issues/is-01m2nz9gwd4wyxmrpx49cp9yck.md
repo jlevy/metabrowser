@@ -3,25 +3,36 @@ type: is
 id: is-01m2nz9gwd4wyxmrpx49cp9yck
 title: "GitHub pull requests on an existing checkout: shared records, no writes to the user's repository"
 kind: feature
-status: deferred
+status: open
 priority: 1
-version: 17
-spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
+version: 25
+spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: null
 labels: []
 dependencies:
   - type: blocks
     target: is-01m2kw2bvjj5kcsczkz40cmhqx
-parent_id: is-01kzs5m38dz1egphfwf30c8h7n
+  - type: blocks
+    target: is-01m6f3a2f5v5bkym87p85a0wq2
+parent_id: is-01m6f39t9zax1nbajkkasya6st
+child_order_hints:
+  - is-01m6f3abb5ys26ghefzy1d3kcs
+  - is-01m6f3abz4cv8g936k4ry94ygb
+  - is-01m6f3aces3z20vehpwkkxdd7m
+  - is-01m6f3acyxhn6fc74nvnwbb6gm
 hold: null
 hold_until: null
 created_at: 2026-09-16T20:42:19.915Z
-updated_at: 2026-10-01T20:24:27.146Z
+updated_at: 2026-11-02T21:42:36.482Z
 started_at: 2026-09-16T21:12:28.713Z
 ---
 Enable hosted capabilities for an ordinary user-owned Git checkout without converting or copying it into a managed repository entry. Discover credential-free provider remote candidates read-only; resolve an unambiguous candidate through the provider registry to stable RepositoryRef; require explicit selection for multiple GitHub remotes and fork/upstream ambiguity; attach the session without persisting its absolute path; reuse the global provider mirror and lazily create or hydrate the shared repository store only for branch, diff, or PR content. Derive the canonical RepositoryStoreId deterministically from provider kind, canonical instance, raw stable repository opaque ID, and Git object format; converge verified objects and aliases under ordered locks and CAS without a mutable provider-to-store pointer. Prove no writes to files or .git, two local clones plus HTTPS/SSH sources reuse one provider repository and canonical store under the same auth context, different auth contexts remain isolated, failed convergence leaves aliases unchanged, purge/detach preserves shared reachable state, and local dirty state remains a filesystem overlay rather than mirror input.
 
 ## Notes
+
+2026-11-02: GATE. Build last. The proposal docs/project/specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md on branch claude/v012-pr-review-design revises this plan's alternates rejection and the in-page fetch with an overlay store that borrows a checkout's objects. It is under independent review and the owner has not decided. This step and mb-r50o depend on its outcome.
+
+2026-11-02: reopened by the user's decision to build the Pulls tab now, above the v0.12 stack. The plan spec is the authority; this bead's older text is background. Its older blockers are all closed. This is Delivery step 5.
 
 2026-10-01: the design is now the plan spec docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md (mb-qftx, commit 245f296c on codex/v012-landing-docs); it supersedes the notes below where they differ, and its Open Decisions section lists what the user decides first.
 

@@ -3,23 +3,36 @@ type: is
 id: is-01m2h7jjgpzyfbf10238j32z6q
 title: "GitHub Pulls tab: list a mirrored repository's pull requests and open any of them"
 kind: feature
-status: deferred
+status: open
 priority: 1
-version: 13
-spec_path: docs/project/specs/active/plan-2026-08-27-github-provider-and-pull-requests.md
+version: 23
+spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01m2kttf7tse7rs1nwrk9m3jbj
   - type: blocks
     target: is-01m2kw2d2arc9hn25pfsc4me50
-parent_id: is-01kzs5m38dz1egphfwf30c8h7n
+  - type: blocks
+    target: is-01m6f39zpnk9rc3kjy552b88qj
+parent_id: is-01m6f39t9zax1nbajkkasya6st
+child_order_hints:
+  - is-01m6f3a7979mvnrevs2y3ngsr6
+  - is-01m6f3a7pba32qx4tw03bca2tn
+  - is-01m6f3a84d9w0j3vvq3dx4w5h1
+  - is-01m6f3a8hwmhajkj14c5528pc8
+  - is-01m6f3a8zq6770byr49by7dwed
+  - is-01m6f3djrrnd70jq09ttmspt0j
 created_at: 2026-09-15T00:30:52.949Z
-updated_at: 2026-10-01T20:24:24.511Z
+updated_at: 2026-11-02T21:42:37.871Z
 ---
 Add the Pull Requests repository-scoped nav panel after direct view and the bounded index. Project only the index row fields—no review/check summary—through RepositoryActivity and reuse bounded paging, virtualization, roving selection, query-key restoration, loading/error, root replacement, and disposal through public SDK. Selection opens the direct PR address; expansion exposes comparison files. Counts/grouping/visibility come from the bounded model. Execute exact panel-window, selection, restoration, replacement, and disposal owners in hosted-review-session and cli-ui-hosted-review.
 
 ## Notes
+
+2026-11-02, from the other session and the user, to apply in this step: the design system is followed rigorously. A tab is .tab-btn in a .tab-bar, and .github-pull-tabs is being removed. No literal font-size in plugin stylesheets; a check is being added to tests/test_design_vocabulary.py. Navigation rows follow One Chevron and One Row Contract with --ui-row-height and --hover-bg, Navigational Row Collections for keyboard, Age for dates, and Icons for glyphs: Lucide from static/icons.js, currentColor, --icon-glyph. Read docs/design-system.md in full before styling. It is being reorganized on claude/v012-pr-review-workflows, so merge that forward first.
+
+2026-11-02: reopened by the user's decision to build the Pulls tab now, above the v0.12 stack. The plan spec is the authority; this bead's older text is background. Its older blockers are all closed. This is Delivery step 3; rows now show state icons and the default filter is All.
 
 2026-10-01: the design is now the plan spec docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md (mb-qftx, commit 245f296c on codex/v012-landing-docs); it supersedes the notes below where they differ, and its Open Decisions section lists what the user decides first.
 
