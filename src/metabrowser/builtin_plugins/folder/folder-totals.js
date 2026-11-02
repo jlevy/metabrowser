@@ -481,9 +481,9 @@ export function mountFolderTotalsView(container, totals, mb, initialMetric = "fi
   }
 
   /**
-   * An answer after that says the scan is still running, so the skeleton is honest again.
-   * A scan answers this every refresh, and only the change repaints, which would restart the
-   * skeleton's quiet period and put away a tooltip each time.
+   * A later answer said the scan is still running, so the skeleton is honest again. A scan
+   * says so on every refresh, and a repaint each time would restart the skeleton's quiet
+   * period and put away a tooltip, so only the change repaints.
    */
   function resumeLoading() {
     if (!awaitingTotals) {
