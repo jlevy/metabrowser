@@ -35,8 +35,19 @@ if TYPE_CHECKING:
 _NO_STORE: Final = {"cache-control": "no-store"}
 # A refresh request carries a few short parameters; a JSON object of any size worth reading fits.
 MAX_REFRESH_REQUEST_BYTES: Final = 1024
-# A job started or joined is on its way. A request that started none has its answer now.
-_REFRESH_STATUS: Final = {"started": 202, "joined": 202, "not_due": 200, "not_cached": 200}
+# A job started or joined is on its way. A request that started none has its answer now,
+# which past the bound on jobs is a refusal.
+_REFRESH_STATUS: Final = {
+    "started": 202,
+    "joined": 202,
+    "not_due": 200,
+    "not_cached": 200,
+    "too_many": 429,
+}
+_TOO_MANY: Final = {
+    "error": "too many pull requests are being fetched; try again when one has finished",
+    "code": "too_many",
+}
 
 
 async def pull_handler(request: Request) -> Response:
@@ -128,7 +139,8 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     The body names ``number``, and may name ``retry``, a reader's own click. ``refresh``
     says whether this request ``started`` the job or ``joined`` one that was running,
     answered ``202``, or why an automatic request started nothing: the record is not due
-    (``not_due``), or there is none (``not_cached``), answered ``200``. ``pull`` is the
+    (``not_due``), or there is none (``not_cached``), answered ``200``. Past the bound on
+    jobs it is refused, ``too_many``, answered ``429``, and nothing starts. ``pull`` is the
     envelope as of that moment: with a job running, ``refreshing`` is true, and it is
     ``pending`` while no record is cached yet.
     """
@@ -164,6 +176,8 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
         view.kept.saw_record(envelope["fetched_at"])
     # ``status_route`` is where a one-shot ``--api`` reads how the refresh ended.
     answer = {"refresh": started, "pull": dict(envelope), "status_route": status_route(ask.number)}
+    if started == "too_many":
+        answer.update(_TOO_MANY)
     return JSONResponse(answer, status_code=_REFRESH_STATUS[started], headers=_NO_STORE)
 
 

@@ -1379,5 +1379,148 @@
         "unavailable": {}
       }
     }
+  },
+  "failed": {
+    "status": 200,
+    "etag": "\"pull-12\"",
+    "body": {
+      "state": "stale",
+      "reason": null,
+      "source": "https://github.com/octo/demo",
+      "number": 8,
+      "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "pin_ref": "refs/pull/7/head",
+      "fetched_at": "2026-09-17T12:06:00Z",
+      "fresh_for_s": 60.0,
+      "refreshing": false,
+      "last_refresh": {
+        "outcome": "network_error",
+        "message": "gh could not reach api.github.com",
+        "reset_at": null,
+        "at": "2026-09-17T12:30:00Z"
+      },
+      "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base",
+      "record": {
+        "same_as": "merged_unattributed"
+      }
+    }
+  },
+  "not_due": {
+    "status": 200,
+    "etag": null,
+    "body": {
+      "refresh": "not_due",
+      "pull": {
+        "state": "stale",
+        "reason": null,
+        "source": "https://github.com/octo/demo",
+        "number": 8,
+        "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "pin_ref": "refs/pull/7/head",
+        "fetched_at": "2026-09-17T12:06:00Z",
+        "fresh_for_s": 60.0,
+        "refreshing": false,
+        "last_refresh": {
+          "outcome": "network_error",
+          "message": "gh could not reach api.github.com",
+          "reset_at": null,
+          "at": "2026-09-17T12:30:00Z"
+        },
+        "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base",
+        "record": {
+          "same_as": "merged_unattributed"
+        }
+      },
+      "status_route": "/api/plugin/github/pull?number=8"
+    }
+  },
+  "failed_again": {
+    "status": 202,
+    "etag": null,
+    "body": {
+      "refresh": "started",
+      "pull": {
+        "state": "stale",
+        "reason": null,
+        "source": "https://github.com/octo/demo",
+        "number": 8,
+        "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "pin_ref": "refs/pull/7/head",
+        "fetched_at": "2026-09-17T12:06:00Z",
+        "fresh_for_s": 60.0,
+        "refreshing": true,
+        "last_refresh": {
+          "outcome": "network_error",
+          "message": "gh could not reach api.github.com",
+          "reset_at": null,
+          "at": "2026-09-17T12:30:00Z"
+        },
+        "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base",
+        "record": {
+          "same_as": "merged_unattributed"
+        }
+      },
+      "status_route": "/api/plugin/github/pull?number=8"
+    }
+  },
+  "absent_14": {
+    "status": 200,
+    "etag": "\"pull-13\"",
+    "body": {
+      "state": "absent",
+      "reason": "not_cached",
+      "source": "https://github.com/octo/demo",
+      "number": 14,
+      "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+      "pin_ref": "refs/pull/7/head",
+      "fetched_at": null,
+      "fresh_for_s": 60.0,
+      "refreshing": false,
+      "last_refresh": null,
+      "comparison_route": null,
+      "record": null
+    }
+  },
+  "too_many": {
+    "status": 429,
+    "etag": null,
+    "body": {
+      "refresh": "too_many",
+      "pull": {
+        "state": "absent",
+        "reason": "not_cached",
+        "source": "https://github.com/octo/demo",
+        "number": 14,
+        "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "pin_ref": "refs/pull/7/head",
+        "fetched_at": null,
+        "fresh_for_s": 60.0,
+        "refreshing": false,
+        "last_refresh": null,
+        "comparison_route": null,
+        "record": null
+      },
+      "status_route": "/api/plugin/github/pull?number=14",
+      "error": "too many pull requests are being fetched; try again when one has finished",
+      "code": "too_many"
+    }
+  },
+  "not_github": {
+    "status": 200,
+    "etag": "\"pull-14\"",
+    "body": {
+      "state": "absent",
+      "reason": "not_github",
+      "source": null,
+      "number": 7,
+      "pin": null,
+      "pin_ref": null,
+      "fetched_at": null,
+      "fresh_for_s": 60.0,
+      "refreshing": false,
+      "last_refresh": null,
+      "comparison_route": null,
+      "record": null
+    }
   }
 }

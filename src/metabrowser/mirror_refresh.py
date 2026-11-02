@@ -80,6 +80,14 @@ FRESHNESS_WINDOW_S: Final = 60.0
 # pull request's refresh proceed beside its repository's without letting a burst of
 # requests open unbounded connections to one host.
 MAX_CONCURRENT_REFRESHES: Final = 2
+# Pull requests whose refresh may be queued or running at once. Past it a request is
+# refused and starts nothing, since the numbers are request text. Each job takes its turn
+# at the store alone, so they run one after another. Measured 2026-11-02 on eight pull
+# requests of pallets/click, each read cold and again conditionally, with gh 2.98.0 and Git
+# 2.50.1 at a load average of 10: 4.7 to 7.0 s, median 5.2 s, which is eight gh processes
+# and one fetch, and a 304 takes as long as a 200. Eight take at most 56 s at the slowest,
+# so the last still starts inside the freshness window of the request that asked for it.
+MAX_PULL_JOBS: Final = 8
 # How often a served mirror checks whether another process's refresh has ended, and for
 # how long at most: that process's own fetch deadline. A check tries a lock file, so it
 # is cheap; a second keeps the page's label a second behind the other process at worst.
@@ -87,8 +95,9 @@ ELSEWHERE_POLL_S: Final = 1.0
 ELSEWHERE_WAIT_S: Final = GIT_ACQUISITION_TIMEOUT_S
 
 type StartedOrJoined = Literal["started", "joined"]
-# How a request for a pull request's refresh was answered.
-type PullJobStart = StartedOrJoined
+# How a request for a pull request's refresh was answered; ``"too_many"`` started nothing,
+# because :data:`MAX_PULL_JOBS` were queued or running.
+type PullJobStart = Literal["started", "joined", "too_many"]
 # How a request for the fetch a missing commit waits for was answered: the mirror's
 # fetch was started or joined, or the mirror is ``"fresh"`` and none was asked for.
 type CommitFetch = Literal["started", "joined", "fresh"]
@@ -558,6 +567,8 @@ class MirrorSession:
         # fetch lock; within this server they take turns here first, so none finds
         # another holding it and reports a refresh running elsewhere.
         self._fetch_turn = asyncio.Lock()
+        # The keys of the pull-request jobs started, some of which may have ended.
+        self._pull_jobs: set[str] = set()
 
     # ── The attended pull request ───────────────────────────────
 
@@ -730,7 +741,11 @@ class MirrorSession:
         return "fresh"
 
     def request_companion_refresh(self) -> StartedOrJoined | None:
-        """Start or join the refresh of the data served beside the mirror, if there is any."""
+        """Start or join the attended pull request's refresh, if there is one.
+
+        This is never refused, so the bound on jobs cannot leave a page of code on a pull
+        request's head behind its refresh; at most it runs one job over the bound.
+        """
 
         if self.companion is None or self._pull_request is None:
             return None
@@ -740,8 +755,19 @@ class MirrorSession:
         return self.companion is not None and self._coordinator.running(self.companion.key)
 
     def request_pull_refresh(self, number: int) -> PullJobStart:
-        """Start or join the refresh of pull request *number*, whichever it is."""
+        """Start or join the refresh of pull request *number*, whichever it is.
 
+        One that is not running starts only while fewer than :data:`MAX_PULL_JOBS` are
+        queued or running; the mirror's own fetch and a list's do not count.
+        """
+
+        pulls = self.pull_requests
+        assert pulls is not None
+        if self._coordinator.running(pulls.key(number)):
+            return "joined"
+        self._pull_jobs = {key for key in self._pull_jobs if self._coordinator.running(key)}
+        if len(self._pull_jobs) >= MAX_PULL_JOBS:
+            return "too_many"
         return self._start_pull_job(number)
 
     def pull_refreshing(self, number: int) -> bool:
@@ -753,7 +779,9 @@ class MirrorSession:
     def _start_pull_job(self, number: int) -> StartedOrJoined:
         pulls = self.pull_requests
         assert pulls is not None
-        return self._coordinator.start(pulls.key(number), partial(self._pull_job, number))
+        key = pulls.key(number)
+        self._pull_jobs.add(key)
+        return self._coordinator.start(key, partial(self._pull_job, number))
 
     async def _pull_job(self, number: int) -> None:
         pulls = self.pull_requests
@@ -1102,6 +1130,7 @@ async def drain_refreshes(app: Any, *, timeout_s: float) -> None:
 __all__ = [
     "FRESHNESS_WINDOW_S",
     "MAX_CONCURRENT_REFRESHES",
+    "MAX_PULL_JOBS",
     "UNSERVED_FRESHNESS",
     "AmbiguousSelectionError",
     "CommitFetch",

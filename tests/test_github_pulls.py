@@ -79,6 +79,7 @@ from metabrowser.git import repo as git_repo
 from metabrowser.git.process import GitError, kill_live_process_groups, repository_store_target
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import (
+    MAX_PULL_JOBS,
     FRESHNESS_WINDOW_S,
     InvalidSelectionError,
     mirror_session,
@@ -1338,6 +1339,192 @@ def test_a_pin_on_another_pull_requests_head_makes_it_the_attended_one(
     assert pin({"ref": DEFAULT_BRANCH})["pull_request"] == 8
     assert session.companion is attended
     assert pin({"ref": "refs/pull/7/head"})["pull_request"] == 7
+
+
+def _serving_repository_url(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("metabrowser.cli.git_pin_cli.stop_on_interrupt", lambda: None)
+    result = _serve(CANONICAL)
+    assert result.exit_code == 0, result.output
+
+
+def _gh_reads(stand: _Stand) -> list[list[str]]:
+    return [call["args"] for call in stand.calls() if call["args"][:1] == ["api"]]
+
+
+def test_on_a_repository_url_only_a_readers_action_adds_a_pull_request_to_the_cache(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The checkpoint, and the rule behind it: a read, a link, and a request that is not a
+    reader's own run no gh and write nothing, and a reader's Fetch opens the page.
+
+    The fake gh's log and the source's directory are the evidence. A folder's guarantee is
+    the import boundary; this is what holds on a mirror, where gh is always one call away.
+    """
+
+    stand.calls()
+    home, slug = stand.published.home, stand.published.slug
+    pulls_dir = (home / source_pull_record(slug, 8)).parent
+    try:
+        _serving_repository_url(stand, monkeypatch)
+        stand.calls()
+        with TestClient(app) as client:
+            settle(client)
+            assert client.get("/pull/8").status_code == 200
+            before = sorted(pulls_dir.iterdir()) if pulls_dir.exists() else []
+            for _ in range(2):
+                assert _read(client, 8).json()["reason"] == "not_cached"
+            markdown = client.get(
+                "/api/plugin/github/pull-markdown", params={"number": 8, "part": "body"}
+            )
+            assert (markdown.status_code, markdown.json()["code"]) == (404, "not_cached")
+            automatic = client.post(_REFRESH_ROUTE, json={"number": 8}, headers=_JSON)
+            assert (automatic.status_code, automatic.json()["refresh"]) == (200, "not_cached")
+            assert automatic.json()["pull"]["refreshing"] is False
+            for _ in range(10):
+                assert not client.get("/api/source/status").json()["refreshing"]
+            assert _gh_reads(stand) == []
+            assert (sorted(pulls_dir.iterdir()) if pulls_dir.exists() else []) == before
+
+            fetched = client.post(_REFRESH_ROUTE, json={"number": 8, "retry": True}, headers=_JSON)
+            assert (fetched.status_code, fetched.json()["refresh"]) == (202, "started")
+            assert fetched.json()["pull"]["state"] == "pending"
+            while _read(client, 8).json()["refreshing"]:
+                time.sleep(0.01)
+            page = _read(client, 8).json()
+            assert (page["state"], page["record"]["pull"]["number"]) == ("current", 8)
+            assert any("pulls/8" in " ".join(args) for args in _gh_reads(stand))
+            # Files changed compares the pull request's own commits, whatever is pinned.
+            assert client.get(page["comparison_route"]).status_code == 200
+            # Opening it moved no pin, and left the status naming no pull request.
+            status = client.get("/api/source/status").json()
+            assert (status["pull_request"], status["ref"]) == (
+                None,
+                f"refs/remotes/origin/{DEFAULT_BRANCH}",
+            )
+    finally:
+        serve_mirror(None)
+        git_repo.clear_repo_cache()
+
+
+def test_an_automatic_request_refreshes_a_record_once_a_window_and_waits_for_a_rate_limit(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each number is held to one attempt per window, and a rate limit to its reset; a
+    reader's own request is not held to either."""
+
+    stand.refresh(8)
+    now = [FETCHED_AT]
+    monkeypatch.setattr(pulls, "utc_now", lambda: now[0])
+
+    def ask(client: TestClient, **fields: Any) -> tuple[int, str]:
+        answer = client.post(_REFRESH_ROUTE, json={"number": 8, **fields}, headers=_JSON)
+        while _read(client, 8).json()["refreshing"]:
+            time.sleep(0.01)
+        return answer.status_code, answer.json()["refresh"]
+
+    try:
+        _serving_repository_url(stand, monkeypatch)
+        with TestClient(app) as client:
+            settle(client)
+            assert ask(client) == (200, "not_due"), "just fetched"
+            now[0] = FETCHED_AT + timedelta(seconds=FRESHNESS_WINDOW_S + 1)
+            assert ask(client) == (202, "started"), "stale"
+            assert _read(client, 8).json()["state"] == "current"
+            assert ask(client) == (200, "not_due")
+
+            # A failing refresh: asked again only after a window.
+            stand.answer({**scenario(stand.origin), "api_failure": {"stderr": "x\n", "exit": 1}})
+            now[0] += timedelta(seconds=FRESHNESS_WINDOW_S + 1)
+            assert ask(client) == (202, "started")
+            assert _read(client, 8).json()["last_refresh"]["outcome"] != "succeeded"
+            assert ask(client) == (200, "not_due")
+            assert ask(client, retry=True) == (202, "started"), "a reader is not held to it"
+            now[0] += timedelta(seconds=FRESHNESS_WINDOW_S + 1)
+
+            # A rate limit: past the window, and still not due until it lifts.
+            lifts_at = now[0] + timedelta(minutes=30)
+            path = "repos/octo/demo/pulls/8"
+            stand.answer(
+                _api(
+                    scenario(stand.origin),
+                    path,
+                    {
+                        "status": 403,
+                        "headers": {
+                            "X-Ratelimit-Remaining": "0",
+                            "X-Ratelimit-Reset": str(int(lifts_at.timestamp())),
+                        },
+                        "body": {"message": "API rate limit exceeded"},
+                    },
+                )
+            )
+            assert ask(client) == (202, "started")
+            last = _read(client, 8).json()["last_refresh"]
+            assert (last["outcome"], last["reset_at"]) == (
+                "rate_limited",
+                lifts_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            )
+            now[0] += timedelta(seconds=FRESHNESS_WINDOW_S + 1)
+            assert ask(client) == (200, "not_due"), "past the window, before the reset"
+            now[0] = lifts_at
+            stand.answer(scenario(stand.origin))
+            assert ask(client) == (202, "started"), "the limit has lifted"
+            assert _read(client, 8).json()["state"] == "current"
+    finally:
+        serve_mirror(None)
+        git_repo.clear_repo_cache()
+
+
+def test_past_the_bound_on_jobs_a_request_is_refused_and_starts_nothing(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A number already running is joined at the bound. The attended pull request's refresh
+    is never refused, and a job that ends makes room. Asserted over the jobs that ran, with
+    no gh, since what is bounded is starting them."""
+
+    _stand, client = pinned_pull
+    gate = threading.Event()
+    ran: list[int] = []
+
+    async def waiting(served: ServedPull) -> None:
+        ran.append(served.number)
+        await asyncio.to_thread(gate.wait, 30)
+
+    monkeypatch.setattr(ServedPull, "refresh", waiting)
+
+    def ask(number: int) -> tuple[int, str]:
+        answer = client.post(_REFRESH_ROUTE, json={"number": number, "retry": True}, headers=_JSON)
+        return answer.status_code, answer.json()["refresh"]
+
+    first_past = 100 + MAX_PULL_JOBS
+    for number in range(100, first_past):
+        assert ask(number) == (202, "started")
+    assert ask(first_past) == (429, "too_many")
+    refused = client.post(
+        _REFRESH_ROUTE, json={"number": first_past, "retry": True}, headers=_JSON
+    ).json()
+    assert refused["code"] == "too_many" and refused["pull"]["refreshing"] is False
+    assert ask(100) == (202, "joined"), "a number already running is joined at the bound"
+    session = mirror_session(app)
+    assert session is not None
+    assert client.portal is not None
+    assert client.portal.call(_attended_refresh, session) == "started"
+    assert _read(client, first_past).json()["refreshing"] is False
+    gate.set()
+    while (
+        _read(client, 100 + MAX_PULL_JOBS - 1).json()["refreshing"]
+        or _read(client, 7).json()["refreshing"]
+    ):
+        time.sleep(0.01)
+    assert ask(first_past) == (202, "started"), "the jobs ended, so there is room"
+    while _read(client, first_past).json()["refreshing"]:
+        time.sleep(0.01)
+    assert sorted(ran) == sorted({*range(100, first_past), 7, first_past})
+    assert len(ran) == MAX_PULL_JOBS + 2, "one job for each"
+
+
+async def _attended_refresh(session: Any) -> Any:
+    return session.request_companion_refresh()
 
 
 def test_a_commit_url_newer_than_the_record_refreshes_the_pull_request_to_serve_it(

@@ -6,12 +6,19 @@
 // `GET /api/plugin/github/pull` into what the page shows; `createPullController` owns
 // polling that route while the page is visible (quickly while a refresh runs or the
 // record is pending, slowly otherwise, with If-None-Match so an unchanged answer is a
-// 304), the refresh a stale page offers (`POST /api/plugin/github/pull-refresh`), the
+// 304), the refresh a stale page asks for and offers and an absent page offers
+// (`POST /api/plugin/github/pull-refresh`), the
 // switch to the pull request's head when the pin is elsewhere (`POST /api/source/pin`),
 // the tab, and the Markdown of each text, asked for one part at a time from
 // `GET /api/plugin/github/pull-markdown` and kept only for the record it was rendered
 // from. `mountPullPage` is the browser glue: real fetch, timers, and paint.
 // tests/dom/github-pull-page-session.js runs the same functions from the command line.
+//
+// What starts a fetch: a page opened at an address shows what is cached, whether the address
+// was typed, followed from rendered content, or reached by Back, so only a reader's press of
+// Fetch adds a pull request to the cache. A page with a record refreshes it by itself while
+// it is visible and stale, as a stale mirror does, once per visible period, and the server
+// holds each number to one attempt per window.
 //
 // All text is the pull request's own and untrusted. Paint writes it with textContent;
 // only KPress's Markdown HTML is parsed, and only after it is reduced to an allowlist of
@@ -580,7 +587,9 @@ export function describePull(envelope, page) {
     model.message =
       envelope.state === "pending"
         ? "Fetching the pull request…"
-        : (ABSENCE[envelope.reason ?? ""] ?? "No data for this pull request is cached.");
+        : (page.error ??
+          ABSENCE[envelope.reason ?? ""] ??
+          "No data for this pull request is cached.");
     model.canRefresh =
       envelope.state === "absent" && envelope.reason !== "not_github" && !envelope.refreshing;
     return model;
@@ -706,6 +715,9 @@ export function createPullController(deps, options) {
   let timer = null;
   let polling = false;
   let disposed = false;
+  // One refresh asked for by itself per visible period: a stale page whose refresh cannot
+  // run must not ask again on every poll.
+  let refreshAskedWhileVisible = false;
   /** @type {string | null} */
   let error = null;
   /** @type {string | null} */
@@ -815,37 +827,62 @@ export function createPullController(deps, options) {
     } finally {
       polling = false;
     }
+    if (disposed) {
+      return;
+    }
+    render();
+    scheduleNext();
+    if (
+      deps.isVisible() &&
+      envelope?.state === "stale" &&
+      !envelope.refreshing &&
+      !refreshAskedWhileVisible
+    ) {
+      refreshAskedWhileVisible = true;
+      await askForRefresh({ number: options.number });
+    }
+  }
+
+  /**
+   * Ask the server for a refresh and take the envelope it answers with. A refusal of the
+   * page's own request says nothing to the reader, whose page still shows what it did and
+   * still offers Refresh.
+   *
+   * @param {{number: number, retry?: boolean}} ask
+   */
+  async function askForRefresh(ask) {
+    const request = ++sent;
+    try {
+      const response = await deps.request("POST", REFRESH_ROUTE, { body: ask });
+      const body = /** @type {{pull?: unknown, error?: unknown} | null} */ (response.body);
+      if (
+        (response.status === 202 || response.status === 200) &&
+        body !== null &&
+        isEnvelope(body.pull)
+      ) {
+        accept(body.pull, request);
+        // The answer changed; the next poll must not be answered by a 304.
+        etag = null;
+        error = null;
+      } else if (ask.retry) {
+        const said = body !== null && typeof body.error === "string" ? body.error : null;
+        error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
+      }
+    } catch {
+      if (ask.retry) {
+        error = "The refresh request failed.";
+      }
+    }
     if (!disposed) {
       render();
       scheduleNext();
     }
   }
 
+  /** A reader's own press of Fetch or Refresh, which the server always takes as due. */
   async function requestRefresh() {
-    if (disposed || !model().canRefresh) {
-      return;
-    }
-    const request = ++sent;
-    try {
-      const response = await deps.request("POST", REFRESH_ROUTE, {
-        body: { number: options.number, retry: true },
-      });
-      const body = /** @type {{pull?: unknown, error?: unknown} | null} */ (response.body);
-      if (response.status === 202 && body !== null && isEnvelope(body.pull)) {
-        accept(body.pull, request);
-        // The answer changed; the next poll must not be answered by a 304.
-        etag = null;
-        error = null;
-      } else {
-        const said = body !== null && typeof body.error === "string" ? body.error : null;
-        error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
-      }
-    } catch {
-      error = "The refresh request failed.";
-    }
-    if (!disposed) {
-      render();
-      scheduleNext();
+    if (!disposed && model().canRefresh) {
+      await askForRefresh({ number: options.number, retry: true });
     }
   }
 
@@ -953,6 +990,7 @@ export function createPullController(deps, options) {
     }
     if (!deps.isVisible()) {
       clearTimer();
+      refreshAskedWhileVisible = false;
       return;
     }
     void poll();

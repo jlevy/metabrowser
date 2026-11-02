@@ -71,6 +71,22 @@ function assert(condition, message) {
   }
 }
 
+/**
+ * What a page that a step opens for one decision shows of it: its state and what it offers.
+ * The whole page is `summarize`'s, once per kind of record, and tryscript's matcher has a
+ * limit on how long one transcript can be.
+ */
+function summarizeState(model) {
+  return {
+    status: model.status,
+    message: model.message,
+    canRefresh: model.canRefresh,
+    freshness: model.freshness,
+    failure: model.failure,
+    headOffer: model.headOffer === null ? null : model.headOffer.ref,
+  };
+}
+
 /** What a reader would see, in a line per item. */
 function summarize(model) {
   const pull = model.pull;
@@ -302,7 +318,7 @@ function createPage(runtime, options) {
       }
       if (paints.length > 0) {
         const last = paints[paints.length - 1];
-        entry.paint = summarize(last);
+        entry.paint = options.brief ? summarizeState(last) : summarize(last);
         if (last.pull !== null && last.tab === "") {
           const next = { key: runtime.conversationKey(last), recordAt: last.recordAt };
           entry.conversation = runtime.conversationAction(conversation, next);
@@ -662,10 +678,12 @@ async function main() {
 
   page.clock.now = Date.parse("2026-09-17T12:05:30Z");
   server.pull = recorded.stale;
-  steps.push(await page.step("the record goes stale", async () => page.fire()));
-
   server.refresh.push(recorded.refresh_again);
-  steps.push(await page.step("refresh the stale page", () => controller.requestRefresh()));
+  steps.push(
+    await page.step("the record goes stale: the page asks for a refresh by itself", async () =>
+      page.fire(),
+    ),
+  );
   server.pull = recorded.stale_refreshing;
   steps.push(await page.step("still refreshing", async () => page.fire()));
 
@@ -706,13 +724,74 @@ async function main() {
   steps.push(await page.step("dispose", async () => controller.dispose()));
 
   // A page opened in a background tab, on its Files changed: it reads the record once so
-  // it has something to show, and polls only once it is visible.
-  const background = createPage(runtime, { number: 7, tab: "files" });
+  // it has something to show, and polls only once it is visible. Its record is stale, and
+  // it asks for a refresh only then.
+  const background = createPage(runtime, { number: 7, tab: "files", brief: true });
   background.setVisible(false);
-  background.server.pull = recorded.current;
+  background.clock.now = page.clock.now;
+  background.server.pull = recorded.stale;
   steps.push(
-    await background.step("a page opened in the background reads once", () =>
+    await background.step("a page opened in the background reads once and asks for nothing", () =>
       background.controller.start(),
+    ),
+  );
+  background.setVisible(true);
+  background.server.refresh.push(recorded.refresh_again);
+  steps.push(
+    await background.step("shown, it asks for its refresh", async () =>
+      background.controller.onVisibilityChange(),
+    ),
+  );
+
+  // A page whose refresh failed a moment ago: its own request is not due, and it asks once
+  // per visible period, not on every poll. A reader's press still goes through.
+  const failing = createPage(runtime, { number: 8, tab: "", brief: true });
+  failing.clock.now = Date.parse("2026-09-17T12:30:30Z");
+  failing.server.pull = recorded.failed;
+  failing.server.refresh.push(recorded.not_due);
+  steps.push(
+    await failing.step("a stale page asks once, and its refresh is not due", () =>
+      failing.controller.start(),
+    ),
+  );
+  steps.push(await failing.step("its next poll asks nothing", async () => failing.fire()));
+  failing.setVisible(false);
+  await failing.controller.onVisibilityChange();
+  failing.setVisible(true);
+  failing.server.refresh.push(recorded.not_due);
+  steps.push(
+    await failing.step("shown again, it may ask once more", async () =>
+      failing.controller.onVisibilityChange(),
+    ),
+  );
+  failing.server.refresh.push(recorded.failed_again);
+  steps.push(
+    await failing.step("a reader's Refresh is always taken", () =>
+      failing.controller.requestRefresh(),
+    ),
+  );
+
+  // A pull request with no record is fetched only by a reader's press: however often the
+  // page is read and shown, nothing else asks. Past the bound on jobs the press is refused,
+  // and the page says why and still offers it.
+  const absent = createPage(runtime, { number: 14, tab: "", brief: true });
+  absent.server.pull = recorded.absent_14;
+  steps.push(
+    await absent.step("an address alone reads what is cached", () => absent.controller.start()),
+  );
+  steps.push(await absent.step("polling it asks for no fetch", async () => absent.fire()));
+  absent.setVisible(false);
+  await absent.controller.onVisibilityChange();
+  absent.setVisible(true);
+  steps.push(
+    await absent.step("nor does showing it again", async () =>
+      absent.controller.onVisibilityChange(),
+    ),
+  );
+  absent.server.refresh.push(recorded.too_many);
+  steps.push(
+    await absent.step("a press past the bound is refused and says why", () =>
+      absent.controller.requestRefresh(),
     ),
   );
 
@@ -749,6 +828,13 @@ async function main() {
       return [name, { header: summarize(model).header, checks: model.checks?.counts ?? null }];
     }),
   );
+
+  // A server with no GitHub repository offers nothing to fetch.
+  const notGithub = runtime.describePull(recorded.not_github.body, {
+    number: 7,
+    tab: "",
+    nowMs: page.clock.now,
+  });
 
   // The links a rendered text keeps.
   const base = record.pull.html_url;
@@ -813,6 +899,11 @@ async function main() {
       {
         steps,
         states,
+        notGithub: {
+          status: notGithub.status,
+          message: notGithub.message,
+          canRefresh: notGithub.canRefresh,
+        },
         links,
         wire: runtime.gitPathWire("src/app.txt"),
         pageDefense: inert,

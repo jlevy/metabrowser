@@ -14,8 +14,11 @@ Markdown, switched the pin to the head the record names, went stale, refreshed t
 record with the same text, and refreshed again to one with a hostile comment, recorded
 both as the hook answers it and as KPress alone renders it. The same server then fetched
 pull requests 8 and 9, merged and closed, and read each once, for the header's wording
-in those states and a skipped check, then read 8 again once GitHub named no merger. The
-first test here replays that story and fails when the recording no longer matches.
+in those states and a skipped check, then read 8 again once GitHub named no merger. With
+GitHub out of reach, a refresh of 8 failed and the page's own request found it not due,
+and a press of Fetch for 14 was refused past the bound on jobs. A folder's server answered
+last. The first test here replays that story and fails when the recording no longer
+matches.
 
 The clock is fixed, so fetch times are literal. Entity tags are the session's own, since
 the server's are scoped to the build; which answers share one is kept. The Markdown is
@@ -54,9 +57,9 @@ from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.git import repo as git_repo
 from metabrowser.git.tree_source import GitRevisionSubject
-from metabrowser.mirror_refresh import mirror_session, serve_mirror
+from metabrowser.mirror_refresh import MAX_PULL_JOBS, mirror_session, serve_mirror
 from metabrowser.server import app
-from metabrowser.source import attach_subject
+from metabrowser.source import attach_subject, reset_source_session
 from tests.github_pull_fixture import (
     CANONICAL,
     DEFAULT_BRANCH,
@@ -280,8 +283,9 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             clock[0] = FETCHED_AT + timedelta(minutes=5)
             recorded["stale"] = _answer(client.get(_PULL, params=read_7))
             release.clear()
+            # The page asks by itself, which is not a reader's action: the record is due.
             recorded["refresh_again"] = _answer(
-                client.post(_REFRESH, json=ask_7, headers=JSON_BODY)
+                client.post(_REFRESH, json=read_7, headers=JSON_BODY)
             )
             recorded["stale_refreshing"] = _answer(client.get(_PULL, params=read_7))
             release.set()
@@ -330,9 +334,47 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             for name, value in install_fake_gh(tmp_path, answers).items():
                 monkeypatch.setenv(name, value)
             recorded["merged_unattributed"] = _fetched(client, 8)
+
+            # Half an hour on, GitHub is out of reach. A reader's refresh of 8 fails, so the
+            # page's own request finds it tried a moment ago; a reader may still ask again.
+            clock[0] = FETCHED_AT + timedelta(minutes=30)
+            offline = {**answers, "api_failure": {"stderr": "dial tcp: i/o timeout\n", "exit": 1}}
+            for name, value in install_fake_gh(tmp_path, offline).items():
+                monkeypatch.setenv(name, value)
+            recorded["failed"] = _fetched(client, 8)
+            recorded["not_due"] = _answer(
+                client.post(_REFRESH, json={"number": 8}, headers=JSON_BODY)
+            )
+            recorded["failed_again"] = _answer(
+                client.post(_REFRESH, json={"number": 8, "retry": True}, headers=JSON_BODY)
+            )
+            while client.get(_PULL, params={"number": 8}).json()["refreshing"]:
+                time.sleep(0.01)
+
+            # A number with no record, and a press of Fetch past the bound on jobs.
+            recorded["absent_14"] = _answer(client.get(_PULL, params={"number": 14}))
+            gate = threading.Event()
+
+            async def waiting(_served: ServedPull) -> None:
+                await asyncio.to_thread(gate.wait, 30)
+
+            monkeypatch.setattr(ServedPull, "refresh", waiting)
+            for number in range(20, 20 + MAX_PULL_JOBS):
+                started = client.post(
+                    _REFRESH, json={"number": number, "retry": True}, headers=JSON_BODY
+                )
+                assert started.status_code == 202
+            recorded["too_many"] = _answer(
+                client.post(_REFRESH, json={"number": 14, "retry": True}, headers=JSON_BODY)
+            )
+            gate.set()
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
+    # A server with no GitHub repository, which answers for no number.
+    reset_source_session()
+    with TestClient(app) as client:
+        recorded["not_github"] = _answer(client.get(_PULL, params={"number": 7}))
     return _session_tags(recorded)
 
 
@@ -345,6 +387,14 @@ def test_recording_is_what_a_served_pull_request_answers(
         "not_cached",
     )
     assert recorded["refresh_started"]["body"]["pull"]["state"] == "pending"
+    assert recorded["refresh_again"]["body"]["refresh"] == "started"
+    assert recorded["not_due"]["body"]["refresh"] == "not_due"
+    assert recorded["failed"]["body"]["last_refresh"]["outcome"] == "network_error"
+    assert (recorded["too_many"]["status"], recorded["too_many"]["body"]["code"]) == (
+        429,
+        "too_many",
+    )
+    assert recorded["not_github"]["body"]["reason"] == "not_github"
     assert recorded["pending"]["body"]["refreshing"] is True
     assert recorded["current"]["body"]["state"] == "current"
     assert "<strong>two</strong>" in recorded["markdown body"]["body"]["html"]

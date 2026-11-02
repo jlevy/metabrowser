@@ -363,58 +363,13 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "the record goes stale",
+      "step": "the record goes stale: the page asks for a refresh by itself",
       "requests": [
-        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
-      ],
-      "timer": "slow",
-      "paints": 1,
-      "paint": {
-        "status": "stale",
-        "tab": "conversation",
-        "message": null,
-        "canRefresh": true,
-        "freshness": "Fetched 5 min ago by gh:octo-reader · may be out of date",
-        "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
-        "labels": [
-          "enhancement"
-        ],
-        "merge": "No conflicts with the base branch",
-        "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
-          "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
-          "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
-        ],
-        "reviewComments": [
-          "src/app.txt:outdated maintainer +hunk",
-          "src/app.txt:2 forker (reply) +hunk"
-        ],
-        "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
-          "items": [
-            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
-          ]
-        },
-        "notes": [],
-        "headOffer": null,
-        "comparison": "f92fd713acd5...85fcb2fa9e77"
-      },
-      "conversation": "keep",
-      "markdown": []
-    },
-    {
-      "step": "refresh the stale page",
-      "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true}"
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)",
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
       ],
       "timer": "fast",
-      "paints": 1,
+      "paints": 2,
       "paint": {
         "status": "stale",
         "tab": "conversation",
@@ -600,47 +555,145 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "a page opened in the background reads once",
+      "step": "a page opened in the background reads once and asks for nothing",
       "requests": [
         "GET /api/plugin/github/pull?number=7"
       ],
       "timer": null,
       "paints": 2,
       "paint": {
-        "status": "current",
-        "tab": "files",
+        "status": "stale",
+        "message": null,
+        "canRefresh": true,
+        "freshness": "Fetched 5 min ago by gh:octo-reader · may be out of date",
+        "failure": null,
+        "headOffer": null
+      },
+      "markdown": []
+    },
+    {
+      "step": "shown, it asks for its refresh",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)",
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "fast",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Refreshing… · fetched 5 min ago by gh:octo-reader",
         "failure": null,
-        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
-        "labels": [
-          "enhancement"
-        ],
-        "merge": "No conflicts with the base branch",
-        "timeline": [
-          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
-          "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
-          "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
-        ],
-        "reviewComments": [
-          "src/app.txt:outdated maintainer +hunk",
-          "src/app.txt:2 forker (reply) +hunk"
-        ],
-        "checks": {
-          "counts": {
-            "success": 2,
-            "pending": 1
-          },
-          "items": [
-            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
-          ]
-        },
-        "notes": [],
-        "headOffer": "This page's code is c691256511d0, not the pull request's head 85fcb2fa9e77. [Switch to the head] -> refs/pull/7/head",
-        "comparison": "f92fd713acd5...85fcb2fa9e77 (head moved)"
+        "headOffer": null
+      },
+      "markdown": []
+    },
+    {
+      "step": "a stale page asks once, and its refresh is not due",
+      "requests": [
+        "GET /api/plugin/github/pull?number=8",
+        "POST /api/plugin/github/pull-refresh {\"number\":8}"
+      ],
+      "timer": "slow",
+      "paints": 2,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": true,
+        "freshness": "Fetched 24 min ago by gh:octo-reader · may be out of date",
+        "failure": "The last refresh failed: gh could not reach api.github.com",
+        "headOffer": "refs/pull/8/head"
+      },
+      "conversation": "repaint",
+      "markdown": []
+    },
+    {
+      "step": "its next poll asks nothing",
+      "requests": [
+        "GET /api/plugin/github/pull?number=8"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "markdown": []
+    },
+    {
+      "step": "shown again, it may ask once more",
+      "requests": [
+        "GET /api/plugin/github/pull?number=8 (If-None-Match)",
+        "POST /api/plugin/github/pull-refresh {\"number\":8}"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "markdown": []
+    },
+    {
+      "step": "a reader's Refresh is always taken",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":8,\"retry\":true}"
+      ],
+      "timer": "fast",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Refreshing… · fetched 24 min ago by gh:octo-reader",
+        "failure": null,
+        "headOffer": "refs/pull/8/head"
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "an address alone reads what is cached",
+      "requests": [
+        "GET /api/plugin/github/pull?number=14"
+      ],
+      "timer": "slow",
+      "paints": 2,
+      "paint": {
+        "status": "absent",
+        "message": "No data for this pull request is cached yet.",
+        "canRefresh": true,
+        "freshness": null,
+        "failure": null,
+        "headOffer": null
+      },
+      "markdown": []
+    },
+    {
+      "step": "polling it asks for no fetch",
+      "requests": [
+        "GET /api/plugin/github/pull?number=14 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "markdown": []
+    },
+    {
+      "step": "nor does showing it again",
+      "requests": [
+        "GET /api/plugin/github/pull?number=14 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "markdown": []
+    },
+    {
+      "step": "a press past the bound is refused and says why",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":14,\"retry\":true}"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "absent",
+        "message": "The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
+        "canRefresh": true,
+        "freshness": null,
+        "failure": null,
+        "headOffer": null
       },
       "markdown": []
     },
@@ -707,6 +760,11 @@ $ node tests/dom/github-pull-page-session.js
         "skipped": 1
       }
     }
+  },
+  "notGithub": {
+    "status": "absent",
+    "message": "This server serves no GitHub repository.",
+    "canRefresh": false
   },
   "links": [
     {

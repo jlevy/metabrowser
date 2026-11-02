@@ -160,6 +160,51 @@ def test_the_mirror_waits_its_turn_behind_the_pull_requests_fetch() -> None:
     assert asyncio.run(scenario()) == ["pull start", "pull end", "mirror"]
 
 
+def test_any_pull_requests_refresh_takes_its_turn_and_counts_only_when_attended() -> None:
+    """A pull request the session is not attending to runs under the same turn at the store,
+    and neither its staleness nor its refresh is the mirror's."""
+
+    class _Numbered(_Set):
+        def __init__(self, events: list[str]) -> None:
+            self.events = events
+            self.by_number: dict[int, _Companion] = {}
+
+        def key(self, number: int) -> str:
+            return f"store:pull/{number}"
+
+        async def companion(self, number: int) -> _Companion:
+            served = self.by_number.setdefault(number, _Companion(self.events, stale=True))
+            served.key = self.key(number)
+            return served
+
+    async def scenario() -> list[str]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        pulls = _Numbered(events)
+        session = MirrorSession(
+            _Mirror(events, fetched_at=_now()), coordinator, pull_requests=pulls, fetch_on_miss=True
+        )
+        await session.observe()
+        eight = await pulls.companion(8)
+        eight.gate = asyncio.Event()
+        assert session.request_pull_refresh(8) == "started"
+        assert session.request_pull_refresh(8) == "joined"
+        await eight.started.wait()
+        assert session.pull_refreshing(8) is True and session.pull_refreshing(9) is False
+        # It is nothing to the session's own state, and to the status built from it.
+        assert session.companion is None and session.companion_refreshing() is False
+        assert session.is_stale() is False and session.refreshing() is False
+        session.request_refresh(for_selection=True)
+        for _ in range(10):
+            await asyncio.sleep(0)
+        assert events == ["pull start"], "the mirror's fetch must wait for the pull request's"
+        eight.gate.set()
+        await _settle(coordinator)
+        return events
+
+    assert asyncio.run(scenario()) == ["pull start", "pull end", "mirror"]
+
+
 @pytest.mark.parametrize(
     ("serving", "mirror_fresh", "pull_stale", "for_selection", "expected"),
     [
