@@ -381,6 +381,7 @@ async def comparison_handler(request: Request) -> Response:
         )
     if hydration.left_out:
         projected, resolved = _say_left_out(projected, resolved, hydration.left_out)
+    projected = _past_the_bounds(projected, hydration)
     document = _document_from(resolved, manifest, tuple(projected), hydration.patches)
     # A large answer is seconds of serializing and compressing, so neither is done on the
     # event loop: 29 MB took 712 ms to serialize, measured in explorations/performance-loop.
@@ -394,6 +395,20 @@ async def comparison_handler(request: Request) -> Response:
 
 def _json_body(document: ChangeSetDocument) -> bytes:
     return bytes(JSONResponse(dump_document(document)).body)
+
+
+def _past_the_bounds(files: list[FileChange], hydration: PatchHydration) -> list[FileChange]:
+    """Say what became of the files one run could not hydrate."""
+    if not hydration.too_large and not hydration.deferred:
+        return files
+    states = {file_id: Availability.too_large for file_id in hydration.too_large}
+    states.update({file_id: Availability.deferred for file_id in hydration.deferred})
+    return [
+        change.model_copy(update={"availability": states[change.id]})
+        if change.id in states
+        else change
+        for change in files
+    ]
 
 
 def _say_left_out(

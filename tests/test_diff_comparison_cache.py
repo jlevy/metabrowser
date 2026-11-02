@@ -51,18 +51,18 @@ class _Spy:
         self.manifests = 0
         self.patches = 0
         real_manifest = GitDiffSource.manifest
-        real_parsed = GitDiffSource._parsed_patch
+        real_patch = GitDiffSource._patch
 
         async def manifest(source: GitDiffSource, resolved: Any) -> Any:
             self.manifests += 1
             return await real_manifest(source, resolved)
 
-        async def parsed(source: GitDiffSource, resolved: Any, pathspec: Any) -> Any:
+        async def patch(source: GitDiffSource, *args: Any, **kwargs: Any) -> bytes:
             self.patches += 1
-            return await real_parsed(source, resolved, pathspec)
+            return await real_patch(source, *args, **kwargs)
 
         monkeypatch.setattr(GitDiffSource, "manifest", manifest)
-        monkeypatch.setattr(GitDiffSource, "_parsed_patch", parsed)
+        monkeypatch.setattr(GitDiffSource, "_patch", patch)
 
 
 def _block(title: str, route: str, response: Response, spy: _Spy) -> str:

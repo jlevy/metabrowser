@@ -172,6 +172,42 @@ async function main() {
     );
   }
 
+  // ── Held: a page with no use for the catalog fetches none until it has one ──
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+
+    feed.hold();
+    feed.start();
+    await tick();
+    check("a held feed fetches nothing on start", pending.length === 0);
+    feed.release();
+    await tick();
+    check("release runs the start it held", pending.length === 1);
+    feed.release();
+    await tick();
+    check("a second release fetches nothing more", pending.length === 1);
+    pending[0].resolve(jsonResponse({ complete: true, files: [{ p: "bulk.txt", e: ".txt" }] }));
+    await tick();
+    await tick();
+    check("what a held feed fetches applies as ever", catalog.calls[0]?.kind === "bulk");
+
+    const idleCatalog = makeCatalog();
+    const neverStarted = makeFetch();
+    const idle = sandbox.MetabrowserCatalogFeed.create({
+      catalog: idleCatalog,
+      fetchImpl: neverStarted.impl,
+    });
+    idle.hold();
+    idle.release();
+    await tick();
+    check("release with no start waiting fetches nothing", neverStarted.pending.length === 0);
+    idle.start();
+    await tick();
+    check("a start after release is an ordinary start", neverStarted.pending.length === 1);
+  }
+
   // ── Sentinel snapshots: first is not a continuity break ───────
   {
     const catalog = makeCatalog();

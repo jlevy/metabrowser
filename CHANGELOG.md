@@ -958,6 +958,16 @@ Large pull requests:
   `&build=` naming this build it is also `immutable`, so a browser’s Back makes no
   request. Its documents are unchanged, and a folder’s comparison keeps nothing and sends
   neither header.
+- A pull request’s Conversation fetches Files changed when the browser is idle, so the
+  tab opens with no request.
+  A pull request’s page no longer fetches the repository’s file catalog until its search
+  palette opens or the reader leaves for a file.
+- A comparison’s 8 MiB bound applies per file.
+  One file past it says it is too large to show, a file that would take a request past
+  it loads when the reader reaches it, and neither costs the rest of the comparison.
+  A file past 8 MiB of the whole patch could not be loaded at all before.
+- A diff with files still to load says how many, such as “50 of 1,183 files loaded; the
+  rest load as you reach them”, in a commit’s diff in a served folder as well.
 
 Fixes:
 

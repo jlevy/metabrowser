@@ -15,6 +15,7 @@ import pytest
 
 from metabrowser import server
 from metabrowser.builtin_plugins.diff import sidekick
+from metabrowser.diff.adapters import git as git_adapter
 from metabrowser.diff.adapters.git import PatchHydration
 from metabrowser.diff.format import validate_document
 from metabrowser.source import ContentHandle, FilesystemContentSource
@@ -212,6 +213,42 @@ def test_a_file_the_diff_did_not_produce_is_named_and_the_rest_are_kept(
     assert document.resolved.warnings == (
         f"1 file(s) could not be read from the produced diff: {path}",
     )
+
+
+def test_a_file_past_the_bound_says_so_and_the_rest_are_served(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    (root / "keep.txt").write_text("keep\n")
+    base = _commit(root, "base")
+    (root / "a.txt").write_text("a\n" * 200)
+    (root / "big.txt").write_text("big line\n" * 1000)
+    (root / "c.txt").write_text("c\n" * 200)
+    target = _commit(root, "target")
+    server._set_root_dir(root)
+    monkeypatch.setattr(git_adapter, "MAX_FILE_PATCH_BYTES", 1000)
+
+    status, body = _comparison(left=base, right=target)
+
+    assert status == 200, body
+    document = validate_document(body)
+    states = {(c.new or c.old).path: c.availability.value for c in document.manifest.files}  # pyright: ignore[reportOptionalMemberAccess]
+    assert states == {"a.txt": "ready", "big.txt": "too_large", "c.txt": "deferred"}
+    assert list(document.patches) == [next(c.id for c in document.manifest.files)]
+    assert document.manifest.totals.additions == 1400, "counts come from the manifest"
+
+    status, alone = _comparison(left=base, right=target, file="c.txt")
+    assert status == 200, alone
+    assert validate_document(alone).manifest.files[0].availability.value == "ready"
+    status, alone = _comparison(left=base, right=target, file="big.txt")
+    assert status == 200, alone
+    too_large = validate_document(alone)
+    assert too_large.manifest.files[0].availability.value == "too_large"
+    assert too_large.patches == {}
 
 
 # ── Event-loop discipline ───────────────────────────────────────

@@ -20,6 +20,7 @@ import pytest
 from metabrowser.diff.adapters import git as adapter
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource
+from metabrowser.diff.adapters.patch_file import parse_unified_patch
 from metabrowser.diff.apply import apply_change_set
 from metabrowser.diff.format import (
     Availability,
@@ -32,7 +33,7 @@ from metabrowser.diff.format import (
     dump_document,
     validate_document,
 )
-from metabrowser.git.process import GitLocation, repository_store_target
+from metabrowser.git.process import GitLocation, GitOutputTooLargeError, repository_store_target
 from tests.diff_fixture_repo import build_diff_fixture, git, materialize_tree
 from tests.required_tools import needs_git
 
@@ -249,7 +250,7 @@ def _whole_run(source: GitDiffSource, resolved: ResolvedComparison) -> dict[str,
     ready = [c.id for c in manifest.files if c.availability is Availability.ready]
     asked = [c.id for c in manifest.files]
     assert len(ready) < len(asked), "the fixture is meant to hold a binary file"
-    document = asyncio.run(source._parsed_patch(resolved, None))
+    document = parse_unified_patch(asyncio.run(source._patch(resolved, None)))
     found, left_out = source._patches_from(
         document, [c for c in manifest.files if c.availability is Availability.ready]
     )
@@ -321,7 +322,7 @@ def _limit_fixture(tmp_path: Path) -> tuple[Path, str, str]:
     return root, base, git(root, "rev-parse", "HEAD").decode().strip()
 
 
-def test_past_the_rename_limit_the_unrestricted_run_answers(tmp_path: Path) -> None:
+def test_past_the_rename_limit_asking_without_rename_detection_answers(tmp_path: Path) -> None:
     """The one way the runs differ. The whole run lists adds and deletes; a limited one of
     one add and one delete is under the limit and pairs them, which matches nothing."""
     root, base, target = _limit_fixture(tmp_path)
@@ -339,7 +340,7 @@ def test_past_the_rename_limit_the_unrestricted_run_answers(tmp_path: Path) -> N
 
 def _whole_run_of_all(source: GitDiffSource, resolved: ResolvedComparison) -> dict[str, Any]:
     manifest = asyncio.run(source.manifest(resolved))
-    document = asyncio.run(source._parsed_patch(resolved, None))
+    document = parse_unified_patch(asyncio.run(source._patch(resolved, None)))
     found, left_out = source._patches_from(document, list(manifest.files))
     assert left_out == []
     return _patch_bytes(found)
@@ -392,3 +393,88 @@ def test_past_the_argument_bound_the_diff_runs_unrestricted(
     assert adapter._pathspec([change]) is None
     hydrated = asyncio.run(source.hydrate(resolved, [change.id], manifest=manifest))
     assert hydrated.left_out == () and change.id in hydrated.patches
+
+
+# ── The bound is per file ───────────────────────────────────────────
+
+
+def _sized_fixture(tmp_path: Path) -> tuple[GitDiffSource, ResolvedComparison, ChangeSetManifest]:
+    """Files of known sizes: `big` past a small bound, and `a`, `b`, `c` within it."""
+    root = tmp_path / "sized"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    (root / "keep.txt").write_text("keep\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "base")
+    base = git(root, "rev-parse", "HEAD").decode().strip()
+    (root / "a.txt").write_text("a\n" * 30)
+    (root / "b.txt").write_text("b\n" * 30)
+    (root / "big.txt").write_text("big line\n" * 1000)
+    (root / "c.txt").write_text("c\n" * 30)
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "target")
+    target = git(root, "rev-parse", "HEAD").decode().strip()
+    source = GitDiffSource(root)
+    resolved = asyncio.run(source.resolve({"left": base, "right": target}))
+    return source, resolved, asyncio.run(source.manifest(resolved))
+
+
+def _ids(manifest: ChangeSetManifest) -> dict[str, str]:
+    return {c.new.path: c.id for c in manifest.files if c.new is not None}
+
+
+def test_a_file_past_the_bound_costs_only_itself(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, resolved, manifest = _sized_fixture(tmp_path)
+    ids = _ids(manifest)
+    monkeypatch.setattr(adapter, "MAX_FILE_PATCH_BYTES", 500)
+    asked = [ids["a.txt"], ids["big.txt"]]
+    hydrated = asyncio.run(source.hydrate(resolved, asked, manifest=manifest))
+    assert set(hydrated.patches) == {ids["a.txt"]}
+    assert hydrated.too_large == (ids["big.txt"],)
+    assert hydrated.deferred == () and hydrated.left_out == ()
+
+
+def test_a_file_past_what_one_run_hydrates_is_deferred_and_loads_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, resolved, manifest = _sized_fixture(tmp_path)
+    ids = _ids(manifest)
+    monkeypatch.setattr(adapter, "MAX_FILE_PATCH_BYTES", 400)
+    asked = [ids["a.txt"], ids["b.txt"], ids["c.txt"]]
+    hydrated = asyncio.run(source.hydrate(resolved, asked, manifest=manifest))
+    assert set(hydrated.patches) == {ids["a.txt"]}, "each is within the bound; the run is not"
+    assert set(hydrated.deferred) == {ids["b.txt"], ids["c.txt"]}
+    alone = asyncio.run(source.hydrate(resolved, [ids["c.txt"]], manifest=manifest))
+    assert set(alone.patches) == {ids["c.txt"]}
+
+
+def test_what_is_kept_parses_to_what_the_whole_patch_says(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, resolved, manifest = _sized_fixture(tmp_path)
+    ids = _ids(manifest)
+    whole = _whole_run_of_all(source, resolved)
+    monkeypatch.setattr(adapter, "MAX_FILE_PATCH_BYTES", 500)
+    asked = [ids["a.txt"], ids["big.txt"], ids["c.txt"]]
+    hydrated = asyncio.run(source.hydrate(resolved, asked, manifest=manifest))
+    assert _patch_bytes(hydrated.patches) == {
+        file_id: whole[file_id] for file_id in (ids["a.txt"], ids["c.txt"])
+    }
+
+
+def test_past_gits_output_cap_one_file_is_too_large_and_many_are_deferred(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, resolved, manifest = _sized_fixture(tmp_path)
+    ids = _ids(manifest)
+
+    async def overflows(*_args: Any, **_kwargs: Any) -> bytes:
+        raise GitOutputTooLargeError("too much")
+
+    monkeypatch.setattr(adapter, "run_git_at", overflows)
+    one = asyncio.run(source.hydrate(resolved, [ids["big.txt"]], manifest=manifest))
+    assert one.too_large == (ids["big.txt"],) and one.patches == {}
+    many = asyncio.run(source.hydrate(resolved, [ids["a.txt"], ids["b.txt"]], manifest=manifest))
+    assert many.deferred == (ids["a.txt"], ids["b.txt"]) and many.too_large == ()

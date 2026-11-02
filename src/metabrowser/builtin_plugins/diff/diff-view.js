@@ -44,7 +44,9 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {DiffViewApi | undefined} api
  * @property {number} activeHydrations
  * @property {AbortController} controller
+ * @property {number} deferredLeft Files of this comparison not here yet.
  * @property {boolean} disposed
+ * @property {number} fileTotal
  * @property {FileViewState[]} files
  * @property {number} generation
  * @property {IntersectionObserver | null} hydrationObserver
@@ -54,6 +56,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {HTMLElement | null} layoutControl
  * @property {number} layoutGeneration
  * @property {boolean} narrow The diff is too narrow for Split.
+ * @property {HTMLElement | null} partialNote
  * @property {Record<string, unknown>} resolved
  * @property {HTMLElement} root
  * @property {Promise<void>} enhancementTail
@@ -1260,6 +1263,34 @@ function renderDiffToolbar(totals, view, showSummary) {
 }
 
 /**
+ * What the reader is told while a comparison's files are not all here. A deferred file looks
+ * like a collapsed one until it comes near, so a page that does not say so reads as complete.
+ * Null once nothing is deferred. Pure.
+ *
+ * @param {number} deferred
+ * @param {number} total
+ * @returns {string | null}
+ */
+export function partialNote(deferred, total) {
+  if (deferred <= 0) {
+    return null;
+  }
+  const loaded = (total - deferred).toLocaleString("en-US");
+  return `${loaded} of ${total.toLocaleString("en-US")} files loaded; the rest load as you reach them`;
+}
+
+/** @param {MountedDiffState} view */
+function renderPartialNote(view) {
+  const note = view.partialNote;
+  if (note === null) {
+    return;
+  }
+  const text = partialNote(view.deferredLeft, view.fileTotal);
+  note.textContent = text ?? "";
+  note.hidden = text === null;
+}
+
+/**
  * Fetch one deferred file's hunks and splice them in, behind the
  * standard progress box.
  *
@@ -1297,6 +1328,12 @@ async function hydrateDeferred(body, change, revision, view) {
       );
     const only = loaded.manifest.files[0];
     const patch = only ? loaded.patches[String(only.id)] : undefined;
+    if (only && patch === undefined && AVAILABILITY_COPY[String(only.availability)]) {
+      // The server looked and has a reason: a file past the bound of one patch.
+      box.remove();
+      body.append(el("div", "diff-availability", AVAILABILITY_COPY[String(only.availability)]));
+      return;
+    }
     if (!only || patch === undefined) {
       throw new Error("the comparison returned no hunks for this file");
     }
@@ -1329,6 +1366,10 @@ async function hydrateDeferred(body, change, revision, view) {
   } finally {
     clearTimeout(slow);
     view.timers.delete(slow);
+    if (mountIsCurrent(view, generation)) {
+      view.deferredLeft -= 1;
+      renderPartialNote(view);
+    }
   }
 }
 
@@ -1487,7 +1528,9 @@ export function mountDiffView(container, document_, api, options = {}) {
     api,
     chosenLayout,
     controller: new AbortController(),
+    deferredLeft: 0,
     disposed: false,
+    fileTotal: 0,
     files: [],
     generation: 1,
     hydrationObserver: null,
@@ -1496,6 +1539,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     layoutControl: null,
     layoutGeneration: 0,
     narrow,
+    partialNote: null,
     resolved: /** @type {Record<string, unknown>} */ (document_.resolved ?? {}),
     root,
     enhancementTail: Promise.resolve(),
@@ -1529,6 +1573,15 @@ export function mountDiffView(container, document_, api, options = {}) {
     root.append(el("div", "diff-availability diff-warning", warning));
   }
   const context = { revision: String(document_.__revision ?? "") };
+  view.fileTotal = manifest.files.length;
+  if (context.revision) {
+    view.deferredLeft = manifest.files.filter((f) => f.availability === "deferred").length;
+  }
+  if (view.deferredLeft > 0) {
+    view.partialNote = el("div", "diff-availability diff-partial-note");
+    root.append(view.partialNote);
+    renderPartialNote(view);
+  }
   measureProjection(
     api,
     "diffMount:projection",

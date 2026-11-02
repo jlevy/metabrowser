@@ -182,6 +182,13 @@ function renderedText(host) {
     : host.children.map((child) => child.textContent).join("");
 }
 
+function tooLargeAnswer(byName) {
+  const answer = JSON.parse(JSON.stringify(byName.get("deferred-manifest-only")));
+  answer.manifest.files[0].availability = "too_large";
+  answer.patches = {};
+  return answer;
+}
+
 async function main() {
   const documentListeners = new Map();
   let hydrationObserver = null;
@@ -233,6 +240,7 @@ async function main() {
   const {
     composeTextRuns,
     mountDiffView: mountDiffViewImpl,
+    partialNote,
     setChangeLoader,
   } = await import(pathToFileURL(viewPath).href);
   const defaultTestApi = {
@@ -1094,6 +1102,59 @@ async function main() {
   const unwarned = new FakeElement("div");
   mountDiffView(unwarned, byName.get("modified-with-heading"));
   check("no warning, no notice", unwarned.find("diff-warning").length === 0);
+
+  // A partial view says so, and what it says follows the files as they arrive.
+  check("nothing deferred says nothing", partialNote(0, 1183) === null);
+  check(
+    "a partial count reads as a count",
+    partialNote(1133, 1183) === "50 of 1,183 files loaded; the rest load as you reach them",
+    partialNote(1133, 1183),
+  );
+  const partialDoc = JSON.parse(JSON.stringify(byName.get("deferred-manifest-only")));
+  partialDoc.__revision = "revision-1";
+  partialDoc.manifest.files.push({
+    ...JSON.parse(JSON.stringify(partialDoc.manifest.files[0])),
+    id: "f2",
+    new: { ...partialDoc.manifest.files[0].new, path: "second.py" },
+  });
+  partialDoc.manifest.totals.files = 2;
+  const partialHost = new FakeElement("div");
+  let answer;
+  setChangeLoader(
+    () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+  );
+  mountDiffView(partialHost, partialDoc);
+  const partialLine = () => partialHost.find("diff-partial-note")[0];
+  check(
+    "a partial view counts its deferred files",
+    partialLine().textContent.startsWith("0 of 2 files loaded"),
+    partialLine().textContent,
+  );
+  const partialBodies = partialHost.find("diff-file-body");
+  hydrationObserver.intersect(partialBodies[0].parentNode);
+  await nextTask();
+  answer(JSON.parse(JSON.stringify(byName.get("modified-with-heading"))));
+  await nextTask();
+  await nextTask();
+  check(
+    "the count follows a file as it arrives",
+    partialLine().textContent.startsWith("1 of 2 files loaded"),
+    partialLine().textContent,
+  );
+  hydrationObserver.intersect(partialBodies[1].parentNode);
+  await nextTask();
+  answer(tooLargeAnswer(byName));
+  await nextTask();
+  await nextTask();
+  check("a complete view says nothing more", partialLine().hidden === true);
+  check(
+    "a file too large to hydrate says so, as a reason",
+    partialBodies[1].text().includes("too large to show inline"),
+    partialBodies[1].text(),
+  );
 
   // A deleted empty file has no hunks and is not an unavailable one.
   const deletedEmpty = new FakeElement("div");

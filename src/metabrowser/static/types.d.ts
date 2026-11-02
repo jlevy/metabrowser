@@ -1677,6 +1677,9 @@ type MetabrowserCatalogFeedApi = Readonly<{
   onResync(): void;
   onSentinelSnapshot(): void;
   start(): void;
+  /** Keep the bulk fetch from starting until `release`. */
+  hold(): void;
+  release(): void;
 }>;
 
 type MetabrowserCatalogFeedRuntime = Readonly<{
@@ -1850,6 +1853,7 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
     getFileIcon?(path: string): { cls?: string; svg?: string };
     maxRows?: number;
     onNotFound?(path: string): void | Promise<void>;
+    onOpen?(): void;
     openFile(path: string): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
     overlay: MetabrowserOverlayRuntime;
     resolveFocusFallback?(previous: HTMLElement | null): HTMLElement | null;

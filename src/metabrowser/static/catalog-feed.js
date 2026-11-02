@@ -98,6 +98,8 @@
     let retryHandle = null;
     let disposed = false;
     let started = false;
+    let held = false;
+    let startWanted = false;
     let refetchWanted = false;
     let suppressNextSentinelRefetch = false;
     let authoritativeRefetchPending = false;
@@ -394,6 +396,10 @@
       if (disposed) {
         return;
       }
+      if (held) {
+        startWanted = true;
+        return;
+      }
       suppressNextSentinelRefetch = true;
       if (started) {
         requestContinuityRefetch();
@@ -401,6 +407,25 @@
       }
       started = true;
       void runFetch();
+    }
+
+    /**
+     * Keep the bulk fetch from starting until `release`, on a page that has no use for it
+     * yet. A pull request's page has none until its search palette opens or the reader
+     * leaves for a file: a repository's catalog was 1.9 MB decoded and parsed on the main
+     * thread of a page about one pull request, measured 2026-11-02.
+     */
+    function hold() {
+      held = !started;
+    }
+
+    /** Whatever `start` waited for runs now. */
+    function release() {
+      held = false;
+      if (startWanted) {
+        startWanted = false;
+        start();
+      }
     }
 
     /**
@@ -509,11 +534,13 @@
 
     return Object.freeze({
       dispose,
+      hold,
       onCatalogChange,
       onEventChange,
       onIndexComplete,
       onResync,
       onSentinelSnapshot,
+      release,
       start,
     });
   }

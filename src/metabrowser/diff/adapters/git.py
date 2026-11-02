@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from metabrowser.diff.adapters.base import DiffSourceError
-from metabrowser.diff.adapters.patch_file import parse_unified_patch
+from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, parse_unified_patch
 from metabrowser.diff.format import (
     Availability,
     BasePolicy,
@@ -52,6 +52,7 @@ from metabrowser.git.process import (
     GitCommandError,
     GitError,
     GitLocation,
+    GitOutputTooLargeError,
     RepositoryStoreTarget,
     as_location,
     run_git_at,
@@ -61,6 +62,14 @@ MAX_MANIFEST_FILES = 2000
 """Manifest cap. A 2000-file change set is far past reviewable; beyond it
 the manifest reports `truncated` with a cursor rather than growing without
 bound, matching the patch-file parser's section cap."""
+
+MAX_FILE_PATCH_BYTES = MAX_PATCH_BYTES
+"""One file's patch, and what one run hydrates. A comparison is not a patch file a reader
+chose: nobody picked its size, and a cut through the whole patch cost them files they never
+asked about. So this bounds what the cost is, a file's parse and its rows. Measured
+2026-11-02 at load 3: 8.26 MB of +442,000 lines parses in 3.4 s, and its 50 files decode to
+13.5 MB. One file past this is `too_large`, and a file that would take a run past it is
+`deferred`, and loads alone when the reader reaches it."""
 
 MAX_PATHSPEC_BYTES = 128 * 1024
 """Past this much of paths the patch runs unrestricted. Git's argument list shares the
@@ -84,10 +93,16 @@ _MODE_TYPES = {
 
 @dataclass(frozen=True, slots=True)
 class PatchHydration:
-    """The patches one diff run produced, and the files it did not."""
+    """The patches one diff run produced, and what became of the files it did not.
+
+    *too_large* is a file past the bound of one patch. *deferred* is a file past what one
+    run hydrates, which can be asked for alone. *left_out* is one the diff did not produce.
+    """
 
     patches: dict[str, FilePatch]
     left_out: tuple[str, ...] = ()
+    too_large: tuple[str, ...] = ()
+    deferred: tuple[str, ...] = ()
 
 
 def _display(raw: bytes) -> tuple[str, str | None]:
@@ -121,6 +136,40 @@ def _side(path_raw: bytes, mode_text: str, oid: str) -> EntrySide:
     return EntrySide(
         path=path, path_b64=path_b64, entry_type=_entry_type(mode), mode=mode, content=content
     )
+
+
+def _git_sections(out: bytes) -> list[bytes]:
+    """The sections of Git's patch. A hunk's every line has a marker, so this opens only one."""
+    sections = out.split(b"\ndiff --git ")
+    return [
+        section if index == 0 else b"diff --git " + section
+        for index, section in enumerate(sections)
+    ]
+
+
+def _section_header(section: bytes) -> bytes:
+    """A section without its hunks, which the parser reads as what changed."""
+    end = section.find(b"\n@@ ")
+    return (section if end < 0 else section[:end]).rstrip(b"\n") + b"\n"
+
+
+def _within_file_bounds(out: bytes) -> tuple[bytes, list[bytes], list[bytes]]:
+    """The patch to parse, and the headers of the sections too large or past the run's bound."""
+    if len(out) <= MAX_FILE_PATCH_BYTES:
+        return out, [], []
+    kept: list[bytes] = []
+    too_large: list[bytes] = []
+    deferred: list[bytes] = []
+    total = 0
+    for section in _git_sections(out):
+        if len(section) > MAX_FILE_PATCH_BYTES:
+            too_large.append(_section_header(section))
+        elif total + len(section) > MAX_FILE_PATCH_BYTES:
+            deferred.append(_section_header(section))
+        else:
+            kept.append(section.rstrip(b"\n") + b"\n")
+            total += len(section)
+    return b"".join(kept), too_large, deferred
 
 
 def _pathspec(changes: Sequence[FileChange]) -> list[str] | None:
@@ -429,8 +478,9 @@ class GitDiffSource:
     ) -> dict[str, FilePatch]:
         """The patches of *file_ids*, all of them or an error."""
         hydration = await self.hydrate(resolved, file_ids, manifest=manifest)
-        if hydration.left_out:
-            raise DiffSourceError(f"file {hydration.left_out[0]!r} not found in the produced diff")
+        missing = (*hydration.left_out, *hydration.too_large, *hydration.deferred)
+        if missing:
+            raise DiffSourceError(f"file {missing[0]!r} not found in the produced diff")
         return hydration.patches
 
     async def hydrate(
@@ -453,7 +503,7 @@ class GitDiffSource:
         The one way the runs can differ is that the whole comparison was past
         ``diff.renameLimit`` and listed an add and a delete that the limited run, with few
         candidates, pairs. Those sections do not match the manifest, so they cannot be taken
-        for the wrong file, and the unrestricted run answers for them.
+        for the wrong file, and asking for them with rename detection off answers for them.
         """
         listed = manifest if manifest is not None else await self.manifest(resolved)
         by_id = {entry.id: entry for entry in listed.files}
@@ -462,31 +512,78 @@ class GitDiffSource:
             raise DiffSourceError(f"no file {missing[0]!r} in this comparison")
         changes = [by_id[file_id] for file_id in file_ids]
         pathspec = None if len(file_ids) == len(listed.files) else _pathspec(changes)
-        document = await self._parsed_patch(resolved, pathspec)
+        try:
+            out = await self._patch(resolved, pathspec)
+        except GitOutputTooLargeError:
+            # Past Git's output cap: one file is too large, and several can each be asked for.
+            asked = tuple(file_ids)
+            if len(asked) == 1:
+                return PatchHydration(patches={}, too_large=asked)
+            return PatchHydration(patches={}, deferred=asked)
+        kept, too_large, deferred = _within_file_bounds(out)
+        if too_large or deferred:
+            over = [*too_large, *deferred]
+            headers = await asyncio.to_thread(parse_unified_patch, b"".join(over))
+            too_large_ids = self._changes_named(headers, changes, len(too_large))
+        else:
+            headers = None
+            too_large_ids = ()
+        document = await asyncio.to_thread(parse_unified_patch, kept)
         patches, left_out = self._patches_from(document, changes)
+        if headers is not None:
+            # A file past the bounds is what it is, and only a file with no section of its
+            # own in what was parsed can be one.
+            unread = {change.id for change in left_out}
+            too_large_ids = tuple(file_id for file_id in too_large_ids if file_id in unread)
+            deferred_ids = tuple(change.id for change in left_out if change.id not in too_large_ids)
+            return PatchHydration(patches=patches, too_large=too_large_ids, deferred=deferred_ids)
         if left_out and pathspec is not None:
-            document = await self._parsed_patch(resolved, None)
-            found, left_out = self._patches_from(document, left_out)
-            patches.update(found)
+            pairless = [
+                change
+                for change in left_out
+                if change.kind not in (ChangeKind.renamed, ChangeKind.copied)
+            ]
+            limited = _pathspec(pairless)
+            if pairless and limited is not None:
+                out = await self._patch(resolved, limited, renames=False)
+                document = await asyncio.to_thread(parse_unified_patch, out)
+                found, still_out = self._patches_from(document, pairless)
+                patches.update(found)
+                left_out = [
+                    *[change for change in left_out if change not in pairless],
+                    *still_out,
+                ]
         return PatchHydration(patches=patches, left_out=tuple(change.id for change in left_out))
 
-    async def _parsed_patch(
-        self, resolved: ResolvedComparison, pathspec: list[str] | None
-    ) -> ChangeSetDocument:
-        out = await run_git_at(
+    async def _patch(
+        self, resolved: ResolvedComparison, pathspec: list[str] | None, *, renames: bool = True
+    ) -> bytes:
+        return await run_git_at(
             [
                 # Paths here are names, never patterns: `*` and `:(top)` mean themselves.
                 "--literal-pathspecs",
                 "diff",
-                "-M50",
-                "-C",
+                *(["-M50", "-C"] if renames else ["--no-renames"]),
                 "--diff-merges=first-parent",
                 *self._endpoints(resolved),
                 *([] if pathspec is None else ["--", *pathspec]),
             ],
             self._location,
         )
-        return await asyncio.to_thread(parse_unified_patch, out)
+
+    def _changes_named(
+        self, headers: ChangeSetDocument, changes: Sequence[FileChange], first: int
+    ) -> tuple[str, ...]:
+        """The ids of *changes* that the first *first* sections of *headers* are."""
+
+        def sides(change: FileChange) -> tuple[str | None, str | None]:
+            return (
+                change.old.path if change.old else None,
+                change.new.path if change.new else None,
+            )
+
+        named = {sides(parsed) for parsed in headers.manifest.files[:first]}
+        return tuple(change.id for change in changes if sides(change) in named)
 
     def _patches_from(
         self, document: ChangeSetDocument, changes: Sequence[FileChange]

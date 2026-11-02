@@ -7944,6 +7944,7 @@ async function applyNavigationTarget(target, context) {
     showNavigationLanding();
     return { status: "cancelled" };
   }
+  quickFileCatalogFeed?.release();
   var path = target.path.replace(/\/$/, "");
   // An address that anchors lines or carries `plain=1` opens the file's Source view.
   // Only an address with a fragment or a query can ask for one, and reading it takes
@@ -8174,6 +8175,11 @@ function initQuickFileFinder() {
     quickFileCatalogFeed = window.MetabrowserCatalogFeed.create({
       catalog: knownFileCatalog,
     });
+    // A pull request's page does not read the catalog. Its palette and the first file the
+    // reader leaves for do, and each releases it (`catalog-feed.js#hold`).
+    if (window.location.pathname.startsWith(PULL_ROUTE_PREFIX)) {
+      quickFileCatalogFeed.hold();
+    }
     // The stream can open while its on-demand catalog modules are loading.
     // Start here if that open already happened, or if this browser has no live
     // transport; otherwise onopen starts it. JavaScript dispatches neither
@@ -8199,6 +8205,7 @@ function initQuickFileFinder() {
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
     maxRows: QUICK_FILE_RESULT_LIMIT,
+    onOpen: () => quickFileCatalogFeed?.release(),
     overlay: window.MetabrowserOverlay,
     // Coverage grows while the palette is open — the bulk feed lands, then
     // live deltas — so an open search re-runs instead of keeping the result
