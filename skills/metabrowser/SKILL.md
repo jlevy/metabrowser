@@ -69,7 +69,11 @@ resolves one.
 ## Review a Pull Request
 
 A pull request opens only from its URL. There is no list of a repository’s pull
-requests, and a local checkout serves none.
+requests, and `metab <checkout>` serves none.
+When a checkout of the repository exists, add `--checkout <path>` once: the mirror
+borrows its objects instead of cloning them, nothing is written to the checkout, and
+later commands remember it.
+Without the flag a checkout is never used, even from inside it.
 For an agent, these read everything without a browser or a port, where `<url>` is
 `https://github.com/<owner>/<repo>/pull/<n>`:
 

@@ -109,6 +109,9 @@ repository and a pull request of your own.
 page that changes commit without **Switch** or a reload; an offline reopen that refuses
 or shows a different revision.
 
+A pull request beside a checkout has its own step:
+[4.11](#411-a-pull-request-beside-a-checkout).
+
 ### Part 4: What Only a Person Can Check (About 15 Minutes)
 
 1. **Safari and Firefox, as well as Chrome.** Repeat 3.4 and 5.3 in each.
@@ -1220,6 +1223,65 @@ whose `comparison.base_from` is `base_sha`. Run again, it answers from the cache
 **Fail:** A `gh` call on a cached read; a token, scope, or `gh` output in a message; a
 record whose Files changed differs from GitHub’s; a failure without its typed state; a
 traceback.
+
+### 4.11 A pull request beside a checkout
+
+Without the network, the transcripts and the rules’ tests:
+
+```shell
+uv --config-file uv.toml run --frozen pytest tests/test_checkout_overlay.py \
+  tests/test_cli_checkout_golden.py
+npx --no-install tryscript run tests/golden/cli-checkout-overlay.tryscript.md
+```
+
+**Pass:** All pass. In `tests/golden/cli-checkout-overlay.txt`, a linked worktree lends
+its common directory; the store’s refs are the origin’s and only those, with a planted
+branch and tag absent; the checkout’s `.git` is unchanged, byte for byte; `metab <url>`
+inside a checkout clones and prints the flag once; each refusal names its reason; a
+depth-3 and a depth-1 clone read `base_uncertain` with no deepening and `A4` with
+`Files changed: ['p']` after it; a dangling ref is swept and the refresh succeeds; and a
+moved checkout is refused with its recorded path, repaired by naming the new one.
+
+With the network, a signed-in `gh`, and a checkout of a repository you can read, in an
+isolated cache, since a full mirror already in the cache is kept:
+
+```shell
+export METABROWSER_CACHE_DIR=$(mktemp -d)/cache METABROWSER_CONFIG_DIR=$(mktemp -d)/config
+CHECKOUT=~/src/repo  # your checkout
+URL=https://github.com/owner/repo/pull/123  # an open pull request
+( cd "$CHECKOUT/.git" && find objects -type f | wc -l; cksum config packed-refs ) > before
+time uv --config-file uv.toml run --frozen metab "$URL" --checkout "$CHECKOUT" --no-serve
+du -sh "$METABROWSER_CACHE_DIR"
+uv --config-file uv.toml run --frozen metab "$URL" --api /api/source/status
+( cd "$CHECKOUT/.git" && find objects -type f | wc -l; cksum config packed-refs ) | diff before -
+```
+
+**Pass:** The command prints `borrowing objects from <checkout>`, and in seconds; the
+cache is kilobytes; `borrows` names the checkout; the page’s file count and additions
+and deletions match `gh pr view`; and the final `diff` prints nothing.
+Run the first command again from a linked worktree of the checkout, in a new cache, and
+expect `borrows` to name the main checkout.
+Serve it once and look at the heading’s tooltip, which ends
+`borrowing objects from <checkout>: a bare Git repository, …`.
+
+For a **shallow clone**, `git clone --depth 1 --no-single-branch` the same repository
+into a scratch directory and name that, in a new cache, with an older pull request’s
+URL.
+
+**Pass:** `metab` prints `history is shallow, as the checkout’s is`, `shallow` is
+`true`, and the scratch clone’s `shallow` file is unchanged.
+Files changed matches `gh pr view`, or the record says `base_uncertain` and the page
+shows no diff; it never shows a different diff.
+
+For a **moved checkout**, rename that scratch clone and run the status command.
+
+**Pass:** Exit 1, `lender_missing`, the recorded path, and `--checkout <new path>`, with
+no traceback and nothing served; `--api /api/cache/stores` answers `lender_missing`; and
+the printed repair, with the new path, makes the status command work again.
+
+**Fail:** Any write under the checkout’s `.git`, a `.git/shallow.lock` left there, a
+planted branch or tag served, a diff that differs from GitHub’s shown as Files changed,
+or a traceback.
 
 ## Phase 5: Serve the Pin (T1 Browser Subset, No Network)
 

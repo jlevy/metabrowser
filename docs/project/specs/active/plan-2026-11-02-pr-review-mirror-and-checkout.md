@@ -10,8 +10,7 @@ reviewer’s own replicas.
 [What the Experiments Established](#what-the-experiments-established) says which claims
 were proven and which are inferred, and
 [Open Decisions for the User](#open-decisions-for-the-user) records what the owner
-settled.
-[Delivery](#delivery) says what can ship in 0.12.x.
+settled. [Delivery](#delivery) says what can ship in 0.12.x.
 
 This plan extends the [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md), which stays
 the authority for the list, the tab, numbered routes, and the pages on a checkout, and
@@ -107,7 +106,7 @@ The reviewer’s replicas and the revised recipe of [Design](#design):
 | Question | Result |
 | --- | --- |
 | A copied boundary makes **`merge-base` silently wrong** (reviewer, r2): a merge-heavy history cloned at `--depth 3` | The overlay answered A1 where the origin answers A4, and Files changed listed the base branch’s own change beside the pull request’s. The **certainty check** of [Merge Base on a Shallow Store](#merge-base-on-a-shallow-store) flagged it as `uncertain`; one `--deepen=2` round into the store (its own objects; the checkout untouched) made it `certain` at A4 with the correct Files changed. A `--depth 1` linear clone whose merge base is cut: empty answer, `uncertain`, certain after two rounds. The reviewer’s crafted boundary below the merge base: `certain` and correct; the same boundary placed above it: empty answer, `uncertain`. On the real repository all seven fetched pull requests were `certain` in 0.10 to 0.21 s each |
-| A **live boundary**: the store’s `shallow` is a symbolic link to the checkout’s | Git reads it; a plain fetch leaves the link; when the checkout deepened the store answered the deeper merge base at once, and when it unshallowed the store stopped being shallow. The store’s own `--deepen` replaces the link with a regular file of its own through Git’s lockfile rename, so the checkout’s file is never written |
+| A **live boundary**: the store’s `shallow` is a symbolic link to the checkout’s | Git reads it; a plain fetch leaves the link; when the checkout deepened the store answered the deeper merge base at once, and when it unshallowed the store stopped being shallow. **Corrected while building step 1:** the store’s own `--deepen` through the link does not replace the link. Git’s lockfile follows it, so on Git 2.50.1 the link stayed and the *checkout’s* `shallow` got a new inode and new contents. An earlier run saw the link vanish only because the checkout was by then unshallowed, and Git unlinks the file for that. The recipe below, a copy before the first round, is therefore what keeps the checkout unwritten, and `tests/test_checkout_overlay.py` pins it |
 | Asking GitHub for the merge base instead (`GET repos/<o>/<r>/compare/<base>...<head>`, `merge_base_commit`) | Agreed with the local answer for all seven pull requests; `per_page=1` responses of 26 KB to 536 KB in 0.9 to 1.7 s, since the endpoint embeds every changed file with its patch and has no field selection |
 | **Seeded refs** (reviewer, r1 and r4): the checkout’s remote-tracking refs created in the store | Served 70 branches and tags the origin no longer has, and a planted checkout’s `release-2.0` and `v9.9` at the attacker’s commit, until a `--prune` refresh. **Not seeding** and passing the checkout’s tips as `--negotiation-tip` instead, read from `packed-refs` and loose ref files with no Git process in the checkout: the store’s refs after acquisition were the origin’s 262 and nothing else, the planted refs never existed, and a pull-request head the checkout lacks still cost 92 KB (130 haves, 57 acknowledgements). The full acquisition fetch ran at load 36 in 13.3 s with 0 KB of objects; a first fetch pays a connectivity walk over every object its refs reach (327,834 objects, 6.7 s at load 62), and a later fetch’s walk stops at the store’s own refs (0.06 s) |
 | **Content addressing on read** (new, replica): an object’s bytes replaced in the checkout under its genuine name, loose and packed, and a forged commit | Git **does not verify hashes on read**: `cat-file --batch` (Metabrowser’s batch reader), `show`, `diff`, and `log` served the forged bytes with no error, a fetch’s connectivity check passed, and only `fsck` reported `hash-path mismatch`; `merge-base` reported `hash mismatch` for the forged commit. Hashing the streamed blob (`sha1("blob <size>\0" + bytes)`) detects the forgery |
@@ -116,8 +115,22 @@ The reviewer’s replicas and the revised recipe of [Design](#design):
 | A lender with its own `objects/info/alternates`; a fork layout; a FIFO | Git follows a lender’s alternates onward (reviewer, r4 d), so such a lender is refused. Tips are read from `refs/remotes/<name>/` of whichever remote matches, and `discover_repository_context` reads only `origin` today. `_read_bounded_text` on a FIFO named `commondir` blocked until killed at 3 s |
 | Discovery on the real checkout (reviewer, r8) | The root, a linked worktree, and a subdirectory resolve in 10 to 16 ms; the vendored submodule resolves to its own repository |
 
-The scripts and raw outputs of both sets are kept outside the repository; the
+### While Building Step 1
+
+The production code on the measured repository, on 2026-11-02 at load averages of 11 to
+18, in caches of their own, with `gh` reading each pull request:
+
+| Question | Result |
+| --- | --- |
+| Four pull requests, by `--checkout` on the checkout and again on a linked worktree | Acquisition 5.4 s, and each `metab <url> --no-serve` 12 to 14 s for the first and 6 to 8 s after it, most of it `gh`: a full mirror’s copy opened the same four in 6 to 7 s each. The store was **1.06 MB**: 266 loose refs at 4 KB each and no object. Files, additions, and deletions matched `gh pr view` for all four, and each comparison’s answer was **byte-identical** to the full mirror’s |
+| The operating system refusing every write under the checkout (`sandbox-exec`, `deny file-write*`), including one real `--deepen=2` | Every command above succeeded, the deepening in 2.9 s for 1 MB, leaving the store’s boundary a file of its own and no `shallow.lock` beside the checkout’s. This proves it where a checksum cannot: the checkout was in active use and its `config` changed during a run, from elsewhere |
+| A branch pushed between the checkout’s last fetch and an acquisition | The store took **43 MB in 15 s** (21,619 objects, 1,012 commits, a year of history), then the page opened as usual. When every tip is present Git’s `everything_local` skips negotiation and nothing comes. When one is not, the origin walks its history, and a shallow client’s haves stop at its boundary, so what it sends can go back past it. This is the worst measured cost of a first fetch and is bounded only by what the checkout appears to lack, as [Storage Modes](#storage-modes) says. The next acquisition, after the checkout fetched, cost 1 MB again |
+| `--deepen` through the symbolic link, on a replica | See the correction in [After the Review](#after-the-review): it replaces the checkout’s file, so the store replaces the link first |
+| Tips at many refs | Over 40,000 remote-tracking refs the file read took 37 ms and the filter of 4,096 took 64 ms. A fetch ran in 1.4 s with no tips, 1.5 s with 4,096, and 1.8 s with 14,000, and 16,384 failed to start with `Argument list too long` at an `ARG_MAX` of 1 MiB. The measured repository has 327 tips, read in 9 ms |
+
+The scripts and raw outputs of all three sets are kept outside the repository; the
 coordinator holds the paths.
+
 A replica is a bare origin, a clone of it as the checkout, and an overlay store, built
 in seconds, so every scenario above can become a test fixture.
 
@@ -227,9 +240,8 @@ The working directory borrows nothing by itself.
 When `metab <url>` runs inside a checkout of the URL’s repository and no store exists,
 it clones a full mirror as it does today and prints, once, the `--checkout` command that
 would borrow instead: the reader decides, and nothing is remembered that the reader did
-not name.
-Item 2 of [Open Decisions](#open-decisions-for-the-user) records the alternative and what it
-would cost.
+not name. Item 2 of [Open Decisions](#open-decisions-for-the-user) records the
+alternative and what it would cost.
 
 Precedence: a published store for the source wins, whatever its mode, so a URL never
 silently changes storage; then `--checkout`. `metab <url> --checkout` when a full mirror
@@ -329,7 +341,7 @@ Which mode applies, and the fallback:
 | No remote of the checkout has the URL’s identity | Refused | The refusal names the repositories the remotes point at |
 | The checkout’s object format differs from the origin’s | `full` | Named |
 | The objects directory is unreadable, or owned by another user | `full` | `the checkout’s objects could not be read; cloning` |
-| A full store already exists | `full` is kept | Named, with the conversion command |
+| A full store already exists | `full` is kept | Named. The conversion command is printed once step 3 makes one; until then the line says there is none |
 
 Nothing ever converts a store or changes its mode without a command.
 
@@ -366,8 +378,10 @@ repository, where all seven pull requests were certain.
 the base branch and the pull-request head, into its own objects, the checkout untouched,
 and checks again, for a bounded number of rounds; the reviewer’s r2 needed one round of
 two commits, its depth-1 case two.
-Before the first round the symbolic link is replaced by a copy, so the store owns its
-boundary from then on; Git’s lockfile rename never writes the checkout’s file.
+Before the first round the symbolic link is replaced by a copy, under the fetch lock, so
+the store owns its boundary from then on: with the link in place, Git’s lockfile would
+follow it and replace the checkout’s file.
+A dangling link is removed for the same reason.
 A store-owned boundary can only be a subset of what the checkout later has, which keeps
 the cut-graph argument sound.
 The whole `--unshallow` of the measured repository cost 8.8 MB, which bounds the rounds
@@ -387,10 +401,10 @@ online, the response embeds every changed file with its patch and has no field s
 (26 KB to 536 KB here, bounded only by `GH_API_MAX_BYTES`), and it would make a Git fact
 depend on the API. Item 3 of the decisions rejected it.
 
-**Verifying counts** against the record’s `changed_files`, `additions`, and `deletions`
+**Verifying counts** against GitHub’s `changed_files`, `additions`, and `deletions`
 would have caught r2 but is not a proof: equal counts do not imply the same merge base.
-It is added as a cheap assertion in the comparison job that logs a mismatch, nothing
-more.
+The record does not keep those three fields, so this would change its schema, and step 1
+leaves it out: the check above is the guard.
 
 ### Failure and Recovery
 
@@ -635,7 +649,7 @@ each item is a correctness or safety condition of the mode itself.
 | Step | Scope | Checkpoint a person can see | Needed for the user’s goal | Ships |
 | --- | --- | --- | --- | --- |
 | 1. Overlay acquisition | `acquire.py`’s overlay path from `--checkout` only; the lender check and every refusal, with `lender_missing` and its text at open; the remote match across all remotes; tips from files and `--negotiation-tip`, with the FIFO guard; the live boundary; the sweep before every fetch; the certainty check, deepening, and `base_uncertain` in `pull_refs.py`; `lender` in `store.yml` and its contract; `borrows`, `shallow`, and `mode` in the routes and the heading; the printed suggestion inside a checkout | `metab <pull-request URL> --checkout <path>` serves the pull request in seconds with no object copied and says so; the reviewer’s r2 and r4 fixtures answer `uncertain` and serve no planted ref | Yes | 0.12.x, after 0.12.0 is tagged; it adds a mode and touches no served behavior of a full store, which the regenerated transcripts show |
-| 2. Healing and verification | The healing job (sweep, by ID, then the ref), `commits_unavailable`, blob verification, `--checkout` as repair, the replica fixtures and their scenarios | Prune the fixture, open the pull request, watch it heal; force-push and watch the shown commit come back; move the checkout, see the refusal and fix it | Yes | 0.12.x, with step 1 or just after |
+| 2. Healing and verification | The healing job (sweep, by ID, then the ref), `commits_unavailable`, blob verification, the replica fixtures and their scenarios. `--checkout` as repair moved into step 1, because the refusal prints it and a printed command must work | Prune the fixture, open the pull request, watch it heal; force-push and watch the shown commit come back; move the checkout, see the refusal and fix it | Yes | 0.12.x, with step 1 or just after |
 | 3. Conversions | The two cache routes and their repacks | Convert the measured mirror to an overlay and back | No; it is how an existing full mirror stops duplicating | After 0.12.x; small |
 | 4. Overlay inside the folder server | The Pulls tab plan’s step 5 as decided here: acquisition from a running folder server into an overlay of that checkout | Open a checkout, open a pull request, read Files changed from the overlay | No; it needs the Pulls tab stack | With that stack |
 | 5. Deepening | `--unshallow` as a background job with a measured bound, beyond what uncertainty needs | A shallow overlay’s history completes itself | No | `mb-dqvj`, later |
@@ -753,16 +767,16 @@ unbounded in the checkout’s size.
 ## Open Decisions for the User
 
 None is open: the owner decided all six on 2026-11-02, each as recommended here when the
-plan was reviewed.
-The rejected alternatives are kept so a later reader can see what was weighed.
+plan was reviewed. The rejected alternatives are kept so a later reader can see what was
+weighed.
 
 1. **The no-loss rule is relaxed for an overlay.** No object shown is lost while the
    checkout keeps it or GitHub still serves that commit, with the typed states and the
    healing job of [Failure and Recovery](#failure-and-recovery).
    - *Rejected:* keep the rule as written, which means no overlay and the duplicated
      clone the user asked to avoid.
-2. **Only a checkout the reader names with `--checkout` or serves with `metab <checkout>`
-   may lend**, remembered from then on.
+2. **Only a checkout the reader names with `--checkout` or serves with
+   `metab <checkout>` may lend**, remembered from then on.
    Inside a checkout, `metab <url>` clones and prints the flag once.
    The working directory never borrows silently.
    - *Rejected:* also the enclosing checkout of the working directory.

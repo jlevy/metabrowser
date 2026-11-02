@@ -58,6 +58,49 @@ Below the header are two tabs:
 then says `This page's code is …, not the pull request's head …` and offers **Switch to
 the head**, which moves it back.
 
+## Beside a Checkout
+
+If you already have the repository checked out, name that checkout once.
+The mirror borrows its objects instead of copying them, so a pull request opens in
+seconds and costs little, however large the repository is:
+
+```shell
+metab https://github.com/owner/repo/pull/123 --checkout ~/src/repo
+metab https://github.com/owner/repo/pull/124    # remembered from then on
+```
+
+As a guide, a 1.2 GB repository that took 185 s and 1.2 GB as a full mirror took 5 s and
+about 1 MB, and 43 MB when a branch had been pushed since the checkout’s last fetch
+(measured 2026-11-02, under load, with `gh` adding its own seconds for the pull
+request’s data).
+
+Name any worktree of the repository; every worktree shares the same objects.
+
+`metab` prints `borrowing objects from ~/src/repo`, and the heading’s tooltip says the
+same. The pages, the commands, and the untrusted profile are the ones you would get from
+a full mirror, and nothing is ever written to your checkout.
+
+Only a checkout you name lends.
+Run inside a checkout without the flag, `metab <url>` clones a full mirror and prints
+the command that would have borrowed instead, because a directory you merely stand in
+can be made to look like a checkout of anything.
+
+Three things are worth knowing:
+
+- **A shallow checkout may not settle Files changed at once.** If its history stops
+  before the pull request’s merge base, `metab` fetches more history into the mirror.
+  Until that succeeds, and offline, **Files changed** says the history is too shallow to
+  know what the pull request changed, rather than show a guess.
+- **If you move or delete the checkout,** `metab` refuses with `lender_missing`, prints
+  the recorded path, and tells you to run the command again with
+  `--checkout <new path>`.
+- **A mirror that is already there stays.** Naming a checkout does not convert a full
+  mirror, and this release has no command that does.
+  To borrow instead, delete the mirror as [Large Repositories](#large-repositories)
+  describes, and run the command again.
+
+[The command-line guide](command-line.md#beside-a-checkout) has every case.
+
 ## Private Repositories
 
 They work through your `gh` login, and nothing else is needed.
@@ -81,6 +124,7 @@ offers **Fetch**. Once the cause is fixed, run the command again.
 | `not_logged_in` | `gh` is not signed in to github.com | Run `gh auth login` |
 | `not_found_or_private` | It does not exist, or the account cannot read it; GitHub does not say which | Check the URL, and that `gh auth status` names an account with access |
 | `too_large` | The first clone is over the limit | See [Large Repositories](#large-repositories) |
+| `lender_missing` | The checkout this mirror borrows from has moved or gone | Run the command again with `--checkout <new path>` |
 | `network_unreachable`, `network_error` | GitHub could not be reached, by Git or by `gh` | See [Offline](#offline) |
 
 [The command-line guide](command-line.md#pull-requests) lists every name.
@@ -88,9 +132,9 @@ offers **Fetch**. Once the cause is fixed, run the command again.
 ## Large Repositories
 
 A **mirror** is a full bare clone of the repository, so it is a second copy of the
-repository’s objects, even if you already have a checkout.
-Mirrors are kept in `~/.cache/metabrowser/repository-stores`, and each pull request’s
-record is a JSON file under `~/.cache/metabrowser/sources`. See
+repository’s objects, unless you [name a checkout](#beside-a-checkout) for it to borrow
+them from. Mirrors are kept in `~/.cache/metabrowser/repository-stores`, and each pull
+request’s record is a JSON file under `~/.cache/metabrowser/sources`. See
 [storage locations](command-line.md#storage-locations) to move them.
 A mirror’s size is about the repository’s: measure the whole cache with
 `du -sh ~/.cache/metabrowser`. Nothing deletes a mirror and no `metab` command removes
@@ -180,8 +224,8 @@ The [security policy](../SECURITY.md#content-trust-model) has the details.
 
 - **No list of a repository’s pull requests, and no Pulls tab.** Open each one by its
   URL.
-- **No pull requests from a checkout.** `metab <checkout>` serves none, and a
-  pull-request URL uses its own mirror even when you have a checkout.
+- **No pull requests from a served checkout.** `metab <checkout>` serves none.
+  Use the pull request’s URL with [`--checkout`](#beside-a-checkout) instead.
 - **No inline comments on the diff.** They are listed under **Review comments** on the
   Conversation tab.
 - **No writing to GitHub.** Comment, approve, and merge on GitHub through **View on

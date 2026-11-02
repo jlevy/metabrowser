@@ -109,6 +109,37 @@ Plugin SDK:
   release, is gone: it handed a hook the raw active source, which is what the content
   reader replaces.
 
+Reviewing beside a checkout:
+
+- `--checkout <path>` serves a repository or pull-request URL by borrowing objects from
+  a checkout you already have instead of cloning it: a 1.2 GB repository that took 185 s
+  and 1.2 GB as a full mirror took 5 s and about 1 MB.
+
+  The store is the same store, read and served the same way, and it is remembered from
+  then on. Nothing is written to the checkout, and no Git runs in it.
+  See [Beside a checkout](docs/command-line.md#beside-a-checkout).
+
+- Only a checkout you name lends.
+  `metab <url>` inside a checkout clones as before, and prints the `--checkout` command
+  once.
+
+- `/api/source/status` gains `borrows` and `shallow`, and `/api/cache/stores` and
+  `/api/cache/source/<slug>` gain `mode` and `lender`, on every store.
+  `store.yml` gains an optional `lender`, which a full store does not write.
+
+- On a shallow store, a merge base is used only when it is provably right.
+  Otherwise the record’s `unavailable.comparison` is the new `base_uncertain`, Files
+  changed shows no diff, and the pull request’s refresh deepens the store from the
+  origin. A comparison asked for with `base_policy=merge_base` on such a store is refused
+  the same way.
+
+- A checkout that moved is a typed refusal, `lender_missing`, with the recorded path and
+  the command that repairs it; a store whose alternates file disagrees with its record
+  is refused as `damaged`.
+
+- Every read of a repository’s `.git` metadata, a folder’s included, now refuses
+  anything but a regular file, so a FIFO planted in a `.git` directory cannot block it.
+
 GitHub URLs and HTTPS:
 
 - A GitHub URL copied from the browser opens the repository it names:
