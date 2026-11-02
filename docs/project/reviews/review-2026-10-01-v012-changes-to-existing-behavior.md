@@ -76,6 +76,17 @@ is read from the plugin’s code.
 `CHANGELOG.md` states it under Fixes: “A compressed patch is read as the patch it
 holds.”
 
+**Addendum, 2026-11-02.** Written for the reader asked to sign this record, because the
+list was incomplete for that reader again.
+[Stack 278](https://github.com/jlevy/metabrowser/stack/278) lands above `c934a0b4`, the
+tree the addendum above checked, and
+[#275](https://github.com/jlevy/metabrowser/pull/275) in it changes what a regular
+folder’s pages and routes do.
+`CHANGELOG.md` states those changes, and the new section
+[Stack 278 on a Regular Folder](#stack-278-on-a-regular-folder) lists them here for
+signing, with one more bullet each under How Each Claim Was Checked and What Sign-Off
+Means. Nothing else in this record was changed.
+
 **Scope:** What a user or a plugin author sees differently on something v0.11.0 already
 did: a regular folder served or inspected, the CLI, the Plugin SDK, and the package’s
 requirements. New features are listed only where they show on a regular folder.
@@ -104,6 +115,11 @@ The **Checked** column of each table says one of these:
   #265’s tree. The data differential behind them is the gate’s re-run on the release
   head: 20,310 comparisons at `--jobs 4`, which reports no unexplained product
   difference.
+- **Run, 2026-11-02:** the same method, on the later date, for the section on stack 278
+  only, with [#275](https://github.com/jlevy/metabrowser/pull/275)’s head at `2ca297fa`
+  in place of #265’s tree.
+  The folder was a scratch Git repository holding a hidden folder, a symbolic link to a
+  folder, and a JSONL log.
 
 The audit and the differential ran at #259’s head, `f62c16b1`, below #261, #263, #264,
 and #265, and their reports are session files, so their substance is copied here.
@@ -202,6 +218,52 @@ One more is cosmetic: `--show` loads the dotenv chain at two more points, so a m
 | `/api/source/status` on a folder answers 200 with `subject: "attached_filesystem"`, and `name`, `origin`, and `location` each `null` | GitHub URLs and HTTPS: “A page served from a mirror is headed by the repository’s name” | #229, #263 | Run |
 | No application home is created by serving or inspecting a folder. Every run for this record used a scratch home, and none existed afterwards | Repository cache: “New read-only routes”, which says a missing home is reported `absent` rather than created | #140 | Run |
 
+## Stack 278 on a Regular Folder
+
+Added 2026-11-02. [Stack 278](https://github.com/jlevy/metabrowser/stack/278) is
+[#272](https://github.com/jlevy/metabrowser/pull/272) to
+[#277](https://github.com/jlevy/metabrowser/pull/277), and every row here is
+[#275](https://github.com/jlevy/metabrowser/pull/275), as its head stands at `2ca297fa`,
+after the reviews of that pull request were addressed.
+Each entry named is under Fixes in `CHANGELOG.md`’s 0.12.0 section.
+
+| What changes | `CHANGELOG.md` entry | PR | Checked |
+| --- | --- | --- | --- |
+| A folder the inventory leaves out, a hidden one such as `/view/.github/` or a symbolic link to a folder, says why it has no totals. File Overview says “Metabrowser does not index hidden folders, so this one has no file totals.”, or for a link “Metabrowser does not follow symbolic links when it indexes, so this folder has no file totals here.”, and the header shows no tally. v0.11.0 said “Could not load file types.”, kept the totals’ skeleton, and left the header’s tally pending forever. The Treemap tab says “Treemap unavailable.” without the reason (`mb-o12l`, open), where v0.11.0 kept its skeleton. The page and any README show on both | “A folder the inventory leaves out says why it has no totals.” | [#275](https://github.com/jlevy/metabrowser/pull/275) | Run, 2026-11-02 |
+| `/api/file` on such a folder gains `dir.not_indexed`, `hidden` or `symlink`. It still answers 200, the rest of the hidden folder’s answer is the same as v0.11.0’s, and another folder’s answer is unchanged | The same entry | [#275](https://github.com/jlevy/metabrowser/pull/275) | Run, 2026-11-02 |
+| The Treemap gives up its skeleton when no rollup is coming. A failed or refused `/api/rollup`, or an index that finished without the folder, shows “Treemap unavailable.”, where v0.11.0 kept the skeleton. **A refresh that fails during a scan also says “Treemap unavailable.”**, until the next answer, and an answer that the scan is running brings the skeleton back; a map already drawn stays through a failed refresh. File Overview keeps its failure’s message when Files, Bytes, or Show ignored changes, and the totals’ skeleton stops with it | “File Overview and Treemap no longer keep a loading skeleton when the rollup cannot supply one.” | [#275](https://github.com/jlevy/metabrowser/pull/275) | Run, 2026-11-02 for the first failure and a failed refresh on both builds, with `/api/rollup` failed or forged in the browser, because no real scan’s request was made to fail; the map that stays is read from the plugin’s code; Changelog for the rest |
+| File Overview’s type table has a visible `<caption>` on every folder, naming what its shares count, such as “Share of Total (6 files)” or “Share of Files (536 files)”. It follows Show ignored and the measure, and is the table’s accessible caption. v0.11.0 had none | “File Overview’s type distribution says which population it counts” | [#275](https://github.com/jlevy/metabrowser/pull/275) | Run, 2026-11-02 for the caption; Changelog for what it follows |
+| A JSONL log’s event rows are keyboard controls. Each header has `role="button"`, a tab stop, and `aria-expanded`, and Enter or Space opens and closes it. A click opens it as on v0.11.0, and now also takes focus to the row. On v0.11.0 a header had none of these, Enter did nothing, and a click left focus on the preview pane | “A JSONL log’s event rows answer the keyboard.” | [#275](https://github.com/jlevy/metabrowser/pull/275) | Run, 2026-11-02 for a click and Enter; Changelog for Space |
+| Back or Forward onto a `/commit/` entry shows the commit. With a file opened in-page over a commit, v0.11.0 changed the address and left the file showing | “Back or Forward onto a `/commit/` entry shows the commit.” | [#275](https://github.com/jlevy/metabrowser/pull/275) | Run, 2026-11-02 for Back; Changelog for Forward |
+| `/api/git/commit/<rev>` for a short ID, or a ref name with no slash, gains `"code": "revision_not_full"` beside the same 400 and `error`. A `/commit/` address with one says “Full commit ID needed” and that a commit’s address uses its full 40- or 64-character lowercase ID, where v0.11.0 said “Could not load this commit.” | “A `/commit/` address with a short commit ID, or a ref name with no slash in it” | [#275](https://github.com/jlevy/metabrowser/pull/275) | Run, 2026-11-02 |
+| On an index stopped at its 500,000-file cap, `/api/rollup` answers `index_status: "truncated"` and `truncated: true`, where v0.11.0 answered `idle` and `false`, and `/api/tree` and `/api/recent` answer `tally_cache_status: "truncated"`, where v0.11.0 answered `idle`. So the page now says so: “File list incomplete.” in the file list, “Summary is partial” in File Overview, and Treemap draws the indexed files under “Index capped at 500,000 files”. v0.11.0 showed none of these, and its Treemap kept the skeleton | “A tree that reaches the 500,000-file cap now says so.” | [#275](https://github.com/jlevy/metabrowser/pull/275) | Run, 2026-11-02, on both builds with `INVENTORY_MAX_FILES` set to 3 in the process |
+| A tree row replaced during the tooltip’s 300 ms delay, as when its folder re-renders, no longer puts a tooltip at the window’s top-left corner until the next hover | “A tree row replaced during the tooltip’s 300 ms delay” | [#275](https://github.com/jlevy/metabrowser/pull/275) | Changelog |
+
+One fault showed in the capped run, which is a defect and not an intended change.
+At `2ca297fa` the file list’s note goes on “Metabrowser stopped after 3 files files”,
+because the sentence writes the noun after a count that already has it (`mb-kp7q`,
+open). v0.11.0 has the same code but never reached it on a capped index.
+
+[#277](https://github.com/jlevy/metabrowser/pull/277) adds no row, because it restores
+what v0.11.0 does. A served folder’s first diff requests the same six diff modules
+v0.11.0 requests, by name and order, where `c934a0b4` requests seven.
+Under `--untrusted` and `--no-active-content` a kept image carries `loading="lazy"`
+again, so images below the fold wait for the scroll, as they do on v0.11.0 and on a
+trusted folder; `c934a0b4` fetched them all on load.
+Those are
+[review C](https://github.com/jlevy/metabrowser/pull/277#pullrequestreview-5743891343)’s
+measurements against the v0.11.0 wheel, in which `--no-active-content` was not loaded;
+[#277](https://github.com/jlevy/metabrowser/pull/277)’s description holds that profile’s
+counts. The other three layers add no row either, read from their diffs under `src` and
+not run: [#273](https://github.com/jlevy/metabrowser/pull/273) changes the pull-request
+page and how the inert layer writes a link’s scheme,
+[#274](https://github.com/jlevy/metabrowser/pull/274) changes only Git-source paths, and
+[#276](https://github.com/jlevy/metabrowser/pull/276) changes nothing a reader sees.
+
+The landing gate’s three checks last ran on `c2d493e9`, so none of them has seen these
+rows. They are owed again on the head that is tagged, as the
+[alpha test plan](../specs/active/plan-2026-09-22-v012-alpha-testing.md) says.
+
 ## Dependencies and Minimum Tools
 
 | What changes | `CHANGELOG.md` entry | PR | Checked |
@@ -254,7 +316,8 @@ Approving this list accepts, for the 0.12.0 release:
 - the CLI differences above, including the slower `--doctor`;
 - the two deliberate changes that have no `CHANGELOG.md` entry, or a request to add
   entries for them;
-- the page differences and the new routes and plugin row on every folder.
+- the page differences and the new routes and plugin row on every folder;
+- the differences in the section on stack 278 (added 2026-11-02).
 
 It does not accept the two regressions still being fixed, and it says nothing of the
 browser differential.
