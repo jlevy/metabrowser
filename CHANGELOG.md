@@ -994,9 +994,9 @@ Fixes:
   ceiling answers 404. Zero is unchanged for the binary settings and for a structured
   file that is not compressed, apart from a file that cannot be opened.
   At `STRUCTURED_PARSE_MAX_BYTES=0` a compressed structured file no longer answers that
-  parse error, and answers as it does at any limit too small for it: `truncated` when it
-  holds data, a decompression parse error when its stream cannot be decoded, and what an
-  empty file answers when it holds nothing.
+  parse error, and answers as it does at any limit too small for it: `truncated` when
+  the start of its stream decodes, whatever damage follows, a decompression parse error
+  when it fails before that, and what an empty file answers when it holds nothing.
   A file that cannot be opened answers 404 `content_unavailable` at zero too, where
   0.11.0 answered `truncated` for an uncompressed one larger than the limit, without
   opening it.
