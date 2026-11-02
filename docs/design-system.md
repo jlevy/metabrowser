@@ -957,6 +957,9 @@ The joined layout control always orders **Split** on the left and **Unified** on
 right. A reader without a valid stored `diff.layout` preference starts in Split.
 Either valid stored choice remains authoritative, and switching layouts reprojects the
 shared semantic model without re-fetching or re-running syntax highlighting.
+A diff too narrow for Split draws Unified, and the control shows what is drawn, with a
+tip on **Split** saying why; the stored choice is not touched, so Split returns when
+there is room, and choosing **Split** there draws it with a sideways scroll.
 
 Section headings use `--section-heading-divider-gap` between their content and the
 divider. Components consume the token instead of choosing local bottom padding, so the

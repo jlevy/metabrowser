@@ -951,6 +951,15 @@ Content source:
 
 Fixes:
 
+- A diff in a narrow pane no longer hides its additions.
+  Split needs 44 ems of width, and below that its right column was off-screen behind a
+  sideways scroll, so an added line read as a blank gap.
+  Such a diff now draws Unified, in a pull request’s Files changed and in a commit’s
+  diff in a served folder alike, and goes back when there is room.
+  The layout control shows what is drawn, and **Split** says why it is not selected.
+  The remembered choice is not touched, and choosing **Split** in a narrow pane still
+  draws it. A wide pane draws what it did.
+
 - A served folder holding a filename with a backslash, which POSIX allows, no longer
   fails its whole index: the index progress route errored and the tree answered HTTP
   500\. The inventory now escapes the backslash as `%5C`, as it escapes a literal `%` as

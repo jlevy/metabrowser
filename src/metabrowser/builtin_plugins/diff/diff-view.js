@@ -48,9 +48,12 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {FileViewState[]} files
  * @property {number} generation
  * @property {IntersectionObserver | null} hydrationObserver
- * @property {"unified" | "split"} layout
+ * @property {"unified" | "split"} chosenLayout What the reader chose, whatever fits.
+ * @property {boolean} insistedOnSplit The reader chose Split where it does not fit.
+ * @property {"unified" | "split"} layout What the diff draws.
  * @property {HTMLElement | null} layoutControl
  * @property {number} layoutGeneration
+ * @property {boolean} narrow The diff is too narrow for Split.
  * @property {Record<string, unknown>} resolved
  * @property {HTMLElement} root
  * @property {Promise<void>} enhancementTail
@@ -171,6 +174,20 @@ const FOLD_MATERIALIZATION_BATCH_ROWS = 100;
 // One-tenth-sized batches keep the same measured work below the 200 ms
 // interaction budget; explorations/diff-layout/README.md records the fixture.
 const LAYOUT_PROJECTION_BATCH_FILES = 100;
+// What Split needs to show both sides: the `min-width` of `.diff-hunk-split` in styles.css,
+// in ems of the diff's text, which tests/test_diff_browser_js.py keeps equal to this, and
+// the 2 px of border around a file. Measured 2026-11-02 in Chrome 152 at 14 px on a 34-file
+// pull request: with `.diff-root` 618 px wide every file body fits, and at 617 px each
+// overflows by a pixel. At 440 px a body shows 438 of its 616 px, and the right column's
+// text is behind a sideways scroll, so an added line reads as a blank gap.
+export const SPLIT_MIN_WIDTH_EM = 44;
+const FILE_BORDER_PX = 2;
+// How much more room going back to Split takes. Drawing the other layout changes the page's
+// height, and so whether the pane has a scrollbar, which takes width: 11 px in the same
+// Chrome. With no margin, a pane within that of the limit could flip for as long as it stayed.
+export const SPLIT_RETURN_MARGIN_PX = 20;
+const SPLIT_TOO_NARROW_TIP =
+  "Too narrow for Split, so this shows Unified. Choose Split to scroll sideways.";
 
 /** @param {string} tag @param {string} className @param {string} [text] */
 function el(tag, className, text) {
@@ -1038,6 +1055,42 @@ export function installSplitSelectionGate(root) {
   };
 }
 
+/**
+ * Whether a diff *width* px wide is too narrow for Split, given what it was. Pure.
+ *
+ * @param {number} width
+ * @param {number} fontSize The diff's text, in px.
+ * @param {boolean} narrow
+ */
+export function tooNarrowForSplit(width, fontSize, narrow) {
+  if (!(width > 0) || !(fontSize > 0)) {
+    // Not laid out, as in a hidden tab: nothing is known, so nothing changes.
+    return narrow;
+  }
+  const needs = SPLIT_MIN_WIDTH_EM * fontSize + FILE_BORDER_PX;
+  return width < (narrow ? needs + SPLIT_RETURN_MARGIN_PX : needs);
+}
+
+/**
+ * What a diff draws: the reader's choice, except Split where it does not fit, unless the
+ * reader chose it there. Pure.
+ *
+ * @param {"unified" | "split"} chosen
+ * @param {boolean} narrow
+ * @param {boolean} insisted
+ * @returns {"unified" | "split"}
+ */
+export function drawnLayout(chosen, narrow, insisted) {
+  return chosen === "split" && narrow && !insisted ? "unified" : chosen;
+}
+
+/** @param {HTMLElement} element */
+function fontSizeOf(element) {
+  return typeof getComputedStyle === "function"
+    ? Number.parseFloat(getComputedStyle(element).fontSize)
+    : 0;
+}
+
 /** @param {MountedDiffState} view */
 function renderLayoutControl(view) {
   const control = view.layoutControl;
@@ -1045,12 +1098,15 @@ function renderLayoutControl(view) {
   if (!control || !filterControls) {
     return;
   }
+  // The control shows what the diff draws. While Split does not fit that is Unified, and
+  // the reader's choice waits in `chosenLayout`, so Split says why it is not selected.
+  const fellBack = view.chosenLayout === "split" && view.layout === "unified";
   control.innerHTML = filterControls.groupHtml({
     key: "diff-layout",
     label: "Diff layout",
     layout: "joined",
     options: [
-      { label: "Split", value: "split" },
+      { label: "Split", value: "split", ...(fellBack ? { tip: SPLIT_TOO_NARROW_TIP } : {}) },
       { label: "Unified", value: "unified" },
     ],
     select: "one",
@@ -1059,7 +1115,11 @@ function renderLayoutControl(view) {
 }
 
 /**
- * Reproject cached file state and optionally persist the display choice.
+ * The reader's choice: draw it, and optionally persist it. Choosing Split where it does not
+ * fit gets Split, with its sideways scroll, until the diff has room and loses it again.
+ * Choosing what is already drawn changes nothing, so Unified chosen while Split does not
+ * fit leaves Split the choice for when it does.
+ *
  * @param {MountedDiffState} view
  * @param {string} value
  * @param {boolean} [persist]
@@ -1072,11 +1132,45 @@ export function setLayout(view, value, persist = true) {
   if (layout === view.layout) {
     return;
   }
-  view.layout = layout;
-  view.root.dataset.layout = layout;
+  view.chosenLayout = layout;
+  view.insistedOnSplit = layout === "split" && view.narrow;
   if (persist) {
     view.api?.prefs?.set("diff.layout", layout);
   }
+  drawLayout(view, layout);
+}
+
+/**
+ * The diff's width changed: draw what now fits. The reader's choice is not touched.
+ *
+ * @param {MountedDiffState} view
+ * @param {number} width
+ */
+function fitLayout(view, width) {
+  if (view.disposed) {
+    return;
+  }
+  const narrow = tooNarrowForSplit(width, fontSizeOf(view.root), view.narrow);
+  if (narrow === view.narrow) {
+    return;
+  }
+  view.narrow = narrow;
+  view.insistedOnSplit = view.insistedOnSplit && narrow;
+  const layout = drawnLayout(view.chosenLayout, narrow, view.insistedOnSplit);
+  if (layout !== view.layout) {
+    drawLayout(view, layout);
+  }
+}
+
+/**
+ * Reproject cached file state.
+ *
+ * @param {MountedDiffState} view
+ * @param {"unified" | "split"} layout
+ */
+function drawLayout(view, layout) {
+  view.layout = layout;
+  view.root.dataset.layout = layout;
   renderLayoutControl(view);
   view.layoutGeneration += 1;
   const layoutGeneration = view.layoutGeneration;
@@ -1383,18 +1477,25 @@ function renderFileSection(change, patch, context, view) {
  */
 export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
+  const chosenLayout = readLayoutPreference(api);
+  // Measured before the first draw, so a narrow pane never draws Split to throw it away. A
+  // container that is not laid out yet has no width, and its first report decides.
+  const narrow = tooNarrowForSplit(container.clientWidth, fontSizeOf(container), false);
   /** @type {MountedDiffState} */
   const view = {
     activeHydrations: 0,
     api,
+    chosenLayout,
     controller: new AbortController(),
     disposed: false,
     files: [],
     generation: 1,
     hydrationObserver: null,
-    layout: readLayoutPreference(api),
+    insistedOnSplit: false,
+    layout: drawnLayout(chosenLayout, narrow, false),
     layoutControl: null,
     layoutGeneration: 0,
+    narrow,
     resolved: /** @type {Record<string, unknown>} */ (document_.resolved ?? {}),
     root,
     enhancementTail: Promise.resolve(),
@@ -1440,6 +1541,35 @@ export function mountDiffView(container, document_, api, options = {}) {
   measureProjection(api, "diffMount:attach", () => container.append(root), {
     file_count: manifest.files.length,
   });
+  // Drawing changes the root's height, which this also reports, so it waits for a task of its
+  // own: done in the callback, it would be a ResizeObserver loop error. A width is one frame
+  // late at the moment it crosses the limit, and the first draw above is not late at all.
+  /** @type {number | null} */
+  let observedWidth = null;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let fitTimer = null;
+  const widths =
+    typeof ResizeObserver === "function"
+      ? new ResizeObserver((entries) => {
+          const width = entries.at(-1)?.contentRect.width ?? 0;
+          if (width === observedWidth) {
+            return;
+          }
+          observedWidth = width;
+          if (fitTimer !== null) {
+            clearTimeout(fitTimer);
+            view.timers.delete(/** @type {number} */ (fitTimer));
+          }
+          const timer = setTimeout(() => {
+            view.timers.delete(timer);
+            fitTimer = null;
+            fitLayout(view, width);
+          }, 0);
+          fitTimer = timer;
+          view.timers.add(timer);
+        })
+      : null;
+  widths?.observe(root);
 
   function cancelPendingWork() {
     view.generation += 1;
@@ -1472,6 +1602,7 @@ export function mountDiffView(container, document_, api, options = {}) {
         return;
       }
       view.disposed = true;
+      widths?.disconnect();
       cancelPendingWork();
       view.viewFile?.dispose();
       unbind();
