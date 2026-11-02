@@ -1,16 +1,18 @@
-"""The pull routes: ``GET /api/plugin/github/pull`` and ``POST /api/plugin/github/pull-refresh``.
+"""The pull routes: one pull request's, ``pull`` and ``pull-refresh``, and the lists', ``pulls``
+and ``pulls-refresh``, all under ``/api/plugin/github/``.
 
-:mod:`metabrowser.builtin_plugins.github.pull_route` builds the answer; this module is
-the pair of data hooks the manifest names. The loader imports it at startup, so like the
+:mod:`metabrowser.builtin_plugins.github.pull_route` and
+:mod:`metabrowser.builtin_plugins.github.pull_list_route` build the answers; this module is
+the data hooks the manifest names. The loader imports it at startup, so like the
 ``/api/cache/`` route table it imports nothing from the cache or the application home
 itself: each handler imports the envelope builder, which reaches both, only when it is
 requested. Browsing a local directory therefore never loads the cache.
 
-The refresh route starts or joins the pull request's refresh job in the refresh
-coordinator and returns ``202`` at once, never waiting on the network. It starts work,
-so it is a ``POST`` with a JSON object body: the application's same-origin guard and its
-JSON content-type rule keep content inside an untrusted page from reaching it with a
-link, an image, or a form, and a page for a pin the server no longer serves is refused
+A refresh route starts or joins a refresh job in the refresh coordinator and returns
+``202`` at once, never waiting on the network. It starts work, so it is a ``POST`` with a
+JSON object body: the application's same-origin guard and its JSON content-type rule keep
+content inside an untrusted page from reaching it with a link, an image, or a form, and a
+page for a pin the server no longer serves is refused
 ``pin_changed`` by the pin guard. Plugin data routes are one path segment, so the
 refresh is ``pull-refresh`` beside ``pull``.
 """
@@ -19,7 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from starlette.responses import JSONResponse, Response
 
@@ -78,11 +80,11 @@ async def pull_markdown_handler(request: Request) -> JSONResponse:
     return JSONResponse(body, status_code=status_code, headers=_NO_STORE)
 
 
-async def _body_problem(request: Request) -> tuple[str, int] | None:
-    """Why the body is not a JSON object of at most :data:`MAX_REFRESH_REQUEST_BYTES`.
+async def _json_body(request: Request) -> dict[str, Any] | tuple[str, int]:
+    """The body, a JSON object of at most :data:`MAX_REFRESH_REQUEST_BYTES`.
 
-    ``None`` when it is one; otherwise the message and status ``POST /api/source/refresh``
-    answers the same body with.
+    Otherwise the message and status ``POST /api/source/refresh`` answers the same body
+    with.
     """
 
     declared = request.headers.get("content-length", "")
@@ -101,7 +103,7 @@ async def _body_problem(request: Request) -> tuple[str, int] | None:
         return "the request body is not JSON", 400
     if not isinstance(decoded, dict):
         return "the request body must be a JSON object", 400
-    return None
+    return decoded
 
 
 async def pull_refresh_handler(request: Request) -> JSONResponse:
@@ -118,10 +120,9 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
         served_pull_view,
     )
 
-    problem = await _body_problem(request)
-    if problem is not None:
-        message, status_code = problem
-        return JSONResponse({"error": message, "code": "invalid_request"}, status_code=status_code)
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
     mirror = mirror_session(request.app)
     if mirror is None or served_pull_of(mirror) is None:
         return JSONResponse(
@@ -135,8 +136,87 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     if view is not None:
         view.served.saw_record(envelope["fetched_at"])
     # ``status_route`` is where a one-shot ``--api`` reads how the refresh ended.
-    body = {"refresh": started, "pull": dict(envelope), "status_route": PULL_ROUTE}
-    return JSONResponse(body, status_code=202, headers=_NO_STORE)
+    answer = {"refresh": started, "pull": dict(envelope), "status_route": PULL_ROUTE}
+    return JSONResponse(answer, status_code=202, headers=_NO_STORE)
+
+
+def _invalid_request(message: str, status_code: int = 400) -> JSONResponse:
+    return JSONResponse({"error": message, "code": "invalid_request"}, status_code=status_code)
+
+
+async def pulls_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/pulls?state=&limit=&after=`` — see :mod:`.pull_list_route`.
+
+    From the cache alone. Like the pull route, the answer carries an entity tag, and a
+    request whose ``If-None-Match`` names it is answered ``304`` without the rows, so a
+    page can poll it cheaply.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_list_route import (
+        ListRequestError,
+        envelope_etag,
+        list_file_stamp,
+        list_view,
+        list_window,
+        pull_list_envelope,
+    )
+
+    try:
+        window = list_window(request.query_params)
+    except ListRequestError as exc:
+        return _invalid_request(str(exc))
+    view = list_view(request.app, window.name)
+    stamp = await asyncio.to_thread(list_file_stamp, view, window.name)
+    envelope = await asyncio.to_thread(pull_list_envelope, view, window)
+    etag = envelope_etag(envelope, stamp, window)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
+async def pulls_refresh_handler(request: Request) -> JSONResponse:
+    """``POST /api/plugin/github/pulls-refresh`` — start or join one list's refresh.
+
+    The body may name ``state`` (``all`` by default), ``more``, which extends the list by
+    one GitHub page, and ``retry``, a reader's own click. ``refresh`` says whether this
+    request ``started`` the job or ``joined`` one that was running, answered ``202``, or
+    that an automatic request is ``not_due``: tried within the freshness window, or
+    before GitHub's limit lifts, answered ``200``. ``pulls`` is the envelope as of that
+    moment without its rows.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_list_route import (
+        ListRequestError,
+        ListWindow,
+        list_view,
+        pull_list_envelope,
+        refresh_request,
+        refresh_wanted,
+        start_refresh,
+        status_route,
+    )
+
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
+    try:
+        ask = refresh_request(body)
+    except ListRequestError as exc:
+        return _invalid_request(str(exc))
+    view = list_view(request.app, ask.name)
+    if view.repository is None or view.coordinator is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+        )
+    wanted = await asyncio.to_thread(refresh_wanted, view, ask)
+    started = start_refresh(view, ask, wanted=wanted)
+    # Read after the start, on the loop: the job is running, whatever it does next.
+    after = list_view(request.app, ask.name)
+    envelope = await asyncio.to_thread(pull_list_envelope, after, ListWindow(ask.name, limit=0))
+    answer = {"refresh": started, "pulls": dict(envelope), "status_route": status_route(ask.name)}
+    return JSONResponse(answer, status_code=200 if started == "not_due" else 202, headers=_NO_STORE)
 
 
 __all__ = [
@@ -145,4 +225,6 @@ __all__ = [
     "pull_handler",
     "pull_markdown_handler",
     "pull_refresh_handler",
+    "pulls_handler",
+    "pulls_refresh_handler",
 ]

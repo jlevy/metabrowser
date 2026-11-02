@@ -42,6 +42,7 @@ from tests.github_pull_fixture import (
     Origin,
     account,
     install_fake_gh,
+    logged_gh_calls,
     ok,
     scenario,
 )
@@ -95,25 +96,6 @@ class _Session:
         for name, value in install_fake_gh(self.tmp_path, answers).items():
             self.monkeypatch.setenv(name, value)
 
-    def gh_calls(self) -> list[str]:
-        log = self.tmp_path / "fake-gh-log.jsonl"
-        if not log.exists():
-            return []
-        calls: list[str] = []
-        for line in log.read_text(encoding="utf-8").splitlines():
-            args: list[str] = json.loads(line)["args"]
-            if args[:2] == ["auth", "status"]:
-                calls.append("gh auth status")
-                continue
-            path = next(arg for arg in args if arg.startswith("repos/"))
-            if "--jq" in args:
-                calls.append(f"gh api {path} --jq {args[args.index('--jq') + 1]}")
-                continue
-            conditional = any(arg.startswith("If-None-Match: ") for arg in args)
-            calls.append(f"gh api {path}" + (" (If-None-Match)" if conditional else ""))
-        log.unlink()
-        return calls
-
     def _once(self, found: re.Match[str]) -> str:
         record = json.loads(found.group(2))
         number, text = record["number"], json.dumps(record)
@@ -129,7 +111,7 @@ class _Session:
         shown = [arg.removeprefix(f"{self.tmp_path}/") for arg in args]
         printed = replace(result, stdout=_RECORD.sub(self._once, result.stdout))
         self.blocks.append(
-            printed.block(" ".join(quoted(arg) for arg in shown), gh=self.gh_calls())
+            printed.block(" ".join(quoted(arg) for arg in shown), gh=logged_gh_calls(self.tmp_path))
         )
         return result
 

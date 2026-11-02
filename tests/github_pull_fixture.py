@@ -13,12 +13,22 @@ so every commit ID is the same on every machine. It stands in for
 
 ``scenario`` answers every ``gh api`` read of those pull requests from
 ``tests/fixtures/github-pull/responses.json``, scrubbed real responses, and ``gh auth
-status`` for one signed-in account. ``install_fake_gh`` writes a ``gh`` that replays a
-scenario and logs each call; it is a Python script run by this interpreter.
+status`` for one signed-in account. It answers the repository's lists too:
+
+| List | Pages |
+| --- | --- |
+| ``all`` | one full page, 106 down to 7, with a next link; a second page, 6 and 5 |
+| ``open`` | 10 and 7 |
+| ``closed`` | 9 and 8 |
+
+Pull requests other than those four appear in a list and have no record.
+``install_fake_gh`` writes a ``gh`` that replays a scenario and logs each call; it is a
+Python script run by this interpreter.
 
 Run as a script, it builds ``<directory>/home``, an application home holding the
 mirror and the records of all four pull requests, fetched through the production CLI
-path with the fake ``gh`` and a fixed clock, and ``<directory>/root``::
+path with the fake ``gh`` and a fixed clock, the first page of the ``all`` list, the
+``open`` list as another account read it, no ``closed`` list, and ``<directory>/root``::
 
     github_pull_fixture.py <directory>
 
@@ -30,8 +40,10 @@ the QA runbook's pull-request page walkthrough does::
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import copy
+import functools
 import hashlib
 import json
 import os
@@ -46,6 +58,7 @@ from typing import Any, Final
 
 CANONICAL: Final = "https://github.com/octo/demo"
 READER: Final = "octo-reader"
+ANOTHER_READER: Final = "someone-else"
 FETCHED_AT: Final = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
 RESPONSES: Final = Path(__file__).parent / "fixtures" / "github-pull" / "responses.json"
 DEFAULT_BRANCH: Final = "topic"
@@ -520,6 +533,28 @@ def page(path: str) -> str:
     return f"{path}?per_page=100&page=1"
 
 
+def logged_gh_calls(directory: Path) -> list[str]:
+    """What the fake ``gh`` was asked since the last call, as a transcript lists it."""
+
+    log = directory / "fake-gh-log.jsonl"
+    if not log.exists():
+        return []
+    calls: list[str] = []
+    for line in log.read_text(encoding="utf-8").splitlines():
+        args: list[str] = json.loads(line)["args"]
+        if args[:2] == ["auth", "status"]:
+            calls.append("gh auth status")
+            continue
+        path = next(arg for arg in args if arg.startswith("repos/"))
+        if "--jq" in args:
+            calls.append(f"gh api {path} --jq {args[args.index('--jq') + 1]}")
+            continue
+        conditional = any(arg.startswith("If-None-Match: ") for arg in args)
+        calls.append(f"gh api {path}" + (" (If-None-Match)" if conditional else ""))
+    log.unlink()
+    return calls
+
+
 def api_entries(origin: Origin) -> dict[str, Any]:
     """Every ``gh api`` path of pull requests 7 to 10 and its recorded answer."""
 
@@ -540,6 +575,97 @@ def api_entries(origin: Origin) -> dict[str, Any]:
     return entries
 
 
+def list_page(state: str, number: int = 1) -> str:
+    """The ``gh api`` path of one full-size page of a repository's list."""
+
+    query = f"state={state}&sort=created&direction=desc&per_page=100&page={number}"
+    return f"repos/octo/demo/pulls?{query}"
+
+
+def next_link(path: str, number: int) -> dict[str, str]:
+    """The ``Link`` header of a page GitHub has another page after."""
+
+    return {"Link": f'<https://api.github.com/{path}?page={number + 1}>; rel="next"'}
+
+
+@functools.cache
+def _recorded_list_item() -> dict[str, Any]:
+    return recorded_responses()["list_item"]
+
+
+def list_item(pull: Mapping[str, Any]) -> dict[str, Any]:
+    """*pull* as a list's item carries it: every key of the real item, with its values."""
+
+    item = _recorded_list_item()
+    number = pull["number"]
+    links = {
+        key: value.replace("/7", f"/{number}")
+        for key, value in item.items()
+        if key == "url" or (key.endswith("_url") and key != "review_comment_url")
+    }
+    labels = [{**item["labels"][0], "name": label["name"]} for label in pull["labels"]]
+    copied = (
+        "number",
+        "state",
+        "title",
+        "user",
+        "body",
+        "created_at",
+        "updated_at",
+        "closed_at",
+        "merged_at",
+        "merge_commit_sha",
+        "head",
+        "base",
+        "draft",
+    )
+    return {**item, **links, **{key: pull[key] for key in copied}, "labels": labels}
+
+
+def generated_item(number: int) -> dict[str, Any]:
+    """A pull request that only lists hold, newer the higher its *number*."""
+
+    minutes = number % 60
+    hour = 8 + number // 60
+    when = f"2026-09-17T{hour:02d}:{minutes:02d}:00Z"
+    side = {"repo": {"full_name": "octo/demo"}}
+    return list_item(
+        {
+            "number": number,
+            "state": "open",
+            "title": f"Work item {number}",
+            "user": {"login": "contributor"},
+            "body": f"The description of work item {number}.",
+            "created_at": when,
+            "updated_at": when,
+            "closed_at": None,
+            "merged_at": None,
+            "merge_commit_sha": None,
+            "head": {"ref": f"work-{number}", "sha": "0" * 40, **side},
+            "base": {"ref": DEFAULT_BRANCH, "sha": "0" * 40, **side},
+            "draft": False,
+            "labels": [],
+        }
+    )
+
+
+def list_entries(origin: Origin) -> dict[str, Any]:
+    """Every ``gh api`` path of the repository's lists and its answer."""
+
+    known = {number: list_item(parts["pull"]) for number, parts in pull_bodies(origin).items()}
+    first_page = [
+        *(generated_item(number) for number in range(106, 10, -1)),
+        *(known[number] for number in (10, 9, 8, 7)),
+    ]
+    pages: list[tuple[str, list[dict[str, Any]], Mapping[str, str] | None]] = [
+        (list_page("all"), first_page, next_link("repos/octo/demo/pulls", 1)),
+        (list_page("all", 2), [generated_item(6), generated_item(5)], None),
+        (list_page("open"), [known[10], known[7]], None),
+        (list_page("closed"), [known[9], known[8]], None),
+    ]
+    return {path: ok(path, body, headers) for path, body, headers in pages}
+
+
 def account(login: str = READER, *, state: str = "success") -> dict[str, Any]:
     """A ``gh auth status --json hosts`` answer for one active github.com account."""
 
@@ -558,7 +684,8 @@ def account(login: str = READER, *, state: str = "success") -> dict[str, Any]:
 def scenario(origin: Origin) -> dict[str, Any]:
     """Signed in as :data:`READER`, answering every read of pull requests 7 to 10."""
 
-    return {"auth": account(), "api": api_entries(origin), "api_failure": None}
+    answers = {**api_entries(origin), **list_entries(origin)}
+    return {"auth": account(), "api": answers, "api_failure": None}
 
 
 def install_fake_gh(directory: Path, answers: Mapping[str, Any]) -> dict[str, str]:
@@ -600,14 +727,15 @@ def build_home(directory: Path) -> None:
     run does, so the admitted-git job's tests still meet the floor unpatched.
     """
 
-    from metabrowser.builtin_plugins.github import pulls
+    from metabrowser.builtin_plugins.github import pull_list, pulls
     from metabrowser.cache import acquire
     from metabrowser.cache.urls import GitSource
     from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
     from metabrowser.git.process import detect_git_version
 
     origin = build_origin(directory)
-    environment = install_fake_gh(directory, scenario(origin))
+    answers = scenario(origin)
+    environment = install_fake_gh(directory, answers)
     version, _raw = detect_git_version()
     local = origin.url
 
@@ -621,6 +749,7 @@ def build_home(directory: Path) -> None:
         _patched(acquire, "remote_url_for", remote_url_for),
         _patched(acquire, "require_acquisition_git", lambda: version),
         _patched(pulls, "utc_now", lambda: FETCHED_AT),
+        _patched(pull_list, "utc_now", lambda: FETCHED_AT),
     ):
         for number in (7, 8, 9, 10):
             try:
@@ -628,20 +757,41 @@ def build_home(directory: Path) -> None:
             except SystemExit as exc:
                 if exc.code not in (0, None):
                     raise
+        build_lists(directory, answers)
     write_damaged_records(directory / "home")
     (directory / "root").mkdir(exist_ok=True)
+
+
+def _source_slug() -> str:
+    from metabrowser.cache.identity import cache_slug, source_identity
+
+    return cache_slug(
+        "https", CANONICAL, source_identity("https", CANONICAL), slug_owner=lambda _slug: None
+    )
+
+
+def build_lists(directory: Path, answers: Mapping[str, Any]) -> None:
+    """The ``all`` list's first page, and the ``open`` list another account read."""
+
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from metabrowser.builtin_plugins.github.pull_list_refresh import refresh_pull_list
+
+    repository = ListedRepository(directory / "home", _source_slug(), "octo", "demo")
+    asyncio.run(refresh_pull_list(repository, "all"))
+    os.environ.update(
+        install_fake_gh(directory, {**answers, "auth": account(ANOTHER_READER)}),
+    )
+    asyncio.run(refresh_pull_list(repository, "open"))
+    os.environ.update(install_fake_gh(directory, answers))
 
 
 def write_damaged_records(home: Path) -> None:
     """Records the route cannot use: 12 from another schema, 13 not JSON at all."""
 
-    from metabrowser.cache.identity import cache_slug, source_identity
     from metabrowser.cache.paths import source_pull_record
     from metabrowser.home import write_private_file_atomic
 
-    slug = cache_slug(
-        "https", CANONICAL, source_identity("https", CANONICAL), slug_owner=lambda _slug: None
-    )
+    slug = _source_slug()
     write_private_file_atomic(
         home, source_pull_record(slug, 12), json.dumps({"schema_version": 0}).encode()
     )

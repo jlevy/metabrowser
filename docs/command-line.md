@@ -384,6 +384,21 @@ page becomes visible, and `POST /api/plugin/github/pull-refresh` (a JSON object 
 refreshes it on request and returns at once, with `pending` while no record exists yet.
 A newer head is offered as the source’s `latest` rather than switched to.
 
+A repository’s lists of pull requests are read the same way, from any URL of it:
+
+```shell
+echo '{"state": "all"}' > refresh.json
+metab https://github.com/owner/repo --api /api/plugin/github/pulls-refresh --data refresh.json
+metab https://github.com/owner/repo --api '/api/plugin/github/pulls?state=all&limit=20'
+```
+
+The first command fetches the newest hundred, waits, and exits 1 if that failed, and the
+second answers from the cache, offline too, with no `gh` and no Git.
+`state` is `all` (the default), `open`, or `closed`, each its own list; `{"more": true}`
+fetches one more page, up to ten; `limit` and `after` choose a window of what is cached.
+A list says how many rows it holds in `fetched`, and `complete` is false when GitHub has
+more.
+
 Reading pull requests needs `gh` 2.81.0 or newer, signed in with `gh auth login`,
 because `gh api` refuses requests while signed out.
 A pull request that cannot be read does not fail the command.

@@ -311,8 +311,8 @@ handlers in `sidekick.py` that import the rest only when called:
 
 | Route | Answer |
 | --- | --- |
-| `GET /api/plugin/github/pulls?state=&limit=&after=` | From the cache alone: `state` (`absent`, `pending`, `current`, `stale`), `reason`, `source`, `list`, `fetched_at`, `reader`, `fresh_for_s`, `refreshing`, `last_refresh`, `fetched`, `complete`, `truncated`, `limit`, `next_after`, and `rows`. It carries an entity tag, as the pull route does |
-| `POST /api/plugin/github/pulls-refresh` with `{"state": …, "more": false}` | Starts or joins the list’s refresh and answers `202` at once with the envelope and its `status_route`. `"more": true` extends the list by one GitHub page |
+| `GET /api/plugin/github/pulls?state=&limit=&after=` | From the cache alone: `state` (`absent`, `pending`, `current`, `stale`), `reason`, `source`, `list`, `fetched_at`, `reader`, `fresh_for_s`, `refreshing`, `last_refresh`, `fetched`, `complete`, `truncated`, `at_cap` (no more may be held), `limit` (0 for the envelope alone), `next_after`, and `rows`. It carries an entity tag, as the pull route does |
+| `POST /api/plugin/github/pulls-refresh` with `{"state": …, "more": false, "retry": false}` | Starts or joins the list’s refresh and answers `202` at once with the envelope and its `status_route`. `"more": true` extends the list by one GitHub page. Those two and `"retry": true` are a reader’s action; an automatic request that is not due answers `200` with `refresh: "not_due"` and starts nothing |
 | `GET /api/plugin/github/pull-files?number=<n>` | One pull request’s changed files, from the cache alone, with the same state fields. See [Changed Files in a Row](#changed-files-in-a-row) |
 | `POST /api/plugin/github/pull-files-refresh` with `{"number": n}` | Starts or joins that list’s refresh |
 

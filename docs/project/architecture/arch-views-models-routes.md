@@ -163,13 +163,13 @@ reservation and its invariants, is in
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
-`github/pull-refresh`, `github/pull-markdown`. On a `GitRevisionSubject`,
-`diff/comparison` honors the pin through `GitLocation` and `GitDiffSource.content` reads
-blobs through the shared cat-file pool; patch `document`/`children`, `binary/chunk`,
-`structured/parsed`, and `agent-log/charts` honor `GitPath` and follow in-tree relative
-symlink blobs.
-`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or
-`merge_base`, and reports it in the document.
+`github/pull-refresh`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`.
+On a `GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
+`GitDiffSource.content` reads blobs through the shared cat-file pool; patch
+`document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
+`GitPath` and follow in-tree relative symlink blobs.
+`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
+and reports it in the document.
 
 On a page that shows a pinned revision, the diff view’s file bars offer **View file** at
 each side of a change that exists, for a commit’s diff and a pull request’s Files
@@ -239,6 +239,30 @@ KPress’s asset list is not sent, so no script KPress adds for a text’s conte
 The page applies the same allowlist again, rebuilding the nodes it inserts.
 See
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
+
+`github/pulls?state=&limit=&after=` answers one of the served repository’s three lists
+of pull requests (`all`, the default, `open`, or `closed`) from the cache alone:
+`absent` (with `not_github`, `not_cached`, `schema_mismatch`, or `unreadable`),
+`pending`, `current`, or `stale`, plus the `reader` who fetched it, `refreshing`, how
+its last refresh ended (`last_refresh`), and the honest count: `fetched` is the rows
+held, `complete` is false when GitHub has more, `truncated` is true when a bound cut a
+row’s text or an item could not be read, and `at_cap` says the list holds as many pages
+as it may. `rows` is a window, newest first by number, of at most `limit` rows (default
+100, 0 for the envelope alone) after the number `after`, and `next_after` starts the
+next one. A row keeps only what a list shows; `merged` is read from `merged_at`, since a
+list’s item has no such flag.
+It sends an entity tag over everything but the rows, as `github/pull` does.
+A list is fetched only by a refresh.
+`POST github/pulls-refresh` takes `state`, `more`, and `retry`, starts or joins that
+list’s refresh, and answers `202` at once, naming `github/pulls` with its query as its
+`status_route`, which a one-shot `--api` prints after the refresh ends, exiting 1 when
+it failed. `"more": true` extends the list by one GitHub page.
+Those two and `"retry": true` are a reader’s own action; any other request is automatic
+and is held to one attempt a window, and past `rate_limited` until `reset_at`, answering
+`refresh: "not_due"` with `200` until then.
+Any other key or value is `invalid_request` (400), and a server with no GitHub
+repository answers `not_github` (409). See
+[Lists of pull requests](arch-repository-sources-and-provider-mirrors.md#lists-of-pull-requests).
 
 ### Planned plugin registration surfaces
 
@@ -312,6 +336,8 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
+| `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt` |
+| `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
@@ -370,6 +396,9 @@ with the `202`, the `current` record after it, and the `gh` calls it made.
 `gh_failed` status after it, and the exit status 1.
 `cli-ui-github-pull-page.tryscript.md` replays the route’s recorded answers through a
 refresh that completes.
+`/api/plugin/github/pulls-refresh` is the same: `cli-github-pulls-refresh.txt` records
+refreshes that complete with the `gh` calls each made, `cli-github-pulls-failures.txt`
+each typed failure, and `cli-github-pulls.tryscript.md` the same route with no `gh`.
 
 The exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request

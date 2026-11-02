@@ -581,6 +581,45 @@ it loads, restyles the page, reaches the application’s handlers, or names an e
 Files changed is the diff plugin’s view over the record’s comparison, passed as two
 endpoints with `base_policy=merge_base`.
 
+### Lists of pull requests
+
+A repository’s pull requests are three lists, GitHub’s three `state` values, each its
+own file beside the records: `sources/<slug>/pulls/list-<name>.json`, with how its last
+refresh ended in `list-<name>.refresh.json` (`cache/paths.py: source_pull_list`). One
+file per list makes each a prefix of one GitHub listing, so `complete` has one meaning.
+`builtin_plugins/github/pull_list.py` holds the Pydantic models and every bound, with
+the measurements beside the constants; a list whose `schema_version` differs is
+refetched. Listing takes the home, the slug, and the owner and repository
+(`ListedRepository`), never a store, and runs no Git: `tests/test_github_pull_list.py`
+lists a source directory that has no store, with a `git` first on `PATH` that fails and
+logs.
+
+`refresh_pull_list` (`pull_list_refresh.py`) reads the account before and after the
+pages, and a list read across a switch is discarded as `account_changed`. It reads every
+page the file holds, one `gh api` request each, newest first
+(`sort=created&direction=desc`), and each full-size page goes with its own
+`If-None-Match` when the same reader read it last: a `304` reuses that page’s rows, by
+the numbers its mark in `etags` names.
+The list is assembled over the job’s duration and is not atomic: a pull request that
+opens or closes between two page reads can appear twice, which the number dedupes, or be
+missed until the next refresh.
+`"more": true` reads only the next page and appends it, up to the cap of ten pages, and
+the file keeps its `fetched_at`; on a list another account read, it starts again from
+the first page. A list names its reader, and pages from two readers are never joined: a
+successful refresh by another account replaces the whole file, and until then the list
+is shown, labelled, and `stale` once a refresh has run as someone else.
+A failure leaves the file as it was and is kept in the stamp, whose `reader` says who it
+ran as; a cache that will not take the stamp either has it kept in the server’s memory.
+
+The job runs on the server’s refresh coordinator under the key `<slug>:pulls/<name>`, so
+it counts against the limit of two and shutdown cancels it, and it takes no turn at the
+mirror’s fetch, since it never touches a store.
+`GET /api/plugin/github/pulls` parses a list only when its file changed.
+The paging loop, `read_list`, is shared with the record (`gh_lists.py`).
+
+The server reaches the repository through its `StoreMirror`, the one served source that
+names a GitHub repository today; a folder’s server answers `not_github`.
+
 ### Git path and blob semantics
 
 `GitPath` is an immutable tuple of raw non-NUL byte segments with bytewise equality and

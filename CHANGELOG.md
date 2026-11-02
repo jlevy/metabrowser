@@ -343,6 +343,10 @@ GitHub URLs and HTTPS:
   `unavailable`; an item that cannot be read or is too large for one page is left out,
   an `http://` link is left empty, and the list is marked incomplete.
   Lists and text are bounded per pull request, and a cut is reported, never silent.
+  A repository’s lists of pull requests are new: `POST /api/plugin/github/pulls-refresh`
+  fetches the newest hundred of `all`, `open`, or `closed` with `gh` and no Git, and
+  `{"more": true}` one page more, up to ten; `/api/plugin/github/pulls` answers a window
+  of the cached rows, offline too, with the count fetched and whether GitHub has more.
 
 - Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
   way github.com shows it: title, state (open, draft, merged, or closed), github.com’s

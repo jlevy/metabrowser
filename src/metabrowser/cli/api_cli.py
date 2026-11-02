@@ -146,7 +146,7 @@ def _follow_route(route: str, response: ApiResponse) -> str | None:
     except ValueError:
         return None
     named = declared.get(_STATUS_ROUTE_FIELD) if isinstance(declared, dict) else None
-    if isinstance(named, str) and named.startswith("/api/") and "?" not in named:
+    if isinstance(named, str) and named.startswith("/api/"):
         return named
     return None
 
