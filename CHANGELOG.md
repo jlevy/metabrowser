@@ -382,8 +382,8 @@ GitHub URLs and HTTPS:
   last; a table wider than its text scrolls there, and a long word or URL breaks to fit.
   A review comment’s file opens at the served head, at its line, and it shows the end of
   its diff hunk, where it anchors: the last eight lines, back to the start of a
-  multi-line comment’s range, with the earlier lines behind a disclosure and added and
-  deleted lines tinted as in the diff.
+  multi-line comment’s range for up to 100 lines, with the earlier lines behind a
+  disclosure and added and deleted lines tinted as in the diff.
   The freshness row links to the page, and back, forward, and reload keep its tab.
   The page for a number the server does not serve links to the served pull request’s
   page, on the same tab.

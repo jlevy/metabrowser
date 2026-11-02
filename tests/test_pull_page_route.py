@@ -141,9 +141,11 @@ def test_a_hunk_is_painted_as_text_in_a_native_disclosure() -> None:
 
     source = PAGE_JS.read_text(encoding="utf-8")
     assert '"data-kind": line.kind }, [line.text])' in source
-    # Stateless: the browser opens it, and nothing of the page listens or remembers.
+    # The browser opens it. The page listens to that event in one place, the function the
+    # session drives, and remembers nothing: a repaint replaces the disclosure.
     assert 'h("details", { class: "github-pull-hunk-earlier" }' in source
-    assert "toggle" not in source
+    assert source.count('"toggle"') == 1
+    assert "tintOnFirstOpen(disclosure, plain, earlier, hunkLines);" in source
 
 
 def _vertical_margins(declarations: str) -> tuple[str, str]:

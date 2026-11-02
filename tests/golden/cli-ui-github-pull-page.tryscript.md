@@ -761,7 +761,7 @@ $ node tests/dom/github-pull-page-session.js
       ]
     },
     "one line more is past the tail": {
-      "earlier": "2 lines: @@ -1,30 +1,30 @@ def main(): ...  line 22",
+      "earlier": "2 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 22",
       "shown": [
         "context:  line 23",
         "context:  line 24",
@@ -774,7 +774,7 @@ $ node tests/dom/github-pull-page-session.js
       ]
     },
     "a long hunk shows its tail": {
-      "earlier": "25 lines: @@ -1,30 +1,30 @@ def main(): ...  line 23",
+      "earlier": "25 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 23",
       "shown": [
         "context:  line 24",
         "del: -old 25",
@@ -787,7 +787,7 @@ $ node tests/dom/github-pull-page-session.js
       ]
     },
     "a range longer than the tail is all shown, from its first line, not counting a deletion": {
-      "earlier": "14 lines: @@ -1,30 +1,30 @@ def main(): ...  line 13",
+      "earlier": "14 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 13",
       "shown": [
         "context:  line 14",
         "del: -old 15",
@@ -811,7 +811,7 @@ $ node tests/dom/github-pull-page-session.js
       ]
     },
     "a range on the left counts deletions and not additions": {
-      "earlier": "15 lines: @@ -1,30 +1,30 @@ def main(): ...  line 14",
+      "earlier": "15 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 14",
       "shown": [
         "del: -old 15",
         "add: +new 15",
@@ -834,7 +834,7 @@ $ node tests/dom/github-pull-page-session.js
       ]
     },
     "an outdated comment's range is its original one": {
-      "earlier": "14 lines: @@ -1,30 +1,30 @@ def main(): ...  line 13",
+      "earlier": "14 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 13",
       "shown": [
         "context:  line 14",
         "del: -old 15",
@@ -872,6 +872,27 @@ $ node tests/dom/github-pull-page-session.js
         "context:  line 28",
         "context:  line 29",
         "context:  line 30"
+      ]
+    },
+    "a range of the most shown is all shown": {
+      "earlier": "31 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 30",
+      "shown": "100 lines: context:  line 31 ... context:  line 130"
+    },
+    "a range past the most shown shows the most, and the rest is behind the disclosure": {
+      "earlier": "31 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 30",
+      "shown": "100 lines: context:  line 31 ... context:  line 130"
+    },
+    "the other side's lines do not carry a range past the most shown": {
+      "earlier": "145 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... del: -old 142",
+      "shown": [
+        "del: -old 143",
+        "del: -old 144",
+        "del: -old 145",
+        "del: -old 146",
+        "del: -old 147",
+        "del: -old 148",
+        "del: -old 149",
+        "add: +new 30"
       ]
     },
     "a hunk's text is only ever text": {
