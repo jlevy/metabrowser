@@ -92,6 +92,7 @@ type Timestamp = Annotated[str, StringConstraints(pattern=r"^\d{4}-\d\d-\d\dT\d\
 type Login = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_\[\]-]{0,99}$")]
 type Short = Annotated[str, StringConstraints(max_length=1024)]
 type Url = Annotated[str, StringConstraints(pattern=r"^https://", max_length=4096)]
+type Reader = Annotated[str, StringConstraints(pattern=r"^gh:[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")]
 type Mergeable = Literal["mergeable", "conflicting", "unknown"]
 type UnavailablePart = Literal["check_runs", "status", "comparison"]
 
@@ -249,7 +250,7 @@ class PullRecord(_Model):
     source: Url
     number: int = Field(ge=1)
     fetched_at: Timestamp
-    reader: Annotated[str, StringConstraints(pattern=r"^gh:[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")]
+    reader: Reader
     etags: dict[
         Annotated[str, StringConstraints(max_length=512)],
         Annotated[str, StringConstraints(max_length=300)],
@@ -468,19 +469,25 @@ def read_pull_record(
     return record
 
 
-# How a pull request's last refresh ended, kept beside its record so a later command
-# can report it and not ask gh again within the freshness window. One small object;
-# the message is the user-facing one, which names no path, token, or gh output.
+# How a refresh last ended, kept beside what it refreshes (a pull request's record, or a
+# list of pull requests) so a later command can report it and not ask gh again within
+# the freshness window. One small object; the message is the user-facing one, which names
+# no path, token, or gh output.
 MAX_PULL_REFRESH_BYTES: Final = 4096
 
 
 class PullRefreshStamp(_Model):
-    """``succeeded`` or a failure state, why, when GitHub's limit lifts, and when."""
+    """``succeeded`` or a failure state, why, when GitHub's limit lifts, and when.
+
+    ``reader`` is the account it ran as, when it got as far as asking; a list says by it
+    that the account has changed since the list was fetched.
+    """
 
     outcome: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,40}$")]
     message: Annotated[str, StringConstraints(max_length=1000)] | None = None
     reset_at: Timestamp | None = None
     at: Timestamp
+    reader: Reader | None = None
 
     @field_validator("reset_at", "at")
     @classmethod
@@ -491,26 +498,37 @@ class PullRefreshStamp(_Model):
         return value
 
 
+def write_refresh_stamp(home: Path, slug: str, relative: str, stamp: PullRefreshStamp) -> None:
+    """Publish *stamp* atomically at *relative*, under the source's ``pulls`` directory.
+
+    Blocking; run it off the event loop.
+    """
+
+    ensure_private_directory(home, source_pulls_directory(slug))
+    write_private_file_atomic(home, relative, stamp.model_dump_json().encode("utf-8"))
+
+
+def read_refresh_stamp(home: Path, relative: str) -> PullRefreshStamp | None:
+    """The stamp at *relative*, or ``None`` when there is no usable one. Blocking."""
+
+    try:
+        data = read_bytes_bounded(home, relative, max_bytes=MAX_PULL_REFRESH_BYTES)
+        return PullRefreshStamp.model_validate_json(data)
+    except (FileNotFoundError, RecordError, PrivateStorageError, OSError, ValueError):
+        # ValueError covers pydantic's ValidationError: anything unusable is no stamp.
+        return None
+
+
 def write_pull_refresh(home: Path, slug: str, number: int, stamp: PullRefreshStamp) -> None:
     """Publish *stamp* atomically beside the record. Blocking; run it off the event loop."""
 
-    ensure_private_directory(home, source_pulls_directory(slug))
-    write_private_file_atomic(
-        home, source_pull_refresh(slug, number), stamp.model_dump_json().encode("utf-8")
-    )
+    write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
 
 
 def read_pull_refresh(home: Path, slug: str, number: int) -> PullRefreshStamp | None:
     """The last refresh's stamp, or ``None`` when there is no usable one. Blocking."""
 
-    try:
-        data = read_bytes_bounded(
-            home, source_pull_refresh(slug, number), max_bytes=MAX_PULL_REFRESH_BYTES
-        )
-        return PullRefreshStamp.model_validate_json(data)
-    except (FileNotFoundError, RecordError, PrivateStorageError, OSError, ValueError):
-        # ValueError covers pydantic's ValidationError: anything unusable is no stamp.
-        return None
+    return read_refresh_stamp(home, source_pull_refresh(slug, number))
 
 
 __all__ = [
@@ -529,6 +547,7 @@ __all__ = [
     "MAX_TITLE_BYTES",
     "PULL_RECORD_SCHEMA",
     "PullRefreshStamp",
+    "Reader",
     "CheckRun",
     "CombinedStatus",
     "CommitStatus",
@@ -550,7 +569,9 @@ __all__ = [
     "fit_record",
     "read_pull_record",
     "read_pull_refresh",
+    "read_refresh_stamp",
     "serialize_pull_record",
     "write_pull_record",
     "write_pull_refresh",
+    "write_refresh_stamp",
 ]
