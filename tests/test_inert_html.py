@@ -283,6 +283,9 @@ def test_the_allowlist_check_refuses_any_other_loading_value() -> None:
     for value in ("eager", "LAZY", "", 'lazy" onload="alert(1)'):
         written = f"<img loading='{value}' src='docs/a.png'>"
         assert any("loading" in found for found in allowlist_violations(written, images=True))
+    # A kept image with no `loading` is as eager as one that says so.
+    assert allowlist_violations('<img src="docs/a.png">', images=True) == ["img[loading missing]"]
+    assert allowlist_violations('<img loading="lazy" src="docs/a.png">', images=True) == []
 
 
 @pytest.mark.parametrize(
