@@ -4,7 +4,7 @@ Core code names no provider and never branches on one. It asks the providers lis
 here, through :class:`RepositoryProvider`, for six things: URL reducers for the root
 argument, extra Git configuration for a remote URL (a credential helper), a check to run
 before a first clone, the ``repository_context`` of a mirrored source, the commit a
-pull-request URL pins, and the pull request a server keeps fresh beside the mirror. The
+pull-request URL pins, and the pull requests a server keeps fresh beside the mirror. The
 list is fixed, as the built-in browser plugin directories are; there is no public
 registration surface for the alpha.
 """
@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Literal, Protocol
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
     from metabrowser.cache.urls import GitSource, ProviderUrlReducer
-    from metabrowser.mirror_refresh import CompanionRefresh
+    from metabrowser.mirror_refresh import PullRequestSet
     from metabrowser.repository_context import RepositoryContext
 
 type PullRequestFetch = Literal["if_missing", "always"]
@@ -86,12 +86,10 @@ class RepositoryProvider(Protocol):
         """
         ...
 
-    async def served_pull_request(
-        self, published: PublishedSource, number: int
-    ) -> CompanionRefresh | None:
-        """What a server keeps fresh for pull request *number* of *published*.
+    def served_pull_requests(self, published: PublishedSource) -> PullRequestSet | None:
+        """What a server keeps fresh for the pull requests of *published*, any of them.
 
-        Return ``None`` for a source this provider does not own. It reads no network.
+        Return ``None`` for a source this provider does not own. It reads nothing.
         """
         ...
 
@@ -166,13 +164,11 @@ async def open_pull_request(
     )
 
 
-async def served_pull_request_for(
-    published: PublishedSource, number: int
-) -> CompanionRefresh | None:
-    """The pull request a server serves beside the mirror, from the provider that owns it."""
+def served_pull_requests_for(published: PublishedSource) -> PullRequestSet | None:
+    """The pull requests a server serves beside the mirror, from the provider that owns it."""
 
     for provider in installed_providers():
-        served = await provider.served_pull_request(published, number)
+        served = provider.served_pull_requests(published)
         if served is not None:
             return served
     return None
@@ -188,7 +184,7 @@ __all__ = [
     "open_pull_request",
     "provider_credential_hint",
     "provider_git_config",
-    "served_pull_request_for",
+    "served_pull_requests_for",
     "repository_context_for",
     "url_reducers",
 ]

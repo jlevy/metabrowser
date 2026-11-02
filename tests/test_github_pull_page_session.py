@@ -46,7 +46,7 @@ from starlette.testclient import TestClient
 
 from metabrowser import kpress_adapter
 from metabrowser.builtin_plugins.github import pulls
-from metabrowser.builtin_plugins.github.served_pull import ServedPull, served_pull
+from metabrowser.builtin_plugins.github.served_pull import ServedPull, ServedPulls
 from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.served_mirror import StoreMirror
@@ -212,7 +212,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
     serve_mirror(
         StoreMirror.from_published(replace(published, source=source)),
         pull_request=7,
-        companion=served_pull(published, 7),
+        pull_requests=ServedPulls(published),
     )
     git_repo.clear_repo_cache()
     try:
@@ -306,7 +306,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             # are recorded here rather than from a second server.
             assert session is not None
             for number, name in ((8, "merged"), (9, "closed")):
-                session.companion = served_pull(published, number)
+                client.portal.call(session.attend, number)  # pyright: ignore[reportOptionalMemberAccess]
                 client.post(_REFRESH, json={}, headers=JSON_BODY)
                 settle(client)
                 recorded[name] = _answer(client.get(_PULL))
@@ -317,7 +317,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             answers["api"][merged_path] = ok(merged_path, unattributed)
             for name, value in install_fake_gh(tmp_path, answers).items():
                 monkeypatch.setenv(name, value)
-            session.companion = served_pull(published, 8)
+            client.portal.call(session.attend, 8)  # pyright: ignore[reportOptionalMemberAccess]
             client.post(_REFRESH, json={}, headers=JSON_BODY)
             settle(client)
             recorded["merged_unattributed"] = _answer(client.get(_PULL))

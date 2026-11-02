@@ -191,6 +191,22 @@ class _Beside:
         self.stale = False
 
 
+class _BesideSet:
+    """The one pull request a server serves here, as a provider's set hands it over."""
+
+    def __init__(self, beside: _Beside) -> None:
+        self.beside = beside
+
+    def key(self, number: int) -> str:
+        return self.beside.key
+
+    async def companion(self, number: int) -> _Beside:
+        return self.beside
+
+    async def attend(self, number: int) -> _Beside:
+        return self.beside
+
+
 def _commit_fetch(client: TestClient, *, retry: bool = False) -> Any:
     body: dict[str, Any] = {"for": "commit", "retry": True} if retry else {"for": "commit"}
     return client.post("/api/source/refresh", json=body, headers=JSON_BODY)
@@ -315,7 +331,12 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         # Served as a server serves it: there a refresh fetches only what is stale, and
         # a commit's address is opened nowhere else.
         beside = _Beside()
-        serve_mirror(StoreMirror.from_published(published), serving=True, companion=beside)
+        serve_mirror(
+            StoreMirror.from_published(published),
+            serving=True,
+            pull_request=7,
+            pull_requests=_BesideSet(beside),
+        )
         with TestClient(server.app) as client:
             # A fetch that just succeeded, so the page opens inside the window; the
             # origin gains the commit only after it.

@@ -99,6 +99,38 @@ class _Companion:
         self.events.append("pull end")
 
 
+class _Set:
+    """The one pull request these tests serve, as a provider's set hands it over."""
+
+    def __init__(self, served: _Companion) -> None:
+        self.served = served
+
+    def key(self, number: int) -> str:
+        return self.served.key
+
+    async def companion(self, number: int) -> _Companion:
+        return self.served
+
+    async def attend(self, number: int) -> _Companion:
+        return self.served
+
+
+async def _attending(
+    mirror: _Mirror,
+    coordinator: RefreshCoordinator,
+    companion: _Companion,
+    *,
+    serving: bool = False,
+) -> MirrorSession:
+    """A session attending to *companion*, as the application lifespan starts one."""
+
+    session = MirrorSession(
+        mirror, coordinator, fetch_on_miss=serving, pull_requests=_Set(companion)
+    )
+    await session.attend(7)
+    return session
+
+
 async def _settle(coordinator: RefreshCoordinator) -> None:
     # A job can start another as it ends, as a refresh that follows another process's.
     for _ in range(3):
@@ -114,7 +146,7 @@ def test_the_mirror_waits_its_turn_behind_the_pull_requests_fetch() -> None:
         coordinator = RefreshCoordinator()
         companion = _Companion(events, stale=True)
         companion.gate = asyncio.Event()
-        session = MirrorSession(_Mirror(events), coordinator, companion=companion)
+        session = await _attending(_Mirror(events), coordinator, companion)
         session.request_companion_refresh()
         await companion.started.wait()
         session.request_refresh(for_selection=True)
@@ -146,11 +178,8 @@ def test_a_refresh_fetches_only_what_is_stale_and_a_pin_miss_only_the_mirror(
         events: list[str] = []
         coordinator = RefreshCoordinator()
         mirror = _Mirror(events, fetched_at=_now() if mirror_fresh else _OLD)
-        session = MirrorSession(
-            mirror,
-            coordinator,
-            fetch_on_miss=serving,
-            companion=_Companion(events, stale=pull_stale),
+        session = await _attending(
+            mirror, coordinator, _Companion(events, stale=pull_stale), serving=serving
         )
         await session.observe()
         session.request_refresh(for_selection=for_selection)
@@ -184,11 +213,8 @@ def test_a_commit_fetch_has_a_floor_that_only_a_retry_lifts(
         events: list[str] = []
         coordinator = RefreshCoordinator()
         mirror = _Mirror(events, fetched_at=_now() if mirror_fresh else _OLD)
-        session = MirrorSession(
-            mirror,
-            coordinator,
-            fetch_on_miss=True,
-            companion=_Companion(events, stale=pull_stale),
+        session = await _attending(
+            mirror, coordinator, _Companion(events, stale=pull_stale), serving=True
         )
         await session.observe()
         answered = session.request_commit_fetch(retry=retry)
@@ -209,8 +235,8 @@ def test_a_commit_fetch_joins_the_mirror_fetch_but_not_the_pull_requests() -> No
         coordinator = RefreshCoordinator()
         companion = _Companion(events, stale=False)
         companion.gate = asyncio.Event()
-        session = MirrorSession(
-            _Mirror(events, fetched_at=_now()), coordinator, fetch_on_miss=True, companion=companion
+        session = await _attending(
+            _Mirror(events, fetched_at=_now()), coordinator, companion, serving=True
         )
         await session.observe()
         session.request_companion_refresh()

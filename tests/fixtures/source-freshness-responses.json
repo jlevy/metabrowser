@@ -473,7 +473,7 @@
     },
     "refreshing": false,
     "stale": false,
-    "pull_request": null,
+    "pull_request": 7,
     "selection_state": null,
     "selection_href": null
   },
@@ -526,7 +526,7 @@
         },
         "refreshing": false,
         "stale": false,
-        "pull_request": null,
+        "pull_request": 7,
         "selection_state": null,
         "selection_href": null
       }
@@ -552,7 +552,7 @@
     },
     "refreshing": false,
     "stale": true,
-    "pull_request": null,
+    "pull_request": 7,
     "selection_state": null,
     "selection_href": null
   },
@@ -580,7 +580,7 @@
         },
         "refreshing": true,
         "stale": true,
-        "pull_request": null,
+        "pull_request": 7,
         "selection_state": null,
         "selection_href": null
       }
@@ -610,7 +610,7 @@
         },
         "refreshing": true,
         "stale": true,
-        "pull_request": null,
+        "pull_request": 7,
         "selection_state": null,
         "selection_href": null
       }
@@ -640,7 +640,7 @@
         },
         "refreshing": true,
         "stale": true,
-        "pull_request": null,
+        "pull_request": 7,
         "selection_state": null,
         "selection_href": null
       }
@@ -670,7 +670,7 @@
         },
         "refreshing": true,
         "stale": true,
-        "pull_request": null,
+        "pull_request": 7,
         "selection_state": null,
         "selection_href": null
       }
@@ -696,7 +696,7 @@
     },
     "refreshing": false,
     "stale": false,
-    "pull_request": null,
+    "pull_request": 7,
     "selection_state": null,
     "selection_href": null
   },

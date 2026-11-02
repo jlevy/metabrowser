@@ -6,7 +6,8 @@ starts or joins and then returns: the :class:`RefreshCoordinator` on the applica
 state keeps one job per key (a store key, or for a pull request's record the store key
 and its number) so concurrent requests join the running one, and a semaphore bounds how
 many run at once. A :class:`CompanionRefresh` is data a provider serves beside the
-mirror, refreshed with it under its own key.
+mirror, refreshed with it under its own key, and a :class:`PullRequestSet` gives one for
+any pull request of the repository.
 A job outlives the request that started it, and its failures become typed outcomes
 rather than exceptions. A graceful shutdown cancels whatever is still running through the
 application lifespan, which kills each job's Git; a Ctrl-C exits at once instead, after
@@ -24,6 +25,12 @@ refresh finds another process refreshing the store, a served mirror follows that
 and observes the store again once it ends. Switching the pin resolves a selection in
 the mirror, opens the new subject, and replaces the served one under a new generation.
 
+A server opens any pull request of its repository, and attends to one: the one its URL
+named, replaced whenever a pin switch serves another's head. That one counts toward the
+mirror's staleness and is refreshed with it, because a page of code on a pull request's
+head depends on the refresh that finds a newer head. Any other is refreshed only when a
+request asks, as its own job.
+
 This module holds no cache or Git code of its own. The CLI hands the server a
 :class:`ServedMirror` implementation (``cache/served_mirror.py``) through
 :func:`serve_mirror`, so a server that serves a folder never imports the cache.
@@ -34,6 +41,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -286,6 +294,26 @@ class CompanionRefresh(Protocol):
         ...
 
 
+class PullRequestSet(Protocol):
+    """Every pull request of the served repository, as a provider keeps them fresh.
+
+    The numbers are request text, so what it keeps in memory is bounded, and the rest is
+    read from disk when asked for. Both methods that may read do so off the event loop.
+    """
+
+    def key(self, number: int) -> str:
+        """The single-flight key of pull request *number*'s refresh, with no read."""
+        ...
+
+    async def companion(self, number: int) -> CompanionRefresh:
+        """Pull request *number*'s refresh, kept or read from disk."""
+        ...
+
+    async def attend(self, number: int) -> CompanionRefresh:
+        """That refresh, kept whatever the bound drops until another number is attended."""
+        ...
+
+
 class LastOutcome(TypedDict):
     operation: str
     outcome: str
@@ -311,9 +339,9 @@ class FreshnessFields(TypedDict):
     observed: equal to the pin when nothing moved, different when a refresh moved the
     ref, and ``None`` otherwise. ``ref_on_origin`` tells those apart: ``False`` when the
     origin no longer had the ref at the last fetch, ``None`` when there is no ref or it
-    has not been observed. ``pull_request`` is the number a served pull-request URL
-    named, kept until its data is served. ``selection_state`` follows a URL selection
-    the mirror did not have when serving began: ``pending`` until a fetch for it ends,
+    has not been observed. ``pull_request`` is the attended pull request: the one the
+    URL named, or whose head a pin switch last served. ``selection_state`` follows a URL
+    selection the mirror did not have when serving began: ``pending`` until a fetch for it ends,
     then ``found`` (and served) or ``not_found``, or ``fetch_failed`` when that fetch
     did not run, which the next refresh retries; ``superseded`` once a pin switch
     serves something else. ``None`` when there was none. ``selection_href`` is where a
@@ -353,6 +381,9 @@ MAX_REMEMBERED_MISSES: Final = 64
 
 type SelectionOpener = Callable[[], Awaitable[OpenedSelection | None]]
 
+
+# A pull request's head as a pin names it, which makes that pull request the attended one.
+_PULL_HEAD: Final = re.compile(r"refs/pull/([1-9][0-9]{0,9})/head")
 
 # Outcomes after which the store holds what the origin had: the fetch ran.
 _FETCHED_OUTCOMES: Final = frozenset({"succeeded", "default_branch_unknown"})
@@ -485,18 +516,19 @@ class MirrorSession:
         *,
         window_s: float = FRESHNESS_WINDOW_S,
         follow_elsewhere: bool = False,
-        pull_request: int | None = None,
         pending_selection: SelectionOpener | None = None,
         fetch_on_miss: bool = False,
-        companion: CompanionRefresh | None = None,
+        pull_requests: PullRequestSet | None = None,
     ) -> None:
         self.mirror = mirror
-        self.companion = companion
+        self.pull_requests = pull_requests
+        # The attended pull request and its refresh; see :meth:`attend`.
+        self._pull_request: int | None = None
+        self.companion: CompanionRefresh | None = None
         self._fetch_on_miss = fetch_on_miss
         self._coordinator = coordinator
         self._window_s = window_s
         self._follow_elsewhere = follow_elsewhere
-        self._pull_request = pull_request
         self._pending_selection = pending_selection
         self._selection_state: SelectionState | None = (
             "pending" if pending_selection is not None else None
@@ -520,10 +552,24 @@ class MirrorSession:
         # The ref last served, kept while a commit pinned by ID is served under none.
         self._last_ref: str | None = None
         self._pin_lock = asyncio.Lock()
-        # The mirror's refresh and the pull request's each fetch into the store under its
-        # fetch lock; within this server they take turns here first, so neither finds
-        # the other holding it and reports a refresh running elsewhere.
+        # The mirror's refresh and each pull request's fetch into the store under its
+        # fetch lock; within this server they take turns here first, so none finds
+        # another holding it and reports a refresh running elsewhere.
         self._fetch_turn = asyncio.Lock()
+
+    # ── The attended pull request ───────────────────────────────
+
+    async def attend(self, number: int) -> None:
+        """Make pull request *number* the one this session attends to.
+
+        Its refresh is what :meth:`is_stale`, :meth:`request_refresh`,
+        :meth:`request_commit_fetch`, and a pin the mirror lacks use, and status and
+        :meth:`_refs_to_keep` report its number.
+        """
+
+        self._pull_request = number
+        if self.pull_requests is not None:
+            self.companion = await self.pull_requests.attend(number)
 
     # ── Observation ─────────────────────────────────────────────
 
@@ -684,20 +730,26 @@ class MirrorSession:
     def request_companion_refresh(self) -> StartedOrJoined | None:
         """Start or join the refresh of the data served beside the mirror, if there is any."""
 
-        companion = self.companion
-        if companion is None:
+        if self.companion is None or self._pull_request is None:
             return None
-        return self._coordinator.start(companion.key, self._companion_job)
+        return self._start_pull_job(self._pull_request)
 
     def companion_refreshing(self) -> bool:
         return self.companion is not None and self._coordinator.running(self.companion.key)
 
-    async def _companion_job(self) -> None:
-        companion = self.companion
-        if companion is None:
-            return
+    def _start_pull_job(self, number: int) -> StartedOrJoined:
+        pulls = self.pull_requests
+        assert pulls is not None
+        return self._coordinator.start(pulls.key(number), partial(self._pull_job, number))
+
+    async def _pull_job(self, number: int) -> None:
+        pulls = self.pull_requests
+        assert pulls is not None
         try:
             async with self._fetch_turn:
+                # Asked for here, not when the job was started: a job waiting its turn
+                # holds nothing the set's bound could drop.
+                companion = await pulls.companion(number)
                 await companion.refresh()
         except asyncio.CancelledError:
             raise
@@ -866,6 +918,9 @@ class MirrorSession:
                 self._tip = (subject.ref, subject.commit_oid)
             else:
                 self._tip = None
+            head = _PULL_HEAD.fullmatch(subject.ref or "")
+            if head is not None:
+                await self.attend(int(head.group(1)))
             return True, session
 
     def _refs_to_keep(self) -> tuple[str, ...]:
@@ -874,7 +929,7 @@ class MirrorSession:
         View file on a diff switches by commit ID, to a base and back: without this the
         way back to the head would leave the server on no ref, the selector reading
         "Commit: …" where it read the branch or the pull request, and freshness no
-        longer following the ref. The ref last served comes first, then the served pull
+        longer following the ref. The ref last served comes first, then the attended pull
         request's head, GitHub's own ref for it.
         """
 
@@ -905,8 +960,8 @@ class MirrorSession:
             self._misses[key] = (self._refreshes_ended, self._fetches_ran)
         started = self.request_refresh(for_selection=True)
         if key[1] is not None and self.companion is not None:
-            # A commit the mirror lacks may be a newer one of the pull request served
-            # beside it, which only that refresh fetches; a branch or tag never is.
+            # A commit the mirror lacks may be a newer one of the attended pull request,
+            # which only that refresh fetches; a branch or tag never is.
             self.request_companion_refresh()
         return SelectionPendingError(started)
 
@@ -924,7 +979,7 @@ class _ServedMirrorConfig:
     serving: bool
     pull_request: int | None
     pending_selection: SelectionOpener | None
-    companion: CompanionRefresh | None
+    pull_requests: PullRequestSet | None
 
 
 _served_mirror: _ServedMirrorConfig | None = None
@@ -936,7 +991,7 @@ def serve_mirror(
     serving: bool = False,
     pull_request: int | None = None,
     pending_selection: SelectionOpener | None = None,
-    companion: CompanionRefresh | None = None,
+    pull_requests: PullRequestSet | None = None,
 ) -> None:
     """Tell the next application lifespan which mirror it serves, or that it serves none.
 
@@ -945,19 +1000,19 @@ def serve_mirror(
     finds another process refreshing follows it until it ends, and a pin request for a
     ref or commit the mirror lacks fetches once. One-shot ``--show`` and ``--api`` pass
     none of it, so they never start work the command did not ask for, and a one-shot
-    refresh ends when its own attempt does. *pull_request* is reported by status.
-    *pending_selection* opens a URL selection the mirror did not have yet: in serve mode
+    refresh ends when its own attempt does. *pull_request* is the number the URL named,
+    which the session attends to first. *pending_selection* opens a URL selection the mirror did not have yet: in serve mode
     the lifespan starts one refresh for it, a one-shot command waits for the refresh it
     asks for, and the pin switches to it if that fetch brings it.
-    *companion* is data a provider serves beside the mirror, such as a pull request's
-    record: it is refreshed with the mirror and counts toward its staleness.
+    *pull_requests* is what a provider keeps for the repository's pull requests, any of
+    which a request can open.
     """
 
     global _served_mirror
     _served_mirror = (
         None
         if mirror is None
-        else _ServedMirrorConfig(mirror, serving, pull_request, pending_selection, companion)
+        else _ServedMirrorConfig(mirror, serving, pull_request, pending_selection, pull_requests)
     )
 
 
@@ -1000,11 +1055,12 @@ async def lifespan_refresh(app: Any) -> AsyncGenerator[None]:
                 config.mirror,
                 coordinator,
                 follow_elsewhere=config.serving,
-                pull_request=config.pull_request,
                 pending_selection=config.pending_selection,
                 fetch_on_miss=config.serving,
-                companion=config.companion,
+                pull_requests=config.pull_requests,
             )
+            if config.pull_request is not None:
+                await session.attend(config.pull_request)
             try:
                 await session.observe()
             except Exception:
@@ -1044,6 +1100,7 @@ __all__ = [
     "MirrorRef",
     "MirrorSession",
     "OpenedSelection",
+    "PullRequestSet",
     "RecordedFreshness",
     "RefKind",
     "RefreshCoordinator",

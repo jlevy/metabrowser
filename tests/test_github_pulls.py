@@ -44,6 +44,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     MAX_DIFF_HUNK_BYTES,
     MAX_PULL_COMMITS,
     PullRecord,
+    PullRefreshStamp,
     PullRequest,
     apply_text_budget,
     cut_text,
@@ -52,10 +53,16 @@ from metabrowser.builtin_plugins.github.pull_record import (
     read_pull_refresh,
     serialize_pull_record,
     write_pull_record,
+    write_pull_refresh,
 )
 from metabrowser.builtin_plugins.github.pull_route import pull_state
 from metabrowser.builtin_plugins.github.pulls import PullDataError, open_pull_request
-from metabrowser.builtin_plugins.github.served_pull import ServedPull, served_pull
+from metabrowser.builtin_plugins.github.served_pull import (
+    MAX_KEPT_PULLS,
+    ServedPull,
+    ServedPulls,
+    served_pull,
+)
 from metabrowser.cache import pull_refs
 from metabrowser.cache.acquire import PublishedSource, acquire_source
 from metabrowser.cache.layout import open_cache
@@ -531,7 +538,7 @@ def pinned_pull(stand: _Stand) -> Iterator[tuple[_Stand, TestClient]]:
     serve_mirror(
         StoreMirror.from_published(published),
         pull_request=7,
-        companion=served_pull(published, 7),
+        pull_requests=ServedPulls(published),
     )
     git_repo.clear_repo_cache()
     try:
@@ -1041,6 +1048,70 @@ def test_a_served_pull_request_is_stale_by_its_record_or_its_last_try(
         assert tried.is_stale(later + timedelta(seconds=window + 1), window_s=window)
 
 
+def test_after_a_rate_limit_no_automatic_attempt_runs_before_it_lifts(stand: _Stand) -> None:
+    """``reset_at`` is obeyed, and not only reported; a limit with no reset waits a window."""
+
+    window = FRESHNESS_WINDOW_S
+    tried_at = FETCHED_AT + timedelta(hours=1)
+    lifts_at = tried_at + timedelta(minutes=10)
+    stamp = "%Y-%m-%dT%H:%M:%SZ"
+    write_pull_refresh(
+        stand.published.home,
+        stand.published.slug,
+        7,
+        PullRefreshStamp(
+            outcome="rate_limited",
+            message="API rate limit exceeded",
+            reset_at=lifts_at.strftime(stamp),
+            at=tried_at.strftime(stamp),
+        ),
+    )
+    limited = served_pull(stand.published, 7)
+    past_the_window = tried_at + timedelta(seconds=window + 1)
+    assert not limited.is_stale(past_the_window, window_s=window)
+    assert not limited.is_stale(lifts_at - timedelta(seconds=1), window_s=window)
+    assert limited.is_stale(lifts_at, window_s=window)
+
+    assert limited.last is not None
+    limited.last = {**limited.last, "reset_at": None}
+    assert not limited.is_stale(tried_at, window_s=window)
+    assert limited.is_stale(past_the_window, window_s=window)
+    # Only a rate limit holds a refresh back past the window.
+    limited.last = {**limited.last, "outcome": "gh_failed", "reset_at": lifts_at.strftime(stamp)}
+    assert limited.is_stale(past_the_window, window_s=window)
+
+
+def test_the_set_gives_one_state_for_a_number_and_keeps_a_bounded_number(stand: _Stand) -> None:
+    """The numbers are request text, so memory is bounded, oldest first. The attended pull
+    request and one whose refresh is running are never dropped, because something still
+    writes to their state, and a second object for the number would miss it."""
+
+    async def scenario() -> None:
+        pulls_set = ServedPulls(stand.published)
+        assert pulls_set.held(1) is None, "held reads nothing"
+        attended = await pulls_set.attend(1)
+        assert await pulls_set.companion(1) is attended
+        running = await pulls_set.companion(2)
+        running._refreshing = True  # pyright: ignore[reportPrivateUsage]
+        oldest = await pulls_set.companion(3)
+        for number in range(4, MAX_KEPT_PULLS + 1):
+            await pulls_set.companion(number)
+        assert pulls_set.held(MAX_KEPT_PULLS) is not None, "at the bound, nothing has gone"
+        assert pulls_set.held(3) is oldest, "and asking for one renews it"
+        await pulls_set.companion(MAX_KEPT_PULLS + 1)
+        # Past the bound: 4 is now the oldest that may go, after 1 and 2, which may not.
+        assert pulls_set.held(1) is attended and pulls_set.held(2) is running
+        assert pulls_set.held(3) is oldest
+        assert pulls_set.held(4) is None
+        # Read again from disk, it is a new state, and the set still holds the bound.
+        assert (await pulls_set.companion(4)).number == 4
+        kept = [n for n in range(1, MAX_KEPT_PULLS + 2) if pulls_set.held(n) is not None]
+        assert len(kept) == MAX_KEPT_PULLS
+        assert pulls_set.key(9) == f"{stand.published.store_key}:pull/9"
+
+    asyncio.run(scenario())
+
+
 def test_a_pull_request_head_is_pinned_by_its_ref(stand: _Stand) -> None:
     stand.refresh(7)
     target = repository_store_target(git_dir=stand.published.git_dir)
@@ -1217,6 +1288,32 @@ def test_a_switch_by_commit_id_back_to_the_head_keeps_the_pull_requests_ref(
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
+
+
+def test_a_pin_on_another_pull_requests_head_makes_it_the_attended_one(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """Status and staleness follow the pull request the code on screen belongs to, and a
+    branch leaves the attended one as it was, since a way back to it is still its head."""
+
+    stand, client = pinned_pull
+    stand.refresh(8)
+    session = mirror_session(app)
+    assert session is not None
+    assert client.get("/api/source/status").json()["pull_request"] == 7
+
+    def pin(body: dict[str, str]) -> dict[str, Any]:
+        answer = client.post("/api/source/pin", json=body, headers=_JSON)
+        assert answer.status_code == 200, answer.text
+        return answer.json()["status"]
+
+    assert pin({"ref": "refs/pull/8/head"})["pull_request"] == 8
+    attended = session.companion
+    assert isinstance(attended, ServedPull) and attended.number == 8
+    assert attended.key == f"{stand.published.store_key}:pull/8"
+    assert pin({"ref": DEFAULT_BRANCH})["pull_request"] == 8
+    assert session.companion is attended
+    assert pin({"ref": "refs/pull/7/head"})["pull_request"] == 7
 
 
 def test_a_commit_url_newer_than_the_record_refreshes_the_pull_request_to_serve_it(

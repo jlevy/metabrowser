@@ -1,33 +1,46 @@
-"""The pull request a server serves, as the refresh coordinator keeps it fresh.
+"""A repository's pull requests, as the refresh coordinator keeps them fresh.
 
 :class:`ServedPull` is the GitHub plugin's
-:class:`~metabrowser.mirror_refresh.CompanionRefresh`: the CLI asks the provider for one
-when a URL names a pull request and hands it to the server with the mirror. Its refresh
-is :func:`~metabrowser.builtin_plugins.github.pulls.refresh_pull_request`, run by the
+:class:`~metabrowser.mirror_refresh.CompanionRefresh` for one number. Its refresh is
+:func:`~metabrowser.builtin_plugins.github.pulls.refresh_pull_request`, run by the
 coordinator under the key ``<store key>:pull/<n>``, so requests join one job, it shares
-the coordinator's limit on concurrent network work, and shutdown cancels it. It counts
-toward the mirror's staleness, so the rules that keep a served page fresh -- a refresh
-when a stale mirror opens in serve mode, and when a stale page becomes visible -- keep
-the pull request fresh too.
+the coordinator's limit on concurrent network work, and shutdown cancels it.
+
+:class:`ServedPulls` is the :class:`~metabrowser.mirror_refresh.PullRequestSet` the
+provider hands the server for any GitHub mirror, whether or not its URL named a pull
+request. It gives a :class:`ServedPull` for a number. The session attends to one, which
+counts toward the mirror's staleness, so the rules that keep a served page fresh -- a
+refresh when a stale mirror opens in serve mode, and when a stale page becomes visible --
+keep that pull request fresh too.
 
 What the pull route and status need is kept in memory: when the record was fetched and
-how the last refresh ended, read at startup from what the last command kept beside the
-record. A refresh that fails leaves the record as it was; the next attempt waits a
+how the last refresh ended, read from what the last command kept beside the record. A
+refresh that fails leaves the record as it was. The next automatic attempt waits a
 window, so a missing ``gh`` is not asked on every poll, nor again by a command started
-just after one that asked.
+just after one that asked, and after ``rate_limited`` it waits for GitHub's ``reset_at``.
 """
 
 from __future__ import annotations
 
+import asyncio
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, TypedDict
+from pathlib import Path
+from typing import TYPE_CHECKING, Final, TypedDict
 
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.pull_record import PullRecord, read_pull_record
 
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
+
+# Pull requests whose state is kept in memory. The numbers are request text, so this is a
+# bound, as ``MAX_REMEMBERED_MISSES`` is on the selections a session remembers. One is
+# about 1.1 KB, and one the set dropped costs a read again: 0.4 ms with no record and 3 ms
+# for a 295 KB record, pallets/click#3030 (median of 30 on 2026-11-02, load average 17).
+# Sixty-four is more pull requests than a reader refreshes in one session, for 72 KB.
+MAX_KEPT_PULLS: Final = 64
 
 
 class PullRefreshOutcome(TypedDict):
@@ -53,28 +66,44 @@ def _stamp(moment: datetime) -> str:
 
 @dataclass(eq=False)
 class ServedPull:
-    """One served pull request: its source, number, record time, and last refresh."""
+    """One pull request: its source, number, record time, and last refresh."""
 
     published: PublishedSource
     number: int
     fetched_at: str | None = None
     last: PullRefreshOutcome | None = None
     _last_attempt: datetime | None = field(default=None, repr=False)
+    _refreshing: bool = field(default=False, repr=False)
 
     @property
     def key(self) -> str:
         return f"{self.published.store_key}:pull/{self.number}"
 
+    @property
+    def refreshing(self) -> bool:
+        """Whether its refresh is running now, so its state is about to change."""
+
+        return self._refreshing
+
     def is_stale(self, now: datetime, *, window_s: float) -> bool:
-        """Older than *window_s*, and not tried within it.
+        """Older than *window_s*, and not tried within it or before GitHub's limit lifts.
 
         A record fetched within the window is fresh. Without one, or with an older one, a
         refresh attempted within the window counts as fresh too, whether or not it
         succeeded, so a failing ``gh`` is asked once a window rather than on every poll.
+        After ``rate_limited`` no attempt is due before ``reset_at``, when GitHub said.
         """
 
         window = timedelta(seconds=window_s)
         if self.fetched_at is not None and now - _parse_stamp(self.fetched_at) <= window:
+            return False
+        last = self.last
+        if (
+            last is not None
+            and last["outcome"] == "rate_limited"
+            and last["reset_at"] is not None
+            and now < _parse_stamp(last["reset_at"])
+        ):
             return False
         return self._last_attempt is None or now - self._last_attempt > window
 
@@ -88,6 +117,7 @@ class ServedPull:
         """Read the pull request again; a failure is kept as :attr:`last`."""
 
         self._last_attempt = pulls.utc_now()
+        self._refreshing = True
         try:
             record = await pulls.refresh_pull_request(self.published, self.number)
         except pulls.PullDataError as exc:
@@ -98,6 +128,8 @@ class ServedPull:
                 at=_stamp(pulls.utc_now()),
             )
             return
+        finally:
+            self._refreshing = False
         self.fetched_at = record.fetched_at
         self.last = PullRefreshOutcome(
             outcome="succeeded", message=None, reset_at=None, at=record.fetched_at
@@ -105,7 +137,7 @@ class ServedPull:
 
 
 def served_pull(published: PublishedSource, number: int) -> ServedPull:
-    """The served pull request, knowing when its cached record was fetched, if it was.
+    """One pull request, knowing when its cached record was fetched, if it was.
 
     Blocking and bounded: it reads the record and the last refresh's stamp once. Call it
     off the event loop.
@@ -113,19 +145,97 @@ def served_pull(published: PublishedSource, number: int) -> ServedPull:
 
     record = read_pull_record(published.home, published.slug, number)
     fetched_at = record.fetched_at if isinstance(record, PullRecord) else None
-    stamp = pulls.last_refresh(published, number)
-    if stamp is None:
+    last = last_refresh(published, number)
+    if last is None:
         return ServedPull(published=published, number=number, fetched_at=fetched_at)
-    last = PullRefreshOutcome(
-        outcome=stamp.outcome, message=stamp.message, reset_at=stamp.reset_at, at=stamp.at
-    )
     return ServedPull(
         published=published,
         number=number,
         fetched_at=fetched_at,
         last=last,
-        _last_attempt=_parse_stamp(stamp.at),
+        _last_attempt=_parse_stamp(last["at"]),
     )
 
 
-__all__ = ["PullRefreshOutcome", "ServedPull", "served_pull"]
+def last_refresh(published: PublishedSource, number: int) -> PullRefreshOutcome | None:
+    """How the last refresh of *number* ended, in any process. Blocking and bounded."""
+
+    stamp = pulls.last_refresh(published, number)
+    if stamp is None:
+        return None
+    return PullRefreshOutcome(
+        outcome=stamp.outcome, message=stamp.message, reset_at=stamp.reset_at, at=stamp.at
+    )
+
+
+@dataclass(eq=False)
+class ServedPulls:
+    """A repository's pull requests: the state of a bounded number in memory, the rest on disk.
+
+    The set is changed only on the event loop. A pull request's state is dropped oldest
+    first, and never the attended one's or one whose refresh is running, which would go
+    on changing a state nothing reads any more.
+    """
+
+    published: PublishedSource
+    _kept: OrderedDict[int, ServedPull] = field(default_factory=OrderedDict[int, ServedPull])
+    _attended: int | None = None
+
+    @property
+    def home(self) -> Path:
+        return self.published.home
+
+    @property
+    def slug(self) -> str:
+        return self.published.slug
+
+    @property
+    def source(self) -> str:
+        return self.published.source.normalized
+
+    def key(self, number: int) -> str:
+        return f"{self.published.store_key}:pull/{number}"
+
+    def held(self, number: int) -> ServedPull | None:
+        """Pull request *number*'s state when it is in memory. Reads nothing."""
+
+        pull = self._kept.get(number)
+        if pull is not None:
+            self._kept.move_to_end(number)
+        return pull
+
+    async def companion(self, number: int) -> ServedPull:
+        held = self.held(number)
+        if held is not None:
+            return held
+        read = await asyncio.to_thread(served_pull, self.published, number)
+        # Another request may have read it meanwhile, and then its job may have run.
+        return self.held(number) or self._keep(read)
+
+    async def attend(self, number: int) -> ServedPull:
+        self._attended = number
+        return await self.companion(number)
+
+    def last_refresh(self, number: int) -> PullRefreshOutcome | None:
+        """How the last refresh of *number* ended, in any process. Blocking and bounded."""
+
+        return last_refresh(self.published, number)
+
+    def _keep(self, pull: ServedPull) -> ServedPull:
+        self._kept[pull.number] = pull
+        if len(self._kept) > MAX_KEPT_PULLS:
+            for number, held in self._kept.items():
+                if number != self._attended and not held.refreshing:
+                    del self._kept[number]
+                    break
+        return pull
+
+
+__all__ = [
+    "MAX_KEPT_PULLS",
+    "PullRefreshOutcome",
+    "ServedPull",
+    "ServedPulls",
+    "last_refresh",
+    "served_pull",
+]

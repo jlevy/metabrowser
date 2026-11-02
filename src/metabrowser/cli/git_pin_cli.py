@@ -13,9 +13,9 @@ the selected path. Every mode also hands the server the store as a mirror, so
 
 A pull-request URL pins the pull request's head, read from its cached record or, when
 there is none, fetched once first; it falls back to the default branch, or a commit
-URL's commit, when the pull request cannot be opened. Every mode hands the server the
-pull request too, which ``/api/plugin/github/pull`` reads and the mirror's refresh
-keeps fresh.
+URL's commit, when the pull request cannot be opened. Every mode hands the server what
+keeps the repository's pull requests, for any GitHub mirror: ``/api/plugin/github/pull``
+reads any of them, and the mirror's refresh keeps the one the URL named fresh.
 
 A ref or commit the mirror does not have stops a one-shot mode, which never fetches.
 Serve mode serves the default branch instead, fetches once in the background, and
@@ -37,7 +37,7 @@ from pathlib import Path
 import typer
 
 from metabrowser.cache.acquire import PublishedSource
-from metabrowser.cache.providers import PullRequestFetch, served_pull_request_for
+from metabrowser.cache.providers import PullRequestFetch, served_pull_requests_for
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.resolve import ResolvedSelection, UnresolvedSelection
 from metabrowser.cache.served_mirror import StoreMirror
@@ -71,7 +71,7 @@ from metabrowser.git.tree_source import (
     ref_short_name,
     split_git_container_wire,
 )
-from metabrowser.mirror_refresh import CompanionRefresh, serve_mirror
+from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.normalize import MIRROR_LOCATION_PATHS
 from metabrowser.source import (
     SubjectOpenError,
@@ -155,8 +155,7 @@ class _Selected:
 
     ``resolved`` is ``None`` for a source with no URL selection and for a selection the
     mirror does not have yet (``pending``), when the default branch is served. ``pull``
-    is the pull request the URL names, opened or not, and ``companion`` what the server
-    keeps fresh for it.
+    is the pull request the URL names, opened or not.
     """
 
     published: PublishedSource
@@ -165,7 +164,6 @@ class _Selected:
     resolved: ResolvedSelection | None
     pending: bool
     pull: PullOpen | None = None
-    companion: CompanionRefresh | None = None
 
     @property
     def selection(self) -> RepositorySelection | None:
@@ -191,7 +189,6 @@ async def _select(source: GitSource, *, allow_pending: bool, serving: bool = Fal
             published, published.default_revision, published.default_remote_ref, None, False
         )
     pull: PullOpen | None = None
-    companion: CompanionRefresh | None = None
     if selection.pull_request is not None:
         number = selection.pull_request
         fetch: PullRequestFetch = "if_missing"
@@ -203,10 +200,9 @@ async def _select(source: GitSource, *, allow_pending: bool, serving: bool = Fal
             if isinstance(inside, UnresolvedSelection) and inside.needs_fetch:
                 fetch = "always"
         pull = await open_pull_for_cli(published, number, fetch=fetch)
-        companion = await served_pull_request_for(published, number)
         head = pull.resolution() if selection.kind == "pull_request" else None
         if head is not None:
-            return _Selected(published, head.commit, head.ref, head, False, pull, companion)
+            return _Selected(published, head.commit, head.ref, head, False, pull)
     resolution = await resolve_in_mirror(published, selection)
     if isinstance(resolution, UnresolvedSelection):
         if allow_pending and resolution.needs_fetch and not published.fetched:
@@ -217,15 +213,12 @@ async def _select(source: GitSource, *, allow_pending: bool, serving: bool = Fal
                 None,
                 True,
                 pull,
-                companion,
             )
         message = unresolved_message(published.source.normalized, selection, resolution)
         if pull is not None and pull.unavailable is not None:
             message += f"; {pull.unavailable}"
         raise CLIError(message)
-    return _Selected(
-        published, resolution.commit, resolution.ref, resolution, False, pull, companion
-    )
+    return _Selected(published, resolution.commit, resolution.ref, resolution, False, pull)
 
 
 def _revision_opener(selected: _Selected) -> Callable[[], Awaitable[GitRevisionSubject]]:
@@ -317,7 +310,7 @@ async def _one_shot_pin(
                 if selected.pending and selection is not None
                 else None
             ),
-            companion=selected.companion,
+            pull_requests=served_pull_requests_for(selected.published),
         )
         if selection is not None and selected.resolved is not None:
             for line in selection_lines(selection, selected.resolved, pull=selected.pull):
@@ -569,5 +562,5 @@ def _serve_selected(selected: _Selected) -> None:
             if selected.pending and selection is not None
             else None
         ),
-        companion=selected.companion,
+        pull_requests=served_pull_requests_for(selected.published),
     )
