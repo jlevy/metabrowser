@@ -34,8 +34,12 @@ from typing import TYPE_CHECKING, Any
 from starlette.responses import JSONResponse
 
 from metabrowser.diff.adapters.base import DiffSourceError
-from metabrowser.diff.adapters.git import GitDiffSource
-from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, parse_unified_patch
+from metabrowser.diff.adapters.git import GitDiffSource, PatchHydration
+from metabrowser.diff.adapters.patch_file import (
+    MAX_NAMED_SECTIONS,
+    MAX_PATCH_BYTES,
+    parse_unified_patch,
+)
 from metabrowser.diff.format import (
     Availability,
     BasePolicy,
@@ -268,8 +272,8 @@ async def comparison_handler(request: Request) -> JSONResponse:
             )
         # One diff run and one parse for the whole set (review R3): a
         # commit click costs O(1) subprocesses, not O(files).
-        patches: dict[str, FilePatch] = (
-            await source.file_patches(resolved, hydrate_ids) if hydrate_ids else {}
+        hydration = (
+            await source.hydrate(resolved, hydrate_ids) if hydrate_ids else PatchHydration({})
         )
     except DiffSourceError as exc:
         # The source's own refusals carry user-facing messages: unknown
@@ -296,8 +300,29 @@ async def comparison_handler(request: Request) -> JSONResponse:
                 "cursor": None,
             }
         )
-    document = _document_from(resolved, manifest, tuple(projected), patches)
+    if hydration.left_out:
+        projected, resolved = _say_left_out(projected, resolved, hydration.left_out)
+    document = _document_from(resolved, manifest, tuple(projected), hydration.patches)
     return JSONResponse(dump_document(document))
+
+
+def _say_left_out(
+    files: list[FileChange], resolved: ResolvedComparison, left_out: tuple[str, ...]
+) -> tuple[list[FileChange], ResolvedComparison]:
+    """Mark the files the diff did not produce, and name them, keeping every other file."""
+    gone = set(left_out)
+    marked = [
+        change.model_copy(update={"availability": Availability.failed})
+        if change.id in gone
+        else change
+        for change in files
+    ]
+    named = [_change_display_path(change) for change in files if change.id in gone]
+    said = ", ".join(named[:MAX_NAMED_SECTIONS])
+    more = len(named) - MAX_NAMED_SECTIONS
+    warning = f"{len(named)} file(s) could not be read from the produced diff: {said}"
+    warnings = (*resolved.warnings, f"{warning}, and {more} more" if more > 0 else warning)
+    return marked, resolved.model_copy(update={"warnings": warnings})
 
 
 def _document_from(

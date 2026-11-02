@@ -15,6 +15,7 @@ Merges are compared against their first parent
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Sequence
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
@@ -70,6 +71,14 @@ _MODE_TYPES = {
     "120000": EntryType.symlink,
     "160000": EntryType.submodule,
 }
+
+
+@dataclass(frozen=True, slots=True)
+class PatchHydration:
+    """The patches one diff run produced, and the files it did not."""
+
+    patches: dict[str, FilePatch]
+    left_out: tuple[str, ...] = ()
 
 
 def _display(raw: bytes) -> tuple[str, str | None]:
@@ -388,7 +397,19 @@ class GitDiffSource:
     async def file_patches(
         self, resolved: ResolvedComparison, file_ids: Sequence[str]
     ) -> dict[str, FilePatch]:
+        """The patches of *file_ids*, all of them or an error."""
+        hydration = await self.hydrate(resolved, file_ids)
+        if hydration.left_out:
+            raise DiffSourceError(f"file {hydration.left_out[0]!r} not found in the produced diff")
+        return hydration.patches
+
+    async def hydrate(
+        self, resolved: ResolvedComparison, file_ids: Sequence[str]
+    ) -> PatchHydration:
         """Hydrate any number of files from one diff run and one parse.
+
+        A file the diff did not produce is left out and named, so one section the parser
+        cannot read does not cost the reader every other file of the comparison.
 
         The whole diff, unrestricted: limiting a rename to its own two
         paths makes git split it into a delete and an add, so section
@@ -423,6 +444,7 @@ class GitDiffSource:
                 parsed_by_sides.setdefault(key, parsed)
 
         result: dict[str, FilePatch] = {}
+        left_out: list[str] = []
         for file_id in file_ids:
             change = by_id[file_id]
             wanted = (side_key(change.old), side_key(change.new))
@@ -437,8 +459,8 @@ class GitDiffSource:
                 if merged is not None:
                     result[file_id] = FilePatch(file_id=file_id, hunks=merged, truncated=False)
                     continue
-            raise DiffSourceError(f"file {file_id!r} not found in the produced diff")
-        return result
+            left_out.append(file_id)
+        return PatchHydration(patches=result, left_out=tuple(left_out))
 
     @staticmethod
     def _merge_type_change_sections(

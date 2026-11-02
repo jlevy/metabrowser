@@ -15,9 +15,10 @@ import pytest
 
 from metabrowser import server
 from metabrowser.builtin_plugins.diff import sidekick
+from metabrowser.diff.adapters.git import PatchHydration
 from metabrowser.diff.format import validate_document
 from metabrowser.source import ContentHandle, FilesystemContentSource
-from tests.diff_fixture_repo import build_diff_fixture
+from tests.diff_fixture_repo import build_diff_fixture, git
 
 
 class _FakeQuery:
@@ -145,6 +146,72 @@ def test_comparison_hydrates_to_the_bound_and_defers_the_rest(
     deferred = [c for c in document.manifest.files if c.availability.value == "deferred"]
     assert len(ready) == 2 and len(document.patches) == 2
     assert deferred, "files past the bound must be declared deferred, not dropped"
+
+
+def _commit(root: Path, message: str) -> str:
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", message)
+    return git(root, "rev-parse", "HEAD").decode().strip()
+
+
+def test_a_comparison_deleting_an_empty_file_keeps_its_files(tmp_path: Path) -> None:
+    """Any pull request deleting an empty file once answered 404 for the whole comparison."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    (root / "kept.txt").write_text("old\n")
+    (root / "pkg").mkdir()
+    (root / "pkg/__init__.py").write_text("")
+    (root / "logo.bin").write_bytes(b"\x00\x01\x02")
+    base = _commit(root, "base")
+    (root / "kept.txt").write_text("new\n")
+    (root / "pkg/__init__.py").unlink()
+    (root / "logo.bin").unlink()
+    target = _commit(root, "target")
+    server._set_root_dir(root)
+
+    status, body = _comparison(left=base, right=target, base_policy="merge_base")
+
+    assert status == 200, body
+    document = validate_document(body)
+    changes = {(c.new or c.old).path: c for c in document.manifest.files}  # pyright: ignore[reportOptionalMemberAccess]
+    assert changes["pkg/__init__.py"].kind.value == "deleted"
+    assert changes["pkg/__init__.py"].availability.value == "ready"
+    assert document.patches[changes["pkg/__init__.py"].id].hunks == ()
+    assert changes["logo.bin"].availability.value == "binary"
+    assert document.patches[changes["kept.txt"].id].hunks
+    assert document.resolved.warnings == ()
+
+
+def test_a_file_the_diff_did_not_produce_is_named_and_the_rest_are_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    base, target = build_diff_fixture(root)
+    server._set_root_dir(root)
+    real = sidekick.GitDiffSource.hydrate
+
+    async def loses_one(self: Any, resolved: Any, file_ids: Any, **kwargs: Any) -> PatchHydration:
+        whole = await real(self, resolved, file_ids, **kwargs)
+        first, *rest = file_ids
+        patches = {file_id: whole.patches[file_id] for file_id in rest}
+        return PatchHydration(patches=patches, left_out=(first,))
+
+    monkeypatch.setattr(sidekick.GitDiffSource, "hydrate", loses_one)
+    status, body = _comparison(left=base, right=target)
+
+    assert status == 200, body
+    document = validate_document(body)
+    lost = next(c for c in document.manifest.files if c.availability.value == "failed")
+    assert lost.id not in document.patches
+    assert len(document.patches) > 1
+    path = (lost.new or lost.old).path  # pyright: ignore[reportOptionalMemberAccess]
+    assert document.resolved.warnings == (
+        f"1 file(s) could not be read from the produced diff: {path}",
+    )
 
 
 # ── Event-loop discipline ───────────────────────────────────────

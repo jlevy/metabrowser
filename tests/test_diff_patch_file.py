@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import textwrap
 
+from metabrowser.diff.adapters import patch_file
 from metabrowser.diff.adapters.patch_file import parse_unified_patch
 from metabrowser.diff.apply import TreeSnapshot, apply_change_set
-from metabrowser.diff.format import Availability, ChangeKind
+from metabrowser.diff.format import Availability, ChangeKind, dump_document, validate_document
 
 
 def _patch(text: str) -> bytes:
@@ -319,3 +320,137 @@ def test_authoritative_headers_beat_the_diff_git_guess() -> None:
     assert change.old is not None and change.old.path == "x b/y"
     assert change.new is not None and change.new.path == "x b/y"
     assert change.availability.value == "ready"
+
+
+# ── Sections with no hunks ─────────────────────────────────────────
+#
+# Git writes no ``---``, ``+++`` or ``@@`` for a change with no lines to show, so the
+# ``diff --git`` line and the extended headers are all the section says.
+
+_MODIFIED = (
+    b"diff --git a/kept.txt b/kept.txt\n"
+    b"index 1111111..2222222 100644\n"
+    b"--- a/kept.txt\n+++ b/kept.txt\n"
+    b"@@ -1,1 +1,1 @@\n-old\n+new\n"
+)
+
+
+def test_a_deleted_empty_file_keeps_the_sections_beside_it() -> None:
+    """Any pull request deleting an empty ``__init__.py`` once had no Files changed."""
+    document = parse_unified_patch(
+        _MODIFIED
+        + b"diff --git a/pkg/__init__.py b/pkg/__init__.py\n"
+        + b"deleted file mode 100644\n"
+        + b"index e69de29..0000000\n"
+    )
+    kept, gone = document.manifest.files
+    assert kept.availability is Availability.ready
+    assert gone.kind is ChangeKind.deleted
+    assert gone.new is None
+    assert gone.old is not None and gone.old.path == "pkg/__init__.py"
+    assert gone.availability is Availability.ready
+    assert (gone.additions, gone.deletions) == (0, 0)
+    assert document.patches[gone.id].hunks == ()
+    assert document.resolved.warnings == ()
+    assert document.manifest.totals.exact
+
+
+def test_a_deleted_binary_file_is_the_same_section_shape() -> None:
+    """The second way to reach it: Git writes ``Binary files``, and no ``+++ /dev/null``."""
+    document = parse_unified_patch(
+        _MODIFIED
+        + b"diff --git a/logo.bin b/logo.bin\n"
+        + b"deleted file mode 100644\n"
+        + b"index 1234567..0000000\n"
+        + b"Binary files a/logo.bin and /dev/null differ\n"
+    )
+    assert document.manifest.totals.files == 2
+    gone = document.manifest.files[1]
+    assert gone.kind is ChangeKind.deleted and gone.new is None
+    assert gone.binary and gone.availability is Availability.binary
+
+
+def test_the_other_sections_with_no_hunks() -> None:
+    document = parse_unified_patch(
+        b"diff --git a/new.txt b/new.txt\n"
+        b"new file mode 100644\n"
+        b"index 0000000..e69de29\n"
+        b"diff --git a/run.sh b/run.sh\n"
+        b"old mode 100644\n"
+        b"new mode 100755\n"
+        b"diff --git a/was.txt b/now.txt\n"
+        b"similarity index 100%\n"
+        b"rename from was.txt\n"
+        b"rename to now.txt\n"
+        b"diff --git a/from.txt b/to.txt\n"
+        b"similarity index 100%\n"
+        b"copy from from.txt\n"
+        b"copy to to.txt\n"
+    )
+    added, chmod, renamed, copied = document.manifest.files
+    assert added.kind is ChangeKind.added and added.old is None
+    assert chmod.kind is ChangeKind.modified
+    assert chmod.old is not None and chmod.old.mode.value == "100644"
+    assert chmod.new is not None and chmod.new.mode.value == "100755"
+    assert renamed.kind is ChangeKind.renamed
+    assert renamed.old is not None and renamed.old.path == "was.txt"
+    assert renamed.new is not None and renamed.new.path == "now.txt"
+    assert copied.kind is ChangeKind.copied
+    assert all(change.availability is Availability.ready for change in document.manifest.files)
+    assert all(patch.hunks == () for patch in document.patches.values())
+    assert document.resolved.warnings == ()
+
+
+def test_a_path_holding_the_prefix_needs_only_the_header() -> None:
+    """The middle of ``a/P b/P`` is the separator, wherever `` b/`` also appears in P."""
+    document = parse_unified_patch(
+        b"diff --git a/spaced b/x.txt b/spaced b/x.txt\n"
+        b"deleted file mode 100644\n"
+        b"index e69de29..0000000\n"
+    )
+    only = document.manifest.files[0]
+    assert only.old is not None and only.old.path == "spaced b/x.txt"
+
+
+def test_quoted_paths_with_no_hunks_are_kept() -> None:
+    """A patch written by a stock Git quotes a name that is not ASCII, each side on its own."""
+    document = parse_unified_patch(
+        b'diff --git "a/caf\\303\\251.sh" "b/caf\\303\\251.sh"\n'
+        b"old mode 100644\n"
+        b"new mode 100755\n"
+        b'diff --git "a/say \\"hi\\".txt" "b/say \\"hi\\".txt"\n'
+        b"deleted file mode 100644\n"
+        b"index e69de29..0000000\n"
+        b'diff --git a/plain.txt "b/caf\\303\\251.txt"\n'
+        b"similarity index 100%\n"
+        b"rename from plain.txt\n"
+        b'rename to "caf\\303\\251.txt"\n'
+    )
+    chmod, deleted, renamed = document.manifest.files
+    assert chmod.new is not None and chmod.new.path == "café.sh"
+    assert deleted.old is not None and deleted.old.path == 'say "hi".txt'
+    assert renamed.new is not None and renamed.new.path == "café.txt"
+    assert document.resolved.warnings == ()
+
+
+def test_a_section_that_fails_validation_is_named_and_the_rest_are_kept() -> None:
+    """The structural net, reached directly: nothing a probe has found still reaches it."""
+    good = parse_unified_patch(_MODIFIED)
+    change = good.manifest.files[0]
+    # A deleted change with a new side is what validation refuses.
+    bad = change.model_copy(update={"id": "f2", "kind": ChangeKind.deleted})
+    mixed = good.model_copy(
+        update={"manifest": good.manifest.model_copy(update={"files": (change, bad)})}
+    )
+
+    kept = patch_file._without_unmodeled_sections(mixed)
+
+    first, second = kept.manifest.files
+    assert first.availability is Availability.ready and "f1" in kept.patches
+    assert second.availability is Availability.unsupported and "f2" not in kept.patches
+    assert kept.manifest.totals.files == 2 and not kept.manifest.totals.exact
+    assert kept.resolved.warnings == (
+        "1 section(s) could not be modeled and are left out: kept.txt",
+    )
+    # What came back is what a document has to be.
+    assert validate_document(dump_document(kept)).manifest.totals.files == 2

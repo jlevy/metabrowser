@@ -1080,6 +1080,26 @@ async function main() {
     JSON.stringify(queueCalls),
   );
 
+  // What the source left out is said above the files, and the files are still there.
+  const warned = JSON.parse(JSON.stringify(byName.get("modified-with-heading")));
+  warned.resolved.warnings = ["1 section(s) could not be modeled and are left out: gone.txt"];
+  const warnedHost = new FakeElement("div");
+  mountDiffView(warnedHost, warned);
+  const warnings = warnedHost.find("diff-warning");
+  check(
+    "a warning is shown",
+    warnings.length === 1 && warnings[0].textContent.includes("gone.txt"),
+  );
+  check("the files stay beside a warning", warnedHost.find("diff-file").length === 1);
+  const unwarned = new FakeElement("div");
+  mountDiffView(unwarned, byName.get("modified-with-heading"));
+  check("no warning, no notice", unwarned.find("diff-warning").length === 0);
+
+  // A deleted empty file has no hunks and is not an unavailable one.
+  const deletedEmpty = new FakeElement("div");
+  mountDiffView(deletedEmpty, byName.get("deleted-empty-file"));
+  check("a deleted empty file says so", deletedEmpty.text().includes("No content changes."));
+
   // The no-newline marker is visible, not silently dropped.
   const noNewline = new FakeElement("div");
   mountDiffView(noNewline, byName.get("no-newline-marker"));

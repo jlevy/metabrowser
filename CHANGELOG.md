@@ -951,6 +951,15 @@ Content source:
 
 Fixes:
 
+- A pull request or a `.patch` file that deletes an empty file now shows its changes.
+  Git writes no hunks for that, nor for a deleted binary file, and the parser could not
+  model the section, emptied the whole document, and left the comparison route answering
+  `404 "file 'f1' not found in the produced diff"`, so such a pull request had no Files
+  changed. A section that still cannot be modeled now keeps its row and is named in
+  `resolved.warnings`, which the diff view shows above the files, and the rest of the
+  comparison is kept. A section with no hunks whose path is quoted or holds ` b/` is read
+  from its `diff --git` line rather than dropped.
+
 - A diff in a narrow pane no longer hides its additions.
   Split needs 44 ems of width, and below that its right column was off-screen behind a
   sideways scroll, so an added line read as a blank gap.

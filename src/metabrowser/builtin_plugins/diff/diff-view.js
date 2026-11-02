@@ -1524,6 +1524,10 @@ export function mountDiffView(container, document_, api, options = {}) {
   const totals = manifest.totals;
   const { toolbar, unbind } = renderDiffToolbar(totals, view, options.showSummary !== false);
   root.append(toolbar);
+  // What the source could not model is left out of the files below, so it is said above them.
+  for (const warning of /** @type {string[]} */ (view.resolved.warnings ?? [])) {
+    root.append(el("div", "diff-availability diff-warning", warning));
+  }
   const context = { revision: String(document_.__revision ?? "") };
   measureProjection(
     api,
