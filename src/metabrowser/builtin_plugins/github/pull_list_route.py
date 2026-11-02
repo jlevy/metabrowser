@@ -24,6 +24,7 @@ here knows whether it is a mirror.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -39,7 +40,7 @@ from pathlib import Path
 from typing import Any, Final, Literal, TypedDict
 
 from metabrowser.builtin_plugins.github import pull_list
-from metabrowser.builtin_plugins.github.gh_lists import PullDataError
+from metabrowser.builtin_plugins.github.gh_lists import PullDataError, utc_stamp
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_LIST_PAGES,
     MAX_LIST_ROWS,
@@ -50,6 +51,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
     read_list_refresh,
     read_pull_list,
     refresh_is_due,
+    write_list_refresh,
 )
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp, RecordAbsence
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
@@ -71,6 +73,7 @@ DEFAULT_LIMIT: Final = 100
 _NUMBER = re.compile(r"^[1-9][0-9]{0,9}$")
 _LIMIT = re.compile(r"^(?:0|[1-9][0-9]{0,3})$")
 _REFRESH_FIELDS: Final = frozenset({"state", "more", "retry"})
+_JOB_STOPPED: Final = "the refresh stopped on an unexpected error, which the server log names"
 
 type ListState = Literal["absent", "pending", "current", "stale"]
 type ListAbsence = Literal["not_github"] | RecordAbsence
@@ -407,6 +410,15 @@ async def _run_refresh(repository: ListedRepository, name: PullListName, *, more
     except PullDataError:
         # Its stamp says how it ended, and the route reports that.
         return
+    except Exception:
+        # A bug, which no stamp names. Keep one, so the route says the job stopped and the
+        # next automatic attempt waits a window instead of running this again on every poll.
+        # The coordinator logs the exception; its text may name a path, so no stamp has it.
+        stopped = PullRefreshStamp(
+            outcome="gh_failed", message=_JOB_STOPPED, at=utc_stamp(pull_list.utc_now())
+        )
+        await asyncio.to_thread(write_list_refresh, repository.home, repository.slug, name, stopped)
+        raise
 
 
 def refresh_wanted(view: ListView, ask: RefreshRequest) -> bool:

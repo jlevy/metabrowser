@@ -23,6 +23,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser.builtin_plugins.github import (
+    gh,
     gh_lists,
     pull_list,
     pull_list_refresh,
@@ -280,7 +281,7 @@ def test_a_list_of_the_worst_rows_the_bounds_allow_can_be_read_back(
         truncated=True,
         etags=tuple(
             ListPageMark(
-                etag='W/"' + "e" * 290 + '"',
+                etag='W/"' + "e" * 256 + '"',
                 numbers=tuple(
                     range(9_999_999_999 - page * 100, 9_999_999_999 - page * 100 - 100, -1)
                 ),
@@ -297,6 +298,52 @@ def test_a_list_of_the_worst_rows_the_bounds_allow_can_be_read_back(
     assert len(data) <= MAX_PULL_LIST_BYTES
     write_pull_list(home, SOURCE.slug, worst)
     assert read_pull_list(home, SOURCE.slug, "all") == worst
+
+
+_HOSTILE_TEXT = "\x1b[31mred\x1b[0m \x9b2J \u202eright-to-left\u202c \x07\x08\x00 end"
+
+
+def test_hostile_text_reaches_a_written_file_only_escaped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repository: ListedRepository,
+    home: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """What a pull request's author chooses, seen by nobody until a terminal or a log prints it.
+
+    Neither a file's bytes nor a debug log is in a transcript. C1 and bidi controls are text
+    as far as JSON goes, so a file holds them as they are and only C0 is pinned here.
+    """
+
+    side = {"ref": _HOSTILE_TEXT, "repo": {"full_name": _HOSTILE_TEXT}}
+    hostile = {
+        **generated_item(2),
+        "title": _HOSTILE_TEXT,
+        "labels": [{"name": _HOSTILE_TEXT}],
+        "head": side,
+        "base": side,
+        "user": {"login": f"evil{_HOSTILE_TEXT}"},
+    }
+    unreadable = {**generated_item(1), "number": _HOSTILE_TEXT}
+    _answer(tmp_path, monkeypatch, _answers(_page(1, [hostile, unreadable])))
+    with caplog.at_level("DEBUG", logger="metabrowser.builtin_plugins.github.gh_lists"):
+        listed = asyncio.run(refresh_pull_list(repository, "all"))
+
+    row = listed.rows[0]
+    assert (row.number, row.title, row.head_ref) == (2, _HOSTILE_TEXT, _HOSTILE_TEXT)
+    # A login outside GitHub's grammar is no login, and an unreadable number is no row.
+    assert row.author is None
+    assert ([each.number for each in listed.rows], listed.truncated) == ([2], True)
+
+    written = (home / source_pull_list(SOURCE.slug, "all")).read_bytes()
+    assert not [byte for byte in written if byte < 0x20]
+    assert json.loads(written)["rows"][0]["title"] == _HOSTILE_TEXT
+
+    # The record of the item left out quotes it, so an escape in it stays text.
+    left_out = [record.getMessage() for record in caplog.records if "left out" in record.message]
+    assert left_out
+    assert not [text for text in left_out if "\x1b" in text or "\x00" in text]
 
 
 def test_a_row_past_its_bounds_is_cut_and_says_so(
@@ -401,6 +448,59 @@ def test_a_damaged_or_older_file_is_no_list(
     ensure_private_directory(home, f"sources/{SOURCE.slug}/pulls")
     write_private_file_atomic(home, source_pull_list(SOURCE.slug, "all"), content)
     assert read_pull_list(home, SOURCE.slug, "all") == absence
+
+
+def _plant_list(home: Path, **changes: Any) -> None:
+    """A file of a list with these fields changed, as no model of ours would write it."""
+
+    from metabrowser.home import ensure_private_directory, write_private_file_atomic
+
+    payload = json.loads(serialize_pull_list(_a_list(rows=(), complete=True)))
+    ensure_private_directory(home, f"sources/{SOURCE.slug}/pulls")
+    write_private_file_atomic(
+        home, source_pull_list(SOURCE.slug, "all"), json.dumps(payload | changes).encode()
+    )
+
+
+def test_a_mark_holds_what_gh_api_will_send() -> None:
+    """Written beside the model, since ``pull_list`` loads no ``gh``. The two must not part."""
+
+    assert gh._ETAG.pattern == pull_list.ETAG_PATTERN  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "etag",
+    ['W/"has space"', "not quoted", '"' + "e" * 257 + '"', '"a"\n', '"a" -H "b"'],
+    ids=["space", "unquoted", "too_long", "newline", "an_option"],
+)
+def test_a_stored_mark_gh_api_would_refuse_is_no_list(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    home: Path,
+    repository: ListedRepository,
+    etag: str,
+) -> None:
+    """``gh_api`` raises on such a value, which is no failure the job names.
+
+    So it is refused where it is read: the file is ``unreadable``, as the reader's
+    docstring promises for anything outside the model, and the next refresh replaces it.
+    """
+
+    mark = {"etag": etag, "numbers": [], "truncated": False}
+    _plant_list(home, etags=[mark])
+    assert read_pull_list(home, SOURCE.slug, "all") == "unreadable"
+    _answer(tmp_path, monkeypatch, _answers(_page(1, [generated_item(1)])))
+    listed = asyncio.run(refresh_pull_list(repository, "all"))
+    assert [row.number for row in listed.rows] == [1]
+    stamp = read_list_refresh(home, SOURCE.slug, "all")
+    assert stamp is not None and stamp.outcome == "succeeded"
+
+
+def test_a_fetched_at_that_is_no_moment_is_no_list(home: Path) -> None:
+    """The pattern admits a month 13, and the route ages a list by this field."""
+
+    _plant_list(home, fetched_at="2026-13-45T25:61:61Z")
+    assert read_pull_list(home, SOURCE.slug, "all") == "unreadable"
 
 
 def test_a_file_past_the_read_bound_or_for_another_list_is_no_list(
@@ -1054,6 +1154,39 @@ def test_a_more_that_joins_a_refresh_that_completes_the_list_reads_nothing_furth
     after = _settle(client)
     assert runs == [("all", False)]
     assert (after["fetched"], after["complete"]) == (1, True)
+
+
+def test_a_job_that_stops_on_something_unexpected_says_so_and_waits_a_window(
+    served: tuple[TestClient, PublishedSource],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A bug has no stamp of its own, and without one every poll would run the job again.
+
+    A transcript cannot show this: nothing a fake ``gh`` answers should reach it.
+    """
+
+    client, _published = served
+    runs: list[str] = []
+
+    async def stops(_repository: ListedRepository, name: str, *, more: bool = False) -> None:
+        runs.append(name)
+        raise RuntimeError("a path and a token that must not reach a file: ghp_x")
+
+    monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", stops)
+    assert client.post(REFRESH, json={}, headers=_JSON).json()["refresh"] == "started"
+    after = _settle(client)
+    assert after["last_refresh"]["outcome"] == "gh_failed"
+    assert "ghp_x" not in json.dumps(after)
+    assert "a background refresh failed" in caplog.text
+
+    # Held to the window, as any failure is, and a reader's Retry still runs it.
+    waiting = client.post(REFRESH, json={}, headers=_JSON)
+    assert (waiting.status_code, waiting.json()["refresh"]) == (200, "not_due")
+    assert runs == ["all"]
+    assert client.post(REFRESH, json={"retry": True}, headers=_JSON).json()["refresh"] == "started"
+    _settle(client)
+    assert runs == ["all", "all"]
 
 
 def test_a_read_never_starts_anything(

@@ -194,7 +194,9 @@ async def read_list(
     was read whole.
 
     A page larger than gh's output cap is asked for again in smaller pages, down to one
-    item; an item that alone is too large is left out and ``left_out`` set.
+    item; an item that alone is too large is left out and ``left_out`` set. *cap* counts
+    places and not items kept, an item left out among them, so reading one page never runs
+    into the next.
     """
 
     prefix = f"{path}?{query}&" if query else f"{path}?"

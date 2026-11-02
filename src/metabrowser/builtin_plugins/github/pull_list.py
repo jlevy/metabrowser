@@ -36,6 +36,7 @@ from pydantic import (
     Field,
     StringConstraints,
     ValidationError,
+    field_validator,
     model_validator,
 )
 
@@ -113,6 +114,11 @@ MAX_ROW_LABEL_BYTES: Final = 64
 # in-process at a load average near 40).
 MAX_PULL_LIST_BYTES: Final = 10 * 1024 * 1024
 
+# What ``gh_api`` will send as ``If-None-Match``, the same as ``gh.py``'s, which this module
+# does not load. It raises on anything else, which is no failure a job names, so a file
+# holding anything else is refused where it is read.
+ETAG_PATTERN: Final = r'^(?:W/)?"[\x21\x23-\x7e]{1,256}"$'
+
 type PullNumber = Annotated[int, Field(ge=1, le=MAX_PULL_REQUEST_NUMBER)]
 type _RowText = Annotated[str, StringConstraints(max_length=MAX_ROW_REF_BYTES)]
 type _LabelName = Annotated[str, StringConstraints(max_length=MAX_ROW_LABEL_BYTES)]
@@ -168,7 +174,7 @@ class ListPageMark(_Model):
     cut something on it, which a ``304`` also keeps.
     """
 
-    etag: Annotated[str, StringConstraints(max_length=300)] | None
+    etag: Annotated[str, StringConstraints(pattern=ETAG_PATTERN)] | None
     numbers: tuple[PullNumber, ...] = Field(max_length=API_PAGE_SIZE)
     truncated: bool
 
@@ -192,6 +198,13 @@ class PullList(_Model):
     truncated: bool
     etags: tuple[ListPageMark, ...] = Field(max_length=MAX_LIST_PAGES)
     rows: tuple[PullListRow, ...] = Field(max_length=MAX_LIST_ROWS)
+
+    @field_validator("fetched_at")
+    @classmethod
+    def _a_real_moment(cls, value: str) -> str:
+        # The pattern admits a month 13 or a minute 61, and the route ages a list by this.
+        parse_stamp(value)
+        return value
 
     @model_validator(mode="after")
     def _is_one_listing(self) -> Self:
@@ -332,6 +345,7 @@ def can_extend(listed: PullList) -> bool:
 
 
 __all__ = [
+    "ETAG_PATTERN",
     "MAX_LIST_PAGES",
     "MAX_LIST_ROWS",
     "MAX_PULL_LIST_BYTES",
