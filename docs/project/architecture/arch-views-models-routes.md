@@ -256,12 +256,14 @@ A list is fetched only by a refresh.
 `POST github/pulls-refresh` takes `state`, `more`, and `retry`, starts or joins that
 list’s refresh, and answers `202` at once, naming `github/pulls` with its query as its
 `status_route`, which a one-shot `--api` prints after the refresh ends, exiting 1 when
-it failed. `"more": true` extends the list by one GitHub page.
-Those two and `"retry": true` are a reader’s own action; any other request is automatic
-and is held to one attempt a window, and past `rate_limited` until `reset_at`, answering
-`refresh: "not_due"` with `200` until then.
-Any other key or value is `invalid_request` (400), and a server with no GitHub
-repository answers `not_github` (409). See
+it failed. `"more": true` extends the list by one GitHub page, and one that joins a
+refresh is read after it, in the same job.
+`"retry": true`, and a `more` with a page to read, are a reader’s own action.
+Any other request, an automatic one or a `more` on a complete list or one at its cap, is
+held to one attempt a window, and past `rate_limited` nothing runs until `reset_at`,
+whoever asked. A request held by either answers `refresh: "not_due"` with `200`. Any
+other key or value is `invalid_request` (400), and a server with no GitHub repository
+answers `not_github` (409). See
 [Lists of pull requests](arch-repository-sources-and-provider-mirrors.md#lists-of-pull-requests).
 
 ### Planned plugin registration surfaces

@@ -283,12 +283,20 @@ existing `RefreshCoordinator`, under a key of its own per source and state.
   `If-None-Match`. A `304` reuses that page’s rows, and GitHub documents that it does
   not count against the primary rate limit
   ([best practices](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)).
+- A `304` carries no `Link`, and a pull request that closes or reopens goes into
+  `closed` or `open` at its created rank, so under a full last page it starts a new page
+  and leaves that page’s body as it was.
+  A complete list’s last page is therefore read whole when it may be full.
+  That is one counted request a refresh, for a list whose rows are a multiple of a
+  hundred.
 - The list is assembled over the job’s duration and is not atomic.
   A pull request that opens or closes between two page reads can appear twice, which the
   number dedupes, or be missed until the next refresh.
 - A failed refresh leaves the file as it was.
-  The next automatic attempt waits a window, and after `rate_limited` it waits for
-  `reset_at`. The same rule is applied to `ServedPull` in step 2.
+  The next automatic attempt waits a window, and after `rate_limited` nothing runs
+  before `reset_at`, a reader’s own action included, since each request GitHub refuses
+  moves that time on. The route cannot ask `gh` who is active, so an account that was not
+  limited waits too. The same rule is applied to `ServedPull` in step 2.
 - A list job never touches a store, so it does not take the mirror’s fetch turn.
 
 **Typed failures.** The stamp carries the states `gh.py` already names, plus
@@ -297,8 +305,10 @@ existing `RefreshCoordinator`, under a key of its own per source and state.
 **Another reader.** The file names its reader, `gh:<login>`.
 
 - A list fetched by another account is shown as it is, labelled with that reader, and
-  treated as stale. This matches the thin-mirror rule that cached private content stays
-  viewable after a logout or an account switch; the cache is owner-only.
+  treated as stale, as is a list whose last refresh ended `account_changed`, whichever
+  account that stamp names.
+  This matches the thin-mirror rule that cached private content stays viewable after a
+  logout or an account switch; the cache is owner-only.
 - The next successful refresh replaces the whole file.
   Pages from two readers are never joined, and ETags are reused only for the same
   reader, so **Load more** under a new account starts again from the first page.
@@ -312,7 +322,7 @@ handlers in `sidekick.py` that import the rest only when called:
 | Route | Answer |
 | --- | --- |
 | `GET /api/plugin/github/pulls?state=&limit=&after=` | From the cache alone: `state` (`absent`, `pending`, `current`, `stale`), `reason`, `source`, `list`, `fetched_at`, `reader`, `fresh_for_s`, `refreshing`, `last_refresh`, `fetched`, `complete`, `truncated`, `at_cap` (no more may be held), `limit` (0 for the envelope alone), `next_after`, and `rows`. It carries an entity tag, as the pull route does |
-| `POST /api/plugin/github/pulls-refresh` with `{"state": …, "more": false, "retry": false}` | Starts or joins the list’s refresh and answers `202` at once with the envelope and its `status_route`. `"more": true` extends the list by one GitHub page. Those two and `"retry": true` are a reader’s action; an automatic request that is not due answers `200` with `refresh: "not_due"` and starts nothing |
+| `POST /api/plugin/github/pulls-refresh` with `{"state": …, "more": false, "retry": false}` | Starts or joins the list’s refresh and answers `202` at once with the envelope and its `status_route`. `"more": true` extends the list by one GitHub page; one that joins a refresh is read after it, in the same job, so `refreshing` stays true until the page is in the list. `"retry": true`, and a `more` with a page to read, are a reader’s action. Anything else, an automatic request or a `more` on a complete list or one at its cap, waits for one attempt a window. Nothing runs before `reset_at` after `rate_limited`, whoever asked. A request held by either rule answers `200` with `refresh: "not_due"` and starts nothing |
 | `GET /api/plugin/github/pull-files?number=<n>` | One pull request’s changed files, from the cache alone, with the same state fields. See [Changed Files in a Row](#changed-files-in-a-row) |
 | `POST /api/plugin/github/pull-files-refresh` with `{"number": n}` | Starts or joins that list’s refresh |
 
@@ -945,9 +955,12 @@ merges by itself: the stack lands when the user says so, after the stack below i
 - **The cache grows.** Each opened pull request adds a record, bounded by
   `MAX_PULL_RECORD_BYTES`, and on a mirror its commits.
   Nothing deletes either in the first version; cache management (`mb-0ybg`) owns that.
-- **Two servers can refresh one repository’s records at once**, a checkout’s and a
-  mirror’s. Writes are atomic replacements, so the later one wins and neither file is
-  torn.
+- **Two servers can refresh one repository’s records or lists at once**, a checkout’s
+  and a mirror’s. Writes are atomic replacements, so the later one wins and neither file
+  is torn. A list’s job writes rows and marks from the one file it read, so what is left
+  is one reader’s self-consistent list.
+  A late `more` can put back an older first page, and its older `fetched_at` goes with
+  it, so the list is `stale` within a window and the next refresh replaces it.
 - **`gh` changes its text.** The runner classifies some failures by `gh`’s messages,
   recorded from one version.
   A changed message degrades to `gh_failed`, which the tab shows with **Retry**.
