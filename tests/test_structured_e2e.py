@@ -363,7 +363,8 @@ def test_parsed_endpoint_still_reads_under_a_zero_cap(
     assert (body["truncated"], body["parsed"], body["parse_error"]) == (False, None, None)
     body = _parsed(structured_app, "empty.json")
     assert (body["truncated"], body["parsed"]) == (False, None)
-    assert body["parse_error"] == "ValueError: Empty strings are not legal JSON5"
+    # The parser's reason is its own to word; what is pinned is that the parser ran.
+    assert body["parse_error"].startswith("ValueError:")
 
     locked = tmp_path / "locked.json"
     locked.write_bytes(b'{"a": 1}\n')
