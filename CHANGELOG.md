@@ -972,12 +972,14 @@ Fixes:
   `/api/plugin/diff/document` answered that it recognized no diff, and
   `/api/plugin/diff/children` and a virtual child `change.patch.gz/<path>` answered 404.
   The three now read the patch the file holds.
-  A compressed file whose stream cannot be decoded answers the same 404 as a file that
-  cannot be opened. `/api/file` shows such a file as bytes when the damage is in the
-  first 512 KiB it reads.
-  Damage past that is not seen there: an 8.5 MB patch whose gzip is cut at 80% still
-  says `kind: diff`, and the Diff view shows “This file is not available.”, where 0.11.0
-  showed an empty change set, as it did for every `.patch.gz`.
+  A compressed file whose stream cannot be decoded within the first 8 MiB of decoded
+  content, which is as far as they read, answers the same 404 as a file that cannot be
+  opened. Damage past that is not reached: they answer the patch they read, marked
+  truncated, as they do for an undamaged patch that long.
+  `/api/file` shows a damaged file as bytes when the damage is in the first 512 KiB it
+  reads. Damage past that is not seen there: an 8.5 MB patch whose gzip is cut at 80%
+  still says `kind: diff`, and the Diff view shows “This file is not available.”, where
+  0.11.0 showed an empty change set, as it did for every `.patch.gz`.
 
 - A byte limit set below zero gives a typed, empty answer on every value.
   This applies to `STRUCTURED_PARSE_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_BYTES`,
