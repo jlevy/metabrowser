@@ -517,14 +517,29 @@ Each is its own cached list, and All is the default.
 **Order.** Newest first, by the order GitHub lists them, `sort=created&direction=desc`.
 The other orders stay a non-goal.
 
-**Keyboard and accessibility.**
+**Keyboard and accessibility.** The user’s words, on 2026-11-02: keyboard shortcuts work
+to navigate the left-hand nav “so it’s easy to scroll through PRs and scroll through
+files within a PR.”
 
-- The tab is a `role="tab"` button like the others.
-- The list has roving focus: Up, Down, Home, and End move, and Enter opens, as in the
-  Git tab. **Load more** is a button after the last row.
+- The tab is a `.tab-btn` like the others, in the existing `.tab-bar`.
+- The rows are a Navigational Row Collection
+  ([design system](../../../design-system.md)): one Tab stop, Arrow Up and Down and K
+  and J move and open, key repeat stays on, clamped at the ends, and no page scroll.
+  They are registered in the test that holds every such collection to one contract.
+- Help and hint text comes from the command registry, not new key text.
+- Moving between pull requests is in-page, with no document load and no new server, so
+  holding a key walks the list.
+  Interaction work stays proportional to the change and not to the size of the list.
+- Holding a key queues no request per row: the latest wins and older ones are cancelled.
+- **Load more** is a button after the last row.
 - The list’s accessible name carries the honest count.
 - Refresh states are announced in a polite live region, as the freshness row’s are.
-- The contextual keyboard help gains the panel’s keys.
+
+**Design system.** The panel follows `docs/design-system.md` rigorously: One Chevron and
+One Row Contract for rows (`--ui-row-height`, `--hover-bg`), Age for dates, Icons for
+glyphs (Lucide from `static/icons.js`, `currentColor`, `--icon-glyph`), and the type
+scale, with no literal `font-size` in a plugin stylesheet.
+The state icons get a line in that document.
 
 **Loading tier and the startup budget.**
 
@@ -580,11 +595,29 @@ that expand and collapse exactly as they do in the Files tab.
 
 **The gesture.** As with a folder, clicking a row is one gesture: it opens the pull
 request and toggles its files.
-The keyboard splits them: Enter opens, Right expands, Left collapses, and Up and Down
-walk every visible row, as `static/tree-keyboard-navigation.js` does for the Files tree.
-The host hands the view that module, so the plugin reaches no private global.
+The keyboard splits them: Enter opens, Right expands, and Left collapses, as
+`static/tree-keyboard-navigation.js` does for the Files tree, and the host hands the
+view that module, so the plugin reaches no private global.
 The row of the pull request the page shows is expanded automatically, and the file it
 shows is marked current.
+
+**Walking files with the keyboard.** The user: “It may require rapid scrolling up the
+diff view to the relevant file when we navigate between particular files in a diff.”
+So changed file rows are a Navigational Row Collection too, and walking them drives the
+diff:
+
+- Moving to a file scrolls the diff straight to that file’s bar: an immediate jump, not
+  smooth scrolling, with focus staying in the nav.
+- The file arrives hydrated even past `MAX_HYDRATED_FILES`, through the `wanted_file`
+  path in `builtin_plugins/diff/sidekick.py`.
+- Holding a key queues no request per row: the latest wins and older ones are cancelled.
+- The position holds: neighbours hydrating above the target do not move it, and Back’s
+  `history.state.pullPlace` restore is kept.
+- The selection follows a reader who scrolls the diff by hand, without stealing focus.
+- It holds on a real pull request of 1,183 files and +281,131 lines, so the tree stays
+  bounded or virtualized.
+  The large-pull-request performance study sets the budgets, and this step’s data shape
+  waits for its result.
 
 **The data.** One `gh api` request per 100 files:
 
@@ -858,13 +891,20 @@ measure GitHub.
 Each step is one pull request and one layer of a native stack, whose base is the top of
 the v0.12 stack, implemented and reviewed by separate agents, with green CI. Nothing
 merges by itself: the stack lands when the user says so, after the stack below it
-(`tbd shortcut stacked-prs`). Each updates
-[Views, Models, and Routes](../../architecture/arch-views-models-routes.md) and
-`CHANGELOG.md` in the same change.
+(`tbd shortcut stacked-prs`).
+
+Two steps wait on other work.
+Step 4’s data shape waits for the large-pull-request performance study.
+Steps 5 and 6 follow the owner’s decision on the overlay store, in
+[PR Review on a Mirror and a Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md),
+which revises this plan’s alternates rejection and in-page fetch; they start after that
+plan’s first step has been reviewed.
+Each updates [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
+and `CHANGELOG.md` in the same change.
 
 | Step | Scope | Checkpoint a person can see | Ships alone |
 | --- | --- | --- | --- |
-| 1. List data | The model, file, bounds with measurements, the job, both list routes, and the fake `gh` pages | `metab <repo-url> --api '/api/plugin/github/pulls?state=open'` lists pull requests, and again offline | Yes |
+| 1. List data | The model, file, bounds with measurements, the job, both list routes, and the fake `gh` pages | `--api /api/plugin/github/pulls-refresh --data …` then `--api '/api/plugin/github/pulls?state=all'` lists pull requests, and the second works offline, since a read never fetches | Yes |
 | 2. On-demand open | Numbered routes, the provider’s set, the attended pull request, the job bound, the Browse code cases, and View file under any head ref | On a server opened from a repository URL, `/pull/<n>` for any number offers **Fetch** and then shows the page | Yes |
 | 3. The tab on a mirror | The panel host, which tab an address shows, the view and its `/pulls` address, state icons, filters, states, keyboard, prefetch, and the sessions | Paste a repository URL, see Pulls beside Files and Git with every pull request and its icon, select one, and read it | Needs 1 and 2 |
 | 4. Changed files in a row | The file-list job, model, and routes, the tree, the gesture, `/pull/<n>/files/<path>`, and its session | Expand a pull request in the list, expand a folder, and open a file | Needs 3 |
