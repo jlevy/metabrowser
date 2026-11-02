@@ -382,8 +382,8 @@ GitHub URLs and HTTPS:
   last; a table wider than its text scrolls there, and a long word or URL breaks to fit.
   A review comment’s file opens at the served head, at its line, and it shows the end of
   its diff hunk, where it anchors: the last eight lines, back to the start of a
-  multi-line comment’s range, with the earlier lines behind a disclosure and added and
-  deleted lines tinted as in the diff.
+  multi-line comment’s range for up to 100 lines, with the earlier lines behind a
+  disclosure and added and deleted lines tinted as in the diff.
   The freshness row links to the page, and back, forward, and reload keep its tab.
   The page for a number the server does not serve links to the served pull request’s
   page, on the same tab.
@@ -980,12 +980,14 @@ Fixes:
   `/api/plugin/diff/document` answered that it recognized no diff, and
   `/api/plugin/diff/children` and a virtual child `change.patch.gz/<path>` answered 404.
   The three now read the patch the file holds.
-  A compressed file whose stream cannot be decoded answers the same 404 as a file that
-  cannot be opened. `/api/file` shows such a file as bytes when the damage is in the
-  first 512 KiB it reads.
-  Damage past that is not seen there: an 8.5 MB patch whose gzip is cut at 80% still
-  says `kind: diff`, and the Diff view shows “This file is not available.”, where 0.11.0
-  showed an empty change set, as it did for every `.patch.gz`.
+  A compressed file whose stream cannot be decoded within the first 8 MiB of decoded
+  content, which is as far as they read, answers the same 404 as a file that cannot be
+  opened. Damage past that is not reached: they answer the patch they read, marked
+  truncated, as they do for an undamaged patch that long.
+  `/api/file` shows a damaged file as bytes when the damage is in the first 512 KiB it
+  reads. Damage past that is not seen there: an 8.5 MB patch whose gzip is cut at 80%
+  still says `kind: diff`, and the Diff view shows “This file is not available.”, where
+  0.11.0 showed an empty change set, as it did for every `.patch.gz`.
 
 - A byte limit set below zero gives a typed, empty answer on every value.
   This applies to `STRUCTURED_PARSE_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_BYTES`,
@@ -1000,9 +1002,9 @@ Fixes:
   ceiling answers 404. Zero is unchanged for the binary settings and for a structured
   file that is not compressed, apart from a file that cannot be opened.
   At `STRUCTURED_PARSE_MAX_BYTES=0` a compressed structured file no longer answers that
-  parse error, and answers as it does at any limit too small for it: `truncated` when it
-  holds data, a decompression parse error when its stream cannot be decoded, and what an
-  empty file answers when it holds nothing.
+  parse error, and answers as it does at any limit too small for it: `truncated` when
+  the start of its stream decodes, whatever damage follows, a decompression parse error
+  when it fails before that, and what an empty file answers when it holds nothing.
   A file that cannot be opened answers 404 `content_unavailable` at zero too, where
   0.11.0 answered `truncated` for an uncompressed one larger than the limit, without
   opening it.
@@ -1040,21 +1042,22 @@ Fixes:
   changing Files or Bytes or Show ignored after a failure keeps the failure’s message
   instead of bringing the skeleton back; and a refresh that fails while nothing has been
   counted says so and offers Retry where the request can be retried.
-  A scan that is still running keeps its skeletons.
+  A scan that is still running keeps its skeletons, and an answer that it is running
+  brings them back after a failure.
 
 - A JSONL log’s event rows answer the keyboard.
   Each row’s header is now a button with a tab stop and an expanded state, and Enter or
   Space opens and closes it as a click does.
   A keyboard could not reach a row in 0.11.0 either, and moving the rows off inline
   handlers in this release had also removed the clickable node the accessibility tree
-  showed. A click on a row does what it did.
+  showed. A click on a row opens it as it did, and now also focuses it.
 
 - Back or Forward onto a `/commit/` entry shows the commit.
   With a file opened in-page over a commit, Back changed the address and left the file
   showing, because the Git panel restored a commit only when the page loaded.
 
 - A `/commit/` address with a short commit ID, or a ref name with no slash in it, now
-  says it needs the full ID, in place of “Could not load this commit.”
+  says it needs the full lowercase ID, in place of “Could not load this commit.”
   `/api/git/commit/<rev>` still refuses such a revision with 400, and its answer now
   carries the `revision_not_full` code.
 

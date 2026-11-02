@@ -20,7 +20,8 @@ before: >-
   printf 'METAB_ALLOW_EDITS=1\nMETAB_UNTRUSTED=1\nMETABROWSER_PLUGINS_DIRS=%s/evil-plugins\n'
   "$PWD" > evilrepo/.env &&
   printf 'METABROWSER_DEBUG=1\nBROWSER=%s/evil\nPATH=%s/evil\nGIT_TRACE=%s/trace.txt\n'
-  "$PWD" "$PWD" "$PWD" >> evilrepo/.env
+  "$PWD" "$PWD" "$PWD" >> evilrepo/.env &&
+  printf 'METABROWSER_REQUEST_LOG=verbose\n' >> evilrepo/.env
 ---
 # Golden tests: the `--untrusted` content-trust profile
 
@@ -153,7 +154,8 @@ status: 200
 The dotenv chain walks up from the working directory, so `cd cloned-repo && metab .`
 reaches that repository’s own `.env`, and the loader cannot tell it from a file the
 operator wrote. So a dotenv file may set only the names in `ALLOWED_KEYS` in
-`metabrowser/dotenv.py`, and this `.env` sets nothing else.
+`metabrowser/dotenv.py`. This `.env` sets one of them, shown landing at the end of this
+section, and nothing else in it may land.
 
 The warning names that allowlist in full, so adding a name to it changes this
 transcript.
@@ -198,9 +200,11 @@ status: 200
 
 The same file sets `GIT_TRACE`, which makes Git write a trace to the path it names.
 Asking whether the folder is a repository runs Git, so the trace would exist by now if
-the name had reached it, and a `PATH` that had reached it would have left no Git to run.
-`PATH` and `BROWSER` are refused silently, because only this package’s own names are
-worth a warning: every repository has variables of its own.
+the name had reached it.
+`PATH` and `BROWSER` are refused too, and silently, because only this package’s own
+names are worth a warning: every repository has variables of its own.
+A dotenv value never replaces a name the shell already exports, so `PATH` could not be
+displaced through this loader in any case.
 
 ```console
 $ cd evilrepo && metab . --api /api/git/repo
@@ -218,6 +222,27 @@ status: 200
 
 ```console
 $ test ! -e trace.txt
+? 0
+```
+
+A loader that refused every name would pass everything above, so this is the admission:
+the file sets `METABROWSER_REQUEST_LOG=verbose`, and each request then logs a line.
+That line is at `INFO`, which the front matter’s `METABROWSER_LOG_LEVEL` hides from the
+commands above, so this one clears the level, and clears the name for the reason the
+capability variables were cleared.
+
+```console
+$ cd evilrepo && env -u METABROWSER_LOG_LEVEL -u METABROWSER_REQUEST_LOG metab . --api /api/git/repo
+[..]/evilrepo/.env: ignored METABROWSER_DEBUG, METABROWSER_PLUGINS_DIRS, METAB_ALLOW_EDITS, METAB_UNTRUSTED — a dotenv file may only set METABROWSER_LOG_LEVEL, METABROWSER_REQUEST_LOG. Export the others in the environment instead; see SECURITY.md.
+[..] metabrowser.server | metabrowser request t=[..] -> [..] ([..] ms) method=GET path=/api/git/repo status=200 bytes=63
+api: /api/git/repo
+status: 200
+{
+  "is_repo": false,
+  "root": null,
+  "head": null,
+  "reason": "not_a_repo"
+}
 ? 0
 ```
 

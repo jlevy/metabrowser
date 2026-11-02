@@ -142,6 +142,8 @@ def test_report_marks_the_bytecode_state_of_a_round_that_records_one(tmp_path: P
         (1, "    bytecode: uncached\n", 7400.8, 7689.4),
         (2, "    bytecode: cached\n", 2445.0, 2400.0),
         (3, "", 900.0, 800.0),
+        (4, '    bytecode: "uncached"\n', 700.0, 600.0),
+        (5, "    bytecode: 'cached'\n", 500.0, 400.0),
     ):
         (tmp_path / f"exp-00{number}-round.md").write_text(
             artifact(number, method, before, after), encoding="utf-8"
@@ -155,6 +157,9 @@ def test_report_marks_the_bytecode_state_of_a_round_that_records_one(tmp_path: P
     ) in report
     assert "| 2,445 | **2,400** (measured with compiled bytecode) | exp-002 |" in report
     assert "| 900 | **800** | exp-003 |" in report
+    # The schema admits either YAML quoting, and a value it admits keeps its mark.
+    assert "| 700 | **600** (measured without compiled bytecode) | exp-004 |" in report
+    assert "| 500 | **400** (measured with compiled bytecode) | exp-005 |" in report
 
 
 def _compare(module: Any, runs: list[dict[str, Any]]) -> int:
