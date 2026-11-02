@@ -17,8 +17,8 @@ custom views for arbitrary file types or folders.
 ## Use With Coding Agents
 
 Metabrowser ships a portable [Agent Skill](skills/metabrowser/SKILL.md) so a coding
-agent can browse directories, open files, inspect live logs, and validate plugins on
-your behalf.
+agent can browse directories, open files, inspect live logs, read GitHub pull requests,
+and validate plugins on your behalf.
 
 **Install the skill with one command:**
 
@@ -104,6 +104,11 @@ read Markdown docs.
   `--diff-check` replays a change set against the base tree to prove it reproduces the
   target exactly.
 
+- **GitHub pull-request review.** Paste a pull-request URL to read its description,
+  conversation, reviews, inline review comments, checks, and Files changed beside its
+  code, for public and private repositories, online or from the cache offline.
+  See [reviewing pull requests](docs/reviewing-pull-requests.md).
+
 - **Quick File navigation.** Press `/` or `T` to open a fuzzy finder over every
   non-gitignored file under the root, then jump straight to it by name or path fragment.
 
@@ -158,6 +163,14 @@ metab .
 `metab` is the standard installed command.
 The `metabrowser` compatibility command matches the package name, which is why the short
 `uvx metabrowser@latest ...` form works.
+
+To review a GitHub pull request, give `metab` its URL. This needs
+[`gh`](https://cli.github.com/) signed in;
+[reviewing pull requests](docs/reviewing-pull-requests.md) has the rest.
+
+```shell
+metab https://github.com/owner/repo/pull/123
+```
 
 The CLI is one flat command: serving is the default operation, and every other operation
 is a mode flag documented in one place:
@@ -221,6 +234,10 @@ metab ./path/to/directory --no-open
 
 # Browse a directory on a remote host through an SSH tunnel.
 metab --remote example-host --path /srv/shared-files
+
+# Review a GitHub pull request, or read its data without a browser.
+metab https://github.com/owner/repo/pull/123
+metab https://github.com/owner/repo/pull/123 --api /api/plugin/github/pull
 
 # Print a machine-readable inventory without starting the web UI.
 metab ./path/to/directory --walk --format json
@@ -313,6 +330,9 @@ See [development](docs/development.md) and [architecture](docs/architecture.md).
 Using Metabrowser:
 
 - [Installation](docs/installation.md) — uv setup, upgrades, and the agent skill
+- [Reviewing pull requests](docs/reviewing-pull-requests.md) — open a GitHub pull
+  request from its URL, including private and large repositories, several at once, and
+  offline
 - [Using the command line](docs/command-line.md) — a guide to every `metab` mode;
   `metab --help` is the reference
 - [Changelog](CHANGELOG.md) — what changed in each release

@@ -57,6 +57,9 @@ Metabrowser installs KPress as a required dependency, at the exact version recor
 `pyproject.toml` and `uv.lock`. Do not install a second KPress checkout beside the
 package or override it with a workspace source.
 
+[Reviewing GitHub pull requests](reviewing-pull-requests.md) also needs `gh` and Git,
+which are installed separately.
+
 ## Run a Source Checkout
 
 Before a version is published, or when developing locally, run the checked-out source

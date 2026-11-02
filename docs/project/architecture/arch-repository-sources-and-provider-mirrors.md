@@ -1061,8 +1061,10 @@ Still open, with owners:
   version string are admitted (Phase 1B-a).
 
 The initial-acquisition stall bound, the first-request deadline, and the first-clone
-size limit were measured on 2026-09-23; each measurement is recorded beside its constant
-in `cache/origin.py` and `builtin_plugins/github/provider.py`.
+size limit were measured on 2026-09-23, and the size limit again on 2026-11-02; each
+measurement is recorded beside its constant in `cache/origin.py` and
+`builtin_plugins/github/provider.py`. `METABROWSER_MAX_FIRST_CLONE_KB` moves the size
+limit, and the acquisition deadline still applies.
 
 These choices may tune cost.
 They may not introduce shared working-tree state, make a local checkout cache authority,
