@@ -347,8 +347,11 @@ nothing else, so a private repository opens once `gh auth login` has signed in a
 account that can read it; Metabrowser never reads or stores a token.
 No other credential source applies: your Git credential helpers are cleared, and Git
 runs with `HOME=/dev/null`, so curl does not read `~/.netrc`. With `gh` installed, a
-first clone is also refused before it starts when GitHub reports the repository too
-large to finish within the acquisition deadline.
+first clone is also refused before it starts when GitHub reports the repository over a
+size limit, which the refusal states, set so a slow network still finishes within the
+900-second acquisition deadline.
+On a faster network, export `METABROWSER_MAX_FIRST_CLONE_KB` with a larger number of
+kilobytes to go past it; the deadline still applies.
 A first clone reports where it goes and how far it has got; see
 [What a clone prints](#what-a-clone-prints).
 

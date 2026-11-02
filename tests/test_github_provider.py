@@ -16,7 +16,11 @@ from pathlib import Path
 import pytest
 
 from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
-from metabrowser.builtin_plugins.github.provider import MAX_FIRST_CLONE_KB, GithubProvider
+from metabrowser.builtin_plugins.github.provider import (
+    MAX_FIRST_CLONE_ENV,
+    MAX_FIRST_CLONE_KB,
+    GithubProvider,
+)
 from metabrowser.cache.acquire import RepositoryTooLargeError
 from metabrowser.cache.origin import describe_remote_failure
 from metabrowser.cache.providers import (
@@ -25,6 +29,7 @@ from metabrowser.cache.providers import (
     repository_context_for,
 )
 from metabrowser.cache.urls import GitSource
+from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX shell script")
 
@@ -69,8 +74,13 @@ def test_a_repository_over_the_limit_is_refused_before_cloning(
         asyncio.run(GithubProvider().check_first_clone(SOURCE))
     assert refused.value.state == "too_large"
     message = str(refused.value)
-    assert message.startswith("https://github.com/octo/demo is too large to clone")
+    assert message.startswith("https://github.com/octo/demo is over the size limit")
     assert f"{MAX_FIRST_CLONE_KB + 1:,} KB" in message and "(too_large)" in message
+    # Says what to do next, in words that stay true of a limit that can be moved: it claims
+    # neither that this repository cannot be cloned in time nor that the limit is fixed.
+    assert f"{MAX_FIRST_CLONE_ENV}={MAX_FIRST_CLONE_KB + 1} to try it" in message
+    assert "still stops at 900 s" in message
+    assert "within the acquisition deadline" not in message
     # Pinned to github.com: a user signed in only to an Enterprise host must not send
     # this repository name, or that host's token, anywhere but github.com.
     assert (fake_gh.parent / "gh-log.args").read_text().split() == [
@@ -83,6 +93,50 @@ def test_a_repository_over_the_limit_is_refused_before_cloning(
         "--jq",
         ".size",
     ]
+
+
+def test_the_limit_admits_what_was_measured_and_holds_at_the_slowest_rate(
+    fake_gh: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The repository the limit was raised for: 185 s on 2026-11-02, reported at this size.
+    monkeypatch.setenv("FAKE_GH_MODE", "size")
+    monkeypatch.setenv("FAKE_GH_SIZE", "1222854")
+    asyncio.run(GithubProvider().check_first_clone(SOURCE))
+    # The comment beside the constant derives it: 1,820 KB/s of pack at 1.1 times the
+    # reported size, inside the deadline.
+    assert MAX_FIRST_CLONE_KB * 1.1 / 1820 < GIT_ACQUISITION_TIMEOUT_S
+
+
+@pytest.mark.parametrize("override", ["5000000", " 5000000 "])
+def test_the_environment_raises_the_limit(
+    override: str, fake_gh: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_GH_MODE", "size")
+    monkeypatch.setenv("FAKE_GH_SIZE", "5000000")
+    monkeypatch.setenv(MAX_FIRST_CLONE_ENV, override)
+    asyncio.run(GithubProvider().check_first_clone(SOURCE))
+
+
+def test_the_environment_can_lower_the_limit_and_the_refusal_names_it(
+    fake_gh: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_GH_MODE", "size")
+    monkeypatch.setenv("FAKE_GH_SIZE", "2000")
+    monkeypatch.setenv(MAX_FIRST_CLONE_ENV, "1000")
+    with pytest.raises(RepositoryTooLargeError, match=r"limited to 1,000 KB"):
+        asyncio.run(GithubProvider().check_first_clone(SOURCE))
+
+
+@pytest.mark.parametrize("override", ["lots", "-5", "0", "1.5", "9" * 5000])
+def test_a_limit_that_is_not_a_size_is_ignored_with_a_warning(
+    override: str, fake_gh: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("FAKE_GH_MODE", "size")
+    monkeypatch.setenv("FAKE_GH_SIZE", str(MAX_FIRST_CLONE_KB + 1))
+    monkeypatch.setenv(MAX_FIRST_CLONE_ENV, override)
+    with pytest.raises(RepositoryTooLargeError, match=f"limited to {MAX_FIRST_CLONE_KB:,} KB"):
+        asyncio.run(GithubProvider().check_first_clone(SOURCE))
+    assert f"ignored {MAX_FIRST_CLONE_ENV}" in caplog.text
 
 
 def test_gh_runs_isolated_with_no_stdin(fake_gh: Path, monkeypatch: pytest.MonkeyPatch) -> None:

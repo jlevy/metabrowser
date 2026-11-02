@@ -215,7 +215,7 @@ _STATE_TEXT: Final[dict[RemoteFailureState, str]] = {
     "server_error": "answered with a server error; try again later",
     "rate_limited": "is limiting the rate of requests; try again later",
     "proxy_auth_required": "is behind a proxy that requires authentication",
-    "too_large": "is too large to clone within the acquisition deadline",
+    "too_large": "is over the size limit for a first clone",
 }
 
 

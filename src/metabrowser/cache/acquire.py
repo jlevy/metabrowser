@@ -161,7 +161,7 @@ class RemoteAccessError(AcquisitionError):
 
 
 class RepositoryTooLargeError(RemoteAccessError):
-    """A provider refused a first clone that could not finish within the deadline."""
+    """A provider refused a first clone over its size limit, which *detail* states."""
 
     def __init__(self, source_url: str, *, detail: str) -> None:
         super().__init__("too_large", source_url, detail=detail)

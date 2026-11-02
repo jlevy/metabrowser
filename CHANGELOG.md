@@ -213,7 +213,9 @@ GitHub URLs and HTTPS:
   A failed https acquisition names its cause: `not_found_or_private`,
   `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
   `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`, the last when
-  `gh` reports a repository too large to clone within the acquisition deadline.
+  `gh` reports a repository over the first-clone size limit, which the refusal states
+  along with how to go past it: `METABROWSER_MAX_FIRST_CLONE_KB`, for a network fast
+  enough to finish within the acquisition deadline.
   A `not_found_or_private` message says the repository was not found, or is private and
   could not be read, and claims nothing about credentials: GitHub answers the same way
   for a repository that does not exist, one read anonymously, and one the account `gh`
