@@ -72,6 +72,7 @@ import pytest
 from click import unstyle
 
 import metabrowser
+from devtools.check_parity import IN_PROCESS_COMMAND
 from metabrowser import mirror_refresh
 from metabrowser.cache import records
 from metabrowser.cache.acquire import PublishedSource
@@ -222,11 +223,21 @@ def block(
 
     *sections* adds named line lists after the streams, such as the ``gh`` calls a
     command made.
+
+    ``devtools/check_parity.py`` reads a transcript's commands back from these headers,
+    and a header inside a stream would read as a command that ran. Once the text is
+    written nothing can tell the two apart, so a block must hold exactly one.
     """
 
     text = f"# {command}\nexit: {exit_code}\n--- stdout ---\n{stdout}--- stderr ---\n{stderr}"
     for name, lines in sections.items():
         text += f"--- {name} ---\n" + "".join(f"{line}\n" for line in lines)
+    headers = IN_PROCESS_COMMAND.findall(text)
+    if len(headers) != 1:
+        raise ValueError(
+            f"{command!r} would record {len(headers)} command headers, not 1: "
+            "devtools/check_parity.py reads each one as a command that ran"
+        )
     return text
 
 

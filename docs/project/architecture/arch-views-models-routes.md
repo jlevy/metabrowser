@@ -360,9 +360,10 @@ not count them.
 A command is successful evidence for a route when it exits 0. A row may name an
 in-process `.txt` golden as well as a tryscript transcript, and `check_parity.py`
 applies the same exact-route and exit-status rules to its `# command` and `exit:` lines.
-`check_goldens.py` fails a `.txt` golden that no test compares.
-`/api/plugin/github/pull-refresh` needs this: a refresh that completes needs `gh` and a
-fetch from the origin, and a subprocess transcript has neither.
+`check_goldens.py` fails a `.txt` golden that no test compares, and the harness’s
+`block` refuses output holding those lines, so what a command printed cannot read as a
+command that ran. `/api/plugin/github/pull-refresh` needs this: a refresh that completes
+needs `gh` and a fetch from the origin, and a subprocess transcript has neither.
 `cli-github-pull-refresh.txt` records
 `metab …/pull/7 --api /api/plugin/github/pull-refresh --data refresh.json` exiting 0,
 with the `202`, the `current` record after it, and the `gh` calls it made.
