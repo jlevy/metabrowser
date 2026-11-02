@@ -94,7 +94,11 @@ export function mountFileOverviewPanel(
     palette,
     projectionPool,
     rollupControls,
-    { ...options, onNoTotals: () => totals.stopLoading() },
+    {
+      ...options,
+      onNoTotals: () => totals.stopLoading(),
+      onTotalsPending: () => totals.resumeLoading(),
+    },
   );
 
   let disposed = false;

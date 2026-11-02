@@ -279,19 +279,21 @@ def _wheel_release_manifest(
 # What uv writes in place of a shebang when the interpreter's path cannot be one: longer
 # than the 127 characters a kernel reads, or holding a space. `sh` runs the second line,
 # which hands this file to the interpreter, and the interpreter reads the three lines as a
-# string. The path is quoted for `sh`, so a single quote in it is `'\''`.
+# string. The path is quoted for `sh`, and uv writes a single quote in it as `'"'"'`.
 _WRAPPED_LAUNCHER: Final = re.compile(
-    r"""#!/bin/sh\n'''exec' '((?:[^']|'\\'')+)' "\$0" "\$@"\n' '''\n"""
+    r"""#!/bin/sh\n'''exec' '((?:[^']|'"'"')+)' "\$0" "\$@"\n' '''\n"""
 )
+_SHELLS: Final = frozenset({"sh", "bash", "dash", "zsh"})
 
 
 def split_console_launcher(source: bytes) -> tuple[Path, str] | None:
     """The interpreter a uv console script runs under, and the Python it gives it.
 
     A probe of what a build imports has to run in that interpreter, and the first line
-    names it only when the path fits in a shebang. ``None`` for anything else, which
-    includes any other `sh` script: its first line is an interpreter, and not one that
-    can run the probe.
+    names it only when the path fits in a shebang. ``None`` when the first line is no
+    shebang, when it names a relative or absent interpreter, and when it names a shell in
+    any shape but the wrapped one above, which includes uv's ``--relocatable`` wrapper:
+    a shell is an interpreter, and not one that can run the probe.
     """
 
     try:
@@ -300,12 +302,15 @@ def split_console_launcher(source: bytes) -> tuple[Path, str] | None:
         return None
     wrapped = _WRAPPED_LAUNCHER.match(text)
     if wrapped is not None:
-        interpreter, body = Path(wrapped.group(1).replace("'\\''", "'")), text[wrapped.end() :]
+        interpreter = Path(wrapped.group(1).replace("'\"'\"'", "'"))
+        body = text[wrapped.end() :]
     else:
         first, _, body = text.partition("\n")
-        if not first.startswith("#!") or first == "#!/bin/sh":
+        if not first.startswith("#!"):
             return None
         interpreter = Path(first.removeprefix("#!"))
+        if interpreter.name in _SHELLS:
+            return None
     if not interpreter.is_absolute() or not interpreter.is_file():
         return None
     return interpreter, body

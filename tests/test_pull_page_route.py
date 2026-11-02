@@ -141,18 +141,51 @@ def test_a_hunk_is_painted_as_text_in_a_native_disclosure() -> None:
 
     source = PAGE_JS.read_text(encoding="utf-8")
     assert '"data-kind": line.kind }, [line.text])' in source
-    # Stateless: the browser opens it, and nothing of the page listens or remembers.
+    # The browser opens it. The page listens to that event in one place, the function the
+    # session drives, and remembers nothing: a repaint replaces the disclosure.
     assert 'h("details", { class: "github-pull-hunk-earlier" }' in source
-    assert "toggle" not in source
+    assert source.count('"toggle"') == 1
+    assert "tintOnFirstOpen(disclosure, plain, earlier, hunkLines);" in source
+
+
+def test_one_box_scrolls_all_of_a_hunk() -> None:
+    """The lines above the cut and below it move together, under a label that stays put.
+
+    With a scroller each, a wide hunk had a scrollbar in its middle. On pallets/click#3030,
+    in the ``docs/options.md`` comment with its 7 earlier lines open, in headless Chrome:
+    the box has a ``scrollWidth`` of 1,859 px in 1,047, the only scroller in the card; at
+    ``scrollLeft`` 200 both parts' lines move 200 px and the label none; every line is
+    1,859 px wide; and with the disclosure closed the box does not scroll.
+    """
+
+    source = PAGE_JS.read_text(encoding="utf-8")
+    assert 'const box = h("div", { class: "github-pull-hunk-box" });' in source
+    assert "box.append(disclosure);" in source and "box.append(hunkLines(tail));" in source
+    rules = _style_rules()
+    assert "overflow-x: auto" in rules[".github-pull-hunk-box"]
+    assert "overflow" not in rules[".github-pull-hunk"]
+    assert "overflow" not in rules[".github-pull-hunk-earlier"]
+    # As wide as the widest line of either part, so a tint reaches the end of a scrolled line.
+    for selector in (".github-pull-hunk-box", ".github-pull-hunk"):
+        assert "grid-template-columns: minmax(max-content, 1fr)" in rules[selector]
+    label = rules[".github-pull-hunk-earlier > summary"]
+    assert "position: sticky" in label and "left: 0" in label and "width: fit-content" in label
 
 
 def _vertical_margins(declarations: str) -> tuple[str, str]:
-    """The top and bottom of a rule's ``margin`` shorthand."""
+    """The top and bottom of a rule's ``margin`` shorthand: its last, which is what wins."""
 
-    found = re.search(r"(?:^|;|\s)margin:\s*([^;]+);", declarations)
-    assert found is not None, declarations
-    sides = found.group(1).split()
+    found = re.findall(r"(?:^|;|\s)margin:\s*([^;]+);", declarations)
+    assert found, declarations
+    sides = found[-1].split()
     return sides[0], sides[2] if len(sides) > 2 else sides[0]
+
+
+def test_a_later_margin_is_the_one_read() -> None:
+    """``_style_rules`` joins a selector's rules in source order, and the cascade takes the last."""
+
+    assert _vertical_margins("margin: 0.75em 0;\n  margin: 0;\n") == ("0", "0")
+    assert _vertical_margins("margin: 1.25em 0 0.5em;\n  line-height: 1.25;") == ("1.25em", "0.5em")
 
 
 def test_nothing_in_the_pages_stylesheet_can_reach_another_page() -> None:

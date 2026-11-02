@@ -320,6 +320,24 @@ function createPage(runtime, options) {
   };
 }
 
+/**
+ * What a first open of a hunk's disclosure does, through the page's own function: nothing
+ * until the disclosure toggles, and then one build of a line each, whatever toggles after.
+ * The browser's part is firing `toggle`; an EventTarget keeps a listener's `once` as it does.
+ */
+function firstOpen(runtime, earlier) {
+  const details = new EventTarget();
+  const built = [];
+  const plain = { replaceWith: (lines) => built.push(lines) };
+  runtime.tintOnFirstOpen(details, plain, earlier, (lines) => lines);
+  assert(built.length === 0, "a disclosure built its lines before it was opened");
+  for (let toggles = 0; toggles < 3; toggles += 1) {
+    details.dispatchEvent(new Event("toggle"));
+  }
+  assert(built.length === 1, `a disclosure built its lines ${built.length} times`);
+  return built[0];
+}
+
 /** Context lines of a long hunk, numbered from *from* to *to*. */
 function context(from, to) {
   return Array.from({ length: to - from + 1 }, (_, index) => ` line ${from + index}`);
@@ -384,6 +402,42 @@ function hunkCases() {
         start_line: 1,
         original_start_line: 1,
         diff_hunk: hunk(context(19, 30)),
+      },
+    ],
+    [
+      "a range of the most shown is all shown",
+      {
+        ...single,
+        line: 130,
+        original_line: 130,
+        start_line: 31,
+        original_start_line: 31,
+        diff_hunk: hunk(header, context(1, 130)),
+      },
+    ],
+    [
+      "a range past the most shown shows the most, and the rest is behind the disclosure",
+      {
+        ...single,
+        line: 130,
+        original_line: 130,
+        start_line: 1,
+        original_start_line: 1,
+        diff_hunk: hunk(header, context(1, 130)),
+      },
+    ],
+    [
+      "the other side's lines do not carry a range past the most shown",
+      {
+        ...single,
+        start_line: 29,
+        original_start_line: 29,
+        diff_hunk: hunk(
+          header,
+          " line 29",
+          Array.from({ length: 150 }, (_, index) => `-old ${index}`),
+          "+new 30",
+        ),
       },
     ],
     [
@@ -592,7 +646,9 @@ async function main() {
   // What a review comment shows of its hunk: the recorded pull request with one comment,
   // whose fields are the case's, through describePull. The stand-in's hunks are short, as
   // a recording is small, so the long ones are written here. Whatever the case, the two
-  // parts hold the hunk's every line in order, and the tail ends with the hunk's end.
+  // parts hold the hunk's every line in order, and the tail ends with the hunk's end. What
+  // is painted at once never passes the most shown, with the one line a disclosure is too
+  // big for.
   const reviewComment = record.review_comments[0];
   const hunks = Object.fromEntries(
     hunkCases().map(([name, fields]) => {
@@ -603,17 +659,24 @@ async function main() {
         tab: "",
         nowMs: page.clock.now,
       }).reviewComments;
-      const parts = [...hunk.earlier, ...hunk.shown].map((line) => line.text);
+      const earlier = hunk.earlierLines === 0 ? [] : firstOpen(runtime, hunk.earlier);
+      assert(earlier.length === hunk.earlierLines, `${name}: the disclosure's count is wrong`);
+      const parts = [...earlier, ...hunk.shown].map((line) => line.text);
       assert(parts.join("\n") === fields.diff_hunk, `${name}: a line of the hunk was lost`);
       assert(hunk.shown.at(-1).text === parts.at(-1), `${name}: the tail lost the commented line`);
+      assert(hunk.shown.length <= runtime.HUNK_RANGE_LINES + 1, `${name}: past the most shown`);
+      const said = (line) => `${line.kind}: ${line.text}`;
+      const shown = hunk.shown.map(said);
       return [
         name,
         {
           earlier:
-            hunk.earlier.length === 0
+            earlier.length === 0
               ? null
-              : `${hunk.earlier.length} lines: ${hunk.earlier[0].text} ... ${hunk.earlier.at(-1).text}`,
-          shown: hunk.shown.map((line) => `${line.kind}: ${line.text}`),
+              : `${earlier.length} lines: ${said(earlier[0])} ... ${said(earlier.at(-1))}`,
+          // All of a tail, or its count and its ends where a range has made it long.
+          shown:
+            shown.length <= 40 ? shown : `${shown.length} lines: ${shown[0]} ... ${shown.at(-1)}`,
         },
       ];
     }),

@@ -44,6 +44,16 @@ export const MARKDOWN_AHEAD = "100% 0px";
 // is where the comment anchors, and github.com shows the same end of it. Eight lines is
 // a display choice, enough to read what a comment is about, and not a bound on any cost.
 export const HUNK_TAIL_LINES = 8;
+// The most of a hunk a comment shows, however long its range; the rest is behind the same
+// disclosure. Unlike the tail this bounds a cost, as a commenter picks the range and a line
+// shown is two nodes in a grid. Measured 2026-11-02 in headless Chrome 152 on a loaded
+// development machine, a fresh process a run, from mount through layout: 250 comments of
+// 16 KiB of blank lines, each with a range over all of them, took 26 to 28 s unbounded and
+// 0.6 s here. The worst a record can do at this bound, 1,000 comments past it, took 1.6 to
+// 1.8 s, and 1.0 s at 50, 2.7 s at 200, and 5.0 to 5.4 s at 400, so the cost is linear in it.
+// It cuts little: of 1,858 multi-line comments read that day across 14 repositories, the
+// 99th percentile was 34 lines, and 2 passed 100, both of 129.
+export const HUNK_RANGE_LINES = 100;
 
 const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
@@ -120,7 +130,7 @@ const TRUNCATED = Object.freeze({
 
 /**
  * @typedef {{kind: "hunk" | "add" | "del" | "context" | "note", text: string}} HunkLine
- * @typedef {{earlier: HunkLine[], shown: HunkLine[]}} HunkView
+ * @typedef {{earlier: string, earlierLines: number, shown: HunkLine[]}} HunkView
  */
 
 /**
@@ -366,6 +376,14 @@ function hunkLineKind(line) {
 }
 
 /**
+ * @param {string} line
+ * @returns {HunkLine}
+ */
+function hunkLine(line) {
+  return { kind: hunkLineKind(line), text: line };
+}
+
+/**
  * How many lines of its side a review comment covers: one, or a multi-line comment's
  * range. `original_*` number the commit the hunk is from, and `line` and `start_line` the
  * head, or are gone when the comment is outdated. A later commit can change the distance
@@ -386,29 +404,30 @@ function commentedSpan(comment) {
 
 /**
  * What a review comment shows of its hunk: `shown` is the tail, from the start of the
- * commented range if that is further back than `HUNK_TAIL_LINES`, and `earlier` is the
- * rest, in order, for the disclosure. Counted back from the end, where the commented
- * line is, along the comment's side of the diff, because a hunk cut to fit the record has
- * lost its `@@` line and the numbers it starts from. A range reaching above what the
- * record kept shows all of it. A comment is on one side here: the record does not keep
- * `start_side`, so a range starting on the other side is counted on this one, and any of
- * it that falls outside the tail is in the disclosure.
+ * commented range if that is further back than `HUNK_TAIL_LINES` and no further than
+ * `HUNK_RANGE_LINES`, and `earlier` is the text of the rest, `earlierLines` of them, for
+ * the disclosure. One string and not a line each, as this runs on every poll and the page
+ * compares what it answers as JSON: a line's kind is worked out when it is painted.
+ * Counted back from the end, where the commented line is, along the comment's side of the
+ * diff, because a hunk cut to fit the record has lost its `@@` line and the numbers it
+ * starts from. A range reaching above what the record kept shows all of it. A comment is
+ * on one side here: the record does not keep `start_side`, so a range starting on the
+ * other side is counted on this one, and any of it that falls outside the tail is in the
+ * disclosure.
  *
  * @param {string} hunk
  * @param {Record<string, any>} comment
  * @returns {HunkView}
  */
 export function hunkView(hunk, comment) {
-  /** @type {HunkLine[]} */
-  const lines = hunk
-    .replace(/\n$/, "")
-    .split("\n")
-    .map((line) => ({ kind: hunkLineKind(line), text: line }));
+  const lines = hunk.replace(/\n$/, "").split("\n");
   const side = comment.side === "LEFT" ? "del" : "add";
+  const furthest = Math.max(0, lines.length - HUNK_RANGE_LINES);
   let remaining = commentedSpan(comment);
   let rangeStart = lines.length;
-  for (let index = lines.length - 1; index >= 0 && remaining > 0; index -= 1) {
-    if (lines[index].kind === "context" || lines[index].kind === side) {
+  for (let index = lines.length - 1; index >= furthest && remaining > 0; index -= 1) {
+    const kind = hunkLineKind(lines[index]);
+    if (kind === "context" || kind === side) {
       remaining -= 1;
       rangeStart = index;
     }
@@ -417,7 +436,33 @@ export function hunkView(hunk, comment) {
   // A disclosure is a row of its own, so it never hides less than a row's worth: one
   // line, in practice the `@@` line of a hunk just past the tail.
   const cut = first <= 1 ? 0 : first;
-  return { earlier: lines.slice(0, cut), shown: lines.slice(cut) };
+  return {
+    earlier: lines.slice(0, cut).join("\n"),
+    earlierLines: cut,
+    shown: lines.slice(cut).map(hunkLine),
+  };
+}
+
+/**
+ * A disclosure's lines are one text node until it is first opened, when they become a line
+ * each and take their tints, because a record can hold 2,048,000 lines no one opens: 250
+ * comments of 16 KiB of blank lines made 4.1M nodes and took 3.4 s, and take 28,000 and 0.4 s
+ * this way (`HUNK_RANGE_LINES` says how that was measured). One node and not none, so its
+ * text stays in the page for search, and so nothing moves in the frame the browser paints
+ * before it fires `toggle`: the node is as tall as the lines will be. Once, as the lines
+ * stay; a repaint replaces the disclosure, with its listener, and starts it closed.
+ *
+ * @param {EventTarget} details
+ * @param {ChildNode} plain What it holds until then.
+ * @param {string} earlier
+ * @param {(lines: HunkLine[]) => Node} paintLines
+ */
+export function tintOnFirstOpen(details, plain, earlier, paintLines) {
+  details.addEventListener(
+    "toggle",
+    () => plain.replaceWith(paintLines(earlier.split("\n").map(hunkLine))),
+    { once: true },
+  );
 }
 
 /**
@@ -1447,19 +1492,23 @@ export function mountPullPage(container, ctx, mb) {
           [head],
         );
         if (!comment.reply && comment.hunk !== null) {
-          const { earlier, shown: tail } = comment.hunk;
-          if (earlier.length > 0) {
-            // Native, so opening it asks nothing of the page and a repaint just closes it.
-            card.append(
-              h("details", { class: "github-pull-hunk-earlier" }, [
-                h("summary", { class: "section-disclosure-trigger" }, [
-                  `${earlier.length} earlier lines`,
-                ]),
-                hunkLines(earlier),
+          const { earlier, earlierLines, shown: tail } = comment.hunk;
+          // One box scrolls all of a hunk sideways, however far it is opened.
+          const box = h("div", { class: "github-pull-hunk-box" });
+          if (earlierLines > 0) {
+            // Native, so the browser opens and closes it and a repaint just closes it.
+            const plain = hunkLines([{ kind: "context", text: earlier }]);
+            const disclosure = h("details", { class: "github-pull-hunk-earlier" }, [
+              h("summary", { class: "section-disclosure-trigger" }, [
+                `${earlierLines} earlier lines`,
               ]),
-            );
+              plain,
+            ]);
+            tintOnFirstOpen(disclosure, plain, earlier, hunkLines);
+            box.append(disclosure);
           }
-          card.append(hunkLines(tail));
+          box.append(hunkLines(tail));
+          card.append(box);
           if (comment.hunkTruncated) {
             card.append(h("p", { class: "github-pull-note" }, ["The start of this hunk was cut."]));
           }

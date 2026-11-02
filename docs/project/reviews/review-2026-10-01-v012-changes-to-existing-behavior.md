@@ -52,9 +52,10 @@ the refusal to that entry, as the code in `builtin_plugins/diff/sidekick.py` has
 running both cases answered 400 `diff_comparison`. One more statement has been overtaken
 and is left as written: A Known Defect says the fix is #262, held out of the stack.
 #268 carries the fix and #262 was closed unmerged, and `mb-tdmd` is closed, with Back in
-Safari and Firefox checked under `mb-etqi`. One row needs reading more widely than it
-states. The row on `/api/plugin/structured/parsed` for a file it cannot open names
-0.11.0’s answer as a 200 with a `PermissionError`, which was run at the default limit.
+Safari and Firefox still to be checked, under `mb-etqi`. One row needs reading more
+widely than it states.
+The row on `/api/plugin/structured/parsed` for a file it cannot open names 0.11.0’s
+answer as a 200 with a `PermissionError`, which was run at the default limit.
 For an uncompressed file larger than `STRUCTURED_PARSE_MAX_BYTES`, as any such file with
 content is at a limit of zero, 0.11.0 did not open it and answered `truncated`; it now
 answers the same 404 `content_unavailable`. Run on 2026-11-01 at limits of 0 and 1
@@ -65,14 +66,19 @@ signing.
 `/api/plugin/diff/document` on a `.patch.gz` now reads the patch the file holds,
 where v0.11.0 parsed the compressed bytes and answered 200 with 0 files for every
 `.patch.gz`, a valid one included.
-A compressed file whose stream cannot be decoded now answers 404 `diff_document`, “This
-file is not available.”, where v0.11.0 answered that same 200 with 0 files.
+A compressed file whose stream cannot be decoded within the first 8 MiB of decoded
+content, which is as far as the route reads, now answers 404 `diff_document`, “This file
+is not available.”, where v0.11.0 answered that same 200 with 0 files.
 With the damage in the first 512 KiB that `/api/file` reads, both builds show the file
-as bytes.
-With the damage past that, as in an 8.5 MB patch whose gzip is cut at 80%, both
-say `kind: diff`, so the Diff view now shows that message where v0.11.0 showed an empty
-change set. Run on 2026-11-01 against v0.11.0’s source, except the view’s message, which
-is read from the plugin’s code.
+as bytes. With the damage past that but inside the route’s 8 MiB, as in an 8.5 MB patch
+whose gzip is cut at 80%, both say `kind: diff`, so the Diff view now shows that message
+where v0.11.0 showed an empty change set.
+Run on 2026-11-01 against v0.11.0’s source, except the view’s message, which is read
+from the plugin’s code.
+Damage past the route’s 8 MiB is not reached: an 11.6 MB patch whose gzip is cut at 80%
+answers 200 with the patch the route read, marked truncated, as the undamaged file does,
+where v0.11.0 answered that same 200 with 0 files.
+Run on 2026-11-02 against v0.11.0’s source.
 `CHANGELOG.md` states it under Fixes: “A compressed patch is read as the patch it
 holds.”
 
