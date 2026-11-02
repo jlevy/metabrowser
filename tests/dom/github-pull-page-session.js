@@ -16,6 +16,9 @@
 // IntersectionObserver is played by asking for parts in reading order. Each step prints
 // the requests the page made, the timer it left, how many times it painted, what it
 // would paint, whether it reloaded, and which parts it rendered as Markdown.
+//
+// `place` is the reader's place in the pane through history, from createScrollKeeper, on a
+// stage standing for the pane: see placeStory.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -402,6 +405,197 @@ function hunkCases() {
   ];
 }
 
+/**
+ * A reader's place, on a stage that stands for the pane and its page: blocks of the heights
+ * a step gives them under a 120 px header, a scroll offset, and the history entry's state.
+ * The geometry is the production `placeAt` and `scrollTopOf` over those heights; what the
+ * browser does with `scrollTop`, a click, and a wheel is checked in Chrome. Each step prints
+ * where the pane is, what the entry holds, and what the keeper still has running.
+ */
+function placeStory(runtime) {
+  const timers = new Map();
+  let nextTimer = 1;
+  const stage = { heights: [], scrollTop: 0, entry: null, anchored: false, writes: 0 };
+  const tops = () => {
+    let next = 120;
+    return stage.heights.map((height) => {
+      const top = next;
+      next += height;
+      return top;
+    });
+  };
+  const keeperFor = () =>
+    runtime.createScrollKeeper({
+      read: () => stage.entry,
+      write(place) {
+        stage.entry = place;
+        stage.writes += 1;
+      },
+      measure: () => runtime.placeAt(tops(), stage.scrollTop),
+      apply(place) {
+        const top = runtime.scrollTopOf(place, tops());
+        if (top === null) {
+          return false;
+        }
+        stage.scrollTop = top;
+        return true;
+      },
+      anchored: () => stage.anchored,
+      toTop() {
+        stage.scrollTop = 0;
+      },
+      schedule(callback, delayMs) {
+        const id = nextTimer++;
+        timers.set(id, { callback, delayMs });
+        return id;
+      },
+      cancel: (handle) => timers.delete(handle),
+    });
+  const fire = (delayMs) => {
+    for (const [id, timer] of [...timers]) {
+      if (timer.delayMs === delayMs) {
+        timers.delete(id);
+        timer.callback();
+      }
+    }
+  };
+  const fireWrite = () => fire(runtime.PLACE_WRITE_MS);
+  const fireSettle = () => fire(runtime.LANDING_SETTLE_MS);
+  let keeper = keeperFor();
+  // A line per step, so the transcript stays within what tryscript can match.
+  const steps = {};
+  const step = (name, action) => {
+    stage.writes = 0;
+    action();
+    const { holding, writing, settling } = keeper.snapshot();
+    const running = [
+      ...(holding === null ? [] : ["holding"]),
+      ...(writing ? ["write waiting"] : []),
+      ...(settling ? ["settling"] : []),
+    ];
+    steps[name] =
+      `pane at ${stage.scrollTop}; entry ${JSON.stringify(stage.entry)}; ` +
+      `${stage.writes} written; ${running.join(", ") || "nothing running"}`;
+  };
+  /** Another page, as a landing that loads the document again has: the entry alone remains. */
+  const reopen = (heights = []) => {
+    keeper.dispose();
+    keeper = keeperFor();
+    stage.heights = heights;
+    stage.scrollTop = 0;
+  };
+
+  stage.scrollTop = 500;
+  step("a new entry starts at the top and writes nothing", () => keeper.land());
+  stage.heights = [300, 400, 500, 600, 700];
+  step("the page paints: the pane stays at the top", () => keeper.contentChanged());
+  step("the reader scrolls: nothing is written while the pane moves", () => {
+    stage.scrollTop = 600;
+    keeper.scrolled();
+    stage.scrollTop = 900;
+    keeper.scrolled();
+  });
+  step("the pane is still: its place is written", fireWrite);
+  step("still in the header: the scroll offset says where", () => {
+    stage.scrollTop = 80;
+    keeper.scrolled();
+    fireWrite();
+  });
+  step("a click writes a waiting place before it can leave this entry", () => {
+    stage.scrollTop = 900;
+    keeper.scrolled();
+    keeper.flush();
+  });
+  step("with nothing waiting, a click writes nothing", () => keeper.flush());
+
+  // Back onto the entry, which loads the page again. The texts are plain, and shorter, and
+  // what was rendered above the place has not been asked for, so the same pixels would be
+  // somewhere else.
+  reopen();
+  step("back: nothing is painted, so the place waits", () => keeper.land());
+  stage.heights = [200, 300, 500, 600, 700];
+  step("the page paints: the pane goes to the block, not to the pixels", () =>
+    keeper.contentChanged(),
+  );
+  stage.heights = [200, 300, 800, 600, 700];
+  step("a text at the place renders: the block's top has not moved", () => keeper.contentChanged());
+  stage.heights = [200, 650, 800, 600, 700];
+  step("a text above the place renders: the pane is put back", () => keeper.contentChanged());
+  step("the hold's own scrolling is not the reader's and writes nothing", () => keeper.scrolled());
+  step("the page has been still long enough: the landing is over", fireSettle);
+  stage.heights = [200, 900, 800, 600, 700];
+  step("a later change no longer moves the pane", () => keeper.contentChanged());
+
+  stage.entry = { block: 3, offset: 40, top: 2000 };
+  reopen();
+  step("back again: the place waits for the page", () => keeper.land());
+  step("the reader moves first: the place is theirs", () => keeper.readerMoved());
+  stage.heights = [300, 400, 500, 600, 700];
+  step("the page paints: the pane is not moved", () => keeper.contentChanged());
+
+  reopen(stage.heights);
+  step("back with the page there: the pane is placed at once", () => keeper.land());
+  step("the reader moves during the hold", () => {
+    keeper.readerMoved();
+    stage.scrollTop = 2500;
+    keeper.scrolled();
+  });
+  stage.heights = [900, 400, 500, 600, 700];
+  step("a change after that does not undo it", () => keeper.contentChanged());
+  step("and the reader's new place is written", fireWrite);
+
+  stage.entry = { block: 2, offset: 10, top: 900 };
+  stage.anchored = true;
+  reopen(stage.heights);
+  stage.scrollTop = 700;
+  step("an address with a fragment names its own place: the pane is left alone", () =>
+    keeper.land(),
+  );
+  stage.anchored = false;
+
+  stage.entry = { block: 2, offset: 10, top: 900 };
+  reopen(stage.heights);
+  step("back and forward between tabs: this tab's place", () => keeper.land());
+  fireSettle();
+  stage.entry = { block: 1, offset: 5, top: 400 };
+  step("a write still waiting when history moves is dropped with the old entry", () => {
+    stage.scrollTop = 1500;
+    keeper.scrolled();
+    keeper.land();
+  });
+  fireSettle();
+
+  stage.entry = { block: 40, offset: 10, top: 90000 };
+  reopen([300, 400]);
+  step("a page with fewer blocks than the place shows its last", () => keeper.land());
+  keeper.readerMoved();
+
+  for (const value of [{ block: "1", offset: 0, top: 0 }, { block: 1 }, "nonsense"]) {
+    stage.entry = value;
+    reopen([300, 400]);
+    stage.scrollTop = 200;
+    step(`what is not a place is no place: ${JSON.stringify(value)}`, () => keeper.land());
+  }
+
+  stage.entry = { block: 1, offset: 5, top: 400 };
+  reopen([300, 400]);
+  keeper.land();
+  stage.scrollTop = 900;
+  step("dispose ends all of it", () => {
+    keeper.scrolled();
+    keeper.dispose();
+  });
+  assert(timers.size === 0, "a disposed keeper left a timer running");
+  step("a disposed keeper does nothing", () => {
+    keeper.land();
+    keeper.contentChanged();
+    keeper.scrolled();
+    keeper.flush();
+  });
+  assert(timers.size === 0, "a disposed keeper started a timer");
+  return steps;
+}
+
 async function main() {
   const runtime = await import(pathToFileURL(pagePath).href);
   const record = recorded.current.body.record;
@@ -630,6 +824,7 @@ async function main() {
         pageDefense: inert,
         filesChanged: files,
         hunks,
+        place: placeStory(runtime),
       },
       null,
       2,

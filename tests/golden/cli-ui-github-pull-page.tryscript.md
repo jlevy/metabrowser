@@ -41,7 +41,13 @@ line: the last eight lines, or back to the start of a multi-line comment’s ran
 the rest behind a disclosure, and each line classed so an addition or deletion is
 tinted. The stand-in’s hunks are short, so the session writes the long ones.
 A page asked for a tab it does not have, which the route’s grammar never sends, stays on
-one it has.
+one it has. `place` is a reader’s place in the pane through history, kept in the history
+entry as a block and how far into it, on a stage that stands for the pane.
+A new entry starts at the top.
+Back onto an entry waits for its page and puts the pane at that block, and back again
+each time the page changes height, until the reader moves it or the page has been still.
+A reader who moved first keeps the pane where they took it, and an address with a
+fragment is left alone.
 
 ```console
 $ node tests/dom/github-pull-page-session.js
@@ -884,6 +890,38 @@ $ node tests/dom/github-pull-page-session.js
         "note: \\ No newline at end of file"
       ]
     }
+  },
+  "place": {
+    "a new entry starts at the top and writes nothing": "pane at 0; entry null; 0 written; nothing running",
+    "the page paints: the pane stays at the top": "pane at 0; entry null; 0 written; nothing running",
+    "the reader scrolls: nothing is written while the pane moves": "pane at 900; entry null; 0 written; write waiting",
+    "the pane is still: its place is written": "pane at 900; entry {\"block\":2,\"offset\":80,\"top\":900}; 1 written; nothing running",
+    "still in the header: the scroll offset says where": "pane at 80; entry {\"block\":-1,\"offset\":0,\"top\":80}; 1 written; nothing running",
+    "a click writes a waiting place before it can leave this entry": "pane at 900; entry {\"block\":2,\"offset\":80,\"top\":900}; 1 written; nothing running",
+    "with nothing waiting, a click writes nothing": "pane at 900; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; nothing running",
+    "back: nothing is painted, so the place waits": "pane at 0; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; holding",
+    "the page paints: the pane goes to the block, not to the pixels": "pane at 700; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; holding, settling",
+    "a text at the place renders: the block's top has not moved": "pane at 700; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; holding, settling",
+    "a text above the place renders: the pane is put back": "pane at 1050; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; holding, settling",
+    "the hold's own scrolling is not the reader's and writes nothing": "pane at 1050; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; holding, settling",
+    "the page has been still long enough: the landing is over": "pane at 1050; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; nothing running",
+    "a later change no longer moves the pane": "pane at 1050; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; nothing running",
+    "back again: the place waits for the page": "pane at 0; entry {\"block\":3,\"offset\":40,\"top\":2000}; 0 written; holding",
+    "the reader moves first: the place is theirs": "pane at 0; entry {\"block\":3,\"offset\":40,\"top\":2000}; 0 written; nothing running",
+    "the page paints: the pane is not moved": "pane at 0; entry {\"block\":3,\"offset\":40,\"top\":2000}; 0 written; nothing running",
+    "back with the page there: the pane is placed at once": "pane at 1360; entry {\"block\":3,\"offset\":40,\"top\":2000}; 0 written; holding, settling",
+    "the reader moves during the hold": "pane at 2500; entry {\"block\":3,\"offset\":40,\"top\":2000}; 0 written; write waiting",
+    "a change after that does not undo it": "pane at 2500; entry {\"block\":3,\"offset\":40,\"top\":2000}; 0 written; write waiting",
+    "and the reader's new place is written": "pane at 2500; entry {\"block\":3,\"offset\":580,\"top\":2500}; 1 written; nothing running",
+    "an address with a fragment names its own place: the pane is left alone": "pane at 700; entry {\"block\":2,\"offset\":10,\"top\":900}; 0 written; nothing running",
+    "back and forward between tabs: this tab's place": "pane at 1430; entry {\"block\":2,\"offset\":10,\"top\":900}; 0 written; holding, settling",
+    "a write still waiting when history moves is dropped with the old entry": "pane at 1025; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; holding, settling",
+    "a page with fewer blocks than the place shows its last": "pane at 430; entry {\"block\":40,\"offset\":10,\"top\":90000}; 0 written; holding, settling",
+    "what is not a place is no place: {\"block\":\"1\",\"offset\":0,\"top\":0}": "pane at 0; entry {\"block\":\"1\",\"offset\":0,\"top\":0}; 0 written; nothing running",
+    "what is not a place is no place: {\"block\":1}": "pane at 0; entry {\"block\":1}; 0 written; nothing running",
+    "what is not a place is no place: \"nonsense\"": "pane at 0; entry \"nonsense\"; 0 written; nothing running",
+    "dispose ends all of it": "pane at 900; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; nothing running",
+    "a disposed keeper does nothing": "pane at 900; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; nothing running"
   }
 }
 ? 0

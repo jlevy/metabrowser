@@ -44,6 +44,22 @@ export const MARKDOWN_AHEAD = "100% 0px";
 // is where the comment anchors, and github.com shows the same end of it. Eight lines is
 // a display choice, enough to read what a comment is about, and not a bound on any cost.
 export const HUNK_TAIL_LINES = 8;
+// How long the pane stays still before its place is written to the history entry. A click
+// writes at once, so this only keeps a moving pane from calling `history.replaceState`,
+// which Safari limits to 100 calls in 30 s.
+export const PLACE_WRITE_MS = 100;
+// How long a landing holds its place after the page last changed height, for a page still
+// rendering what it fetches. Measured 2026-11-02 in Chrome 152, Back onto a page loaded
+// again, the widest gap between two changes in height: 231 ms for 34 files, 501 ms for a
+// PR of 137 files whose diffs load as they come near, and 17 ms for a conversation of 120
+// texts. A page that changes later than this keeps its place by the browser's own scroll
+// anchoring, except in a browser without it.
+export const LANDING_SETTLE_MS = 2000;
+// The blocks a place is counted in: the conversation's cards and sections, and Files
+// changed's files, which keep their order for as long as the page shows one comparison.
+const PLACE_BLOCKS = ".github-pull-card, .github-pull-section, .diff-file";
+// The key of a place in `history.state`, which no other code of the shell writes into.
+const PLACE_KEY = "pullPlace";
 
 const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
@@ -978,6 +994,192 @@ export function createPullController(deps, options) {
   });
 }
 
+// ── A reader's place in the pane ────────────────────────────────
+
+/**
+ * Where a reader was in a page: the block at the pane's top and how far into it.
+ *
+ * A block rather than a scroll offset, because the pixels above a place depend on what has
+ * rendered: a text is plain until it comes near the view, a file's diff is empty until it
+ * does, and a page opened again renders only what is near where it lands. `block` is -1
+ * above the first block, in the header, where `top`, the scroll offset, says where.
+ *
+ * @typedef {{block: number, offset: number, top: number}} PanePlace
+ */
+
+/**
+ * The place a pane shows. Pure.
+ *
+ * @param {number[]} tops Each block's top in the pane's scroll coordinates, in page order.
+ * @param {number} scrollTop
+ * @returns {PanePlace}
+ */
+export function placeAt(tops, scrollTop) {
+  let block = -1;
+  for (let index = 0; index < tops.length && tops[index] <= scrollTop; index += 1) {
+    block = index;
+  }
+  const offset = block < 0 ? 0 : scrollTop - tops[block];
+  return { block, offset: Math.round(offset), top: Math.round(scrollTop) };
+}
+
+/**
+ * The scroll offset that shows *place*, or null while the page has no blocks to place it
+ * in. A page that now has fewer blocks than it did shows its last.
+ *
+ * @param {PanePlace} place
+ * @param {number[]} tops
+ * @returns {number | null}
+ */
+export function scrollTopOf(place, tops) {
+  if (tops.length === 0) {
+    return null;
+  }
+  return place.block < 0 ? place.top : tops[Math.min(place.block, tops.length - 1)] + place.offset;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is PanePlace}
+ */
+function isPanePlace(value) {
+  const place = /** @type {Record<string, unknown> | null} */ (value);
+  return (
+    typeof value === "object" &&
+    place !== null &&
+    Number.isInteger(place.block) &&
+    Number.isFinite(place.offset) &&
+    Number.isFinite(place.top)
+  );
+}
+
+/**
+ * @typedef {{
+ *   read(): unknown,
+ *   write(place: PanePlace): void,
+ *   measure(): PanePlace,
+ *   apply(place: PanePlace): boolean,
+ *   anchored(): boolean,
+ *   toTop(): void,
+ *   schedule(callback: () => void, delayMs: number): unknown,
+ *   cancel(handle: unknown): void,
+ * }} ScrollKeeperDependencies
+ */
+
+/**
+ * Keeps a reader's place in a history entry and puts them back when history lands there.
+ *
+ * Only an entry the reader has been on holds a place, because a new entry's state is null:
+ * so a fresh navigation starts at the top, a reload or a Back that loads the page again
+ * lands where it was, and no navigation type needs reading. A kept page restored from the
+ * back/forward cache never lands, since the browser kept its scroll.
+ *
+ * A landing holds its place while the page renders: each change in height puts the pane
+ * back, until the reader moves it or the page has been still for `LANDING_SETTLE_MS`. An
+ * address with a fragment names its own place, so a landing on one leaves the pane alone.
+ *
+ * *apply* answers whether the page has anything to place the pane in yet.
+ *
+ * @param {ScrollKeeperDependencies} deps
+ */
+export function createScrollKeeper(deps) {
+  /** The place a landing is holding. @type {PanePlace | null} */
+  let holding = null;
+  /** @type {unknown} */
+  let writeTimer = null;
+  /** @type {unknown} */
+  let settleTimer = null;
+  let disposed = false;
+
+  function cancelWrite() {
+    if (writeTimer !== null) {
+      deps.cancel(writeTimer);
+      writeTimer = null;
+    }
+  }
+
+  function cancelSettle() {
+    if (settleTimer !== null) {
+      deps.cancel(settleTimer);
+      settleTimer = null;
+    }
+  }
+
+  function hold() {
+    if (holding === null || !deps.apply(holding)) {
+      return;
+    }
+    cancelSettle();
+    settleTimer = deps.schedule(() => {
+      settleTimer = null;
+      holding = null;
+    }, LANDING_SETTLE_MS);
+  }
+
+  return Object.freeze({
+    /** History arrived at an entry, or the page opened on one. */
+    land() {
+      if (disposed) {
+        return;
+      }
+      // A write still waiting belongs to the entry history just left.
+      cancelWrite();
+      cancelSettle();
+      holding = null;
+      if (deps.anchored()) {
+        return;
+      }
+      const saved = deps.read();
+      if (isPanePlace(saved)) {
+        holding = saved;
+        hold();
+      } else {
+        deps.toTop();
+      }
+    },
+    /** The page changed height. */
+    contentChanged() {
+      if (!disposed) {
+        hold();
+      }
+    },
+    /** The reader moved the pane, or may have: from here the place is theirs. */
+    readerMoved() {
+      holding = null;
+      cancelSettle();
+    },
+    /** The pane scrolled. A place being held is not the reader's doing, so it is not written. */
+    scrolled() {
+      if (disposed || holding !== null) {
+        return;
+      }
+      cancelWrite();
+      writeTimer = deps.schedule(() => {
+        writeTimer = null;
+        deps.write(deps.measure());
+      }, PLACE_WRITE_MS);
+    },
+    /** Write a waiting place now, before a click can move history on from this entry. */
+    flush() {
+      if (writeTimer !== null) {
+        cancelWrite();
+        deps.write(deps.measure());
+      }
+    },
+    dispose() {
+      disposed = true;
+      holding = null;
+      cancelWrite();
+      cancelSettle();
+    },
+    snapshot: () => ({
+      holding,
+      writing: writeTimer !== null,
+      settling: settleTimer !== null,
+    }),
+  });
+}
+
 // ── Browser glue ────────────────────────────────────────────────
 
 /**
@@ -1159,6 +1361,7 @@ export function mountPullPage(container, ctx, mb) {
   let diffHandle = null;
   /** @type {HTMLElement | null} */
   let diffHost = null;
+  const pane = /** @type {HTMLElement | null} */ (container.closest("[data-kpress-viewport]"));
   // Rooted in the pane that scrolls, which the shell marks. With no root the root is the
   // window, and a margin on it does nothing here: a text past the pane's edge is clipped
   // by the pane on its way to the window, before the window's margin is applied.
@@ -1174,7 +1377,7 @@ export function mountPullPage(container, ctx, mb) {
               }
             }
           },
-          { root: container.closest("[data-kpress-viewport]"), rootMargin: MARKDOWN_AHEAD },
+          { root: pane, rootMargin: MARKDOWN_AHEAD },
         )
       : null;
 
@@ -1656,13 +1859,87 @@ export function mountPullPage(container, ctx, mb) {
     signal: listening.signal,
   });
   void controller.start();
+  const place = pane === null ? null : keepPlace(pane, body, () => shown?.tab ?? "", number);
+  place?.keeper.land();
   return Object.freeze({
-    setTab: controller.setTab,
+    /** @param {string} next */
+    setTab(next) {
+      const changed = controller.snapshot().tab !== next;
+      controller.setTab(next);
+      if (changed) {
+        place?.keeper.land();
+      }
+    },
     dispose() {
       listening.abort();
       observer?.disconnect();
+      place?.dispose();
       controller.dispose();
       disposeDiff();
     },
   });
+}
+
+/**
+ * Wire a scroll keeper to the pane, its page, and the history entry. Browser only.
+ *
+ * @param {HTMLElement} pane
+ * @param {HTMLElement} body
+ * @param {() => string} tab
+ * @param {number} number
+ */
+function keepPlace(pane, body, tab, number) {
+  const tops = () => {
+    const viewTop = pane.getBoundingClientRect().top;
+    return Array.from(
+      body.querySelectorAll(PLACE_BLOCKS),
+      (block) => block.getBoundingClientRect().top - viewTop + pane.scrollTop,
+    );
+  };
+  const keeper = createScrollKeeper({
+    read: () => window.history.state?.[PLACE_KEY],
+    write(place) {
+      // History can move on before this page is told: the entry is written only while
+      // it is still this page's.
+      const route = `/pull/${number}${tab() ? `/${tab()}` : ""}`;
+      if (window.location.pathname.replace(/\/$/, "") === route) {
+        window.history.replaceState({ ...window.history.state, [PLACE_KEY]: place }, "");
+      }
+    },
+    measure: () => placeAt(tops(), pane.scrollTop),
+    apply(place) {
+      const top = scrollTopOf(place, tops());
+      if (top === null) {
+        return false;
+      }
+      pane.scrollTop = top;
+      return true;
+    },
+    anchored: () => window.location.hash !== "",
+    toTop() {
+      pane.scrollTop = 0;
+    },
+    schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
+    cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
+  });
+  const listening = new AbortController();
+  const { signal } = listening;
+  pane.addEventListener("scroll", keeper.scrolled, { passive: true, signal });
+  pane.addEventListener("click", keeper.flush, { capture: true, signal });
+  // Whatever a reader moves the pane with: a wheel, a finger, a scrollbar, a key. Only input
+  // says so, since the browser's own scroll anchoring also moves a page that changes height.
+  for (const type of ["wheel", "touchstart", "pointerdown"]) {
+    pane.addEventListener(type, keeper.readerMoved, { capture: true, passive: true, signal });
+  }
+  window.addEventListener("keydown", keeper.readerMoved, { capture: true, signal });
+  const heights = new ResizeObserver(() => keeper.contentChanged());
+  heights.observe(body);
+  return {
+    keeper,
+    dispose() {
+      listening.abort();
+      heights.disconnect();
+      keeper.dispose();
+    },
+  };
 }

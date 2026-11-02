@@ -113,13 +113,41 @@ def test_a_text_is_asked_for_one_pane_ahead_and_no_further() -> None:
 
     source = PAGE_JS.read_text(encoding="utf-8")
     assert 'export const MARKDOWN_AHEAD = "100% 0px";' in source
-    assert 'root: container.closest("[data-kpress-viewport]"), rootMargin: MARKDOWN_AHEAD' in source
+    assert (
+        'const pane = /** @type {HTMLElement | null} */ (container.closest("[data-kpress-viewport]"));'
+        in source
+    )
+    assert "{ root: pane, rootMargin: MARKDOWN_AHEAD }" in source
     # Only the description is asked for at once, or a page with no observer at all.
     assert source.count('part === "body" || observer === null') == 2
     styles = (PAGE_JS.parent.parent.parent / "static" / "styles.css").read_text(encoding="utf-8")
     assert re.search(r"\n\.preview-pane \{[^}]*overflow-y: auto;", styles)
     with TestClient(app) as client:
         assert 'id="preview-pane" data-kpress-viewport' in client.get("/pull/7").text
+
+
+def test_a_readers_place_is_kept_in_the_entry_and_disposed_with_the_page() -> None:
+    """What the keeper's decisions are wired to. The session runs the decisions; that a
+    browser delivers these events and restores a place is checked in Chrome.
+
+    A click writes in the capture phase, because a link's own handler moves history on from
+    this entry. Only input ends a hold, because scroll anchoring also scrolls the pane.
+    """
+
+    source = PAGE_JS.read_text(encoding="utf-8")
+    glue = source[source.index("function keepPlace(") :]
+    assert 'pane.addEventListener("click", keeper.flush, { capture: true, signal });' in glue
+    assert 'for (const type of ["wheel", "touchstart", "pointerdown"]) {' in glue
+    assert (
+        'window.addEventListener("keydown", keeper.readerMoved, { capture: true, signal });' in glue
+    )
+    assert "window.history.replaceState({ ...window.history.state, [PLACE_KEY]: place }" in glue
+    disposal = glue[glue.index("dispose() {") :]
+    for released in ("listening.abort();", "heights.disconnect();", "keeper.dispose();"):
+        assert released in disposal
+    # Only the page's own tab change is a landing: asking for the tab it shows moves nothing.
+    assert "const changed = controller.snapshot().tab !== next;" in source
+    assert "place?.dispose();" in source
 
 
 def test_a_hunks_tints_are_the_diff_views() -> None:

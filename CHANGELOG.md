@@ -387,6 +387,10 @@ GitHub URLs and HTTPS:
   multi-line comment’s range, with the earlier lines behind a disclosure and added and
   deleted lines tinted as in the diff.
   The freshness row links to the page, and back, forward, and reload keep its tab.
+  They also return a reader to their place in either tab, by the comment or file they
+  were in rather than by pixels, because what has rendered above it differs when the
+  page loads again; a new entry starts at the top, and a fragment in the address or a
+  reader who has started scrolling is never overridden.
   The page for a number the server does not serve links to the served pull request’s
   page, on the same tab.
   `metab <pr-url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
