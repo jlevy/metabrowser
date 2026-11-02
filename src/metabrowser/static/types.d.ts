@@ -5,7 +5,7 @@ type MetabrowserRenderContext = {
   revision?: string;
   /** Two endpoints, when a surface asks the diff view for a comparison between them. */
   comparison?: { left: string; right: string; base_policy: "direct" | "merge_base" };
-  /** The served pull request's page: its number, the tab its route names, and how it
+  /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
   tab?: string;
@@ -2280,7 +2280,7 @@ declare global {
     detail: string;
     offer: MetabrowserSourceOffer | null;
     error: string | null;
-    /** The served pull request's page, when the served URL named one. */
+    /** The attended pull request's page, when there is one. */
     pull: { href: string; text: string } | null;
   };
 

@@ -1,4 +1,4 @@
-"""The served pull request's page: its route, its shell, and what its paint may parse.
+"""A pull request's page: its route, its shell, and what its paint may parse.
 
 The page's decisions run browserless in ``tests/dom/github-pull-page-session.js``. What is
 left to the browser is the shell's route glue and the page's paint; this file pins what

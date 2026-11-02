@@ -330,7 +330,9 @@ so it is its own pull request with its own independent review.
   These are internal contracts that ship as one artifact, so the page, the CLI, and
   every transcript change in the same commit, with no fallback to “the served one”.
 - `no_pull_request` and the page’s `other_number` state go away.
-  A valid number with no record answers `absent` with `not_cached`.
+  A valid number with no record answers `absent` with `not_cached`, and a server with no
+  GitHub repository answers `not_github`, as the list route does.
+- `"retry": true` in the `POST` body marks a reader’s own action, as on the list route.
 - `--show /pull/<n>` reads the same route, and `_require_served_pull` is removed.
 
 **A provider-kept set replaces the single companion.**
@@ -374,8 +376,8 @@ bounded set, plus a direct start of any number’s refresh by the plugin’s `PO
   So nothing a link can do adds to the cache.
 - A pull request with a record refreshes in the background when its page is visible and
   the record is stale, as a stale mirror does.
-  The page’s controller asks for it, and the server holds each number to one attempt per
-  window.
+  The page’s controller asks for it, once a reader has stayed on the page
+  (`REFRESH_ASK_MS`), and the server holds each number to one attempt per window.
 
 **How many refreshes run at once.**
 
@@ -384,9 +386,9 @@ bounded set, plus a direct start of any number’s refresh by the plugin’s `PO
 - Pull-request jobs and the mirror’s own fetch take turns at the store through
   `_fetch_turn`.
 - A new bound limits how many distinct pull-request jobs may be queued or running.
-  A request past it is refused with a typed state and starts nothing.
-  The bound is set from the measured duration of one refresh, which is at least eight
-  `gh` processes and one `git fetch`.
+  A request past it is refused with a typed state, `429` with `too_many`, and starts
+  nothing. The bound, `MAX_PULL_JOBS`, is set from the measured duration of one refresh,
+  which is at least eight `gh` processes and one `git fetch`.
 
 **Status, freshness row, and ref selector.**
 

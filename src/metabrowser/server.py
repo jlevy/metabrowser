@@ -1802,7 +1802,7 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
     <div class="resize-handle" id="tree-resize"></div>
     <!-- Every route that serves this shell selects something: /view/ names a
          file or folder (the bare origin redirects to the served root),
-         /commit/ names a revision, and /pull/ the served pull request. So the
+         /commit/ names a revision, and /pull/ a pull request. So the
          pane ships loading, never a prompt to select a file. It is
          navigation.js's starting placeholder. The frame around it does not
          scroll, so KPress's floating UI pins to it (see .preview-frame). -->
@@ -1895,11 +1895,11 @@ async def commit_shell(request: Request) -> Response:
 
 
 async def pull_shell(request: Request) -> Response:
-    """Serve the SPA shell for ``/pull/<n>[/files]``, the served pull request's page.
+    """Serve the SPA shell for ``/pull/<n>[/files]``, a pull request's page.
 
     A pull request is its own address space, like a commit: the page is not a path in
     the served tree. The view that renders it is the one a plugin registers for the
-    `pull-request` kind; the pull route says whether this server serves that number.
+    `pull-request` kind; the pull route says what this server has of that number.
     """
 
     raw_path = request.scope.get("raw_path")

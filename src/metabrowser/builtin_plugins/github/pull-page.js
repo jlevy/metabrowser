@@ -17,8 +17,8 @@
 // What starts a fetch: a page opened at an address shows what is cached, whether the address
 // was typed, followed from rendered content, or reached by Back, so only a reader's press of
 // Fetch adds a pull request to the cache. A page with a record refreshes it by itself while
-// it is visible and stale, as a stale mirror does, once per visible period, and the server
-// holds each number to one attempt per window.
+// it is visible and stale, as a stale mirror does, once per visible period and only once a
+// reader has stayed on it, and the server holds each number to one attempt per window.
 //
 // All text is the pull request's own and untrusted. Paint writes it with textContent;
 // only KPress's Markdown HTML is parsed, and only after it is reduced to an allowlist of
@@ -63,6 +63,12 @@ export const PLACE_WRITE_MS = 100;
 // texts. A page that changes later than this keeps its place by the browser's own scroll
 // anchoring, except in a browser without it.
 export const LANDING_SETTLE_MS = 2000;
+// How long a stale page is shown before it asks for its refresh. A reader who walks past
+// pages, holding Back or a key, spends no refresh on one they did not stop at: in Chrome
+// (2026-11-02) ten pages opened 30 ms apart started eight refreshes when each asked at once,
+// and each is eight gh processes and a fetch that take about 5 s. It is a choice, longer than
+// a press of Back takes and short beside the refresh it delays.
+export const REFRESH_ASK_MS = 500;
 // The blocks a place is counted in: the conversation's cards and sections, and Files
 // changed's files, which keep their order for as long as the page shows one comparison.
 const PLACE_BLOCKS = ".github-pull-card, .github-pull-section, .diff-file";
@@ -736,6 +742,8 @@ export function createPullController(deps, options) {
   // One refresh asked for by itself per visible period: a stale page whose refresh cannot
   // run must not ask again on every poll.
   let refreshAskedWhileVisible = false;
+  /** The ask that waits for `REFRESH_ASK_MS`. @type {unknown} */
+  let askTimer = null;
   /** @type {string | null} */
   let error = null;
   /** @type {string | null} */
@@ -766,6 +774,13 @@ export function createPullController(deps, options) {
     if (timer !== null) {
       deps.cancel(timer);
       timer = null;
+    }
+  }
+
+  function cancelAsk() {
+    if (askTimer !== null) {
+      deps.cancel(askTimer);
+      askTimer = null;
     }
   }
 
@@ -857,7 +872,10 @@ export function createPullController(deps, options) {
       !refreshAskedWhileVisible
     ) {
       refreshAskedWhileVisible = true;
-      await askForRefresh({ number: options.number });
+      askTimer = deps.schedule(() => {
+        askTimer = null;
+        void askForRefresh({ number: options.number });
+      }, REFRESH_ASK_MS);
     }
   }
 
@@ -869,6 +887,7 @@ export function createPullController(deps, options) {
    * @param {{number: number, retry?: boolean}} ask
    */
   async function askForRefresh(ask) {
+    cancelAsk();
     const request = ++sent;
     try {
       const response = await deps.request("POST", REFRESH_ROUTE, { body: ask });
@@ -879,8 +898,10 @@ export function createPullController(deps, options) {
         isEnvelope(body.pull)
       ) {
         accept(body.pull, request);
-        // The answer changed; the next poll must not be answered by a 304.
-        etag = null;
+        if (response.status === 202) {
+          // The answer changed; the next poll must not be answered by a 304.
+          etag = null;
+        }
         error = null;
       } else if (ask.retry) {
         const said = body !== null && typeof body.error === "string" ? body.error : null;
@@ -1034,6 +1055,7 @@ export function createPullController(deps, options) {
     }
     if (!deps.isVisible()) {
       clearTimer();
+      cancelAsk();
       refreshAskedWhileVisible = false;
       return;
     }
@@ -1043,6 +1065,7 @@ export function createPullController(deps, options) {
   function dispose() {
     disposed = true;
     clearTimer();
+    cancelAsk();
     queue.length = 0;
   }
 

@@ -313,13 +313,15 @@ function createPage(runtime, options) {
       navigations = [];
       await action();
       await settle();
-      const [timer] = [...timers.values()];
+      const [timer] = [...timers.values()].filter(
+        (each) => each.delayMs !== runtime.REFRESH_ASK_MS,
+      );
       const snapshot = controller.snapshot();
       const entry = {
         step: name,
         requests: [...log],
         timer:
-          timers.size === 0
+          timer === undefined
             ? null
             : timer.delayMs === runtime.FAST_POLL_MS
               ? "fast"
@@ -328,6 +330,9 @@ function createPage(runtime, options) {
                 : timer.delayMs,
         paints: paints.length,
       };
+      if ([...timers.values()].some((each) => each.delayMs === runtime.REFRESH_ASK_MS)) {
+        entry.askWaits = true;
+      }
       if (reloads > 0) {
         entry.reloads = reloads;
       }
@@ -349,11 +354,23 @@ function createPage(runtime, options) {
       }
       return entry;
     },
+    /** The poll that is due. */
     fire() {
-      const [[id, timer]] = [...timers.entries()];
+      const [[id, timer]] = [...timers.entries()].filter(
+        ([, each]) => each.delayMs !== runtime.REFRESH_ASK_MS,
+      );
       timers.delete(id);
       timer.callback();
     },
+    /** The ask a stale page has waiting: the reader stayed. */
+    fireAsk() {
+      const [[id, timer]] = [...timers.entries()].filter(
+        ([, each]) => each.delayMs === runtime.REFRESH_ASK_MS,
+      );
+      timers.delete(id);
+      timer.callback();
+    },
+    timersLeft: () => timers.size,
   };
 }
 
@@ -710,10 +727,11 @@ async function main() {
 
   page.clock.now = Date.parse("2026-09-17T12:05:30Z");
   server.pull = recorded.stale;
+  steps.push(await page.step("the record goes stale", async () => page.fire()));
   server.refresh.push(recorded.refresh_again);
   steps.push(
-    await page.step("the record goes stale: the page asks for a refresh by itself", async () =>
-      page.fire(),
+    await page.step("the reader stayed: the page asks for a refresh by itself", async () =>
+      page.fireAsk(),
     ),
   );
   server.pull = recorded.stale_refreshing;
@@ -768,12 +786,27 @@ async function main() {
     ),
   );
   background.setVisible(true);
-  background.server.refresh.push(recorded.refresh_again);
   steps.push(
-    await background.step("shown, it asks for its refresh", async () =>
+    await background.step("shown, its ask waits for the reader to stay", async () =>
       background.controller.onVisibilityChange(),
     ),
   );
+  background.server.refresh.push(recorded.refresh_again);
+  steps.push(await background.step("the reader stayed: it asks", async () => background.fireAsk()));
+
+  // A reader walking past a stale page, holding Back or a key, spends no refresh on it.
+  const walkedPast = createPage(runtime, { number: 7, tab: "", brief: true });
+  walkedPast.clock.now = page.clock.now;
+  walkedPast.server.pull = recorded.stale;
+  steps.push(
+    await walkedPast.step("a page walked past reads once", () => walkedPast.controller.start()),
+  );
+  steps.push(
+    await walkedPast.step("and leaves before its ask, which is cancelled", async () =>
+      walkedPast.controller.dispose(),
+    ),
+  );
+  assert(walkedPast.timersLeft() === 0, "a disposed page left a timer running");
 
   // A page whose refresh failed a moment ago: its own request is not due, and it asks once
   // per visible period, not on every poll. A reader's press still goes through.
@@ -781,21 +814,23 @@ async function main() {
   failing.clock.now = Date.parse("2026-09-17T12:30:30Z");
   failing.server.pull = recorded.failed;
   failing.server.refresh.push(recorded.not_due);
+  await failing.controller.start();
   steps.push(
-    await failing.step("a stale page asks once, and its refresh is not due", () =>
-      failing.controller.start(),
+    await failing.step("a stale page asks once, and its refresh is not due", async () =>
+      failing.fireAsk(),
     ),
   );
   steps.push(await failing.step("its next poll asks nothing", async () => failing.fire()));
   failing.setVisible(false);
   await failing.controller.onVisibilityChange();
   failing.setVisible(true);
-  failing.server.refresh.push(recorded.not_due);
   steps.push(
     await failing.step("shown again, it may ask once more", async () =>
       failing.controller.onVisibilityChange(),
     ),
   );
+  failing.server.refresh.push(recorded.not_due);
+  steps.push(await failing.step("the reader stayed again: it asks", async () => failing.fireAsk()));
   failing.server.refresh.push(recorded.failed_again);
   steps.push(
     await failing.step("a reader's Refresh is always taken", () =>

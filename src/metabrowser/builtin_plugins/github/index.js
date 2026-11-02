@@ -1,6 +1,6 @@
 // GitHub built-in plugin.
 //
-// Owns one view: ("pull-request", "pull-request"), the served pull request's page at
+// Owns one view: ("pull-request", "pull-request"), a pull request's page at
 // /pull/<n>[/files]. The shell mounts it for that route; pull-page.js holds the page.
 // The URL reducer, the gh credential helper, and pull-request records are Python.
 

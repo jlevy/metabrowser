@@ -13,15 +13,23 @@ It polls that route while the page is visible, quickly while a refresh runs or t
 record is pending and slowly otherwise, with `If-None-Match` so an unchanged answer is a
 304 and repaints nothing.
 An absent record offers a fetch and a stale one a refresh, each through
-`POST /api/plugin/github/pull-refresh`. The Markdown of each text is asked for one part
-at a time from `/api/plugin/github/pull-markdown`, two at once, and a render of a record
-the page no longer shows is dropped.
+`POST /api/plugin/github/pull-refresh`. An address alone fetches nothing: only a
+reader’s press sends `"retry": true`, and past the bound on jobs it is refused and says
+why. A stale page also asks by itself, without `retry`, once a reader has stayed on it,
+once per visible period, so a page walked past asks nothing.
+The Markdown of each text is asked for one part at a time from
+`/api/plugin/github/pull-markdown`, two at once, and a render of a record the page no
+longer shows is dropped.
+`browse` is what Browse code does: a link when the head is served, and otherwise, with
+nothing to warn about, it serves the head and then opens the root.
+Only a page served an older head of this pull request gets `headOffer`, the offer of the
+newer one.
 
 This browserless session loads the production `builtin_plugins/github/pull-page.js` and
 plays the server’s side from `tests/fixtures/github-pull-page-responses.json`: what the
 in-process application answered while it served pull request 7 of the stand-in in
 `tests/github_pull_fixture.py`, from nothing cached, through a fetch, to a stale record
-and a refresh that brought one more comment.
+and a refresh that brought one more comment, and what it answered of other numbers.
 `tests/test_github_pull_page_session.py` replays that story and fails when the recording
 drifts. Timers, the clock, visibility, and paint are injected; the browser’s visibility
 observer is played by asking for parts in reading order.
@@ -425,13 +433,60 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "the record goes stale: the page asks for a refresh by itself",
+      "step": "the record goes stale",
       "requests": [
-        "GET /api/plugin/github/pull?number=7 (If-None-Match)",
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "askWaits": true,
+      "paint": {
+        "status": "stale",
+        "tab": "conversation",
+        "message": null,
+        "canRefresh": true,
+        "freshness": "Fetched 5 min ago by gh:octo-reader · may be out of date",
+        "failure": null,
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
+        "labels": [
+          "enhancement"
+        ],
+        "merge": "No conflicts with the base branch",
+        "timeline": [
+          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
+          "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
+        ],
+        "reviewComments": [
+          "src/app.txt:outdated maintainer +hunk",
+          "src/app.txt:2 forker (reply) +hunk"
+        ],
+        "checks": {
+          "counts": {
+            "success": 2,
+            "pending": 1
+          },
+          "items": [
+            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+          ]
+        },
+        "notes": [],
+        "browse": "link to the root",
+        "headOffer": null,
+        "comparison": "f92fd713acd5...85fcb2fa9e77"
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "the reader stayed: the page asks for a refresh by itself",
+      "requests": [
         "POST /api/plugin/github/pull-refresh {\"number\":7}"
       ],
       "timer": "fast",
-      "paints": 2,
+      "paints": 1,
       "paint": {
         "status": "stale",
         "tab": "conversation",
@@ -638,9 +693,18 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "shown, it asks for its refresh",
+      "step": "shown, its ask waits for the reader to stay",
       "requests": [
-        "GET /api/plugin/github/pull?number=7 (If-None-Match)",
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "askWaits": true,
+      "markdown": []
+    },
+    {
+      "step": "the reader stayed: it asks",
+      "requests": [
         "POST /api/plugin/github/pull-refresh {\"number\":7}"
       ],
       "timer": "fast",
@@ -657,29 +721,45 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "a stale page asks once, and its refresh is not due",
+      "step": "a page walked past reads once",
       "requests": [
-        "GET /api/plugin/github/pull?number=8",
-        "POST /api/plugin/github/pull-refresh {\"number\":8}"
+        "GET /api/plugin/github/pull?number=7"
       ],
       "timer": "slow",
       "paints": 2,
+      "askWaits": true,
       "paint": {
         "status": "stale",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 24 min ago by gh:octo-reader · may be out of date",
-        "failure": "The last refresh failed: gh could not reach api.github.com",
-        "browse": "switches to refs/pull/8/head",
+        "freshness": "Fetched 5 min ago by gh:octo-reader · may be out of date",
+        "failure": null,
+        "browse": "link to the root",
         "headOffer": null
       },
       "conversation": "repaint",
       "markdown": []
     },
     {
+      "step": "and leaves before its ask, which is cancelled",
+      "requests": [],
+      "timer": null,
+      "paints": 0,
+      "markdown": []
+    },
+    {
+      "step": "a stale page asks once, and its refresh is not due",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":8}"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "markdown": []
+    },
+    {
       "step": "its next poll asks nothing",
       "requests": [
-        "GET /api/plugin/github/pull?number=8"
+        "GET /api/plugin/github/pull?number=8 (If-None-Match)"
       ],
       "timer": "slow",
       "paints": 0,
@@ -688,7 +768,16 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "shown again, it may ask once more",
       "requests": [
-        "GET /api/plugin/github/pull?number=8 (If-None-Match)",
+        "GET /api/plugin/github/pull?number=8 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "askWaits": true,
+      "markdown": []
+    },
+    {
+      "step": "the reader stayed again: it asks",
+      "requests": [
         "POST /api/plugin/github/pull-refresh {\"number\":8}"
       ],
       "timer": "slow",
@@ -711,7 +800,7 @@ $ node tests/dom/github-pull-page-session.js
         "browse": "switches to refs/pull/8/head",
         "headOffer": null
       },
-      "conversation": "keep",
+      "conversation": "repaint",
       "markdown": []
     },
     {

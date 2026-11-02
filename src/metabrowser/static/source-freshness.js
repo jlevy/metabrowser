@@ -184,7 +184,7 @@
     } else if (status.ref !== null && status.ref_on_origin === false && !status.refreshing) {
       detail = `${detail} ${status.ref_name ?? status.ref} is no longer on the origin; its commits stay readable here.`;
     }
-    // The served pull request's page is one link away from every page on its pin.
+    // The attended pull request's page is one link away from every page on its pin.
     const pull =
       typeof status.pull_request === "number"
         ? { href: `/pull/${status.pull_request}`, text: `Pull request #${status.pull_request}` }
