@@ -619,6 +619,7 @@ status: 200
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/10/files --show docs/draft.md
 selection: pull_request
 pin: 7a7d6596e515735d244dc1d942463c95851e139c (pull request 10 head)
+tab: files
 pull_request: 10 (draft; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 show: docs/draft.md
 route: /view/g1-ZG9jcw/g1-ZHJhZnQubWQ

@@ -144,7 +144,7 @@ def test_repository_spellings_share_one_canonical_source(value: str) -> None:
         ),
         (
             "https://github.com/octo/demo/pull/12/files",
-            RepositorySelection(kind="pull_request", pull_request=12),
+            RepositorySelection(kind="pull_request", pull_request=12, pull_tab="files"),
         ),
         (
             "https://github.com/octo/demo/pull/12/commits",

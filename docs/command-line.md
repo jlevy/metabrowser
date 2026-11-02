@@ -319,9 +319,10 @@ A `/tree/` or `/blob/` URL may name a branch whose name contains `/`; the mirror
 where the ref ends, preferring a branch, then a tag, then a commit ID. Ref names match
 exactly, including letter case, and `HEAD` names the default branch.
 `--no-serve` prints what the URL selected after the identity lines (`selection`, `pin`,
-`path`, and `lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor), and `--show`
-and `--api` print the same lines on stderr and pin that commit.
-A `/pull/<n>` URL pins the pull request’s head; see [Pull requests](#pull-requests).
+`path`, `lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor, and `tab` for a pull
+request’s `/files`), and `--show` and `--api` print the same lines on stderr and pin
+that commit. A `/pull/<n>` URL pins the pull request’s head; see
+[Pull requests](#pull-requests).
 Query parameters other than `?plain=1` are dropped.
 Any other github.com page, `http://`, and GitHub’s own top-level pages are refused with
 a message that names the shape and offers the repository URL.
@@ -381,11 +382,17 @@ unchanged part costs GitHub nothing against the rate limit.
 A one-shot `--api /api/plugin/github/pull-refresh --data <file with {}>` also refreshes
 it, waits, prints the record under `after:`, and exits 1 when the refresh failed.
 
-A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s. A
-`/pull/<n>/files` URL selects the same pull request as `/pull/<n>`, so it serves the
-same page; `--show /pull/<n>/files` is the way to ask for Files changed.
-Other pull-request pages, such as `/pull/<n>/checks`, and a repository’s `/pulls` list
-are refused. Each command opens one pull request: `--show /pull/<other>` answers
+A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s, and a server
+opens at the top of the repository.
+A `/pull/<n>/files` URL selects the same pull request as `/pull/<n>` and adds
+`tab: files` to the selection lines, and a server opens at `/pull/<n>/files`, as its
+`Serving` line prints.
+The tab says only where a server opens: `--show` and `--api` answer the path or route
+they are given, so `--show /pull/<n>/files` is the way to ask for Files changed without
+a browser. A `/pull/<n>/commits` URL is the same as `/pull/<n>`, because the page has no
+Commits tab. Other pull-request pages, such as `/pull/<n>/checks`, and a repository’s
+`/pulls` list are refused.
+Each command opens one pull request: `--show /pull/<other>` answers
 `this source serves pull request <n>`, and a folder or a checkout answers
 `this source serves no pull request`.
 

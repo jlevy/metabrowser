@@ -359,11 +359,13 @@ GitHub URLs and HTTPS:
   not yet completed, whatever its status, and a pending status); and unknown (a
   completed run with no conclusion, or a conclusion or state GitHub does not document).
   `/pull/<n>/files` is its Files changed, the diff view over the record’s merge-base
-  comparison. The page reads only the cached record, so it opens instantly and offline;
-  it says how old the record is and who read it, offers a refresh when it is stale,
-  shows a quiet loading state while the first record is fetched, and updates the
-  conversation and checks in place when a refresh brings a new record, while the diff
-  stays on what it showed and offers a newer head.
+  comparison, and a `…/pull/<n>/files` URL copied from GitHub opens there, with
+  `tab: files` among the lines that report what the URL selected.
+  The page reads only the cached record, so it opens instantly and offline; it says how
+  old the record is and who read it, offers a refresh when it is stale, shows a quiet
+  loading state while the first record is fetched, and updates the conversation and
+  checks in place when a refresh brings a new record, while the diff stays on what it
+  showed and offers a newer head.
   When the served code is not the head the record names, as when the pull request could
   not be opened at startup and serving fell back to the default branch, the page offers
   to switch to the head (`refs/pull/<n>/head`) and reloads on it.
