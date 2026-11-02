@@ -979,12 +979,14 @@ Fixes:
   `/api/plugin/diff/document` answered that it recognized no diff, and
   `/api/plugin/diff/children` and a virtual child `change.patch.gz/<path>` answered 404.
   The three now read the patch the file holds.
-  A compressed file whose stream cannot be decoded answers the same 404 as a file that
-  cannot be opened. `/api/file` shows such a file as bytes when the damage is in the
-  first 512 KiB it reads.
-  Damage past that is not seen there: an 8.5 MB patch whose gzip is cut at 80% still
-  says `kind: diff`, and the Diff view shows “This file is not available.”, where 0.11.0
-  showed an empty change set, as it did for every `.patch.gz`.
+  A compressed file whose stream cannot be decoded within the first 8 MiB of decoded
+  content, which is as far as they read, answers the same 404 as a file that cannot be
+  opened. Damage past that is not reached: they answer the patch they read, marked
+  truncated, as they do for an undamaged patch that long.
+  `/api/file` shows a damaged file as bytes when the damage is in the first 512 KiB it
+  reads. Damage past that is not seen there: an 8.5 MB patch whose gzip is cut at 80%
+  still says `kind: diff`, and the Diff view shows “This file is not available.”, where
+  0.11.0 showed an empty change set, as it did for every `.patch.gz`.
 
 - A byte limit set below zero gives a typed, empty answer on every value.
   This applies to `STRUCTURED_PARSE_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_BYTES`,
@@ -999,9 +1001,9 @@ Fixes:
   ceiling answers 404. Zero is unchanged for the binary settings and for a structured
   file that is not compressed, apart from a file that cannot be opened.
   At `STRUCTURED_PARSE_MAX_BYTES=0` a compressed structured file no longer answers that
-  parse error, and answers as it does at any limit too small for it: `truncated` when it
-  holds data, a decompression parse error when its stream cannot be decoded, and what an
-  empty file answers when it holds nothing.
+  parse error, and answers as it does at any limit too small for it: `truncated` when
+  the start of its stream decodes, whatever damage follows, a decompression parse error
+  when it fails before that, and what an empty file answers when it holds nothing.
   A file that cannot be opened answers 404 `content_unavailable` at zero too, where
   0.11.0 answered `truncated` for an uncompressed one larger than the limit, without
   opening it.
