@@ -685,7 +685,7 @@ type MetabrowserFilterControls = {
     className?: string;
     key: string;
     label: string;
-    title?: string;
+    tip?: string;
   }): string;
   clearHtml(spec?: { className?: string; label?: string }): string;
   escapeHtml(value: unknown): string;
@@ -1010,6 +1010,7 @@ type MetabrowserSdk = {
   fileTypes: MetabrowserFileTypeTaxonomyRuntime;
   fileTypeClass(path: string): string;
   fileTypeIcon(path: string): MetabrowserFileTypeIcon;
+  formatAge(secondsSinceEpoch: number): { label: string; className: string };
   formatTimestamp(secondsSinceEpoch: number): string;
   prefs: {
     get<T>(name: string, fallback: T): T;
@@ -2265,6 +2266,7 @@ declare global {
     keepsImage(src: string | null, base: string | null): boolean;
     linkHref(href: string | null, base: string | null): { href: string; leaves: boolean } | null;
     outsideLink(href: string | null, base: string | null): string | null;
+    kpressProse(nodes: Node[], doc: Document): HTMLElement;
     sanitizeHtml(html: string, base: string | null): Node[];
     sanitizeNodes(
       nodes: ArrayLike<Node>,
@@ -2464,7 +2466,9 @@ declare global {
   type MetabrowserSourceRefSelectorParts = {
     root: HTMLElement;
     toggle: HTMLButtonElement;
+    label: HTMLElement;
     panel: HTMLElement;
+    kinds: HTMLElement;
     tabs: Record<MetabrowserSourceRefKind, HTMLButtonElement>;
     filter: HTMLInputElement;
     list: HTMLElement;

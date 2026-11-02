@@ -458,6 +458,55 @@ assertMissing("option labels are escaped", hostile, "<i>x</i>");
 assertMissing("values cannot break out of the attribute", hostile, '"><b>');
 assertMissing("group labels are escaped", hostile, '"><img>');
 
+// An arrow key selects, and a consumer repaints the group from its state, which replaces
+// the element holding focus. Focus follows the chosen value, or the next key does nothing.
+{
+  const listeners = {};
+  let focused = null;
+  const group = {};
+  const chip = (value) => {
+    const element = {
+      isConnected: true,
+      getAttribute: (name) =>
+        name === "data-chip-key" ? "measure" : name === "data-chip-value" ? value : null,
+      focus() {
+        focused = element;
+      },
+      closest: (selector) =>
+        selector.startsWith(".chip[") ? element : selector.startsWith(".chip-group") ? group : null,
+    };
+    return element;
+  };
+  let chips = [chip("files"), chip("size")];
+  group.querySelectorAll = () => chips;
+  const root = {
+    addEventListener(type, listener) {
+      listeners[type] = listener;
+    },
+    removeEventListener() {},
+    contains: () => true,
+    ownerDocument: null,
+    querySelectorAll: () => chips,
+  };
+  const chosen = [];
+  fc.bind(root, {
+    onChange(_key, value) {
+      chosen.push(value);
+      for (const old of chips) {
+        old.isConnected = false;
+      }
+      chips = [chip("files"), chip("size")];
+    },
+  });
+  listeners.keydown({ key: "ArrowRight", target: chips[0], preventDefault() {} });
+  if (chosen.join() !== "size") {
+    failures.push(`an arrow key selects: ${chosen.join()}`);
+  }
+  if (focused !== chips[1]) {
+    failures.push("focus follows the chosen value across a repaint");
+  }
+}
+
 if (failures.length > 0) {
   process.stderr.write(`${failures.join("\n")}\n`);
   process.exit(1);

@@ -528,11 +528,17 @@
         return;
       }
       if (opts.onChange) {
-        opts.onChange(
-          chip.getAttribute("data-chip-key") || "",
-          chip.getAttribute("data-chip-value") || "",
-          "one",
-        );
+        const value = chip.getAttribute("data-chip-value") || "";
+        opts.onChange(chip.getAttribute("data-chip-key") || "", value, "one");
+        // A consumer repaints the group from its state, as the Files / Bytes and Split /
+        // Unified controls do, which replaces the element holding focus. Focus stays on
+        // the chosen segment, or the next arrow key has nothing to act on.
+        if (chip.isConnected === false) {
+          Array.prototype.slice
+            .call(root.querySelectorAll(".chip[data-chip-key]"))
+            .find((next) => next.getAttribute("data-chip-value") === value)
+            ?.focus();
+        }
       }
     }
 

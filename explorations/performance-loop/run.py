@@ -1862,7 +1862,7 @@ def _experiment_records() -> list[dict[str, Any]]:
     """The YAML front matter of every experiment artifact, id-ordered.
 
     Parsed with a deliberately small reader rather than a YAML dependency:
-    the ledger needs six scalars out of the verdict block, and the artifacts
+    the ledger needs a few scalars out of the front matter, and the artifacts
     are schema-validated by `softschema validate` anyway, which is where a
     malformed one should fail.
     """
@@ -1886,7 +1886,7 @@ def _experiment_records() -> list[dict[str, Any]]:
                 match = re.search(rf"^    {key}: \"?([^\"\n]+)\"?$", verdict[1], re.MULTILINE)
                 if match:
                     record[key] = match.group(1).strip()
-        bytecode = re.search(r"^    bytecode: (\w+)$", front, re.MULTILINE)
+        bytecode = re.search(r"^    bytecode: [\"']?(\w+)[\"']?$", front, re.MULTILINE)
         if bytecode:
             record["bytecode"] = bytecode.group(1)
         experiment_id = record.get("id")

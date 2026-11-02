@@ -578,6 +578,8 @@ each text as Markdown through `GET /api/plugin/github/pull-markdown?part=<part>`
 renders one text of the cached record through KPress’s sanitized mode and then reduces
 it to an allowlist of plain markup, on the server and again in the page, so nothing in
 it loads, restyles the page, reaches the application’s handlers, or names an element.
+The page sets the result in a KPress article of its own making, under KPress’s
+stylesheets, so a text reads as the same Markdown in a file does.
 Files changed is the diff plugin’s view over the record’s comparison, passed as two
 endpoints with `base_policy=merge_base`.
 
@@ -1106,8 +1108,10 @@ Still open, with owners:
   version string are admitted (Phase 1B-a).
 
 The initial-acquisition stall bound, the first-request deadline, and the first-clone
-size limit were measured on 2026-09-23; each measurement is recorded beside its constant
-in `cache/origin.py` and `builtin_plugins/github/provider.py`.
+size limit were measured on 2026-09-23, and the size limit again on 2026-11-02; each
+measurement is recorded beside its constant in `cache/origin.py` and
+`builtin_plugins/github/provider.py`. `METABROWSER_MAX_FIRST_CLONE_KB` moves the size
+limit, and the acquisition deadline still applies.
 
 These choices may tune cost.
 They may not introduce shared working-tree state, make a local checkout cache authority,

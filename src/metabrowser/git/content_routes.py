@@ -248,7 +248,7 @@ def _display_basename(path: GitPath) -> str:
     return path.display().rsplit("/", 1)[-1]
 
 
-def _logical_ext(path: GitPath) -> str:
+def _filter_tail_ext(path: GitPath) -> str:
     """The compound tail the type filter keys on; a kind is chosen by ``blob_logical_ext``."""
 
     return derive_ext(_display_basename(path))
@@ -347,7 +347,7 @@ def _matches_types(
     """Match like the SPA type filter: dotted tokens are logical extensions."""
 
     name = ascii_casefold(_display_basename(path))
-    ext = _logical_ext(path)
+    ext = _filter_tail_ext(path)
     semantic_tokens = semantic if semantic is not None else _semantic_extension_tokens(types)
     for token in types:
         folded = ascii_casefold(token)

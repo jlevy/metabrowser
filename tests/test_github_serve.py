@@ -117,6 +117,32 @@ def test_a_pull_request_it_cannot_open_serves_the_default_branch_and_says_why(
         assert (status["pin"], status["pull_request"]) == (FIRST_COMMIT, 7)
 
 
+@pytest.mark.parametrize(
+    ("tail", "href", "selection"),
+    [
+        ("", "/pull/7", "Selection: pull_request\n"),
+        ("/files", "/pull/7/files", "Selection: pull_request files\n"),
+        ("/files/", "/pull/7/files", "Selection: pull_request files\n"),
+        # The page has no Commits tab, so GitHub's opens the page itself.
+        ("/commits", "/pull/7", "Selection: pull_request\n"),
+        (f"/commits/{SECOND_COMMIT[:7]}", "/view/", "Selection: commit\n"),
+    ],
+)
+def test_a_pull_request_url_opens_where_it_points(
+    origin: Path, tail: str, href: str, selection: str
+) -> None:
+    """The tab a URL names is the address served, as a blob URL keeps its line anchor."""
+
+    result = _serve(f"{REPO}/pull/7{tail}")
+    assert result.exit_code == 0, result.output
+    served = _served_line(result.stdout).split()
+    assert served[:4] == ["Serving", REPO, "at", f"http://127.0.0.1:8411{href}"]
+    assert selection in result.stdout
+    with TestClient(server.app) as client:
+        # The address printed is one the server answers with the application's shell.
+        assert client.get(href).status_code == 200
+
+
 def _push_branch(origin: Path, tmp_path: Path, name: str) -> str:
     env = git_env(tmp_path)
     commit = subprocess.run(

@@ -137,7 +137,9 @@ def test_the_session_plays_the_recorded_inert_render() -> None:
         "text": "Install",
     }
     assert transcript["scrolled"]["active"] == "#user-content-constructor"
-    assert transcript["enhancerRoot"] == [{"className": "kpress-prose", "tocLinks": 0, "links": 3}]
+    assert transcript["enhancerRoot"] == [
+        {"className": "kpress-prose kpress-long-text", "tocLinks": 0, "links": 3}
+    ]
     assert transcript["entryClicked"]["opened"] == ["user-content-troubleshooting"]
     assert transcript["modifiedClick"]["defaultPrevented"] is False
     assert transcript["disposed"]["listeners"] == 0

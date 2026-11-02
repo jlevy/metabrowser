@@ -314,6 +314,30 @@ def test_parsed_endpoint_answers_a_compressed_file_it_cannot_decode_as_a_parse_e
         assert str(tmp_path) not in body["parse_error"], name
 
 
+@pytest.mark.parametrize("cap", [0, 1])
+def test_parsed_endpoint_under_a_cap_too_small_for_a_compressed_file_reads_only_its_start(
+    cap: int, tmp_path: Path, structured_app: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The read stops one byte past the cap, so it does not reach damage after that.
+
+    The cut-off file the test above answers with a parse error is ``truncated`` here,
+    because its start decodes, and a stream that fails before that is still the parse
+    error. ``CHANGELOG.md`` states both.
+    """
+
+    monkeypatch.setattr(structured_sidekick, "STRUCTURED_PARSE_MAX_BYTES", cap)
+    monkeypatch.setattr(structured_parser, "_PAYLOAD_CACHE", LRUCache(maxsize=8))
+    whole = gzip.compress(json.dumps({"a": 1, "b": [1, 2, 3]}).encode())
+    (tmp_path / "cut.json.gz").write_bytes(whole[:-6])
+    (tmp_path / "corrupt.json.gz").write_bytes(b"\x1f\x8b\x08\x00garbagegarbage")
+
+    body = _parsed(structured_app, "cut.json.gz")
+    assert (body["truncated"], body["parsed"], body["parse_error"]) == (True, None, None)
+    body = _parsed(structured_app, "corrupt.json.gz")
+    assert body["parse_error"].startswith("ArtifactCompressionError: invalid gzip stream: ")
+    assert (body["truncated"], body["parsed"]) == (False, None)
+
+
 def test_parsed_endpoint_answers_truncated_for_a_compressed_file_past_a_resource_bound(
     tmp_path: Path, structured_app: TestClient
 ) -> None:
@@ -363,7 +387,8 @@ def test_parsed_endpoint_still_reads_under_a_zero_cap(
     assert (body["truncated"], body["parsed"], body["parse_error"]) == (False, None, None)
     body = _parsed(structured_app, "empty.json")
     assert (body["truncated"], body["parsed"]) == (False, None)
-    assert body["parse_error"] == "ValueError: Empty strings are not legal JSON5"
+    # The parser's reason is its own to word; what is pinned is that the parser ran.
+    assert body["parse_error"].startswith("ValueError:")
 
     locked = tmp_path / "locked.json"
     locked.write_bytes(b'{"a": 1}\n')

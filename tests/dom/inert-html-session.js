@@ -71,6 +71,55 @@ const pageDocument = {
   }),
 };
 
+// What kpressProse builds from what sanitizeNodes built: enough of a DOM to walk its tree.
+function proseElement(tag) {
+  const element = {
+    nodeType: 1,
+    tagName: tag.toUpperCase(),
+    className: "",
+    childNodes: [],
+    parentElement: null,
+    append(...nodes) {
+      for (const node of nodes) {
+        node.parentElement = element;
+        element.childNodes.push(node);
+      }
+    },
+    querySelectorAll(name) {
+      const found = [];
+      const walk = (parent) => {
+        for (const child of parent.childNodes) {
+          if (child.nodeType === 1) {
+            if (child.tagName === name.toUpperCase()) {
+              found.push(child);
+            }
+            walk(child);
+          }
+        }
+      };
+      walk(element);
+      return found;
+    },
+  };
+  return element;
+}
+
+function proseTree(element) {
+  return element.nodeType === 1
+    ? {
+        [element.className
+          ? `${element.tagName.toLowerCase()}.${element.className}`
+          : element.tagName.toLowerCase()]: element.childNodes.map(proseTree),
+      }
+    : element.textContent;
+}
+
+function renderShaped(tag, ...children) {
+  const element = proseElement(tag);
+  element.append(...children);
+  return element;
+}
+
 function escapeText(value) {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
@@ -125,6 +174,26 @@ async function main() {
         },
         document: documentMode,
         comment: commentMode,
+        // A render arrives in KPress's two wrappers, classes gone. The blocks become the prose
+        // element's children, and a code block and a table get back the classes KPress's
+        // stylesheets hang their type on, from the module and never from the document.
+        prose: proseTree(
+          inert.kpressProse(
+            [
+              { nodeType: 3, textContent: "\n" },
+              renderShaped(
+                "div",
+                renderShaped(
+                  "div",
+                  renderShaped("h1"),
+                  renderShaped("pre", renderShaped("code")),
+                  renderShaped("div", renderShaped("table")),
+                ),
+              ),
+            ],
+            { createElement: proseElement },
+          ),
+        ),
         links: { document: rebuilt(linkTree, null), comment: rebuilt(linkTree, pullRequest) },
       },
       null,

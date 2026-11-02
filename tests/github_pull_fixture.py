@@ -468,6 +468,8 @@ def allowlist_violations(html: str, *, images: bool = False) -> list[str]:
                     (value or "").startswith(("https://", "http://")) or is_inside(value)
                 ):
                     found.append(f"{tag}[{name}={value}]")
+            if tag == "img" and not any(name == "loading" for name, _value in attrs):
+                found.append("img[loading missing]")
 
     checker = _Check()
     checker.feed(html)

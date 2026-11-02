@@ -15,7 +15,7 @@ export function createPanelSlot(descriptor) {
   slot.dataset.panelId = descriptor.id;
   slot.hidden = false;
   const heading = document.createElement("h2");
-  heading.className = "folder-overview-panel-heading";
+  heading.className = "section-heading folder-overview-panel-heading";
   const toggleId = `folder-overview-panel-toggle-${slotSequence}-${idStem}`;
   const bodyId = `folder-overview-panel-body-${slotSequence}-${idStem}`;
   const body = document.createElement("div");

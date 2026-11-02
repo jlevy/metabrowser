@@ -141,6 +141,7 @@ export function mountFileTotalsPanel(
 
   return Object.freeze({
     dispose,
+    resumeLoading: () => totalsView.resumeLoading(),
     stopLoading: () => totalsView.stopLoading(),
     /** @param {{raw?: unknown}} nextContext */
     update(nextContext) {
