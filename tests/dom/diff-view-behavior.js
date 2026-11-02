@@ -959,7 +959,7 @@ async function main() {
   for (const body of deferredBodies) {
     hydrationObserver.intersect(body.parentNode);
   }
-  check("visible deferred work is concurrency-bounded", viewportLoads === 2);
+  check("visible deferred work asks for one file at a time", viewportLoads === 1);
   manyDeferredHandle.cancelPending();
   check("cancellation drops every queued observation", hydrationObserver.observed.size === 0);
   manyDeferredHandle.dispose();
@@ -984,6 +984,8 @@ async function main() {
   deferredLayoutChange("diff-layout", "unified", "one");
   deferredResolve(JSON.parse(JSON.stringify(byName.get("modified-with-heading"))));
   await nextTask();
+  // An answer renders in a frame of its own.
+  await nextTask();
   check("deferred file hydrates exactly once", deferredLoads === 1, String(deferredLoads));
   check("pending hydration uses the latest layout", hydrated.find("diff-line").length === 4);
 
@@ -1007,7 +1009,7 @@ async function main() {
   await nextTask();
   check(
     "late fetch completion cannot mutate retained stale DOM",
-    detachedBody.find("diff-progress").length === 1 && detachedBody.find("diff-line").length === 0,
+    detachedBody.find("diff-line").length === 0,
   );
   disposedFetchHandle.dispose();
   check(

@@ -968,6 +968,10 @@ Large pull requests:
   A file past 8 MiB of the whole patch could not be loaded at all before.
 - A diff with files still to load says how many, such as “50 of 1,183 files loaded; the
   rest load as you reach them”, in a commit’s diff in a served folder as well.
+- A deferred file reserves an estimate of its height, the diff asks for one file at a
+  time, the one on screen nearest the top, and renders at most one per frame, and what
+  is at the top of the pane stays there as files fill in.
+  This holds in a commit’s diff in a served folder as well.
 
 Fixes:
 

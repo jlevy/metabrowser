@@ -42,30 +42,67 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
 /**
  * @typedef {object} MountedDiffState
  * @property {DiffViewApi | undefined} api
- * @property {number} activeHydrations
+ * @property {Map<string, FileEntry>} byNewPath Each file by the path it has now.
+ * @property {Map<string, FileEntry>} byOldPath Each file by the path it had.
  * @property {AbortController} controller
+ * @property {Map<string, DeferredFile>} deferred Files asked for when they are reached, by id.
  * @property {number} deferredLeft Files of this comparison not here yet.
+ * @property {Map<HTMLElement, string>} deferredBySection
  * @property {boolean} disposed
  * @property {number} fileTotal
  * @property {FileViewState[]} files
  * @property {number} generation
+ * @property {ReturnType<typeof createHydrationScheduler>} hydration
  * @property {IntersectionObserver | null} hydrationObserver
  * @property {"unified" | "split"} chosenLayout What the reader chose, whatever fits.
  * @property {boolean} insistedOnSplit The reader chose Split where it does not fit.
  * @property {"unified" | "split"} layout What the diff draws.
  * @property {HTMLElement | null} layoutControl
  * @property {number} layoutGeneration
+ * @property {boolean} listTruncated The comparison's own list stopped at its bound.
  * @property {boolean} narrow The diff is too narrow for Split.
  * @property {HTMLElement | null} partialNote
+ * @property {HTMLElement | null} pinned The file a jump put at the top, until the reader moves.
+ * @property {AbortController | null} pinListeners
  * @property {Record<string, unknown>} resolved
  * @property {HTMLElement} root
  * @property {Promise<void>} enhancementTail
- * @property {Map<HTMLElement, {body: HTMLElement, change: Record<string, unknown>, revision: string}>} pendingHydrations
- * @property {{body: HTMLElement, change: Record<string, unknown>, revision: string}[]} queuedHydrations
+ * @property {HTMLElement[]} sections In the comparison's order.
+ * @property {HTMLElement | null} spacer Room past the last file, for a jump near the end.
  * @property {Set<number>} timers
  * @property {ReturnType<typeof import("./diff-view-file.js").createViewFileOpener> | null} viewFile
  * @property {HTMLElement | null} viewFileBusy The control whose switch is on its way.
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
+ */
+
+/**
+ * @typedef {object} FileEntry
+ * @property {Record<string, unknown>} change
+ * @property {HTMLElement} section
+ * @property {() => void} expand
+ */
+
+/**
+ * @typedef {object} DeferredFile
+ * @property {HTMLElement} section
+ * @property {HTMLElement} body
+ * @property {Record<string, unknown>} change
+ * @property {string} revision
+ * @property {HTMLElement | null} box The progress box while it is being asked for.
+ * @property {ReturnType<typeof setTimeout> | null} slow
+ * @property {number} startedAt
+ */
+
+/**
+ * What a jump did, for the changed-files list that asked. A row in that list comes from
+ * GitHub's own list of the pull request's files, so it can name a path this comparison does
+ * not hold: the two are computed apart, and this one stops at its bound.
+ *
+ * @typedef {(
+ *   {kind: "jumped", fileId: string, path: string, availability: string, lines: Promise<JumpOutcome>} |
+ *   {kind: "not_in_comparison", path: string, listTruncated: boolean} |
+ *   {kind: "disposed", path: string}
+ * )} FileJump
  */
 
 /**
@@ -117,11 +154,6 @@ const INTRALINE_WORK_BUDGET = 1_000_000;
 // A load this slow is worth a console record even when it eventually
 // succeeds: a reader watching a spinner deserves a diagnosable stall.
 const SLOW_LOAD_MS = 4000;
-
-// Chrome 151 on an 88-file comparison: a bottom jump made 24 deferred
-// sections visible together. Two active requests preserve parallel progress
-// without letting one viewport turn into a Git subprocess fanout.
-const MAX_CONCURRENT_HYDRATIONS = 2;
 
 /**
  * The app's standard progress box: hidden until --loading-state-delay,
@@ -1290,109 +1322,427 @@ function renderPartialNote(view) {
   note.hidden = text === null;
 }
 
+// ── Which deferred file is asked for next ───────────────────────
+//
+// A large comparison's files past its first page are bars with no lines until a reader reaches
+// them. This decides when each is requested and rendered, and owns no DOM, so
+// tests/dom/diff-file-jump-session.js runs it with a scripted clock. It is here and not in a
+// module of its own because a served folder's first diff requests the modules v0.11.0 did,
+// which tests/test_diff_view_file_session.py holds.
+//
+// - One request at a time. The route answers a file in tens of milliseconds, so a second one
+//   buys nothing, and a viewport that shows several bars would otherwise fan out.
+// - At most one file rendered per frame: the next request starts only after the frame
+//   that rendered the last, so input is never waiting behind rendering it caused.
+// - The file a reader jumped to is first, ahead of anything else, and latest wins: a jump
+//   cancels the request for anything else, and a request for a file that left the viewport
+//   is cancelled too, because the reader did not ask for the files they passed.
+// - A jump after a quiet moment asks at once. A jump during a burst, which is a held key, waits
+//   until the burst stops, so a key held through ninety files asks for the one it rests on.
+
+// How long a burst of jumps has to stop before the file it rests on is asked for. A key held
+// down repeats about every 33 ms, so this is past one repeat, and it is what's left of the lines
+// budget of 150 ms after a request of 13 to 30 ms and a frame of 16 ms.
+export const JUMP_QUIET_MS = 50;
+
 /**
- * Fetch one deferred file's hunks and splice them in, behind the
- * standard progress box.
+ * @typedef {"painted" | "none" | "failed" | "superseded"} JumpOutcome
+ *   What became of a jump's lines: on the page, none to show, the request failed, or another
+ *   jump came first.
+ *
+ * @typedef {{
+ *   load(id: string, signal: AbortSignal): Promise<unknown>,
+ *   render(id: string, payload: unknown): JumpOutcome,
+ *   fail(id: string, error: unknown): void,
+ *   abandon(id: string): void,
+ *   frame(callback: () => void): unknown,
+ *   cancelFrame(handle: unknown): void,
+ *   after(delayMs: number, callback: () => void): unknown,
+ *   cancelAfter(handle: unknown): void,
+ *   now(): number,
+ * }} HydrationDependencies
+ *
+ * @typedef {{id: string, index: number, state: "pending" | "loading" | "done"}} HydrationEntry
+ */
+
+/**
+ * @param {HydrationDependencies} deps
+ */
+export function createHydrationScheduler(deps) {
+  /** @type {Map<string, HydrationEntry>} */
+  const entries = new Map();
+  /** The pending entries the viewport shows. @type {Set<HydrationEntry>} */
+  const visible = new Set();
+  /** @type {{entry: HydrationEntry, controller: AbortController} | null} */
+  let active = null;
+  /** A request that answered, waiting for its frame. @type {{entry: HydrationEntry, frame: unknown} | null} */
+  let arrived = null;
+  /** @type {{entry: HydrationEntry, settle: (outcome: JumpOutcome) => void} | null} */
+  let target = null;
+  /** @type {unknown} */
+  let quietTimer = null;
+  let lastJumpAt = Number.NEGATIVE_INFINITY;
+  let requests = 0;
+  let disposed = false;
+
+  /** @param {JumpOutcome} outcome */
+  function settleTarget(outcome) {
+    if (target !== null) {
+      target.settle(outcome);
+      target = null;
+    }
+  }
+
+  function clearQuiet() {
+    if (quietTimer !== null) {
+      deps.cancelAfter(quietTimer);
+      quietTimer = null;
+    }
+  }
+
+  /** Forget the request or the answer in hand, and leave its file to be asked for again. */
+  function abandonWork() {
+    if (active !== null) {
+      const { entry, controller } = active;
+      active = null;
+      entry.state = "pending";
+      controller.abort();
+      deps.abandon(entry.id);
+    }
+    if (arrived !== null) {
+      const { entry, frame } = arrived;
+      arrived = null;
+      entry.state = "pending";
+      deps.cancelFrame(frame);
+      deps.abandon(entry.id);
+    }
+  }
+
+  /** @param {HydrationEntry} entry */
+  function begin(entry) {
+    const controller = new AbortController();
+    entry.state = "loading";
+    active = { entry, controller };
+    requests += 1;
+    deps.load(entry.id, controller.signal).then(
+      (payload) => {
+        if (active?.entry !== entry) {
+          return;
+        }
+        active = null;
+        arrived = {
+          entry,
+          frame: deps.frame(() => {
+            arrived = null;
+            entry.state = "done";
+            visible.delete(entry);
+            const outcome = deps.render(entry.id, payload);
+            if (target?.entry === entry) {
+              settleTarget(outcome);
+            }
+            pump();
+          }),
+        };
+      },
+      (error) => {
+        if (active?.entry !== entry) {
+          return;
+        }
+        active = null;
+        entry.state = "done";
+        visible.delete(entry);
+        deps.fail(entry.id, error);
+        if (target?.entry === entry) {
+          settleTarget("failed");
+        }
+        pump();
+      },
+    );
+  }
+
+  /** The topmost file the viewport shows. @returns {HydrationEntry | null} */
+  function nextVisible() {
+    /** @type {HydrationEntry | null} */
+    let best = null;
+    for (const entry of visible) {
+      if (entry.state === "pending" && (best === null || entry.index < best.index)) {
+        best = entry;
+      }
+    }
+    return best;
+  }
+
+  function pump() {
+    if (disposed || active !== null || arrived !== null || quietTimer !== null) {
+      return;
+    }
+    if (target !== null) {
+      begin(target.entry);
+      return;
+    }
+    const quietLeft = lastJumpAt + JUMP_QUIET_MS - deps.now();
+    if (quietLeft > 0) {
+      quietTimer = deps.after(quietLeft, () => {
+        quietTimer = null;
+        pump();
+      });
+      return;
+    }
+    const entry = nextVisible();
+    if (entry !== null) {
+      begin(entry);
+    }
+  }
+
+  return Object.freeze({
+    /**
+     * @param {string} id
+     * @param {number} index The file's place in the comparison.
+     */
+    add(id, index) {
+      entries.set(id, { id, index, state: "pending" });
+    },
+    /**
+     * The viewport began or stopped showing a file.
+     *
+     * @param {string} id
+     * @param {boolean} shown
+     */
+    setVisible(id, shown) {
+      const entry = entries.get(id);
+      if (disposed || entry === undefined || entry.state === "done") {
+        return;
+      }
+      if (shown) {
+        visible.add(entry);
+      } else {
+        visible.delete(entry);
+        const working = active?.entry ?? arrived?.entry;
+        if (working === entry && target?.entry !== entry) {
+          abandonWork();
+        }
+      }
+      pump();
+    },
+    /**
+     * The reader asked for this file. Whatever else is under way stops.
+     *
+     * @param {string} id
+     * @returns {Promise<JumpOutcome> | null} Its lines' outcome, or null for a file that has
+     *   nothing left to ask for.
+     */
+    jump(id) {
+      if (disposed) {
+        return null;
+      }
+      const quiet = deps.now() - lastJumpAt >= JUMP_QUIET_MS;
+      lastJumpAt = deps.now();
+      settleTarget("superseded");
+      clearQuiet();
+      const entry = entries.get(id);
+      const working = active?.entry ?? arrived?.entry ?? null;
+      if (working !== null && working !== entry) {
+        abandonWork();
+      }
+      if (entry === undefined || entry.state === "done") {
+        pump();
+        return null;
+      }
+      /** @type {Promise<JumpOutcome>} */
+      const lines = new Promise((settle) => {
+        target = { entry, settle };
+      });
+      if (entry.state === "pending") {
+        if (quiet) {
+          begin(entry);
+        } else {
+          quietTimer = deps.after(JUMP_QUIET_MS, () => {
+            quietTimer = null;
+            pump();
+          });
+        }
+      }
+      return lines;
+    },
+    dispose() {
+      disposed = true;
+      clearQuiet();
+      abandonWork();
+      settleTarget("superseded");
+      visible.clear();
+    },
+    snapshot: () => ({
+      asking: active?.entry.id ?? null,
+      rendering: arrived?.entry.id ?? null,
+      target: target?.entry.id ?? null,
+      visible: [...visible].map((entry) => entry.id),
+      requests,
+    }),
+  });
+}
+
+/**
+ * Rows a deferred file should reserve until it arrives. An estimate from the manifest's line
+ * counts, in the layout it will draw: a long run folds to its visible rows, and a change on
+ * both sides has context around it. Pure.
+ *
+ * @param {Record<string, unknown>} change
+ * @param {"unified" | "split"} layout
+ */
+export function reservedRows(change, layout) {
+  const adds = Number(change.additions ?? 0);
+  const dels = Number(change.deletions ?? 0);
+  const changed = layout === "split" ? Math.max(adds, dels) : adds + dels;
+  const shown = FOLD_THRESHOLD > 0 && changed > FOLD_THRESHOLD ? FOLD_VISIBLE + 1 : changed;
+  const context = adds > 0 && dels > 0 ? 6 : 0;
+  return shown + context + 1;
+}
+
+/**
+ * Hold a file's place on the page until its lines arrive, so what they push down is the
+ * difference between this estimate and the truth and not a whole file.
  *
  * @param {HTMLElement} body
  * @param {Record<string, unknown>} change
- * @param {string} revision
- * @param {MountedDiffState} view
+ * @param {"unified" | "split"} layout
  */
-async function hydrateDeferred(body, change, revision, view) {
-  const generation = view.generation;
-  const side = /** @type {Record<string, unknown> | undefined} */ (change.new ?? change.old);
-  const path = String(side?.path ?? "");
-  const box = progressBox(`Loading the diff for ${path}`);
-  body.append(box);
-  const started = Date.now();
-  const slow = setTimeout(() => {
-    view.timers.delete(slow);
-    if (mountIsCurrent(view, generation)) {
-      reportLoad("file hydration", { revision, path, elapsedMs: Date.now() - started });
-    }
-  }, SLOW_LOAD_MS);
-  view.timers.add(slow);
-  try {
-    const payload = await loadOneChange(revision, path, { signal: view.controller.signal });
-    if (!mountIsCurrent(view, generation)) {
-      return;
-    }
-    const result = validateDocument(payload);
-    if (!result.ok) {
-      throw new Error(`invalid document: ${result.error}`);
-    }
-    const loaded =
-      /** @type {{manifest: {files: Record<string, unknown>[]}, patches: Record<string, Record<string, unknown>>}} */ (
-        result.document
-      );
-    const only = loaded.manifest.files[0];
-    const patch = only ? loaded.patches[String(only.id)] : undefined;
-    if (only && patch === undefined && AVAILABILITY_COPY[String(only.availability)]) {
-      // The server looked and has a reason: a file past the bound of one patch.
-      box.remove();
-      body.append(el("div", "diff-availability", AVAILABILITY_COPY[String(only.availability)]));
-      return;
-    }
-    if (!only || patch === undefined) {
-      throw new Error("the comparison returned no hunks for this file");
-    }
-    box.remove();
-    const hunks = /** @type {Record<string, unknown>[]} */ (patch.hunks);
-    if (hunks.length === 0) {
-      body.append(el("div", "diff-availability", "No content changes."));
-    } else {
-      const renderApi = view.api ?? plainSyntaxApi();
-      const state = createFileState(only, patch, renderApi, body);
-      view.files.push(state);
-      renderFileBody(state, view.layout);
-      scheduleFileEnhancement(view, state);
-    }
-  } catch (error) {
-    if (
-      !mountIsCurrent(view, generation) ||
-      view.controller.signal.aborted ||
-      (error instanceof DOMException && error.name === "AbortError")
-    ) {
-      return;
-    }
-    reportLoad(
-      "file hydration",
-      { revision, path, hook: "diff/comparison", elapsedMs: Date.now() - started },
-      error,
-    );
-    box.remove();
-    body.append(el("div", "diff-availability", "Could not load this file's changes."));
-  } finally {
-    clearTimeout(slow);
-    view.timers.delete(slow);
-    if (mountIsCurrent(view, generation)) {
-      view.deferredLeft -= 1;
-      renderPartialNote(view);
-    }
+function reserveBody(body, change, layout) {
+  if (body.style) {
+    // The rows' own height: `line-height: 1.5` at the code font's size, in styles.css.
+    body.style.minHeight = `calc(${reservedRows(change, layout)} * 1.5 * var(--code-font-size, 0.85rem))`;
   }
 }
 
-/** @param {MountedDiffState} view */
-function drainDeferredHydrations(view) {
-  if (view.disposed || view.controller.signal.aborted) {
-    return;
+/** @param {HTMLElement} body */
+function unreserveBody(body) {
+  if (body.style) {
+    body.style.minHeight = "";
   }
-  while (view.activeHydrations < MAX_CONCURRENT_HYDRATIONS && view.queuedHydrations.length > 0) {
-    const pending = view.queuedHydrations.shift();
-    if (!pending) {
-      return;
+}
+
+/** @param {DeferredFile} file */
+function deferredPath(file) {
+  const side = /** @type {Record<string, unknown> | undefined} */ (
+    file.change.new ?? file.change.old
+  );
+  return String(side?.path ?? "");
+}
+
+/**
+ * Ask for one deferred file, behind the standard progress box.
+ *
+ * @param {DeferredFile} file
+ * @param {AbortSignal} signal
+ * @param {MountedDiffState} view
+ */
+async function loadDeferred(file, signal, view) {
+  const path = deferredPath(file);
+  file.box = progressBox(`Loading the diff for ${path}`);
+  file.body.append(file.box);
+  file.startedAt = Date.now();
+  const generation = view.generation;
+  file.slow = setTimeout(() => {
+    if (mountIsCurrent(view, generation)) {
+      reportLoad("file hydration", {
+        revision: file.revision,
+        path,
+        elapsedMs: Date.now() - file.startedAt,
+      });
     }
-    const generation = view.generation;
-    view.activeHydrations += 1;
-    void hydrateDeferred(pending.body, pending.change, pending.revision, view).finally(() => {
-      if (!mountIsCurrent(view, generation)) {
-        return;
-      }
-      view.activeHydrations -= 1;
-      drainDeferredHydrations(view);
-    });
+  }, SLOW_LOAD_MS);
+  const payload = await loadOneChange(file.revision, path, { signal });
+  const result = validateDocument(payload);
+  if (!result.ok) {
+    throw new Error(`invalid document: ${result.error}`);
   }
+  return /** @type {{manifest: {files: Record<string, unknown>[]}, patches: Record<string, Record<string, unknown>>}} */ (
+    result.document
+  );
+}
+
+/** @param {DeferredFile} file */
+function stopLoading(file) {
+  if (file.slow !== null) {
+    clearTimeout(file.slow);
+    file.slow = null;
+  }
+  file.box?.remove();
+  file.box = null;
+}
+
+/**
+ * A deferred file is no longer waited for: it arrived or it failed.
+ *
+ * @param {DeferredFile} file
+ * @param {MountedDiffState} view
+ */
+function settleDeferred(file, view) {
+  stopLoading(file);
+  unreserveBody(file.body);
+  view.deferredLeft -= 1;
+  renderPartialNote(view);
+  view.hydrationObserver?.unobserve(file.section);
+  view.deferred.delete(String(file.change.id));
+  view.deferredBySection.delete(file.section);
+  if (view.deferred.size === 0) {
+    view.hydrationObserver?.disconnect();
+    view.hydrationObserver = null;
+  }
+}
+
+/**
+ * Splice an answer in. Runs in its own frame, and what the reader is looking at stays where it
+ * is: a jump's file, or the first file at the top of the pane.
+ *
+ * @param {DeferredFile} file
+ * @param {{manifest: {files: Record<string, unknown>[]}, patches: Record<string, Record<string, unknown>>}} loaded
+ * @param {MountedDiffState} view
+ * @returns {JumpOutcome}
+ */
+function renderDeferred(file, loaded, view) {
+  const anchor = view.pinned === null ? placeOfTopFile(view) : null;
+  settleDeferred(file, view);
+  const only = loaded.manifest.files[0];
+  const patch = only ? loaded.patches[String(only.id)] : undefined;
+  /** @type {JumpOutcome} */
+  let outcome = "none";
+  if (only && patch === undefined && AVAILABILITY_COPY[String(only.availability)]) {
+    // The server looked and has a reason: a file past the bound of one patch.
+    file.body.append(el("div", "diff-availability", AVAILABILITY_COPY[String(only.availability)]));
+  } else if (!only || patch === undefined) {
+    return failDeferred(file, new Error("the comparison returned no hunks for this file"), view);
+  } else if (/** @type {unknown[]} */ (patch.hunks).length === 0) {
+    file.body.append(el("div", "diff-availability", "No content changes."));
+  } else {
+    const state = createFileState(only, patch, view.api ?? plainSyntaxApi(), file.body);
+    view.files.push(state);
+    renderFileBody(state, view.layout);
+    scheduleFileEnhancement(view, state);
+    outcome = "painted";
+  }
+  holdPlace(view, anchor);
+  return outcome;
+}
+
+/**
+ * @param {DeferredFile} file
+ * @param {unknown} error
+ * @param {MountedDiffState} view
+ * @returns {JumpOutcome}
+ */
+function failDeferred(file, error, view) {
+  reportLoad(
+    "file hydration",
+    {
+      revision: file.revision,
+      path: deferredPath(file),
+      hook: "diff/comparison",
+      elapsedMs: Date.now() - file.startedAt,
+    },
+    error,
+  );
+  file.body.append(el("div", "diff-availability", "Could not load this file's changes."));
+  return "failed";
 }
 
 /**
@@ -1407,34 +1757,264 @@ function drainDeferredHydrations(view) {
  * @param {MountedDiffState} view
  */
 function queueDeferredHydration(section, body, change, revision, view) {
-  view.pendingHydrations.set(section, { body, change, revision });
+  const id = String(change.id);
+  view.deferred.set(id, {
+    body,
+    box: null,
+    change,
+    revision,
+    section,
+    slow: null,
+    startedAt: 0,
+  });
+  view.deferredBySection.set(section, id);
+  view.hydration.add(id, view.deferred.size);
+  reserveBody(body, change, view.layout);
   if (view.hydrationObserver === null) {
-    view.hydrationObserver = new IntersectionObserver((entries, observer) => {
+    view.hydrationObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
-        if (!entry.isIntersecting) {
-          continue;
-        }
-        const target = /** @type {HTMLElement} */ (entry.target);
-        const pending = view.pendingHydrations.get(target);
-        if (!pending) {
-          continue;
-        }
-        view.pendingHydrations.delete(target);
-        observer.unobserve(target);
-        if (!view.disposed && !view.controller.signal.aborted) {
-          view.queuedHydrations.push(pending);
-          drainDeferredHydrations(view);
-        }
-      }
-      if (view.pendingHydrations.size === 0) {
-        observer.disconnect();
-        if (view.hydrationObserver === observer) {
-          view.hydrationObserver = null;
+        const shown = view.deferredBySection.get(/** @type {HTMLElement} */ (entry.target));
+        if (shown !== undefined && !view.disposed && !view.controller.signal.aborted) {
+          view.hydration.setVisible(shown, entry.isIntersecting);
         }
       }
     });
   }
   view.hydrationObserver.observe(section);
+}
+
+/**
+ * What runs a view's hydration in a browser: its frames and its timers.
+ *
+ * @param {MountedDiffState} view
+ * @returns {HydrationDependencies}
+ */
+function hydrationHost(view) {
+  /** @param {string} id */
+  const fileOf = (id) => /** @type {DeferredFile} */ (view.deferred.get(id));
+  return {
+    load: (id, signal) => loadDeferred(fileOf(id), signal, view),
+    render: (id, payload) =>
+      renderDeferred(
+        fileOf(id),
+        /** @type {Parameters<typeof renderDeferred>[1]} */ (payload),
+        view,
+      ),
+    fail(id, error) {
+      const file = fileOf(id);
+      settleDeferred(file, view);
+      failDeferred(file, error, view);
+    },
+    abandon: (id) => stopLoading(fileOf(id)),
+    frame: (callback) =>
+      typeof requestAnimationFrame === "function"
+        ? requestAnimationFrame(callback)
+        : setTimeout(callback, 0),
+    cancelFrame(handle) {
+      if (typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(/** @type {number} */ (handle));
+      } else {
+        clearTimeout(/** @type {ReturnType<typeof setTimeout>} */ (handle));
+      }
+    },
+    after: (delayMs, callback) => setTimeout(callback, delayMs),
+    cancelAfter: (handle) => clearTimeout(/** @type {ReturnType<typeof setTimeout>} */ (handle)),
+    now: () => Date.now(),
+  };
+}
+
+// ── Going to a file ─────────────────────────────────────────────
+
+/** The element that scrolls this diff. @param {MountedDiffState} view */
+function scrollerOf(view) {
+  return /** @type {HTMLElement | null} */ (
+    view.root.closest?.("[data-kpress-viewport]") ??
+      view.root.ownerDocument?.scrollingElement ??
+      null
+  );
+}
+
+/**
+ * Where a jump puts the pane, and the room past the last file it takes for the target to
+ * reach the top. Pure. Tops and bottoms are in the viewport's coordinates, and *contentBottom*
+ * is the end of the diff without any room already added.
+ *
+ * @param {{paneTop: number, paneHeight: number, scrollTop: number, targetTop: number, contentBottom: number}} geometry
+ * @returns {{scrollTop: number, spacer: number}}
+ */
+export function jumpPlacement({ paneTop, paneHeight, scrollTop, targetTop, contentBottom }) {
+  return {
+    scrollTop: scrollTop + targetTop - paneTop,
+    spacer: Math.max(0, paneHeight - (contentBottom - targetTop)),
+  };
+}
+
+/**
+ * Put a file at the top of the pane, with no smooth scroll, and room below it if it is near
+ * the end. Room rather than a smaller scroll, because a file that cannot reach the top is
+ * pushed off the screen by the files above it filling in: 53,661 px, measured 2026-11-02
+ * on a comparison of 1,183 files, whatever the browser's scroll anchoring holds.
+ *
+ * @param {MountedDiffState} view
+ * @param {HTMLElement} section
+ */
+function placeAtTop(view, section) {
+  const pane = scrollerOf(view);
+  const spacer = view.spacer;
+  if (pane === null || spacer === null) {
+    return;
+  }
+  const paneRect = pane.getBoundingClientRect();
+  const place = jumpPlacement({
+    paneTop: paneRect.top,
+    paneHeight: pane.clientHeight,
+    scrollTop: pane.scrollTop,
+    targetTop: section.getBoundingClientRect().top,
+    contentBottom: view.root.getBoundingClientRect().bottom - spacer.getBoundingClientRect().height,
+  });
+  spacer.style.height = `${place.spacer}px`;
+  pane.scrollTop = place.scrollTop;
+}
+
+/**
+ * The first file at the top of the pane and where it is, for a change that should not move it.
+ * Found by bisection, since the sections are in order: ten reads at 1,183 files.
+ *
+ * @param {MountedDiffState} view
+ * @returns {{section: HTMLElement, top: number} | null}
+ */
+function placeOfTopFile(view) {
+  const pane = scrollerOf(view);
+  if (pane === null || view.sections.length === 0) {
+    return null;
+  }
+  const paneTop = pane.getBoundingClientRect().top;
+  let low = 0;
+  let high = view.sections.length - 1;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (view.sections[middle].getBoundingClientRect().bottom > paneTop) {
+      high = middle;
+    } else {
+      low = middle + 1;
+    }
+  }
+  const section = view.sections[low];
+  return { section, top: section.getBoundingClientRect().top };
+}
+
+/**
+ * The page changed height: put back what the reader was looking at. A browser's scroll
+ * anchoring usually has, and this measures rather than assumes, so it adds nothing to that
+ * and holds in a browser without it.
+ *
+ * @param {MountedDiffState} view
+ * @param {{section: HTMLElement, top: number} | null} [anchor]
+ */
+function holdPlace(view, anchor = null) {
+  if (view.pinned !== null) {
+    placeAtTop(view, view.pinned);
+    return;
+  }
+  if (anchor !== null) {
+    const pane = scrollerOf(view);
+    const moved = anchor.section.getBoundingClientRect().top - anchor.top;
+    if (pane !== null && Math.abs(moved) >= 0.5) {
+      pane.scrollTop += moved;
+    }
+  }
+}
+
+/**
+ * From the reader's own move on, the place is theirs. Only input says so: a browser's scroll
+ * anchoring and this view's own corrections move the pane too.
+ *
+ * @param {MountedDiffState} view
+ * @param {HTMLElement} pane
+ */
+function releasePinOnInput(view, pane) {
+  if (view.pinListeners !== null) {
+    return;
+  }
+  const listening = new AbortController();
+  view.pinListeners = listening;
+  const options = { capture: true, passive: true, signal: listening.signal };
+  const release = () => {
+    view.pinned = null;
+  };
+  for (const type of ["wheel", "touchstart", "pointerdown"]) {
+    pane.addEventListener(type, release, options);
+  }
+  // A list that moves by key asks again after this, in the same event.
+  pane.ownerDocument?.defaultView?.addEventListener("keydown", release, options);
+}
+
+/**
+ * The file a path names: what it is called now, which is what GitHub's list of a pull request's
+ * files gives as `filename`, or else what it was called, its `previous_filename`.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} path
+ */
+function fileEntryForPath(view, path) {
+  return view.byNewPath.get(path) ?? view.byOldPath.get(path) ?? null;
+}
+
+/**
+ * Go to one file of this diff, at the top of the pane, and ask for its lines first.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} path
+ * @returns {FileJump}
+ */
+export function jumpToFile(view, path) {
+  if (view.disposed) {
+    return { kind: "disposed", path };
+  }
+  const entry = fileEntryForPath(view, path);
+  if (entry === null) {
+    return { kind: "not_in_comparison", path, listTruncated: view.listTruncated };
+  }
+  entry.expand();
+  view.pinned = entry.section;
+  placeAtTop(view, entry.section);
+  const pane = scrollerOf(view);
+  if (pane !== null) {
+    releasePinOnInput(view, pane);
+  }
+  const fileId = String(entry.change.id);
+  const lines = view.hydration.jump(fileId);
+  const availability = String(entry.change.availability);
+  return {
+    kind: "jumped",
+    fileId,
+    path,
+    availability,
+    lines:
+      lines ?? Promise.resolve(entry.section.querySelector?.(".diff-hunk") ? "painted" : "none"),
+  };
+}
+
+/**
+ * Keep a file findable by either of its paths. A path a file has now wins over a path another
+ * had: a copy's source can be a file changed in its own right.
+ *
+ * @param {MountedDiffState} view
+ * @param {Record<string, unknown>} change
+ * @param {HTMLElement} section
+ * @param {() => void} expand
+ */
+function rememberFile(view, change, section, expand) {
+  const entry = { change, section, expand };
+  view.sections.push(section);
+  const oldSide = /** @type {{path?: string} | undefined | null} */ (change.old);
+  const newSide = /** @type {{path?: string} | undefined | null} */ (change.new);
+  if (newSide?.path !== undefined && !view.byNewPath.has(newSide.path)) {
+    view.byNewPath.set(newSide.path, entry);
+  }
+  if (oldSide?.path !== undefined && !view.byOldPath.has(oldSide.path)) {
+    view.byOldPath.set(oldSide.path, entry);
+  }
 }
 
 /**
@@ -1464,6 +2044,15 @@ function renderFileSection(change, patch, context, view) {
   // synthesized click bubbles here. Only the copy and View file
   // controls opt out.
   let expanded = true;
+  /** @param {boolean} next */
+  const setExpanded = (next) => {
+    expanded = next;
+    toggle.setAttribute("aria-expanded", String(expanded));
+    toggle.classList.toggle("expanded", expanded);
+    toggle.classList.toggle("collapsed", !expanded);
+    body.classList.toggle("diff-file-body-collapsed", !expanded);
+    section.classList.toggle("diff-file-collapsed", !expanded);
+  };
   bar.addEventListener("click", (event) => {
     const origin = /** @type {{closest?: (selector: string) => unknown}} */ (event.target);
     if (
@@ -1472,12 +2061,12 @@ function renderFileSection(change, patch, context, view) {
     ) {
       return;
     }
-    expanded = !expanded;
-    toggle.setAttribute("aria-expanded", String(expanded));
-    toggle.classList.toggle("expanded", expanded);
-    toggle.classList.toggle("collapsed", !expanded);
-    body.classList.toggle("diff-file-body-collapsed", !expanded);
-    section.classList.toggle("diff-file-collapsed", !expanded);
+    setExpanded(!expanded);
+  });
+  rememberFile(view, change, section, () => {
+    if (!expanded) {
+      setExpanded(true);
+    }
   });
 
   const availability = String(change.availability);
@@ -1514,7 +2103,7 @@ function renderFileSection(change, patch, context, view) {
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
  *   page alone, so this module names it only in types.
- * @returns {{cancelPending: () => void, dispose: () => void}}
+ * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => {fileId: string, kind: string, availability: string} | null, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
@@ -1524,32 +2113,40 @@ export function mountDiffView(container, document_, api, options = {}) {
   const narrow = tooNarrowForSplit(container.clientWidth, fontSizeOf(container), false);
   /** @type {MountedDiffState} */
   const view = {
-    activeHydrations: 0,
     api,
+    byNewPath: new Map(),
+    byOldPath: new Map(),
     chosenLayout,
     controller: new AbortController(),
+    deferred: new Map(),
+    deferredBySection: new Map(),
     deferredLeft: 0,
     disposed: false,
     fileTotal: 0,
     files: [],
     generation: 1,
+    hydration: /** @type {MountedDiffState["hydration"]} */ (/** @type {unknown} */ (null)),
     hydrationObserver: null,
     insistedOnSplit: false,
     layout: drawnLayout(chosenLayout, narrow, false),
     layoutControl: null,
     layoutGeneration: 0,
+    listTruncated: false,
     narrow,
     partialNote: null,
+    pinListeners: null,
+    pinned: null,
     resolved: /** @type {Record<string, unknown>} */ (document_.resolved ?? {}),
     root,
     enhancementTail: Promise.resolve(),
-    pendingHydrations: new Map(),
-    queuedHydrations: [],
+    sections: [],
+    spacer: null,
     timers: new Set(),
     viewFile: null,
     viewFileBusy: null,
     yielders: new Set(),
   };
+  view.hydration = createHydrationScheduler(hydrationHost(view));
   if (options.viewFile) {
     view.viewFile = options.viewFile({
       released() {
@@ -1566,6 +2163,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     );
   const patches = /** @type {Record<string, Record<string, unknown>>} */ (document_.patches);
   const totals = manifest.totals;
+  view.listTruncated = manifest.truncated === true;
   const { toolbar, unbind } = renderDiffToolbar(totals, view, options.showSummary !== false);
   root.append(toolbar);
   // What the source could not model is left out of the files below, so it is said above them.
@@ -1592,6 +2190,8 @@ export function mountDiffView(container, document_, api, options = {}) {
       if (manifest.truncated) {
         root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));
       }
+      view.spacer = el("div", "diff-end-spacer");
+      root.append(view.spacer);
     },
     { file_count: manifest.files.length },
   );
@@ -1608,6 +2208,8 @@ export function mountDiffView(container, document_, api, options = {}) {
   const widths =
     typeof ResizeObserver === "function"
       ? new ResizeObserver((entries) => {
+          // Before this frame paints: a height that changed does not show a place that moved.
+          holdPlace(view);
           const width = entries.at(-1)?.contentRect.width ?? 0;
           if (width === observedWidth) {
             return;
@@ -1633,8 +2235,12 @@ export function mountDiffView(container, document_, api, options = {}) {
     view.controller.abort();
     view.hydrationObserver?.disconnect();
     view.hydrationObserver = null;
-    view.pendingHydrations.clear();
-    view.queuedHydrations.length = 0;
+    view.hydration.dispose();
+    view.deferred.clear();
+    view.deferredBySection.clear();
+    view.pinListeners?.abort();
+    view.pinListeners = null;
+    view.pinned = null;
     for (const file of view.files) {
       cancelFoldMaterializations(file);
     }
@@ -1649,6 +2255,29 @@ export function mountDiffView(container, document_, api, options = {}) {
     view.yielders.clear();
   }
   return {
+    /**
+     * Go to the file a path names: see `FileJump`, and docs/large-content-rendering.md
+     * ("Going to a file") for what it promises.
+     *
+     * @param {string} path
+     */
+    scrollToFile: (path) => jumpToFile(view, path),
+    /**
+     * Whether this comparison holds a path, for a list of files from elsewhere.
+     *
+     * @param {string} path
+     * @returns {{fileId: string, kind: string, availability: string} | null}
+     */
+    fileForPath(path) {
+      const entry = fileEntryForPath(view, path);
+      return entry === null
+        ? null
+        : {
+            fileId: String(entry.change.id),
+            kind: String(entry.change.kind),
+            availability: String(entry.change.availability),
+          };
+    },
     cancelPending() {
       if (!view.disposed) {
         cancelPendingWork();

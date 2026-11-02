@@ -1717,6 +1717,9 @@ export function mountPullPage(container, ctx, mb) {
     body.replaceChildren(...sections);
   }
 
+  /** Settles when the diff last asked for has mounted, or was replaced. */
+  let diffMounted = Promise.resolve();
+
   function disposeDiff() {
     diffHandle?.dispose?.();
     diffHandle = null;
@@ -1802,7 +1805,7 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     if (action === "mount") {
-      void mountDiff(comparison);
+      diffMounted = mountDiff(comparison);
     } else if (action === "offer") {
       const offer = h("button", { type: "button", class: "btn github-pull-newer" }, [
         "Show the newer changes",
@@ -1915,6 +1918,34 @@ export function mountPullPage(container, ctx, mb) {
         place?.keeper.land();
       }
     },
+    /**
+     * Go to a file of Files changed, for a list of the pull request's files beside the page.
+     * docs/large-content-rendering.md ("Going to a file") says what it promises.
+     *
+     * @param {string} path
+     * @returns {import("../diff/diff-view.js").FileJump | {kind: "no_diff", path: string}}
+     */
+    scrollToFile(path) {
+      if (diffHandle === null) {
+        return { kind: "no_diff", path };
+      }
+      // A jump is the reader's own move, and a list beside the pane is not an input to it.
+      place?.keeper.readerMoved();
+      return /** @type {{scrollToFile: (path: string) => import("../diff/diff-view.js").FileJump}} */ (
+        diffHandle
+      ).scrollToFile(path);
+    },
+    /**
+     * Whether Files changed holds a path, or null while no diff is mounted.
+     *
+     * @param {string} path
+     */
+    fileForPath: (path) =>
+      /** @type {{fileForPath?: (path: string) => unknown} | null} */ (diffHandle)?.fileForPath?.(
+        path,
+      ) ?? null,
+    /** Settles when a diff asked for by `setTab("files")` has mounted. */
+    whenFilesReady: () => diffMounted,
     dispose() {
       listening.abort();
       observer?.disconnect();

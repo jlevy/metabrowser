@@ -461,6 +461,7 @@ type MetabrowserPullRouteRuntime = Readonly<{
     show(
       route: Readonly<{ number: number; tab: string }>,
     ): Promise<{ status: "opened" | "cancelled" }>;
+    page(): Handle | null;
     shown(): number | null;
   }>;
   parsePull(pathname: string): Readonly<{ number: number; tab: string }> | null;

@@ -250,6 +250,54 @@ artificially small file-size category.
 The fixture and retained-heap evidence live in the
 [diff intraline bound benchmark](../explorations/diff-intraline/).
 
+**A large comparison hydrates what the reader is on.** A file past a comparison’s first
+page is a bar until it is reached.
+`createHydrationScheduler` in `builtin_plugins/diff/diff-view.js` asks for one file at a
+time and renders at most one per frame, the file on screen nearest the top first, so a
+viewport of bars is not a fan-out and input never waits behind rendering it caused.
+A request for a file that left the viewport is cancelled.
+While it waits, a file reserves an estimate of its height from the manifest’s line
+counts, which keeps a page’s scroll height and a reader’s place close to the truth, and
+the first file at the top of the pane stays where it is as files above or inside it fill
+in. The route’s 8 MiB bound is per file: see `MAX_FILE_PATCH_BYTES`.
+
+### Going to a file
+
+`scrollToFile(path)` is the diff view’s way to a file, on the handle `mountDiffView`
+returns and passed through by the pull-request page’s handle.
+It exists for a list of a comparison’s files, so it takes a path and not a file id.
+
+- **A path** is what the file is called now, which is GitHub’s `filename` for a renamed
+  file, or else what it was called, its `previous_filename`, or a deleted file’s path.
+  `fileForPath(path)` answers whether the comparison holds one, without moving anything.
+- **The answer** is immediate and typed, since a list from GitHub and a comparison
+  computed here can differ:
+  - `{kind: "jumped", fileId, path, availability, lines}`, where `lines` is a promise of
+    `"painted"`, `"none"` for a file with nothing to show, `"failed"`, or `"superseded"`
+    by a later jump.
+  - `{kind: "not_in_comparison", path, listTruncated}`, and nothing moved.
+    `listTruncated` says the comparison’s own list stopped at its bound, so the file may
+    exist past it.
+  - `{kind: "disposed", path}` from a view that is gone, and on the page’s handle
+    `{kind: "no_diff", path}` while Files changed is not mounted, for which
+    `setTab("files")` and `whenFilesReady()` are the way there.
+- **The file** is at the top of the pane when it returns, with no smooth scroll,
+  expanded if it was collapsed, and stays there as anything else fills in, until the
+  reader moves by wheel, touch, pointer or key.
+  A file too near the end to reach the top gets room past the last file, the same way an
+  editor scrolls past its end, because otherwise the files above it filling in push it
+  off the screen.
+- **Its lines** are asked for first and everything else stops: a request for another
+  file is cancelled and the latest jump wins.
+  A jump after a quiet moment asks at once.
+  A jump within `JUMP_QUIET_MS` of the last, which is a held key, asks only when the
+  burst stops, for the file it rests on.
+
+A list calls it on every step of a held key; it is cheap, and it does not need
+debouncing. `tests/dom/diff-file-jump-session.js` pins all of this, and
+`explorations/performance-loop/experiments/exp-040-files-changed-recomputes-the-whole-patch-per-request.md`
+holds the budgets and what was measured against them.
+
 **Fingerprint across chunks.** Every chunked response carries `mtime_hash`; a mismatch
 means the file changed, and the view restarts rather than splicing two versions into a
 window that never existed on disk.
@@ -287,6 +335,10 @@ window that never existed on disk.
 | `LINES_PER_BLOCK` | 128 | Deferred layout per scroll-in |
 | `LAYOUT_PROJECTION_BATCH_FILES` | 100 files | Diff layout-switch main-thread work per task |
 | `FOLD_MATERIALIZATION_BATCH_ROWS` | 100 rows | Diff fold-expansion main-thread work per task |
+| `MAX_FILE_PATCH_BYTES` | 8 MiB | One file’s parse and rows in a comparison, and what one run hydrates |
+| `JUMP_QUIET_MS` | 50 ms | How long a burst of jumps stops before its last file is asked for |
+| `MAX_CACHED_MANIFESTS` | 16 | Server memory for comparisons kept by commit ID |
+| `MAX_CACHED_BODY_BYTES` | 64 MiB | Server memory for encoded comparison answers |
 
 A budget that degrades what the reader sees has a second requirement beyond bounding the
 resource: the degradation has to apply uniformly to everything on screen.

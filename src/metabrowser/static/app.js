@@ -7701,7 +7701,13 @@ function startInventoryEventStream() {
 // navigation.js is linked by the same shell response, immediately ahead of this
 // script, so the module and this controller always exist together.
 var navigationController = window.MetabrowserNavigationRoute.createController({
-  apply: applyNavigationTarget,
+  apply(target, context) {
+    // A target is a file or a folder, which read the catalog; a pull request's page has none.
+    if (target) {
+      quickFileCatalogFeed?.release();
+    }
+    return applyNavigationTarget(target, context);
+  },
 });
 window.MetabrowserNavigationRoute.attachController(navigationController);
 
@@ -7944,7 +7950,6 @@ async function applyNavigationTarget(target, context) {
     showNavigationLanding();
     return { status: "cancelled" };
   }
-  quickFileCatalogFeed?.release();
   var path = target.path.replace(/\/$/, "");
   // An address that anchors lines or carries `plain=1` opens the file's Source view.
   // Only an address with a fragment or a query can ask for one, and reading it takes
@@ -8242,6 +8247,7 @@ function clearBrowserFileCache(path) {
 if (typeof window !== "undefined") {
   window.metabrowser.debug = Object.freeze({
     clearFileCache: clearBrowserFileCache,
+    pullPage: () => pullPageHost?.page() ?? null,
     selectFile: selectFile,
   });
 
