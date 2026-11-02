@@ -16,9 +16,9 @@ both as the hook answers it and as KPress alone renders it. The same server then
 pull requests 8 and 9, merged and closed, and read each once, for the header's wording
 in those states and a skipped check, then read 8 again once GitHub named no merger. With
 GitHub out of reach, a refresh of 8 failed and the page's own request found it not due,
-and a press of Fetch for 14 was refused past the bound on jobs. A folder's server answered
-last. The first test here replays that story and fails when the recording no longer
-matches.
+and a press of Fetch for 14 was refused past the bound on jobs. Served an older head of 7,
+a refresh then found the newer one. A folder's server answered last. The first test here
+replays that story and fails when the recording no longer matches.
 
 The clock is fixed, so fetch times are literal. Entity tags are the session's own, since
 the server's are scoped to the build; which answers share one is kept. The Markdown is
@@ -38,6 +38,7 @@ import copy
 import json
 import os
 import re
+import subprocess
 import threading
 import time
 from dataclasses import replace
@@ -88,6 +89,10 @@ pytestmark = [
 ]
 
 
+def _api(answers: dict[str, Any], path: str, entry: Any) -> dict[str, Any]:
+    return {**answers, "api": {**answers["api"], path: entry}}
+
+
 def _answer(response: Any) -> dict[str, Any]:
     """One response as the page sees it: status, entity tag, and body."""
 
@@ -110,6 +115,7 @@ def _switch(response: Any) -> dict[str, Any]:
             "changed": body.get("changed"),
             "pin": status.get("pin"),
             "ref": status.get("ref"),
+            "code": body.get("code"),
         },
     }
 
@@ -273,7 +279,11 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             recorded["markdown missing"] = _answer(
                 client.get(_MARKDOWN, params={**read_7, "part": "issue_comment/1"})
             )
-            # The record names a head the fallback pin is not; the page offers it.
+            # The pin is a branch, so Browse code serves the head first; one the mirror
+            # lacks is refused, and the page says why.
+            recorded["switch_refused"] = _switch(
+                client.post(_PIN, json={"ref": "refs/pull/999/head"}, headers=JSON_BODY)
+            )
             recorded["switch_to_head"] = _switch(
                 client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=JSON_BODY)
             )
@@ -351,6 +361,35 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             while client.get(_PULL, params={"number": 8}).json()["refreshing"]:
                 time.sleep(0.01)
 
+            # Served an older head of 7, as a page left open is: a refresh finds a newer
+            # one, and the pin stays until the reader takes the offer.
+            def _answering_7(head: str) -> None:
+                path = "repos/octo/demo/pulls/7"
+                body = answers["api"][path]["body"]
+                moved = _api(
+                    answers, path, ok(path, {**body, "head": {**body["head"], "sha": head}})
+                )
+                for part, empty in (
+                    ("check-runs", {"total_count": 0, "check_runs": []}),
+                    ("status", {"state": "pending", "statuses": []}),
+                ):
+                    listed = page(f"repos/octo/demo/commits/{head}/{part}")
+                    moved = _api(moved, listed, ok(listed, empty))
+                subprocess.run(
+                    ["git", "--git-dir", str(origin.path), "update-ref", "refs/pull/7/head", head],
+                    check=True,
+                )
+                for name, value in install_fake_gh(tmp_path, moved).items():
+                    monkeypatch.setenv(name, value)
+
+            clock[0] = FETCHED_AT + timedelta(minutes=40)
+            _answering_7(origin["fork_earlier"])
+            _fetched(client, 7)
+            assert client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=JSON_BODY).json()
+            clock[0] = FETCHED_AT + timedelta(minutes=41)
+            _answering_7(origin["fork_head"])
+            recorded["behind_head"] = _fetched(client, 7)
+
             # A number with no record, and a press of Fetch past the bound on jobs.
             recorded["absent_14"] = _answer(client.get(_PULL, params={"number": 14}))
             gate = threading.Event()
@@ -395,6 +434,11 @@ def test_recording_is_what_a_served_pull_request_answers(
         "too_many",
     )
     assert recorded["not_github"]["body"]["reason"] == "not_github"
+    behind = recorded["behind_head"]["body"]
+    assert behind["pin"] == pull_origin["fork_earlier"]
+    assert behind["pin_ref"] == "refs/pull/7/head"
+    assert behind["record"]["pull"]["head"]["sha"] == pull_origin["fork_head"]
+    assert recorded["switch_refused"]["status"] == 404
     assert recorded["pending"]["body"]["refreshing"] is True
     assert recorded["current"]["body"]["state"] == "current"
     assert "<strong>two</strong>" in recorded["markdown body"]["body"]["html"]

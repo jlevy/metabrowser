@@ -83,8 +83,17 @@ function summarizeState(model) {
     canRefresh: model.canRefresh,
     freshness: model.freshness,
     failure: model.failure,
+    browse: browseCode(model),
     headOffer: model.headOffer === null ? null : model.headOffer.ref,
   };
+}
+
+/** What Browse code does. */
+function browseCode(model) {
+  if (model.browse === null) {
+    return null;
+  }
+  return model.browse.kind === "link" ? "link to the root" : `switches to ${model.browse.ref}`;
 }
 
 /** What a reader would see, in a line per item. */
@@ -119,6 +128,7 @@ function summarize(model) {
             items: model.checks.items.map((item) => `[${item.label}] ${item.name} -> ${item.url}`),
           },
     notes: model.notes,
+    browse: browseCode(model),
     headOffer:
       model.headOffer === null
         ? null
@@ -219,6 +229,7 @@ function createPage(runtime, options) {
   let paints = [];
   let rendered = [];
   let reloads = 0;
+  let navigations = [];
   // What the conversation last painted, to run the page's own paint decision on each paint.
   let conversation = { key: "", recordAt: null };
   const server = { pull: null, refresh: [], pin: [], markdown: new Map(), held: [] };
@@ -269,6 +280,9 @@ function createPage(runtime, options) {
     reload() {
       reloads += 1;
     },
+    navigate(href) {
+      navigations.push(href);
+    },
   };
   const controller = runtime.createPullController(deps, options);
 
@@ -296,6 +310,7 @@ function createPage(runtime, options) {
       paints = [];
       rendered = [];
       reloads = 0;
+      navigations = [];
       await action();
       await settle();
       const [timer] = [...timers.values()];
@@ -315,6 +330,9 @@ function createPage(runtime, options) {
       };
       if (reloads > 0) {
         entry.reloads = reloads;
+      }
+      if (navigations.length > 0) {
+        entry.navigated = navigations;
       }
       if (paints.length > 0) {
         const last = paints[paints.length - 1];
@@ -665,13 +683,27 @@ async function main() {
   );
 
   // Serving began on the default branch, because the pull request could not be opened
-  // then; the record now names its head, which the page offers and the pin route takes.
+  // then, and a reader who opened any pull request from a branch is in the same place.
+  // Nothing is wrong, so nothing is offered: Browse code serves the head and then opens.
+  server.pin.push(recorded.switch_refused);
+  steps.push(
+    await page.step("Browse code that the server refuses says why and stays", () =>
+      controller.browseCode("/view/"),
+    ),
+  );
   server.pin.push(recorded.switch_to_head);
   steps.push(
-    await page.step("switch the pin to the head the record names", () => controller.switchToHead()),
+    await page.step("Browse code serves the head and opens the root", () =>
+      controller.browseCode("/view/"),
+    ),
   );
   server.pull = recorded.on_head;
-  steps.push(await page.step("reloaded on the head, nothing is offered", async () => page.fire()));
+  steps.push(await page.step("on the head, Browse code is a link", async () => page.fire()));
+  steps.push(
+    await page.step("with a link, the controller switches nothing", () =>
+      controller.browseCode("/view/"),
+    ),
+  );
 
   steps.push(await page.step("open Files changed", async () => controller.setTab("files")));
   steps.push(await page.step("back to the conversation", async () => controller.setTab("")));
@@ -770,6 +802,19 @@ async function main() {
       failing.controller.requestRefresh(),
     ),
   );
+
+  // Served an older head of this pull request, a refresh found a newer one: the existing
+  // offer, which reloads on the newer head.
+  const behind = createPage(runtime, { number: 7, tab: "", brief: true });
+  behind.clock.now = Date.parse("2026-09-17T12:41:30Z");
+  behind.server.pull = recorded.behind_head;
+  steps.push(
+    await behind.step("served an older head, the page offers the newer one", () =>
+      behind.controller.start(),
+    ),
+  );
+  behind.server.pin.push(recorded.switch_to_head);
+  steps.push(await behind.step("taking the offer reloads", () => behind.controller.switchToHead()));
 
   // A pull request with no record is fetched only by a reader's press: however often the
   // page is read and shown, nothing else asks. Past the bound on jobs the press is refused,
@@ -894,23 +939,24 @@ async function main() {
     }),
   );
 
+  // Two transcripts, since tryscript's matcher has a limit on how long one can be.
   console.log(
     JSON.stringify(
-      {
-        steps,
-        states,
-        notGithub: {
-          status: notGithub.status,
-          message: notGithub.message,
-          canRefresh: notGithub.canRefresh,
-        },
-        links,
-        wire: runtime.gitPathWire("src/app.txt"),
-        pageDefense: inert,
-        filesChanged: files,
-        hunks,
-        place: placeStory(runtime),
-      },
+      process.argv[2] === "hunks-and-place"
+        ? { hunks, place: placeStory(runtime) }
+        : {
+            steps,
+            states,
+            notGithub: {
+              status: notGithub.status,
+              message: notGithub.message,
+              canRefresh: notGithub.canRefresh,
+            },
+            links,
+            wire: runtime.gitPathWire("src/app.txt"),
+            pageDefense: inert,
+            filesChanged: files,
+          },
       null,
       2,
     ),

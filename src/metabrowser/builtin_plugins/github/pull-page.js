@@ -7,9 +7,9 @@
 // polling that route while the page is visible (quickly while a refresh runs or the
 // record is pending, slowly otherwise, with If-None-Match so an unchanged answer is a
 // 304), the refresh a stale page asks for and offers and an absent page offers
-// (`POST /api/plugin/github/pull-refresh`), the
-// switch to the pull request's head when the pin is elsewhere (`POST /api/source/pin`),
-// the tab, and the Markdown of each text, asked for one part at a time from
+// (`POST /api/plugin/github/pull-refresh`), the switch to the pull request's head
+// (`POST /api/source/pin`), the tab, and the Markdown of each text, asked for one part at
+// a time from
 // `GET /api/plugin/github/pull-markdown` and kept only for the record it was rendered
 // from. `mountPullPage` is the browser glue: real fetch, timers, and paint.
 // tests/dom/github-pull-page-session.js runs the same functions from the command line.
@@ -170,6 +170,14 @@ const TRUNCATED = Object.freeze({
  */
 
 /**
+ * What Browse code is. One server has one pin, and other tabs share it, so opening a pull
+ * request moves nothing: a `link` goes to the root of what is served, and a `switch` first
+ * serves this pull request's head.
+ *
+ * @typedef {{kind: "link"} | {kind: "switch", ref: string}} BrowseCode
+ */
+
+/**
  * @typedef {{
  *   number: number,
  *   tab: string,
@@ -192,6 +200,7 @@ const TRUNCATED = Object.freeze({
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
  *   notes: string[],
  *   comparison: {left: string, right: string, headMoved: boolean} | null,
+ *   browse: BrowseCode | null,
  *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
  * }} PullModel
  */
@@ -569,6 +578,7 @@ export function describePull(envelope, page) {
     checks: null,
     notes: [],
     comparison: null,
+    browse: null,
     headOffer: null,
   };
   if (envelope === null) {
@@ -641,17 +651,24 @@ export function describePull(envelope, page) {
   model.checks = checks(record);
   model.notes = notes(record);
   const head = text(pull.head?.sha);
-  if (envelope.pin !== null && head !== "" && envelope.pin !== head) {
-    // The served code is not the head this record names: the pull request could not be
-    // opened when serving began and the pin fell back to the default branch or a commit,
-    // or a refresh found a newer head. The head is GitHub's own ref, which the refresh
-    // fetched, so the page offers to serve it rather than switching under the reader.
-    model.headOffer = {
-      ref: `refs/pull/${pull.number}/head`,
-      head,
-      pin: envelope.pin,
-      text: `This page's code is ${envelope.pin.slice(0, 12)}, not the pull request's head ${head.slice(0, 12)}.`,
-    };
+  const headRef = `refs/pull/${pull.number}/head`;
+  if (envelope.pin !== null && head !== "") {
+    model.browse = { kind: "link" };
+    if (envelope.pin !== head && envelope.pin_ref === headRef) {
+      // Served from this pull request's head, and a refresh found a newer one: the ref
+      // moved, which the refresh fetched, so the page offers it rather than switching
+      // under the reader.
+      model.headOffer = {
+        ref: headRef,
+        head,
+        pin: envelope.pin,
+        text: `This page's code is ${envelope.pin.slice(0, 12)}, not the pull request's head ${head.slice(0, 12)}.`,
+      };
+    } else if (envelope.pin !== head) {
+      // Anything else, such as a branch, a tag, or another pull request. Nothing is wrong,
+      // so nothing is said: reading a pull request does not need its code served.
+      model.browse = { kind: "switch", ref: headRef };
+    }
   }
   const comparison = record.comparison;
   if (comparison && typeof comparison.base === "string" && typeof comparison.head === "string") {
@@ -660,7 +677,7 @@ export function describePull(envelope, page) {
       right: comparison.head,
       // The page's code is the served pin; a record read at a newer head says so
       // rather than moving what the reader sees.
-      headMoved: envelope.pin !== null && envelope.pin !== comparison.head,
+      headMoved: model.headOffer !== null,
     };
   }
   return model;
@@ -695,6 +712,7 @@ function isEnvelope(value) {
  *   render(model: PullModel): void,
  *   renderMarkdown(part: string, rendered: Record<string, any>): void,
  *   reload(): void,
+ *   navigate(href: string): void,
  * }} PullDependencies
  */
 
@@ -889,20 +907,24 @@ export function createPullController(deps, options) {
   let switching = false;
 
   /**
-   * Serve the pull request's head, which the page offers when the pin is elsewhere, and
-   * reload so every view shows it. `POST /api/source/pin` is the freshness row's own
-   * switch; a refusal says why and the page stays as it was.
+   * Serve the pull request's head, and then go on. `POST /api/source/pin` is the freshness
+   * row's own switch; a refusal says why and the page stays as it was.
+   *
+   * @param {string} ref
+   * @param {() => void} then
    */
-  async function switchToHead() {
-    const offer = model().headOffer;
-    if (disposed || switching || offer === null) {
+  async function serveHead(ref, then) {
+    if (disposed || switching) {
       return;
     }
     switching = true;
     try {
-      const response = await deps.request("POST", PIN_ROUTE, { body: { ref: offer.ref } });
+      const response = await deps.request("POST", PIN_ROUTE, { body: { ref } });
+      if (disposed) {
+        return;
+      }
       if (response.status === 200) {
-        deps.reload();
+        then();
         return;
       }
       const body = /** @type {{code?: unknown} | null} */ (response.body);
@@ -915,6 +937,28 @@ export function createPullController(deps, options) {
     }
     if (!disposed) {
       render();
+    }
+  }
+
+  /** The newer head the page offers: served, then reloaded so every view shows it. */
+  async function switchToHead() {
+    const offer = model().headOffer;
+    if (offer !== null) {
+      await serveHead(offer.ref, deps.reload);
+    }
+  }
+
+  /**
+   * Open code of this pull request at *href*, when the pin is elsewhere: its head is served
+   * first, and the address loads as a new document. Back then lands on this page, rendered
+   * for the earlier pin, which the shell's history guard reloads.
+   *
+   * @param {string} href
+   */
+  async function browseCode(href) {
+    const browse = model().browse;
+    if (browse?.kind === "switch") {
+      await serveHead(browse.ref, () => deps.navigate(href));
     }
   }
 
@@ -1010,6 +1054,7 @@ export function createPullController(deps, options) {
     poll: () => poll(),
     requestRefresh,
     switchToHead,
+    browseCode,
     requestMarkdown,
     setTab,
     onVisibilityChange,
@@ -1495,9 +1540,31 @@ export function mountPullPage(container, ctx, mb) {
         return;
       }
       event.preventDefault();
-      void mb.navigation.open(target);
+      // The file as this pull request has it, not as whatever the server serves has it.
+      if (shown?.browse?.kind === "switch") {
+        void controller.browseCode(mb.navigation.href(target));
+      } else {
+        void mb.navigation.open(target);
+      }
     });
     return link;
+  }
+
+  /**
+   * Browse code, as the model says it is.
+   *
+   * @param {BrowseCode} browse
+   */
+  function browseControl(browse) {
+    const root = mb.navigation.href({ path: "" });
+    if (browse.kind === "link") {
+      return h("a", { href: root }, ["Browse code"]);
+    }
+    const button = h("button", { type: "button", class: "btn github-pull-browse" }, [
+      "Browse code",
+    ]);
+    button.addEventListener("click", () => void controller.browseCode(root));
+    return button;
   }
 
   /**
@@ -1554,8 +1621,8 @@ export function mountPullPage(container, ctx, mb) {
           pull.closed && pull.closedLabel ? ` · ${pull.closedLabel} ${when(pull.closed)}` : "",
           " · ",
           outside(pull.htmlUrl, "", ["View on GitHub"]),
-          " · ",
-          h("a", { href: mb.navigation.href({ path: "" }) }, ["Browse code"]),
+          model.browse === null ? null : " · ",
+          model.browse === null ? null : browseControl(model.browse),
         ]),
       );
       if (pull.labels.length > 0) {
@@ -1848,6 +1915,9 @@ export function mountPullPage(container, ctx, mb) {
     markdownRecord = model.recordAt;
   }
 
+  // Disposing a page ends its work: a superseded page's requests are cancelled, whatever
+  // answer they were waiting for, and its listeners go with them.
+  const listening = new AbortController();
   const controller = createPullController(
     {
       async request(method, route, options) {
@@ -1864,6 +1934,7 @@ export function mountPullPage(container, ctx, mb) {
           headers,
           cache: "no-store",
           body: method === "POST" ? JSON.stringify(options.body ?? {}) : undefined,
+          signal: listening.signal,
         });
         let decoded = null;
         if (response.status !== 304) {
@@ -1881,11 +1952,11 @@ export function mountPullPage(container, ctx, mb) {
       isVisible: () => document.visibilityState === "visible",
       render: paint,
       reload: () => window.location.reload(),
+      navigate: (href) => window.location.assign(href),
       renderMarkdown,
     },
     { number, tab: typeof ctx.tab === "string" ? ctx.tab : "" },
   );
-  const listening = new AbortController();
   document.addEventListener("visibilitychange", controller.onVisibilityChange, {
     signal: listening.signal,
   });

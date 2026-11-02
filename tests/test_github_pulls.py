@@ -1133,6 +1133,35 @@ def test_a_pull_request_head_is_pinned_by_its_ref(stand: _Stand) -> None:
             asyncio.run(resolve_pin(target, ref=ref))
 
 
+def test_a_commit_is_pinned_under_the_head_of_any_pull_request_it_is_the_tip_of(
+    stand: _Stand,
+) -> None:
+    """View file on any pull request's Files changed switches by commit ID. The newest pull
+    request wins by number, not by the text of its ref, and a ref the server was serving
+    comes before any of them."""
+
+    target = repository_store_target(git_dir=stand.published.git_dir)
+    merged = stand.origin["merged_head"]
+    assert asyncio.run(resolve_pin(target, oid=merged)).ref is None
+    stand.refresh(8)
+    assert asyncio.run(resolve_pin(target, oid=merged)).ref == "refs/pull/8/head"
+
+    def also_at(ref: str) -> None:
+        subprocess.run(
+            ["git", "--git-dir", str(stand.published.git_dir), "update-ref", ref, merged],
+            check=True,
+        )
+
+    # "9" sorts after "123" as text, and "refs/pull/200/merge" is no pull request's head.
+    for ref in ("refs/pull/9/head", "refs/pull/123/head", "refs/pull/200/merge"):
+        also_at(ref)
+    assert asyncio.run(resolve_pin(target, oid=merged)).ref == "refs/pull/123/head"
+    kept = asyncio.run(resolve_pin(target, oid=merged, keep_refs=("refs/pull/9/head",)))
+    assert kept.ref == "refs/pull/9/head"
+    # A commit no head has is served under no ref, as before.
+    assert asyncio.run(resolve_pin(target, oid=stand.origin["topic"])).ref is None
+
+
 def test_the_refresh_route_starts_or_joins_one_job(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1339,6 +1368,9 @@ def test_a_pin_on_another_pull_requests_head_makes_it_the_attended_one(
     assert pin({"ref": DEFAULT_BRANCH})["pull_request"] == 8
     assert session.companion is attended
     assert pin({"ref": "refs/pull/7/head"})["pull_request"] == 7
+    # View file switches by commit ID: under that head's ref, it is the same switch.
+    by_commit = pin({"oid": stand.origin["merged_head"]})
+    assert (by_commit["ref"], by_commit["pull_request"]) == ("refs/pull/8/head", 8)
 
 
 def _serving_repository_url(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:

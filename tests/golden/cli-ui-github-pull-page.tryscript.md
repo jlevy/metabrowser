@@ -74,6 +74,7 @@ $ node tests/dom/github-pull-page-session.js
         "reviewComments": [],
         "checks": null,
         "notes": [],
+        "browse": null,
         "headOffer": null,
         "comparison": null
       },
@@ -109,6 +110,7 @@ $ node tests/dom/github-pull-page-session.js
         "reviewComments": [],
         "checks": null,
         "notes": [],
+        "browse": null,
         "headOffer": null,
         "comparison": null
       },
@@ -163,8 +165,9 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
-        "headOffer": "This page's code is c691256511d0, not the pull request's head 85fcb2fa9e77. [Switch to the head] -> refs/pull/7/head",
-        "comparison": "f92fd713acd5...85fcb2fa9e77 (head moved)"
+        "browse": "switches to refs/pull/7/head",
+        "headOffer": null,
+        "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "conversation": "repaint",
       "markdown": []
@@ -220,17 +223,66 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "switch the pin to the head the record names",
+      "step": "Browse code that the server refuses says why and stays",
+      "requests": [
+        "POST /api/source/pin {\"ref\":\"refs/pull/7/head\"}"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "current",
+        "tab": "conversation",
+        "message": "Could not switch to the head (selection_not_found).",
+        "canRefresh": false,
+        "freshness": "Fetched just now by gh:octo-reader",
+        "failure": null,
+        "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
+        "labels": [
+          "enhancement"
+        ],
+        "merge": "No conflicts with the base branch",
+        "timeline": [
+          "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
+          "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
+          "review maintainer [approved] 2026-09-16T17:36:02Z review/3279967139"
+        ],
+        "reviewComments": [
+          "src/app.txt:outdated maintainer +hunk",
+          "src/app.txt:2 forker (reply) +hunk"
+        ],
+        "checks": {
+          "counts": {
+            "success": 2,
+            "pending": 1
+          },
+          "items": [
+            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+          ]
+        },
+        "notes": [],
+        "browse": "switches to refs/pull/7/head",
+        "headOffer": null,
+        "comparison": "f92fd713acd5...85fcb2fa9e77"
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "Browse code serves the head and opens the root",
       "requests": [
         "POST /api/source/pin {\"ref\":\"refs/pull/7/head\"}"
       ],
       "timer": "slow",
       "paints": 0,
-      "reloads": 1,
+      "navigated": [
+        "/view/"
+      ],
       "markdown": []
     },
     {
-      "step": "reloaded on the head, nothing is offered",
+      "step": "on the head, Browse code is a link",
       "requests": [
         "GET /api/plugin/github/pull?number=7 (If-None-Match)"
       ],
@@ -269,10 +321,18 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
+        "browse": "link to the root",
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "with a link, the controller switches nothing",
+      "requests": [],
+      "timer": "slow",
+      "paints": 0,
       "markdown": []
     },
     {
@@ -313,6 +373,7 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
+        "browse": "link to the root",
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
@@ -356,6 +417,7 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
+        "browse": "link to the root",
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
@@ -403,6 +465,7 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
+        "browse": "link to the root",
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
@@ -458,6 +521,7 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
+        "browse": "link to the root",
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
@@ -514,6 +578,7 @@ $ node tests/dom/github-pull-page-session.js
           ]
         },
         "notes": [],
+        "browse": "link to the root",
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
@@ -567,6 +632,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": true,
         "freshness": "Fetched 5 min ago by gh:octo-reader · may be out of date",
         "failure": null,
+        "browse": "link to the root",
         "headOffer": null
       },
       "markdown": []
@@ -585,6 +651,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Refreshing… · fetched 5 min ago by gh:octo-reader",
         "failure": null,
+        "browse": "link to the root",
         "headOffer": null
       },
       "markdown": []
@@ -603,7 +670,8 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": true,
         "freshness": "Fetched 24 min ago by gh:octo-reader · may be out of date",
         "failure": "The last refresh failed: gh could not reach api.github.com",
-        "headOffer": "refs/pull/8/head"
+        "browse": "switches to refs/pull/8/head",
+        "headOffer": null
       },
       "conversation": "repaint",
       "markdown": []
@@ -640,9 +708,39 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": false,
         "freshness": "Refreshing… · fetched 24 min ago by gh:octo-reader",
         "failure": null,
-        "headOffer": "refs/pull/8/head"
+        "browse": "switches to refs/pull/8/head",
+        "headOffer": null
       },
       "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "served an older head, the page offers the newer one",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7"
+      ],
+      "timer": "slow",
+      "paints": 2,
+      "paint": {
+        "status": "current",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched just now by gh:octo-reader",
+        "failure": null,
+        "browse": "link to the root",
+        "headOffer": "refs/pull/7/head"
+      },
+      "conversation": "repaint",
+      "markdown": []
+    },
+    {
+      "step": "taking the offer reloads",
+      "requests": [
+        "POST /api/source/pin {\"ref\":\"refs/pull/7/head\"}"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "reloads": 1,
       "markdown": []
     },
     {
@@ -658,6 +756,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": true,
         "freshness": null,
         "failure": null,
+        "browse": null,
         "headOffer": null
       },
       "markdown": []
@@ -693,6 +792,7 @@ $ node tests/dom/github-pull-page-session.js
         "canRefresh": true,
         "freshness": null,
         "failure": null,
+        "browse": null,
         "headOffer": null
       },
       "markdown": []
@@ -718,6 +818,7 @@ $ node tests/dom/github-pull-page-session.js
         "reviewComments": [],
         "checks": null,
         "notes": [],
+        "browse": null,
         "headOffer": null,
         "comparison": null
       },
@@ -795,7 +896,14 @@ $ node tests/dom/github-pull-page-session.js
     "open on the record's comparison: keep",
     "open on an older head: offer",
     "no comparison in the record: unavailable"
-  ],
+  ]
+}
+? 0
+```
+
+```console
+$ node tests/dom/github-pull-page-session.js hunks-and-place
+{
   "hunks": {
     "a short hunk is whole": {
       "earlier": null,
