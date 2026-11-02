@@ -1838,9 +1838,7 @@
         {
           state: "not_full",
           title: "Full commit ID needed",
-          detail:
-            `A commit’s address uses its full 40- or 64-character ID, not “${revision}”. ` +
-            "Open the commit from the Git tab to get it.",
+          detail: `A commit’s address uses its full 40- or 64-character ID, not “${revision}”.`,
           retry: false,
         },
         null,

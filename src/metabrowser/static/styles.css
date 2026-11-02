@@ -1976,12 +1976,7 @@ html.theme-anim .menu {
    INVENTORY_MAX_FILES). Finalized dirs still carry usable totals;
    this just tells the user the tree is partial. */
 .tree-truncation-note {
-  padding: 8px 12px;
-  margin: 0 0 4px;
-  color: var(--text);
-  font-size: var(--ui-small-font-size);
-  background: var(--sidebar-bg);
-  border-bottom: 1px solid var(--border);
+  margin: 4px var(--pane-header-padding-x) 8px;
 }
 
 /* Path-rendering convention — pathBaseHtml() in app.js wraps the last
@@ -3120,7 +3115,7 @@ a.tab-btn {
   border-radius: var(--radius-pill);
   background: var(--link);
   color: var(--bg);
-  font-size: 10px;
+  font-size: var(--micro-font-size);
   line-height: 14px;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -3570,7 +3565,7 @@ a.tab-btn {
 }
 .folder-header-count,
 .folder-header-age {
-  font-size: 12px;
+  font-size: var(--ui-small-font-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

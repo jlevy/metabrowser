@@ -1449,7 +1449,7 @@ function treeTruncationNoteHtml(maxFiles) {
     ? `Metabrowser stopped after ${formatCount(maxFiles)} files`
     : "Metabrowser reached its file limit";
   return (
-    '<div class="tree-truncation-note" role="status">' +
+    '<div class="notice tree-truncation-note" data-severity="warning" role="status">' +
     "<strong>File list incomplete.</strong> " +
     reason +
     ", so some files and folders are not shown." +

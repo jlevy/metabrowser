@@ -146,7 +146,7 @@ $ node tests/dom/git-commit-history-session.js
     },
     "opened": {
       "url": "/commit/aaaaaaa",
-      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character ID, not “aaaaaaa”. Open the commit from the Git tab to get it.",
+      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character ID, not “aaaaaaa”.",
       "owner": "git",
       "navPanel": "git",
       "requests": [
@@ -155,7 +155,7 @@ $ node tests/dom/git-commit-history-session.js
     },
     "landed": {
       "url": "/commit/aaaaaaa",
-      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character ID, not “aaaaaaa”. Open the commit from the Git tab to get it.",
+      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character ID, not “aaaaaaa”.",
       "owner": "git",
       "navPanel": "git",
       "requests": [

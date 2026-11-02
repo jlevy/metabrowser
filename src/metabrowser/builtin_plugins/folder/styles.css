@@ -231,7 +231,7 @@
   margin-top: 8px;
   max-width: var(--tm-max-width);
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--ui-small-font-size);
   font-variant-numeric: tabular-nums;
   user-select: text;
 }
