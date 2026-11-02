@@ -958,6 +958,10 @@ Content source:
 
 Fixes:
 
+- A `.env` or `.env.local` that cannot be read as text no longer stops `metab` with a
+  traceback in every mode. It is skipped with a warning naming the file, so a repository
+  whose `.env` is not UTF-8 can still be browsed.
+
 - `metab --api <route> --format json` or `--format yaml` prints the envelope alone, so
   stdout parses; a body that is not JSON is one string, and a refresh that waits prints
   only the status it ended with.

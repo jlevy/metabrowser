@@ -148,6 +148,35 @@ def test_a_refused_name_cannot_act_on_the_terminal_it_is_reported_to(
     assert "METABROWSER_雪" in message
 
 
+def test_a_file_that_is_not_text_does_not_stop_the_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A browsed repository could otherwise keep the browser from opening it at all."""
+
+    root = tmp_path / "repo\x1b[2J"
+    root.mkdir()
+    env = root / ".env"
+    env.write_bytes(b"METABROWSER_LOG_LEVEL=DEBUG\n\xff\xfe\n")
+    (root / ".env.local").write_text("METABROWSER_REQUEST_LOG=1\n", encoding="utf-8")
+    monkeypatch.chdir(root)
+    monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
+    monkeypatch.delenv("METABROWSER_REQUEST_LOG", raising=False)
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.dotenv"):
+        parsed = load_dotenv_chain()
+
+    # The other file still loads, and the bad one is not claimed as parsed.
+    assert parsed == [root / ".env.local"]
+    assert os.environ.get("METABROWSER_REQUEST_LOG") == "1"
+    assert "METABROWSER_LOG_LEVEL" not in os.environ
+    message = next(
+        record.getMessage() for record in caplog.records if "skipped" in record.getMessage()
+    )
+    assert "\x1b" not in message
+    assert "repo\\x1b[2J/.env: skipped" in message
+    assert "UnicodeDecodeError" in message
+
+
 def test_every_allowlisted_key_is_one_the_package_reads() -> None:
     """The allowlist does not drift into names nothing consults.
 

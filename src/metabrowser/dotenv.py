@@ -123,6 +123,10 @@ def load_dotenv_chain() -> list[Path]:
     those carrying one of this package's prefixes are reported at
     WARNING so an operator is not left guessing.
 
+    A file that cannot be read as text is skipped with a warning: it is
+    the browsed repository's to write, and it must not stop the command
+    that browses it.
+
     Returns the files found and parsed, in load order, for callers that
     want to surface which files were consulted. A file every one of
     whose names was ignored still appears.
@@ -134,9 +138,20 @@ def load_dotenv_chain() -> list[Path]:
         if not found:
             continue
         path = Path(found)
+        try:
+            values = dotenv_values(found)
+        except (UnicodeDecodeError, OSError) as exc:
+            if path not in _reported:
+                _reported.add(path)
+                log.warning(
+                    "%s: skipped, because it could not be read as text (%s).",
+                    _one_line(str(path)),
+                    type(exc).__name__,
+                )
+            continue
         parsed.append(path)
         ignored: list[str] = []
-        for key, value in dotenv_values(found).items():
+        for key, value in values.items():
             if value is None:
                 continue
             if key in ALLOWED_KEYS:
