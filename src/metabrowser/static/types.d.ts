@@ -2466,7 +2466,9 @@ declare global {
   type MetabrowserSourceRefSelectorParts = {
     root: HTMLElement;
     toggle: HTMLButtonElement;
+    label: HTMLElement;
     panel: HTMLElement;
+    kinds: HTMLElement;
     tabs: Record<MetabrowserSourceRefKind, HTMLButtonElement>;
     filter: HTMLInputElement;
     list: HTMLElement;

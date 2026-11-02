@@ -951,6 +951,18 @@ Content source:
 
 Fixes:
 
+- Choosing with the keyboard works past the first key press.
+  In Files / Bytes and Split / Unified, an arrow key changed the choice and left focus
+  nowhere, so the next key did nothing.
+  Focus now stays on the chosen segment.
+
+- Controls that offer a choice answer every state the same way.
+  An unselected segment of Files / Bytes or Split / Unified now raises the hover fill,
+  as other chips and the menu’s segments do, and a theme or reading-font segment and a
+  tab (Overview, Document, Files) show the shared focus ring under the keyboard.
+  A selected theme or font segment showed no focus at all, and a tab the browser’s own.
+  Nothing else on a plain-folder page changes: at rest, its pixels are the same.
+
 - A diff in a narrow pane no longer hides its additions.
   Split needs 44 ems of width, and below that its right column was off-screen behind a
   sideways scroll, so an added line read as a blank gap.
