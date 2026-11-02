@@ -1,16 +1,16 @@
 # Plan: Pull-Request Review from a Mirror or an Existing Checkout
 
-**Status:** Designed, independently reviewed, and tested; not started.
-Nothing here exists in the code: no store mode, flag, record, route field, state, or
-test. The design was proven by experiments on 2026-11-02 against a 1.2 GB private
-repository and small local replicas, reviewed the same day with the verdict *sound with
-changes*, and revised: every finding of the review is applied below and proven again
-against the reviewer’s own replicas.
+**Status:** Designed, independently reviewed, and tested; decided by the owner on
+2026-11-02; step 1 of [Delivery](#delivery) is in progress.
+The design was proven by experiments on 2026-11-02 against a 1.2 GB private repository
+and small local replicas, reviewed the same day with the verdict *sound with changes*,
+and revised: every finding of the review is applied below and proven again against the
+reviewer’s own replicas.
 [Independent Review](#independent-review) records each finding and its disposition,
 [What the Experiments Established](#what-the-experiments-established) says which claims
 were proven and which are inferred, and
-[Open Decisions for the User](#open-decisions-for-the-user) lists what the user settles
-before step 1 starts.
+[Open Decisions for the User](#open-decisions-for-the-user) records what the owner
+settled.
 [Delivery](#delivery) says what can ship in 0.12.x.
 
 This plan extends the [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md), which stays
@@ -228,14 +228,13 @@ When `metab <url>` runs inside a checkout of the URL’s repository and no store
 it clones a full mirror as it does today and prints, once, the `--checkout` command that
 would borrow instead: the reader decides, and nothing is remembered that the reader did
 not name.
-Item 2 of [Open Decisions](#open-decisions-for-the-user) offers the alternative
-and what it costs.
+Item 2 of [Open Decisions](#open-decisions-for-the-user) records the alternative and what it
+would cost.
 
 Precedence: a published store for the source wins, whatever its mode, so a URL never
 silently changes storage; then `--checkout`. `metab <url> --checkout` when a full mirror
 already exists uses the mirror and prints the conversion command
-([Conversions](#conversions)); item 4 of the decisions is whether that should convert
-instead.
+([Conversions](#conversions)), as item 4 of the decisions settled.
 
 **Which remote.** `discover_repository_context` reads only `origin` today.
 The check reads every `remote.<name>.url` and accepts the checkout when any remote’s
@@ -386,8 +385,7 @@ A guess is never shown.
 record job already talks to `gh`. It is not adopted as the primary: it answers only
 online, the response embeds every changed file with its patch and has no field selection
 (26 KB to 536 KB here, bounded only by `GH_API_MAX_BYTES`), and it would make a Git fact
-depend on the API. It stays an option for item 3 of the decisions, as a cross-check when
-the store cannot deepen.
+depend on the API. Item 3 of the decisions rejected it.
 
 **Verifying counts** against the record’s `changed_files`, `additions`, and `deletions`
 would have caught r2 but is not a proof: equal counts do not imply the same merge base.
@@ -422,7 +420,7 @@ by ID while it still holds it, which is what the healing relies on.
 overlay to: **no object Metabrowser showed is lost while the checkout keeps it or GitHub
 still serves that commit.** A dangling pin is a typed state, repaired by the healing
 job, and never a blank page.
-That relaxation is item 1 of the decisions.
+That relaxation is item 1 of the decisions, which the owner accepted.
 
 ### The Rule This Changes
 
@@ -754,48 +752,37 @@ unbounded in the checkout’s size.
 
 ## Open Decisions for the User
 
-1. **Relax the no-loss rule for an overlay.**
-   - *Recommended:* yes, to “no object shown is lost while the checkout keeps it or
-     GitHub still serves that commit”, with the typed states and the healing job of
-     [Failure and Recovery](#failure-and-recovery).
-   - *Alternative:* keep the rule as written, which means no overlay and the duplicated
+None is open: the owner decided all six on 2026-11-02, each as recommended here when the
+plan was reviewed.
+The rejected alternatives are kept so a later reader can see what was weighed.
+
+1. **The no-loss rule is relaxed for an overlay.** No object shown is lost while the
+   checkout keeps it or GitHub still serves that commit, with the typed states and the
+   healing job of [Failure and Recovery](#failure-and-recovery).
+   - *Rejected:* keep the rule as written, which means no overlay and the duplicated
      clone the user asked to avoid.
-   - *Affects:* whether this plan proceeds.
-2. **Which checkouts may lend.**
-   - *Recommended:* only a checkout the reader names with `--checkout` or serves with
-     `metab <checkout>`, remembered from then on; inside a checkout, `metab <url>`
-     clones and prints the flag once.
-     The cost is one flag, once per repository.
-   - *Alternative:* also the enclosing checkout of the working directory, when it is the
-     checkout’s root and its objects hold the origin’s advertised HEAD, printed loudly
-     and remembered. The reviewer showed that any directory the reader stands in can be
-     made to pass as a checkout, and Git does not verify what it reads, so this trusts
-     wherever the reader happens to be.
-   - *Affects:* whether “seamless” means zero flags, and what a planted directory can
-     do.
-3. **When a merge base is uncertain.**
-   - *Recommended:* deepen the store from the origin, bounded in rounds and by the
-     acquisition deadline, as a job; `base_uncertain` meanwhile and offline.
-   - *Alternatives:* ask GitHub’s compare endpoint, which is online-only and heavy; or
+2. **Only a checkout the reader names with `--checkout` or serves with `metab <checkout>`
+   may lend**, remembered from then on.
+   Inside a checkout, `metab <url>` clones and prints the flag once.
+   The working directory never borrows silently.
+   - *Rejected:* also the enclosing checkout of the working directory.
+     The reviewer showed that any directory the reader stands in can be made to pass as
+     a checkout, and Git does not verify what it reads.
+3. **An uncertain merge base deepens from the origin** into the store, bounded in rounds
+   and by the acquisition deadline, as a job.
+   It reads `base_uncertain` meanwhile and offline.
+   - *Rejected:* GitHub’s compare endpoint, which is online-only and heavy; and
      `base_uncertain` only, never resolved.
-   - *Affects:* whether a shallow checkout ever shows Files changed for an old pull
-     request, and how much the store grows.
-4. **When a full mirror exists and a checkout is named.**
-   - *Recommended:* keep the mirror and print the conversion command; the disk is the
-     user’s to reclaim.
-   - *Alternative:* convert when `--checkout` is given.
-   - *Affects:* whether a flag ever changes a store’s mode.
-5. **Showing the checkout’s path.**
-   - *Recommended:* `borrows` beside `location` in the status envelope and the heading
-     tooltip, under the same exception.
-   - *Alternative:* the cache routes only.
-   - *Affects:* whether a page says where its objects come from.
-6. **Blob verification on an overlay.**
-   - *Recommended:* yes, in step 2, once the hash per streamed blob is measured against
-     the batch reader’s budget.
-   - *Alternative:* trust the named checkout as the Git tab does.
-   - *Affects:* whether a damaged or dishonest checkout shows as `object_corrupt` or as
-     content.
+4. **An existing full mirror is kept** and the conversion command printed, with no
+   automatic conversion.
+   The disk is the user’s to reclaim.
+   - *Rejected:* convert when `--checkout` is given.
+5. **`borrows` is shown beside `location`** in the status envelope and the heading
+   tooltip, under the same exception.
+   - *Rejected:* the cache routes only.
+6. **Blob verification comes in step 2**, once the hash per streamed blob is measured
+   against the batch reader’s budget.
+   - *Rejected:* trust the named checkout as the Git tab does.
 
 ## References
 
