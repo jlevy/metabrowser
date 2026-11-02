@@ -110,6 +110,44 @@ def test_dotenv_contributes_nothing_outside_the_allowlist(
     assert os.environ.get("METABROWSER_LOG_LEVEL") == "DEBUG"
 
 
+def test_a_refused_name_cannot_act_on_the_terminal_it_is_reported_to(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The names and the directory are the browsed repository's, and a log goes to a terminal.
+
+    Raw, the escape sequences colour or erase the one line that reports the names were
+    ignored, a bidirectional override reorders it, and a quoted key's line break prints a
+    line of the file's choosing. The warning shows each as a visible escape.
+    """
+
+    root = tmp_path / "repo\x1b[2J"
+    root.mkdir()
+    (root / ".env").write_text(
+        "METABROWSER_\x1b[31mRED\x1b[0m=1\n"
+        "'METABROWSER_A\nFORGED: a line of its own'=1\n"
+        "METABROWSER_B\x08ERASED=1\n"
+        "METABROWSER_\u202eBIDI=1\n"
+        "METABROWSER_雪=1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(root)
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.dotenv"):
+        load_dotenv_chain()
+
+    message = next(
+        record.getMessage() for record in caplog.records if "ignored" in record.getMessage()
+    )
+    assert not {"\x1b", "\n", "\x08", "\u202e"} & set(message)
+    assert "repo\\x1b[2J/.env: ignored " in message
+    assert "METABROWSER_\\x1b[31mRED\\x1b[0m" in message
+    assert "METABROWSER_A\\nFORGED: a line of its own" in message
+    assert "METABROWSER_B\\x08ERASED" in message
+    assert "METABROWSER_\\u202eBIDI" in message
+    # A name a terminal only prints is left readable.
+    assert "METABROWSER_雪" in message
+
+
 def test_every_allowlisted_key_is_one_the_package_reads() -> None:
     """The allowlist does not drift into names nothing consults.
 

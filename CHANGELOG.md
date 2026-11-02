@@ -807,6 +807,11 @@ Content trust:
   The header’s print button no longer has an `id` (`print-view-btn`), so a label naming
   it could not click it with its mark; SECURITY.md lists what the mark does not cover.
 
+- The warning that a `.env` or `.env.local` file’s names were ignored shows those names
+  and the file’s path as visible escapes on one line.
+  A browsed repository could otherwise colour or erase that line, or add a line of its
+  own, with a name holding escape sequences or a line break.
+
 Content source:
 
 - The server now has one active repository subject per process.

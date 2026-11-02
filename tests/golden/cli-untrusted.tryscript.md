@@ -20,7 +20,9 @@ before: >-
   printf 'METAB_ALLOW_EDITS=1\nMETAB_UNTRUSTED=1\nMETABROWSER_PLUGINS_DIRS=%s/evil-plugins\n'
   "$PWD" > evilrepo/.env &&
   printf 'METABROWSER_DEBUG=1\nBROWSER=%s/evil\nPATH=%s/evil\nGIT_TRACE=%s/trace.txt\n'
-  "$PWD" "$PWD" "$PWD" >> evilrepo/.env
+  "$PWD" "$PWD" "$PWD" >> evilrepo/.env &&
+  printf 'METABROWSER_\033[31mRED\033[0m=1\n' >> evilrepo/.env &&
+  printf "'METABROWSER_A\nFORGED: a line of its own'=1\n" >> evilrepo/.env
 ---
 # Golden tests: the `--untrusted` content-trust profile
 
@@ -156,15 +158,18 @@ operator wrote. So a dotenv file may set only the names in `ALLOWED_KEYS` in
 `metabrowser/dotenv.py`, and this `.env` sets nothing else.
 
 The warning names that allowlist in full, so adding a name to it changes this
-transcript.
-Each capability variable below is cleared first, because a dotenv value never
-replaces one the environment already holds, and the front matter holds them empty.
+transcript. The refused names are the repository’s own, and two of them are written to
+act on the terminal: one holds escape sequences that would colour the line, and one,
+quoted, holds a line break that would print a line of the file’s choosing.
+The warning shows both as visible escapes on its one line.
+Each capability variable below is cleared first, because a dotenv value never replaces
+one the environment already holds, and the front matter holds them empty.
 Had the file reached the environment, `METAB_ALLOW_EDITS` would read `mutations: true`
 and `METAB_UNTRUSTED` would read `active_content: false`.
 
 ```console
 $ cd evilrepo && env -u METAB_ALLOW_EDITS -u METAB_UNTRUSTED metab . --api /api/capabilities
-[..]/evilrepo/.env: ignored METABROWSER_DEBUG, METABROWSER_PLUGINS_DIRS, METAB_ALLOW_EDITS, METAB_UNTRUSTED — a dotenv file may only set METABROWSER_LOG_LEVEL, METABROWSER_REQUEST_LOG. Export the others in the environment instead; see SECURITY.md.
+[..]/evilrepo/.env: ignored METABROWSER_\x1b[31mRED\x1b[0m, METABROWSER_A\nFORGED: a line of its own, METABROWSER_DEBUG, METABROWSER_PLUGINS_DIRS, METAB_ALLOW_EDITS, METAB_UNTRUSTED — a dotenv file may only set METABROWSER_LOG_LEVEL, METABROWSER_REQUEST_LOG. Export the others in the environment instead; see SECURITY.md.
 api: /api/capabilities
 status: 200
 {
@@ -204,7 +209,7 @@ worth a warning: every repository has variables of its own.
 
 ```console
 $ cd evilrepo && metab . --api /api/git/repo
-[..]/evilrepo/.env: ignored METABROWSER_DEBUG, METABROWSER_PLUGINS_DIRS, METAB_ALLOW_EDITS, METAB_UNTRUSTED — a dotenv file may only set METABROWSER_LOG_LEVEL, METABROWSER_REQUEST_LOG. Export the others in the environment instead; see SECURITY.md.
+[..]/evilrepo/.env: ignored METABROWSER_\x1b[31mRED\x1b[0m, METABROWSER_A\nFORGED: a line of its own, METABROWSER_DEBUG, METABROWSER_PLUGINS_DIRS, METAB_ALLOW_EDITS, METAB_UNTRUSTED — a dotenv file may only set METABROWSER_LOG_LEVEL, METABROWSER_REQUEST_LOG. Export the others in the environment instead; see SECURITY.md.
 api: /api/git/repo
 status: 200
 {

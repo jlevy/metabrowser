@@ -30,6 +30,10 @@ from dotenv import dotenv_values, find_dotenv
 
 from metabrowser.capabilities import CAPABILITY_ENV_VARS
 
+# `metab` already imports this at startup (`cli/serve.py`), and it imports no other Git
+# module, so a folder's start pays nothing for it here.
+from metabrowser.git.process import loggable
+
 log = logging.getLogger(__name__)
 
 DOTENV_NAMES: tuple[str, ...] = (".env", ".env.local")
@@ -96,6 +100,18 @@ if ALLOWED_KEYS & set(CAPABILITY_ENV_VARS):
     raise RuntimeError("capability variables must never be loadable from a dotenv file")
 
 
+def _one_line(text: str) -> str:
+    """*text* as part of a one-line warning, with nothing in it acting on a terminal.
+
+    The file's names and the directory it is in are the browsed repository's, so they
+    could colour or erase the line that reports them. A quoted key may also hold a line
+    break, which :func:`~metabrowser.git.process.loggable` keeps and which would start a
+    line the file wrote.
+    """
+
+    return loggable(text).replace("\n", "\\n")
+
+
 def load_dotenv_chain() -> list[Path]:
     """Apply the allowlisted names from ``.env`` then ``.env.local``.
 
@@ -133,8 +149,8 @@ def load_dotenv_chain() -> list[Path]:
             log.warning(
                 "%s: ignored %s — a dotenv file may only set %s. "
                 "Export the others in the environment instead; see SECURITY.md.",
-                path,
-                ", ".join(sorted(ignored)),
+                _one_line(str(path)),
+                _one_line(", ".join(sorted(ignored))),
                 ", ".join(sorted(ALLOWED_KEYS)),
             )
     return parsed
