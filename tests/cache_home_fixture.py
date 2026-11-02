@@ -58,6 +58,7 @@ from metabrowser.cache.records import (
     RepositoryStoreAlias,
     RepositoryStoreState,
     StoreAcquisition,
+    StoreLender,
     StoreOperation,
 )
 from metabrowser.home import ensure_home, ensure_private_directory, write_private_file_atomic
@@ -111,7 +112,9 @@ UNRECOGNIZED_ENTRY: Final = "Private Notes"
 RECORD_SECRET: Final = "ghp-examplesecrettokenvalue"
 
 
-def _stage_and_publish_store(home: Path, key: str, *, with_revision: bool) -> None:
+def _stage_and_publish_store(
+    home: Path, key: str, *, with_revision: bool, lender: StoreLender | None = None
+) -> None:
     entry = f"store-{key[:16]}"
     staged = staging_entry(entry)
     with staging_entry_lock(home, entry) as liveness:
@@ -127,9 +130,17 @@ def _stage_and_publish_store(home: Path, key: str, *, with_revision: bool) -> No
                 id=f"sha256:{key}",
                 created_at=CREATED_AT,
                 acquisition=StoreAcquisition(git_version="2.50.1", object_format="sha1"),
+                lender=lender,
             ),
             REPOSITORY_STORE_CONTRACT_ID,
         )
+        if lender is not None:
+            ensure_private_directory(home, f"{staged}/repository.git/objects/info")
+            write_private_file_atomic(
+                home,
+                f"{staged}/repository.git/objects/info/alternates",
+                f"{lender.objects}\n".encode(),
+            )
         write_record_atomic(
             home,
             f"{staged}/state.yml",
@@ -287,6 +298,32 @@ def build_damaged_home(home: Path) -> None:
     os.chmod(home / source_directory(ITSDANGEROUS.slug), 0o750)
 
 
+def build_overlay_home(home: Path, checkouts: Path) -> None:
+    """Three stores that borrow, one each way a read can find them.
+
+    - jinja: its checkout's objects are there;
+    - markupsafe: its checkout has gone;
+    - itsdangerous: its alternates file names something other than its record says.
+    """
+
+    migrate_layout(ensure_home(home))
+    for source in (JINJA, MARKUPSAFE, ITSDANGEROUS):
+        objects = checkouts / source.slug / ".git" / "objects"
+        lender = StoreLender(
+            objects=str(objects), checkout=str(objects.parent.parent), remote="origin"
+        )
+        if source is not MARKUPSAFE:
+            objects.mkdir(parents=True)
+        _stage_and_publish_store(home, source.store_key(), with_revision=True, lender=lender)
+        _stage_and_publish_source(home, source, opened=False)
+        _attach(home, source, source.store_key(), generation=1, at=ALIASED_AT)
+    write_private_file_atomic(
+        home,
+        f"{store_directory(ITSDANGEROUS.store_key())}/repository.git/objects/info/alternates",
+        f"{checkouts}/elsewhere/objects\n".encode(),
+    )
+
+
 def build_shared_directories_home(home: Path) -> None:
     """A private home in which two fixed cache directories let other users in."""
 
@@ -324,6 +361,7 @@ def build_all(directory: Path) -> None:
     build_future_home(directory / "future")
     build_shared_home(directory / "shared")
     build_shared_directories_home(directory / "shared-directories")
+    build_overlay_home(directory / "overlay", directory / "checkouts")
 
 
 if __name__ == "__main__":

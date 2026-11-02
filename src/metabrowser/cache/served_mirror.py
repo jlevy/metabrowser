@@ -27,7 +27,11 @@ from metabrowser.cache.atomic import RecordError, read_record
 from metabrowser.cache.locks import LockBusyError, store_fetch_lock
 from metabrowser.cache.paths import store_directory, store_record
 from metabrowser.cache.providers import repository_context_for
-from metabrowser.cache.records import REPOSITORY_STORE_STATE_CONTRACT_ID, RepositoryStoreState
+from metabrowser.cache.records import (
+    REPOSITORY_STORE_STATE_CONTRACT_ID,
+    RepositoryStoreState,
+    StoreLender,
+)
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.resolve import list_mirror_refs, ref_tip, resolve_pin
 from metabrowser.cache.update import update_store
@@ -144,12 +148,14 @@ class StoreMirror:
     """One published store: the home it lives in, its key, its identity, and its source.
 
     *source* is the source the store was acquired for; a refresh fetches from its URL.
+    *lender* is what an overlay store borrows from, for the page to say so.
     """
 
     home: Path
     store_key: str
     store_id: str
     source: GitSource
+    lender: StoreLender | None = None
 
     @classmethod
     def from_published(cls, published: PublishedSource) -> StoreMirror:
@@ -158,6 +164,7 @@ class StoreMirror:
             store_key=published.store_key,
             store_id=published.store_id,
             source=published.source,
+            lender=published.lender,
         )
 
     @property
@@ -188,6 +195,9 @@ class StoreMirror:
             name=repository_name(origin),
             origin=display_origin(origin),
             location=display_directory(self._repository),
+            borrows=(
+                display_directory(Path(self.lender.checkout)) if self.lender is not None else None
+            ),
         )
 
     async def open_selection(
@@ -226,6 +236,12 @@ class StoreMirror:
     async def recorded_freshness(self) -> RecordedFreshness:
         return await asyncio.to_thread(self._read_state)
 
+    def _has_boundary(self) -> bool:
+        try:
+            return (self._repository / "shallow").stat().st_size > 0
+        except OSError:
+            return False
+
     def _read_state(self) -> RecordedFreshness:
         # Stamped before the read: a rewrite between the two only makes the stamp older
         # than the content, which a later comparison still sees as a change.
@@ -244,7 +260,7 @@ class StoreMirror:
             shared="keep",
         )
         if not isinstance(state, RepositoryStoreState):
-            return RecordedFreshness(None, None, None, None)
+            return RecordedFreshness(None, None, None, None, shallow=self._has_boundary())
         operation = state.last_operation
         return RecordedFreshness(
             last_fetch_at=state.last_fetch_at,
@@ -252,6 +268,7 @@ class StoreMirror:
             last_outcome=operation.outcome,
             last_outcome_at=operation.at,
             record_stamp=stamp,
+            shallow=self._has_boundary(),
         )
 
     async def ref_tip(self, ref: str) -> str | None:

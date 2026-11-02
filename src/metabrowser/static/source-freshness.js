@@ -57,6 +57,8 @@
       "The origin's HEAD names no branch, so the mirror keeps the default branch it had.",
     unsupported_git: "The installed Git is older than the version Metabrowser fetches with.",
     store_unavailable: "The mirror could not be opened.",
+    lender_missing:
+      "The checkout this mirror borrows objects from is gone. Run metab again with --checkout and where it is now.",
     refreshing_elsewhere: "Another Metabrowser process is refreshing this mirror.",
     cancelled: "The refresh was stopped before it finished.",
     failed: "The refresh failed.",

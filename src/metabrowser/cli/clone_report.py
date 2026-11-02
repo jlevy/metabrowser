@@ -262,12 +262,22 @@ class CloneReport:
         self.end_status_line()
         self._cloning = False
 
-    def cache_hit(self, last_fetch_at: str | None) -> None:
-        """Say that the source was already cloned, where, and how old the fetch is."""
+    def note(self, text: str) -> None:
+        """A line about storage: what is borrowed, what is kept, and what could be."""
+
+        self.end_status_line()
+        self._write(text + "\n")
+
+    def cache_hit(self, last_fetch_at: str | None, *, borrows: str | None = None) -> None:
+        """Say that the source was already cloned, where, how old the fetch is, and what it borrows."""
 
         line = f"using the clone of {self._url} cached in {self._destination}"
         age = _age_of(last_fetch_at)
-        self._write((line if age is None else f"{line}, fetched {age}") + "\n")
+        if age is not None:
+            line += f", fetched {age}"
+        if borrows is not None:
+            line += f", borrowing objects from {borrows}"
+        self._write(line + "\n")
 
     def _elapsed(self) -> str:
         return format_elapsed(_monotonic() - self._started)

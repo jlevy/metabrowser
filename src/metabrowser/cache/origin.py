@@ -231,7 +231,13 @@ def ls_remote_head_args(remote_url: str) -> list[str]:
     return [*origin_git_args(remote_url), "ls-remote", "--symref", "--", remote_url, "HEAD"]
 
 
-def mirror_fetch_args(remote_url: str, *, prune: bool, progress: bool = False) -> list[str]:
+def mirror_fetch_args(
+    remote_url: str,
+    *,
+    prune: bool,
+    progress: bool = False,
+    negotiation: tuple[str, ...] = (),
+) -> list[str]:
     """One fetch of every branch and tag from *remote_url* into the mirror namespaces.
 
     The origin is named by URL, the same URL that chose the credential helper, rather
@@ -250,11 +256,15 @@ def mirror_fetch_args(remote_url: str, *, prune: bool, progress: bool = False) -
     terminal: a first clone's caller reads it as numbers, through ``run_git``'s
     ``on_progress``, and nothing else should ask for it. What the origin's records mean
     for the stall bound is said at :data:`HTTP_LOW_SPEED_TIME_S`.
+
+    *negotiation* is an overlay store's ``--negotiation-tip`` arguments, which keep the
+    fetch to what the checkout it borrows from lacks.
     """
 
     flags = ["--prune", "--atomic"] if prune else []
     if progress:
         flags.append("--progress")
+    flags.extend(negotiation)
     return [
         *origin_git_args(remote_url),
         "fetch",

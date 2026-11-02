@@ -40,6 +40,8 @@ status: 200
     {
       "id": "<STORE-A>",
       "publication": "published",
+      "mode": "full",
+      "lender": null,
       "identity": {
         "created_at": "<TIME>",
         "acquisition": {
@@ -127,6 +129,8 @@ status: 200
     {
       "id": "<STORE-A>",
       "publication": "published",
+      "mode": "full",
+      "lender": null,
       "identity": {
         "created_at": "<TIME>",
         "acquisition": {

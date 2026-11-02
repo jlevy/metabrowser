@@ -783,6 +783,18 @@ async function main() {
     ["no comparison in the record", recordComparison, null],
   ].map(([when, mounted, next]) => `${when}: ${runtime.filesAction(mounted, next)}`);
 
+  // What Files changed says instead, for a record whose comparison could not be made and
+  // for one whose merge base the store's shallow history cannot settle.
+  const filesUnavailable = Object.fromEntries(
+    ["fetch_failed", "no_merge_base", "base_uncertain"].map((why) => {
+      const answer = structuredClone(recorded.current.body);
+      answer.record.comparison = null;
+      answer.record.unavailable = { comparison: why };
+      const model = runtime.describePull(answer, { number: 7, tab: "", nowMs: page.clock.now });
+      return [why, { files: model.filesUnavailable, notes: model.notes }];
+    }),
+  );
+
   // What a review comment shows of its hunk: the recorded pull request with one comment,
   // whose fields are the case's, through describePull. The stand-in's hunks are short, as
   // a recording is small, so the long ones are written here. Whatever the case, the two
@@ -823,6 +835,7 @@ async function main() {
         wire: runtime.gitPathWire("src/app.txt"),
         pageDefense: inert,
         filesChanged: files,
+        filesUnavailable,
         hunks,
         place: placeStory(runtime),
       },

@@ -1177,9 +1177,10 @@ def _mirror_tip(status: SourceStatus) -> str | None:
 
     if status["location"] is None:
         return None
+    borrowing = f", borrowing objects from {status['borrows']}" if status["borrows"] else ""
     return (
-        f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}: "
-        "a bare Git repository, with no checked-out files."
+        f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}"
+        f"{borrowing}: a bare Git repository, with no checked-out files."
     )
 
 

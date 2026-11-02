@@ -152,6 +152,8 @@ ADMITTED_GIT_TESTS := \
 	tests/test_acquire_stall_and_hangup.py \
 	tests/test_acquire_phases.py \
 	tests/test_github_pulls.py \
+	tests/test_checkout_overlay.py \
+	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_pull_golden.py \
 	tests/test_cache_async_locks.py \
 	tests/test_cli_no_serve_surface.py \
@@ -213,7 +215,8 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_git_pin_golden.py \
 	tests/test_cli_git_refresh_golden.py \
 	tests/test_cli_github_url_golden.py \
-	tests/test_cli_github_pull_golden.py
+	tests/test_cli_github_pull_golden.py \
+	tests/test_cli_checkout_golden.py
 
 golden-update:
 	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS)

@@ -783,6 +783,8 @@ status: 200
   "name": "demo",
   "origin": "https://github.com/octo/demo",
   "location": "[APP_HOME]/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "borrows": null,
+  "shallow": false,
   "refreshable": true,
   "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "ref_on_origin": true,

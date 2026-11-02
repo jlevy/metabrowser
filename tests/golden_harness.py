@@ -406,7 +406,8 @@ def elide_clone_timing(stderr: str) -> str:
 _HOME_LINES: Final = (
     r"cloning \S+ into {home}",
     r"using the clone of \S+ cached in {home}"
-    r"(?:, fetched (?:less than a minute ago|\d+ (?:minute|hour|day)s? ago|<AGE>))?",
+    r"(?:, fetched (?:less than a minute ago|\d+ (?:minute|hour|day)s? ago|<AGE>))?"
+    r"(?:, borrowing objects from .*)?",
     r'\s*"location": "{home}/repository-stores/(?:<STORE_KEY[^>"]*>|[0-9a-f]{{64}})'
     r'/repository\.git",',
 )

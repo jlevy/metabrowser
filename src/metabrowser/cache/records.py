@@ -23,7 +23,9 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    SerializerFunctionWrapHandler,
     StringConstraints,
+    model_serializer,
     model_validator,
 )
 
@@ -54,6 +56,10 @@ MAX_SAFE_INTEGER: Final = 9_007_199_254_740_991
 # A layout format is `f` and at least two decimal digits, so formats order by number.
 LAYOUT_FORMAT_PATTERN: Final = r"^f[0-9]{2,}$"
 _GIT_REF_MAX_LENGTH: Final = 1024
+# A borrowed directory is a line of Git's alternates file and a line of a command printed
+# on a terminal, so it has no control character. PATH_MAX is 1024 on macOS and 4096 on
+# Linux.
+_ABSOLUTE_PATH_MAX_LENGTH: Final = 4096
 # Portable across JSON Schema engines, so it is also the structural pattern.
 _RFC3339_UTC_PATTERN: Final = (
     r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?Z$"
@@ -86,6 +92,12 @@ def _require_timestamp(value: str) -> str:
 def _require_slug(value: str) -> str:
     if not is_slug(value):
         raise ValueError("a source slug is bounded lowercase ASCII tokens joined by '--'")
+    return value
+
+
+def _require_remote_name(value: str) -> str:
+    if ".." in value or value.endswith("/") or "//" in value:
+        raise ValueError("a remote name is a path below refs/remotes and never climbs out of it")
     return value
 
 
@@ -122,6 +134,19 @@ type GitVersion = Annotated[
     str, StringConstraints(min_length=1, max_length=128, pattern=r"^[0-9]+\.[0-9]+[!-~]*$")
 ]
 type Generation = Annotated[int, Field(ge=1, le=MAX_SAFE_INTEGER)]
+type AbsolutePath = Annotated[
+    str,
+    StringConstraints(
+        min_length=1, max_length=_ABSOLUTE_PATH_MAX_LENGTH, pattern=r"^/[^\x00-\x1f\x7f]*$"
+    ),
+]
+# The tips of an overlay's negotiation are read from ``refs/remotes/<remote>/`` under the
+# lender, so a name never climbs out of it.
+type GitRemoteName = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9_][A-Za-z0-9._/-]*$"),
+    AfterValidator(_require_remote_name),
+]
 
 
 class _MachineRecord(BaseModel):
@@ -234,12 +259,42 @@ class StoreAcquisition(_MachineRecord):
     object_format: ObjectFormat
 
 
+class StoreLender(_MachineRecord):
+    """The checkout an overlay store borrows objects from.
+
+    ``objects`` is the directory ``objects/info/alternates`` names, which for a linked
+    worktree is the common directory's. ``checkout`` is what is shown, the checkout's
+    root when the store was created, and ``remote`` the remote of that checkout whose
+    identity is the source's, whose ``refs/remotes/<remote>/`` are the tips a fetch
+    negotiates from.
+    """
+
+    objects: AbsolutePath
+    checkout: AbsolutePath
+    remote: GitRemoteName
+
+
 class RepositoryStore(_MachineRecord):
-    """``store.yml``: immutable identity and acquisition metadata of a Git database."""
+    """``store.yml``: identity and acquisition metadata of a Git database.
+
+    A store that borrows objects from a checkout has ``lender``. Absent means a full
+    store, as every store written before overlays existed is. Only ``--checkout`` naming
+    a new place for a lender that has gone rewrites this record.
+    """
 
     id: Sha256Identity
     created_at: CanonicalTimestamp
     acquisition: StoreAcquisition
+    lender: StoreLender | None = None
+
+    @model_serializer(mode="wrap")
+    def _full_store_has_no_lender_key(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, Any]:
+        dumped = cast(dict[str, Any], handler(self))
+        if dumped.get("lender") is None:
+            dumped.pop("lender", None)
+        return dumped
 
 
 type RecordedOutcome = Literal[
@@ -312,6 +367,7 @@ __all__ = [
     "RepositoryStoreAlias",
     "RepositoryStoreState",
     "StoreAcquisition",
+    "StoreLender",
     "StoreOperation",
     "canonical_now",
 ]

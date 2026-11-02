@@ -53,6 +53,8 @@ from metabrowser.git.process import (
     run_git_at,
 )
 
+_NO_MERGE_BASE = "these two commits share no history, so they have no merge base"
+
 MAX_MANIFEST_FILES = 2000
 """Manifest cap. A 2000-file change set is far past reviewable; beyond it
 the manifest reports `truncated` with a cursor rather than growing without
@@ -149,16 +151,7 @@ class GitDiffSource:
             left = await self._rev_parse(str(intent["left"]))
             right = await self._rev_parse(str(intent["right"]))
             if base_policy is BasePolicy.merge_base:
-                try:
-                    out = await run_git_at(["merge-base", left, right], self._location)
-                except GitCommandError as exc:
-                    # Exit status 1 is Git's answer for histories with no common commit.
-                    if exc.returncode != 1:
-                        raise
-                    raise DiffSourceError(
-                        "these two commits share no history, so they have no merge base"
-                    ) from exc
-                left = out.decode("ascii").strip()
+                left = await self._merge_base(left, right)
         comparison_id = "git:" + sha256(f"{left}..{right}".encode()).hexdigest()[:16]
         return ResolvedComparison(
             comparison_id=comparison_id,
@@ -175,6 +168,32 @@ class GitDiffSource:
             ),
             options=DiffOptions(context=3, rename_detection=True, rename_similarity=50),
         )
+
+    async def _merge_base(self, left: str, right: str) -> str:
+        """The merge base of two commits, which on a shallow store must be certain."""
+
+        target = self._location.target
+        if isinstance(target, RepositoryStoreTarget):
+            # Where a pin is compared: a folder's diff does not load the check.
+            from metabrowser.git.shallow import merge_base_answer
+
+            answer = await merge_base_answer(target, left, right)
+            if not answer.certain:
+                raise DiffSourceError(
+                    "this store's history is too shallow to know what these two commits share "
+                    "(base_uncertain)"
+                )
+            if answer.merge_base is None:
+                raise DiffSourceError(_NO_MERGE_BASE)
+            return answer.merge_base
+        try:
+            out = await run_git_at(["merge-base", left, right], self._location)
+        except GitCommandError as exc:
+            # Exit status 1 is Git's answer for histories with no common commit.
+            if exc.returncode != 1:
+                raise
+            raise DiffSourceError(_NO_MERGE_BASE) from exc
+        return out.decode("ascii").strip()
 
     async def _ensure_empty_tree_oid(self) -> None:
         """Derive the repo's empty-tree oid once, honoring its object format.

@@ -1,6 +1,16 @@
 $defs:
+  AbsolutePath:
+    maxLength: 4096
+    minLength: 1
+    pattern: ^/[^\x00-\x1f\x7f]*$
+    type: string
   CanonicalTimestamp:
     pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?Z$
+    type: string
+  GitRemoteName:
+    maxLength: 255
+    minLength: 1
+    pattern: ^[A-Za-z0-9_][A-Za-z0-9._/-]*$
     type: string
   GitVersion:
     maxLength: 128
@@ -28,9 +38,37 @@ $defs:
     - object_format
     title: StoreAcquisition
     type: object
+  StoreLender:
+    additionalProperties: false
+    description: |-
+      The checkout an overlay store borrows objects from.
+
+      ``objects`` is the directory ``objects/info/alternates`` names, which for a linked
+      worktree is the common directory's. ``checkout`` is what is shown, the checkout's
+      root when the store was created, and ``remote`` the remote of that checkout whose
+      identity is the source's, whose ``refs/remotes/<remote>/`` are the tips a fetch
+      negotiates from.
+    properties:
+      checkout:
+        $ref: '#/$defs/AbsolutePath'
+      objects:
+        $ref: '#/$defs/AbsolutePath'
+      remote:
+        $ref: '#/$defs/GitRemoteName'
+    required:
+    - checkout
+    - objects
+    - remote
+    title: StoreLender
+    type: object
 $schema: https://json-schema.org/draft/2020-12/schema
 additionalProperties: false
-description: '``store.yml``: immutable identity and acquisition metadata of a Git database.'
+description: |-
+  ``store.yml``: identity and acquisition metadata of a Git database.
+
+  A store that borrows objects from a checkout has ``lender``. Absent means a full
+  store, as every store written before overlays existed is. Only ``--checkout`` naming
+  a new place for a lender that has gone rewrites this record.
 properties:
   acquisition:
     $ref: '#/$defs/StoreAcquisition'
@@ -38,6 +76,11 @@ properties:
     $ref: '#/$defs/CanonicalTimestamp'
   id:
     $ref: '#/$defs/Sha256Identity'
+  lender:
+    anyOf:
+    - $ref: '#/$defs/StoreLender'
+    - type: 'null'
+    default: null
 required:
 - acquisition
 - created_at
@@ -46,4 +89,4 @@ title: RepositoryStore
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.cache:RepositoryStore/v1
-  schema_sha256: 2568046fdd61eb4797412f1b04417d806dc4df437a5bb47bad366496aed45ee8
+  schema_sha256: 707accdcb8774fac3a29870f30cb8fc5b108ce13a3818886874dbb8ef58f6751

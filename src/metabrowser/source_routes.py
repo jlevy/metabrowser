@@ -108,6 +108,10 @@ class SourceStatus(TypedDict):
     the source's address as given, which for a ``file://`` source is a path of the
     reader's. Both are display text, with the home directory as ``~`` when they are
     under it: no route takes either back as an input.
+
+    ``borrows`` is the checkout a served mirror borrows objects from, beside ``location``
+    under the same exception, and ``None`` for one that holds its own objects. ``shallow``
+    is whether the mirror's history stops at a shallow boundary, as the checkout's does.
     """
 
     subject: str
@@ -118,6 +122,8 @@ class SourceStatus(TypedDict):
     name: str | None
     origin: str | None
     location: str | None
+    borrows: str | None
+    shallow: bool
     refreshable: bool
     latest: str | None
     ref_on_origin: bool | None
@@ -151,6 +157,8 @@ def source_status(mirror: MirrorSession | None = None) -> SourceStatus:
             name=display.name if display is not None else None,
             origin=display.origin if display is not None else None,
             location=display.location if display is not None else None,
+            borrows=display.borrows if display is not None else None,
+            shallow=mirror.shallow() if mirror is not None else False,
             **freshness,
         )
     return SourceStatus(
@@ -162,6 +170,8 @@ def source_status(mirror: MirrorSession | None = None) -> SourceStatus:
         name=None,
         origin=None,
         location=None,
+        borrows=None,
+        shallow=False,
         **UNSERVED_FRESHNESS,
     )
 

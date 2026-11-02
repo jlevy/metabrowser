@@ -13,6 +13,14 @@ Every fetch is a network command on an acquisition-grade Git, all in
 isolated acquisition policy, its own process group, and the Git floor, under the store's
 fetch side lock with the leftovers of a killed fetch removed first, as the mirror update
 does. Nothing here writes a record or takes a hierarchy lock.
+
+A merge base on a store with a shallow boundary is believed only when it is certain
+(:mod:`metabrowser.git.shallow`). :func:`comparison_endpoints` raises
+:class:`BaseUncertainError` otherwise, and :func:`deepen_until_certain` is what the
+pull request's refresh job does about it: it fetches more history from the origin into
+the store's own objects, in rounds, until the answer can be believed or the bounds are
+reached. The checkout an overlay borrows from is never written: the store takes over its
+own boundary first (:func:`~metabrowser.cache.lender.own_boundary`).
 """
 
 from __future__ import annotations
@@ -20,10 +28,17 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
 from metabrowser.cache import acquire
+from metabrowser.cache.lender import (
+    LenderGoneError,
+    own_boundary,
+    prepare_overlay_fetch,
+    read_store_lender,
+)
 from metabrowser.cache.locks import (
     CacheLock,
     LockBusyError,
@@ -53,6 +68,7 @@ from metabrowser.cache.update import (
 )
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
+    GIT_ACQUISITION_TIMEOUT_S,
     STORE_READ_POLICY,
     GitCommandError,
     GitError,
@@ -61,6 +77,7 @@ from metabrowser.git.process import (
     repository_store_target,
     run_git,
 )
+from metabrowser.git.shallow import merge_base_answer
 from metabrowser.git.wire import is_full_revision
 from metabrowser.home import PrivateStorageError
 
@@ -77,8 +94,21 @@ log = logging.getLogger(__name__)
 FETCH_LOCK_RETRY_S: Final = 0.25
 FETCH_LOCK_WAIT_S: Final = 60.0
 
+# How many more commits each round of deepening asks for, and so how many rounds there
+# are. Measured 2026-11-02: a replica's depth-3 clone needed one round of two and its
+# depth-1 clone two rounds, and fetching the 8.8 MB that ends the shallow history of a
+# 1.2 GB repository took 7.5 s. A merge base further back than the first rounds reach is
+# an old pull request on a depth-limited clone, the case this is for, so the rounds grow
+# by a factor of eight and reach 9,362 commits. An answer still uncertain after them
+# reads ``base_uncertain``, and the next refresh goes on from there.
+DEEPEN_ROUNDS: Final[tuple[int, ...]] = (2, 16, 128, 1024, 8192)
+
 type PullFetchFailure = Literal[
-    "not_found_or_private", "network_error", "fetch_failed", "refreshing_elsewhere"
+    "not_found_or_private",
+    "network_error",
+    "fetch_failed",
+    "refreshing_elsewhere",
+    "lender_missing",
 ]
 
 
@@ -99,9 +129,27 @@ class PullRefError(Exception):
     The message names no path and carries none of Git's own text.
     """
 
-    def __init__(self, state: PullFetchFailure | Literal["no_merge_base"], message: str) -> None:
+    def __init__(
+        self, state: PullFetchFailure | Literal["no_merge_base", "base_uncertain"], message: str
+    ) -> None:
         super().__init__(message)
         self.state = state
+
+
+class BaseUncertainError(PullRefError):
+    """The store's history is too shallow to know the merge base, and no guess is made.
+
+    ``base_commit`` and ``base_from`` are what the comparison started from, which is what
+    deepening asks the origin for.
+    """
+
+    def __init__(self, *, base_commit: str, base_from: Literal["base_branch", "base_sha"]) -> None:
+        super().__init__(
+            "base_uncertain",
+            "the history here is too shallow to know what this pull request changed",
+        )
+        self.base_commit = base_commit
+        self.base_from: Literal["base_branch", "base_sha"] = base_from
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,7 +207,13 @@ async def _take_fetch_lock(published: PublishedSource) -> CacheLock:
         waited += FETCH_LOCK_RETRY_S
 
 
-async def fetch_into_store(published: PublishedSource, specs: list[str]) -> None:
+async def fetch_into_store(
+    published: PublishedSource,
+    specs: list[str],
+    *,
+    deepen: int | None = None,
+    timeout_s: float | None = None,
+) -> None:
     """``git fetch --atomic`` *specs* from the source's origin into its published store.
 
     Every fetch this module makes is this one command: the pull-request ref and the base
@@ -169,6 +223,13 @@ async def fetch_into_store(published: PublishedSource, specs: list[str]) -> None
     is removed first. The origin is named by the URL its source was acquired from, with
     that URL's arguments: the protocol allowlist, the stall bound, and for github.com the
     ``gh`` credential helper. ``--atomic`` writes every ref or none, after the objects.
+
+    Into an overlay store, the store's dangling refs are swept and the fetch negotiates
+    from the checkout's remote-tracking tips (:func:`prepare_overlay_fetch`), so it brings
+    only what the checkout lacks. *deepen* asks for that many more commits below the
+    store's boundary, which the store first takes over as its own file, since Git would
+    write it through a link into the checkout. *timeout_s* lowers the acquisition deadline.
+    Raises :class:`~metabrowser.cache.lender.LenderGoneError` when the checkout has gone.
     """
 
     require_no_hierarchy_locks("a pull request's fetch")
@@ -185,6 +246,9 @@ async def fetch_into_store(published: PublishedSource, specs: list[str]) -> None
         if removed:
             log.debug("removed files an interrupted fetch left in a store: %s", removed)
         target = _target(published)
+        negotiation = await _overlay_negotiation(published, target, lock)
+        if deepen is not None:
+            await finish_despite_cancel(asyncio.to_thread(own_boundary, published.git_dir))
         # On a case-insensitive filesystem the base branch can fold into a branch whose
         # name differs only in case; the mirror update's check and restore apply.
         before = await mirror_refs(target) if await store_ignores_case(target) else None
@@ -196,12 +260,15 @@ async def fetch_into_store(published: PublishedSource, specs: list[str]) -> None
                 "--porcelain",
                 "--no-tags",
                 "--no-write-fetch-head",
+                *negotiation,
+                *([f"--deepen={deepen}"] if deepen is not None else []),
                 remote_url,
                 *specs,
             ],
             target=target,
             policy=ACQUISITION_POLICY,
             pass_fds=(lock.descriptor,),
+            timeout_s=timeout_s,
         )
         if before is not None:
             # Checked and undone to the end even when cancelled: the lock is released
@@ -209,6 +276,24 @@ async def fetch_into_store(published: PublishedSource, specs: list[str]) -> None
             await finish_despite_cancel(_undo_a_fold(target, before, written, lock.descriptor))
     finally:
         lock.release()
+
+
+async def _overlay_negotiation(
+    published: PublishedSource, target: RepositoryStoreTarget, lock: CacheLock
+) -> tuple[str, ...]:
+    """An overlay's sweep and negotiation tips under the fetch lock; nothing for a full store.
+
+    From the record, not *published*, so a lender repaired since this server started is
+    the one used. The sweep runs to the end even when cancelled.
+    """
+
+    lender = await asyncio.to_thread(read_store_lender, published.home, published.store_key)
+    if lender is None:
+        return ()
+    default = published.default_remote_ref.removeprefix(BRANCH_MIRROR_PREFIX)
+    return await finish_despite_cancel(
+        prepare_overlay_fetch(target, lender, lock.descriptor, preferred=default)
+    )
 
 
 async def _undo_a_fold(
@@ -241,11 +326,21 @@ async def _undo_a_fold(
         raise RefCaseCollisionError(unrestored)
 
 
-async def _fetch(published: PublishedSource, specs: list[str]) -> None:
+async def _fetch(
+    published: PublishedSource,
+    specs: list[str],
+    *,
+    deepen: int | None = None,
+    timeout_s: float | None = None,
+) -> None:
     """:func:`fetch_into_store`, with Git's failure as a typed :class:`PullRefError`."""
 
     try:
-        await fetch_into_store(published, specs)
+        await fetch_into_store(published, specs, deepen=deepen, timeout_s=timeout_s)
+    except LenderGoneError as exc:
+        raise PullRefError(
+            "lender_missing", "the checkout this mirror borrows objects from is gone"
+        ) from exc
     except LockBusyError as exc:
         raise PullRefError(
             "refreshing_elsewhere", "another refresh of the mirror kept its fetch lock"
@@ -367,23 +462,81 @@ async def comparison_endpoints(
         if not await has_commit(published, base_sha):
             await fetch_commit(published, base_sha)
         base_commit = base_sha
+    return await _endpoints_from(published, head, base_commit, base_from)
+
+
+async def _endpoints_from(
+    published: PublishedSource,
+    head: str,
+    base_commit: str,
+    base_from: Literal["base_branch", "base_sha"],
+) -> PullEndpoints:
+    """The merge base of *base_commit* and *head*, when it can be believed."""
+
     try:
-        out = await _read(published, ["merge-base", base_commit, head])
+        answer = await merge_base_answer(_target(published), base_commit, head)
     except GitCommandError as exc:
         raise PullRefError("no_merge_base", "the base and head share no history") from exc
-    merge_base = out.decode("ascii", errors="replace").strip()
-    if not is_full_revision(merge_base):
+    if not answer.certain:
+        raise BaseUncertainError(base_commit=base_commit, base_from=base_from)
+    if answer.merge_base is None:
         raise PullRefError("no_merge_base", "the base and head share no history")
-    return PullEndpoints(base=merge_base, head=head, base_commit=base_commit, base_from=base_from)
+    return PullEndpoints(
+        base=answer.merge_base, head=head, base_commit=base_commit, base_from=base_from
+    )
+
+
+async def deepen_until_certain(
+    published: PublishedSource,
+    number: int,
+    *,
+    head: str,
+    base_branch: str | None,
+    uncertain: BaseUncertainError,
+) -> PullEndpoints:
+    """Fetch more history into the store until the merge base can be believed.
+
+    The base and the head are fetched with ``--deepen``, a round at a time
+    (:data:`DEEPEN_ROUNDS`), all of it within the acquisition deadline. The base is the
+    branch when that is what the comparison started from and otherwise the commit by ID.
+    Raises *uncertain* when the rounds run out, and the fetch's own typed
+    :class:`PullRefError` when the origin cannot be reached, as when offline. The objects
+    go into the store's own directory, and the checkout is not touched.
+    """
+
+    ref = pull_head_ref(number)
+    base_spec = (
+        f"+refs/heads/{base_branch}:{BRANCH_MIRROR_PREFIX}{base_branch}"
+        if uncertain.base_from == "base_branch" and base_branch is not None
+        else uncertain.base_commit
+    )
+    deadline = time.monotonic() + GIT_ACQUISITION_TIMEOUT_S
+    for depth in DEEPEN_ROUNDS:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        await _fetch(published, [f"+{ref}:{ref}", base_spec], deepen=depth, timeout_s=remaining)
+        try:
+            return await _endpoints_from(
+                published, head, uncertain.base_commit, uncertain.base_from
+            )
+        except BaseUncertainError:
+            log.debug(
+                "the merge base of pull request %s is uncertain after --deepen=%s", number, depth
+            )
+    raise uncertain
 
 
 __all__ = [
+    "DEEPEN_ROUNDS",
+    "BaseUncertainError",
     "PullEndpoints",
     "PullFetchFailure",
     "PullRefError",
     "RefCaseCollisionError",
     "base_branch_usable",
     "comparison_endpoints",
+    "deepen_until_certain",
     "fetch_commit",
     "fetch_into_store",
     "fetch_pull_head",

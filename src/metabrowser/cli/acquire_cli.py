@@ -21,6 +21,7 @@ import typer
 from metabrowser.cache.acquire import AcquisitionError, PublishedSource, acquire_source
 from metabrowser.cache.atomic import RecordError
 from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
+from metabrowser.cache.lender import CheckoutRefusedError, show_path
 from metabrowser.cache.locks import LockBusyError
 from metabrowser.cache.urls import GitSource
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
@@ -47,6 +48,7 @@ LOG = logging.getLogger(__name__)
 
 _ACQUIRE_CLI_ERRORS = (
     AcquisitionError,
+    CheckoutRefusedError,
     StorageDirectoryError,
     FutureLayoutFormatError,
     LayoutError,
@@ -99,7 +101,12 @@ def _is_cache_inspect_route(route: str) -> bool:
 
 
 async def acquire_for_cli(
-    source: GitSource, *, announce_hit: bool = False, then: str = ""
+    source: GitSource,
+    *,
+    announce_hit: bool = False,
+    then: str = "",
+    checkout: Path | None = None,
+    inspecting: bool = False,
 ) -> PublishedSource:
     """Publish *source* into ``METABROWSER_CACHE_DIR``, mapping failures to ``CLIError``.
 
@@ -114,6 +121,9 @@ async def acquire_for_cli(
     modes that open a source, serve mode and ``--no-serve``, ask for it. ``--show`` and
     ``--api`` do not: a script runs them again and again against one clone, and their
     stderr says only what the URL selected.
+
+    *checkout* is what ``--checkout`` named. *inspecting* is a cache route, which reads
+    records and no object, so a checkout that has gone does not stop it.
     """
     try:
         home = application_cache()
@@ -126,7 +136,13 @@ async def acquire_for_cli(
         with maybe_cli_logging(report.end_status_line):
             async with report.ticking():
                 published = await acquire_source(
-                    source, home=home, on_phase=report.phase, on_progress=report.progress
+                    source,
+                    home=home,
+                    on_phase=report.phase,
+                    on_progress=report.progress,
+                    checkout=checkout,
+                    on_note=report.note,
+                    inspecting=inspecting,
                 )
     except _ACQUIRE_CLI_ERRORS as exc:
         raise CLIError(str(exc)) from exc
@@ -138,27 +154,42 @@ async def acquire_for_cli(
     finally:
         report.close()
     if announce_hit and not published.fetched:
-        report.cache_hit(published.last_fetch_at)
+        borrows = published.lender.checkout if published.lender is not None else None
+        report.cache_hit(
+            published.last_fetch_at, borrows=None if borrows is None else show_path(borrows)
+        )
     return published
 
 
-def acquire_published_source(source: GitSource, *, announce_hit: bool = False) -> PublishedSource:
+def acquire_published_source(
+    source: GitSource,
+    *,
+    announce_hit: bool = False,
+    checkout: Path | None = None,
+    inspecting: bool = False,
+) -> PublishedSource:
     """Publish *source* into ``METABROWSER_CACHE_DIR`` and return the alias."""
 
-    return run_cancelling_on_hangup(acquire_for_cli(source, announce_hit=announce_hit))
+    return run_cancelling_on_hangup(
+        acquire_for_cli(source, announce_hit=announce_hit, checkout=checkout, inspecting=inspecting)
+    )
 
 
-def run_no_serve(root: Path | GitSource, *, log_level: str = "") -> None:
+def run_no_serve(
+    root: Path | GitSource, *, log_level: str = "", checkout: Path | None = None
+) -> None:
     """Acquire a Git source and print its slug, store, revision, and URL selection."""
 
     apply_log_level(log_level)
     if isinstance(root, Path):
         raise CLIError("ROOT is a local path; --no-serve acquires a file:// or https:// Git source")
-    published = acquire_published_source(root, announce_hit=True)
+    published = acquire_published_source(root, announce_hit=True, checkout=checkout)
     typer.echo(f"acquired: {published.source.normalized}")
     typer.echo(f"slug: {published.slug}")
     typer.echo(f"store: {published.store_id}")
     typer.echo(f"revision: {published.default_revision}")
+    if published.lender is not None:
+        typer.echo(f"borrows: {show_path(published.lender.checkout)}")
     if root.selection is not None:
         # After the identity lines: the store is published even when the URL's ref is
         # not in it, and the error that follows says so. A URL inside a pull request
@@ -188,6 +219,7 @@ def run_api_after_acquire(
     untrusted: bool = False,
     no_active_content: bool = False,
     allow_edits: bool = False,
+    checkout: Path | None = None,
 ) -> None:
     """Acquire *source*, then issue a cache route against an empty ASGI root."""
 
@@ -199,7 +231,7 @@ def run_api_after_acquire(
             f"({source.normalized}). Inspect cache state with --api /api/cache/..."
         )
     apply_log_level(log_level)
-    acquire_published_source(source)
+    acquire_published_source(source, checkout=checkout, inspecting=True)
     from metabrowser.cli.api_cli import run_api
 
     with tempfile.TemporaryDirectory() as tmp:

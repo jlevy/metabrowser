@@ -51,6 +51,11 @@ from pathlib import Path
 from typing import Final
 
 from metabrowser.cache.atomic import RecordError, read_record, write_record_atomic
+from metabrowser.cache.lender import (
+    LenderGoneError,
+    prepare_overlay_fetch,
+    read_store_lender,
+)
 from metabrowser.cache.locks import (
     CacheLock,
     LockBusyError,
@@ -63,6 +68,7 @@ from metabrowser.cache.locks import (
     store_fetch_lock,
 )
 from metabrowser.cache.origin import (
+    BRANCH_MIRROR_PREFIX,
     REMOTE_PROBE_TIMEOUT_S,
     OriginHeadError,
     classify_remote_failure,
@@ -149,6 +155,9 @@ class RefreshOutcome(StrEnum):
     unsupported_git = "unsupported_git"
     # The store directory is missing or unreadable.
     store_unavailable = "store_unavailable"
+    # The checkout an overlay store borrows from is gone, so no fetch can run. This is a
+    # fact about the checkout, which can come back, and is not recorded.
+    lender_missing = "lender_missing"
     # The server stopped the refresh before it finished.
     cancelled = "cancelled"
     # Anything else, logged with its cause.
@@ -213,6 +222,8 @@ def remove_interrupted_fetch_leftovers(git_dir: Path) -> tuple[str, ...]:
         removed.append(path.relative_to(git_dir).as_posix())
 
     remove(git_dir / "packed-refs.lock")
+    # A killed ``--deepen``'s. The store owns its boundary by then (``own_boundary``).
+    remove(git_dir / "shallow.lock")
     refs = git_dir / "refs"
     for directory, _subdirectories, files in os.walk(refs, followlinks=False):
         for name in files:
@@ -292,6 +303,7 @@ async def _fetch_atomically(
     remote_url: str,
     lock_fd: int,
     before: dict[str, str] | None,
+    negotiation: tuple[str, ...] = (),
 ) -> _Fetched:
     """Fetch every branch and tag in one transaction, pruning separately and retrying once.
 
@@ -300,7 +312,7 @@ async def _fetch_atomically(
     says what the store held just before the fetch that landed.
     """
 
-    fetch = mirror_fetch_args(remote_url, prune=True)
+    fetch = mirror_fetch_args(remote_url, prune=True, negotiation=negotiation)
     try:
         porcelain = await run_git(
             fetch, target=target, policy=ACQUISITION_POLICY, pass_fds=(lock_fd,)
@@ -461,7 +473,12 @@ async def _check_for_folds(
 
 
 async def _fetch(
-    target: RepositoryStoreTarget, remote_url: str, *, lock_fd: int, previous_ref: str | None
+    target: RepositoryStoreTarget,
+    remote_url: str,
+    *,
+    lock_fd: int,
+    previous_ref: str | None,
+    negotiation: tuple[str, ...] = (),
 ) -> StoreUpdate:
     """Observe the origin's HEAD, fetch, and read the default branch back from the mirror.
 
@@ -491,7 +508,7 @@ async def _fetch(
     # that folded two refs into one file can be undone; see ``folded_refs``.
     before = await mirror_refs(target) if await store_ignores_case(target) else None
     try:
-        fetched = await _fetch_atomically(target, remote_url, lock_fd, before)
+        fetched = await _fetch_atomically(target, remote_url, lock_fd, before, negotiation)
     except asyncio.CancelledError:
         # Stopped as the fetch ended: it may have landed and folded. Nothing a cancelled
         # refresh did stays, so the refs go back as they were before it began.
@@ -598,6 +615,31 @@ def _previous_default_ref(home: Path, store_key: str) -> str | None:
     return state.default_remote_ref if isinstance(state, RepositoryStoreState) else None
 
 
+async def _overlay_preparation(
+    home: Path,
+    store_key: str,
+    target: RepositoryStoreTarget,
+    lock_fd: int,
+    previous_ref: str | None,
+) -> tuple[str, ...]:
+    """An overlay's sweep and negotiation tips before a refresh; nothing for a full store."""
+
+    try:
+        lender = await asyncio.to_thread(read_store_lender, home, store_key)
+    except (PrivateStorageError, RecordError, OSError) as exc:
+        # The refresh goes on without them, as a full store's would, and Git reports
+        # anything that is really wrong with the store.
+        log.warning("refresh could not read what the store borrows from: %s", exc)
+        return ()
+    if lender is None:
+        return ()
+    preferred = previous_ref.removeprefix(BRANCH_MIRROR_PREFIX) if previous_ref else None
+    # The sweep runs to the end even when cancelled, as the other work under the lock does.
+    return await _finish_despite_cancel(
+        prepare_overlay_fetch(target, lender, lock_fd, preferred=preferred)
+    )
+
+
 async def update_store(home: Path, store_key: str, *, remote_url: str) -> StoreUpdate:
     """Refresh the published store *store_key* under *home* from *remote_url*.
 
@@ -645,9 +687,19 @@ async def update_store(home: Path, store_key: str, *, remote_url: str) -> StoreU
             log.debug("removed files an interrupted fetch left in a store: %s", removed)
         previous_ref = await asyncio.to_thread(_previous_default_ref, home, store_key)
         try:
-            update = await _fetch(
-                target, remote_url, lock_fd=fetch_lock.descriptor, previous_ref=previous_ref
+            negotiation = await _overlay_preparation(
+                home, store_key, target, fetch_lock.descriptor, previous_ref
             )
+            update = await _fetch(
+                target,
+                remote_url,
+                lock_fd=fetch_lock.descriptor,
+                previous_ref=previous_ref,
+                negotiation=negotiation,
+            )
+        except LenderGoneError:
+            log.info("refresh skipped: the checkout this store borrows from is gone")
+            update = StoreUpdate(RefreshOutcome.lender_missing, canonical_now())
         except GitError as exc:
             # A local read of the store failed around the fetch: listing its refs, its
             # case setting, or a tip. Reported, never raised into the caller.

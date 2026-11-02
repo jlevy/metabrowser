@@ -86,8 +86,11 @@ from metabrowser.builtin_plugins.github.pull_record import (
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
 from metabrowser.cache.providers import PullRequestFetch, PullRequestPin
 from metabrowser.cache.pull_refs import (
+    BaseUncertainError,
+    PullEndpoints,
     PullRefError,
     comparison_endpoints,
+    deepen_until_certain,
     fetch_pull_head,
     has_commit,
     pull_head_ref,
@@ -130,6 +133,7 @@ type PullDataState = Literal[
     "head_mismatch",
     "fetch_failed",
     "refreshing_elsewhere",
+    "lender_missing",
     "git_failed",
     "record_too_large",
     "cache_unwritable",
@@ -696,6 +700,8 @@ def _fetch_failure(exc: PullRefError) -> PullDataError:
         return PullDataError("network_error", str(exc))
     if exc.state == "refreshing_elsewhere":
         return PullDataError("refreshing_elsewhere", str(exc))
+    if exc.state == "lender_missing":
+        return PullDataError("lender_missing", str(exc))
     return PullDataError("fetch_failed", str(exc))
 
 
@@ -709,23 +715,7 @@ def _git_failure(number: int, exc: GitError) -> PullDataError:
     )
 
 
-async def _comparison(
-    published: PublishedSource, pull: PullRequest, unavailable: dict[UnavailablePart, str]
-) -> Comparison | None:
-    """Files changed, or ``None`` with the reason recorded in *unavailable*."""
-
-    try:
-        endpoints = await comparison_endpoints(
-            published,
-            head=pull.head.sha,
-            base_sha=pull.base.sha,
-            base_branch=pull.base.ref,
-            open_pull=pull.state == "open",
-        )
-    except PullRefError as exc:
-        log.debug("pull request %s has no comparison: %s", pull.number, exc)
-        unavailable["comparison"] = exc.state
-        return None
+def _comparison_of(endpoints: PullEndpoints) -> Comparison:
     return Comparison(
         base=endpoints.base,
         head=endpoints.head,
@@ -746,6 +736,59 @@ async def _write(published: PublishedSource, record: PullRecord) -> PullRecord:
             "cache_unwritable", "its record could not be written to the cache"
         ) from exc
     return final
+
+
+async def _with_comparison(published: PublishedSource, record: PullRecord) -> PullRecord:
+    """Compute Files changed and write the record.
+
+    A comparison that cannot be computed is left out and named in the record's
+    ``unavailable``. One whose merge base is uncertain writes that record first, so a
+    reader sees ``base_uncertain`` and not nothing while the store deepens within this job,
+    and writes the record again if deepening settles it. Offline, the fetch fails at once
+    and the first record stands: a guess is never shown.
+    """
+
+    pull = record.pull
+    unavailable = dict(record.unavailable)
+
+    def without(state: str) -> PullRecord:
+        return record.model_copy(
+            update={"comparison": None, "unavailable": {**unavailable, "comparison": state}}
+        )
+
+    try:
+        endpoints = await comparison_endpoints(
+            published,
+            head=pull.head.sha,
+            base_sha=pull.base.sha,
+            base_branch=pull.base.ref,
+            open_pull=pull.state == "open",
+        )
+    except BaseUncertainError as uncertain:
+        log.debug("pull request %s has an uncertain merge base; deepening", pull.number)
+        await _write(published, without(uncertain.state))
+        try:
+            endpoints = await deepen_until_certain(
+                published,
+                pull.number,
+                head=pull.head.sha,
+                base_branch=pull.base.ref,
+                uncertain=uncertain,
+            )
+        except PullRefError as exc:
+            # Why it could not be settled goes to the log. What the reader needs is that
+            # the base is uncertain, whatever stopped the deepening.
+            log.debug("deepening pull request %s stopped: %s (%s)", pull.number, exc, exc.state)
+            return await _write(published, without(uncertain.state))
+    except PullRefError as exc:
+        log.debug("pull request %s has no comparison: %s", pull.number, exc)
+        return await _write(published, without(exc.state))
+    return await _write(
+        published,
+        record.model_copy(
+            update={"comparison": _comparison_of(endpoints), "unavailable": unavailable}
+        ),
+    )
 
 
 async def _refresh(published: PublishedSource, number: int) -> PullRecord:
@@ -775,12 +818,7 @@ async def _refresh(published: PublishedSource, number: int) -> PullRecord:
             raise PullDataError(
                 "head_mismatch", "its head kept moving while it was read; open it again"
             )
-        unavailable = dict(record.unavailable)
-        comparison = await _comparison(published, pull, unavailable)
-        return await _write(
-            published,
-            record.model_copy(update={"comparison": comparison, "unavailable": unavailable}),
-        )
+        return await _with_comparison(published, record)
     raise AssertionError("unreachable")
 
 

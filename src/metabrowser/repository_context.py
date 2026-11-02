@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import configparser
+import os
 import re
+import stat
 from pathlib import Path
 from typing import TypedDict
 from urllib.parse import urlsplit
 
 # Keep first-paint repository discovery bounded even for corrupt metadata.
-_MAX_GIT_POINTER_BYTES = 4 * 1024
-_MAX_GIT_CONFIG_BYTES = 1024 * 1024
-_MAX_PACKED_REFS_BYTES = 8 * 1024 * 1024
+MAX_GIT_POINTER_BYTES = 4 * 1024
+MAX_GIT_CONFIG_BYTES = 1024 * 1024
+MAX_PACKED_REFS_BYTES = 8 * 1024 * 1024
 _FULL_REVISION_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 _REPOSITORY_PART_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
@@ -31,13 +33,13 @@ def discover_repository_context(served_root: Path) -> RepositoryContext | None:
     """Return verified GitHub identity without invoking Git or exposing local paths."""
 
     root = served_root.resolve()
-    git_root = _find_git_root(root)
+    git_root = find_git_root(root)
     if git_root is None:
         return None
-    git_dir = _resolve_git_dir(git_root)
+    git_dir = resolve_git_dir(git_root)
     if git_dir is None:
         return None
-    common_dir = _resolve_common_dir(git_dir)
+    common_dir = resolve_common_dir(git_dir)
     remote = _read_origin_remote(common_dir / "config")
     if remote is None:
         return None
@@ -60,20 +62,20 @@ def discover_repository_context(served_root: Path) -> RepositoryContext | None:
     )
 
 
-def _find_git_root(start: Path) -> Path | None:
+def find_git_root(start: Path) -> Path | None:
     for candidate in (start, *start.parents):
         if (candidate / ".git").exists():
             return candidate
     return None
 
 
-def _resolve_git_dir(git_root: Path) -> Path | None:
+def resolve_git_dir(git_root: Path) -> Path | None:
     marker = git_root / ".git"
     if marker.is_dir():
         return marker.resolve()
     if not marker.is_file():
         return None
-    pointer = _read_bounded_text(marker, _MAX_GIT_POINTER_BYTES)
+    pointer = read_bounded_text(marker, MAX_GIT_POINTER_BYTES)
     if pointer is None or not pointer.startswith("gitdir:"):
         return None
     raw_path = pointer.removeprefix("gitdir:").strip()
@@ -82,8 +84,8 @@ def _resolve_git_dir(git_root: Path) -> Path | None:
     return (git_root / raw_path).resolve()
 
 
-def _resolve_common_dir(git_dir: Path) -> Path:
-    pointer = _read_bounded_text(git_dir / "commondir", _MAX_GIT_POINTER_BYTES)
+def resolve_common_dir(git_dir: Path) -> Path:
+    pointer = read_bounded_text(git_dir / "commondir", MAX_GIT_POINTER_BYTES)
     if pointer is None:
         return git_dir
     raw_path = pointer.strip()
@@ -91,7 +93,7 @@ def _resolve_common_dir(git_dir: Path) -> Path:
 
 
 def _read_origin_remote(config_path: Path) -> tuple[str, str] | None:
-    source = _read_bounded_text(config_path, _MAX_GIT_CONFIG_BYTES)
+    source = read_bounded_text(config_path, MAX_GIT_CONFIG_BYTES)
     if source is None:
         return None
     parser = configparser.ConfigParser(interpolation=None, strict=False)
@@ -122,7 +124,7 @@ def _parse_github_remote(remote: str) -> tuple[str, str] | None:
 
 
 def _read_head(git_dir: Path, common_dir: Path) -> tuple[str | None, str] | None:
-    source = _read_bounded_text(git_dir / "HEAD", _MAX_GIT_POINTER_BYTES)
+    source = read_bounded_text(git_dir / "HEAD", MAX_GIT_POINTER_BYTES)
     if source is None:
         return None
     value = source.strip()
@@ -140,10 +142,10 @@ def _read_head(git_dir: Path, common_dir: Path) -> tuple[str | None, str] | None
 
 def _read_reference(git_dir: Path, common_dir: Path, reference: str) -> str | None:
     for base in (git_dir, common_dir):
-        value = _read_bounded_text(base / reference, _MAX_GIT_POINTER_BYTES)
+        value = read_bounded_text(base / reference, MAX_GIT_POINTER_BYTES)
         if value is not None and _FULL_REVISION_RE.fullmatch(value.strip()):
             return value.strip()
-    packed = _read_bounded_text(common_dir / "packed-refs", _MAX_PACKED_REFS_BYTES)
+    packed = read_bounded_text(common_dir / "packed-refs", MAX_PACKED_REFS_BYTES)
     if packed is None:
         return None
     for line in packed.splitlines():
@@ -155,12 +157,35 @@ def _read_reference(git_dir: Path, common_dir: Path, reference: str) -> str | No
     return None
 
 
-def _read_bounded_text(path: Path, limit: int) -> str | None:
+def read_regular_file_head(path: Path, limit: int) -> bytes | None:
+    """Up to *limit* bytes of a regular file, or ``None`` for anything else.
+
+    A directory's ``.git`` is whatever was planted there, and a FIFO in the place of one
+    of these files would block ``open`` until something wrote to it: a reviewer's replica
+    with one as ``commondir`` blocked discovery until it was killed. So the file is opened
+    without blocking and read only once it is known to be a regular file.
+    """
+
     try:
-        with path.open("rb") as stream:
-            source = stream.read(limit + 1)
-        if len(source) > limit:
-            return None
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    except (OSError, ValueError):
+        return None
+    try:
+        with os.fdopen(descriptor, "rb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                return None
+            return stream.read(limit)
+    except OSError:
+        return None
+
+
+def read_bounded_text(path: Path, limit: int) -> str | None:
+    """A regular file of at most *limit* bytes as text, or ``None``."""
+
+    source = read_regular_file_head(path, limit + 1)
+    if source is None or len(source) > limit:
+        return None
+    try:
         return source.decode("utf-8")
-    except (OSError, UnicodeError):
+    except UnicodeError:
         return None

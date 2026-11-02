@@ -743,6 +743,26 @@ $ node tests/dom/github-pull-page-session.js
     "open on an older head: offer",
     "no comparison in the record: unavailable"
   ],
+  "filesUnavailable": {
+    "fetch_failed": {
+      "files": "Files changed is unavailable: the pull request's base could not be compared with its head.",
+      "notes": [
+        "Files changed could not be read (fetch failed)."
+      ]
+    },
+    "no_merge_base": {
+      "files": "Files changed is unavailable: the pull request's base could not be compared with its head.",
+      "notes": [
+        "Files changed could not be read (no merge base)."
+      ]
+    },
+    "base_uncertain": {
+      "files": "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.",
+      "notes": [
+        "Files changed could not be read (base uncertain)."
+      ]
+    }
+  },
   "hunks": {
     "a short hunk is whole": {
       "earlier": null,

@@ -182,7 +182,8 @@ class RecordedFreshness:
     ``record_stamp`` identifies the record file as read -- its inode and nanosecond
     modification time, both new on every atomic rewrite -- so a caller can tell a
     rewrite apart from a record written earlier in the same second; ``None`` when the
-    mirror cannot say.
+    mirror cannot say. ``shallow`` is whether the store has a shallow boundary, which for
+    an overlay moves with the checkout.
     """
 
     last_fetch_at: str | None
@@ -190,6 +191,7 @@ class RecordedFreshness:
     last_outcome: str | None
     last_outcome_at: str | None
     record_stamp: tuple[int, int] | None = None
+    shallow: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,11 +205,14 @@ class MirrorDisplay:
     Both ``origin``, when it is a ``file://`` address, and ``location`` have the home
     directory as ``~`` when they are under it. All three are safe to print: a control
     or invisible character the origin put in its address is already replaced.
+    ``borrows`` is the checkout an overlay borrows objects from, under the same exception,
+    and ``None`` for a mirror that holds all its own objects.
     """
 
     name: str
     origin: str
     location: str
+    borrows: str | None = None
 
 
 class ServedMirror(Protocol):
@@ -542,6 +547,11 @@ class MirrorSession:
                 self._tip = None
                 return
             self._tip = (subject.ref, await self.mirror.ref_tip(subject.ref))
+
+    def shallow(self) -> bool:
+        """Whether the store had a shallow boundary when it was last observed."""
+
+        return self._recorded.shallow
 
     def last_fetch_at(self) -> str | None:
         recorded = self._recorded.last_fetch_at

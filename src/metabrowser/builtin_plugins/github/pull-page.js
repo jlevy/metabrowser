@@ -183,6 +183,7 @@ const TRUNCATED = Object.freeze({
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
  *   notes: string[],
  *   comparison: {left: string, right: string, headMoved: boolean} | null,
+ *   filesUnavailable: string,
  *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
  *   served: number | null,
  * }} PullModel
@@ -537,6 +538,23 @@ function notes(record) {
 }
 
 /**
+ * What Files changed says in place of a diff, from the state the record names. Pure.
+ *
+ * A merge base the store's shallow history cannot settle is not a failure to read: the
+ * diff could be computed and would be a guess, so the page says that it does not guess
+ * and what would settle it.
+ *
+ * @param {unknown} why The record's `unavailable.comparison`.
+ * @returns {string}
+ */
+export function filesUnavailableText(why) {
+  if (why === "base_uncertain") {
+    return "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
+  }
+  return "Files changed is unavailable: the pull request's base could not be compared with its head.";
+}
+
+/**
  * What the page shows for one answer of the pull route. Pure.
  *
  * @param {PullEnvelope | null} envelope
@@ -561,6 +579,7 @@ export function describePull(envelope, page) {
     checks: null,
     notes: [],
     comparison: null,
+    filesUnavailable: filesUnavailableText(null),
     headOffer: null,
     served: null,
   };
@@ -650,6 +669,7 @@ export function describePull(envelope, page) {
       text: `This page's code is ${envelope.pin.slice(0, 12)}, not the pull request's head ${head.slice(0, 12)}.`,
     };
   }
+  model.filesUnavailable = filesUnavailableText(record.unavailable?.comparison ?? null);
   const comparison = record.comparison;
   if (comparison && typeof comparison.base === "string" && typeof comparison.head === "string") {
     model.comparison = {
@@ -1752,11 +1772,7 @@ export function mountPullPage(container, ctx, mb) {
     const action = filesAction(diffFor, comparison);
     if (comparison === null || action === "unavailable") {
       disposeDiff();
-      body.replaceChildren(
-        h("p", { class: "github-pull-note" }, [
-          "Files changed is unavailable: the pull request's base could not be compared with its head.",
-        ]),
-      );
+      body.replaceChildren(h("p", { class: "github-pull-note" }, [model.filesUnavailable]));
       return;
     }
     if (action === "mount") {
