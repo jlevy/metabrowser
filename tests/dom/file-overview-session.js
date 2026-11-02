@@ -54,6 +54,7 @@ class FakeElement {
     this.hidden = false;
     this.ownText = "";
     this.html = "";
+    this.htmlWrites = 0;
     this.classList = {
       add: (...names) => {
         this.className = [...new Set([...this.className.split(" "), ...names])]
@@ -105,6 +106,7 @@ class FakeElement {
   }
   set innerHTML(value) {
     this.html = value;
+    this.htmlWrites += 1;
     this.children = [];
     this.ownText = "";
   }
@@ -269,6 +271,8 @@ const rollupError = (status) =>
       panel,
       requests: () => requests,
       settle,
+      /** Times the totals' markup was replaced, each of which restarts a skeleton's delay. */
+      totalsWrites: () => totals().htmlWrites,
       read() {
         const shownTotals = totals();
         // A folder the inventory leaves out mounts neither body.
@@ -409,6 +413,75 @@ const rollupError = (status) =>
       scanning,
       failedRefresh,
     };
+    view.panel.dispose();
+  }
+
+  // A later answer that the scan is running brings both skeletons back, whatever ended them.
+  // The distribution rebuilds its own from that answer, and the totals have to follow it.
+  const SCANNING = { path: "docs", index_status: "scanning", node: null };
+  const FINISHED_WITHOUT = { path: "docs", index_status: "done", truncated: false, node: null };
+  for (const [step, answers, resume] of [
+    ["a refresh failing during a scan, then Retry", [SCANNING, rollupError(500)], "retry"],
+    ["a refresh failing during a scan, then a change", [SCANNING, rollupError(500)], "change"],
+    ["an index that finished without the folder, then a rescan", [FINISHED_WITHOUT], "change"],
+    ["a failed first request, then a change", [rollupError(500)], "change"],
+    ["a failed first request, then Retry", [rollupError(500)], "retry"],
+  ]) {
+    const [firstAnswer, ...later] = answers;
+    const view = page(PENDING_DIR, firstAnswer);
+    await view.settle();
+    for (const answer of later) {
+      view.answers.next = answer;
+      await view.inventoryChanged();
+    }
+    const stopped = view.read();
+    noSkeleton(stopped, step);
+    view.answers.next = SCANNING;
+    if (resume === "retry") {
+      view.retry();
+      await view.settle();
+    } else {
+      await view.inventoryChanged();
+    }
+    const resumed = view.read();
+    assert(resumed.totals === "skeleton", `${step}: totals ${resumed.totals}`);
+    assert(resumed.distribution === "skeleton", `${step}: distribution ${resumed.distribution}`);
+    transcript[`${step} brings both skeletons back`] = { stopped, resumed };
+    view.panel.dispose();
+  }
+
+  // Every refresh of a scan answers the same, and only a change repaints the totals. Past a
+  // failure and back it still ends the same way, when the index says nothing is coming.
+  {
+    const view = page(PENDING_DIR, SCANNING);
+    await view.settle();
+    const writes = view.totalsWrites();
+    await view.inventoryChanged();
+    assert(view.totalsWrites() === writes, "a scan's refresh repainted the totals' skeleton");
+    view.answers.next = rollupError(500);
+    await view.inventoryChanged();
+    view.answers.next = SCANNING;
+    await view.inventoryChanged();
+    const resumed = view.read();
+    assert(resumed.totals === "skeleton", `past a failure: totals ${resumed.totals}`);
+    view.answers.next = FINISHED_WITHOUT;
+    await view.inventoryChanged();
+    const finished = view.read();
+    noSkeleton(finished, "an index that finished after a resumed scan");
+    assert(finished.totals === "nothing", `an index finished after: totals ${finished.totals}`);
+    transcript["a resumed scan still finishes"] = { resumed, finished };
+    view.panel.dispose();
+  }
+
+  // Totals already on screen are not a skeleton's to take back.
+  {
+    const view = page(COMPLETE_DIR, rollupError(500));
+    await view.settle();
+    view.answers.next = SCANNING;
+    await view.inventoryChanged();
+    const shown = view.read();
+    assert(shown.totals.includes("Total"), `a rescan took the envelope's totals: ${shown.totals}`);
+    transcript["a rescan leaves the totals the envelope carries"] = shown;
     view.panel.dispose();
   }
 

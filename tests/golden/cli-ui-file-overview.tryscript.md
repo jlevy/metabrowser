@@ -13,6 +13,7 @@ index, a running scan, and complete.
 Each step prints what is on screen.
 Only a running scan may show a skeleton: every other answer finishes both bodies, and a
 control changed after a failure keeps the failure’s message.
+A later answer that the scan is running brings both skeletons back, whatever ended them.
 A hidden folder or a symbolic link to a folder, which the inventory leaves out, asks for
 no rollup and says why it has no totals, and the folder header shows no tally for it.
 On an ordinary folder the distribution’s caption names the tally row its shares are of
@@ -76,6 +77,83 @@ $ node tests/dom/file-overview-session.js
       "distribution": "Could not load file types. Retry",
       "retry": true
     }
+  },
+  "a refresh failing during a scan, then Retry brings both skeletons back": {
+    "stopped": {
+      "totals": "nothing",
+      "distribution": "Could not load file types. Retry",
+      "retry": true
+    },
+    "resumed": {
+      "totals": "skeleton",
+      "distribution": "skeleton",
+      "retry": false
+    }
+  },
+  "a refresh failing during a scan, then a change brings both skeletons back": {
+    "stopped": {
+      "totals": "nothing",
+      "distribution": "Could not load file types. Retry",
+      "retry": true
+    },
+    "resumed": {
+      "totals": "skeleton",
+      "distribution": "skeleton",
+      "retry": false
+    }
+  },
+  "an index that finished without the folder, then a rescan brings both skeletons back": {
+    "stopped": {
+      "totals": "nothing",
+      "distribution": "This folder is not in the current file index.",
+      "retry": false
+    },
+    "resumed": {
+      "totals": "skeleton",
+      "distribution": "skeleton",
+      "retry": false
+    }
+  },
+  "a failed first request, then a change brings both skeletons back": {
+    "stopped": {
+      "totals": "nothing",
+      "distribution": "Could not load file types. Retry",
+      "retry": true
+    },
+    "resumed": {
+      "totals": "skeleton",
+      "distribution": "skeleton",
+      "retry": false
+    }
+  },
+  "a failed first request, then Retry brings both skeletons back": {
+    "stopped": {
+      "totals": "nothing",
+      "distribution": "Could not load file types. Retry",
+      "retry": true
+    },
+    "resumed": {
+      "totals": "skeleton",
+      "distribution": "skeleton",
+      "retry": false
+    }
+  },
+  "a resumed scan still finishes": {
+    "resumed": {
+      "totals": "skeleton",
+      "distribution": "skeleton",
+      "retry": false
+    },
+    "finished": {
+      "totals": "nothing",
+      "distribution": "This folder is not in the current file index.",
+      "retry": false
+    }
+  },
+  "a rescan leaves the totals the envelope carries": {
+    "totals": "Files 2 files Ignored 1 files Total 3 files",
+    "distribution": "skeleton",
+    "retry": false
   },
   "a hidden folder says why it has no totals": {
     "totals": "nothing",

@@ -1040,7 +1040,8 @@ Fixes:
   changing Files or Bytes or Show ignored after a failure keeps the failure’s message
   instead of bringing the skeleton back; and a refresh that fails while nothing has been
   counted says so and offers Retry where the request can be retried.
-  A scan that is still running keeps its skeletons.
+  A scan that is still running keeps its skeletons, and an answer that it is running
+  brings them back after a failure.
 
 - A JSONL log’s event rows answer the keyboard.
   Each row’s header is now a button with a tab stop and an expanded state, and Enter or

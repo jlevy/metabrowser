@@ -342,6 +342,17 @@ export function registerTreemap(mb, palette, rollupControls) {
       }
     }
 
+    /**
+     * The index has stopped, and has said all it will about this folder.
+     * @param {Record<string, any> | null} snapshot
+     */
+    function isCompleteSnapshot(snapshot) {
+      return (
+        (snapshot?.index_status === "done" || snapshot?.index_status === "truncated") &&
+        snapshot.node?.state !== "pending"
+      );
+    }
+
     function relayout() {
       if (disposed || !viewport) {
         return;
@@ -350,19 +361,16 @@ export function registerTreemap(mb, palette, rollupControls) {
       const node = envelope ? envelope.node : null;
       status.textContent = statusHtml(envelope);
       status.hidden = status.textContent === "";
-      const terminal =
-        envelope &&
-        (envelope.index_status === "done" || envelope.index_status === "truncated") &&
-        node?.state !== "pending";
+      const terminal = isCompleteSnapshot(envelope);
       if (!terminal || !node || rect.width < 10 || rect.height < 10) {
         // The index has finished without this folder, stopped at its cap before
-        // finishing it, or the rollup failed before any answered: nothing is
-        // coming, so no skeleton either.
+        // finishing it, or the last request failed with no map to keep: nothing
+        // is coming, so no skeleton either.
         viewport.innerHTML =
           envelope?.index_status === "failed" ||
           (terminal && !node) ||
           (envelope?.index_status === "truncated" && node?.state === "pending") ||
-          (!envelope && rollupFailed)
+          rollupFailed
             ? '<div class="preview-empty">Treemap unavailable.</div>'
             : '<div class="tm-loading mb-delayed-loading" aria-hidden="true"></div><span class="sr-only">Loading treemap…</span>';
         return;
@@ -511,7 +519,7 @@ export function registerTreemap(mb, palette, rollupControls) {
     /** @param {unknown} error */
     function onRollupError(error) {
       console.warn("watchRollup refresh failed:", error);
-      if (!envelope) {
+      if (!isCompleteSnapshot(envelope) || !envelope?.node) {
         rollupFailed = true;
         totalsView.stopLoading();
         relayout();
@@ -522,9 +530,8 @@ export function registerTreemap(mb, palette, rollupControls) {
       { active: isVisible, ext_rank: "dual", onError: onRollupError },
       (env) => {
         envelope = env;
-        const completeSnapshot =
-          (env.index_status === "done" || env.index_status === "truncated") &&
-          env.node?.state !== "pending";
+        rollupFailed = false;
+        const completeSnapshot = isCompleteSnapshot(env);
         if (completeSnapshot && env.node) {
           totalsView.update(normalizeFolderTotals(env.node));
         } else if (
@@ -533,6 +540,10 @@ export function registerTreemap(mb, palette, rollupControls) {
           env.index_status === "truncated"
         ) {
           totalsView.stopLoading();
+        } else {
+          // Still scanning, so the map shows its skeleton, whatever a failure or a
+          // finished index ended before this answer.
+          totalsView.resumeLoading();
         }
         const breakdown = env.file_type_breakdown;
         try {

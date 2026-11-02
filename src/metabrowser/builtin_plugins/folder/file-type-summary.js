@@ -10,9 +10,10 @@ import { buildFileTypeSummaryModel, normalizeRollupEnvelope } from "./file-type-
  * @param {SummaryPalette} palette
  * @param {{acquire(path: string): {publish(value: unknown): void, release(): void}}} projectionPool
  * @param {{mount: (container: HTMLElement, parts?: {metric?: boolean, ignored?: boolean}) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} rollupControls
- * @param {{signal?: AbortSignal, onNoTotals?: () => void}} options `onNoTotals` is called when
- *   the rollup answers or fails without totals and this body says why, so a sibling can stop
- *   waiting for them.
+ * @param {{signal?: AbortSignal, onNoTotals?: () => void, onTotalsPending?: () => void}} options
+ *   `onNoTotals` is called when the rollup answers or fails without totals and this body says
+ *   why, so a sibling can stop waiting for them. `onTotalsPending` is called when an answer
+ *   says they are still on their way and this body shows its skeleton, so the sibling waits too.
  */
 export function mountFileTypeSummary(
   container,
@@ -88,7 +89,9 @@ export function mountFileTypeSummary(
       // the projection back until the scan finished only meant they showed
       // a loading state for the whole crawl instead of counts that refine.
       projection.publish(nextEnvelope);
-    } else if (nextModel.state === "failed" || nextModel.state === "unavailable") {
+    } else if (nextModel.state === "pending") {
+      options.onTotalsPending?.();
+    } else {
       options.onNoTotals?.();
     }
   }
