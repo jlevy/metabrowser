@@ -392,7 +392,7 @@ A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s. A
 same page; `--show /pull/<n>/files` is the way to ask for Files changed.
 Other pull-request pages, such as `/pull/<n>/checks`, and a repository’s `/pulls` list
 are refused. Each command opens one pull request: `--show /pull/<other>` answers
-`this source serves pull request <n>`, and a folder or a checkout answers
+`this source serves pull request <n>`, and a served folder or checkout answers
 `this source serves no pull request`.
 
 `--show /pull/<n>` reports the page’s kind and a summary of its record, after the

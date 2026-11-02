@@ -59,6 +59,7 @@ from tests.github_pull_fixture import (
 from tests.golden_harness import pinned_git, pinned_git_env
 
 REMOTE_SPELLING: Final = CANONICAL + ".git"
+_RECORDED_GIT: Final = (2, 50, 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -211,9 +212,6 @@ def _seams(replica: Replica) -> Generator[None]:
     from metabrowser.builtin_plugins.github import pulls
     from metabrowser.cache import acquire
     from metabrowser.cache.urls import GitSource
-    from metabrowser.git.process import detect_git_version
-
-    version, _raw = detect_git_version()
 
     def remote_url_for(source: GitSource) -> str:
         return replica.url if source.normalized == CANONICAL else source.normalized
@@ -225,7 +223,8 @@ def _seams(replica: Replica) -> Generator[None]:
         pulls.utc_now,
     )
     acquire.remote_url_for = remote_url_for
-    acquire.require_acquisition_git = lambda: version  # pyright: ignore[reportAttributeAccessIssue]
+    # A store records the Git that acquired it, and a transcript prints the record.
+    acquire.require_acquisition_git = lambda: _RECORDED_GIT  # pyright: ignore[reportAttributeAccessIssue]
     acquire.canonical_now = lambda: FETCHED_AT.strftime("%Y-%m-%dT%H:%M:%SZ")
     pulls.utc_now = lambda: FETCHED_AT
     try:

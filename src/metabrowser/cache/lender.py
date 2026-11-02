@@ -614,11 +614,13 @@ async def _object_kinds(target: RepositoryStoreTarget, oids: list[str]) -> list[
 async def sweep_dangling_refs(target: RepositoryStoreTarget, lock_fd: int) -> tuple[str, ...]:
     """Delete every ref whose object the store cannot read; the names deleted, sorted.
 
-    One dangling ref wedges every fetch, the refresh that would prune it included: Git's
-    connectivity check dies on ``bad object``. A checkout that pruned a branch the origin
-    deleted makes one by collecting its objects, so an overlay is swept before each fetch,
-    holding the fetch lock (*lock_fd*). A ref the origin still has comes back with the
-    fetch. Measured 2026-11-02: 0.12 s on a replica, 0.25 s at 1,632 refs.
+    Git's connectivity check walks every ref and dies on ``bad object``, so one dangling ref
+    wedges a fetch that neither brings it nor prunes it: a pull request's fetch on any such
+    ref, and a refresh on a ``refs/pull/<n>/head``, which its refspecs do not name. A checkout
+    makes one by collecting objects it no longer refers to, so an overlay is swept before each
+    fetch, holding the fetch lock (*lock_fd*). A ref the origin still has comes back with the
+    next fetch of it. Measured 2026-11-02: 0.12 s on a replica, 0.25 s at 1,632 refs.
+
     """
 
     listed = await run_git(

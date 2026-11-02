@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
 from metabrowser.cache import acquire
+from metabrowser.cache.atomic import RecordError
 from metabrowser.cache.lender import (
     LenderGoneError,
     own_boundary,
@@ -341,6 +342,8 @@ async def _fetch(
         raise PullRefError(
             "lender_missing", "the checkout this mirror borrows objects from is gone"
         ) from exc
+    except RecordError as exc:
+        raise PullRefError("fetch_failed", "the store's record could not be read") from exc
     except LockBusyError as exc:
         raise PullRefError(
             "refreshing_elsewhere", "another refresh of the mirror kept its fetch lock"

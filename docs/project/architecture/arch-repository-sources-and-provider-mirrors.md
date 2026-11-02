@@ -430,10 +430,11 @@ The design and its experiments are in
    `fetch --deepen` with the link in place replaces the lender’s file.
    `own_boundary` replaces the link by a copy, or removes a dangling one, under the
    fetch lock before any command that writes the boundary.
-6. **A dangling ref is swept.** One ref whose object the lender has collected wedges
-   every fetch, the refresh that would prune it included, so before each fetch into an
-   overlay, under the fetch lock, `for-each-ref` and one `cat-file --batch-check` find
-   such refs and `update-ref` deletes them.
+6. **A dangling ref is swept.** One ref whose object the lender has collected wedges a
+   fetch that neither brings it nor prunes it: a pull request’s fetch on any such ref,
+   and a refresh on a `refs/pull/<n>/head`, which its refspecs do not name.
+   So before each fetch into an overlay, under the fetch lock, `for-each-ref` and one
+   `cat-file --batch-check` find such refs and `update-ref` deletes them.
    A ref the origin still has comes back with the fetch.
 7. **The record and the file agree.** `store.yml`’s optional `lender` names the objects
    directory, the checkout, and the remote.

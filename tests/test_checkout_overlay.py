@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -1024,6 +1025,75 @@ def test_a_dangling_ref_cannot_wedge_a_refresh(linear: _Stand, packed: bool) -> 
     assert update.outcome is RefreshOutcome.succeeded
     assert "refs/remotes/origin/feat" not in linear.store_refs()
     assert feat not in linear.store_refs().values()
+
+
+def test_a_pull_requests_dangling_head_cannot_wedge_a_refresh(linear: _Stand) -> None:
+    """Pruning cannot heal this one: no refspec of a refresh names ``refs/pull/<n>/head``.
+
+    Git's connectivity check walks every ref, so without the sweep the refresh and its retry
+    both die on ``bad object``. The checkout held the pull request's commits, so the store
+    holds only the ref, and it dangles once the checkout collects them. Fetching the pull
+    request again brings them back.
+    """
+
+    replica = linear.replica
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    pinned_git(checkout, "remote", "set-url", "origin", replica.url)
+    pinned_git(checkout, "fetch", "-q", "origin", "+refs/pull/1/head:refs/remotes/origin/seen")
+    pinned_git(checkout, "remote", "set-url", "origin", REMOTE_SPELLING)
+    linear.pull("--checkout", str(checkout))
+    assert linear.store_git("count-objects") == "0 objects, 0 kilobytes"
+    pinned_git(checkout, "update-ref", "-d", "refs/remotes/origin/seen")
+    pinned_git(checkout, "reflog", "expire", "--expire-unreachable=now", "--all")
+    pinned_git(checkout, "gc", "-q", "--prune=now")
+    assert refused_cat_file(linear.store, replica["H1"])
+
+    update = asyncio.run(
+        update_store(linear.home, linear.store.parent.name, remote_url=replica.url)
+    )
+    assert update.outcome is RefreshOutcome.succeeded
+    assert "refs/pull/1/head" not in linear.store_refs()
+
+    assert ok([PULL, "--no-serve"]).exit_code == 0
+    assert linear.store_refs()["refs/pull/1/head"] == replica["H1"]
+    assert linear.store_git("cat-file", "-t", replica["H1"]) == "commit"
+
+
+def refused_cat_file(store: Path, oid: str) -> bool:
+    """Whether the store cannot read *oid*, as a dangling ref's object is."""
+
+    try:
+        pinned_git(store, "cat-file", "-e", oid)
+    except subprocess.CalledProcessError:
+        return True
+    return False
+
+
+def test_a_branch_the_checkout_lost_comes_back_with_the_refresh(linear: _Stand) -> None:
+    """The origin has the branch, and only the objects are gone: a refresh brings them back."""
+
+    replica = linear.replica
+    pinned_git(replica.origin, "branch", "-q", "feat", replica["M3"])
+    feat_work = linear.tmp_path / "feat"
+    pinned_git(replica.origin, "worktree", "add", "-q", str(feat_work), "feat")
+    (feat_work / "f").write_text("f\n", encoding="utf-8")
+    pinned_git(feat_work, "add", "f")
+    pinned_git(feat_work, "commit", "-qm", "F1")
+    feat = pinned_git(feat_work, "rev-parse", "HEAD")
+    pinned_git(replica.origin, "worktree", "remove", "--force", str(feat_work))
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    ok([CANONICAL, "--checkout", str(checkout), "--no-serve"])
+    assert linear.store_refs()["refs/remotes/origin/feat"] == feat
+    pinned_git(checkout, "update-ref", "-d", "refs/remotes/origin/feat")
+    pinned_git(checkout, "reflog", "expire", "--expire-unreachable=now", "--all")
+    pinned_git(checkout, "gc", "-q", "--prune=now")
+
+    update = asyncio.run(
+        update_store(linear.home, linear.store.parent.name, remote_url=replica.url)
+    )
+    assert update.outcome is RefreshOutcome.succeeded
+    assert linear.store_refs()["refs/remotes/origin/feat"] == feat
+    assert linear.store_git("cat-file", "-t", feat) == "commit"
 
 
 def test_a_dangling_ref_cannot_wedge_a_pull_requests_fetch(linear: _Stand) -> None:
