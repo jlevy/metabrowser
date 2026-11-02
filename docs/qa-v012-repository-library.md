@@ -1195,10 +1195,11 @@ In `cli-github-url-open.txt`, `/pull/7` pins the default branch and
 In `cli-github-pull.tryscript.md`, pull requests 12, 13, and 14 answer `absent` with
 `schema_mismatch`, `unreadable`, and `not_cached`. `/api/source/status` on `/pull/7`
 names `refs/pull/7/head` and `pull_request: 7`; `pull-refresh` answers `202` with
-`refreshing: true` and `pending` for 14, `409 no_pull_request` for a repository URL, and
-`405` for a GET. In `tests/test_github_pulls.py`, a served `/pull/7` pins its head, a
-refresh through `pull-refresh` runs as one coordinator job that a second request joins,
-a newer head behind `refs/pull/7/head` is offered as `latest` and taken through
+`refreshing: true` and `pending` for 14, the same for a repository URL when a reader
+asks, `not_cached` when the page itself does, `409 not_github` for a folder, and `405`
+for a GET. In `tests/test_github_pulls.py`, a served `/pull/7` pins its head, a refresh
+through `pull-refresh` runs as one coordinator job that a second request joins, a newer
+head behind `refs/pull/7/head` is offered as `latest` and taken through
 `/api/source/pin`, and a held fetch lock ends in `refreshing_elsewhere`.
 
 With the network, a signed-in `gh` 2.81.0 or newer, and a Git the floor admits

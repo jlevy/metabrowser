@@ -939,11 +939,13 @@ async function main() {
     }),
   );
 
-  // Two transcripts, since tryscript's matcher has a limit on how long one can be.
+  // Two transcripts, since tryscript's matcher has a limit on how long one can be. Every
+  // run plays the whole story, and the argument chooses what it prints.
+  const place = placeStory(runtime);
   console.log(
     JSON.stringify(
       process.argv[2] === "hunks-and-place"
-        ? { hunks, place: placeStory(runtime) }
+        ? { hunks, place }
         : {
             steps,
             states,

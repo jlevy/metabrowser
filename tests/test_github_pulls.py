@@ -79,8 +79,8 @@ from metabrowser.git import repo as git_repo
 from metabrowser.git.process import GitError, kill_live_process_groups, repository_store_target
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import (
-    MAX_PULL_JOBS,
     FRESHNESS_WINDOW_S,
+    MAX_PULL_JOBS,
     InvalidSelectionError,
     mirror_session,
     serve_mirror,

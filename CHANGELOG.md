@@ -291,15 +291,16 @@ GitHub URLs and HTTPS:
   So it is listed for a plain folder too: `metab --plugins` has a `github` row, the
   `Plugins:` line a server prints when it starts names it, and `metab --doctor` counts
   one plugin more than 0.11.0 did.
-  On a folder it serves nothing: `/api/plugin/github/pull` answers `state: "absent"`
-  with `reason: "no_pull_request"`, `/api/plugin/github/pull-markdown?part=body` answers
-  409 `no_pull_request`, and `--show /pull/<n>` says the source serves no pull request.
-  Without a valid `part`, `pull-markdown` answers 400 `invalid_part` on any source.
+  On a folder it serves nothing: `/api/plugin/github/pull?number=<n>` answers
+  `state: "absent"` with `reason: "not_github"`,
+  `/api/plugin/github/pull-markdown?number=<n>&part=body` answers 409 `not_github`, and
+  `--show /pull/<n>` reports that state.
+  Without a valid `number` or `part`, each answers 400 on any source.
 
 - Pull-request data:
-  `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
-  pull request with `gh api` (its description, labels, state, merge status, commit
-  count, who merged it, conversation, reviews, review comments, check runs, and
+  `metab https://github.com/owner/repo/pull/<n> --api '/api/plugin/github/pull?number=<n>'`
+  reads the pull request with `gh api` (its description, labels, state, merge status,
+  commit count, who merged it, conversation, reviews, review comments, check runs, and
   statuses), fetches its commits through GitHub’s `refs/pull/<n>/head`, a fork’s
   included, pins the head commit, and prints the record.
   The record is cached as one JSON file per pull request, so later `--show` and `--api`
@@ -322,10 +323,16 @@ GitHub URLs and HTTPS:
   Serving a pull-request URL serves its head and keeps the record fresh beside the
   mirror, in the same refresh jobs: a stale record makes the source `stale`, so it is
   refreshed when serving starts and when a stale page becomes visible, and
-  `POST /api/plugin/github/pull-refresh` starts or joins its refresh and returns at
-  once. `/api/plugin/github/pull` adds `refreshing` and `last_refresh`, and answers
-  `pending` while the first record is being read.
-  A newer head is offered as the source’s `latest`, and `/api/source/pin` accepts
+  `POST /api/plugin/github/pull-refresh` with `{"number": n}` starts or joins its
+  refresh and returns at once.
+  `/api/plugin/github/pull` adds `refreshing` and `last_refresh`, and answers `pending`
+  while the first record is being read.
+  Any server of a GitHub repository answers for any number, not only one its URL named.
+  Only `"retry": true`, a reader’s own action, can add a pull request to the cache:
+  without it a number with no record answers `not_cached`, a record inside the window or
+  before a rate limit lifts answers `not_due`, and neither starts anything.
+  Past eight pull requests queued or running, a request is refused 429 `too_many`. A
+  newer head is offered as the source’s `latest`, and `/api/source/pin` accepts
   `refs/pull/<n>/head` to take it.
   Only the stale one of the mirror and the record is refreshed, a pin the mirror lacks
   never runs `gh`, and how the last refresh ended is kept beside the record, so a later
@@ -395,13 +402,15 @@ GitHub URLs and HTTPS:
   were in rather than by pixels, because what has rendered above it differs when the
   page loads again; a new entry starts at the top, and a fragment in the address or a
   reader who has started scrolling is never overridden.
-  The page for a number the server does not serve links to the served pull request’s
-  page, on the same tab.
-  `metab <pr-url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
-  record, and `/api/plugin/github/pull-markdown?part=…` answers the allowlisted HTML of
-  the description (`body`) or one comment, review, or review comment, and nothing else
-  of KPress’s render. `/api/plugin/github/pull` answers with an entity tag and a `304`
-  when nothing changed.
+  `/pull/<n>` opens any number on a server of its repository: with no record it offers
+  **Fetch**, and an address alone fetches nothing.
+  **Browse code** moves the pin to the pull request’s head first when something else is
+  served, and View file serves a commit under the head of any pull request it is the tip
+  of. `metab <url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
+  record, and `/api/plugin/github/pull-markdown?number=<n>&part=…` answers the
+  allowlisted HTML of the description (`body`) or one comment, review, or review
+  comment, and nothing else of KPress’s render.
+  `/api/plugin/github/pull` answers with an entity tag and a `304` when nothing changed.
 
 - A terminal hangup or `SIGTERM` now cancels an acquisition the way Ctrl-C does: Git and
   every helper it started are stopped, staging is removed, and `metab` exits with status

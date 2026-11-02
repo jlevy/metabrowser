@@ -536,33 +536,42 @@ cap. Every text field is budgeted on its JSON-escaped size, so a written record 
 fits the read bound.
 Check runs and statuses GitHub refuses, and a comparison whose base cannot be fetched,
 are named in the record’s `unavailable` rather than failing it.
-`GET /api/plugin/github/pull` reads the record for the served pull request and never
+`GET /api/plugin/github/pull?number=<n>` reads the record for any pull request and never
 fetches, parsing it again only when the file changed; the one-shot CLI fetches a missing
-record once, and `--no-serve` refreshes it.
+record once for the pull request its URL names, and `--no-serve` refreshes it.
 When a pull request cannot be opened, the CLI answers from a cached record, or falls
 back to the default branch or the commit URL’s commit, and says why.
 The route’s `pin` is the served commit, and the record’s head names the head it was read
-at; they differ for a commit URL inside the pull request and after a refresh finds a
-newer head, which the pull-request page offers rather than switching to.
-A server serves the pull request beside the mirror: the CLI hands it a `ServedPull`
-(`builtin_plugins/github/served_pull.py`), a `CompanionRefresh` of the mirror session.
-Its refresh is a coordinator job keyed by store key and number, so requests join it, it
-counts against the limit of two, and shutdown cancels it.
+at; they differ when the pull request was opened from a branch or another pull request,
+for a commit URL inside the pull request, and after a refresh finds a newer head, which
+the pull-request page offers rather than switching to.
+A server serves any pull request of a GitHub mirror: the CLI hands it the provider’s
+`ServedPulls` (`builtin_plugins/github/served_pull.py`), a `PullRequestSet` of the
+mirror session, which gives a `ServedPull`, a `CompanionRefresh`, for a number.
+It keeps the state of `MAX_KEPT_PULLS` in memory, since the numbers are request text,
+and reads the rest from disk.
+A refresh is a coordinator job keyed by store key and number, so requests join it, it
+counts against the limit of two, and shutdown cancels it; `MAX_PULL_JOBS` bounds how
+many may be queued or running.
+The session attends to one pull request: the one the URL named, replaced whenever a pin
+switch serves another’s head.
 Its record’s age counts toward status `stale`, and the source’s refresh starts whichever
 of the two jobs is stale, so serve mode’s refresh of a stale source at startup and the
 page’s refresh when a stale page becomes visible keep it fresh without fetching a fresh
 mirror for it (a one-shot command refreshes the mirror it asked for).
-A pin the mirror lacks fetches the mirror, and a commit pin also refreshes a served pull
-request, whose `refs/pull/<n>/head` may bring it; a branch or tag pin never runs `gh`.
-Within one server the two jobs take turns before the store’s fetch lock, so neither
-finds the other holding it and reports a refresh running elsewhere.
+A pull request with no record is fetched only by a reader’s own request, and one with a
+record refreshes when its page asks and it is due.
+A pin the mirror lacks fetches the mirror, and a commit pin also refreshes the attended
+pull request, whose `refs/pull/<n>/head` may bring it; a branch or tag pin never runs
+`gh`. Within one server these jobs take turns before the store’s fetch lock, so none
+finds another holding it and reports a refresh running elsewhere.
 How each refresh ended is kept beside the record in `pulls/<n>.refresh.json`, so the
 route and a later command report it, and a failed one is tried again after a window, not
-on every poll or by the next command.
+on every poll or by the next command, and after `rate_limited` not before `reset_at`.
 `POST /api/plugin/github/pull-refresh` starts or joins the job and returns `202` at
-once, naming `/api/plugin/github/pull` as its `status_route`; a one-shot `--api` waits
-for the job, prints that route, and exits 1 unless the refresh succeeded; one that found
-the store busy did not refresh the record.
+once, naming `/api/plugin/github/pull?number=<n>` as its `status_route`; a one-shot
+`--api` waits for the job, prints that route, and exits 1 unless the refresh succeeded;
+one that found the store busy did not refresh the record.
 After the job, the session reads the pinned ref’s tip again, so a newer head behind
 `refs/pull/<n>/head` is offered as `latest`, and `resolve_pin` accepts that ref.
 One-shot modes fetch only a pull request with no usable record, or one whose commit URL
