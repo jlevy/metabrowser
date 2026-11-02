@@ -33,17 +33,22 @@ function comparisonKey(comparison) {
   return `${comparison.left}${separator}${comparison.right}`;
 }
 
+// Every comparison request names this build, so the browser may keep an answer that cannot
+// change without asking again: the server says so only for an address that names its build.
+const BUILD_TAG = window.METABROWSER_SETTINGS?.BUILD_TAG;
+const BUILD_PARAM = typeof BUILD_TAG === "string" ? { build: BUILD_TAG } : {};
+
 /** @param {string} key @returns {Record<string, string>} */
 function comparisonParams(key) {
   const merged = key.split("...");
   if (merged.length === 2) {
-    return { left: merged[0], right: merged[1], base_policy: "merge_base" };
+    return { left: merged[0], right: merged[1], base_policy: "merge_base", ...BUILD_PARAM };
   }
   const direct = key.split("..");
   if (direct.length === 2) {
-    return { left: direct[0], right: direct[1], base_policy: "direct" };
+    return { left: direct[0], right: direct[1], base_policy: "direct", ...BUILD_PARAM };
   }
-  return { revision: key };
+  return { revision: key, ...BUILD_PARAM };
 }
 
 /**

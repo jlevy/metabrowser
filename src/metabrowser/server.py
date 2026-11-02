@@ -110,6 +110,7 @@ from metabrowser.gz_io import (
     ArtifactPath,
 )
 from metabrowser.http_caching import (
+    BUILD_TAG,
     build_scoped_etag,
     etag_headers,
     matches_if_none_match,
@@ -1384,7 +1385,7 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
     # Inject the client-visible settings dict before any app code
     # runs so JS can read window.METABROWSER_SETTINGS.* without
     # duplicating constants in the source.
-    client_settings_block = f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES))};</script>"
+    client_settings_block = f"<script>window.METABROWSER_SETTINGS={_json.dumps({**client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES), 'BUILD_TAG': BUILD_TAG})};</script>"
     settings_block = (
         f"<script>window.METABROWSER_PATH_ENCODING={_json.dumps('utf16' if os.name == 'nt' else 'bytes')};</script>"
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"

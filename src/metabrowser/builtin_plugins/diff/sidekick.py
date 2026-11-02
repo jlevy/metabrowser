@@ -18,7 +18,9 @@ nav-tree child rows for the container affordance.
 ``?left=&right=[&base_policy=merge_base]``) serves the same document for
 a Git comparison at the active subject's ``GitLocation``, so the history
 view renders diffs through this plugin's view instead of growing a diff
-surface of its own. A pinned revision does not need a working tree.
+surface of its own. A pinned revision does not need a working tree. On a
+store, a request naming full commit IDs is kept and validated;
+``comparison_cache.py`` says what the answer depends on.
 
 The patch handlers read through the content reader, which serves an attached
 folder and a pinned revision alike and keeps the blocking part off the event
@@ -29,10 +31,18 @@ handler is async because ``git`` is.
 from __future__ import annotations
 
 import asyncio
+import gzip
+import hashlib
+import re
 from typing import TYPE_CHECKING, Any
 
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
+from metabrowser.builtin_plugins.diff.comparison_cache import (
+    ComparisonCache,
+    ResolvedManifest,
+    encode_body,
+)
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource, PatchHydration
 from metabrowser.diff.adapters.patch_file import (
@@ -51,9 +61,16 @@ from metabrowser.diff.format import (
     Totals,
     dump_document,
 )
-from metabrowser.git.process import GitError
+from metabrowser.git.process import GitError, GitLocation, RepositoryStoreTarget
 from metabrowser.git.repo import repo_info
 from metabrowser.git.routes import session_git_location
+from metabrowser.http_caching import (
+    BUILD_TAG,
+    build_scoped_etag,
+    etag_headers,
+    immutable_headers,
+    matches_if_none_match,
+)
 from metabrowser.inventory_engine.contract import canonical_inventory_path
 from metabrowser.plugin_api import (
     ContentReadError,
@@ -78,6 +95,11 @@ MAX_HYDRATED_FILES = 50
 
 # A revision compares against its first parent; only two endpoints choose a base.
 _TWO_ENDPOINT_POLICIES = frozenset({BasePolicy.direct.value, BasePolicy.merge_base.value})
+
+# A commit ID in full: SHA-1 or SHA-256. Anything else names what it names now.
+_FULL_COMMIT_ID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
+
+_COMPARISONS = ComparisonCache()
 
 
 def _error(kind: str, message: str, status: int, *, path: str) -> JSONResponse:
@@ -192,7 +214,37 @@ async def document_handler(request: Request) -> JSONResponse:
     return JSONResponse(dump_document(document))
 
 
-async def comparison_handler(request: Request) -> JSONResponse:
+def _kept_key(location: GitLocation, intent: dict[str, Any]) -> tuple[str, ...] | None:
+    """The comparison's key in memory, or None for one whose answer can change.
+
+    A store, and a request whose every endpoint is a full commit ID. A folder's answer
+    depends on its working tree and its configuration, and a name's on where it points now.
+    """
+    if not isinstance(location.target, RepositoryStoreTarget):
+        return None
+    endpoints = [intent[name] for name in ("revision", "left", "right") if name in intent]
+    if not all(_FULL_COMMIT_ID.fullmatch(endpoint) for endpoint in endpoints):
+        return None
+    policy = str(intent.get("base_policy", ""))
+    return (str(location.target.git_dir), *endpoints, policy)
+
+
+def _encoded_response(request: Request, encoded: bytes, headers: dict[str, str]) -> Response:
+    """An answer kept compressed. It goes as it is, which the server's compression leaves be."""
+    if "gzip" in request.headers.get("accept-encoding", ""):
+        return Response(
+            encoded,
+            media_type="application/json",
+            headers={**headers, "Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+        )
+    return Response(
+        gzip.decompress(encoded),
+        media_type="application/json",
+        headers={**headers, "Vary": "Accept-Encoding"},
+    )
+
+
+async def comparison_handler(request: Request) -> Response:
     """A Git comparison at the active subject's location, as a ChangeSetDocument.
 
     ``?revision=<rev>`` compares a commit against its first parent — the
@@ -204,6 +256,10 @@ async def comparison_handler(request: Request) -> JSONResponse:
     ``&file=<path>`` narrows to one change and hydrates it regardless of
     the bound — the deferred sections' on-demand loader.
     On a pinned revision, ``HEAD`` is that object id.
+
+    A request naming two commit IDs on a store sends an entity tag, answers a matching
+    ``If-None-Match`` with 304, and is kept in memory. With ``&build=`` naming this build it
+    is immutable as well, since the address then says everything its answer depends on.
     """
     revision = request.query_params.get("revision", "").strip()
     wanted_file = request.query_params.get("file", "").strip()
@@ -230,6 +286,20 @@ async def comparison_handler(request: Request) -> JSONResponse:
         )
 
     location = session_git_location()
+    kept_key = _kept_key(location, intent)
+    headers: dict[str, str] = {}
+    if kept_key is not None:
+        answer_key = (*kept_key, wanted_file)
+        identity = hashlib.sha256("\0".join(answer_key[1:]).encode()).hexdigest()[:32]
+        etag = build_scoped_etag(f"comparison-{identity}")
+        immutable = request.query_params.get("build", "") == BUILD_TAG
+        headers = immutable_headers(etag) if immutable else etag_headers(etag)
+        if matches_if_none_match(request, etag):
+            return Response(status_code=304, headers=headers)
+        encoded = _COMPARISONS.body(answer_key)
+        if encoded is not None:
+            return _encoded_response(request, encoded, headers)
+
     context, _info = await repo_info(location)
     if context is None:
         if location.pinned_revision is not None:
@@ -247,9 +317,16 @@ async def comparison_handler(request: Request) -> JSONResponse:
         )
 
     source = GitDiffSource(context.command_location())
-    try:
+
+    async def listed() -> ResolvedManifest:
         resolved = await source.resolve(intent)
-        manifest = await source.manifest(resolved)
+        return ResolvedManifest(resolved, await source.manifest(resolved))
+
+    try:
+        comparison = (
+            await listed() if kept_key is None else await _COMPARISONS.manifest(kept_key, listed)
+        )
+        resolved, manifest = comparison.resolved, comparison.manifest
         projected: list[FileChange] = []
         hydrate_ids: list[str] = []
         for change in manifest.files:
@@ -305,7 +382,18 @@ async def comparison_handler(request: Request) -> JSONResponse:
     if hydration.left_out:
         projected, resolved = _say_left_out(projected, resolved, hydration.left_out)
     document = _document_from(resolved, manifest, tuple(projected), hydration.patches)
-    return JSONResponse(dump_document(document))
+    # A large answer is seconds of serializing and compressing, so neither is done on the
+    # event loop: 29 MB took 712 ms to serialize, measured in explorations/performance-loop.
+    body = await asyncio.to_thread(_json_body, document)
+    if kept_key is None:
+        return Response(body, media_type="application/json")
+    encoded = await asyncio.to_thread(encode_body, body)
+    _COMPARISONS.remember_body((*kept_key, wanted_file), encoded)
+    return _encoded_response(request, encoded, headers)
+
+
+def _json_body(document: ChangeSetDocument) -> bytes:
+    return bytes(JSONResponse(dump_document(document)).body)
 
 
 def _say_left_out(

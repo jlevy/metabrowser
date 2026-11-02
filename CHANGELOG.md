@@ -949,6 +949,16 @@ Content source:
   A store target read without a named policy gets the same policy, and whole-tree blob
   sizes are read in chunks that each get the batch deadline.
 
+Large pull requests:
+
+- `diff/comparison` no longer recomputes a comparison on every request.
+  The patch is limited to the files being hydrated, and the manifest is computed once,
+  in one Git run. On a store, a request naming two commit IDs keeps its manifest and
+  answer in memory, sends an `ETag`, and answers `If-None-Match` with 304; with
+  `&build=` naming this build it is also `immutable`, so a browser’s Back makes no
+  request. Its documents are unchanged, and a folder’s comparison keeps nothing and sends
+  neither header.
+
 Fixes:
 
 - A pull request or a `.patch` file that deletes an empty file now shows its changes.

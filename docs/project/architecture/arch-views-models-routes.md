@@ -223,6 +223,17 @@ are one path segment, hence the name.
 `github/pull` also sends an entity tag over everything but the record, which changes
 only with `fetched_at`, and answers a matching `If-None-Match` with `304`, so the
 pull-request page polls it as cheaply as the status route.
+`diff/comparison` on a store, for a request whose endpoints are all full commit IDs,
+sends an entity tag, answers a matching `If-None-Match` with `304`, and keeps its
+manifest and its encoded answer in memory, so a repeat runs no Git and one deferred file
+runs one path-limited diff.
+A request that also names this build with `&build=`, as
+`window.METABROWSER_SETTINGS.BUILD_TAG` gives it to the diff plugin and the pull-request
+page, is `immutable`, so the browser’s Back makes no request at all; with no such
+`build` it is `no-cache`, because a browser’s copy has to meet an upgrade.
+A folder’s comparison, and a request naming a ref, carries neither header and keeps
+nothing. `builtin_plugins/diff/comparison_cache.py` says what an answer depends on
+besides the two commit IDs, and `cli-diff-comparison-cache.txt` pins each case.
 `github/pull-markdown?part=<part>` renders one text of the cached record through KPress
 in its sanitized mode and answers only the resulting HTML, with the record’s
 `fetched_at` and the part: `body`, or `issue_comment/<id>`, `review/<id>`, or

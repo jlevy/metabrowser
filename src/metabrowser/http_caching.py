@@ -69,6 +69,17 @@ def etag_headers(etag: str) -> dict[str, str]:
     return {"ETag": etag, "Cache-Control": "no-cache"}
 
 
+def immutable_headers(etag: str) -> dict[str, str]:
+    """Return the headers for a body that cannot change at this address, for this build.
+
+    The address has to name the build. A body is a function of the code that made it, and
+    this tells a browser not to ask again for a year, so an address with no build in it would
+    replay what an older build made, past any upgrade: ``no-cache`` above exists because
+    that happened. ``private`` because a body can hold a private repository's code.
+    """
+    return {"ETag": etag, "Cache-Control": "private, max-age=31536000, immutable"}
+
+
 def matches_if_none_match(request: Request, etag: str) -> bool:
     """Whether the client already holds ``etag``.
 
@@ -79,4 +90,10 @@ def matches_if_none_match(request: Request, etag: str) -> bool:
     return request.headers.get("if-none-match", "") == etag
 
 
-__all__ = ["BUILD_TAG", "build_scoped_etag", "etag_headers", "matches_if_none_match"]
+__all__ = [
+    "BUILD_TAG",
+    "build_scoped_etag",
+    "etag_headers",
+    "immutable_headers",
+    "matches_if_none_match",
+]

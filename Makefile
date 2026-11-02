@@ -213,7 +213,8 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_git_pin_golden.py \
 	tests/test_cli_git_refresh_golden.py \
 	tests/test_cli_github_url_golden.py \
-	tests/test_cli_github_pull_golden.py
+	tests/test_cli_github_pull_golden.py \
+	tests/test_diff_comparison_cache.py
 
 golden-update:
 	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS)
