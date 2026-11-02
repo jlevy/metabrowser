@@ -245,10 +245,11 @@ Each entry named is under Fixes in `CHANGELOG.md`’s 0.12.0 section.
 | On an index stopped at its 500,000-file cap, `/api/rollup` answers `index_status: "truncated"` and `truncated: true`, where v0.11.0 answered `idle` and `false`, and `/api/tree` and `/api/recent` answer `tally_cache_status: "truncated"`, where v0.11.0 answered `idle`. So the page now says so: “File list incomplete.” in the file list, “Summary is partial” in File Overview, and Treemap draws the indexed files under “Index capped at 500,000 files”. v0.11.0 showed none of these, and its Treemap kept the skeleton | “A tree that reaches the 500,000-file cap now says so.” | [#275](https://github.com/jlevy/metabrowser/pull/275) | Run, 2026-11-02, on both builds with `INVENTORY_MAX_FILES` set to 3 in the process |
 | A tree row replaced during the tooltip’s 300 ms delay, as when its folder re-renders, no longer puts a tooltip at the window’s top-left corner until the next hover | “A tree row replaced during the tooltip’s 300 ms delay” | [#275](https://github.com/jlevy/metabrowser/pull/275) | Changelog |
 
-One fault showed in the capped run, which is a defect and not an intended change.
-At `2ca297fa` the file list’s note goes on “Metabrowser stopped after 3 files files”,
-because the sentence writes the noun after a count that already has it (`mb-kp7q`,
-open). v0.11.0 has the same code but never reached it on a capped index.
+One fault showed in the capped run, which was a defect and not an intended change.
+At `2ca297fa` the file list’s note read “Metabrowser stopped after 3 files files”,
+because the sentence wrote the noun after a count that already has it.
+v0.11.0 has the same code but never reached it on a capped index.
+`5d1c0d6b` fixes it, so it is not among the changes this list asks anyone to accept.
 
 [#277](https://github.com/jlevy/metabrowser/pull/277) adds no row, because it restores
 what v0.11.0 does. A served folder’s first diff requests the same six diff modules
