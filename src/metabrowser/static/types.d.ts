@@ -2265,6 +2265,7 @@ declare global {
     keepsImage(src: string | null, base: string | null): boolean;
     linkHref(href: string | null, base: string | null): { href: string; leaves: boolean } | null;
     outsideLink(href: string | null, base: string | null): string | null;
+    kpressProse(nodes: Node[], doc: Document): HTMLElement;
     sanitizeHtml(html: string, base: string | null): Node[];
     sanitizeNodes(
       nodes: ArrayLike<Node>,

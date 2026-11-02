@@ -83,11 +83,13 @@ export async function placeRendered(target, rendered, mb, enhance = null) {
   const scratch = nodes[0]?.ownerDocument ?? document.implementation.createHTMLDocument("");
   const article = scratch.createElement("article");
   article.className = "kpress kpress-doc kpress-inert";
+  // KPress's card and column, as a trusted render stamps them: `.kpress-long-text` is what
+  // holds the text to the reader's measure, and without it the text is an inset-pair wider.
+  article.setAttribute("data-kpress-card", "on");
   const layout = scratch.createElement("div");
   layout.className = "kpress-doc-layout";
-  const prose = scratch.createElement("div");
-  prose.className = "kpress-prose";
-  prose.append(...nodes);
+  const prose = inert.kpressProse(nodes, scratch);
+  prose.classList.add("kpress-long-text");
   const toc =
     rendered.toc === true
       ? buildInertToc(scratch, inertTocEntries(rendered.model?.headings, prose))
