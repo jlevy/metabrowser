@@ -57,7 +57,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {Map<HTMLElement, {body: HTMLElement, change: Record<string, unknown>, revision: string}>} pendingHydrations
  * @property {{body: HTMLElement, change: Record<string, unknown>, revision: string}[]} queuedHydrations
  * @property {Set<number>} timers
- * @property {ReturnType<typeof import("./diff-view-file.js").createViewFileOpener> | null} viewFile
+ * @property {import("./diff-view-file.js").ViewFileOpener | null} viewFile
  * @property {HTMLElement | null} viewFileBusy The control whose switch is on its way.
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
  */
@@ -1375,7 +1375,7 @@ function renderFileSection(change, patch, context, view) {
  * @param {HTMLElement} container
  * @param {Record<string, unknown>} document_
  * @param {DiffViewApi} [api]
- * @param {{showSummary?: boolean, viewFile?: ((options: {released: () => void}) => ReturnType<typeof import("./diff-view-file.js").createViewFileOpener>) | null}} [options]
+ * @param {{showSummary?: boolean, viewFile?: import("./diff-view-file.js").ViewFileOpenerFactory | null}} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
  *   page alone, so this module names it only in types.

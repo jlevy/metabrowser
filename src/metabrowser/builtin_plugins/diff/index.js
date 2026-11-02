@@ -120,7 +120,7 @@ function viewFileHost() {
  * local request before its first diff mounts, and its controls still arrive with that
  * mount. A failed import rejects the render, and the caller says the diff did not load.
  *
- * @returns {Promise<((options: {released: () => void}) => ReturnType<typeof import("./diff-view-file.js").createViewFileOpener>) | null>}
+ * @returns {Promise<import("./diff-view-file.js").ViewFileOpenerFactory | null>}
  */
 async function viewFileOpener() {
   const host = viewFileHost();
