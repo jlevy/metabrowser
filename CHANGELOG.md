@@ -1054,7 +1054,7 @@ Fixes:
   showing, because the Git panel restored a commit only when the page loaded.
 
 - A `/commit/` address with a short commit ID, or a ref name with no slash in it, now
-  says it needs the full ID, in place of “Could not load this commit.”
+  says it needs the full lowercase ID, in place of “Could not load this commit.”
   `/api/git/commit/<rev>` still refuses such a revision with 400, and its answer now
   carries the `revision_not_full` code.
 
