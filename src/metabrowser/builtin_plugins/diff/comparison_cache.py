@@ -128,8 +128,9 @@ class ComparisonCache:
     ) -> ResolvedManifest:
         """The comparison's manifest, computing it once however many ask together.
 
-        The computation is a task of its own and each request waits without cancelling it: a reader who goes back while a large comparison is being
-        listed cancels their own wait, and the next request finds the work done.
+        The computation is a task of its own and each request waits without cancelling it:
+        a reader who goes back while a large comparison is being listed cancels their own
+        wait, and the next request finds the work done.
         """
         kept = self._manifests.get(key)
         if kept is not None:

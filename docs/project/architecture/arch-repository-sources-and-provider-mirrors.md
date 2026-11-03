@@ -472,8 +472,13 @@ It retains no object bytes or Git diagnostics.
 commits and those observed IDs, fetch missing IDs under the existing fetch lock and
 sweep rules, then authenticate them before clearing the observations.
 The recovery has one sixty-second deadline, including lock waits.
-An ordinary commit fetch can succeed while leaving a descendant blob absent; exact-ID
-fetching repairs that object without changing a ref or writing the checkout.
+Before declaring success it advances the store reader pool’s generation and reaps idle
+actors, so no later request reads an unlinked obsolete pack.
+Actors already leased to a request finish their transaction and are recycled on release;
+repair does not interrupt that request.
+Cancellation during recycling preserves the stale queue slot for the next reader to
+recycle. An ordinary commit fetch can succeed while leaving a descendant blob absent;
+exact-ID fetching repairs that object without changing a ref or writing the checkout.
 A corrupt lender that Git still claims to have remains a typed refusal, and an origin
 that no longer serves a displayed object is `commits_unavailable`.
 
