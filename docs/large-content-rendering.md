@@ -250,6 +250,19 @@ artificially small file-size category.
 The fixture and retained-heap evidence live in the
 [diff intraline bound benchmark](../explorations/diff-intraline/).
 
+**PR manifests are prepared at fetch.** A PR refresh retains its immutable comparison
+manifest in the GitHub plugin’s bounded bank beside its repository store.
+A fresh server adopts a validated matching entry after resolving its commits, then uses
+the same in-memory comparison cache for the page and deferred files.
+Its first answer hydrates eight ready files, enough for the visible viewport measured on
+the large public PR cases; later files load on approach.
+The generic comparison route hydrates up to fifty, and its retained body and entity tag
+include that policy so the two answers cannot be confused.
+Missing, stale, or corrupt entries are recomputed and healed; a cache admission bound
+never truncates the answer served.
+[Pull-request records](project/architecture/arch-repository-sources-and-provider-mirrors.md#pull-request-records)
+holds the storage and identity contract.
+
 **A large comparison hydrates what the reader is on.** A file past a comparison’s first
 page is a bar until it is reached.
 `createHydrationScheduler` in `builtin_plugins/diff/diff-view.js` asks for one file at a
@@ -328,6 +341,16 @@ It exists for a list of a comparison’s files, so it takes a path and not a fil
   A ready file the mount held back is the same, except that nothing is asked for: its
   answer is in hand, so its lines are drawn in the frame after the jump, or after the
   burst stops, and its `lines` can be `"superseded"` like any other.
+
+`currentFile()` returns the first file whose bar or body intersects the pane, including
+held and deferred files, or `null` when none is visible or the view is disposed.
+Its answer has the same fields as `fileForPath`, with the new path for a rename and the
+old path for a deletion.
+`onCurrentFile(listener)` reports that snapshot immediately, then reports only changes
+to the current file; it returns an idempotent unsubscribe function.
+Scroll reports share one animation frame and locate the file by bisection over the
+ordered sections. Disposal removes the scroll listener, cancels a queued report, and
+releases subscribers.
 
 A list calls it on every step of a held key; it is cheap, and it does not need
 debouncing. `tests/dom/diff-file-jump-session.js` pins all of this, and

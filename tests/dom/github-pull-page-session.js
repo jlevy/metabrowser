@@ -885,6 +885,10 @@ async function main() {
   steps.push(
     await page.step("shown again, it polls at once", async () => controller.onVisibilityChange()),
   );
+  // A prior failed poll must not survive the pin guard's refusal.
+  server.pull = { status: 502, etag: null, body: null };
+  const failedPoll = await page.step("a poll failed before the pin moved", async () => page.fire());
+  assert(failedPoll.paint.message.includes("502"), "the failed poll did not show its error");
   // A page Back restores after the pin moved polls before the pin guard reloads it. The
   // guard's refusal is the guard's to answer, so the page says nothing of its own.
   server.pull = {
@@ -895,7 +899,7 @@ async function main() {
   const refused = await page.step("a poll the pin guard refused", async () => page.fire());
   assert(refused.requests.length === 1, `the refused poll was not sent: ${refused.requests}`);
   assert(
-    refused.paint === undefined || refused.paint.message === null,
+    refused.paint !== undefined && refused.paint.message === null,
     `a pin_changed poll painted: ${JSON.stringify(refused.paint)}`,
   );
   server.pull = recorded.refreshed;
@@ -1075,7 +1079,14 @@ async function main() {
   // What Files changed says instead, for a record whose comparison could not be made and
   // for one whose merge base the store's shallow history cannot settle.
   const filesUnavailable = Object.fromEntries(
-    ["fetch_failed", "no_merge_base", "base_uncertain", "commits_unavailable"].map((why) => {
+    [
+      "fetch_failed",
+      "no_merge_base",
+      "base_uncertain",
+      "commits_unavailable",
+      "comparison_timeout",
+      "comparison_too_large",
+    ].map((why) => {
       const answer = structuredClone(recorded.current.body);
       answer.record.comparison = null;
       answer.record.unavailable = { comparison: why };

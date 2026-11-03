@@ -75,7 +75,13 @@ from tests.github_pull_fixture import (
     page,
     scenario,
 )
-from tests.golden_harness import JSON_BODY, check_recording, run_session, settle
+from tests.golden_harness import (
+    JSON_BODY,
+    check_recording,
+    normalize_pull_comparison_scopes,
+    run_session,
+    settle,
+)
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -158,7 +164,7 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
     for answer in recorded.values():
         if answer["etag"] is not None:
             answer["etag"] = own.setdefault(answer["etag"], f'"pull-{len(own) + 1}"')
-    return recorded
+    return json.loads(normalize_pull_comparison_scopes(json.dumps(recorded)))
 
 
 def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
@@ -507,6 +513,8 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
         "no_merge_base",
         "base_uncertain",
         "commits_unavailable",
+        "comparison_timeout",
+        "comparison_too_large",
     }
     for state, said in unavailable.items():
         assert said["files"].startswith("Files changed is "), state

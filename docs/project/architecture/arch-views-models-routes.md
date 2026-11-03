@@ -69,7 +69,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | `unknown-jsonl` | Other `.jsonl` | Log, Raw JSON | File envelope |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | Bounded byte-chunk hook |
-| `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `diff/comparison` for Files changed, at one changed file for `/pull/<n>/files/<path>` |
+| `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `github/pull-comparison` for Files changed, at one changed file for `/pull/<n>/files/<path>` |
 | `pull-request-list` | No file; the shell mounts it in the Pulls tab, and in the pane at `/pulls` | Pull requests | `github/pulls` envelope; `github/pulls-refresh` for the refresh and the next page; `github/pull` for a row’s record |
 
 Two kinds are also **containers** — folder-like entries whose children are addressable
@@ -166,14 +166,14 @@ reservation and its invariants, is in
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
-`github/pull-refresh`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,
-`github/pull-files`, `github/pull-files-refresh`. On a `GitRevisionSubject`,
-`diff/comparison` honors the pin through `GitLocation` and `GitDiffSource.content` reads
-blobs through the shared cat-file pool; patch `document`/`children`, `binary/chunk`,
-`structured/parsed`, and `agent-log/charts` honor `GitPath` and follow in-tree relative
-symlink blobs.
-`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or
-`merge_base`, and reports it in the document.
+`github/pull-refresh`, `github/pull-markdown`, `github/pull-comparison`, `github/pulls`,
+`github/pulls-refresh`, `github/pull-files`, `github/pull-files-refresh`. On a
+`GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
+`GitDiffSource.content` reads blobs through the shared cat-file pool; patch
+`document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
+`GitPath` and follow in-tree relative symlink blobs.
+`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
+and reports it in the document.
 
 On a page that shows a pinned revision, the diff view’s file bars offer **View file** at
 each side of a change that exists, for a commit’s diff and a pull request’s Files
@@ -216,7 +216,11 @@ and the number is required: `absent` (with `not_github` on a server with no GitH
 repository, or `not_cached`, `schema_mismatch`, or `unreadable`), `pending` (no record
 yet, and a refresh is running), `current`, or `stale`, plus the pin and the ref it came
 from (`pin_ref`), `refreshing`, how its last refresh ended (`last_refresh`), and
-`comparison_route`, the `diff/comparison` of the record’s merge-base endpoints.
+`comparison_route`, the `github/pull-comparison` of the record’s merge-base endpoints.
+That route names a cached pull request and requires two full commit IDs with
+`merge_base`, then forwards to the diff comparison implementation with the PR’s prepared
+manifest. It acquires nothing; its build and store parameters identify the same answer
+for the page’s prefetch, mount, and deferred-file reads.
 The pin is the served commit and can differ from the record’s head: a pull request
 opened from a branch moves no pin, a commit URL inside the pull request pins that
 commit, and a refresh can find a newer head than the pin.
@@ -403,6 +407,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-checkout-overlay.txt` |
 | `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
+| `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt` |
 | `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
 | `/api/plugin/github/pull-files` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt` |
@@ -615,7 +620,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `source.line-pitch` | paint-exempt | `static/styles.css` | `local-only` | — | How tall a line of a Source view is drawn is layout: the line height the browser gives the code’s box, which is the parent’s for an inline box in a block and the box’s own for a block. Code that is not highlighted, which is a file or a loaded window past the highlight bound, is drawn 21px to a line at the default sizes, as it was before the gutter made it a grid item, and highlighted code 18px; the gutter’s numbers take the line height of the code beside them. `tests/test_source_line_anchors.py` pins by stylesheet text the one property both columns take their line height from and the rule that sets it to the `<pre>`’s for unhighlighted code, and `tests/dom/syntax-token-sdk-behavior.js` pins that the production renderer writes the class that rule selects on unhighlighted code and on no other. Computed styles are not checked. The heights measured in Chrome against 0.11.0, and the rounding that differs under zoom, are recorded beside the rule in `static/styles.css` |
 | `source.history-landing-browser` | paint-exempt | `static/source-pin-guard.js` | `local-only` | — | Whether Back restores a page from the back/forward cache or loads it again, when `pageshow` fires and with what `persisted`, the navigation type a document reports, and what a reload fetches are the browser’s. The decision made on them is a session owner above (`source.history-landing`), which also loads the module as the server writes it into a page. `tests/test_source_freshness_session.py` pins the statuses that decision reads against a real server, and `explorations/history-landing/README.md` records the Chrome run: a restore with `persisted` true that keeps its scroll position when nothing switched, and one reload after a switch |
 | `github.pull-page-hunk-paint` | paint-exempt | `builtin_plugins/github/styles.css` | `local-only` | — | Opening and closing the native `details` that holds a review comment’s earlier hunk lines, and firing `toggle`, are the browser’s, and how far a line’s tint reaches in a hunk scrolled sideways, and that its label stays put, are layout. Which lines are shown, what each line is, and that a first open makes them a line each, once, are a session owner above (`github.pull-page`). That the tints are the diff view’s, that a hunk’s lines are painted as text, that the disclosure is native, and that one box scrolls all of a hunk are pinned in `tests/test_pull_page_route.py`; how it looks is judged in a browser |
-| `github.pull-page-text-spacing` | paint-exempt | `builtin_plugins/github/styles.css` | `local-only` | — | How much space a text’s paragraphs, headings, lists, code, quotes, tables, and details take in their card, and where a list’s markers fall, is layout: margins collapsing through KPress’s wrappers under the shell’s reset, in a browser’s line boxes, with nothing but the stylesheet’s text for a browserless session to run. Whether a table overflows its text and how it scrolls, and where a long word breaks, are layout too. That every block of the allowlist has a margin, that lists have room for their markers, that a wide table scrolls inside its text, that a long word breaks by the rule that leaves that table scrolling, that the first and last block are trimmed as deep as the Markdown route’s answer nests, and that no selector reaches outside the page are pinned in `tests/test_pull_page_route.py`; how it looks is judged in a browser |
+| `github.pull-page-text-spacing` | paint-exempt | `builtin_plugins/github/styles.css` | `local-only` | — | The active system sans’s measured advance and resulting message width, and how much space a text’s paragraphs, headings, lists, code, quotes, tables, and details take in their card, and where a list’s markers fall, is layout: margins collapsing through KPress’s wrappers under the shell’s reset, in a browser’s line boxes, with nothing but the stylesheet’s text for a browserless session to run. Whether a table overflows its text and how it scrolls, and where a long word breaks, are layout too. That every block of the allowlist has a margin, that lists have room for their markers, that a wide table scrolls inside its text, that a long word breaks by the rule that leaves that table scrolling, that the first and last block are trimmed as deep as the Markdown route’s answer nests, and that no selector reaches outside the page are pinned in `tests/test_pull_page_route.py`; how it looks is judged in a browser |
 | `github.pull-files-tree-paint` | paint-exempt | `builtin_plugins/github/pull-files-view.js#mountFileTree` | `local-only` | — | DOM geometry, actual focus, and the viewport window need a browser. The exact controller and window calculation run in `github.pull-files-tree`; its session covers keys, progressive windows, retries, selection, and disposal. Chrome 152 measured the production tree on the first 1,183 and all 2,003 filenames of django/django#15387 and 3,000 stress files: 67 rows at the top, 111 mid-list, one tabbable anchor, and a 4.1 ms maximum key update. The keyboard registry and roving anchor are pinned by `tests/test_design_vocabulary.py` and `tests/dom/github-pull-files-tree-session.js`. These are navigation-paint measurements; diff hydration is the diff view’s separate evidence. |
 | `github.pulls-panel-paint` | paint-exempt | `builtin_plugins/github/pulls-panel.js#mountPullsPanel`, `builtin_plugins/github/pulls-panel.js#mountPullsLanding`, `builtin_plugins/github/pull-state.js#pullStateIcon` | `local-only` | — | Building the list’s DOM, moving focus, bringing a row into view, what a sticky header covers, truncating a title, and when an `IntersectionObserver` says the list’s end is near need a rendered page. Every decision they act on is a session owner above: which rows, marks, and notices (`github.pulls-panel`), which tab and when the view is told (`github.pulls-tab-host`), and what a row’s open asks for (`github.pulls-reader-fetch`). The panel session builds the list in a stand-in for the DOM and pins its tree roles with each row’s place and the list’s size, a title written as markup painted as one text node, an append that builds and keys only the rows it adds, and ages told again as time passes (`tests/dom/github-pulls-panel-session.js`, its `paint`); `tests/test_pulls_nav.py` pins that a folder’s shell draws nothing, and `tests/test_design_vocabulary.py` the design system’s primitives in the markup. The list at its cap, a held key, and how it looks in both themes were measured and judged in Chrome; the numbers are beside `WINDOW_ROWS` in `builtin_plugins/github/pulls-panel.js` |
 | `shell.nav-panel-scroll` | paint-exempt | `static/app.js#activateNavPanel` | `local-only` | — | Where each navigation panel’s list was scrolled to is the scroller’s own state, which only a rendered page has: all the panels share one, so `activateNavPanel` keeps each panel’s offset and tells the one that leaves, on a plain folder’s Files and Git tabs as on a mirror’s three. That the tab’s host stops the list when it is told is a session owner above (`github.pulls-tab-host`), and `tests/dom/preview-pane-state-session.js` runs the production `activateNavPanel` with a stand-in scroller and pins that a switch saves the offset it leaves, restores the next panel’s or the top, and tells the panel that leaves (`navPanelsKeepTheirPlace`, in `cli-ui-file-lifecycle.tryscript.md`). Seen in Chrome: Files, Git, and Pulls each keep their place |

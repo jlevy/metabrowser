@@ -290,6 +290,15 @@ $ node tests/dom/diff-file-jump-session.js
       "top": 0
     },
     {
+      "step": "a first file that is too large does not strand the next visible file",
+      "atTop": "first.py",
+      "asked": [
+        "src/a.py",
+        "src/moved.py (waiting)"
+      ],
+      "partial": "3 of 10 files loaded; the rest load as you reach them"
+    },
+    {
       "step": "a first page of ready files: rows for the first screen and one more, the rest held",
       "atTop": "r1.py",
       "asked": [],
@@ -361,6 +370,62 @@ $ node tests/dom/diff-file-jump-session.js
       "rowsInTheBarsFrame": 0,
       "lines": "painted",
       "lineRows": 8
+    },
+    {
+      "step": "held and deferred reservations collapse and return on reopen",
+      "atTop": "r1.py",
+      "asked": [],
+      "partial": "12 of 14 files loaded; the rest load as you reach them",
+      "heights": [
+        {
+          "file": "r5.py",
+          "expanded": 180,
+          "collapsed": 0,
+          "reopened": 180
+        },
+        {
+          "file": "d1.py",
+          "expanded": 180,
+          "collapsed": 0,
+          "reopened": 180
+        }
+      ]
+    },
+    {
+      "step": "a layout choice updates held and deferred reservations before their rows are drawn",
+      "atTop": "r1.py",
+      "asked": [],
+      "partial": "12 of 14 files loaded; the rest load as you reach them",
+      "split": [
+        180,
+        180
+      ],
+      "unified": [
+        260,
+        200
+      ]
+    },
+    {
+      "step": "a width-triggered layout change updates held and deferred reservations too",
+      "atTop": "r1.py",
+      "asked": [],
+      "partial": "12 of 14 files loaded; the rest load as you reach them",
+      "split": [
+        180,
+        180
+      ]
+    },
+    {
+      "step": "the current-file subscription follows held and deferred bars, suppresses repeats, and stops",
+      "files": [
+        "r1.py",
+        "r9.py",
+        "d1.py"
+      ]
+    },
+    {
+      "step": "the current-file lookup bisects 2,048 sections",
+      "geometryReads": 13
     },
     {
       "step": "a key held over held files: nothing drawn it passed, then the file it rests on",

@@ -195,6 +195,17 @@ $ node tests/dom/github-pull-prefetch-session.js
         "bbbb (cancelled)"
       ],
       "assetsWarmed": 1
+    },
+    {
+      "step": "the same endpoints at a changed route fetch again",
+      "phase": "fetching",
+      "comparison": "/api/plugin/github/pull-comparison?store=new",
+      "holding": true,
+      "requests": [
+        "bbbb (cancelled)",
+        "bbbb"
+      ],
+      "assetsWarmed": 2
     }
   ]
 }
