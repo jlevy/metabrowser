@@ -17,6 +17,13 @@ page. A failed refresh leaves the rows and says what to do.
 A poll reads the top window with its tag, however many rows are held, so an unchanged
 list is a `304`; only an answer from another list file has the whole range held read
 again, once, and a window that lands while a poll is out is kept.
+The tag is taken only with the rows, so a range read again that a change of filter lets
+go is read again on the way back, and not answered by a `304`. On the list at its cap,
+after a refresh moved every window by a row, a window read for the earlier rows is
+dropped and asked again from the new cursor, and a range that a window lands during is
+short, so it is not taken and the next poll reads it again.
+A poll the pin guard refuses, as Back from the back/forward cache sends before the guard
+reloads the page, says nothing of its own.
 
 The rows walk by key: each press moves two marks, and a key held down reads nothing and
 opens nothing until it stops, so a walk of forty rows costs one read.
@@ -36,17 +43,7 @@ Timers, the clock, visibility, and paint are injected, and each request
 waits for the step to answer it.
 Each step prints the requests the panel made, the timer it left, the row marks it made,
 what it opened, how many times it painted, and, where the step is about it, what it
-would paint. `failures` is what the panel says for each way a refresh can end, and `cap`
-at the most rows a list may hold.
-`hostile` is a row whose text is markup: it stays a string, and paint writes it as text.
-`landing` is what the list’s own address says, and why when there is nothing to select.
-`reader` is the page a selection opens, on what a server answers of a record: only a
-page a reader chose fetches, a key stopping on a row waits a moment so that tapping past
-spends nothing, a key still held keeps the page it opened waiting however long, and past
-the bound on jobs it says why and offers **Fetch**. `paint` is the list built in a
-stand-in for the DOM: a tree of one level whose rows are its items, a title written as
-markup painted as one text node, an append that builds, ages, and keys only the rows it
-adds, and ages told again in place as time passes.
+would paint.
 
 ```console
 $ node tests/dom/github-pulls-panel-session.js
@@ -185,6 +182,31 @@ $ node tests/dom/github-pulls-panel-session.js
       ],
       "timer": "slow",
       "painted": 0
+    },
+    {
+      "step": "a poll the pin guard refused: the list says nothing of it",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-3\""
+      ],
+      "timer": "slow",
+      "painted": 0,
+      "paint": {
+        "filter": "all",
+        "status": "current",
+        "listName": "Pull requests of octo/demo: 100 pull requests · GitHub has more",
+        "count": "100 pull requests · GitHub has more",
+        "freshness": "Fetched just now by octo-reader",
+        "loadMore": "ready",
+        "live": "Pull requests of octo/demo: 100 pull requests · GitHub has more",
+        "rowsHeld": 100,
+        "rows": [
+          "[Open] Work item 106 | #106 · contributor · topic ← work-106 | /pull/106",
+          "[Open] Work item 105 | #105 · contributor · topic ← work-105 | /pull/105",
+          "…",
+          "[Merged] Say more in the guide | #8 · maintainer · topic ← guide-more | /pull/8",
+          "[Open] Count to two in the app | #7 · forker · topic ← forker:count-to-two | /pull/7"
+        ]
+      }
     },
     {
       "step": "the end of the list asks for the next page",
@@ -794,6 +816,108 @@ $ node tests/dom/github-pulls-panel-session.js
       "rowsHeld": 102
     },
     {
+      "step": "a window and a poll of the list at its cap",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=closed&limit=100&after=901",
+        "GET /api/plugin/github/pulls?state=closed&limit=100 if-none-match \"pulls-27\""
+      ],
+      "painted": 0
+    },
+    {
+      "step": "the poll lands first: a pull request opened, and the rows moved",
+      "requests": [],
+      "timer": "slow",
+      "painted": 1
+    },
+    {
+      "step": "the window of the earlier rows is dropped, and asked after the new cursor",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=closed&limit=100&after=902"
+      ],
+      "timer": "slow",
+      "painted": 0
+    },
+    {
+      "step": "so the row between the two cursors is held",
+      "requests": [],
+      "timer": "slow",
+      "painted": 1,
+      "rowsHeld": 200,
+      "holds 901": true
+    },
+    {
+      "step": "200 rows held: the range is read again, and a window asked while it is out",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=closed&limit=100 if-none-match \"pulls-27\"",
+        "GET /api/plugin/github/pulls?state=closed&limit=200",
+        "GET /api/plugin/github/pulls?state=closed&limit=100&after=801"
+      ],
+      "painted": 0
+    },
+    {
+      "step": "the window lands first, and is appended",
+      "requests": [],
+      "painted": 1,
+      "rowsHeld": 300
+    },
+    {
+      "step": "then the range, short of the window: it is not taken",
+      "requests": [],
+      "timer": "slow",
+      "painted": 0,
+      "rowsHeld": 300
+    },
+    {
+      "step": "so the next poll reads the list again",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=closed&limit=100 if-none-match \"pulls-27\"",
+        "GET /api/plugin/github/pulls?state=closed&limit=300"
+      ],
+      "painted": 0
+    },
+    {
+      "step": "Open is chosen while Closed's range is read again",
+      "requests": [
+        "aborted GET /api/plugin/github/pulls?state=closed&limit=200",
+        "GET /api/plugin/github/pulls?state=open&limit=100"
+      ],
+      "marks": [
+        "anchor 1000 -> null"
+      ],
+      "filterChanged": [
+        "open"
+      ],
+      "painted": 1
+    },
+    {
+      "step": "Closed again: its poll names the tag of the rows it holds",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=closed&limit=100 if-none-match \"pulls-27\""
+      ],
+      "timer": "slow",
+      "marks": [
+        "anchor null -> 10",
+        "anchor 10 -> 1000"
+      ],
+      "painted": 2
+    },
+    {
+      "step": "so the list file it has not read is read again",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=closed&limit=200"
+      ],
+      "timer": "slow",
+      "painted": 0
+    },
+    {
+      "step": "and the pull request that opened is held",
+      "requests": [],
+      "timer": "slow",
+      "painted": 1,
+      "rowsHeld": 200,
+      "holds 1001": true
+    },
+    {
       "step": "dispose lets the read go",
       "requests": [
         "GET /api/plugin/github/pulls?state=all&limit=100",
@@ -802,7 +926,30 @@ $ node tests/dom/github-pulls-panel-session.js
       "painted": 1,
       "timers": []
     }
-  ],
+  ]
+}
+? 0
+```
+
+The rest of the same session prints as a second part, since tryscript matches a
+command’s whole output as one regular expression, and one block of all of it is larger
+than V8 compiles. `failures` is what the panel says for each way a refresh can end, and
+`cap` at the most rows a list may hold.
+`hostile` is a row whose text is markup: it stays a string, and paint writes it as text.
+`landing` is what the list’s own address says, and why when there is nothing to select,
+and `the list’s address, on a first visit` is that address read again until there is
+something to say. `reader` is the page a selection opens, on what a server answers of a
+record: only a page a reader chose fetches, a key stopping on a row waits a moment so
+that tapping past spends nothing, a key still held keeps the page it opened waiting
+however long, and past the bound on jobs it says why and offers **Fetch**. `paint` is
+the list built in a stand-in for the DOM: a tree of one level whose rows are its items,
+each with its place and the list’s size, a title written as markup painted as one text
+node, an append that builds, ages, and keys only the rows it adds, and ages told again
+in place as time passes.
+
+```console
+$ node tests/dom/github-pulls-panel-second-session.js
+{
   "failures": {
     "not_logged_in": {
       "status": "current",
@@ -914,6 +1061,48 @@ $ node tests/dom/github-pulls-panel-session.js
     "a mirror": "Select a pull request.",
     "a list with no rows, and no gh": "Install GitHub CLI and sign in to read this repository's pull requests."
   },
+  "the list's address, on a first visit": [
+    {
+      "step": "it mounts and reads the list",
+      "requests": [
+        "GET /api/plugin/github/pulls?limit=0"
+      ],
+      "said": [],
+      "timers": []
+    },
+    {
+      "step": "nothing cached, and the refresh not yet asked: it reads again soon",
+      "requests": [],
+      "said": [
+        "Select a pull request."
+      ],
+      "timers": [
+        1000
+      ]
+    },
+    {
+      "step": "the refresh is running: again at the fast poll",
+      "requests": [
+        "GET /api/plugin/github/pulls?limit=0"
+      ],
+      "said": [
+        "Select a pull request."
+      ],
+      "timers": [
+        1000
+      ]
+    },
+    {
+      "step": "the refresh failed: it says why, and reads no more",
+      "requests": [
+        "GET /api/plugin/github/pulls?limit=0"
+      ],
+      "said": [
+        "Install GitHub CLI and sign in to read this repository's pull requests."
+      ],
+      "timers": []
+    }
+  ],
   "reader": [
     {
       "name": "an address alone fetches nothing",
@@ -1035,9 +1224,9 @@ $ node tests/dom/github-pulls-panel-session.js
     "the list": "ul .github-pulls-list role=\"tree\" aria-label=\"Pull requests of octo/demo: 102 pull requests\"",
     "a row": [
       "li .github-pulls-item role=\"none\"",
-      "a .github-pulls-row href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" tabindex=\"-1\""
+      "a .github-pulls-row href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" tabindex=\"-1\" aria-posinset=\"1\" aria-setsize=\"102\""
     ],
-    "the row whose page is shown": "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\"",
+    "the row whose page is shown": "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\"",
     "its parts": [
       "span .github-pull-state-icon role=\"img\" aria-label=\"Open\"",
       "span .github-pulls-title",

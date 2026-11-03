@@ -633,10 +633,40 @@ that expand and collapse exactly as they do in the Files tab.
   `.tree-children[role="group"]`, the indent, and the row height
   ([Container Rows](../../../design-system.md#container-rows)).
 - The list’s roles are already a tree’s, from step 3: the list is `role="tree"`, each
-  pull request’s anchor is a `treeitem` at `aria-level="1"` in a list item of role
-  `none`, and the Files tree’s keyboard handler is scoped to the Files tab, so it never
-  claims these rows. So this step adds only children: a `.tree-children[role="group"]`
-  after a row’s anchor, the chevron box, and `aria-expanded` on a row that has files.
+  pull request’s anchor is a `treeitem` at `aria-level="1"` with its `aria-posinset` and
+  `aria-setsize`, in a list item of role `none`, and the Files tree’s keyboard handler
+  is scoped to the Files tab, so it never claims these rows.
+  The “two trees” story of `tests/dom/pulls-nav-session.js` pins that scope and the
+  focus fallback below.
+  This step adds a `.tree-children[role="group"]` after a row’s anchor, the chevron box,
+  and `aria-expanded` on a row that has files, and each of these keys on a row’s shape
+  today, so each needs work too (review C6 of
+  [the Pulls tab’s pull request](https://github.com/jlevy/metabrowser/pull/285)):
+  - **`aria-owns` from the anchor to its group.** The group is the anchor’s sibling,
+    since an `<a>` cannot hold rows, so nothing else makes it the pull request’s and not
+    the tree’s. Files rows carry `aria-owns` for the same sibling group
+    (`static/tree-keyboard-navigation.js#synchronizeBranch`).
+  - **`app.js`’s listeners on the whole `#tree-pane`**, which reach any `.tree-item`, as
+    these file rows are.
+    A click runs `activateTreeRow`, which pushes `/view/<data-path>` for a `select` row.
+    `mouseenter` shows the file tooltip for `data-tip-type` and starts the hover
+    prefetch of a `.tree-item.tree-file[data-path]`. `setSelectedPath` marks every
+    `.tree-item` with the open path as selected, in any panel.
+    Scope them to `#tab-files`, or have the panel’s own handlers stop the event.
+    `app.js` is in the shell’s eager path, whose budget `make lint-check` holds.
+  - **The focus fallback’s `[data-tree-id]`**
+    (`app.js#resolveApplicationFocusFallback`). A file row here must not carry it, or
+    the check must be scoped to `#tab-files`.
+  - **The row keys’ scope** (`static/pulls-nav.js`, `isRow`). It is on only while focus
+    is on `a.github-pulls-row`, so a file row has no keys.
+    The walk goes by the controller’s `rows`, so Up and Down would skip the visible file
+    rows that the Files tab visits.
+  - **The paint’s keyed reuse** (`pulls-panel.js#paintRows` and `#placeRows`). A row
+    rebuilt because its described row changed must keep the children hung off its item,
+    and a file row’s place is in its group, not in the list.
+  - **The row’s grid**, `16px minmax(0, 1fr) auto` with the muted line at
+    `grid-column: 2 / -1` (`builtin_plugins/github/styles.css`, `.github-pulls-row`),
+    gains the chevron’s column.
 - A file row carries the one-letter change badge a patch’s children carry (A, M, D, R)
   in place of the file icon, and
   [inline change stats](../../../design-system.md#inline-change-stats).
