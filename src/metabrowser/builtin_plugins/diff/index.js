@@ -18,17 +18,19 @@ if (!mb) {
 // The view projects documents; fetching is the plugin's job. This wires
 // the deferred-file loader to the same hook the whole comparison came
 // from, narrowed to one path.
-setChangeLoader((revision, path, options) =>
-  mb.fetchPluginData("diff", "comparison", { ...comparisonParams(revision), file: path }, options),
-);
+setChangeLoader((revision, path, options) => fetchComparison(revision, options, path));
 
 // A comparison between two endpoints travels to the deferred loader as one opaque
 // string, the way a revision does: `left...right` from their merge base, as
 // `git diff` spells it, or `left..right` directly. No Git ref name contains `..`, so
 // neither spelling can be mistaken for a revision.
 
-/** @param {{left: string, right: string, base_policy: "direct" | "merge_base"}} comparison */
+/** @param {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string}} comparison */
 function comparisonKey(comparison) {
+  if (comparison.route !== undefined) {
+    pluginComparisonRoute(comparison.route);
+    return comparison.route;
+  }
   const separator = comparison.base_policy === "merge_base" ? "..." : "..";
   return `${comparison.left}${separator}${comparison.right}`;
 }
@@ -44,6 +46,33 @@ const SCOPE_PARAMS = {
   ...(typeof SETTINGS?.BUILD_TAG === "string" ? { build: SETTINGS.BUILD_TAG } : {}),
   ...(typeof SETTINGS?.STORE_TAG === "string" ? { store: SETTINGS.STORE_TAG } : {}),
 };
+
+/**
+ * An optional comparison route comes from the server's PR envelope. It remains
+ * a same-origin plugin-data request, including for each deferred file.
+ * @param {string} route
+ */
+function pluginComparisonRoute(route) {
+  const url = new URL(route, "http://metabrowser.invalid");
+  const match = /^\/api\/plugin\/([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_-]*)$/.exec(url.pathname);
+  if (!route.startsWith("/") || url.origin !== "http://metabrowser.invalid" || url.hash || !match) {
+    throw new Error("The comparison route is not a same-origin plugin route.");
+  }
+  return { plugin: match[1], hook: match[2], params: Object.fromEntries(url.searchParams) };
+}
+
+/** @param {string} key @param {{signal?: AbortSignal}} [options] @param {string} [file] */
+function fetchComparison(key, options, file) {
+  const target = key.startsWith("/")
+    ? pluginComparisonRoute(key)
+    : { plugin: "diff", hook: "comparison", params: comparisonParams(key) };
+  return mb.fetchPluginData(
+    target.plugin,
+    target.hook,
+    { ...target.params, ...(file === undefined ? {} : { file }) },
+    options,
+  );
+}
 
 /** @param {string} key @returns {Record<string, string>} */
 function comparisonParams(key) {
@@ -172,9 +201,7 @@ mb.registerView("diff", "diff", {
     let payload;
     try {
       payload = revision
-        ? await (ctx.raw === undefined
-            ? mb.fetchPluginData("diff", "comparison", comparisonParams(revision))
-            : ctx.raw)
+        ? await (ctx.raw === undefined ? fetchComparison(revision) : ctx.raw)
         : await mb.fetchPluginData("diff", "document", { path: ctx.path || "" });
       if (revision && payload && typeof payload === "object") {
         // The document is source-agnostic by design, so the revision
@@ -242,15 +269,10 @@ mb.registerView("diff", "diff", {
    * `render` as `ctx.raw`, and a Back onto the page is answered by the browser's cache,
    * because this request's address is the one `render` would ask.
    *
-   * @param {{left: string, right: string, base_policy: "direct" | "merge_base"}} comparison
+   * @param {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string}} comparison
    * @param {AbortSignal} [signal]
    * @returns {Promise<unknown>}
    */
   prefetch: (comparison, signal) =>
-    mb.fetchPluginData(
-      "diff",
-      "comparison",
-      comparisonParams(comparisonKey(comparison)),
-      signal === undefined ? undefined : { signal },
-    ),
+    fetchComparison(comparisonKey(comparison), signal === undefined ? undefined : { signal }),
 });

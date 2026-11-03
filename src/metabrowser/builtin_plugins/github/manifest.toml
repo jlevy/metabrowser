@@ -16,6 +16,12 @@ route = "pull"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_handler"
 methods = ["GET"]
 
+# A comparison from the selected PR's store, reusing its persisted manifest.
+[[data_hook]]
+route = "pull-comparison"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_comparison_handler"
+methods = ["GET"]
+
 # Start or join one pull request's refresh in the refresh coordinator. A POST with a
 # JSON object body naming its number, behind the same-origin guard; it returns at once.
 [[data_hook]]

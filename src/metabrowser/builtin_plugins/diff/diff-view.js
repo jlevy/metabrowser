@@ -44,6 +44,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {DiffViewApi | undefined} api
  * @property {Map<string, FileEntry>} byNewPath Each file by the path it has now.
  * @property {Map<string, FileEntry>} byOldPath Each file by the path it had.
+ * @property {Map<HTMLElement, FileEntry>} bySection Each file by its mounted section.
+ * @property {() => void} notifyCurrentFile Queue a current-file report for subscribers.
  * @property {AbortController} controller
  * @property {Map<string, DeferredFile>} deferred Files asked for when they are reached, by id.
  * @property {number} deferredLeft Files of this comparison not here yet.
@@ -1258,6 +1260,10 @@ function drawLayout(view, layout) {
   view.layout = layout;
   view.root.dataset.layout = layout;
   renderLayoutControl(view);
+  view.notifyCurrentFile();
+  for (const file of view.deferred.values()) {
+    reserveFileBody(file, layout);
+  }
   view.layoutGeneration += 1;
   const layoutGeneration = view.layoutGeneration;
   if (view.files.length <= LAYOUT_PROJECTION_BATCH_FILES) {
@@ -1750,14 +1756,32 @@ export function firstScreenBudget(screen) {
 function reserveBody(body, rows) {
   if (body.style) {
     // The rows' own height: `line-height: 1.5` at the code font's size, in styles.css.
-    body.style.minHeight = `calc(${rows} * 1.5 * var(--code-font-size, 0.85rem))`;
+    body.style.setProperty(
+      "--diff-reserved-height",
+      `calc(${rows} * 1.5 * var(--code-font-size, 0.85rem))`,
+    );
   }
+}
+
+/**
+ * Reserve the rows this file will draw in the current layout. Held answers use
+ * their patch; a file not fetched yet uses the manifest estimate.
+ * @param {DeferredFile} file
+ * @param {"unified" | "split"} layout
+ */
+function reserveFileBody(file, layout) {
+  reserveBody(
+    file.body,
+    file.held === null
+      ? reservedRows(file.change, layout)
+      : patchRows(file.held.patches[String(file.change.id)], layout),
+  );
 }
 
 /** @param {HTMLElement} body */
 function unreserveBody(body) {
   if (body.style) {
-    body.style.minHeight = "";
+    body.style.removeProperty("--diff-reserved-height");
   }
 }
 
@@ -1892,6 +1916,7 @@ function renderDeferred(file, loaded, view) {
     outcome = failDeferred(file, error, view);
   }
   holdPlace(view, anchor);
+  view.notifyCurrentFile();
   return outcome;
 }
 
@@ -1987,10 +2012,7 @@ function queueDeferredHydration(section, body, change, revision, view, held = nu
   });
   view.deferredBySection.set(section, id);
   view.hydration.add(id, view.deferred.size);
-  reserveBody(
-    body,
-    held === null ? reservedRows(change, view.layout) : patchRows(held.patches[id], view.layout),
-  );
+  reserveFileBody(/** @type {DeferredFile} */ (view.deferred.get(id)), view.layout);
   if (view.hydrationObserver === null) {
     view.hydrationObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
@@ -2243,6 +2265,7 @@ export function jumpToFile(view, path) {
   view.pinned = entry.section;
   view.pinnedAt = eventClockNow();
   placeAtTop(view, entry.section);
+  view.notifyCurrentFile();
   const pane = scrollerOf(view);
   if (pane !== null) {
     releasePinOnInput(view, pane);
@@ -2272,6 +2295,7 @@ export function jumpToFile(view, path) {
 function rememberFile(view, change, section, expand) {
   const entry = { change, section, expand };
   view.sections.push(section);
+  view.bySection.set(section, entry);
   const oldSide = /** @type {{path?: string} | undefined | null} */ (change.old);
   const newSide = /** @type {{path?: string} | undefined | null} */ (change.new);
   if (newSide?.path !== undefined && !view.byNewPath.has(newSide.path)) {
@@ -2319,6 +2343,7 @@ function renderFileSection(change, patch, context, view, draw) {
     toggle.classList.toggle("collapsed", !expanded);
     body.classList.toggle("diff-file-body-collapsed", !expanded);
     section.classList.toggle("diff-file-collapsed", !expanded);
+    view.notifyCurrentFile();
   };
   bar.addEventListener("click", (event) => {
     const origin = /** @type {{closest?: (selector: string) => unknown}} */ (event.target);
@@ -2466,7 +2491,7 @@ function measureInContainer(root, container) {
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
  *   page alone, so this module names it only in types.
- * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, cancelPending: () => void, dispose: () => void}}
+ * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, currentFile: () => Extract<FileLookup, {kind: "file"}> | null, onCurrentFile: (listener: (file: Extract<FileLookup, {kind: "file"}> | null) => void) => () => void, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
@@ -2482,6 +2507,8 @@ export function mountDiffView(container, document_, api, options = {}) {
     awaitingWidth: !(mountWidth > 0) && typeof ResizeObserver === "function",
     byNewPath: new Map(),
     byOldPath: new Map(),
+    bySection: new Map(),
+    notifyCurrentFile: () => {},
     chosenLayout,
     controller: new AbortController(),
     deferred: new Map(),
@@ -2594,6 +2621,7 @@ export function mountDiffView(container, document_, api, options = {}) {
       ? new ResizeObserver((entries) => {
           // Before this frame paints: a height that changed does not show a place that moved.
           holdPlace(view);
+          view.notifyCurrentFile();
           const width = entries.at(-1)?.contentRect.width ?? 0;
           if (width === observedWidth) {
             return;
@@ -2639,6 +2667,72 @@ export function mountDiffView(container, document_, api, options = {}) {
     view.timers.add(timer);
   }
 
+  /**
+   * The first file whose bar or body intersects the pane, including undrawn files.
+   * Reuses the ordered-section bisection: a scroll never measures every file.
+   * @returns {Extract<FileLookup, {kind: "file"}> | null}
+   */
+  function currentFile() {
+    if (view.disposed) {
+      return null;
+    }
+    const pane = scrollerOf(view);
+    const place = placeOfTopFile(view);
+    if (pane === null || place === null) {
+      return null;
+    }
+    const bounds = pane.getBoundingClientRect();
+    const rect = place.section.getBoundingClientRect();
+    if (rect.bottom <= bounds.top || rect.top >= bounds.top + pane.clientHeight) {
+      return null;
+    }
+    const entry = view.bySection.get(place.section);
+    if (entry === undefined) {
+      return null;
+    }
+    const side = /** @type {{path?: string}} */ (entry.change.new ?? entry.change.old);
+    const path = String(side.path ?? "");
+    return {
+      kind: "file",
+      path,
+      fileId: String(entry.change.id),
+      changeKind: String(entry.change.kind),
+      availability: String(entry.change.availability),
+    };
+  }
+  /** @type {Map<(file: Extract<FileLookup, {kind: "file"}> | null) => void, string | null>} */
+  const currentListeners = new Map();
+  const currentController = new AbortController();
+  /** @type {number | null} */
+  let currentFrame = null;
+  view.notifyCurrentFile = () => {
+    if (view.disposed || currentListeners.size === 0 || currentFrame !== null) {
+      return;
+    }
+    const report = () => {
+      currentFrame = null;
+      if (view.disposed) {
+        return;
+      }
+      const file = currentFile();
+      const id = file?.fileId ?? null;
+      for (const [listener, previous] of currentListeners) {
+        if (previous !== id) {
+          currentListeners.set(listener, id);
+          listener(file);
+        }
+      }
+    };
+    currentFrame =
+      typeof requestAnimationFrame === "function"
+        ? requestAnimationFrame(report)
+        : setTimeout(report, 0);
+  };
+  scrollerOf(view)?.addEventListener("scroll", view.notifyCurrentFile, {
+    passive: true,
+    signal: currentController.signal,
+  });
+
   function cancelPendingWork() {
     view.generation += 1;
     view.controller.abort();
@@ -2678,6 +2772,19 @@ export function mountDiffView(container, document_, api, options = {}) {
      * @param {string} path
      */
     fileForPath: (path) => lookupFile(view, path),
+    currentFile,
+    /** Report immediately, then only when the file changes; unsubscribe is idempotent. */
+    onCurrentFile(listener) {
+      if (view.disposed) {
+        return () => {};
+      }
+      const file = currentFile();
+      currentListeners.set(listener, file?.fileId ?? null);
+      listener(file);
+      return () => {
+        currentListeners.delete(listener);
+      };
+    },
     cancelPending() {
       if (!view.disposed) {
         cancelPendingWork();
@@ -2689,6 +2796,16 @@ export function mountDiffView(container, document_, api, options = {}) {
       }
       view.disposed = true;
       widths?.disconnect();
+      currentController.abort();
+      currentListeners.clear();
+      if (currentFrame !== null) {
+        if (typeof cancelAnimationFrame === "function") {
+          cancelAnimationFrame(currentFrame);
+        } else {
+          clearTimeout(currentFrame);
+        }
+        currentFrame = null;
+      }
       cancelPendingWork();
       view.viewFile?.dispose();
       unbind();

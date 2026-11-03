@@ -238,7 +238,7 @@ const TRUNCATED = Object.freeze({
  *   reviewComments: ReviewCommentItem[],
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
  *   notes: string[],
- *   comparison: {left: string, right: string, headMoved: boolean} | null,
+ *   comparison: {left: string, right: string, route?: string, headMoved: boolean} | null,
  *   browse: BrowseCode | null,
  *   filesUnavailable: string,
  *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
@@ -642,6 +642,12 @@ export function filesUnavailableText(why) {
   if (why === "base_uncertain") {
     return "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
   }
+  if (why === "comparison_timeout") {
+    return "Files changed is unavailable: checking this pull request's history took too long. Refresh to try again.";
+  }
+  if (why === "comparison_too_large") {
+    return "Files changed is unavailable: checking this pull request's history exceeded the comparison limit.";
+  }
   if (why === "commits_unavailable") {
     return "Files changed is unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
   }
@@ -772,6 +778,9 @@ export function describePull(envelope, page) {
     model.comparison = {
       left: comparison.base,
       right: comparison.head,
+      ...(typeof envelope.comparison_route === "string"
+        ? { route: envelope.comparison_route }
+        : {}),
       // The page's code is the served pin; a record read at a newer head says so
       // rather than moving what the reader sees.
       headMoved: model.headOffer !== null,
@@ -956,9 +965,9 @@ export function createPullController(deps, options) {
           etag = response.etag;
         }
         error = null;
-      } else if (response.status === 304) {
+      } else if (response.status === 304 || pinChanged(response)) {
         error = null;
-      } else if (!pinChanged(response)) {
+      } else {
         error = `The pull request is unavailable (HTTP ${response.status}).`;
       }
     } catch {
@@ -1448,8 +1457,8 @@ export function safeLink(href, base) {
  * The diff keeps the comparison it was opened on: a record read at a newer head offers
  * it rather than changing the diff under the reader.
  *
- * @param {{left: string, right: string} | null} mounted The comparison the diff shows.
- * @param {{left: string, right: string} | null} comparison The record's.
+ * @param {{left: string, right: string, route?: string} | null} mounted The comparison the diff shows.
+ * @param {{left: string, right: string, route?: string} | null} comparison The record's.
  * @returns {"unavailable" | "mount" | "keep" | "offer"}
  */
 export function filesAction(mounted, comparison) {
@@ -1459,7 +1468,11 @@ export function filesAction(mounted, comparison) {
   if (mounted === null) {
     return "mount";
   }
-  return mounted.left === comparison.left && mounted.right === comparison.right ? "keep" : "offer";
+  return mounted.left === comparison.left &&
+    mounted.right === comparison.right &&
+    mounted.route === comparison.route
+    ? "keep"
+    : "offer";
 }
 
 /**
@@ -1586,7 +1599,7 @@ export function mountPullPage(container, ctx, mb) {
     .ensureAsset("inert-html")
     .then(() => window.MetabrowserInertHtml ?? null)
     .catch(() => null);
-  /** @type {{left: string, right: string} | null} */
+  /** @type {{left: string, right: string, route?: string} | null} */
   let diffFor = null;
   /** @type {{dispose?: () => void} | null} */
   let diffHandle = null;
@@ -2089,7 +2102,12 @@ export function mountPullPage(container, ctx, mb) {
         throw new Error("the diff view has no prefetch");
       }
       return view.prefetch(
-        { left: comparison.left, right: comparison.right, base_policy: "merge_base" },
+        {
+          left: comparison.left,
+          right: comparison.right,
+          base_policy: "merge_base",
+          ...(comparison.route === undefined ? {} : { route: comparison.route }),
+        },
         signal,
       );
     },
@@ -2110,38 +2128,56 @@ export function mountPullPage(container, ctx, mb) {
     isVisible: () => document.visibilityState === "visible",
   });
 
-  /** @param {{left: string, right: string}} comparison */
+  /** @param {{left: string, right: string, route?: string}} comparison */
   async function mountDiff(comparison) {
     disposeDiff();
     const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
     diffHost = host;
     diffFor = comparison;
     body.replaceChildren(host);
-    const raw = prefetch.take(comparison);
-    await mb.ensureKindAssets("diff");
-    const view = mb.getRegisteredView("diff", "diff");
-    if (diffHost !== host) {
-      return;
+    try {
+      const raw = prefetch.take(comparison);
+      await mb.ensureKindAssets("diff");
+      const view = mb.getRegisteredView("diff", "diff");
+      if (diffHost !== host) {
+        return;
+      }
+      if (!view) {
+        host.textContent = "The diff plugin is unavailable.";
+        return;
+      }
+      const prefetched = await raw;
+      if (diffHost !== host) {
+        return;
+      }
+      const handle = /** @type {{dispose?: () => void} | null} */ (
+        await view.render(host, {
+          comparison: {
+            left: comparison.left,
+            right: comparison.right,
+            base_policy: "merge_base",
+            ...(comparison.route === undefined ? {} : { route: comparison.route }),
+          },
+          ...(prefetched === undefined ? {} : { raw: prefetched }),
+        })
+      );
+      if (diffHost !== host) {
+        handle?.dispose?.();
+        return;
+      }
+      diffHandle = handle;
+    } catch {
+      if (diffHost !== host) {
+        return;
+      }
+      const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
+      retry.addEventListener("click", () => {
+        if (diffHost === host) {
+          diffMounted = mountDiff(comparison);
+        }
+      });
+      host.replaceChildren(notice("error", ["Files changed could not load. ", retry]));
     }
-    if (!view) {
-      host.textContent = "The diff plugin is unavailable.";
-      return;
-    }
-    const prefetched = await raw;
-    if (diffHost !== host) {
-      return;
-    }
-    const handle = /** @type {{dispose?: () => void} | null} */ (
-      await view.render(host, {
-        comparison: { left: comparison.left, right: comparison.right, base_policy: "merge_base" },
-        ...(prefetched === undefined ? {} : { raw: prefetched }),
-      })
-    );
-    if (diffHost !== host) {
-      handle?.dispose?.();
-      return;
-    }
-    diffHandle = handle;
   }
 
   /** @param {PullModel} model */
@@ -2165,7 +2201,9 @@ export function mountPullPage(container, ctx, mb) {
       });
       body.querySelector(".github-pull-newer-offer")?.remove();
       const said = notice(null, [
-        `The pull request now ends at ${comparison.right.slice(0, 12)}. `,
+        diffFor?.right === comparison.right
+          ? "The comparison has changed. "
+          : `The pull request now ends at ${comparison.right.slice(0, 12)}. `,
         offer,
       ]);
       said.classList.add("github-pull-newer-offer");
