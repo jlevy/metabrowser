@@ -508,6 +508,22 @@ $ node tests/dom/github-pulls-panel-session.js
       }
     },
     {
+      "step": "a mirror's read ahead: a stale list asks",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=all&limit=100",
+        "POST /api/plugin/github/pulls-refresh {\"state\":\"all\"}"
+      ],
+      "marks": [
+        "anchor null -> 106"
+      ],
+      "painted": 2
+    },
+    {
+      "step": "and nothing polls a list that is not shown",
+      "requests": [],
+      "painted": 1
+    },
+    {
       "step": "the first row takes Tab when none is current",
       "requests": [
         "GET /api/plugin/github/pulls?state=all&limit=100"
@@ -818,6 +834,7 @@ $ node tests/dom/github-pulls-panel-session.js
     "refs": "main ← <b>topic</b> (deleted fork)",
     "meta": "#7 · ghost · main ← <b>topic</b> (deleted fork)"
   },
+  "spelled": "main ← topic",
   "landing": {
     "a server with no repository": "This server serves no GitHub repository.",
     "a mirror": "Select a pull request."

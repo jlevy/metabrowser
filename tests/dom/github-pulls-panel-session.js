@@ -230,7 +230,8 @@ async function run() {
   const panel = await import(pathToFileURL(panelPath).href);
   const steps = [];
 
-  // A mirror reads the list ahead of the tab: its first read and nothing else.
+  // A page that is not a mirror's would read nothing here at all; this is a panel told only to
+  // read, which asks for nothing more.
   let page = createPage();
   let controller = panel.createPullsController(page.deps, { filter: "all", current: null });
   void controller.start({ shown: false });
@@ -399,6 +400,21 @@ async function run() {
   steps.push(page.observe("a server with no GitHub repository", controller));
   controller.dispose();
 
+  // A mirror reads the list ahead of the tab, and starts its refresh, once and by itself.
+  page = createPage();
+  controller = panel.createPullsController(page.deps, { filter: "all", current: null });
+  void controller.start({ shown: false, refreshAhead: true });
+  await settle();
+  await page.answer(recorded.stale);
+  steps.push(
+    page.observe("a mirror's read ahead: a stale list asks", controller, { paint: false }),
+  );
+  await page.answer(recorded.refresh_again);
+  steps.push(
+    page.observe("and nothing polls a list that is not shown", controller, { paint: false }),
+  );
+  controller.dispose();
+
   // Keyboard, on a full window.
   page = createPage();
   controller = panel.createPullsController(page.deps, { filter: "all", current: null });
@@ -551,12 +567,18 @@ async function run() {
     "octo/demo",
   );
 
+  // GitHub spells an owner in its own case and a source is lowercased: the same repository.
+  const spelled = panel.describeRow(
+    { number: 8, state: "open", base_ref: "main", head_ref: "topic", head_repository: "OCTO/demo" },
+    "octo/demo",
+  ).refs;
+
   const landing = {
     "a server with no repository": panel.describeLanding(recorded.not_github.body),
     "a mirror": panel.describeLanding(recorded.current.body),
   };
 
-  return { steps, failures, cap, hostile, landing, reader: await readerStory() };
+  return { steps, failures, cap, hostile, spelled, landing, reader: await readerStory() };
 }
 
 /**

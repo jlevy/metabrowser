@@ -1319,7 +1319,7 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert github[".github-pulls-row:focus-visible"]["outline"] == "2px solid var(--link)"
     assert "transition" not in row, "a row crossed by a held key answers with no easing"
     # Icons: the app's glyph, in the state's color and never its own.
-    assert github[".github-pull-state svg"]["width"] == "var(--icon-glyph)"
+    assert github[".github-pull-state-icon svg"]["width"] == "var(--icon-glyph)"
     for name, lucide in (
         ("gitPullRequest", "git-pull-request"),
         ("gitPullRequestDraft", "git-pull-request-draft"),

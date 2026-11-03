@@ -64,7 +64,7 @@ function glyph(state, mb) {
  */
 export function pullStateIcon(state, mb, options = {}) {
   const icon = document.createElement("span");
-  icon.className = "github-pull-state";
+  icon.className = "github-pull-state-icon";
   icon.dataset.state = state;
   if (options.named === false) {
     icon.setAttribute("aria-hidden", "true");

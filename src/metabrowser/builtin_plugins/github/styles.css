@@ -308,42 +308,31 @@
   --github-pull-merged: oklch(68.8% 0.178 296);
   --github-pull-closed: oklch(66.5% 0.2 26);
 }
-.github-pull-state,
-.github-pull-badge {
-  --github-pull-state-color: currentcolor;
-}
-.github-pull-state[data-state="open"],
-.github-pull-badge[data-state="open"] {
-  --github-pull-state-color: var(--github-pull-open);
-}
-.github-pull-state[data-state="draft"],
-.github-pull-badge[data-state="draft"] {
-  --github-pull-state-color: var(--github-pull-draft);
-}
-.github-pull-state[data-state="merged"],
-.github-pull-badge[data-state="merged"] {
-  --github-pull-state-color: var(--github-pull-merged);
-}
-.github-pull-state[data-state="closed"],
-.github-pull-badge[data-state="closed"] {
-  --github-pull-state-color: var(--github-pull-closed);
-}
 .github-pull-badge[data-state="open"],
+.github-pull-state-icon[data-state="open"] {
+  color: var(--github-pull-open);
+}
 .github-pull-badge[data-state="draft"],
+.github-pull-state-icon[data-state="draft"] {
+  color: var(--github-pull-draft);
+}
 .github-pull-badge[data-state="merged"],
-.github-pull-badge[data-state="closed"] {
-  color: var(--github-pull-state-color);
+.github-pull-state-icon[data-state="merged"] {
+  color: var(--github-pull-merged);
+}
+.github-pull-badge[data-state="closed"],
+.github-pull-state-icon[data-state="closed"] {
+  color: var(--github-pull-closed);
 }
 /* The 16px alignment box of a row's icon, around the app's one glyph size. */
-.github-pull-state {
+.github-pull-state-icon {
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
   width: 16px;
-  color: var(--github-pull-state-color);
 }
-.github-pull-state svg {
+.github-pull-state-icon svg {
   width: var(--icon-glyph);
   height: var(--icon-glyph);
 }
@@ -384,11 +373,12 @@
   padding: 0;
   list-style: none;
 }
-/* A row below the view takes no layout: the list at its cap costs what is on screen. Measured
-   beside WINDOW_ROWS in pulls-panel.js. */
+/* A row out of view takes no layout, so the list at its cap costs what is on screen: 60 to 70 ms
+   to show the tab without this, and 14 to 23 ms with it, measured beside WINDOW_ROWS in
+   pulls-panel.js. The size is a row's, until the browser remembers each one's own. */
 .github-pulls-item {
   content-visibility: auto;
-  contain-intrinsic-block-size: auto 42px;
+  contain-intrinsic-block-size: auto 41.5px;
 }
 .github-pulls-row {
   display: flex;
@@ -417,7 +407,7 @@
   background: var(--highlight-bg);
   border-left-color: var(--highlight-bar);
 }
-.github-pulls-row > .github-pull-state {
+.github-pulls-row > .github-pull-state-icon {
   /* The icon's box is as tall as the title's line, so the two stay level. */
   height: calc(var(--ui-row-height) - 4px);
 }

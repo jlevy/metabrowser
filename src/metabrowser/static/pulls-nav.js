@@ -125,6 +125,12 @@
                 filter,
                 current: here?.page ?? null,
                 shown,
+                // On a mirror, starting the list's refresh once the first tree has settled was
+                // measured against leaving it for the tab's first show, nine back-to-back pairs
+                // on pallets/click at a load average of 4 to 6: first row 1.001x and the mirror's
+                // own refresh 0.998x. Started as the page starts, it was 1.09x to 1.14x on the
+                // first row, past the plan's 1.1x, so it starts here and not there.
+                refreshAhead: true,
                 scrollRoot: deps.scrollRoot(),
                 open: (/** @type {{number: number, tab: string, reader?: unknown}} */ route) =>
                   deps.openPull(route),
@@ -308,6 +314,8 @@
 
   /** @type {ReturnType<typeof createPullsNav> | null} */
   let current = null;
+  /** The host's listeners on the page, which end with it. */
+  const listening = new AbortController();
   /** @type {Array<() => void>} */
   let unregisterKeys = [];
   /** @type {(() => void) | null} */
@@ -399,24 +407,43 @@
     bindShortcuts(shell.shortcuts());
     nav.start();
     const container = document.getElementById("tab-pulls");
-    container?.addEventListener("focusin", (event) => {
-      if (isRow(event.target) && deactivateScope === null) {
-        deactivateScope = boundShortcuts?.activateScope(KEY_SCOPE) ?? null;
-      }
-    });
-    container?.addEventListener("focusout", (event) => {
-      if (!isRow(/** @type {FocusEvent} */ (event).relatedTarget)) {
-        deactivateScope?.();
-        deactivateScope = null;
-      }
-    });
-    container?.addEventListener("keyup", () => nav.released());
-    window.addEventListener("popstate", nav.routeChanged);
+    const { signal } = listening;
+    container?.addEventListener(
+      "focusin",
+      (event) => {
+        if (isRow(event.target) && deactivateScope === null) {
+          deactivateScope = boundShortcuts?.activateScope(KEY_SCOPE) ?? null;
+        }
+      },
+      { signal },
+    );
+    container?.addEventListener(
+      "focusout",
+      (event) => {
+        if (!isRow(/** @type {FocusEvent} */ (event).relatedTarget)) {
+          deactivateScope?.();
+          deactivateScope = null;
+        }
+      },
+      { signal },
+    );
+    container?.addEventListener("keyup", () => nav.released(), { signal });
+    window.addEventListener("popstate", nav.routeChanged, { signal });
+  }
+
+  /** End the tab and everything it holds: the view, the keys, and the listeners. */
+  function dispose() {
+    listening.abort();
+    bindShortcuts(null);
+    current?.dispose();
+    current = null;
+    window.MetabrowserShell?.removeNavPanel(PANEL_ID);
   }
 
   window.MetabrowserPullsNav = Object.freeze({
     bindShortcuts,
     createPullsNav,
+    dispose,
     init,
     pullAddress,
     registerKeys,

@@ -30,6 +30,7 @@ function loadModules() {
     TypeError,
     URLSearchParams,
     Error,
+    AbortController,
     Element: class {},
   };
   context.window = context;

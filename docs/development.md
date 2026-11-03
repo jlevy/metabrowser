@@ -230,6 +230,7 @@ These are the ones with a measurement on record, and where it is:
 | --- | --- | --- | --- |
 | Core shell modules | Eager | the script tags in `server.py`’s shell template | the note beside the startup gates in `performance-budgets.toml` |
 | Search, Help, keyboard, and Git tools | On demand, once the first tree is usable | `shell-tools` in `on_demand_script_bundles` | the same note |
+| The Pulls tab’s host | With those tools, only in a shell that drew the tab, so a folder never fetches it | `shell-tools`, by `pulls_tab` in `server.py` | The view’s code is the GitHub plugin’s, on demand: see `static/pulls-nav.js` |
 | Source line gutter with `#L` anchors, SDK view helpers, and the syntax service | On demand, one file, fetched beside the view compositor and before any plugin’s code runs | `sdk-views` in `on_demand_script_bundles` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | Pull-request routes and page host | Eager on the shell of an address under `/pull/`; on demand for a page that reaches one through history | `PULL_PAGE_STARTUP_SCRIPTS` and `pull-route` in `server.py` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | GitPath wire codec | Eager, on a pinned revision’s shell only | `PIN_STARTUP_SCRIPTS` in `server.py` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |

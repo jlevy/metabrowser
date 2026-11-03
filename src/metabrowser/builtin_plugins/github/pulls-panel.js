@@ -42,16 +42,31 @@ const LIST_LABELS = Object.freeze({ all: "All", open: "Open", closed: "Closed" }
 const FILTER_GROUP = "github-pulls-filter";
 
 // Rows asked for at a time, one GitHub page, as the route's own default. The tab appends plain
-// rows, which appending costs per row and not per row held.
+// rows, which costs what the new rows cost and not what the list holds.
+//
+// Measured 2026-11-03 in headless Chrome 152 on pallets/click at the cap, one page of 1,000 real
+// rows, 20,700 nodes and 4.8 MB of heap, load average 4 to 6. Each number is load-independent or
+// is the median of several runs:
+//
+// - The tab's activation to its next paint: 60 to 70 ms as plain rows, past `--loading-state-delay`,
+//   and 14 to 23 ms with `content-visibility: auto` on each item (forced layout 66 ms and 2.9 ms).
+//   At one window of 100 rows, 10 to 15 ms, and a first show after the read ahead is the same.
+// - A window appended: 7 to 8 ms of main-thread tasks, the same at the 100th row as the 1,000th.
+// - A step of a held key, at 30 steps a second: one row's class, tab stop, focus, and bringing it
+//   into view, 0.4 ms in place, and each event to its next paint no slower at 1,000 rows than at
+//   100 (24 and 32 ms at the slowest, whose frame it was).
+//
+// So plain rows carry the cap, MAX_LIST_ROWS in pull_list.py, with no windowing module: what is
+// mounted costs what is on screen. The Git tab windows because its history has no such cap.
 export const WINDOW_ROWS = 100;
 // How long a walk waits for a next key before it opens the row it reached, once a key is
 // repeating. A key's release opens it at once, so this is only for a release the page does
 // not see, and it is past macOS's default repeat of 90 ms, so a held key never waits it out.
 export const WALK_SETTLE_MS = 120;
 // How long a row's opening waits for its record, so the page it replaces stays until the new
-// one can paint with no empty frame. A read took 6 to 12 ms in Chrome on the largest record of
-// pallets/click, so this is only for a server that is busy; past it the page opens and reads
-// for itself, under its own quiet period.
+// one can paint with no empty frame. A read took 2 ms at the median and 23 ms at the worst of 15
+// in Chrome, on a record of 5.6 KB of pallets/click at a load average of 6, so this is only for a
+// server that is busy; past it the page opens and reads for itself, under its own quiet period.
 export const OPEN_WAIT_MS = 100;
 // How long a pointer rests on a row before its record is read ahead of a click, so that
 // moving across the list reads nothing. A press follows a hover by about 200 ms or more, so
@@ -61,7 +76,8 @@ export const PEEK_MS = 60;
 // reader rests on a few rows at most before opening one.
 export const MAX_PEEKED = 4;
 // A list's job is one to three seconds a page when GitHub answers, so a wait past this is a
-// wait for its turn: pull-request jobs queued before it hold the refresh slots (mb-rznj).
+// wait for its turn: pull-request jobs queued before it hold the refresh slots. Measured
+// 2026-11-03 on pallets/click: 1.7 s with nothing queued, and 35 s behind MAX_PULL_JOBS.
 export const LONG_WAIT_MS = 10000;
 
 // What the panel says for each way a refresh can end, in what a reader can do about it. Each
@@ -166,7 +182,7 @@ function rowRefs(row, repository) {
   const from =
     typeof row.head_repository !== "string"
       ? `${head} (deleted fork)`
-      : row.head_repository === repository
+      : row.head_repository.toLowerCase() === repository?.toLowerCase()
         ? head
         : `${row.head_repository.split("/")[0]}:${head}`;
   return `${text(row.base_ref)} ← ${from}`;
@@ -454,6 +470,8 @@ export function createPullsController(deps, options = {}) {
   let shown = false;
   let disposed = false;
   let polling = false;
+  // The panel's first read may start the refresh though it is not shown: see `start`.
+  let readAhead = false;
   /** @type {unknown} */
   let timer = null;
   /** @type {AbortController | null} */
@@ -675,11 +693,23 @@ export function createPullsController(deps, options = {}) {
     askIfDue();
   }
 
-  /** Ask for the list's refresh when it is stale and shown; the server holds it to a window. */
+  /**
+   * Ask for the list's refresh when it is stale and shown, or being read ahead of the tab. The
+   * server holds it to one attempt a window.
+   */
   function askIfDue() {
     const list = held();
     const envelope = list.envelope;
-    if (!live() || envelope === null || envelope.refreshing || envelope.reason === "not_github") {
+    const wanted = shown || readAhead;
+    readAhead = false;
+    if (
+      !wanted ||
+      disposed ||
+      !deps.isVisible() ||
+      envelope === null ||
+      envelope.refreshing ||
+      envelope.reason === "not_github"
+    ) {
       return;
     }
     if (envelope.state !== "absent" && envelope.state !== "stale") {
@@ -947,12 +977,14 @@ export function createPullsController(deps, options = {}) {
 
   return Object.freeze({
     /**
-     * The panel's first read, shown or not: a mirror prefetches it before the tab opens.
+     * The panel's first read, shown or not: a mirror reads it ahead of the tab, once the first
+     * tree has settled, and starts its refresh then too (*refreshAhead*).
      *
-     * @param {{shown?: boolean}} [how]
+     * @param {{shown?: boolean, refreshAhead?: boolean}} [how]
      */
     start(how = {}) {
       shown = how.shown === true;
+      readAhead = how.refreshAhead === true;
       render();
       return poll(true);
     },
@@ -1229,7 +1261,7 @@ export function mountPullsPanel(container, ctx, mb) {
   const painted = new Map();
   let paintedVersion = -1;
   /** @type {number | null} */
-  let currentRow = null;
+  let currentRow = nav.current;
   /** @type {number | null} */
   let anchorRow = null;
 
@@ -1406,6 +1438,8 @@ export function mountPullsPanel(container, ctx, mb) {
 
   const listening = new AbortController();
   const { signal } = listening;
+  // A key moved the focus, and not a reader arriving at a row: a walk reads nothing per row.
+  let movingFocus = false;
 
   const controller = createPullsController(
     {
@@ -1439,7 +1473,9 @@ export function mountPullsPanel(container, ctx, mb) {
           const row = painted.get(next)?.row;
           row?.setAttribute("tabindex", "0");
           if (focus && row) {
+            movingFocus = true;
             row.focus({ preventScroll: true });
+            movingFocus = false;
             row.scrollIntoView({ block: "nearest" });
           }
         }
@@ -1483,8 +1519,10 @@ export function mountPullsPanel(container, ctx, mb) {
     "focusin",
     (event) => {
       const row = rowOf(event.target);
-      if (row !== null) {
-        controller.focused(Number(row.dataset.number));
+      if (row !== null && !movingFocus) {
+        const number = Number(row.dataset.number);
+        controller.focused(number);
+        controller.peek(number);
       }
     },
     { signal },
@@ -1532,7 +1570,7 @@ export function mountPullsPanel(container, ctx, mb) {
       : null;
   atEnd?.observe(foot);
 
-  void controller.start({ shown: nav.shown });
+  void controller.start({ shown: nav.shown, refreshAhead: nav.refreshAhead });
 
   return Object.freeze({
     setShown: controller.setShown,

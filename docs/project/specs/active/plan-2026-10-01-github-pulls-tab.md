@@ -577,9 +577,13 @@ module.
   Even the cached read would load the cache into a folder’s server.
 - A cached record is read when its row takes focus or the pointer, which is a local
   `GET` that runs no `gh`.
-- The network refresh starts when the tab is first opened, on a mirror and a checkout
-  alike. Step 3 also measures starting it at a mirror’s open, which is what “prefetch by
-  default” asks for; [Performance](#performance) gives the accept rule.
+- The network refresh starts when the tab is first opened on a checkout.
+  On a mirror it starts with that read ahead, once the first tree has settled, which is
+  what “prefetch by default” asks for.
+  Step 3 measured it by [Performance](#performance)’s rule, nine back-to-back pairs on
+  pallets/click: first row 1.001x and the mirror’s own refresh 0.998x. Started as the
+  page starts it was 1.09x to 1.14x on the first row, past the rule, so it does not
+  start there.
 - No spinner appears before the `--loading-state-delay` token, through the existing
   `mb-delayed-loading` class.
 

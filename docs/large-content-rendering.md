@@ -287,6 +287,7 @@ window that never existed on disk.
 | `LINES_PER_BLOCK` | 128 | Deferred layout per scroll-in |
 | `LAYOUT_PROJECTION_BATCH_FILES` | 100 files | Diff layout-switch main-thread work per task |
 | `FOLD_MATERIALIZATION_BATCH_ROWS` | 100 rows | Diff fold-expansion main-thread work per task |
+| `WINDOW_ROWS` | 100 rows | One append of the Pulls tab’s plain rows. `MAX_LIST_ROWS`, 1,000, stays under the budget with `content-visibility: auto` and needs no windowing; the measurements are beside the constant in `builtin_plugins/github/pulls-panel.js` |
 
 A budget that degrades what the reader sees has a second requirement beyond bounding the
 resource: the degradation has to apply uniformly to everything on screen.

@@ -29,6 +29,7 @@ type MetabrowserPullsNavHost = Readonly<{
   filter: string;
   current: number | null;
   shown: boolean;
+  refreshAhead: boolean;
   scrollRoot: HTMLElement | null;
   open(route: MetabrowserPullRoute): unknown;
   filterChanged(state: string): void;
@@ -2787,6 +2788,7 @@ declare global {
       bindShortcuts(
         shortcuts: ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null,
       ): void;
+      dispose(): void;
       init(): Promise<void>;
       routeChanged(): void;
     }>;

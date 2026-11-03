@@ -2237,8 +2237,10 @@ function keepPlace(pane, body, tab, number) {
   const listening = new AbortController();
   const { signal } = listening;
   pane.addEventListener("scroll", keeper.scrolled, { passive: true, signal });
-  // Any click: a nav row's is outside the pane, and leaves this entry all the same.
+  // Any click, and any key before its command runs: a nav row is outside the pane, and leaves
+  // this entry all the same.
   document.addEventListener("click", keeper.flush, { capture: true, signal });
+  window.addEventListener("keydown", keeper.flush, { capture: true, signal });
   // Whatever a reader moves the pane with: a wheel, a finger, a scrollbar, a key. Only input
   // says so, since the browser's own scroll anchoring also moves a page that changes height.
   for (const type of ["wheel", "touchstart", "pointerdown"]) {
