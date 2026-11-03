@@ -5,7 +5,7 @@ title: "Required reviews of overlay step 1: senior, security, correctness"
 kind: task
 status: in_progress
 priority: 1
-version: 26
+version: 32
 delegate: claude-code@spud10
 labels:
   - release:v0.12.0
@@ -36,10 +36,16 @@ child_order_hints:
   - is-01m6fesp12kccq0t4ma5e1wyvz
   - is-01m6fespcqe996f7d44hwabfaw
   - is-01m6fesprx7hr2jjj40t431erp
+  - is-01m6fpm3qetf6hcyn97cxv3e3n
+  - is-01m6fpmgr1agw2f4tb5t9f3bkj
+  - is-01m6fpmh5pj6dfepd20jx8726s
+  - is-01m6fpmhjjbknhbd8q12mbpwx1
+  - is-01m6fpmhz6r19d3a9dhkm4v5j4
+  - is-01m6fpmjca2z84qf031ev39xj1
 hold: null
 hold_until: null
 created_at: 2026-11-02T22:27:57.291Z
-updated_at: 2026-11-03T01:01:25.148Z
+updated_at: 2026-11-03T03:18:25.417Z
 started_at: 2026-11-03T00:14:32.016Z
 ---
 The plan's step 1 touches parsing of a checkout's files, a trust boundary, and merge-base correctness, so it needs all three reviews by agents that did not write it, before it merges or the Pulls tab builds on it.
