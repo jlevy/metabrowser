@@ -852,9 +852,9 @@ class MirrorSession:
         One that is not running starts only while fewer than :data:`MAX_PULL_JOBS` are
         queued or running; the mirror's own fetch and a list's do not count. The attended
         one may run one over, so a queue of other pull requests does not leave a page of
-        code on a pull request's head behind its refresh. A job can outlast being attended,
-        so a switch onto another head while the queue is over answers ``"too_many"`` too;
-        that job then goes first as soon as a request finds room.
+        code on a pull request's head behind its refresh. It is one over and not one per
+        attended switch: while a job of an earlier attended number holds that place, the
+        new number is refused like any other until a job ends.
         """
 
         pulls = self.pull_requests
@@ -899,11 +899,15 @@ class MirrorSession:
             log.warning("could not observe the mirror after a refresh", exc_info=True)
 
     async def _refresh_job(self) -> None:
-        # The record as it was before this attempt, to tell whether another process's
-        # refresh this one may follow rewrote it.
-        baseline = await self._read_baseline() if self._follow_elsewhere else None
+        baseline: RecordedFreshness | None = None
         try:
             async with self._store_turn(lambda: True), self._coordinator.slot():
+                # The record just before this attempt, to tell whether another process's
+                # refresh this one may follow rewrote it. Read here so the job has its place
+                # in the queue from the moment it was asked for, and the record is not one
+                # from before a long wait.
+                if self._follow_elsewhere:
+                    baseline = await self._read_baseline()
                 result = await self.mirror.refresh()
         except asyncio.CancelledError:
             self._set_result(RefreshResult("cancelled", _utc_timestamp()))

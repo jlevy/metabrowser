@@ -529,6 +529,37 @@ def test_a_job_whose_number_stopped_being_attended_waits_its_place() -> None:
     assert asyncio.run(scenario()) == ["pull 8", "pull 9", "pull 7"]
 
 
+def test_a_refresh_of_both_starts_with_the_mirror_as_it_was_asked_for_first() -> None:
+    """A server reads the mirror's record before a fetch. That read is inside the job's turn:
+    outside it, the attended pull request's job got to the store first, and the mirror's fetch
+    of a moment waited behind a refresh of several seconds."""
+
+    class _ReadsItsRecord(_GatedMirror):
+        async def recorded_freshness(self) -> RecordedFreshness:
+            await asyncio.sleep(0)
+            return await super().recorded_freshness()
+
+    async def scenario() -> list[str]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        pulls = _GatedSet(events)
+        session = MirrorSession(
+            _ReadsItsRecord(events),
+            coordinator,
+            pull_requests=pulls,
+            fetch_on_miss=True,
+            follow_elsewhere=True,
+        )
+        await session.attend(7)
+        assert session.request_refresh() == "started"
+        await _spin()
+        seen = list(events)
+        await coordinator.aclose()
+        return seen
+
+    assert asyncio.run(scenario()) == ["mirror"]
+
+
 def test_the_mirror_and_the_attended_pull_request_cannot_starve_each_other() -> None:
     """Each goes in the order it asked, whichever keeps asking again as soon as it can."""
 

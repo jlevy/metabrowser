@@ -1602,6 +1602,59 @@ async def _attended_refresh(session: Any) -> Any:
     return session.request_companion_refresh()
 
 
+def test_on_a_real_session_a_queue_of_pull_requests_delays_neither_the_mirror_nor_the_attended(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Through the routes, with the real mirror and the real set, and only the time a refresh
+    takes held on a gate: both go next after the job running, whatever is queued."""
+
+    _stand, client = pinned_pull
+    ran: list[object] = []
+    release = threading.Semaphore(0)
+
+    async def waiting(served: ServedPull) -> None:
+        ran.append(served.number)
+        await asyncio.to_thread(release.acquire, True, 30)
+
+    original = StoreMirror.refresh
+
+    async def recording(self: StoreMirror) -> Any:
+        ran.append("mirror")
+        await asyncio.to_thread(release.acquire, True, 30)
+        return await original(self)
+
+    monkeypatch.setattr(ServedPull, "refresh", waiting)
+    monkeypatch.setattr(StoreMirror, "refresh", recording)
+
+    def wait_for(count: int) -> None:
+        deadline = time.monotonic() + 30
+        while len(ran) < count and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(ran) >= count, ran
+
+    def ask(number: int) -> None:
+        answer = client.post(_REFRESH_ROUTE, json={"number": number, "retry": True}, headers=_JSON)
+        assert answer.status_code == 202, answer.text
+
+    for number in (100, 101, 102):
+        ask(number)
+    wait_for(1)
+    # A reader's own request for the fetch a commit waits for: the attended job and the mirror's.
+    fetch = client.post("/api/source/refresh", json={"for": "commit", "retry": True}, headers=_JSON)
+    assert fetch.status_code == 202, fetch.text
+    time.sleep(0.2)
+    assert ran == [100], "the store has one job at a time"
+    for count in range(2, 6):
+        release.release()
+        wait_for(count)
+    release.release()
+    session = mirror_session(app)
+    assert session is not None
+    while session.pull_refreshing(102) or session.pull_refreshing(7) or session.refreshing():
+        time.sleep(0.01)
+    assert ran == [100, 7, "mirror", 101, 102]
+
+
 def test_the_attended_pull_request_may_run_one_over_the_bound_and_no_more(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
