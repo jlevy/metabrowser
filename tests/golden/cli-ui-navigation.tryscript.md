@@ -480,6 +480,7 @@ $ node tests/dom/catalog-feed-behavior.js
     "release runs the start it held": {"fetches":1,"delivered":[]},
     "a second release fetches nothing more": {"fetches":1,"delivered":[]},
     "what a held feed fetches applies as ever": {"fetches":1,"delivered":[{"kind":"bulk","files":[{"p":"bulk.txt","e":".txt"}],"coverage":"complete","authoritative":true,"buffered":[]}]},
+    "changes that arrived while held are not replayed over it": {"fetches":1,"delivered":[]},
     "release with no start waiting fetches nothing": {"fetches":0,"delivered":[]},
     "a start after release is an ordinary start": {"fetches":1,"delivered":[]},
     "sentinel before first fetch does nothing": {"fetches":0,"delivered":[]},
