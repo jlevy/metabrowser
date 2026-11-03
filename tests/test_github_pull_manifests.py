@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
+from metabrowser import server
 from metabrowser.builtin_plugins.diff import sidekick as diff
 from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache
 from metabrowser.builtin_plugins.github import pull_manifest
@@ -20,7 +21,6 @@ from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.format import ResolvedComparison
 from metabrowser.git.process import GitLocation, RepositoryStoreTarget
 from metabrowser.http_caching import store_tag
-from metabrowser.server import app
 from tests.diff_fixture_repo import git
 from tests.test_github_pulls import _Stand
 from tests.test_github_pulls import pinned_pull as pinned_pull
@@ -31,8 +31,9 @@ def _fresh(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(diff, "_COMPARISONS", ComparisonCache())
 
 
-def test_comparison_without_a_github_repository_is_not_github() -> None:
-    with TestClient(app) as client:
+def test_comparison_without_a_github_repository_is_not_github(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    with TestClient(server.app) as client:
         response = client.get(
             "/api/plugin/github/pull-comparison",
             params={"number": 7, "left": "a" * 40, "right": "b" * 40, "base_policy": "merge_base"},
