@@ -253,6 +253,18 @@ main-thread measure improves.
 The shorter wait also concentrates similar rendering work into a shorter loading
 interval; no blocked-percentage improvement is claimed.
 
+The initial cold comparison request also shrinks.
+Network completion includes response headers in the transferred-byte count; the one-byte
+variation is a timing header.
+These are the same three paired cold samples, not a separate warm-route benchmark.
+
+| Files | Route Completion: Baseline (ms) | Route Completion: Candidate (ms) | Transferred Bytes: Baseline | Transferred Bytes: Candidate |
+| --- | --- | --- | --- | --- |
+| 1,031 | 456 [441, 469] | 103 [102, 122] | 159,897 | 91,703–91,704 |
+| 1,627 | 906 [900, 916] | 102 [100, 102] | 253,828 | 83,918 |
+| 650 | 137 [135, 222] | 77 [75, 82] | 52,231 | 48,361 |
+| 39 | 129 [120, 134] | 66 [64, 74] | 45,487 | 10,190 |
+
 ## Navigation and Held Keys
 
 Three paired runs per large PR jump to file 7, the middle file, a file at 30 percent,
@@ -300,6 +312,13 @@ The inherited held-key field also accepted an availability message as text.
 The raw mixed samples retain that field with a caveat; only
 recorder_revision=actual-rows-v2 enters the actual-row table.
 Corrected samples wait for .diff-line-text or .diff-split-row and two frames.
+The actual-row result has three samples per build per case, twelve in total: the
+1,031-file case uses six isolated corrected-hold samples; the 1,627-file case combines
+the final two mixed interaction samples, already recorded with actual-rows-v2, with four
+isolated corrected-hold samples.
+Both builds have the same mixture within each case.
+The earlier jump targets do not overlap the held-key range beginning at 60 percent; all
+corrected samples hold ninety keys at 33 ms and wait for the same final target.
 This avoids counting a loading status as rendered text.
 
 The manifest work is moved to fetch, not eliminated.
