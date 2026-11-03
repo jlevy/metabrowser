@@ -247,6 +247,28 @@ def test_the_whole_flow_writes_nothing_to_the_checkout_and_runs_no_git(
     assert record["unavailable"]["comparison"] == "no_store"
 
 
+def test_comparison_on_a_recognized_checkout_without_a_store_is_no_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    home = tmp_path / "home"
+    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
+    before = fingerprint(checkout)
+    route = (
+        "/api/plugin/github/pull-comparison?number=7"
+        f"&left={'a' * 40}&right={'b' * 40}&base_policy=merge_base"
+    )
+    response = _api(checkout, route, None, tmp_path / "request.json")
+    assert response.exit_code == 1, response.stderr
+    assert "status: 409\n" in response.stdout
+    assert response.payload() == {
+        "error": "this comparison has no available repository store",
+        "code": "no_store",
+    }
+    assert not home.exists(), "a comparison GET acquired a store"
+    assert fingerprint(checkout) == before
+
+
 def test_nothing_is_written_under_a_slug_no_source_holds(tmp_path: Path) -> None:
     """A write ahead of the claim creates nothing: no home and no orphaned source directory.
 
