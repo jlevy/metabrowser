@@ -31,7 +31,9 @@ import re
 import secrets
 import shlex
 import stat
+import struct
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import Final, Literal
 
@@ -370,7 +372,8 @@ def _boundary_is_plain(common_dir: Path) -> bool:
     """Whether ``shallow`` is absent or a regular file: a FIFO would block every Git read."""
 
     try:
-        return stat.S_ISREG(os.stat(common_dir / "shallow").st_mode)
+        boundary = common_dir / "shallow"
+        return stat.S_ISREG(os.stat(boundary).st_mode) and os.access(boundary, os.R_OK)
     except FileNotFoundError:
         return True
     except OSError:
@@ -518,7 +521,11 @@ def attach_lender(git_dir: Path, lender: StoreLender) -> None:
     boundary = git_dir / "shallow"
     temporary = boundary.with_name(f".shallow.{secrets.token_hex(6)}")
     temporary.symlink_to(lender_boundary_path(lender))
-    os.replace(temporary, boundary)
+    try:
+        os.replace(temporary, boundary)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def rebind_lender(git_dir: Path, lender: StoreLender) -> None:
@@ -663,6 +670,8 @@ def lender_problem(lender: StoreLender) -> str | None:
         return "the checkout this mirror borrows objects from now borrows objects itself"
     if not _objects_readable(objects):
         return "the objects of the checkout this mirror borrows from could not be read"
+    if not _boundary_is_plain(objects.parent):
+        return "the checkout this mirror borrows from has an unreadable shallow boundary"
     return None
 
 
@@ -700,12 +709,9 @@ def read_store_lender(home: Path, store_key: str) -> StoreLender | None:
     Read for each fetch, so a repair by another process is seen. Blocking.
     """
 
-    try:
-        store = read_record(
-            home, store_record(store_key, "store.yml"), REPOSITORY_STORE_CONTRACT_ID, shared="keep"
-        )
-    except FileNotFoundError:
-        return None
+    store = read_record(
+        home, store_record(store_key, "store.yml"), REPOSITORY_STORE_CONTRACT_ID, shared="keep"
+    )
     return store.lender if isinstance(store, RepositoryStore) else None
 
 
@@ -736,6 +742,58 @@ class Sweep:
 _UNLENT: Final = "the objects of the checkout this mirror borrows from could not be read"
 
 
+def _pack_index_present(pack: Path) -> bool:
+    """Whether a pack has a readable, structurally complete matching index.
+
+    Missing, truncated, and replaced indexes make Git say ``missing`` for objects the
+    pack still holds. Check the fixed headers, fanout, sizes, and matching trailers with
+    bounded reads; do not scan object tables or decompress a lender's packs. These are
+    the v1/v2 layouts in https://git-scm.com/docs/gitformat-pack, for SHA-1 and SHA-256.
+    This detects an unusable index, not arbitrary corruption inside a complete table.
+    """
+
+    name = pack.stem.removeprefix("pack-")
+    if not is_full_revision(name):
+        return False
+    checksum = bytes.fromhex(name)
+    width = len(checksum)
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
+    try:
+        with os.fdopen(os.open(pack.with_suffix(".idx"), flags), "rb") as index:
+            status = os.fstat(index.fileno())
+            if not stat.S_ISREG(status.st_mode):
+                return False
+            header = index.read(8 + 256 * 4)
+            version2 = header[:4] == b"\xfftOc"
+            start = 8 if version2 else 0
+            if len(header) < start + 256 * 4 or (version2 and header[4:8] != b"\0\0\0\2"):
+                return False
+            fanout = struct.unpack(">256I", header[start : start + 256 * 4])
+            if any(left > right for left, right in pairwise(fanout)):
+                return False
+            count = fanout[-1]
+            expected = start + 256 * 4 + count * (width + (8 if version2 else 4)) + 2 * width
+            extra = status.st_size - expected
+            if extra < 0 or (not version2 and extra) or extra % 8 or extra > count * 8:
+                return False
+            index.seek(-2 * width, os.SEEK_END)
+            if index.read(width) != checksum:
+                return False
+        with os.fdopen(os.open(pack, flags), "rb") as packed:
+            status = os.fstat(packed.fileno())
+            if not stat.S_ISREG(status.st_mode) or status.st_size < 12 + width:
+                return False
+            header = packed.read(12)
+            if header[:4] != b"PACK" or int.from_bytes(header[4:8], "big") not in {2, 3}:
+                return False
+            if int.from_bytes(header[8:12], "big") != count:
+                return False
+            packed.seek(-width, os.SEEK_END)
+            return packed.read(width) == checksum
+    except OSError:
+        return False
+
+
 def collection_doubt(lender: StoreLender, oids: list[str]) -> str | None:
     """Why the lender may still hold *oids*, which the store cannot read; ``None`` when not.
 
@@ -743,8 +801,9 @@ def collection_doubt(lender: StoreLender, oids: list[str]) -> str | None:
     and cannot lend now: a loose file whose mode a permission blip changed, or a pack that
     cannot be read, which a lender with no ref files (reftable) gives no tip to reveal. A
     ref is deleted only for the first. So an object counts as gone only when no loose file
-    of it is there, whatever its mode, and every file in the lender's pack directory can be
-    read, since Git then read every index and found none naming it. Anything else, a loose
+    of it is there, whatever its mode, and every pack in the lender's pack directory has
+    a readable index, since Git then read every index and found none naming it. Anything
+    else, a loose
     directory that cannot be searched or more pack entries than :data:`_MAX_PACK_ENTRIES`
     among them, is doubt. One ``lstat`` per object and one scan of the pack directory, run
     only when a sweep found something to delete. Blocking.
@@ -766,6 +825,8 @@ def collection_doubt(lender: StoreLender, oids: list[str]) -> str | None:
                     return f"{_UNLENT}: its pack directory has too many entries to check"
                 if not os.access(entry.path, os.R_OK):
                     return f"{_UNLENT}: a pack of it cannot be read"
+                if entry.name.endswith(".pack") and not _pack_index_present(Path(entry.path)):
+                    return f"{_UNLENT}: a pack of it has no readable index"
     except FileNotFoundError:
         return None
     except OSError:

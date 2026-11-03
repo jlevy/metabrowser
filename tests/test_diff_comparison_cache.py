@@ -12,15 +12,19 @@ import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
+from urllib.parse import urlencode
 
 import pytest
 from httpx2 import Response
+from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from metabrowser import server
 from metabrowser.builtin_plugins.diff import sidekick
 from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache, ResolvedManifest
-from metabrowser.diff.adapters.git import GitDiffSource
+from metabrowser.diff.adapters.git import GitDiffSource, PatchHydration
+from metabrowser.diff.format import Availability
+from metabrowser.git.process import GitLocation, repository_store_target
 from metabrowser.http_caching import BUILD_TAG, store_tag
 from tests.diff_fixture_repo import build_diff_fixture, git
 from tests.git_pin_harness import pinned_client
@@ -289,7 +293,7 @@ def test_a_kept_answer_is_the_bytes_of_a_computed_one(
             zipped = await client.get(_route(*two), headers={"accept-encoding": "gzip"})
             assert zipped.headers["content-encoding"] == "gzip"
             assert zipped.content == plain.content, "httpx decodes it; the JSON must be the same"
-            monkeypatch.setattr(sidekick, "_kept_key", lambda *_args: None)
+            monkeypatch.setattr(sidekick, "comparison_cache_key", lambda *_args: None)
             computed = await client.get(_route(*two), headers={"accept-encoding": "identity"})
             assert "etag" not in computed.headers
             assert computed.content == plain.content
@@ -487,3 +491,159 @@ def test_the_routes_gzip_test_is_the_middlewares(tmp_path: Path) -> None:
 def _client_settings() -> str:
     with TestClient(server.app) as client:
         return client.get("/").text
+
+
+def test_initial_page_policies_share_only_the_manifest_and_complete_to_the_same_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR pages and generic comparisons cannot replay one another's partial bodies."""
+    store, base, target = _store(tmp_path)
+    location = GitLocation.revision(repository_store_target(git_dir=store), target)
+    monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
+    spy = _Spy(monkeypatch)
+
+    def request(*, file: str = "", etag: str = "") -> Request:
+        query = urlencode(
+            {"left": base, "right": target, "base_policy": "merge_base", "file": file}
+        )
+        return Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/comparison",
+                "query_string": query.encode(),
+                "headers": [(b"if-none-match", etag.encode())] if etag else [],
+            }
+        )
+
+    async def run() -> None:
+        generic = await sidekick.comparison_at(request(), location)
+        limited = await sidekick.comparison_at(request(), location, max_initial_files=8)
+        one = await sidekick.comparison_at(request(), location, max_initial_files=1)
+        whole = json.loads(bytes(generic.body))
+        partial = json.loads(bytes(limited.body))
+        assert len(whole["patches"]) > 8
+        assert len(partial["patches"]) == 8
+        assert len(json.loads(bytes(one.body))["patches"]) == 1
+        assert len({generic.headers["etag"], limited.headers["etag"], one.headers["etag"]}) == 3
+        assert (await sidekick.comparison_at(request(), location)).body == generic.body
+        assert (
+            await sidekick.comparison_at(request(), location, max_initial_files=8)
+        ).body == limited.body
+        assert (
+            await sidekick.comparison_at(
+                request(etag=generic.headers["etag"]), location, max_initial_files=8
+            )
+        ).status_code == 200
+        assert (
+            await sidekick.comparison_at(
+                request(etag=limited.headers["etag"]), location, max_initial_files=8
+            )
+        ).status_code == 304
+        patches = dict(partial["patches"])
+        completed = []
+        for change in partial["manifest"]["files"]:
+            if change["availability"] == "deferred":
+                path = (change.get("new") or change["old"])["path"]
+                response = await sidekick.comparison_at(
+                    request(file=path), location, max_initial_files=8
+                )
+                answer = json.loads(bytes(response.body))
+                change = answer["manifest"]["files"][0]
+                patches.update(answer["patches"])
+            completed.append(change)
+        partial["manifest"]["files"] = completed
+        partial["patches"] = patches
+        assert json.dumps(partial, sort_keys=True) == json.dumps(whole, sort_keys=True)
+        assert spy.manifests == 1
+        for count in (0, 51):
+            with pytest.raises(ValueError, match="max_initial_files"):
+                await sidekick.comparison_at(request(), location, max_initial_files=count)
+
+    asyncio.run(run())
+
+
+def test_a_small_initial_page_skips_binary_entries_and_leaves_large_files_declared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, base, target = _store(tmp_path)
+    location = GitLocation.revision(repository_store_target(git_dir=store), target)
+    real_manifest = GitDiffSource.manifest
+    real_hydrate = GitDiffSource.hydrate
+
+    async def binary_first(source: GitDiffSource, resolved: Any) -> Any:
+        manifest = await real_manifest(source, resolved)
+        ordered = tuple(sorted(manifest.files, key=lambda change: not change.binary))
+        return manifest.model_copy(update={"files": ordered})
+
+    async def too_large(source: GitDiffSource, resolved: Any, ids: Any, *, manifest: Any) -> Any:
+        first_ready = next(
+            change.id for change in manifest.files if change.availability is Availability.ready
+        )
+        if ids == [first_ready]:
+            return PatchHydration({}, too_large=(first_ready,))
+        return await real_hydrate(source, resolved, ids, manifest=manifest)
+
+    monkeypatch.setattr(GitDiffSource, "manifest", binary_first)
+    monkeypatch.setattr(GitDiffSource, "hydrate", too_large)
+    monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
+
+    def request(left: str = base) -> Request:
+        return Request(
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/comparison",
+                "query_string": urlencode(
+                    {"left": left, "right": target, "base_policy": "merge_base"}
+                ).encode(),
+                "headers": [],
+            }
+        )
+
+    async def run() -> None:
+        response = await sidekick.comparison_at(request(), location, max_initial_files=1)
+        answer = json.loads(bytes(response.body))
+        files = answer["manifest"]["files"]
+        assert files[0]["availability"] == "binary"
+        assert sum(change["availability"] == "too_large" for change in files) == 1
+        assert any(change["availability"] == "deferred" for change in files)
+        response = await sidekick.comparison_at(request(target), location, max_initial_files=1)
+        empty = json.loads(bytes(response.body))
+        assert empty["manifest"]["files"] == [] and empty["patches"] == {}
+
+    asyncio.run(run())
+
+
+def test_a_binary_only_comparison_needs_no_hydration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, _base, target = _store(tmp_path)
+    work = tmp_path / "work"
+    (work / "logo.bin").write_bytes(b"\x00another binary image\x00")
+    git(work, "add", "logo.bin")
+    git(work, "commit", "-qm", "binary only")
+    right = git(work, "rev-parse", "HEAD").decode().strip()
+    git(tmp_path, "--git-dir", str(store), "fetch", "--no-tags", str(work), right)
+    location = GitLocation.revision(repository_store_target(git_dir=store), right)
+    monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
+
+    async def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("a binary-only comparison asked for a patch")
+
+    monkeypatch.setattr(GitDiffSource, "hydrate", forbidden)
+    query = urlencode({"left": target, "right": right, "base_policy": "merge_base"}).encode()
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/comparison",
+            "query_string": query,
+            "headers": [],
+        }
+    )
+    answer = asyncio.run(sidekick.comparison_at(request, location, max_initial_files=1))
+    document = json.loads(bytes(answer.body))
+    assert document["manifest"]["totals"]["files"] == 1
+    assert document["manifest"]["files"][0]["availability"] == "binary"
+    assert document["patches"] == {}

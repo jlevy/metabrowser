@@ -606,6 +606,22 @@ The source directory is enumerated by nothing, so the layout, probe, sweep, and
 `builtin_plugins/github/pull_record.py` holds its Pydantic models and every bound, with
 the measurements beside the constants; a record whose `schema_version` differs is
 refetched, not migrated.
+PR refresh prepares the comparison manifest before publishing the record.
+`builtin_plugins/github/pull_manifest.py` owns a disposable bank at
+`repository-stores/<store-key>/github-pull-manifests/<slot>.json`: sixteen direct-mapped
+slots, each admitted only within the existing 16 MiB PR-record read bound.
+A slot holds a versioned File Diff Format document with no patches, its digest, and the
+full build, store-token, endpoint, and base-policy identity.
+A collision evicts a slot and causes a later miss; it cannot return another comparison.
+The PR comparison route resolves the requested commits before adopting a validated
+manifest, and a missing, corrupt, or mismatched entry is recomputed once through the
+existing shared comparison-cache task and replaced atomically.
+Persistence failure leaves the PR record and computed answer usable.
+`GET /api/plugin/github/pull-comparison` reads only the selected PR’s published store
+and never fetches. Its initial answer hydrates eight ready files.
+The shared diff service retains its fifty-file default for other callers; encoded bodies
+and entity tags include the initial-file policy, while the manifest key is shared.
+
 It names its reader, always `gh:<login>`, because `gh api` refuses requests while signed
 out, and the account is read before and after the API reads so a record read across an
 account switch is discarded.

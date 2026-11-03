@@ -50,7 +50,9 @@ def test_the_comparison_address_is_spelled_by_the_diff_plugin_alone() -> None:
     page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
     prefetch = (plugins / "github/comparison-prefetch.js").read_text(encoding="utf-8")
     assert "prefetch: (comparison, signal) =>" in diff
-    assert diff.count('fetchPluginData("diff", "comparison"') == 2, "render, and prefetch"
+    assert "function fetchComparison(" in diff
+    assert diff.count("fetchComparison(comparisonKey(comparison)") == 1
+    assert "? await (ctx.raw" in diff
     assert 'getRegisteredView("diff", "diff")' in page and ".prefetch(" in page
     for source in (page, prefetch):
         assert 'fetchPluginData("diff"' not in source
@@ -88,3 +90,7 @@ def test_diff_render_model_caches_progressive_refinement() -> None:
 
 def test_diff_view_file_decides_sides_addresses_and_switches() -> None:
     _run("diff-view-file-behavior.js", "diff view file OK")
+
+
+def test_comparison_routes_are_shared_by_mount_prefetch_and_deferred_files() -> None:
+    _run("diff-comparison-route-behavior.js", "diff comparison routes OK")
