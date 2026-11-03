@@ -309,7 +309,10 @@ def test_metab_browsing_a_local_directory_never_creates_or_imports_the_home(
     assert '"tree"' in result.stdout
     loaded = json.loads(result.stderr.rpartition("loaded-modules:")[2])
     # The server registers the /api/cache/ route table, which imports the rest of the
-    # cache and the application home only inside a cache request.
+    # cache and the application home only inside a cache request. A folder's serve
+    # loads nothing else of the cache: not the lender a mirror borrows through, whose
+    # reads of a checkout's files have no business on a plain folder.
+    assert "metabrowser.cache.lender" not in loaded
     assert loaded == ["metabrowser.cache", "metabrowser.cache.routes"]
     assert _snapshot(tmp_path) == before
 

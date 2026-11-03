@@ -61,6 +61,7 @@ from tests.golden_harness import (
     isolate_cli,
     ok,
     pinned_git,
+    pinned_git_env,
     refused,
     run_metab,
     serve_published,
@@ -1351,3 +1352,502 @@ def test_the_tooltip_names_the_checkout_beside_the_location(linear: _Stand) -> N
     tip = _mirror_tip(status)
     assert tip is not None
     assert f"stored in {status['location']}, borrowing objects from {checkout.resolve()}:" in tip
+
+
+# ── A boundary commit's own diff ────────────────────────────────────
+
+
+_COMPARISON = "/api/plugin/diff/comparison"
+
+
+def _shallow_heavy(stand: _Stand) -> Path:
+    return clone_checkout(
+        stand.replica, stand.tmp_path / "checkout", "--depth", "3", "--no-single-branch"
+    )
+
+
+def test_a_boundary_commits_diff_is_refused_on_a_pin_rather_than_shown_against_nothing(
+    merge_heavy: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Git grafts a boundary commit into a root, and a root's diff is the whole tree added.
+
+    A5 changes one line of ``f``; its parent A4 is beyond the depth-3 boundary. The
+    comparison answers a typed refusal, as ``base_uncertain`` does, never ``+a5``.
+    """
+
+    _no_deepening(monkeypatch)
+    replica = merge_heavy.replica
+    merge_heavy.pull("--checkout", str(_shallow_heavy(merge_heavy)))
+    for name in ("A5", "A1"):
+        refusal = refused([PULL, "--api", f"{_COMPARISON}?revision={replica[name]}"])
+        assert "parent_unavailable" in refusal.stdout, name
+        assert "+a5" not in refusal.stdout
+        detail = ok([PULL, "--api", f"/api/git/commit/{replica[name]}"]).payload()
+        assert detail["files"] == []
+        assert set(detail["stats"].values()) == {None}, name
+    # A commit above the boundary compares against its parent as ever.
+    above = ok([PULL, "--api", f"{_COMPARISON}?revision={replica['A6']}"]).payload()
+    assert above["resolved"]["left"]["id"] == replica["A5"]
+
+
+def test_a_real_root_commit_still_compares_against_the_empty_tree(linear: _Stand) -> None:
+    replica = linear.replica
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    root = ok([PULL, "--api", f"{_COMPARISON}?revision={replica['M1']}"]).payload()
+    assert root["resolved"]["left"]["kind"] == "empty"
+    assert [change["new"]["path"] for change in root["manifest"]["files"]] == ["m"]
+    detail = ok([PULL, "--api", f"/api/git/commit/{replica['M1']}"]).payload()
+    assert detail["stats"]["files_added"] == 1
+
+
+def test_a_shallow_folder_refuses_a_boundary_commits_diff_the_same_way(
+    merge_heavy: _Stand,
+) -> None:
+    """The same defect on a served checkout, fixed in the one adapter both read through."""
+
+    replica = merge_heavy.replica
+    checkout = _shallow_heavy(merge_heavy)
+    refusal = refused([str(checkout), "--api", f"{_COMPARISON}?revision={replica['A5']}"])
+    assert "parent_unavailable" in refusal.stdout
+    assert "+a5" not in refusal.stdout
+    at_cli = run_metab([str(checkout), "--diff", replica["A5"]])
+    assert at_cli.exit_code != 0 and "parent_unavailable" in at_cli.stderr
+    assert "+a5" not in at_cli.stdout
+    detail = ok([str(checkout), "--api", f"/api/git/commit/{replica['A5']}"]).payload()
+    assert detail["files"] == [] and set(detail["stats"].values()) == {None}
+    # The log is Git's cut graph, labelled shallow by the status route; the commit above
+    # the boundary and its diff read as ever.
+    log = ok([str(checkout), "--api", "/api/git/log?limit=10"]).payload()
+    assert [c["parent_ids"] for c in log["commits"] if c["id"] == replica["A5"]] == [[]]
+    above = ok([str(checkout), "--api", f"{_COMPARISON}?revision={replica['A6']}"]).payload()
+    assert above["resolved"]["left"]["id"] == replica["A5"]
+
+
+# ── The checks that admit a lender hold for as long as it lends ─────
+
+
+def _lender_missing(result: Invocation, reason: str) -> None:
+    assert "(lender_missing)" in result.error
+    assert reason in result.error
+    assert f"metab {CANONICAL} --checkout <new path>" in result.error
+    assert "Traceback" not in result.stderr
+
+
+def test_a_lender_that_grew_its_own_alternates_is_refused_on_every_later_open(
+    linear: _Stand,
+) -> None:
+    """Git would follow the chain to a directory nothing recorded, on a remembered open too."""
+
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    donor = clone_checkout(linear.replica, linear.tmp_path / "donor")
+    chain = checkout / ".git" / "objects" / "info" / "alternates"
+    chain.write_text(f"{donor / '.git' / 'objects'}\n", encoding="utf-8")
+    for mode in (("--api", STATUS), ("--api", PULL_ROUTE), ("--show", "m"), ("--no-serve",)):
+        _lender_missing(refused([PULL, *mode]), "now borrows objects itself")
+    # A running server's refresh and a pull request's fetch refuse the same way.
+    update = asyncio.run(
+        update_store(linear.home, linear.store.parent.name, remote_url=linear.replica.url)
+    )
+    assert update.outcome is RefreshOutcome.lender_missing
+    published = asyncio.run(_inspect(linear))
+    with pytest.raises(pull_refs.PullRefError) as raised:
+        asyncio.run(pull_refs.fetch_pull_head(published, 1))
+    assert raised.value.state == "lender_missing"
+    stores = ok([CANONICAL, "--api", "/api/cache/stores"]).payload()["stores"]
+    assert stores[0]["lender"] == "lender_missing"
+    # Naming the same checkout cannot repair it while it borrows; without the chain it lends.
+    assert "cannot repair" in refused([PULL, "--checkout", str(checkout), "--api", STATUS]).error
+    chain.unlink()
+    assert ok([PULL, "--api", STATUS]).payload()["borrows"] == str(checkout.resolve())
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads everything")
+def test_an_unreadable_lender_keeps_its_refs_rather_than_being_swept(linear: _Stand) -> None:
+    """Every borrowed object reads as missing then; a sweep would delete every ref."""
+
+    replica = linear.replica
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    before = linear.store_refs()
+    assert "refs/remotes/origin/trunk" in before and "refs/pull/1/head" in before
+    packs = checkout / ".git" / "objects" / "pack"
+    pack_files = sorted(packs.iterdir())
+    try:
+        # The pack files alone: the directories still read, so only the probe of the
+        # checkout's own tips through the store can tell.
+        for pack in pack_files:
+            pack.chmod(0)
+        update = asyncio.run(
+            update_store(linear.home, linear.store.parent.name, remote_url=replica.url)
+        )
+        assert update.outcome is RefreshOutcome.lender_missing
+        published = asyncio.run(_inspect(linear))
+        with pytest.raises(pull_refs.PullRefError) as raised:
+            asyncio.run(pull_refs.fetch_pull_head(published, 1))
+        assert raised.value.state == "lender_missing"
+        assert linear.store_refs() == before
+        # The directory itself unreadable: refused at open as a new lender would be.
+        packs.chmod(0)
+        _lender_missing(refused([PULL, "--api", STATUS]), "could not be read")
+        assert linear.store_refs() == before
+    finally:
+        packs.chmod(0o755)
+        for pack in pack_files:
+            pack.chmod(0o644)
+    assert ok([PULL, "--api", STATUS]).payload()["borrows"] == str(checkout.resolve())
+    assert linear.store_refs() == before
+
+
+def test_another_repository_at_the_lenders_path_is_refused_and_the_flag_replaces_it(
+    linear: _Stand, merge_heavy_replica: Replica
+) -> None:
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    shutil.rmtree(checkout)
+    clone_checkout(merge_heavy_replica, checkout)
+    pinned_git(checkout, "remote", "set-url", "origin", "https://github.com/other/repo.git")
+    _lender_missing(refused([PULL, "--api", STATUS]), "is not one any more")
+    complete = clone_checkout(linear.replica, linear.tmp_path / "complete")
+    repaired = ok([PULL, "--checkout", str(complete), "--api", STATUS])
+    assert repaired.payload()["borrows"] == str(complete.resolve())
+    assert (
+        ok([PULL, "--api", PULL_ROUTE]).payload()["record"]["comparison"]["head"]
+        == (linear.replica["H1"])
+    )
+
+
+@pytest.fixture
+def merge_heavy_replica(tmp_path: Path) -> Replica:
+    return build_merge_heavy(tmp_path / "another")
+
+
+def test_a_repair_that_stopped_before_its_record_is_finished_by_the_same_command(
+    moved: tuple[_Stand, Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The alternates file written and the record not: ``--checkout`` finishes it."""
+
+    from metabrowser.cache import acquire
+
+    stand, _checkout, target = moved
+    real = acquire.write_record_atomic
+
+    def refusing(*args: Any, **kwargs: Any) -> Any:
+        # Only the store's own record, which the repair writes last; the hit's
+        # last-opened stamp before it is written as ever.
+        if not str(args[1]).endswith("store.yml"):
+            return real(*args, **kwargs)
+        monkeypatch.setattr(acquire, "write_record_atomic", real)
+        raise acquire.AcquisitionError("the disk refused the record")
+
+    monkeypatch.setattr(acquire, "write_record_atomic", refusing)
+    stopped = refused([PULL, "--checkout", str(target), "--api", STATUS])
+    assert "Traceback" not in stopped.stderr
+    alternates = stand.store / "objects" / "info" / "alternates"
+    assert alternates.read_text(encoding="utf-8") == f"{(target / '.git' / 'objects').resolve()}\n"
+    # Half written: refused as damaged without the flag, and never a wrong read.
+    assert "(damaged)" in refused([PULL, "--api", STATUS]).error
+    repaired = ok([PULL, "--checkout", str(target), "--api", STATUS])
+    assert repaired.payload()["borrows"] == str(target.resolve())
+    assert ok([PULL, "--api", STATUS]).payload()["borrows"] == str(target.resolve())
+
+
+def test_a_repair_waits_for_no_fetch_and_is_refused_while_one_holds_the_store(
+    moved: tuple[_Stand, Path, Path],
+) -> None:
+    from metabrowser.cache.locks import store_fetch_lock
+
+    stand, _checkout, target = moved
+    with store_fetch_lock(stand.home, stand.store.parent.name):
+        result = refused([PULL, "--checkout", str(target), "--api", STATUS])
+    assert "Traceback" not in result.stderr
+    record = (stand.store.parent / "store.yml").read_text(encoding="utf-8")
+    assert str(target.resolve()) not in record
+    assert ok([PULL, "--checkout", str(target), "--api", STATUS]).payload()["borrows"] == str(
+        target.resolve()
+    )
+
+
+def test_a_cache_route_says_that_checkout_is_not_applied(moved: tuple[_Stand, Path, Path]) -> None:
+    _stand, _checkout, target = moved
+    answered = ok([PULL, "--checkout", str(target), "--api", "/api/cache/stores"])
+    assert "not applied to a cache route" in answered.stderr
+    assert answered.payload()["stores"][0]["lender"] == "lender_missing"
+    assert "lender_missing" in refused([PULL, "--api", STATUS]).error
+
+
+@pytest.mark.parametrize("store", ["full", "overlay"], ids=["full-mirror", "healthy-overlay"])
+def test_a_path_that_is_no_checkout_is_refused_the_same_way_on_every_hit(
+    linear: _Stand, store: str
+) -> None:
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+    ok([CANONICAL, *(("--checkout", str(checkout)) if store == "overlay" else ()), "--no-serve"])
+    absent = linear.tmp_path / "absent"
+    assert "is not a Git checkout" in refused([PULL, "--checkout", str(absent), "--no-serve"]).error
+    empty = linear.tmp_path / "empty"
+    empty.mkdir()
+    pinned_git(empty, "init", "-q")
+    assert "is not a checkout of" in refused([PULL, "--checkout", str(empty), "--no-serve"]).error
+
+
+# ── What a refusal shows of a remote ────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "ssh://git:GHP_SUPERSECRET_TOKEN@github.com/a/b.git",
+        "GHP_SUPERSECRET_TOKEN@example.com:a/b.git",
+        "https://GHP_SUPERSECRET_TOKEN@github.com/a/b.git",
+        "git://GHP_SUPERSECRET_TOKEN:x@example.com/a/b.git",
+    ],
+    ids=["ssh-password", "scp-user", "https-user", "git-userinfo"],
+)
+def test_a_refusal_never_prints_a_remotes_credentials(linear: _Stand, spelling: str) -> None:
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "other")
+    pinned_git(checkout, "remote", "set-url", "origin", spelling)
+    result = refused([PULL, "--checkout", str(checkout), "--api", STATUS])
+    assert "is not a checkout of https://github.com/octo/demo" in result.error
+    assert "GHP_SUPERSECRET_TOKEN" not in result.stderr + result.stdout
+    assert "a/b" in result.error
+
+
+def test_an_ssh_spelling_keeps_its_user_for_the_match(linear: _Stand) -> None:
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "spelled")
+    pinned_git(checkout, "remote", "set-url", "origin", "ssh://git:token@github.com/octo/demo")
+    assert isinstance(check_lender(checkout, SOURCE), Lender)
+
+
+# ── A remote spelled as a path ──────────────────────────────────────
+
+
+def _file_source(replica: Replica) -> GitSource:
+    from metabrowser.cache.providers import url_reducers
+    from metabrowser.cache.urls import classify_root_argument
+
+    source = classify_root_argument(replica.url, reducers=url_reducers())
+    assert isinstance(source, GitSource)
+    return source
+
+
+@pytest.mark.parametrize("relative", [False, True], ids=["absolute", "relative"])
+def test_a_remote_spelled_as_a_path_is_the_file_source_of_that_path(
+    linear: _Stand, relative: bool
+) -> None:
+    """``git clone /x/origin.git`` records that spelling, and the documented commands work."""
+
+    replica = linear.replica
+    source = _file_source(replica)
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    spelled = os.path.relpath(replica.origin, checkout) if relative else str(replica.origin)
+    pinned_git(checkout, "remote", "set-url", "origin", spelled)
+    checked = check_lender(checkout, source)
+    assert isinstance(checked, Lender) and checked.remote == "origin"
+    (checkout / "sub").mkdir()
+    assert suggested_checkout(source, checkout / "sub") == checkout.resolve()
+    borrowed = ok([source.normalized, "--checkout", str(checkout), "--api", STATUS])
+    assert borrowed.payload()["borrows"] == str(checkout.resolve())
+    assert "borrowing objects from" in borrowed.stderr
+
+
+def test_a_path_remote_matches_only_the_directory_it_names(linear: _Stand) -> None:
+    """A lookalike beside the origin, and a path for an https source, lend nothing."""
+
+    replica = linear.replica
+    source = _file_source(replica)
+    lookalike = replica.origin.parent / "origin.git-not"
+    shutil.copytree(replica.origin, lookalike)
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    pinned_git(checkout, "remote", "set-url", "origin", str(lookalike))
+    with pytest.raises(CheckoutRefusedError) as refusal:
+        check_lender(checkout, source)
+    assert f"origin is file://{lookalike}" in str(refusal.value)
+    assert suggested_checkout(source, checkout) is None
+    # A path never names a GitHub repository, whatever it is called.
+    pinned_git(checkout, "remote", "set-url", "origin", str(replica.origin))
+    with pytest.raises(CheckoutRefusedError):
+        check_lender(checkout, SOURCE)
+    assert suggested_checkout(SOURCE, checkout) is None
+
+
+# ── What a fetch tells the origin it has ────────────────────────────
+
+
+def _store_objects(stand: _Stand) -> int:
+    counted = dict(
+        line.split(": ", 1) for line in stand.store_git("count-objects", "-v").splitlines()
+    )
+    return int(counted["count"]) + int(counted["in-pack"])
+
+
+def test_a_refresh_brings_only_what_the_store_lacks_and_not_the_gap_again(
+    linear: _Stand,
+) -> None:
+    """Review A's measurement: a branch the checkout never fetched, moved by one commit.
+
+    With the lender's tips alone as ``--negotiation-tip``, Git offered none of the store's
+    own refs, and the origin sent the branch's whole history again on every refresh. The
+    store's refs are tips too now, so a refresh costs the one commit. The store keeps each
+    fetch as a pack (``transfer.unpackLimit=1``) so the objects received can be counted.
+    """
+
+    replica = linear.replica
+    side_work = linear.tmp_path / "side"
+    pinned_git(replica.origin, "branch", "-q", "side", replica["M3"])
+    pinned_git(replica.origin, "worktree", "add", "-q", str(side_work), "side")
+    for number in range(24):
+        (side_work / "s").write_text(f"s{number}\n", encoding="utf-8")
+        pinned_git(side_work, "add", "s")
+        pinned_git(side_work, "commit", "-qm", f"S{number}")
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout", "--single-branch")
+    ok([CANONICAL, "--checkout", str(checkout), "--no-serve"])
+    assert "refs/remotes/origin/side" in linear.store_refs()
+    linear.store_git("config", "transfer.unpackLimit", "1")
+    received: list[int] = []
+    for number in range(2):
+        (side_work / "s").write_text(f"pushed {number}\n" * 2000, encoding="utf-8")
+        pinned_git(side_work, "add", "s")
+        pinned_git(side_work, "commit", "-qm", f"P{number}")
+        before = _store_objects(linear)
+        update = asyncio.run(
+            update_store(linear.home, linear.store.parent.name, remote_url=replica.url)
+        )
+        assert update.outcome is RefreshOutcome.succeeded
+        received.append(_store_objects(linear) - before)
+    # One commit, its tree, and its blob; the 24 commits' 72 objects never again.
+    assert received == [3, 3], received
+
+
+# ── A served pull head the sweep removed ────────────────────────────
+
+
+def test_a_swept_pull_head_is_unobserved_and_never_reported_as_gone_from_the_origin(
+    linear: _Stand,
+) -> None:
+    """GitHub keeps every ``refs/pull/<n>/head``; the store removed it, not the origin."""
+
+    replica = linear.replica
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    pinned_git(checkout, "remote", "set-url", "origin", replica.url)
+    pinned_git(checkout, "fetch", "-q", "origin", "+refs/pull/1/head:refs/remotes/origin/seen")
+    pinned_git(checkout, "remote", "set-url", "origin", REMOTE_SPELLING)
+    linear.pull("--checkout", str(checkout))
+    published = asyncio.run(_inspect(linear))
+    pinned_git(checkout, "update-ref", "-d", "refs/remotes/origin/seen")
+    pinned_git(checkout, "reflog", "expire", "--expire-unreachable=now", "--all")
+    pinned_git(checkout, "gc", "-q", "--prune=now")
+    assert refused_cat_file(linear.store, replica["H1"])
+
+    from metabrowser import mirror_refresh
+    from metabrowser.cache.repository_store import open_revision
+    from metabrowser.cache.served_mirror import StoreMirror
+    from metabrowser.git.tree_source import GitRevisionSubject
+    from metabrowser.source import reset_source_session, serve_subject_opener
+
+    async def opener() -> GitRevisionSubject:
+        return await open_revision(
+            home=published.home,
+            store_key=published.store_key,
+            commit_oid=replica["M5"],
+            store_identity=published.store_id,
+            ref="refs/pull/1/head",
+        )
+
+    apply_capabilities(untrusted=True, no_active_content=False, allow_edits=False)
+    reset_source_session()
+    serve_subject_opener(opener)
+    mirror_refresh.serve_mirror(StoreMirror.from_published(published), pull_request=1)
+    with TestClient(server.app, raise_server_exceptions=False) as client:
+        started = client.post(
+            "/api/source/refresh", json={}, headers={"accept": "application/json"}
+        )
+        assert started.status_code == 202, started.text
+        status = settle(client)
+        assert status["last_outcome"]["outcome"] == "succeeded"
+        assert "refs/pull/1/head" not in linear.store_refs()
+        assert status["ref_on_origin"] is None and status["latest"] is None
+
+
+# ── The boundary, read before and after Git ─────────────────────────
+
+
+def test_a_boundary_that_appears_while_merge_base_runs_is_uncertain(
+    linear: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git import shallow
+    from metabrowser.git.process import repository_store_target
+
+    replica = linear.replica
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    target = repository_store_target(git_dir=linear.store)
+    real = shallow.run_git
+
+    async def cutting(args: list[str], **kwargs: Any) -> bytes:
+        if args[0] == "merge-base":
+            # The checkout becomes shallow under the store's link, between the read
+            # and Git: as a ``fetch --depth`` in it, or a re-clone at the same path.
+            (checkout / ".git" / "shallow").write_text(replica["M4"] + "\n", encoding="utf-8")
+        return await real(args, **kwargs)
+
+    monkeypatch.setattr(shallow, "run_git", cutting)
+    answer = asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
+    assert answer.certain is False
+
+
+def test_a_boundary_the_store_owns_is_dropped_once_the_checkout_is_complete(
+    merge_heavy: _Stand,
+) -> None:
+    replica = merge_heavy.replica
+    checkout = _shallow_heavy(merge_heavy)
+    merge_heavy.pull("--checkout", str(checkout))
+    boundary = merge_heavy.store / "shallow"
+    assert boundary.is_file() and not boundary.is_symlink()
+    assert ok([PULL, "--api", STATUS]).payload()["shallow"] is True
+    pinned_git(checkout, "remote", "set-url", "origin", replica.url)
+    pinned_git(checkout, "fetch", "-q", "--unshallow", "origin")
+    pinned_git(checkout, "remote", "set-url", "origin", REMOTE_SPELLING)
+    assert not (checkout / ".git" / "shallow").exists()
+    update = asyncio.run(
+        update_store(merge_heavy.home, merge_heavy.store.parent.name, remote_url=replica.url)
+    )
+    assert update.outcome is RefreshOutcome.succeeded
+    assert not boundary.exists()
+    assert ok([PULL, "--api", STATUS]).payload()["shallow"] is False
+    assert merge_heavy.store_git("rev-list", "--count", replica["M7"]) == "9"
+
+
+# ── A commit the checkout has collected ─────────────────────────────
+
+
+def test_a_missing_borrowed_ancestor_is_commits_unavailable_and_not_no_merge_base(
+    linear: _Stand,
+) -> None:
+    replica = linear.replica
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    # The clone's one pack, unpacked into loose objects so that one can be deleted.
+    aside = linear.tmp_path / "aside"
+    aside.mkdir()
+    for pack in (checkout / ".git" / "objects" / "pack").iterdir():
+        shutil.move(pack, aside / pack.name)
+    for pack in aside.glob("*.pack"):
+        with pack.open("rb") as stream:
+            subprocess.run(
+                ["git", "unpack-objects", "-q"],
+                cwd=checkout,
+                stdin=stream,
+                check=True,
+                capture_output=True,
+                env=pinned_git_env(),
+            )
+    assert pinned_git(checkout, "cat-file", "-t", replica["M3"]) == "commit"
+    envelope = linear.pull("--checkout", str(checkout))
+    assert envelope["record"]["comparison"]["base"] == replica["M4"]
+    loose = checkout / ".git" / "objects" / replica["M3"][:2] / replica["M3"][2:]
+    loose.unlink()
+    for record in linear.home.glob("sources/*/pulls/1*.json"):
+        record.unlink()
+    again = linear.pull()["record"]
+    assert again["comparison"] is None
+    assert again["unavailable"] == {"comparison": "commits_unavailable"}

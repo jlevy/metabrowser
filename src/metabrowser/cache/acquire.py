@@ -52,7 +52,7 @@ from metabrowser.cache.lender import (
     attach_lender,
     check_lender,
     checkout_command,
-    lender_present,
+    lender_problem,
     negotiation_tip_args,
     object_format_refusal,
     read_alternates,
@@ -70,6 +70,7 @@ from metabrowser.cache.locks import (
     run_lock_section,
     source_alias_lock,
     staging_entry_lock,
+    store_fetch_lock,
 )
 from metabrowser.cache.origin import (
     BRANCH_MIRROR_PREFIX,
@@ -188,15 +189,22 @@ class StoreDamagedError(ValidationFailedError):
 
 
 class LenderMissingError(AcquisitionError):
-    """The checkout an overlay store borrows from is gone, so nothing in it can be read."""
+    """The checkout an overlay store borrows from cannot be used, so nothing in it is read.
+
+    Gone, grown an alternates file of its own, no longer readable, or no longer a
+    checkout of the repository (:func:`~metabrowser.cache.lender.lender_problem` and
+    :func:`~metabrowser.cache.lender.check_lender`): *problem* says which, and the
+    repair is the same for each.
+    """
 
     state: Final = "lender_missing"
 
-    def __init__(self, source_url: str, lender: StoreLender) -> None:
+    def __init__(self, source_url: str, lender: StoreLender, problem: str) -> None:
         super().__init__(
-            f"the checkout this mirror of {source_url} borrows objects from is gone: "
-            f"{show_path(lender.checkout)} (lender_missing). If it moved, name where it is "
-            f"now: metab {source_url} --checkout <new path>"
+            f"{problem}: {show_path(lender.checkout)} (lender_missing), and this mirror of "
+            f"{source_url} cannot be served without it. If it moved, or another checkout of "
+            f"the repository should lend instead, name it: metab {source_url} --checkout "
+            "<new path>"
         )
 
 
@@ -989,7 +997,9 @@ async def acquire_source(
             on_note=on_note,
         )
     except _ObjectFormatRefusedError as exc:
-        _note(on_note, f"{exc}; cloning")
+        # The origin's format is known only after the phase line was printed, so this
+        # note comes after "cloning ... into": it says the clone is instead of borrowing.
+        _note(on_note, f"{exc}; cloning instead")
         await check_first_clone(source)
         staged = await acquire_into_staging(
             source, home=home, on_phase=on_phase, on_progress=on_progress
@@ -1038,31 +1048,56 @@ async def _settled_hit(
 ) -> PublishedSource:
     """A published store as this command may use it; a published store always wins.
 
-    A named checkout changes nothing about a full store or a healthy overlay. It repairs
-    an overlay whose checkout has gone, once it has passed the checks a new overlay's
-    checkout does. Nothing else changes a store's mode or what it borrows. A cache route
-    (*inspecting*) reads records and no object, and reports what these checks refuse.
+    A named checkout is checked first, whatever the store, so a path that is no checkout
+    of the repository is refused the same way on every hit. It changes nothing about a
+    full store or a healthy overlay. It repairs an overlay whose checkout cannot be used
+    any more (:func:`_lender_problem`), once it has passed the checks a new overlay's
+    checkout does, and finishes a repair that stopped before its record was written. A
+    cache route (*inspecting*) reads records and no object, and reports what these checks
+    refuse.
     """
 
     if inspecting:
+        if checkout is not None:
+            _note(
+                on_note,
+                "--checkout is not applied to a cache route, which reads records and no "
+                "object; run the command with a source route to repair the mirror",
+            )
         return found
     recorded = found.lender
+    checked: Lender | LenderRefusal | None = None
+    if checkout is not None:
+        checked = await asyncio.to_thread(check_lender, checkout, found.source)
+        if recorded is not None and isinstance(checked, Lender):
+            named = checked.record
+            if (
+                named.objects != recorded.objects
+                and await asyncio.to_thread(read_alternates, found.git_dir) == named.objects
+            ):
+                # A repair stopped after the alternates file and before the record:
+                # finish it, rather than refuse the half-written store as damaged.
+                _note(on_note, f"borrowing objects from {show_path(checked.root)}")
+                return await run_lock_section(functools.partial(_rebind, found, named))
     await asyncio.to_thread(_require_consistent_borrowing, found.git_dir, recorded)
-    if checkout is None:
-        if recorded is not None and not await asyncio.to_thread(lender_present, recorded):
-            raise LenderMissingError(found.source.normalized, recorded)
-        return found
     if recorded is None:
-        _note(
-            on_note,
-            f"a full mirror of {found.source.normalized} is already in the cache, and it is "
-            "kept: --checkout borrowed nothing. This release has no command that converts it",
-        )
+        if checkout is not None:
+            _note(
+                on_note,
+                f"a full mirror of {found.source.normalized} is already in the cache, and it "
+                "is kept: --checkout borrowed nothing. This release has no command that "
+                "converts it; to borrow instead, delete the mirror from the cache and run "
+                "this command again",
+            )
         return found
-    checked = await asyncio.to_thread(check_lender, checkout, found.source)
-    if isinstance(checked, Lender) and checked.record.objects == recorded.objects:
+    problem = await asyncio.to_thread(_lender_problem, recorded, found.source)
+    if checkout is None:
+        if problem is not None:
+            raise LenderMissingError(found.source.normalized, recorded, problem)
         return found
-    if await asyncio.to_thread(lender_present, recorded):
+    if problem is None:
+        if isinstance(checked, Lender) and checked.record.objects == recorded.objects:
+            return found
         _note(
             on_note,
             f"this mirror already borrows objects from {show_path(recorded.checkout)}, and it "
@@ -1074,23 +1109,56 @@ async def _settled_hit(
         checked = mismatch if mismatch is not None else checked
     if isinstance(checked, LenderRefusal):
         raise CheckoutRefusedError(f"--checkout cannot repair this mirror: {checked.message}")
+    assert checked is not None
     _note(on_note, f"borrowing objects from {show_path(checked.root)}")
     return await run_lock_section(functools.partial(_rebind, found, checked.record))
 
 
+def _lender_problem(recorded: StoreLender, source: GitSource) -> str | None:
+    """Why the recorded lender cannot be used at open, or ``None``: blocking and bounded.
+
+    The cheap checks every fetch repeats (:func:`~metabrowser.cache.lender.lender_problem`),
+    and then the ones a new lender passes, since the directory may now hold another
+    repository, or a clone that can no longer lend.
+    """
+
+    problem = lender_problem(recorded)
+    if problem is not None:
+        return problem
+    try:
+        checked = check_lender(Path(recorded.checkout), source)
+    except CheckoutRefusedError as exc:
+        return f"the checkout this mirror borrows objects from is not one any more ({exc})"
+    if isinstance(checked, LenderRefusal):
+        return f"the checkout this mirror borrows objects from cannot lend: {checked.message}"
+    if checked.record.objects != recorded.objects:
+        return "the checkout this mirror borrows objects from now keeps its objects elsewhere"
+    return None
+
+
 def _rebind(found: PublishedSource, lender: StoreLender) -> PublishedSource:
-    """Point an overlay whose checkout has gone at *lender*, under the store's lock."""
+    """Point an overlay whose checkout cannot be used at *lender*, under both of its locks.
+
+    The fetch lock first, as every fetch into the store takes it before the store lock:
+    a refresh or a deepening round in flight reads the alternates file and writes the
+    boundary, and neither may change under it. A fetch that holds the lock now is
+    refused rather than waited on, which the caller reports as a refresh elsewhere.
+    """
 
     relative = store_record(found.store_key, "store.yml")
-    with repository_store_lock(found.home, found.store_key):
-        store = _require_same_store(found.home, found.store_key, found.store_id)
-        rebind_lender(found.git_dir, lender)
-        write_record_atomic(
-            found.home,
-            relative,
-            store.model_copy(update={"lender": lender}),
-            REPOSITORY_STORE_CONTRACT_ID,
-        )
+    fetch_lock = store_fetch_lock(found.home, found.store_key, order=lock_order())
+    try:
+        with repository_store_lock(found.home, found.store_key):
+            store = _require_same_store(found.home, found.store_key, found.store_id)
+            rebind_lender(found.git_dir, lender)
+            write_record_atomic(
+                found.home,
+                relative,
+                store.model_copy(update={"lender": lender}),
+                REPOSITORY_STORE_CONTRACT_ID,
+            )
+    finally:
+        fetch_lock.release()
     return dataclasses.replace(found, lender=lender)
 
 

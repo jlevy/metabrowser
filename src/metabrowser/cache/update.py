@@ -45,17 +45,13 @@ import logging
 import os
 import re
 from collections.abc import Awaitable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
 from metabrowser.cache.atomic import RecordError, read_record, write_record_atomic
-from metabrowser.cache.lender import (
-    LenderGoneError,
-    prepare_overlay_fetch,
-    read_store_lender,
-)
+from metabrowser.cache.lender import LenderGoneError, OverlayFetch, overlay_fetch_arguments
 from metabrowser.cache.locks import (
     CacheLock,
     LockBusyError,
@@ -202,6 +198,11 @@ class StoreUpdate:
     default_remote_ref: str | None = None
     default_revision: str | None = None
     unrestored: tuple[str, ...] = ()
+    # Refs an overlay's sweep deleted before the fetch because the checkout no longer
+    # holds their objects. The origin may well still have them, a ``refs/pull/<n>/head``
+    # above all, which no refspec of a refresh brings back: a served one is then
+    # unobserved, never reported as removed by the origin.
+    swept: tuple[str, ...] = ()
 
 
 def remove_interrupted_fetch_leftovers(git_dir: Path) -> tuple[str, ...]:
@@ -621,22 +622,15 @@ async def _overlay_preparation(
     target: RepositoryStoreTarget,
     lock_fd: int,
     previous_ref: str | None,
-) -> tuple[str, ...]:
-    """An overlay's sweep and negotiation tips before a refresh; nothing for a full store."""
+) -> OverlayFetch:
+    """An overlay's sweep and negotiation tips before a refresh; nothing for a full store.
 
-    try:
-        lender = await asyncio.to_thread(read_store_lender, home, store_key)
-    except (PrivateStorageError, RecordError, OSError) as exc:
-        # The refresh goes on without them, as a full store's would, and Git reports
-        # anything that is really wrong with the store.
-        log.warning("refresh could not read what the store borrows from: %s", exc)
-        return ()
-    if lender is None:
-        return ()
+    The sweep runs to the end even when cancelled, as the other work under the lock does.
+    """
+
     preferred = previous_ref.removeprefix(BRANCH_MIRROR_PREFIX) if previous_ref else None
-    # The sweep runs to the end even when cancelled, as the other work under the lock does.
     return await _finish_despite_cancel(
-        prepare_overlay_fetch(target, lender, lock_fd, preferred=preferred)
+        overlay_fetch_arguments(home, store_key, target, lock_fd, preferred=preferred)
     )
 
 
@@ -687,7 +681,7 @@ async def update_store(home: Path, store_key: str, *, remote_url: str) -> StoreU
             log.debug("removed files an interrupted fetch left in a store: %s", removed)
         previous_ref = await asyncio.to_thread(_previous_default_ref, home, store_key)
         try:
-            negotiation = await _overlay_preparation(
+            prepared = await _overlay_preparation(
                 home, store_key, target, fetch_lock.descriptor, previous_ref
             )
             update = await _fetch(
@@ -695,11 +689,18 @@ async def update_store(home: Path, store_key: str, *, remote_url: str) -> StoreU
                 remote_url,
                 lock_fd=fetch_lock.descriptor,
                 previous_ref=previous_ref,
-                negotiation=negotiation,
+                negotiation=prepared.tips,
             )
-        except LenderGoneError:
-            log.info("refresh skipped: the checkout this store borrows from is gone")
+            if prepared.swept:
+                update = replace(update, swept=prepared.swept)
+        except LenderGoneError as exc:
+            log.info("refresh skipped: %s", exc)
             update = StoreUpdate(RefreshOutcome.lender_missing, canonical_now())
+        except (PrivateStorageError, RecordError, OSError) as exc:
+            # The store's record of what it borrows could not be read, so the fetch did
+            # not run: without the sweep and the tips it would wedge or bring everything.
+            log.warning("refresh could not read what the store borrows from: %s", exc)
+            update = StoreUpdate(RefreshOutcome.failed, canonical_now())
         except GitError as exc:
             # A local read of the store failed around the fetch: listing its refs, its
             # case setting, or a tip. Reported, never raised into the caller.

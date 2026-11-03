@@ -245,14 +245,18 @@ class GitCommitStats(TypedDict):
     Counts come from the same numstat pass that produces the file list,
     so they always agree with it. Binary files contribute to
     ``files_changed`` and one status family but not to the line counts.
+    Every count is ``None``, and ``files`` empty, for a commit at a
+    shallow boundary: Git grafts it into a root and would count a whole
+    tree as added, so what it changed is not known here, and the
+    comparison route answers ``parent_unavailable`` for it.
     """
 
-    files_changed: int
-    files_modified: int
-    files_added: int
-    files_deleted: int
-    additions: int
-    deletions: int
+    files_changed: int | None
+    files_modified: int | None
+    files_added: int | None
+    files_deleted: int | None
+    additions: int | None
+    deletions: int | None
 
 
 class GitCommitDetail(TypedDict):
@@ -470,6 +474,19 @@ def validate_git_commit_detail(detail: Mapping[str, Any]) -> None:
     assert isinstance(stats, dict), "commit detail 'stats' not a dict"
     missing = _STATS_REQUIRED - stats.keys()
     assert not missing, f"commit detail stats missing keys: {sorted(missing)}"
+    files = detail.get("files")
+    assert isinstance(files, list), "commit detail 'files' not a list"
+    for i, change in enumerate(files):
+        validate_git_file_change(change, _where=f"files[{i}]")
+    assert isinstance(detail.get("files_truncated"), bool), (
+        "commit detail 'files_truncated' not bool"
+    )
+    if all(stats[key] is None for key in _STATS_REQUIRED):
+        # A commit at a shallow boundary: nothing it changed is known, so nothing is listed.
+        assert files == [] and not detail["files_truncated"], (
+            "commit detail with unknown stats lists files"
+        )
+        return
     for key in sorted(_STATS_REQUIRED):
         assert isinstance(stats[key], int), f"commit detail stats.{key} not int: {stats[key]!r}"
         assert stats[key] >= 0, f"commit detail stats.{key} is negative: {stats[key]!r}"
@@ -477,15 +494,6 @@ def validate_git_commit_detail(detail: Mapping[str, Any]) -> None:
     assert status_total == stats["files_changed"], (
         "commit detail status counts do not cover files_changed: "
         f"{status_total} != {stats['files_changed']}"
-    )
-
-    files = detail.get("files")
-    assert isinstance(files, list), "commit detail 'files' not a list"
-    for i, change in enumerate(files):
-        validate_git_file_change(change, _where=f"files[{i}]")
-
-    assert isinstance(detail.get("files_truncated"), bool), (
-        "commit detail 'files_truncated' not bool"
     )
     # stats describes the whole commit even when the list was cut, so the
     # only direction that can be checked is this one.

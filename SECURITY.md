@@ -244,6 +244,11 @@ one that does not, and nothing about it can lift the profile.
 - **The alternates file is checked.** A store whose alternates file names anything but
   the directory its record names is refused as damaged, so a tampered cache cannot point
   reads at another directory.
+  The checkout is checked again on every open that uses the record and before every
+  fetch: one that has grown an `objects/info/alternates` of its own, whose objects are
+  no longer the reader’s own to read, or whose directory holds another repository is
+  refused as `lender_missing`, so Git never follows a chain of alternates to a directory
+  nothing recorded.
 - **The checkout’s path** appears where a mirror’s location does, in
   `/api/source/status` and the heading’s tooltip, as display text no route takes back as
   an input.

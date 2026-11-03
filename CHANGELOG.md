@@ -135,7 +135,36 @@ Reviewing beside a checkout:
 
 - A checkout that moved is a typed refusal, `lender_missing`, with the recorded path and
   the command that repairs it; a store whose alternates file disagrees with its record
-  is refused as `damaged`.
+  is refused as `damaged`. The same refusal, with its own reason, answers a checkout
+  that can no longer lend: one that has grown an `objects/info/alternates` of its own,
+  whose objects can no longer be read, or whose directory holds another repository now.
+  The checks that admitted a checkout run again on every open that uses it and before
+  every fetch, so a mirror never follows a chain of alternates nothing recorded.
+  A repair that stopped before its record was written is finished by the same
+  `--checkout` command, and a repair takes the store’s fetch lock, so it never changes
+  what a fetch in flight reads.
+
+- A refresh of a mirror that borrows offers the mirror’s own refs to the origin as well
+  as the checkout’s, so it fetches only what the mirror lacks: on a replica, a branch of
+  24 commits the checkout never fetched, moved by one commit, cost that one commit’s
+  three objects per refresh rather than the branch’s 75 again each time.
+
+- A mirror whose checkout cannot be read does not sweep its refs: a present but
+  unreadable checkout answers `lender_missing` and the refs stay.
+  A served `refs/pull/<n>/head` the sweep removed, because the checkout collected its
+  commits, is unobserved in `/api/source/status` (`ref_on_origin: null`) rather than
+  reported as removed by the origin, which keeps every pull-request head.
+  A boundary the mirror owns is dropped once the checkout has no shallow file, so
+  `shallow` turns `false` when the checkout is deepened or unshallowed.
+
+- A comparison that needs a commit the mirror cannot read is `commits_unavailable` in
+  the record’s `unavailable.comparison`, and `no_merge_base` is only Git’s own answer
+  that the two commits share no history.
+
+- A checkout whose remote is spelled as a path, as `git clone /x/origin.git` records it,
+  is a checkout of the `file://` source of that path, so the documented commands work
+  against a local origin; a `--checkout` refusal lists the checkout’s remotes with any
+  credentials left out, whatever the URL’s scheme, the scp form included.
 
 - Every read of a repository’s `.git` metadata, a folder’s included, now refuses
   anything but a regular file, so a FIFO planted in a `.git` directory cannot block it.
@@ -988,6 +1017,17 @@ Content source:
   sizes are read in chunks that each get the batch deadline.
 
 Fixes:
+
+- A commit at a shallow repository’s boundary is no longer shown as if it were a root
+  commit. Git grafts such a commit into a root, so its diff was taken against the empty
+  tree and every file read as added, with no warning, in the commit view, `--diff`, and
+  `/api/plugin/diff/comparison?revision=`, on a served shallow checkout and on a mirror
+  borrowing from one alike.
+  The comparison now answers a typed refusal, `parent_unavailable`, that says the parent
+  is beyond the history here, and `/api/git/commit/<id>` reports that commit’s `stats`
+  as `null` counts with no files, which the panel shows as `?`. A real root commit is
+  unchanged. `/api/git/log` still lists the commit with no parents, as Git’s own log does
+  on a shallow clone; the status route says the history is shallow.
 
 - A `.env` or `.env.local` that cannot be read as text no longer stops `metab` with a
   traceback in every mode.

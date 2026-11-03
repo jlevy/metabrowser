@@ -8,6 +8,7 @@ $defs:
     pattern: ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{3})?Z$
     type: string
   GitRemoteName:
+    description: A Git remote name, as a path below refs/remotes. The pattern admits a name that climbs out of it; the model refuses '..', a trailing '/', and '//', which the compiled schema alone does not express.
     maxLength: 255
     minLength: 1
     pattern: ^[A-Za-z0-9_][A-Za-z0-9._/-]*$
@@ -89,4 +90,4 @@ title: RepositoryStore
 type: object
 x-softschema:
   contract: com.github.jlevy.metabrowser.cache:RepositoryStore/v1
-  schema_sha256: 707accdcb8774fac3a29870f30cb8fc5b108ce13a3818886874dbb8ef58f6751
+  schema_sha256: 5156acdf180be202a448b07b820d4a7e7ebefda6ad2ac873dc8f9316a95e775e

@@ -2233,6 +2233,10 @@ declare global {
     pull_request: number | null;
     selection_state: "pending" | "found" | "not_found" | "fetch_failed" | "superseded" | null;
     selection_href: string | null;
+    /** The checkout a mirror borrows objects from, beside `location`; null otherwise. */
+    borrows: string | null;
+    /** Whether the mirror's history stops at a shallow boundary. */
+    shallow: boolean;
   };
 
   /** The pin and ref a page was rendered for. */
@@ -2531,13 +2535,17 @@ declare global {
     similarity?: number;
   };
 
+  /**
+   * Every count is null for a commit at a shallow boundary, whose changes are not known
+   * here; the panel shows `?` for each, and the comparison says `parent_unavailable`.
+   */
   type MetabrowserGitCommitStats = {
-    files_changed: number;
-    files_modified: number;
-    files_added: number;
-    files_deleted: number;
-    additions: number;
-    deletions: number;
+    files_changed: number | null;
+    files_modified: number | null;
+    files_added: number | null;
+    files_deleted: number | null;
+    additions: number | null;
+    deletions: number | null;
   };
 
   type MetabrowserGitCommitDetail = {

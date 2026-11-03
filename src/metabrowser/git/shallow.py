@@ -22,6 +22,14 @@ an answer uncertain, never certain and wrong.
 An empty answer on a shallow store is uncertain, not "no common history". And an answer
 that is one of the two tips is certain whatever the check would say: that tip is an
 ancestor of the other in the full graph too, and no common ancestor can be below it.
+
+A boundary cuts one more thing: a commit *at* the boundary is grafted into a root, so
+``log``, ``show``, and ``<commit>^`` all answer as if it had no parent, and a diff of it
+alone is taken against the empty tree, which shows a whole tree as added where the truth
+is one commit's change. :func:`recorded_parents` reads the parents from the object itself,
+which the graft never touches, so a reader of a shallow repository, a store or a served
+checkout alike, is told that the parent is beyond the history here rather than shown a
+root's diff.
 """
 
 from __future__ import annotations
@@ -37,8 +45,10 @@ from metabrowser.git.process import (
     STORE_READ_POLICY,
     GitCommandError,
     GitError,
+    GitLocation,
     RepositoryStoreTarget,
     run_git,
+    run_git_at,
 )
 from metabrowser.git.wire import is_full_revision
 from metabrowser.repository_context import read_bounded_text
@@ -46,6 +56,14 @@ from metabrowser.repository_context import read_bounded_text
 # A ``shallow`` file holds one object ID a line; the measured checkout has 17 of them, and
 # this bound holds about 200,000. One that is larger is an answer nobody can trust.
 MAX_BOUNDARY_BYTES: Final = 8 * 1024 * 1024
+
+# What a comparison of a boundary commit alone answers instead of a diff. The state name
+# is in the text, as ``base_uncertain`` is in the merge-base refusal, so a reader of the
+# route can tell it from an unknown revision.
+PARENT_UNAVAILABLE: Final = (
+    "this commit's parent is beyond the shallow history here, so what it changed cannot be "
+    "shown (parent_unavailable); more history would settle it"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +104,28 @@ def read_boundary(git_dir: Path) -> frozenset[str] | None:
     return frozenset(oids)
 
 
+async def recorded_parents(location: GitLocation, oid: str) -> tuple[str, ...]:
+    """The parents the commit object *oid* names, read from the object and never a graft.
+
+    ``log --format=%P``, ``show``, and ``<oid>^`` answer through the repository's
+    ``shallow`` file, which turns a boundary commit into a root. ``cat-file commit`` prints
+    the object as stored, ``parent`` lines included, so a commit with none here is a root
+    and one with some is at the boundary. *oid* is a full object ID.
+    """
+
+    if not is_full_revision(oid):
+        raise ValueError("not a full commit ID")
+    raw = await run_git_at(["cat-file", "commit", oid], location)
+    header = raw.partition(b"\n\n")[0]
+    parents: list[str] = []
+    for line in header.split(b"\n"):
+        if line.startswith(b"parent "):
+            parent = line[len(b"parent ") :].decode("ascii", errors="replace")
+            if is_full_revision(parent):
+                parents.append(parent)
+    return tuple(parents)
+
+
 async def merge_base_answer(
     target: RepositoryStoreTarget, left: str, right: str
 ) -> MergeBaseAnswer:
@@ -94,23 +134,27 @@ async def merge_base_answer(
     On a store that is not shallow this is ``git merge-base`` and its exit status as ever:
     one means no common history, and any other failure is raised. On a shallow store, any
     failure is an answer that cannot be believed rather than an error. The boundary is
-    read before and after, because it can be a link to a checkout that deepens meanwhile.
+    read before and after Git ran, on every return, because it can be a link to a
+    checkout that deepens or becomes shallow meanwhile: an answer Git computed on a
+    boundary other than the one read cannot be believed.
     """
 
     boundary = await asyncio.to_thread(read_boundary, target.git_dir)
     try:
         out = await run_git(["merge-base", left, right], target=target, policy=STORE_READ_POLICY)
     except GitCommandError as exc:
-        if boundary == frozenset():
+        if boundary == frozenset() and await _boundary_still(target, boundary):
             if exc.returncode != 1:
                 raise
             return MergeBaseAnswer(None, certain=True)
         return MergeBaseAnswer(None, certain=False)
     merge_base = out.decode("ascii", errors="replace").strip()
     if not is_full_revision(merge_base):
-        return MergeBaseAnswer(None, certain=boundary == frozenset())
+        return MergeBaseAnswer(
+            None, certain=boundary == frozenset() and await _boundary_still(target, boundary)
+        )
     if boundary == frozenset() or merge_base in {left, right}:
-        return MergeBaseAnswer(merge_base, certain=True)
+        return MergeBaseAnswer(merge_base, certain=await _boundary_still(target, boundary))
     if boundary is None:
         return MergeBaseAnswer(merge_base, certain=False)
     try:
@@ -119,10 +163,23 @@ async def merge_base_answer(
         )
     except GitError:
         return MergeBaseAnswer(merge_base, certain=False)
-    if await asyncio.to_thread(read_boundary, target.git_dir) != boundary:
+    if not await _boundary_still(target, boundary):
         return MergeBaseAnswer(merge_base, certain=False)
     above = boundary.intersection(reached.decode("ascii", errors="replace").split())
     return MergeBaseAnswer(merge_base, certain=not above)
 
 
-__all__ = ["MAX_BOUNDARY_BYTES", "MergeBaseAnswer", "merge_base_answer", "read_boundary"]
+async def _boundary_still(target: RepositoryStoreTarget, boundary: frozenset[str] | None) -> bool:
+    """Whether the boundary is what was read before Git ran, so its answer was on that cut."""
+
+    return await asyncio.to_thread(read_boundary, target.git_dir) == boundary
+
+
+__all__ = [
+    "MAX_BOUNDARY_BYTES",
+    "PARENT_UNAVAILABLE",
+    "MergeBaseAnswer",
+    "merge_base_answer",
+    "read_boundary",
+    "recorded_parents",
+]

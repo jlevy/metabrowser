@@ -219,7 +219,7 @@ class StoreMirror:
         update = await update_store(
             self.home, self.store_key, remote_url=acquire.remote_url_for(self.source)
         )
-        return RefreshResult(outcome=update.outcome.value, at=update.at)
+        return RefreshResult(outcome=update.outcome.value, at=update.at, swept=update.swept)
 
     def _default_ref(self) -> str | None:
         try:

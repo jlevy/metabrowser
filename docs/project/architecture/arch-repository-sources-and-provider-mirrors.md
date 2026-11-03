@@ -672,6 +672,19 @@ the base and the head into the store in up to five growing rounds, within the
 acquisition deadline, and writes the record again if that settles it.
 Offline, or still uncertain, `base_uncertain` stands, and the page shows no diff.
 The comparison route refuses the same way when asked for two tips directly.
+The boundary is read before and after every Git command the check runs, on every return,
+since the store’s `shallow` can be a link to a checkout that deepens or becomes shallow
+meanwhile: an answer computed on another boundary than the one read is uncertain.
+`no_merge_base` is only Git’s own answer that the two share no history; a `merge-base`
+that failed could not read a commit on the walk, on an overlay an ancestor the checkout
+has collected, and that is `commits_unavailable`.
+
+A commit at the boundary is one more cut: Git grafts it into a root, so its own diff
+would be taken against the empty tree and show a whole tree as added.
+`git/shallow.py` reads the commit’s parents from the object itself, which the graft
+never touches, so `/api/plugin/diff/comparison?revision=` answers the typed
+`parent_unavailable` for it and `/api/git/commit/<id>` reports its `stats` as unknown,
+on a store and a served shallow checkout alike; a real root commit is unchanged.
 
 ### Git path and blob semantics
 

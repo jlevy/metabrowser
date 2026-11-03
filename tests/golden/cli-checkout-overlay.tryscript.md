@@ -164,7 +164,7 @@ Nothing is served, and the recorded path and the command that repairs it are pri
 
 ```console
 $ metab --cache-dir home-moved --config-dir config https://github.com/octo/demo/pull/1 --api /api/source/status
-Error: the checkout this mirror of https://github.com/octo/demo borrows objects from is gone: [CWD]/other (lender_missing). If it moved, name where it is now: metab https://github.com/octo/demo --checkout <new path>
+Error: the checkout this mirror borrows objects from is gone: [CWD]/other (lender_missing), and this mirror of https://github.com/octo/demo cannot be served without it. If it moved, or another checkout of the repository should lend instead, name it: metab https://github.com/octo/demo --checkout <new path>
 ? 1
 ```
 

@@ -598,6 +598,9 @@ export function filesUnavailableText(why) {
   if (why === "base_uncertain") {
     return "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
   }
+  if (why === "commits_unavailable") {
+    return "Files changed is unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
+  }
   return "Files changed is unavailable: the pull request's base could not be compared with its head.";
 }
 

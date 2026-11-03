@@ -275,6 +275,13 @@ def test_golden_a_pull_request_beside_a_checkout(
             f"/api/plugin/diff/comparison?left={heavy['M7']}&right={heavy['H2']}"
             "&base_policy=merge_base",
         )
+        session.say(
+            f"A commit at the boundary, A5 ({heavy['A5']}), changes one line of f; Git grafts "
+            "it into a root. Its own diff is refused as parent_unavailable rather than shown "
+            "against the empty tree, and its commit detail reports what it changed as unknown."
+        )
+        session.run(PULL, "--api", f"/api/plugin/diff/comparison?revision={heavy['A5']}")
+        session.run(PULL, "--api", f"/api/git/commit/{heavy['A5']}")
 
     # ── The sweep ───────────────────────────────────────────────────
     session.say(
@@ -328,4 +335,41 @@ def test_golden_a_pull_request_beside_a_checkout(
     session.run(CANONICAL, "--no-serve")
     session.run(str(empty), "--api", STORES)
 
+    # ── A commit the checkout collected ─────────────────────────────
+    session.say(
+        f"The checkout collected an ancestor, M3 ({linear['M3']}), that the store never held: "
+        "the comparison needs it, and the record says commits_unavailable, never "
+        "no_merge_base."
+    )
+    session.fresh_home("home-collected")
+    collected = clone_checkout(linear, tmp_path / "collected")
+    _unpack_objects(collected, tmp_path / "collected-packs")
+    session.comparison("--checkout", str(collected))
+    (collected / ".git" / "objects" / linear["M3"][:2] / linear["M3"][2:]).unlink()
+    for record in session.home.glob("sources/*/pulls/1*.json"):
+        record.unlink()
+    session.comparison()
+
     check_golden("cli-checkout-overlay.txt", "\n".join(session.blocks))
+
+
+def _unpack_objects(checkout: Path, aside: Path) -> None:
+    """The clone's packs unpacked into loose objects, so that one can be deleted."""
+
+    import subprocess
+
+    from tests.golden_harness import pinned_git_env
+
+    aside.mkdir()
+    for pack in (checkout / ".git" / "objects" / "pack").iterdir():
+        shutil.move(pack, aside / pack.name)
+    for pack in aside.glob("*.pack"):
+        with pack.open("rb") as stream:
+            subprocess.run(
+                ["git", "unpack-objects", "-q"],
+                cwd=checkout,
+                stdin=stream,
+                check=True,
+                capture_output=True,
+                env=pinned_git_env(),
+            )

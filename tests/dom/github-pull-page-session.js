@@ -840,7 +840,7 @@ async function main() {
   // What Files changed says instead, for a record whose comparison could not be made and
   // for one whose merge base the store's shallow history cannot settle.
   const filesUnavailable = Object.fromEntries(
-    ["fetch_failed", "no_merge_base", "base_uncertain"].map((why) => {
+    ["fetch_failed", "no_merge_base", "base_uncertain", "commits_unavailable"].map((why) => {
       const answer = structuredClone(recorded.current.body);
       answer.record.comparison = null;
       answer.record.unavailable = { comparison: why };
@@ -888,24 +888,25 @@ async function main() {
     }),
   );
 
-  console.log(
-    JSON.stringify(
-      {
-        steps,
-        states,
-        otherNumber: { status: other.status, message: other.message, served: other.served },
-        links,
-        wire: runtime.gitPathWire("src/app.txt"),
-        pageDefense: inert,
-        filesChanged: files,
-        filesUnavailable,
-        hunks,
-        place: placeStory(runtime),
-      },
-      null,
-      2,
-    ),
-  );
+  // Printed in two parts: this script prints the first, and
+  // github-pull-page-second-session.js, which runs this same session, the second.
+  // tryscript matches a command's expected output as one regular expression, and the
+  // whole transcript in one block is larger than V8 compiles. `--part 2` selects the
+  // second here, and `--part all` prints everything, for a reader.
+  const first = {
+    steps,
+    states,
+    otherNumber: { status: other.status, message: other.message, served: other.served },
+    links,
+    wire: runtime.gitPathWire("src/app.txt"),
+    pageDefense: inert,
+    filesChanged: files,
+  };
+  const second = { filesUnavailable, hunks, place: placeStory(runtime) };
+  const part = process.argv.indexOf("--part");
+  const wanted = part === -1 ? "1" : process.argv[part + 1];
+  const chosen = wanted === "all" ? { ...first, ...second } : wanted === "2" ? second : first;
+  console.log(JSON.stringify(chosen, null, 2));
 }
 
 main().catch((error) => {

@@ -124,7 +124,7 @@ offers **Fetch**. Once the cause is fixed, run the command again.
 | `not_logged_in` | `gh` is not signed in to github.com | Run `gh auth login` |
 | `not_found_or_private` | It does not exist, or the account cannot read it; GitHub does not say which | Check the URL, and that `gh auth status` names an account with access |
 | `too_large` | The first clone is over the limit | See [Large Repositories](#large-repositories) |
-| `lender_missing` | The checkout this mirror borrows from has moved or gone | Run the command again with `--checkout <new path>` |
+| `lender_missing` | The checkout this mirror borrows from has moved or gone, or can no longer lend: it borrows objects itself, its objects cannot be read, or it holds another repository now | Run the command again with `--checkout <new path>` |
 | `network_unreachable`, `network_error` | GitHub could not be reached, by Git or by `gh` | See [Offline](#offline) |
 
 [The command-line guide](command-line.md#pull-requests) lists every name.

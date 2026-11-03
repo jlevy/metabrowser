@@ -36,9 +36,8 @@ from metabrowser.cache import acquire
 from metabrowser.cache.atomic import RecordError
 from metabrowser.cache.lender import (
     LenderGoneError,
+    overlay_fetch_arguments,
     own_boundary,
-    prepare_overlay_fetch,
-    read_store_lender,
 )
 from metabrowser.cache.locks import (
     CacheLock,
@@ -110,6 +109,9 @@ type PullFetchFailure = Literal[
     "fetch_failed",
     "refreshing_elsewhere",
     "lender_missing",
+    # A commit the comparison needs is not readable here: on an overlay, the checkout
+    # has collected an ancestor the store never held. Healing is a later step.
+    "commits_unavailable",
 ]
 
 
@@ -284,17 +286,16 @@ async def _overlay_negotiation(
 ) -> tuple[str, ...]:
     """An overlay's sweep and negotiation tips under the fetch lock; nothing for a full store.
 
-    From the record, not *published*, so a lender repaired since this server started is
-    the one used. The sweep runs to the end even when cancelled.
+    The sweep runs to the end even when cancelled.
     """
 
-    lender = await asyncio.to_thread(read_store_lender, published.home, published.store_key)
-    if lender is None:
-        return ()
     default = published.default_remote_ref.removeprefix(BRANCH_MIRROR_PREFIX)
-    return await finish_despite_cancel(
-        prepare_overlay_fetch(target, lender, lock.descriptor, preferred=default)
+    prepared = await finish_despite_cancel(
+        overlay_fetch_arguments(
+            published.home, published.store_key, target, lock.descriptor, preferred=default
+        )
     )
+    return prepared.tips
 
 
 async def _undo_a_fold(
@@ -339,9 +340,7 @@ async def _fetch(
     try:
         await fetch_into_store(published, specs, deepen=deepen, timeout_s=timeout_s)
     except LenderGoneError as exc:
-        raise PullRefError(
-            "lender_missing", "the checkout this mirror borrows objects from is gone"
-        ) from exc
+        raise PullRefError("lender_missing", str(exc)) from exc
     except RecordError as exc:
         raise PullRefError("fetch_failed", "the store's record could not be read") from exc
     except LockBusyError as exc:
@@ -474,12 +473,21 @@ async def _endpoints_from(
     base_commit: str,
     base_from: Literal["base_branch", "base_sha"],
 ) -> PullEndpoints:
-    """The merge base of *base_commit* and *head*, when it can be believed."""
+    """The merge base of *base_commit* and *head*, when it can be believed.
+
+    ``no_merge_base`` is Git's own answer that the two share no history, and nothing
+    else: a ``merge-base`` that failed could not read a commit on the walk, which on an
+    overlay is an ancestor the checkout has collected, and that is ``commits_unavailable``.
+    """
 
     try:
         answer = await merge_base_answer(_target(published), base_commit, head)
     except GitCommandError as exc:
-        raise PullRefError("no_merge_base", "the base and head share no history") from exc
+        log.debug("merge-base of %s and %s failed: %s", base_commit, head, exc.stderr_summary)
+        raise PullRefError(
+            "commits_unavailable",
+            "a commit of this pull request's history is not readable here",
+        ) from exc
     if not answer.certain:
         raise BaseUncertainError(base_commit=base_commit, base_from=base_from)
     if answer.merge_base is None:

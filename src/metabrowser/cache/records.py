@@ -146,6 +146,13 @@ type GitRemoteName = Annotated[
     str,
     StringConstraints(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9_][A-Za-z0-9._/-]*$"),
     AfterValidator(_require_remote_name),
+    Field(
+        description=(
+            "A Git remote name, as a path below refs/remotes. The pattern admits a name "
+            "that climbs out of it; the model refuses '..', a trailing '/', and '//', "
+            "which the compiled schema alone does not express."
+        )
+    ),
 ]
 
 

@@ -61,9 +61,10 @@ type StoreMode = Literal[
 ]
 
 type LenderHealth = Literal[
-    # The directory an overlay borrows from is there.
+    # The checkout an overlay borrows from is there and can lend: it has no alternates
+    # file of its own, and its objects are the reader's own to read.
     "present",
-    # It is not: nothing borrowed can be read until the checkout is named again.
+    # It is not, or cannot: nothing borrowed can be read until a checkout is named again.
     "lender_missing",
 ]
 

@@ -52,6 +52,7 @@ from metabrowser.git.process import (
     as_location,
     run_git_at,
 )
+from metabrowser.git.shallow import PARENT_UNAVAILABLE, merge_base_answer, recorded_parents
 
 _NO_MERGE_BASE = "these two commits share no history, so they have no merge base"
 
@@ -145,6 +146,13 @@ class GitDiffSource:
             try:
                 left = await self._rev_parse(f"{right}^")
             except DiffSourceError:
+                # No parent resolves: a root commit, or a commit at a shallow boundary,
+                # whose parent Git grafts away. The object tells them apart. A boundary
+                # commit's diff against the empty tree would show the whole tree as
+                # added, a wrong answer with no warning, on a store and a served
+                # shallow checkout alike.
+                if await recorded_parents(self._location, right):
+                    raise DiffSourceError(PARENT_UNAVAILABLE) from None
                 left = ""  # root commit; git's empty-tree side
                 await self._ensure_empty_tree_oid()
         else:
@@ -174,9 +182,6 @@ class GitDiffSource:
 
         target = self._location.target
         if isinstance(target, RepositoryStoreTarget):
-            # Where a pin is compared: a folder's diff does not load the check.
-            from metabrowser.git.shallow import merge_base_answer
-
             answer = await merge_base_answer(target, left, right)
             if not answer.certain:
                 raise DiffSourceError(

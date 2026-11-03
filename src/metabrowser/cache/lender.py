@@ -83,7 +83,12 @@ _MAX_LOOSE_DEPTH: Final = 32
 _MAX_PACK_ENTRIES: Final = 65_536
 # Remotes a refusal lists; a checkout with more has a reader who knows them.
 _MAX_REMOTES_NAMED: Final = 8
-_CREDENTIALS: Final = re.compile(r"^(https?://)[^/@]*@", re.IGNORECASE)
+# The userinfo of a URL with a scheme (``ssh://user:token@host/…``), and of the scp form
+# (``user:token@host:path``), whose host is followed by a colon before any slash.
+_SCHEME_USERINFO: Final = re.compile(r"^([a-z][a-z0-9+.-]*://)[^/@]*@", re.IGNORECASE)
+_SCP_USERINFO: Final = re.compile(r"^[^/@]*@(?=[^/]*:)")
+_SCHEME: Final = re.compile(r"^[a-z][a-z0-9+.-]*://", re.IGNORECASE)
+_SCP_FORM: Final = re.compile(r"^[^/]+:")
 _REMOTE_SECTION: Final = re.compile(r'^remote\s+"(.*)"$', re.IGNORECASE | re.DOTALL)
 _REMOTE_NAME: Final = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._/-]{0,254}$")
 
@@ -102,7 +107,13 @@ class CheckoutRefusedError(Exception):
 
 
 class LenderGoneError(Exception):
-    """The objects directory a store borrows from is not there. A fetch cannot run."""
+    """The checkout a store borrows from cannot be used now; ``str()`` says why.
+
+    Gone, grown an alternates file of its own, or no longer readable: the checks that
+    admitted it as a lender no longer hold (:func:`lender_problem`), so nothing borrowed
+    may be read and no fetch can run. The repair is the same for each: name the checkout,
+    or its new place, with ``--checkout``.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,19 +228,56 @@ def _remotes(parser: configparser.ConfigParser) -> list[tuple[str, str]]:
     return sorted(found, key=lambda pair: (pair[0] != "origin", pair[0]))
 
 
-def _without_credentials(url: str) -> str:
-    return _CREDENTIALS.sub(r"\1", url)
+def redact_userinfo(url: str, *, keep_user: bool = False) -> str:
+    """*url* without its userinfo, whatever its scheme, the scp form included.
+
+    A password, or a token in the user's place, must reach no terminal: a refusal lists a
+    checkout's remotes as it found them, and a remote the grammar rejects is shown as
+    text. With *keep_user* only the password goes, since ``git@`` is part of an SSH
+    spelling's identity.
+    """
+
+    if keep_user:
+        return re.sub(r"^((?:[a-z][a-z0-9+.-]*://)?[^/@:]*):[^/@]*@", r"\1@", url, flags=re.I)
+    if _SCHEME.match(url):
+        return _SCHEME_USERINFO.sub(r"\1", url)
+    return _SCP_USERINFO.sub("", url)
 
 
-def _identity(url: str) -> GitSource | None:
+def _as_file_url(url: str, base: Path) -> str | None:
+    """A remote spelled as a path, as the ``file://`` URL the command line would name.
+
+    ``git clone /x/origin.git`` records that spelling, and ``../origin.git`` one relative
+    to the checkout, where Git resolves it. Anything with a scheme or in the scp form
+    (``host:path``) is not a path.
+    """
+
+    if not url or _SCHEME.match(url) or _SCP_FORM.match(url):
+        return None
+    try:
+        candidate = os.path.normpath(os.path.join(base, os.path.expanduser(url)))
+    except (OSError, RuntimeError, ValueError):
+        return None
+    return f"file://{candidate}" if os.path.isabs(candidate) else None
+
+
+def _identity(url: str, base: Path) -> GitSource | None:
     """The source a remote's URL names in the same grammar as the command line's.
 
     So every spelling a provider claims, ``git@github.com:o/r.git`` among them, is one
-    identity. A URL holding credentials is compared without them.
+    identity, and a remote spelled as a path is the ``file://`` source of that path. A
+    URL holding credentials is compared without its password first, since a provider's
+    SSH spelling keeps its user, and then without its user, as an https token sits there.
     """
 
-    classified = classify_root_argument(_without_credentials(url), reducers=url_reducers())
-    return classified if isinstance(classified, GitSource) else None
+    spelled = _as_file_url(url, base) or url
+    for candidate in dict.fromkeys(
+        (redact_userinfo(spelled, keep_user=True), redact_userinfo(spelled))
+    ):
+        classified = classify_root_argument(candidate, reducers=url_reducers())
+        if isinstance(classified, GitSource):
+            return classified
+    return None
 
 
 def _same_repository(remote: GitSource, source: GitSource) -> bool:
@@ -242,21 +290,32 @@ def _same_repository(remote: GitSource, source: GitSource) -> bool:
     return remote.normalized.lower() == source.normalized.lower()
 
 
-def _matching_remote(remotes: list[tuple[str, str]], source: GitSource) -> str | None:
+def _matching_remote(remotes: list[tuple[str, str]], source: GitSource, base: Path) -> str | None:
     for name, url in remotes:
-        identity = _identity(url)
+        identity = _identity(url, base)
         if identity is not None and _same_repository(identity, source):
             return name
     return None
 
 
-def _describe_remotes(remotes: list[tuple[str, str]]) -> str:
+def _describe_remotes(remotes: list[tuple[str, str]], base: Path) -> str:
     shown: list[str] = []
     for name, url in remotes[:_MAX_REMOTES_NAMED]:
-        identity = _identity(url)
-        address = identity.normalized if identity is not None else _without_credentials(url)
+        identity = _identity(url, base)
+        # An scp spelling's normalized form keeps its user, which can be a token too.
+        address = redact_userinfo(identity.normalized if identity is not None else url)
         shown.append(f"{name} is {display_segment(address.encode('utf-8', 'surrogateescape'))}")
     return "; ".join(shown) if shown else "it has no remote"
+
+
+def _checkout_root(common_dir: Path) -> Path:
+    """What every worktree of the repository shares, and where a relative remote resolves.
+
+    A linked worktree can be removed while the objects stay, so the name shown should
+    outlast it; a bare clone's root is its Git directory.
+    """
+
+    return common_dir.parent if common_dir.name == ".git" else common_dir
 
 
 def _partial_clone(parser: configparser.ConfigParser, common_dir: Path) -> bool:
@@ -285,15 +344,26 @@ def _object_format(parser: configparser.ConfigParser) -> str:
 
 
 def _objects_readable(objects: Path) -> bool:
+    """Whether the objects directory, and its packs, are the reader's own to read."""
+
     try:
         status = os.stat(objects)
     except OSError:
         return False
-    return (
+    if not (
         stat.S_ISDIR(status.st_mode)
         and status.st_uid == os.geteuid()
         and os.access(objects, os.R_OK | os.X_OK)
-    )
+    ):
+        return False
+    packs = objects / "pack"
+    return not os.path.lexists(packs) or os.access(packs, os.R_OK | os.X_OK)
+
+
+def _borrows_itself(objects: Path) -> bool:
+    """Whether the checkout has an alternates file of its own, which Git would follow onward."""
+
+    return os.path.lexists(objects / "info" / "alternates")
 
 
 def _boundary_is_plain(common_dir: Path) -> bool:
@@ -345,11 +415,12 @@ def check_lender(named: Path, source: GitSource) -> Lender | LenderRefusal:
             "it holds is unknown"
         )
     remotes = _remotes(parser)
-    remote = _matching_remote(remotes, source)
+    base = _checkout_root(common_dir)
+    remote = _matching_remote(remotes, source, base)
     if remote is None:
         raise CheckoutRefusedError(
             f"--checkout {shown} is not a checkout of {source.normalized}: "
-            f"{_describe_remotes(remotes)}"
+            f"{_describe_remotes(remotes, base)}"
         )
     objects = common_dir / "objects"
     refusal: LenderRefusal | None = None
@@ -357,7 +428,7 @@ def check_lender(named: Path, source: GitSource) -> Lender | LenderRefusal:
         refusal = LenderRefusal(
             "partial_clone", "the checkout is a partial clone, which cannot be borrowed from"
         )
-    elif os.path.lexists(objects / "info" / "alternates"):
+    elif _borrows_itself(objects):
         refusal = LenderRefusal("own_alternates", "the checkout borrows objects itself")
     elif not _objects_readable(objects):
         refusal = LenderRefusal("objects_unreadable", "the checkout's objects could not be read")
@@ -378,9 +449,7 @@ def check_lender(named: Path, source: GitSource) -> Lender | LenderRefusal:
         )
     return Lender(
         common_dir=common_dir,
-        # What every worktree of the repository shares: a linked worktree can be removed
-        # while the objects stay, and the name shown should outlast it.
-        root=common_dir.parent if common_dir.name == ".git" else common_dir,
+        root=base,
         remote=remote,
         object_format="sha256" if object_format == "sha256" else "sha1",
     )
@@ -417,7 +486,9 @@ def suggested_checkout(source: GitSource, working_directory: Path) -> Path | Non
         return None
     common_dir = _common_dir_of(root)
     parser = None if common_dir is None else _read_config(common_dir)
-    if parser is None or _matching_remote(_remotes(parser), source) is None:
+    if common_dir is None or parser is None:
+        return None
+    if _matching_remote(_remotes(parser), source, _checkout_root(common_dir)) is None:
         return None
     return root
 
@@ -574,10 +645,53 @@ def read_alternates(git_dir: Path) -> str | None:
     return (read_bounded_text(path, MAX_GIT_POINTER_BYTES) or "").strip()
 
 
-def lender_present(lender: StoreLender) -> bool:
-    """Whether the directory a store borrows from is there. One ``stat``."""
+def lender_problem(lender: StoreLender) -> str | None:
+    """Why the checkout a store records cannot be borrowed from now, or ``None``.
 
-    return os.path.isdir(lender.objects)
+    The checks that admit a lender hold only while it is unchanged, so the ones that are
+    local and cheap run again on every open that uses the record and before every fetch:
+    a checkout that moved is gone; one that has grown an ``objects/info/alternates`` of
+    its own would have Git follow the chain to a directory nothing recorded; one whose
+    objects are no longer the reader's own to read answers ``missing`` for everything.
+    One ``stat`` and the access checks a new lender passes.
+    """
+
+    objects = Path(lender.objects)
+    if not os.path.isdir(objects):
+        return "the checkout this mirror borrows objects from is gone"
+    if _borrows_itself(objects):
+        return "the checkout this mirror borrows objects from now borrows objects itself"
+    if not _objects_readable(objects):
+        return "the objects of the checkout this mirror borrows from could not be read"
+    return None
+
+
+def lender_present(lender: StoreLender) -> bool:
+    """Whether the checkout a store borrows from can be used now (:func:`lender_problem`)."""
+
+    return lender_problem(lender) is None
+
+
+def drop_stale_boundary(git_dir: Path, lender: StoreLender) -> bool:
+    """Remove a boundary the store owns once the checkout has no shallow file; whether it did.
+
+    The store takes its boundary over as a file when it deepens, and that file stays as
+    it was when the checkout later deepens or unshallows: the store would then report a
+    shallow history and deepen from the origin what the checkout already holds. With no
+    boundary the store walks the checkout's objects as they are, and a missing parent
+    stops a walk with an error rather than cutting it, so nothing can be wrongly certain.
+    Under the fetch lock, since the boundary is Git's to write during a fetch.
+    """
+
+    boundary = git_dir / "shallow"
+    try:
+        owned = stat.S_ISREG(os.lstat(boundary).st_mode)
+    except OSError:
+        return False
+    if not owned or os.path.lexists(lender_boundary_path(lender)):
+        return False
+    boundary.unlink()
+    return True
 
 
 def read_store_lender(home: Path, store_key: str) -> StoreLender | None:
@@ -611,8 +725,16 @@ async def _object_kinds(target: RepositoryStoreTarget, oids: list[str]) -> list[
     return kinds
 
 
-async def sweep_dangling_refs(target: RepositoryStoreTarget, lock_fd: int) -> tuple[str, ...]:
-    """Delete every ref whose object the store cannot read; the names deleted, sorted.
+@dataclass(frozen=True, slots=True)
+class Sweep:
+    """What a sweep deleted, and the commits the refs it kept name, each sorted."""
+
+    dangling: tuple[str, ...]
+    held: tuple[str, ...]
+
+
+async def sweep_dangling_refs(target: RepositoryStoreTarget, lock_fd: int) -> Sweep:
+    """Delete every ref whose object the store cannot read.
 
     Git's connectivity check walks every ref and dies on ``bad object``, so one dangling ref
     wedges a fetch that neither brings it nor prunes it: a pull request's fetch on any such
@@ -621,6 +743,8 @@ async def sweep_dangling_refs(target: RepositoryStoreTarget, lock_fd: int) -> tu
     fetch, holding the fetch lock (*lock_fd*). A ref the origin still has comes back with the
     next fetch of it. Measured 2026-11-02: 0.12 s on a replica, 0.25 s at 1,632 refs.
 
+    The commits the surviving refs name are what the store already has from the origin,
+    and the fetch offers them too (:func:`negotiation_tip_args`).
     """
 
     listed = await run_git(
@@ -634,13 +758,9 @@ async def sweep_dangling_refs(target: RepositoryStoreTarget, lock_fd: int) -> tu
         if separator:
             rows.append((oid, ref))
     if not rows:
-        return ()
-    missing = {
-        oid
-        for oid, kind in await _object_kinds(target, sorted({oid for oid, _ref in rows}))
-        if kind == "missing"
-    }
-    dangling = sorted(ref for oid, ref in rows if oid in missing)
+        return Sweep((), ())
+    kinds = dict(await _object_kinds(target, sorted({oid for oid, _ref in rows})))
+    dangling = sorted(ref for oid, ref in rows if kinds.get(oid, "missing") == "missing")
     if dangling:
         await run_git(
             ["update-ref", "--no-deref", "--stdin"],
@@ -651,51 +771,140 @@ async def sweep_dangling_refs(target: RepositoryStoreTarget, lock_fd: int) -> tu
                 "utf-8", "surrogateescape"
             ),
         )
-    return tuple(dangling)
+    held = sorted({oid for oid, _ref in rows if kinds.get(oid) == "commit"})
+    return Sweep(tuple(dangling), tuple(held))
+
+
+def _tip_args(lent: list[str], held: tuple[str, ...]) -> tuple[str, ...]:
+    """``--negotiation-tip=<oid>`` for the commits a fetch tells the origin it has.
+
+    The lender's tips first, the default branch at their head, and then the store's own:
+    what it fetched from the origin before, which the lender may lack. Without the
+    store's own refs among the tips Git offers none of them, and the origin sends the
+    whole gap between the checkout and the origin again on every fetch in which those
+    refs move. Measured 2026-11-02 on a replica with ``transfer.unpackLimit=1``: a branch
+    of 24 commits the checkout never fetched, then one commit pushed before each
+    refresh, cost 75 and 78 objects over two refreshes with the lender's tips alone (the
+    review's run saw 75, 78, and 81 over three), and the one commit's 3 with the store's
+    refs offered too; ``test_a_refresh_brings_only_what_the_store_lacks_and_not_the_gap_again``
+    is that measurement. Deduplicated, and cut at
+    :data:`MAX_NEGOTIATION_TIPS` with the lender's tips kept first, since a store with
+    that many refs has fetched the lender's history and more already.
+    """
+
+    ordered = dict.fromkeys((*lent, *held))
+    return tuple(f"--negotiation-tip={oid}" for oid in list(ordered)[:MAX_NEGOTIATION_TIPS])
 
 
 async def negotiation_tip_args(
-    target: RepositoryStoreTarget, lender: StoreLender, *, preferred: str | None = None
+    target: RepositoryStoreTarget,
+    lender: StoreLender,
+    *,
+    preferred: str | None = None,
+    held: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
-    """``--negotiation-tip=<oid>`` for each lender tip the store reads as a commit.
+    """``--negotiation-tip=<oid>`` for each lender tip the store reads as a commit, then *held*.
 
     Without any, Git offers the store's own refs and the origin sends more; with one the
-    store cannot read, Git refuses (``the object ... does not exist``). So they are
-    filtered through the store's own batch check, each time.
+    store cannot read, Git refuses (``the object ... does not exist``). So the lender's
+    tips are filtered through the store's own batch check, each time. *held* is what the
+    sweep found the store's own refs naming, already checked.
     """
 
     tips = await asyncio.to_thread(negotiation_tips, lender, preferred=preferred)
-    if not tips:
-        return ()
-    kinds = dict(await _object_kinds(target, list(tips)))
-    return tuple(f"--negotiation-tip={oid}" for oid in tips if kinds.get(oid) == "commit")
+    lent: list[str] = []
+    if tips:
+        kinds = dict(await _object_kinds(target, list(tips)))
+        lent = [oid for oid in tips if kinds.get(oid) == "commit"]
+    return _tip_args(lent, held)
+
+
+@dataclass(frozen=True, slots=True)
+class OverlayFetch:
+    """What a fetch into an overlay passes, and the refs the sweep before it deleted."""
+
+    tips: tuple[str, ...]
+    swept: tuple[str, ...]
+
+
+_FULL_STORE_FETCH: Final = OverlayFetch((), ())
 
 
 async def prepare_overlay_fetch(
     target: RepositoryStoreTarget, lender: StoreLender, lock_fd: int, *, preferred: str | None
-) -> tuple[str, ...]:
+) -> OverlayFetch:
     """What every fetch into an overlay does first, under the fetch lock (*lock_fd*).
 
-    Refuses a lender that has gone, since no fetch can succeed then; sweeps; returns the
-    arguments that keep the fetch to what the checkout lacks. Raises
+    Refuses a lender that cannot be used (:func:`lender_problem`), since no fetch can
+    succeed then and a sweep would delete every ref whose object it holds: one that is
+    present but unreadable answers ``missing`` for all of them. So the lender's own
+    remote-tracking tips are read through the store first, and when it names some and
+    the store can read none, the lender is refused the same way and the refs are left.
+    Then a boundary the checkout no longer has is dropped, the store is swept, and the
+    arguments that keep the fetch to what the store lacks are returned. Raises
     :class:`LenderGoneError`, or a ``GitError`` when the store cannot be read.
     """
 
-    if not await asyncio.to_thread(lender_present, lender):
-        raise LenderGoneError
+    problem = await asyncio.to_thread(lender_problem, lender)
+    if problem is not None:
+        raise LenderGoneError(problem)
+    tips = await asyncio.to_thread(negotiation_tips, lender, preferred=preferred)
+    lent: list[str] = []
+    if tips:
+        kinds = dict(await _object_kinds(target, list(tips)))
+        lent = [oid for oid in tips if kinds.get(oid) == "commit"]
+        if not lent:
+            raise LenderGoneError(
+                "the objects of the checkout this mirror borrows from could not be read: "
+                "none of the commits its own remote-tracking refs name can be read through "
+                "the store"
+            )
+    if await asyncio.to_thread(drop_stale_boundary, target.git_dir, lender):
+        log.debug("dropped the store's shallow boundary: the checkout no longer has one")
     swept = await sweep_dangling_refs(target, lock_fd)
-    if swept:
-        log.debug("swept refs whose objects the checkout no longer has: %s", swept[:8])
-    return await negotiation_tip_args(target, lender, preferred=preferred)
+    if swept.dangling:
+        log.debug("swept refs whose objects the checkout no longer has: %s", swept.dangling[:8])
+    return OverlayFetch(_tip_args(lent, swept.held), swept.dangling)
+
+
+async def overlay_fetch_arguments(
+    home: Path,
+    store_key: str,
+    target: RepositoryStoreTarget,
+    lock_fd: int,
+    *,
+    preferred: str | None,
+) -> OverlayFetch:
+    """What a fetch into the store passes, from its record; nothing for a full store.
+
+    The one seam every fetch into a published store goes through, the mirror's refresh
+    and a pull request's alike, under the fetch lock (*lock_fd*). The record is read now
+    and not from memory, so a lender repaired by another process is the one used. A
+    record that cannot be read raises (``RecordError``, ``PrivateStorageError``, or
+    ``OSError``) rather than letting the fetch go on as a full store's: that fetch would
+    wedge on a dangling ref or bring the whole gap again, so the caller reports a typed
+    failure instead. Raises :class:`LenderGoneError` as :func:`prepare_overlay_fetch` does.
+    """
+
+    lender = await asyncio.to_thread(read_store_lender, home, store_key)
+    if lender is None:
+        return _FULL_STORE_FETCH
+    return await prepare_overlay_fetch(target, lender, lock_fd, preferred=preferred)
 
 
 __all__ = [
     "LenderGoneError",
+    "OverlayFetch",
+    "Sweep",
+    "drop_stale_boundary",
     "lender_present",
+    "lender_problem",
     "negotiation_tip_args",
+    "overlay_fetch_arguments",
     "prepare_overlay_fetch",
     "read_alternates",
     "read_store_lender",
+    "redact_userinfo",
     "sweep_dangling_refs",
     "MAX_NEGOTIATION_TIPS",
     "CheckoutRefusedError",

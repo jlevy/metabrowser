@@ -268,8 +268,10 @@ class PullRecord(_Model):
     ``check_runs`` and ``status`` when GitHub refused them (a token without checks
     access answers 403); ``comparison`` when the base could not be fetched
     (``not_found_or_private``, ``network_error``, ``fetch_failed``), shares no history
-    with the head (``no_merge_base``), or cannot be known because the store's history is
-    shallow (``base_uncertain``). The rest of the record stands.
+    with the head (``no_merge_base``, Git's own answer and nothing else), cannot be known
+    because the store's history is shallow (``base_uncertain``), or needs a commit the
+    store cannot read, an ancestor the checkout it borrows from has collected
+    (``commits_unavailable``). The rest of the record stands.
     """
 
 

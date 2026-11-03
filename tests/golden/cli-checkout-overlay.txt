@@ -227,7 +227,7 @@ slug: github-com--octo--demo--46386669dc01
 store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 --- stderr ---
-a full mirror of https://github.com/octo/demo is already in the cache, and it is kept: --checkout borrowed nothing. This release has no command that converts it
+a full mirror of https://github.com/octo/demo is already in the cache, and it is kept: --checkout borrowed nothing. This release has no command that converts it; to borrow instead, delete the mirror from the cache and run this command again
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 
 ## A checkout that cannot lend falls to a full clone and says why.
@@ -277,7 +277,7 @@ store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
 --- stderr ---
 cloning https://github.com/octo/demo into <HOME>
-the checkout's objects are sha256 and the origin's are sha1; cloning
+the checkout's objects are sha256 and the origin's are sha1; cloning instead
 cloned https://github.com/octo/demo in 0.0 s
 
 ## A path that is no checkout of the repository is refused, and says what it found.
@@ -493,6 +493,60 @@ pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
 pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 Error: /api/plugin/diff/comparison?left=3fe5d55744d3e20e0fdcb2a6c7e774b6d48ea19f&right=59f44dac07a12a7c3907fbbcda78e35721c9013b&base_policy=merge_base returned HTTP 404
 
+## A commit at the boundary, A5 (7793d124d206a7532c17b11dbdce90bd0820a2f6), changes one line of f; Git grafts it into a root. Its own diff is refused as parent_unavailable rather than shown against the empty tree, and its commit detail reports what it changed as unknown.
+
+# metab https://github.com/octo/demo/pull/1 --api '/api/plugin/diff/comparison?revision=7793d124d206a7532c17b11dbdce90bd0820a2f6'
+exit: 1
+--- stdout ---
+api: /api/plugin/diff/comparison?revision=7793d124d206a7532c17b11dbdce90bd0820a2f6
+status: 404
+{
+  "error": "diff_comparison",
+  "message": "this commit's parent is beyond the shallow history here, so what it changed cannot be shown (parent_unavailable); more history would settle it",
+  "path": "7793d124d206a7532c17b11dbdce90bd0820a2f6"
+}
+--- stderr ---
+selection: pull_request
+pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/diff/comparison?revision=7793d124d206a7532c17b11dbdce90bd0820a2f6 returned HTTP 404
+
+# metab https://github.com/octo/demo/pull/1 --api /api/git/commit/7793d124d206a7532c17b11dbdce90bd0820a2f6
+exit: 0
+--- stdout ---
+api: /api/git/commit/7793d124d206a7532c17b11dbdce90bd0820a2f6
+status: 200
+{
+  "is_repo": true,
+  "commit": {
+    "id": "7793d124d206a7532c17b11dbdce90bd0820a2f6",
+    "short_id": "7793d12",
+    "parent_ids": [],
+    "author": {
+      "name": "Test",
+      "email": "test@example.com"
+    },
+    "authored_at": 1577836800.0,
+    "committed_at": 1577836800.0,
+    "subject": "A5"
+  },
+  "body": "",
+  "stats": {
+    "files_changed": null,
+    "files_modified": null,
+    "files_added": null,
+    "files_deleted": null,
+    "additions": null,
+    "deletions": null
+  },
+  "files": [],
+  "files_truncated": false
+}
+--- stderr ---
+selection: pull_request
+pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+
 ## A branch the origin deleted and the checkout collected leaves a dangling ref that would wedge every fetch. The refresh sweeps it first.
 
 # metab https://github.com/octo/demo --checkout <ROOT>/swept --no-serve
@@ -523,13 +577,13 @@ refs/remotes/origin/trunk 0b51e0167804d26271bf05e7c4304bfd87d67e01
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: the checkout this mirror of https://github.com/octo/demo borrows objects from is gone: <ROOT>/swept (lender_missing). If it moved, name where it is now: metab https://github.com/octo/demo --checkout <new path>
+Error: the checkout this mirror borrows objects from is gone: <ROOT>/swept (lender_missing), and this mirror of https://github.com/octo/demo cannot be served without it. If it moved, or another checkout of the repository should lend instead, name it: metab https://github.com/octo/demo --checkout <new path>
 
 # metab https://github.com/octo/demo/pull/1 --show m
 exit: 1
 --- stdout ---
 --- stderr ---
-Error: the checkout this mirror of https://github.com/octo/demo borrows objects from is gone: <ROOT>/swept (lender_missing). If it moved, name where it is now: metab https://github.com/octo/demo --checkout <new path>
+Error: the checkout this mirror borrows objects from is gone: <ROOT>/swept (lender_missing), and this mirror of https://github.com/octo/demo cannot be served without it. If it moved, or another checkout of the repository should lend instead, name it: metab https://github.com/octo/demo --checkout <new path>
 
 ## The cache routes read records and no object, so they still answer.
 
@@ -671,3 +725,43 @@ status: 200
   "next_after": null
 }
 --- stderr ---
+
+## The checkout collected an ancestor, M3 (1c7d32c9919db8947b6015c121fc24b463909cd1), that the store never held: the comparison needs it, and the record says commits_unavailable, never no_merge_base.
+
+# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/collected --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+{
+  "state": "current",
+  "comparison_route": "/api/plugin/diff/comparison?left=fbc8399ff0140350e67bec06078d3bbf78200119&right=806ef37f15fef9c34a47873090c6169008db8cd2&base_policy=merge_base",
+  "comparison": {
+    "base": "fbc8399ff0140350e67bec06078d3bbf78200119",
+    "head": "806ef37f15fef9c34a47873090c6169008db8cd2",
+    "base_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+    "base_from": "base_branch"
+  },
+  "unavailable": {}
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+borrowing objects from <ROOT>/collected
+cloned https://github.com/octo/demo in 0.0 s
+selection: pull_request
+pin: 806ef37f15fef9c34a47873090c6169008db8cd2 (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+
+# metab https://github.com/octo/demo/pull/1 --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+{
+  "state": "current",
+  "comparison_route": null,
+  "comparison": null,
+  "unavailable": {
+    "comparison": "commits_unavailable"
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 806ef37f15fef9c34a47873090c6169008db8cd2 (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
