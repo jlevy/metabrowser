@@ -41,6 +41,22 @@ def test_diff_view_projects_the_model() -> None:
     _run("diff-view-behavior.js", "diff view OK")
 
 
+def test_the_comparison_address_is_spelled_by_the_diff_plugin_alone() -> None:
+    """The browser's cache is keyed by the address, so the pull-request page's prefetch and
+    the diff's own request must be one spelling (review of #284, A3): the github plugin
+    asks the registered diff view for the request and names no comparison parameter."""
+    plugins = REPO_ROOT / "src/metabrowser/builtin_plugins"
+    diff = (plugins / "diff/index.js").read_text(encoding="utf-8")
+    page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
+    prefetch = (plugins / "github/comparison-prefetch.js").read_text(encoding="utf-8")
+    assert "prefetch: (comparison, signal) =>" in diff
+    assert diff.count('fetchPluginData("diff", "comparison"') == 2, "render, and prefetch"
+    assert 'getRegisteredView("diff", "diff")' in page and ".prefetch(" in page
+    for source in (page, prefetch):
+        assert 'fetchPluginData("diff"' not in source
+        assert "build:" not in source and "store:" not in source and "BUILD_TAG" not in source
+
+
 def test_what_the_view_says_split_needs_is_what_the_stylesheet_says() -> None:
     """The width below which a diff falls back to Unified is the stylesheet's, in ems."""
 

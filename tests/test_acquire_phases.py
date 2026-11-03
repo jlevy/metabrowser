@@ -154,8 +154,10 @@ def _fetch_after(monkeypatch: pytest.MonkeyPatch, prelude: str, *, then_fetch: b
     real_args = acquire_module.mirror_fetch_args
     after = 'exec git "$@"' if then_fetch else "exit 1"
 
-    def args(remote_url: str, *, prune: bool, progress: bool = False) -> list[str]:
-        fetch = real_args(remote_url, prune=prune, progress=progress)
+    def args(
+        remote_url: str, *, prune: bool, progress: bool = False, negotiation: tuple[str, ...] = ()
+    ) -> list[str]:
+        fetch = real_args(remote_url, prune=prune, progress=progress, negotiation=negotiation)
         return ["-c", f"alias.standin=!f() {{ {prelude}; {after}; }}; f", "standin", *fetch]
 
     monkeypatch.setattr(acquire_module, "mirror_fetch_args", args)

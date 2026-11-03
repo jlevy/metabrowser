@@ -1155,6 +1155,69 @@
           "cursor": null,
           "files": [
             {
+              "additions": 0,
+              "availability": "ready",
+              "binary": false,
+              "deletions": 0,
+              "id": "f1",
+              "kind": "deleted",
+              "old": {
+                "content": {
+                  "kind": "empty"
+                },
+                "entry_type": "file",
+                "mode": "100644",
+                "path": "old.txt",
+                "size": 0
+              }
+            }
+          ],
+          "totals": {
+            "additions": 0,
+            "deletions": 0,
+            "exact": true,
+            "files": 1
+          },
+          "truncated": false
+        },
+        "patches": {
+          "f1": {
+            "file_id": "f1",
+            "hunks": [],
+            "truncated": false
+          }
+        },
+        "resolved": {
+          "base_policy": "direct",
+          "comparison_id": "corpus:case",
+          "kind": "content",
+          "left": {
+            "kind": "patch"
+          },
+          "options": {
+            "context": 3,
+            "rename_detection": true,
+            "rename_similarity": 50
+          },
+          "right": {
+            "kind": "patch"
+          },
+          "source": {
+            "name": "corpus"
+          }
+        },
+        "schema": "file-diff-v1",
+        "schema_version": 1
+      },
+      "expect": "valid",
+      "name": "deleted-empty-file"
+    },
+    {
+      "document": {
+        "manifest": {
+          "cursor": null,
+          "files": [
+            {
               "additions": 1,
               "availability": "ready",
               "binary": false,

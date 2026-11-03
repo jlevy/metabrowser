@@ -24,8 +24,9 @@ from collections.abc import Callable
 from typing import Final, Literal
 from urllib.parse import unquote_to_bytes
 
+from metabrowser.git.process import OBJECT_FORMATS, ObjectFormat
+
 type GitTransport = Literal["https", "ssh", "file"]
-type ObjectFormat = Literal["sha1", "sha256"]
 
 SOURCE_IDENTITY_DOMAIN: Final = "metabrowser.repository-source.v1"
 STORE_IDENTITY_DOMAIN: Final = "metabrowser.repository-store.v1"
@@ -45,7 +46,6 @@ SLUG_SUFFIX_HEX_DIGITS: Final = (12, 16, 24, 32, 64)
 SLUG_MAX_BYTES: Final = SLUG_READABLE_MAX_BYTES + len(SLUG_TOKEN_SEPARATOR) + 64
 
 TRANSPORTS: Final[frozenset[str]] = frozenset({"https", "ssh", "file"})
-OBJECT_FORMATS: Final[frozenset[str]] = frozenset({"sha1", "sha256"})
 
 _IDENTITY_RE: Final = re.compile(r"^sha256:[0-9a-f]{64}$")
 _STORE_KEY_RE: Final = re.compile(r"^[0-9a-f]{64}$")

@@ -294,10 +294,16 @@ metab https://github.com/owner/repo --api /api/source/status
   `file://~/git/squares.git`.
 - `location` is the mirror’s bare repository, with your home directory as `~` when
   `METABROWSER_CACHE_DIR` is under it, and absolute when it is not.
+- `borrows` is the checkout the mirror borrows objects from, as
+  [Beside a checkout](#beside-a-checkout) describes, and `null` for a mirror that holds
+  its own.
+- `shallow` is `true` when the mirror’s history stops at a shallow boundary, and `false`
+  otherwise.
 
-`location` is the only place a route’s answer names a path in the cache.
-File content, listings, errors, and every other envelope name none.
-All three fields are `null` for a folder.
+`location` is the only place a route’s answer names a path in the cache, and `borrows`,
+beside it, the only one that names a checkout.
+File content, listings, errors, and every other envelope name neither.
+`name`, `origin`, `location`, and `borrows` are `null` for a folder.
 
 ### GitHub URLs
 
@@ -511,6 +517,96 @@ Inspect cache state from any local root after an acquire: the cache routes resol
 ```shell
 metab ./notes --api /api/cache/sources
 ```
+
+### Beside a checkout
+
+If you already have the repository checked out, name that checkout once and the mirror
+borrows its objects instead of copying them:
+
+```shell
+metab https://github.com/owner/repo/pull/123 --checkout ~/src/repo
+metab https://github.com/owner/repo/pull/124    # remembered from then on, from anywhere
+```
+
+`--checkout` works with serving, `--api`, `--show`, `--check-api`, and `--no-serve`, on
+a Git source. The path is a checkout’s root, a linked worktree of it, or a bare clone.
+The mirror’s Git objects come from that checkout through `objects/info/alternates`, and
+what it lacks, such as a pull request whose branch it never fetched, is fetched into the
+mirror. That is usually kilobytes, and more when the checkout is behind: on a shallow
+checkout of a 1.2 GB repository, one branch pushed since the checkout’s last fetch cost
+43 MB and 15 s, and the same command minutes later cost 1 MB and 5 s, the checkout
+having fetched it (measured 2026-11-02).
+
+Everything else is the mirror you would otherwise have: the same pages, the same
+pull-request records, and a page served under the same untrusted profile.
+`metab` says so on stderr, `borrowing objects from ~/src/repo`, and `borrows` in
+`/api/source/status` and the heading’s tooltip name it.
+
+**Nothing writes to the checkout, and no Git runs in it.** Its refs, remotes, and
+configuration are files read with a bound on each, and its hooks, `core.fsmonitor`,
+`core.sshCommand`, and diff drivers are not consulted.
+The mirror’s refs are still only what the origin sent: a branch or tag that exists only
+in your checkout is not served.
+
+**Only a checkout you name lends.** Run `metab <url>` inside a checkout of that
+repository with no mirror yet and it clones a full mirror, as it does anywhere else, and
+prints once what would have borrowed instead:
+
+```text
+this directory is a checkout of https://github.com/owner/repo; to borrow its objects instead of cloning: metab https://github.com/owner/repo --checkout ~/src/repo
+```
+
+A directory you merely stand in can be made to look like a checkout of anything, and Git
+does not verify what it reads from one, so that decision is yours.
+
+What can happen when you name one:
+
+| Situation | What `metab` does |
+| --- | --- |
+| No remote of the checkout is the URL’s repository | Refuses, and names the repositories its remotes point at, with any credentials in their URLs left out. Any remote counts, compared without regard to case, so a fork with the repository as `upstream` lends; a remote spelled as a path, as `git clone /x/origin.git` records it, is the `file://` source of that path |
+| The path is no checkout at all | Refuses, whether or not a mirror of the repository is already in the cache |
+| The checkout is a partial clone, or has its own `objects/info/alternates` | Says why and clones a full mirror: the first would find objects missing when they are read, and the second would follow a chain nothing recorded |
+| Its object format differs from the origin’s, its objects cannot be read, or another user owns them | Says why and clones a full mirror |
+| A full mirror of the repository is already in the cache | Keeps it, says so, and borrows nothing. This release has no command that converts one; to borrow instead, delete the mirror from the cache and run the command again |
+| The mirror already borrows from another checkout that can still lend | Keeps borrowing from that one, and says so |
+| `--api /api/cache/...` | Says that the flag is not applied to a cache route, which reads records and no object, and answers the route |
+
+**A shallow checkout** lends too, and `shallow` is `true`: history views stop where the
+checkout’s do, and `metab` says `history is shallow, as the checkout’s is`. On a shallow
+history `git merge-base` can name a commit that is not the real merge base, with no
+error, which would show the base branch’s own changes as the pull request’s. So a merge
+base there is used only when it is provably right.
+When it is not, the pull request’s refresh fetches more history into the mirror, never
+the checkout, in up to five growing rounds; a depth-limited CI checkout is where this
+most often happens. Meanwhile, and offline, the record’s `unavailable.comparison` is
+`base_uncertain`, `comparison_route` is `null`, and the page shows no Files changed
+rather than a guess.
+
+A commit the comparison needs that the checkout no longer holds, an ancestor it has
+collected, is `commits_unavailable` in the record’s `unavailable.comparison`, never
+`no_merge_base`, which is Git’s own answer that two commits share no history.
+A commit at the shallow boundary is shown with its message and author, and its diff is
+refused as `parent_unavailable`, since Git would otherwise diff it against nothing.
+
+**If the checkout moves or is deleted,** nothing borrowed can be read, and `metab`
+refuses rather than serve a failing page:
+
+```text
+Error: the checkout this mirror borrows objects from is gone: ~/src/repo (lender_missing), and this mirror of https://github.com/owner/repo cannot be served without it. If it moved, or another checkout of the repository should lend instead, name it: metab https://github.com/owner/repo --checkout <new path>
+```
+
+The same refusal, with its own reason, answers a checkout that can no longer lend: one
+that has grown an `objects/info/alternates` of its own, whose objects can no longer be
+read, or whose directory now holds another repository.
+The checks that admitted it run again on every open that uses it, and before every fetch
+into the mirror.
+Naming the new place, or another checkout of the repository, repairs it,
+after the same checks, with no network; a repair that stopped before its record was
+written is finished by the same command.
+`--api /api/cache/stores` still answers, with `mode` (`full` or `overlay`) and `lender`
+(`present` or `lender_missing`) for each store, and no path.
+A refresh in a server that is already running reports `lender_missing` as its outcome.
+A store whose alternates file disagrees with its record is refused as `damaged`.
 
 ### Refusals, failures, and interruptions
 

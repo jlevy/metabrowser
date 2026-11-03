@@ -16,10 +16,13 @@ import pytest
 
 from metabrowser import server
 from metabrowser.builtin_plugins.diff import sidekick
+from metabrowser.diff.adapters import git as git_adapter
+from metabrowser.diff.adapters.git import PatchHydration
 from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES
 from metabrowser.diff.format import validate_document
+from metabrowser.git.process import GitCommandError, GitTimeoutError
 from metabrowser.source import ContentHandle, FilesystemContentSource
-from tests.diff_fixture_repo import build_diff_fixture
+from tests.diff_fixture_repo import build_diff_fixture, git
 
 
 class _FakeQuery:
@@ -147,6 +150,160 @@ def test_comparison_hydrates_to_the_bound_and_defers_the_rest(
     deferred = [c for c in document.manifest.files if c.availability.value == "deferred"]
     assert len(ready) == 2 and len(document.patches) == 2
     assert deferred, "files past the bound must be declared deferred, not dropped"
+
+
+def _commit(root: Path, message: str) -> str:
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", message)
+    return git(root, "rev-parse", "HEAD").decode().strip()
+
+
+def test_a_comparison_deleting_an_empty_file_keeps_its_files(tmp_path: Path) -> None:
+    """Any pull request deleting an empty file once answered 404 for the whole comparison."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    (root / "kept.txt").write_text("old\n")
+    (root / "pkg").mkdir()
+    (root / "pkg/__init__.py").write_text("")
+    (root / "logo.bin").write_bytes(b"\x00\x01\x02")
+    base = _commit(root, "base")
+    (root / "kept.txt").write_text("new\n")
+    (root / "pkg/__init__.py").unlink()
+    (root / "logo.bin").unlink()
+    target = _commit(root, "target")
+    server._set_root_dir(root)
+
+    status, body = _comparison(left=base, right=target, base_policy="merge_base")
+
+    assert status == 200, body
+    document = validate_document(body)
+    changes = {(c.new or c.old).path: c for c in document.manifest.files}  # pyright: ignore[reportOptionalMemberAccess]
+    assert changes["pkg/__init__.py"].kind.value == "deleted"
+    assert changes["pkg/__init__.py"].availability.value == "ready"
+    assert document.patches[changes["pkg/__init__.py"].id].hunks == ()
+    assert changes["logo.bin"].availability.value == "binary"
+    assert document.patches[changes["kept.txt"].id].hunks
+    assert document.resolved.warnings == ()
+
+
+def test_a_file_the_diff_did_not_produce_is_named_and_the_rest_are_kept(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    base, target = build_diff_fixture(root)
+    server._set_root_dir(root)
+    real = sidekick.GitDiffSource.hydrate
+
+    async def loses_one(self: Any, resolved: Any, file_ids: Any, **kwargs: Any) -> PatchHydration:
+        whole = await real(self, resolved, file_ids, **kwargs)
+        first, *rest = file_ids
+        patches = {file_id: whole.patches[file_id] for file_id in rest}
+        return PatchHydration(patches=patches, left_out=(first,))
+
+    monkeypatch.setattr(sidekick.GitDiffSource, "hydrate", loses_one)
+    status, body = _comparison(left=base, right=target)
+
+    assert status == 200, body
+    document = validate_document(body)
+    lost = next(c for c in document.manifest.files if c.availability.value == "failed")
+    assert lost.id not in document.patches
+    assert len(document.patches) > 1
+    path = (lost.new or lost.old).path  # pyright: ignore[reportOptionalMemberAccess]
+    assert document.resolved.warnings == (
+        f"1 file(s) could not be read from the produced diff: {path}",
+    )
+
+
+def test_a_name_with_a_space_at_either_end_hydrates_alone(tmp_path: Path) -> None:
+    """`file=` is the path exactly (review of #284, B3): stripped, such a name could be in
+    the first page and never be asked for alone."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    (root / "keep.txt").write_text("keep\n")
+    base = _commit(root, "base")
+    (root / " lead").write_text("lead\n")
+    (root / "trail ").write_text("trail\n")
+    target = _commit(root, "target")
+    server._set_root_dir(root)
+    for name in (" lead", "trail "):
+        status, body = _comparison(left=base, right=target, file=name)
+        assert status == 200, body
+        document = validate_document(body)
+        only = document.manifest.files[0]
+        assert only.new is not None and only.new.path == name
+        assert only.availability.value == "ready" and only.id in document.patches
+
+
+def test_a_git_failure_names_no_path_in_its_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The command line spells every path asked for (review of #284, B5): the body says
+    what happened and the log says the rest."""
+    root = tmp_path / "repo"
+    root.mkdir()
+    base, target = build_diff_fixture(root)
+    server._set_root_dir(root)
+
+    async def fails(*_args: Any, **_kwargs: Any) -> bytes:
+        raise GitCommandError(["diff", "--", "evil\x1b]0;pwned\x07"], 128, "fatal: stderr")
+
+    monkeypatch.setattr(sidekick.GitDiffSource, "_patch", fails)
+    status, body = _comparison(left=base, right=target)
+    assert status == 502 and body == {
+        "error": "diff_comparison",
+        "message": "git diff failed",
+        "path": "",
+    }
+
+    async def hangs(*_args: Any, **_kwargs: Any) -> bytes:
+        raise GitTimeoutError("git diff -- evil exceeded 15s and was terminated")
+
+    monkeypatch.setattr(sidekick.GitDiffSource, "_patch", hangs)
+    status, body = _comparison(left=base, right=target)
+    assert status == 504 and body["message"] == "git diff timed out"
+
+
+def test_a_file_past_the_bound_says_so_and_the_rest_are_served(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "t")
+    (root / "keep.txt").write_text("keep\n")
+    base = _commit(root, "base")
+    (root / "a.txt").write_text("a\n" * 200)
+    (root / "big.txt").write_text("big line\n" * 1000)
+    (root / "c.txt").write_text("c\n" * 200)
+    target = _commit(root, "target")
+    server._set_root_dir(root)
+    monkeypatch.setattr(git_adapter, "MAX_FILE_PATCH_BYTES", 1000)
+
+    status, body = _comparison(left=base, right=target)
+
+    assert status == 200, body
+    document = validate_document(body)
+    states = {(c.new or c.old).path: c.availability.value for c in document.manifest.files}  # pyright: ignore[reportOptionalMemberAccess]
+    assert states == {"a.txt": "ready", "big.txt": "too_large", "c.txt": "deferred"}
+    assert list(document.patches) == [next(c.id for c in document.manifest.files)]
+    assert document.manifest.totals.additions == 1400, "counts come from the manifest"
+
+    status, alone = _comparison(left=base, right=target, file="c.txt")
+    assert status == 200, alone
+    assert validate_document(alone).manifest.files[0].availability.value == "ready"
+    status, alone = _comparison(left=base, right=target, file="big.txt")
+    assert status == 200, alone
+    too_large = validate_document(alone)
+    assert too_large.manifest.files[0].availability.value == "too_large"
+    assert too_large.patches == {}
 
 
 # ── Event-loop discipline ───────────────────────────────────────

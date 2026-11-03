@@ -110,9 +110,11 @@ from metabrowser.gz_io import (
     ArtifactPath,
 )
 from metabrowser.http_caching import (
+    BUILD_TAG,
     build_scoped_etag,
     etag_headers,
     matches_if_none_match,
+    store_tag,
 )
 from metabrowser.inventory_engine.contract import (
     DiagnosticsProjection,
@@ -1177,9 +1179,10 @@ def _mirror_tip(status: SourceStatus) -> str | None:
 
     if status["location"] is None:
         return None
+    borrowing = f", borrowing objects from {status['borrows']}" if status["borrows"] else ""
     return (
-        f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}: "
-        "a bare Git repository, with no checked-out files."
+        f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}"
+        f"{borrowing}: a bare Git repository, with no checked-out files."
     )
 
 
@@ -1383,8 +1386,17 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
     perf_url = _static_asset_url("perf.js")
     # Inject the client-visible settings dict before any app code
     # runs so JS can read window.METABROWSER_SETTINGS.* without
-    # duplicating constants in the source.
-    client_settings_block = f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES))};</script>"
+    # duplicating constants in the source. A store's token travels beside the build, so
+    # an answer a browser keeps is scoped to this store; a folder has none.
+    client_settings = {
+        **client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES),
+        "BUILD_TAG": BUILD_TAG,
+    }
+    if pin is not None:
+        client_settings["STORE_TAG"] = store_tag(pin.command_target.git_dir)
+    client_settings_block = (
+        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings)};</script>"
+    )
     settings_block = (
         f"<script>window.METABROWSER_PATH_ENCODING={_json.dumps('utf16' if os.name == 'nt' else 'bytes')};</script>"
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"

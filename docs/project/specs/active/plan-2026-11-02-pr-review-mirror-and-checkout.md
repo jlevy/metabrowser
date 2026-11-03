@@ -1,17 +1,16 @@
 # Plan: Pull-Request Review from a Mirror or an Existing Checkout
 
-**Status:** Designed, independently reviewed, and tested; not started.
-Nothing here exists in the code: no store mode, flag, record, route field, state, or
-test. The design was proven by experiments on 2026-11-02 against a 1.2 GB private
-repository and small local replicas, reviewed the same day with the verdict *sound with
-changes*, and revised: every finding of the review is applied below and proven again
-against the reviewer’s own replicas.
+**Status:** Designed, independently reviewed, and tested; decided by the owner on
+2026-11-02; step 1 of [Delivery](#delivery) is in progress.
+The design was proven by experiments on 2026-11-02 against a 1.2 GB private repository
+and small local replicas, reviewed the same day with the verdict *sound with changes*,
+and revised: every finding of the review is applied below and proven again against the
+reviewer’s own replicas.
 [Independent Review](#independent-review) records each finding and its disposition,
 [What the Experiments Established](#what-the-experiments-established) says which claims
 were proven and which are inferred, and
-[Open Decisions for the User](#open-decisions-for-the-user) lists what the user settles
-before step 1 starts.
-[Delivery](#delivery) says what can ship in 0.12.x.
+[Open Decisions for the User](#open-decisions-for-the-user) records what the owner
+settled. [Delivery](#delivery) says what can ship in 0.12.x.
 
 This plan extends the [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md), which stays
 the authority for the list, the tab, numbered routes, and the pages on a checkout, and
@@ -107,7 +106,7 @@ The reviewer’s replicas and the revised recipe of [Design](#design):
 | Question | Result |
 | --- | --- |
 | A copied boundary makes **`merge-base` silently wrong** (reviewer, r2): a merge-heavy history cloned at `--depth 3` | The overlay answered A1 where the origin answers A4, and Files changed listed the base branch’s own change beside the pull request’s. The **certainty check** of [Merge Base on a Shallow Store](#merge-base-on-a-shallow-store) flagged it as `uncertain`; one `--deepen=2` round into the store (its own objects; the checkout untouched) made it `certain` at A4 with the correct Files changed. A `--depth 1` linear clone whose merge base is cut: empty answer, `uncertain`, certain after two rounds. The reviewer’s crafted boundary below the merge base: `certain` and correct; the same boundary placed above it: empty answer, `uncertain`. On the real repository all seven fetched pull requests were `certain` in 0.10 to 0.21 s each |
-| A **live boundary**: the store’s `shallow` is a symbolic link to the checkout’s | Git reads it; a plain fetch leaves the link; when the checkout deepened the store answered the deeper merge base at once, and when it unshallowed the store stopped being shallow. The store’s own `--deepen` replaces the link with a regular file of its own through Git’s lockfile rename, so the checkout’s file is never written |
+| A **live boundary**: the store’s `shallow` is a symbolic link to the checkout’s | Git reads it; a plain fetch leaves the link; when the checkout deepened the store answered the deeper merge base at once, and when it unshallowed the store stopped being shallow. **Corrected while building step 1:** the store’s own `--deepen` through the link does not replace the link. Git’s lockfile follows it, so on Git 2.50.1 the link stayed and the *checkout’s* `shallow` got a new inode and new contents. An earlier run saw the link vanish only because the checkout was by then unshallowed, and Git unlinks the file for that. The recipe below, a copy before the first round, is therefore what keeps the checkout unwritten, and `tests/test_checkout_overlay.py` pins it |
 | Asking GitHub for the merge base instead (`GET repos/<o>/<r>/compare/<base>...<head>`, `merge_base_commit`) | Agreed with the local answer for all seven pull requests; `per_page=1` responses of 26 KB to 536 KB in 0.9 to 1.7 s, since the endpoint embeds every changed file with its patch and has no field selection |
 | **Seeded refs** (reviewer, r1 and r4): the checkout’s remote-tracking refs created in the store | Served 70 branches and tags the origin no longer has, and a planted checkout’s `release-2.0` and `v9.9` at the attacker’s commit, until a `--prune` refresh. **Not seeding** and passing the checkout’s tips as `--negotiation-tip` instead, read from `packed-refs` and loose ref files with no Git process in the checkout: the store’s refs after acquisition were the origin’s 262 and nothing else, the planted refs never existed, and a pull-request head the checkout lacks still cost 92 KB (130 haves, 57 acknowledgements). The full acquisition fetch ran at load 36 in 13.3 s with 0 KB of objects; a first fetch pays a connectivity walk over every object its refs reach (327,834 objects, 6.7 s at load 62), and a later fetch’s walk stops at the store’s own refs (0.06 s) |
 | **Content addressing on read** (new, replica): an object’s bytes replaced in the checkout under its genuine name, loose and packed, and a forged commit | Git **does not verify hashes on read**: `cat-file --batch` (Metabrowser’s batch reader), `show`, `diff`, and `log` served the forged bytes with no error, a fetch’s connectivity check passed, and only `fsck` reported `hash-path mismatch`; `merge-base` reported `hash mismatch` for the forged commit. Hashing the streamed blob (`sha1("blob <size>\0" + bytes)`) detects the forgery |
@@ -116,8 +115,51 @@ The reviewer’s replicas and the revised recipe of [Design](#design):
 | A lender with its own `objects/info/alternates`; a fork layout; a FIFO | Git follows a lender’s alternates onward (reviewer, r4 d), so such a lender is refused. Tips are read from `refs/remotes/<name>/` of whichever remote matches, and `discover_repository_context` reads only `origin` today. `_read_bounded_text` on a FIFO named `commondir` blocked until killed at 3 s |
 | Discovery on the real checkout (reviewer, r8) | The root, a linked worktree, and a subdirectory resolve in 10 to 16 ms; the vendored submodule resolves to its own repository |
 
-The scripts and raw outputs of both sets are kept outside the repository; the
+### While Building Step 1
+
+The production code on the measured repository, on 2026-11-02 at load averages of 11 to
+18, in caches of their own, with `gh` reading each pull request:
+
+| Question | Result |
+| --- | --- |
+| Four pull requests, by `--checkout` on the checkout and again on a linked worktree | Acquisition 5.4 s, and each `metab <url> --no-serve` 12 to 14 s for the first and 6 to 8 s after it, most of it `gh`: a full mirror’s copy opened the same four in 6 to 7 s each. The store was **1.06 MB**: 266 loose refs at 4 KB each and no object. Files, additions, and deletions matched `gh pr view` for all four, and each comparison’s answer was **byte-identical** to the full mirror’s |
+| The operating system refusing every write under the checkout (`sandbox-exec`, `deny file-write*`), including one real `--deepen=2` | Every command above succeeded, the deepening in 2.9 s for 1 MB, leaving the store’s boundary a file of its own and no `shallow.lock` beside the checkout’s. This proves it where a checksum cannot: the checkout was in active use and its `config` changed during a run, from elsewhere |
+| A branch pushed between the checkout’s last fetch and an acquisition | The store took **43 MB in 15 s** (21,619 objects, 1,012 commits, a year of history), then the page opened as usual. When every tip is present Git’s `everything_local` skips negotiation and nothing comes. When one is not, the origin walks its history, and a shallow client’s haves stop at its boundary, so what it sends can go back past it. This is the worst measured cost of a first fetch and is bounded only by what the checkout appears to lack, as [Storage Modes](#storage-modes) says. The next acquisition, after the checkout fetched, cost 1 MB again |
+| What the sweep is for, in the production refresh | The raw fetch of r3 wedges on any dangling ref, but `update_store` prunes and retries, and a fetch that wants the ref’s object brings it, so a dangling branch heals without the sweep. A dangling `refs/pull/<n>/head` does not, since no refspec of a refresh names it: the refresh and its retry both die. A pull request’s fetch wedges on any dangling ref. The sweep runs before both, as designed |
+| `--deepen` through the symbolic link, on a replica | See the correction in [After the Review](#after-the-review): it replaces the checkout’s file, so the store replaces the link first |
+| Tips at many refs | Over 40,000 remote-tracking refs the file read took 37 ms and the filter of 4,096 took 64 ms. A fetch ran in 1.4 s with no tips, 1.5 s with 4,096, and 1.8 s with 14,000, and 16,384 failed to start with `Argument list too long` at an `ARG_MAX` of 1 MiB. The measured repository has 327 tips, read in 9 ms |
+
+### Found by the Review of Step 1
+
+Three independent reviews of the step 1 pull request (senior, security, and correctness,
+2026-11-02) found these, each fixed in that pull request and recorded here because it
+changes what the plan says; the reviews and their dispositions are on the pull request
+itself.
+
+| Question | Result |
+| --- | --- |
+| **A boundary commit’s own diff** (correctness, High) | Git grafts a commit at the boundary into a root, so `<commit>^` does not resolve and the diff adapter compared it against the empty tree, showing a whole tree as added with no warning: on the merge-heavy depth-3 replica, A5 read `+a5` where the truth is one changed line. The same held for a served shallow checkout, and for `git show`, so `/api/git/commit/<id>` counted a whole tree too. **Fixed in one place:** `recorded_parents` reads the parents from the object itself, which the graft never touches; the comparison answers `parent_unavailable`, the commit detail reports its `stats` as unknown, and a real root commit is unchanged. `/api/git/log` keeps Git’s cut graph, which the status route labels shallow |
+| **A refresh re-downloads the gap** (senior, High; the bot too) | With the checkout’s tips alone as `--negotiation-tip`, Git offered none of the store’s own refs, so the origin sent again everything the checkout lacked, on every refresh in which those refs moved: on a replica with `transfer.unpackLimit=1`, a branch of 24 commits the checkout never fetched, moved by one commit, cost 75, 78, and 81 objects per refresh. **Fixed:** the commits the swept store’s refs name are tips too, after the checkout’s; the same refresh then costs the one commit’s 3 objects, which `test_a_refresh_brings_only_what_the_store_lacks_and_not_the_gap_again` pins |
+| **The lender’s checks ran only with `--checkout`** (security, Medium) | A remembered open and a running server stat’ed the directory and nothing else, so a lender that grew an `objects/info/alternates` after creation had Git follow the chain to a directory nothing recorded. **Fixed:** the cheap local checks run on every open that uses the record and before every fetch, the full check with the remote match at open; the answer is `lender_missing` with the reason, repaired the same way |
+| **An unreadable lender was swept** (correctness, Medium) | A present but unreadable lender answered `missing` for every borrowed object, and the sweep deleted every ref, with the fetch failing in the same pass. **Fixed:** the lender’s own remote-tracking tips are read through the store before the sweep; a lender that names some and lends none is refused and the refs stay |
+| **A missing ancestor read as `no_merge_base`** (correctness, Medium) | `merge-base` exits 128 when it cannot read a commit on the walk, and that was mapped to “the base and head share no history”. **Fixed:** `commits_unavailable`, the plan’s name, for that case in step 1; healing stays step 2 |
+| **A half-written repair** (correctness, Medium; the bot too) | A repair that stopped between the alternates file and the record left a store `damaged` that `--checkout` could not repair. **Fixed:** `--checkout` naming the checkout the alternates file already names finishes the repair, and a repair takes the fetch lock before the store lock, as every fetch does |
+| **A served pull head the sweep removed** (senior, Medium) | The refresh swept a dangling `refs/pull/<n>/head`, no refspec of a refresh restores it, and the status then read the ref as gone from the origin, which keeps every pull-request head. **Fixed:** a swept ref is unobserved (`ref_on_origin: null`) until a fetch names it again |
+| **The boundary read before Git only** (correctness, Medium; the bot too) | The empty-boundary returns trusted the read taken before Git ran. **Fixed:** read again on every return; a boundary that differs makes the answer uncertain |
+| **A stale owned boundary** (correctness, Low) | Once the store owned its boundary, a checkout that deepened or unshallowed left the store shallow. **Fixed:** before a fetch, a boundary the store owns is dropped when the checkout has no shallow file; a missing parent then stops a walk with an error, never a cut |
+| **A path-spelled remote** (senior, Medium) | `git clone /x/origin.git` records that spelling, which classified as a local path and never matched a `file://` source. **Fixed:** a path remote is the `file://` source of its resolved path, absolute or relative to the checkout; a lookalike directory and an https source still match nothing |
+
+The follow-up review of the fixes found three more, each fixed in the same pull request:
+
+| Question | Result |
+| --- | --- |
+| **No common history on Git before 2.45** (High) | A merge-base walk that meets a commit it cannot read exits 1 there, Git’s answer for unrelated histories, where 2.45 and later fail, so the admitted 2.43.7 recorded `no_merge_base` for a collected ancestor. **Fixed:** a store with no boundary believes that answer, and a merge base that is neither tip, only after `rev-list --count` over the same walk, which fails on an unreadable commit on every Git |
+| **A partly unreadable lender was swept** (Medium) | The probe of the lender’s tips passed when one loose object or one pack was unreadable and the rest read, and had nothing to probe on a lender whose refs no file holds, as reftable keeps them, so a live `refs/pull/<n>/head` or the default branch was deleted. **Fixed:** a ref is swept only when no loose file of its object exists, whatever its mode, and every file of the lender’s pack directory reads; otherwise `lender_missing` and the refs stay |
+| **A repair the disk refused** (Medium) | A permission error while rewriting the alternates file printed a traceback. **Fixed:** an `Error:` line naming the reason; the record is written last, so the store is unchanged or refused as `damaged`, and the same command finishes it |
+
+The scripts and raw outputs of all three sets are kept outside the repository; the
 coordinator holds the paths.
+
 A replica is a bare origin, a clone of it as the checkout, and an overlay store, built
 in seconds, so every scenario above can become a test fixture.
 
@@ -227,15 +269,13 @@ The working directory borrows nothing by itself.
 When `metab <url>` runs inside a checkout of the URL’s repository and no store exists,
 it clones a full mirror as it does today and prints, once, the `--checkout` command that
 would borrow instead: the reader decides, and nothing is remembered that the reader did
-not name.
-Item 2 of [Open Decisions](#open-decisions-for-the-user) offers the alternative
-and what it costs.
+not name. Item 2 of [Open Decisions](#open-decisions-for-the-user) records the
+alternative and what it would cost.
 
 Precedence: a published store for the source wins, whatever its mode, so a URL never
 silently changes storage; then `--checkout`. `metab <url> --checkout` when a full mirror
 already exists uses the mirror and prints the conversion command
-([Conversions](#conversions)); item 4 of the decisions is whether that should convert
-instead.
+([Conversions](#conversions)), as item 4 of the decisions settled.
 
 **Which remote.** `discover_repository_context` reads only `origin` today.
 The check reads every `remote.<name>.url` and accepts the checkout when any remote’s
@@ -330,7 +370,7 @@ Which mode applies, and the fallback:
 | No remote of the checkout has the URL’s identity | Refused | The refusal names the repositories the remotes point at |
 | The checkout’s object format differs from the origin’s | `full` | Named |
 | The objects directory is unreadable, or owned by another user | `full` | `the checkout’s objects could not be read; cloning` |
-| A full store already exists | `full` is kept | Named, with the conversion command |
+| A full store already exists | `full` is kept | Named. The conversion command is printed once step 3 makes one; until then the line says there is none |
 
 Nothing ever converts a store or changes its mode without a command.
 
@@ -367,8 +407,10 @@ repository, where all seven pull requests were certain.
 the base branch and the pull-request head, into its own objects, the checkout untouched,
 and checks again, for a bounded number of rounds; the reviewer’s r2 needed one round of
 two commits, its depth-1 case two.
-Before the first round the symbolic link is replaced by a copy, so the store owns its
-boundary from then on; Git’s lockfile rename never writes the checkout’s file.
+Before the first round the symbolic link is replaced by a copy, under the fetch lock, so
+the store owns its boundary from then on: with the link in place, Git’s lockfile would
+follow it and replace the checkout’s file.
+A dangling link is removed for the same reason.
 A store-owned boundary can only be a subset of what the checkout later has, which keeps
 the cut-graph argument sound.
 The whole `--unshallow` of the measured repository cost 8.8 MB, which bounds the rounds
@@ -386,13 +428,12 @@ A guess is never shown.
 record job already talks to `gh`. It is not adopted as the primary: it answers only
 online, the response embeds every changed file with its patch and has no field selection
 (26 KB to 536 KB here, bounded only by `GH_API_MAX_BYTES`), and it would make a Git fact
-depend on the API. It stays an option for item 3 of the decisions, as a cross-check when
-the store cannot deepen.
+depend on the API. Item 3 of the decisions rejected it.
 
-**Verifying counts** against the record’s `changed_files`, `additions`, and `deletions`
+**Verifying counts** against GitHub’s `changed_files`, `additions`, and `deletions`
 would have caught r2 but is not a proof: equal counts do not imply the same merge base.
-It is added as a cheap assertion in the comparison job that logs a mismatch, nothing
-more.
+The record does not keep those three fields, so this would change its schema, and step 1
+leaves it out: the check above is the guard.
 
 ### Failure and Recovery
 
@@ -415,14 +456,16 @@ by ID while it still holds it, which is what the healing relies on.
 | A dangling ref of any kind in the store, a pruned branch the origin had deleted | Every fetch, the healing one and the refresh that would prune it: `bad object … did not send all necessary objects`; `for-each-ref` and `log --all` fail | The **sweep**: before any fetch into an overlay, under the store lock, one `cat-file --batch-check` over every ref, and `update-ref -d` of each dangling one. 0.25 s at 1,632 refs | A refresh restores any swept ref the origin still has | None; it is a step of every fetch |
 | The checkout is repacked | Nothing | — | — | — |
 | The checkout’s history made shallower | As pruned | As pruned | As pruned | As pruned |
-| The checkout moved or deleted | Every read of a borrowed object; a fetch too | **At open**, the alternates directory is stat’ed: `lender_missing`, in step 1 | `--checkout <new path>` rewrites `objects/info/alternates` and the record after checking the remote; otherwise re-acquire as a full mirror, which is a new clone. A conversion before deleting the checkout avoids both ([Conversions](#conversions)) | `metab` refuses to serve and prints both commands with the recorded path; `/api/cache/stores` reports `lender_missing`; a running server answers `object_unavailable` for borrowed objects and the status route reports `lender_missing` on its next refresh |
+| The checkout moved or deleted, or can no longer lend: it grew an `objects/info/alternates` of its own, its objects stopped being the reader’s to read, or its directory holds another repository | Every read of a borrowed object; a fetch too; a chain of alternates would read a directory nothing recorded | **At open**, the checks that admitted the lender run again (the stat, the alternates refusal, the ownership and readability checks, then the remote match): `lender_missing` with the reason, in step 1. **Before every fetch**, the cheap local checks again, and the lender’s own remote-tracking tips are read through the store: a lender that names some and lends none is unreadable, and nothing is swept; nor is a ref whose object the lender may still hold (a loose file of it, or a pack it cannot read), which covers a lender with no ref files | `--checkout <new path>` rewrites `objects/info/alternates` and the record after checking the remote, under the fetch lock and the store lock, and finishes a repair that stopped before its record; otherwise re-acquire as a full mirror, which is a new clone. A conversion before deleting the checkout avoids both ([Conversions](#conversions)) | `metab` refuses to serve and prints both commands with the recorded path; `/api/cache/stores` reports `lender_missing`; a running server answers `object_unavailable` for borrowed objects and the status route reports `lender_missing` on its next refresh |
+| An ancestor the checkout collected, which the store never held | `merge-base` cannot read a commit on its walk | The record’s `unavailable.comparison` is `commits_unavailable`, in step 1; `no_merge_base` is only Git’s own answer that two commits share no history | The healing job, step 2 | The page says a commit of the pull request’s history is not readable here |
+| A served `refs/pull/<n>/head` the sweep removed | Nothing it reads; the ref is gone until a fetch names it | The refresh reports what it swept | The companion’s pull fetch brings the ref and its objects back | The status route reports the ref as unobserved (`ref_on_origin: null`), never as removed by the origin, which keeps every pull-request head |
 | `gc` in the store | Never runs | — | — | — |
 
 “No object Metabrowser showed is ever lost” is kept for a full store and relaxed for an
 overlay to: **no object Metabrowser showed is lost while the checkout keeps it or GitHub
 still serves that commit.** A dangling pin is a typed state, repaired by the healing
 job, and never a blank page.
-That relaxation is item 1 of the decisions.
+That relaxation is item 1 of the decisions, which the owner accepted.
 
 ### The Rule This Changes
 
@@ -636,8 +679,8 @@ each item is a correctness or safety condition of the mode itself.
 
 | Step | Scope | Checkpoint a person can see | Needed for the user’s goal | Ships |
 | --- | --- | --- | --- | --- |
-| 1. Overlay acquisition | `acquire.py`’s overlay path from `--checkout` only; the lender check and every refusal, with `lender_missing` and its text at open; the remote match across all remotes; tips from files and `--negotiation-tip`, with the FIFO guard; the live boundary; the sweep before every fetch; the certainty check, deepening, and `base_uncertain` in `pull_refs.py`; `lender` in `store.yml` and its contract; `borrows`, `shallow`, and `mode` in the routes and the heading; the printed suggestion inside a checkout | `metab <pull-request URL> --checkout <path>` serves the pull request in seconds with no object copied and says so; the reviewer’s r2 and r4 fixtures answer `uncertain` and serve no planted ref | Yes | 0.12.x, after 0.12.0 is tagged; it adds a mode and touches no served behavior of a full store, which the regenerated transcripts show |
-| 2. Healing and verification | The healing job (sweep, by ID, then the ref), `commits_unavailable`, blob verification, `--checkout` as repair, the replica fixtures and their scenarios | Prune the fixture, open the pull request, watch it heal; force-push and watch the shown commit come back; move the checkout, see the refusal and fix it | Yes | 0.12.x, with step 1 or just after |
+| 1. Overlay acquisition | `acquire.py`’s overlay path from `--checkout` only; the lender check and every refusal, with `lender_missing` and its text at open, and the same checks again on every later open and before every fetch; the remote match across all remotes, a path-spelled remote included; tips from files and the store’s own refs as `--negotiation-tip`, with the FIFO guard; the live boundary, dropped once the checkout has none; the sweep before every fetch, only when the lender lends; the certainty check, deepening, `base_uncertain`, and `commits_unavailable` for an unreadable ancestor in `pull_refs.py`; a boundary commit’s diff refused as `parent_unavailable`; `lender` in `store.yml` and its contract; `borrows`, `shallow`, and `mode` in the routes and the heading; the printed suggestion inside a checkout | `metab <pull-request URL> --checkout <path>` serves the pull request in seconds with no object copied and says so; the reviewer’s r2 and r4 fixtures answer `uncertain` and serve no planted ref | Yes | 0.12.x, after 0.12.0 is tagged; it adds a mode and touches no served behavior of a full store but one documented fix, a boundary commit’s diff, which the regenerated transcripts show |
+| 2. Healing and verification | The healing job (sweep, by ID, then the ref), `commits_unavailable` when GitHub no longer serves a shown commit, blob verification, the replica fixtures and their scenarios. `--checkout` as repair moved into step 1, because the refusal prints it and a printed command must work; so did `commits_unavailable` for an ancestor the checkout collected, because `no_merge_base` was a false statement there | Prune the fixture, open the pull request, watch it heal; force-push and watch the shown commit come back; move the checkout, see the refusal and fix it | Yes | 0.12.x, with step 1 or just after |
 | 3. Conversions | The two cache routes and their repacks | Convert the measured mirror to an overlay and back | No; it is how an existing full mirror stops duplicating | After 0.12.x; small |
 | 4. Overlay inside the folder server | The Pulls tab plan’s step 5 as decided here: acquisition from a running folder server into an overlay of that checkout | Open a checkout, open a pull request, read Files changed from the overlay | No; it needs the Pulls tab stack | With that stack |
 | 5. Deepening | `--unshallow` as a background job with a measured bound, beyond what uncertainty needs | A shallow overlay’s history completes itself | No | `mb-dqvj`, later |
@@ -754,48 +797,37 @@ unbounded in the checkout’s size.
 
 ## Open Decisions for the User
 
-1. **Relax the no-loss rule for an overlay.**
-   - *Recommended:* yes, to “no object shown is lost while the checkout keeps it or
-     GitHub still serves that commit”, with the typed states and the healing job of
-     [Failure and Recovery](#failure-and-recovery).
-   - *Alternative:* keep the rule as written, which means no overlay and the duplicated
+None is open: the owner decided all six on 2026-11-02, each as recommended here when the
+plan was reviewed. The rejected alternatives are kept so a later reader can see what was
+weighed.
+
+1. **The no-loss rule is relaxed for an overlay.** No object shown is lost while the
+   checkout keeps it or GitHub still serves that commit, with the typed states and the
+   healing job of [Failure and Recovery](#failure-and-recovery).
+   - *Rejected:* keep the rule as written, which means no overlay and the duplicated
      clone the user asked to avoid.
-   - *Affects:* whether this plan proceeds.
-2. **Which checkouts may lend.**
-   - *Recommended:* only a checkout the reader names with `--checkout` or serves with
-     `metab <checkout>`, remembered from then on; inside a checkout, `metab <url>`
-     clones and prints the flag once.
-     The cost is one flag, once per repository.
-   - *Alternative:* also the enclosing checkout of the working directory, when it is the
-     checkout’s root and its objects hold the origin’s advertised HEAD, printed loudly
-     and remembered. The reviewer showed that any directory the reader stands in can be
-     made to pass as a checkout, and Git does not verify what it reads, so this trusts
-     wherever the reader happens to be.
-   - *Affects:* whether “seamless” means zero flags, and what a planted directory can
-     do.
-3. **When a merge base is uncertain.**
-   - *Recommended:* deepen the store from the origin, bounded in rounds and by the
-     acquisition deadline, as a job; `base_uncertain` meanwhile and offline.
-   - *Alternatives:* ask GitHub’s compare endpoint, which is online-only and heavy; or
+2. **Only a checkout the reader names with `--checkout` or serves with
+   `metab <checkout>` may lend**, remembered from then on.
+   Inside a checkout, `metab <url>` clones and prints the flag once.
+   The working directory never borrows silently.
+   - *Rejected:* also the enclosing checkout of the working directory.
+     The reviewer showed that any directory the reader stands in can be made to pass as
+     a checkout, and Git does not verify what it reads.
+3. **An uncertain merge base deepens from the origin** into the store, bounded in rounds
+   and by the acquisition deadline, as a job.
+   It reads `base_uncertain` meanwhile and offline.
+   - *Rejected:* GitHub’s compare endpoint, which is online-only and heavy; and
      `base_uncertain` only, never resolved.
-   - *Affects:* whether a shallow checkout ever shows Files changed for an old pull
-     request, and how much the store grows.
-4. **When a full mirror exists and a checkout is named.**
-   - *Recommended:* keep the mirror and print the conversion command; the disk is the
-     user’s to reclaim.
-   - *Alternative:* convert when `--checkout` is given.
-   - *Affects:* whether a flag ever changes a store’s mode.
-5. **Showing the checkout’s path.**
-   - *Recommended:* `borrows` beside `location` in the status envelope and the heading
-     tooltip, under the same exception.
-   - *Alternative:* the cache routes only.
-   - *Affects:* whether a page says where its objects come from.
-6. **Blob verification on an overlay.**
-   - *Recommended:* yes, in step 2, once the hash per streamed blob is measured against
-     the batch reader’s budget.
-   - *Alternative:* trust the named checkout as the Git tab does.
-   - *Affects:* whether a damaged or dishonest checkout shows as `object_corrupt` or as
-     content.
+4. **An existing full mirror is kept** and the conversion command printed, with no
+   automatic conversion.
+   The disk is the user’s to reclaim.
+   - *Rejected:* convert when `--checkout` is given.
+5. **`borrows` is shown beside `location`** in the status envelope and the heading
+   tooltip, under the same exception.
+   - *Rejected:* the cache routes only.
+6. **Blob verification comes in step 2**, once the hash per streamed blob is measured
+   against the batch reader’s budget.
+   - *Rejected:* trust the named checkout as the Git tab does.
 
 ## References
 

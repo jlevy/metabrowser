@@ -745,7 +745,47 @@ $ node tests/dom/github-pull-page-session.js
     "open on the record's comparison: keep",
     "open on an older head: offer",
     "no comparison in the record: unavailable"
-  ],
+  ]
+}
+? 0
+```
+
+The session is printed in two parts, by `github-pull-page-session.js` and by
+`github-pull-page-second-session.js`, which runs the same session whole, because
+tryscript matches a command’s expected output as one regular expression, and the
+transcript in one block is larger than V8 compiles.
+The second part is what Files changed says when the comparison is unavailable, the
+review comments’ hunks, and the reader’s place.
+
+```console
+$ node tests/dom/github-pull-page-second-session.js
+{
+  "filesUnavailable": {
+    "fetch_failed": {
+      "files": "Files changed is unavailable: the pull request's base could not be compared with its head.",
+      "notes": [
+        "Files changed could not be read (fetch failed)."
+      ]
+    },
+    "no_merge_base": {
+      "files": "Files changed is unavailable: the pull request's base could not be compared with its head.",
+      "notes": [
+        "Files changed could not be read (no merge base)."
+      ]
+    },
+    "base_uncertain": {
+      "files": "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.",
+      "notes": [
+        "Files changed could not be read (base uncertain)."
+      ]
+    },
+    "commits_unavailable": {
+      "files": "Files changed is unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.",
+      "notes": [
+        "Files changed could not be read (commits unavailable)."
+      ]
+    }
+  },
   "hunks": {
     "a short hunk is whole": {
       "earlier": null,
