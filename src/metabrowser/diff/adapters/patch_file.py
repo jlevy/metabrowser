@@ -15,6 +15,7 @@ file a user just clicked.
 from __future__ import annotations
 
 from base64 import b64encode
+from collections.abc import Sequence
 from hashlib import sha256
 
 from metabrowser.diff.format import (
@@ -54,6 +55,21 @@ MAX_FILE_SECTIONS = 2000
 MAX_NAMED_SECTIONS = 5
 """How many left-out sections a warning names. It reads as one line, and every section
 left out keeps its own row, so a longer list would say nothing more."""
+
+MAX_NAMED_PATH_CHARS = 200
+"""Where a path in a warning is cut. A tree entry's name has no length of its own, and the
+warning is a line above the files, not the place to read a name from."""
+
+
+def name_paths(paths: Sequence[str]) -> str:
+    """Up to `MAX_NAMED_SECTIONS` of *paths* for a warning, each cut, and how many more."""
+    named = ", ".join(
+        path if len(path) <= MAX_NAMED_PATH_CHARS else f"{path[: MAX_NAMED_PATH_CHARS - 1]}…"
+        for path in paths[:MAX_NAMED_SECTIONS]
+    )
+    more = len(paths) - MAX_NAMED_SECTIONS
+    return f"{named}, and {more} more" if more > 0 else named
+
 
 _HUNK_RE_PREFIX = b"@@ -"
 
@@ -102,9 +118,24 @@ def _unquote_c_style(raw: bytes) -> bytes:
             out.append(value)
             i += 3
         else:
-            out.append({b"n": 10, b"t": 9, b'"': 34, b"\\": 92}.get(escape, escape[0]))
+            out.append(_C_ESCAPES.get(escape, escape[0]))
             i += 1
     return bytes(out)
+
+
+# Every letter Git's `quote_c_style` writes after a backslash (quote.c, `cq_lookup`): the
+# seven C escapes, the quote and the backslash. Anything else is octal, above.
+_C_ESCAPES = {
+    b"a": 7,
+    b"b": 8,
+    b"t": 9,
+    b"n": 10,
+    b"v": 11,
+    b"f": 12,
+    b"r": 13,
+    b'"': 34,
+    b"\\": 92,
+}
 
 
 def _strip_prefix(raw: bytes) -> bytes:
@@ -539,18 +570,13 @@ def _without_unmodeled_sections(document: ChangeSetDocument) -> ChangeSetDocumen
                 deletions=None,
             )
         )
-    named = ", ".join(left_out[:MAX_NAMED_SECTIONS])
-    more = len(left_out) - MAX_NAMED_SECTIONS
-    warning = f"{len(left_out)} section(s) could not be modeled and are left out: {named}"
+    warning = (
+        f"{len(left_out)} section(s) could not be modeled and are left out: {name_paths(left_out)}"
+    )
     return document.model_copy(
         update={
             "resolved": document.resolved.model_copy(
-                update={
-                    "warnings": (
-                        *document.resolved.warnings,
-                        f"{warning}, and {more} more" if more > 0 else warning,
-                    )
-                }
+                update={"warnings": (*document.resolved.warnings, warning)}
             ),
             "manifest": document.manifest.model_copy(
                 update={

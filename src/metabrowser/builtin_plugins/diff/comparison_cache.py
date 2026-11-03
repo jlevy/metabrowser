@@ -17,10 +17,17 @@ What the answer depends on, other than the two commit IDs:
 - The build: its options (``-M50 -C``, three lines of context), its parser, and
   ``MAX_HYDRATED_FILES``. A process holds one build, and a browser's copy is scoped to it by
   the entity tag and by the ``build`` a request names.
+- The store. Its Git directory is the first part of the key in memory, and a browser's copy
+  is scoped to it by the entity tag and by the ``store`` a request names, the token
+  ``http_caching.store_tag`` makes, which the shell gives the page beside the build. A
+  folder has no token, so its answers are never kept by the browser either.
 - A store's Git configuration and attributes. Its reads ignore user and system
-  configuration (``STORE_READ_POLICY``), the store's own configuration holds no ``diff.*``,
-  it has no ``info/attributes``, and ``tests/test_diff_comparison_cache.py`` holds that a
-  ``.gitattributes`` at its HEAD changes nothing.
+  configuration and the reader's attributes files (``STORE_READ_POLICY``: ``HOME`` and
+  ``XDG_CONFIG_HOME`` hold nothing, ``GIT_ATTR_NOSYSTEM`` is set), the store's own
+  configuration holds no ``diff.*``, and its ``info/attributes``, which a store is made
+  without and which Git reads whatever else is isolated, is folded into the store's token.
+  ``tests/test_diff_comparison_cache.py`` holds that a ``.gitattributes`` at its HEAD
+  changes nothing, on each Git the Makefile admits.
 - The commit graph, for ``merge_base``: fixed for a commit unless the store is shallow, and
   no store is. ``git/process.py`` fetches with no ``--depth``.
 
@@ -127,6 +134,10 @@ class ComparisonCache:
         self._manifests[key] = task.result()
         while len(self._manifests) > self._max_manifests:
             self._manifests.popitem(last=False)
+
+    def has_manifest(self, key: tuple[str, ...]) -> bool:
+        """Whether this process computed the comparison, so a validator of it can be trusted."""
+        return key in self._manifests
 
     def body(self, key: tuple[str, ...]) -> bytes | None:
         """One encoded answer, or None."""

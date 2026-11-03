@@ -157,6 +157,14 @@ ACQUISITION_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
 # ``rev-list``, ``show``, ``diff``. The store holds untrusted content, so the
 # isolation is acquisition-grade and lazy fetch is off. The deadline is the
 # request-path one, because a request is waiting on the answer.
+#
+# A store's answer must be the same for every reader, so its reads see no attributes of the
+# reader's either: Git reads ``$XDG_CONFIG_HOME/git/attributes``, else
+# ``$HOME/.config/git/attributes``, and the system file, whatever ``GIT_CONFIG_*`` say,
+# and ``*.lock -diff`` there turned a comparison's text files binary (review of #284).
+# ``HOME`` and ``XDG_CONFIG_HOME`` hold nothing, as acquisition's ``HOME`` does; nothing a
+# store read runs needs either, and Git is quiet about a path under ``/dev/null``.
+_NO_USER_ATTRIBUTES: Final[dict[str, str]] = {"HOME": os.devnull, "XDG_CONFIG_HOME": os.devnull}
 STORE_READ_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     name="store-read",
     timeout_s=GIT_SUBPROCESS_TIMEOUT_S,
@@ -166,7 +174,7 @@ STORE_READ_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     isolate_user_config=True,
     no_lazy_fetch=True,
     ssh_batch=True,
-    extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
+    extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C", **_NO_USER_ATTRIBUTES},
 )
 BATCH_OBJECT_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     name="batch-object",
@@ -176,6 +184,7 @@ BATCH_OBJECT_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     child_umask=0o077,
     isolate_user_config=True,
     no_lazy_fetch=True,
+    extra_env=_NO_USER_ATTRIBUTES,
 )
 
 
@@ -504,6 +513,8 @@ def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
         if policy.isolate_user_config:
             env["GIT_CONFIG_GLOBAL"] = os.devnull
             env["GIT_CONFIG_NOSYSTEM"] = "1"
+            # Attributes are not configuration: the system attributes file has its own switch.
+            env["GIT_ATTR_NOSYSTEM"] = "1"
         if policy.no_lazy_fetch:
             env["GIT_NO_LAZY_FETCH"] = "1"
         if policy.ssh_batch:

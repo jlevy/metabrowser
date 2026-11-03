@@ -33,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import gzip
 import hashlib
+import logging
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -46,8 +47,8 @@ from metabrowser.builtin_plugins.diff.comparison_cache import (
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource, PatchHydration
 from metabrowser.diff.adapters.patch_file import (
-    MAX_NAMED_SECTIONS,
     MAX_PATCH_BYTES,
+    name_paths,
     parse_unified_patch,
 )
 from metabrowser.diff.format import (
@@ -61,7 +62,13 @@ from metabrowser.diff.format import (
     Totals,
     dump_document,
 )
-from metabrowser.git.process import GitError, GitLocation, RepositoryStoreTarget
+from metabrowser.git.process import (
+    GitError,
+    GitLocation,
+    GitTimeoutError,
+    RepositoryStoreTarget,
+    failure_detail,
+)
 from metabrowser.git.repo import repo_info
 from metabrowser.git.routes import session_git_location
 from metabrowser.http_caching import (
@@ -70,6 +77,7 @@ from metabrowser.http_caching import (
     etag_headers,
     immutable_headers,
     matches_if_none_match,
+    store_tag,
 )
 from metabrowser.inventory_engine.contract import canonical_inventory_path
 from metabrowser.plugin_api import (
@@ -83,6 +91,8 @@ if TYPE_CHECKING:
     from starlette.requests import Request
 
     from metabrowser.plugin_api import ContentRef
+
+log = logging.getLogger(__name__)
 
 _PATCH_EXTS = (".patch", ".diff")
 
@@ -229,19 +239,38 @@ def _kept_key(location: GitLocation, intent: dict[str, Any]) -> tuple[str, ...] 
     return (str(location.target.git_dir), *endpoints, policy)
 
 
-def _encoded_response(request: Request, encoded: bytes, headers: dict[str, str]) -> Response:
-    """An answer kept compressed. It goes as it is, which the server's compression leaves be."""
-    if "gzip" in request.headers.get("accept-encoding", ""):
+def middleware_sends_gzip(accept_encoding: str) -> bool:
+    """The test Starlette's ``GZipMiddleware`` makes of ``Accept-Encoding``, which every
+    response passes through on its way out: a plain substring, so ``gzip;q=0`` is taken for
+    an acceptance. Read by its weights here instead, a kept body sent unpacked for such a
+    client would be compressed again by the middleware, on the event loop, and arrive as
+    gzip all the same. ``tests/test_diff_comparison_cache.py`` holds the two tests equal."""
+    return "gzip" in accept_encoding
+
+
+async def _encoded_response(request: Request, encoded: bytes, headers: dict[str, str]) -> Response:
+    """An answer kept compressed. It goes as it is, which the server's compression leaves be,
+    and is unpacked off the event loop for a client that does not take gzip."""
+    if middleware_sends_gzip(request.headers.get("accept-encoding", "")):
         return Response(
             encoded,
             media_type="application/json",
             headers={**headers, "Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
         )
     return Response(
-        gzip.decompress(encoded),
+        await asyncio.to_thread(gzip.decompress, encoded),
         media_type="application/json",
         headers={**headers, "Vary": "Accept-Encoding"},
     )
+
+
+def _git_failure(exc: GitError, path: str) -> JSONResponse:
+    """A Git failure with no command line in the body: its arguments spell every path asked
+    for, hostile names included. The detail goes to the log."""
+    log.warning("diff/comparison git failure: %s", failure_detail(exc))
+    if isinstance(exc, GitTimeoutError):
+        return _error("diff_comparison", "git diff timed out", 504, path=path)
+    return _error("diff_comparison", "git diff failed", 502, path=path)
 
 
 async def comparison_handler(request: Request) -> Response:
@@ -254,15 +283,19 @@ async def comparison_handler(request: Request) -> Response:
     hydrated up to a bound; the rest stay ``deferred``, which the renderer
     states rather than eliding.
     ``&file=<path>`` narrows to one change and hydrates it regardless of
-    the bound — the deferred sections' on-demand loader.
+    the bound — the deferred sections' on-demand loader. It is the path exactly, since
+    a name can begin or end with a space.
     On a pinned revision, ``HEAD`` is that object id.
 
-    A request naming two commit IDs on a store sends an entity tag, answers a matching
-    ``If-None-Match`` with 304, and is kept in memory. With ``&build=`` naming this build it
-    is immutable as well, since the address then says everything its answer depends on.
+    A request naming two commit IDs on a store sends an entity tag that names the build
+    and the store, answers a matching ``If-None-Match`` with 304 once the store is known
+    to answer, and is kept in memory. With ``&build=`` naming this build and ``&store=``
+    naming this store it is immutable as well, since the address then says everything
+    its answer depends on; a folder's address names no store, and its answer carries
+    neither header.
     """
     revision = request.query_params.get("revision", "").strip()
-    wanted_file = request.query_params.get("file", "").strip()
+    wanted_file = request.query_params.get("file", "")
     left = request.query_params.get("left", "").strip()
     right = request.query_params.get("right", "").strip()
     base_policy = request.query_params.get("base_policy", "").strip()
@@ -288,17 +321,28 @@ async def comparison_handler(request: Request) -> Response:
     location = session_git_location()
     kept_key = _kept_key(location, intent)
     headers: dict[str, str] = {}
+    # A validator this process did not issue is honored only once the store has answered
+    # for the commits, so a store holding neither answers its plain refusal.
+    revalidate = False
     if kept_key is not None:
+        assert isinstance(location.target, RepositoryStoreTarget)
+        store = store_tag(location.target.git_dir)
         answer_key = (*kept_key, wanted_file)
         identity = hashlib.sha256("\0".join(answer_key[1:]).encode()).hexdigest()[:32]
-        etag = build_scoped_etag(f"comparison-{identity}")
-        immutable = request.query_params.get("build", "") == BUILD_TAG
+        etag = build_scoped_etag(f"comparison-{store}-{identity}")
+        immutable = (
+            request.query_params.get("build", "") == BUILD_TAG
+            and request.query_params.get("store", "") == store
+        )
         headers = immutable_headers(etag) if immutable else etag_headers(etag)
         if matches_if_none_match(request, etag):
-            return Response(status_code=304, headers=headers)
-        encoded = _COMPARISONS.body(answer_key)
-        if encoded is not None:
-            return _encoded_response(request, encoded, headers)
+            if _COMPARISONS.has_manifest(kept_key):
+                return Response(status_code=304, headers=headers)
+            revalidate = True
+        else:
+            encoded = _COMPARISONS.body(answer_key)
+            if encoded is not None:
+                return await _encoded_response(request, encoded, headers)
 
     context, _info = await repo_info(location)
     if context is None:
@@ -323,6 +367,9 @@ async def comparison_handler(request: Request) -> Response:
         return ResolvedManifest(resolved, await source.manifest(resolved))
 
     try:
+        if revalidate:
+            await source.resolve(intent)
+            return Response(status_code=304, headers=headers)
         comparison = (
             await listed() if kept_key is None else await _COMPARISONS.manifest(kept_key, listed)
         )
@@ -359,7 +406,7 @@ async def comparison_handler(request: Request) -> Response:
         # revision, no such file in the comparison.
         return _error("diff_comparison", str(exc), 404, path=revision)
     except GitError as exc:
-        return _error("diff_comparison", str(exc), 502, path=revision)
+        return _git_failure(exc, revision)
 
     if wanted_file:
         counted = [c for c in projected if c.additions is not None or c.binary]
@@ -390,7 +437,7 @@ async def comparison_handler(request: Request) -> Response:
         return Response(body, media_type="application/json")
     encoded = await asyncio.to_thread(encode_body, body)
     _COMPARISONS.remember_body((*kept_key, wanted_file), encoded)
-    return _encoded_response(request, encoded, headers)
+    return await _encoded_response(request, encoded, headers)
 
 
 def _json_body(document: ChangeSetDocument) -> bytes:
@@ -425,11 +472,8 @@ def _say_left_out(
         for change in files
     ]
     named = [_change_display_path(change) for change in files if change.id in gone]
-    said = ", ".join(named[:MAX_NAMED_SECTIONS])
-    more = len(named) - MAX_NAMED_SECTIONS
-    warning = f"{len(named)} file(s) could not be read from the produced diff: {said}"
-    warnings = (*resolved.warnings, f"{warning}, and {more} more" if more > 0 else warning)
-    return marked, resolved.model_copy(update={"warnings": warnings})
+    warning = f"{len(named)} file(s) could not be read from the produced diff: {name_paths(named)}"
+    return marked, resolved.model_copy(update={"warnings": (*resolved.warnings, warning)})
 
 
 def _document_from(

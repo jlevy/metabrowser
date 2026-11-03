@@ -24,9 +24,11 @@ from starlette.datastructures import Headers
 
 from metabrowser.http_caching import (
     BUILD_TAG,
+    _newest_source_change,
     build_scoped_etag,
     etag_headers,
     matches_if_none_match,
+    store_tag,
 )
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "metabrowser"
@@ -60,6 +62,31 @@ def test_the_same_content_under_a_different_build_is_a_different_tag() -> None:
     assert BUILD_TAG in tag
     stale = f'"{"0" * len(BUILD_TAG)}-unchanged-file"'
     assert stale != tag
+
+
+def test_a_store_tag_names_the_store_and_not_its_path(tmp_path: Path) -> None:
+    """The token a page sends with every comparison address (review of #284, B1 and C2):
+    different for two stores, moved by `info/attributes`, and never the path itself."""
+    one = tmp_path / "one.git"
+    two = tmp_path / "two.git"
+    for store in (one, two):
+        (store / "info").mkdir(parents=True)
+    tag = store_tag(one)
+    assert re.fullmatch(r"[0-9a-f]{16}", tag)
+    assert tag != store_tag(two)
+    assert tag == store_tag(one), "stable for the same store"
+    assert "one" not in tag and str(tmp_path) not in tag
+    (one / "info" / "attributes").write_text("*.py -diff\n")
+    assert store_tag(one) != tag, "attributes Git reads whatever is isolated are an input"
+    assert store_tag(tmp_path / "absent.git") != tag, "a store with no info directory has a tag"
+
+
+def test_an_editable_install_folds_its_newest_change_into_the_build() -> None:
+    """Whether this checkout is editable is not the test's to say; the salt is digits when
+    it is and nothing when it is not, and the tag is a digest either way."""
+    salt = _newest_source_change()
+    assert salt == "" or salt.isdigit()
+    assert re.fullmatch(r"[0-9a-f]{12}", BUILD_TAG)
 
 
 def test_headers_require_revalidation() -> None:

@@ -15,6 +15,7 @@ Merges are compared against their first parent
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from base64 import b64decode
 from collections.abc import AsyncIterator, Sequence
@@ -55,8 +56,11 @@ from metabrowser.git.process import (
     GitOutputTooLargeError,
     RepositoryStoreTarget,
     as_location,
+    failure_detail,
     run_git_at,
 )
+
+log = logging.getLogger(__name__)
 
 MAX_MANIFEST_FILES = 2000
 """Manifest cap. A 2000-file change set is far past reviewable; beyond it
@@ -89,6 +93,14 @@ _MODE_TYPES = {
     "120000": EntryType.symlink,
     "160000": EntryType.submodule,
 }
+# What `--diff-filter` keeps of a run limited to a pair's two paths: the pair, whichever
+# letter the limited run gives it, and not its partner's own change. A copy whose source is
+# deleted and copied elsewhere too is a rename in a run that sees only the two paths; the
+# pair's paths and hunks are the same, which is what the manifest is matched on.
+_PAIRED_KINDS = frozenset({ChangeKind.renamed, ChangeKind.copied})
+_PAIR_FILTER = "RC"
+
+type _SideKey = tuple[str | None, str | None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,23 +171,86 @@ def _section_header(section: bytes) -> bytes:
     return (section if end < 0 else section[:end]).rstrip(b"\n") + b"\n"
 
 
-def _within_file_bounds(out: bytes) -> tuple[bytes, list[bytes], list[bytes]]:
-    """The patch to parse, and the headers of the sections too large or past the run's bound."""
+def _side_key(side: EntrySide | None) -> _SideKey:
+    return (side.path if side else None, side.path_b64 if side else None)
+
+
+def _section_owners(sections: Sequence[bytes], changes: Sequence[FileChange]) -> list[str | None]:
+    """Which of *changes* each section is, or None for a section nobody asked for.
+
+    A limited run holds sections of files that were not asked for: a copy's pathspec names
+    its source, whose own modification comes too, and a run past ``diff.renameLimit`` pairs
+    what the manifest listed apart. A type change is two sections, delete and add, of one
+    change. Each header is parsed alone, so the answer is aligned with the sections however
+    many there are.
+    """
+    exact: dict[tuple[_SideKey, _SideKey], str] = {}
+    type_old: dict[_SideKey, str] = {}
+    type_new: dict[_SideKey, str] = {}
+    for change in changes:
+        exact.setdefault((_side_key(change.old), _side_key(change.new)), change.id)
+        if change.kind is ChangeKind.type_changed:
+            type_old.setdefault(_side_key(change.old), change.id)
+            type_new.setdefault(_side_key(change.new), change.id)
+    nothing: _SideKey = (None, None)
+    owners: list[str | None] = []
+    for section in sections:
+        parsed = parse_unified_patch(_section_header(section)).manifest.files
+        if len(parsed) != 1:
+            owners.append(None)
+            continue
+        old, new = _side_key(parsed[0].old), _side_key(parsed[0].new)
+        owner = exact.get((old, new))
+        if owner is None and new == nothing:
+            owner = type_old.get(old)
+        if owner is None and old == nothing:
+            owner = type_new.get(new)
+        owners.append(owner)
+    return owners
+
+
+@dataclass(frozen=True, slots=True)
+class _Budgeted:
+    """One run's output for the files asked, within the bounds: the patch to parse, the
+    files whose own sections are past the bound of one patch, and the files past what the
+    run has room for."""
+
+    kept: bytes
+    too_large: tuple[str, ...] = ()
+    deferred: tuple[str, ...] = ()
+
+
+def _within_file_bounds(out: bytes, changes: Sequence[FileChange]) -> _Budgeted:
+    """What of *out* is parsed for *changes*, and what became of the rest.
+
+    Only the sections of the files asked for spend the bound, in the order they come, each
+    file's sections together: a section nobody asked for is left out whole, so a file asked
+    for alone is kept or is too large, and is never deferred by a partner's own change.
+    """
     if len(out) <= MAX_FILE_PATCH_BYTES:
-        return out, [], []
-    kept: list[bytes] = []
-    too_large: list[bytes] = []
-    deferred: list[bytes] = []
+        return _Budgeted(out)
+    sections = _git_sections(out)
+    owners = _section_owners(sections, changes)
+    sizes: dict[str, int] = {}
+    for section, owner in zip(sections, owners, strict=True):
+        if owner is not None:
+            sizes[owner] = sizes.get(owner, 0) + len(section)
+    kept_ids: set[str] = set()
+    too_large: list[str] = []
+    deferred: list[str] = []
     total = 0
-    for section in _git_sections(out):
-        if len(section) > MAX_FILE_PATCH_BYTES:
-            too_large.append(_section_header(section))
-        elif total + len(section) > MAX_FILE_PATCH_BYTES:
-            deferred.append(_section_header(section))
+    for owner, size in sizes.items():
+        if size > MAX_FILE_PATCH_BYTES:
+            too_large.append(owner)
+        elif total + size > MAX_FILE_PATCH_BYTES:
+            deferred.append(owner)
         else:
-            kept.append(section)
-            total += len(section)
-    return b"".join(kept), too_large, deferred
+            kept_ids.add(owner)
+            total += size
+    kept = b"".join(
+        section for section, owner in zip(sections, owners, strict=True) if owner in kept_ids
+    )
+    return _Budgeted(kept, tuple(too_large), tuple(deferred))
 
 
 def _pathspec(changes: Sequence[FileChange]) -> list[str] | None:
@@ -510,6 +585,12 @@ class GitDiffSource:
         ``diff.renameLimit`` and listed an add and a delete that the limited run, with few
         candidates, pairs. Those sections do not match the manifest, so they cannot be taken
         for the wrong file, and asking for them with rename detection off answers for them.
+
+        A rename or a copy asked for alone is selected as a pair, so its partner's own
+        change, which the pathspec had to name for the pairing, is not in the output at
+        all: the pairing is decided before the filter and the section's bytes are the
+        same. A name Git refuses as a pathspec, ``..`` from a source that runs no fsck,
+        fails the limited run, and the unrestricted run answers for every file instead.
         """
         listed = manifest if manifest is not None else await self.manifest(resolved)
         by_id = {entry.id: entry for entry in listed.files}
@@ -518,31 +599,32 @@ class GitDiffSource:
             raise DiffSourceError(f"no file {missing[0]!r} in this comparison")
         changes = [by_id[file_id] for file_id in file_ids]
         pathspec = None if len(file_ids) == len(listed.files) else _pathspec(changes)
+        diff_filter = (
+            _PAIR_FILTER
+            if pathspec is not None and len(changes) == 1 and changes[0].kind in _PAIRED_KINDS
+            else None
+        )
         try:
-            out = await self._patch(resolved, pathspec)
+            try:
+                out = await self._patch(resolved, pathspec, diff_filter=diff_filter)
+            except GitCommandError as exc:
+                if pathspec is None:
+                    raise
+                log.info("path-limited diff failed, running unrestricted: %s", failure_detail(exc))
+                pathspec = None
+                out = await self._patch(resolved, None)
         except GitOutputTooLargeError:
             # Past Git's output cap: one file is too large, and several can each be asked for.
             asked = tuple(file_ids)
             if len(asked) == 1:
                 return PatchHydration(patches={}, too_large=asked)
             return PatchHydration(patches={}, deferred=asked)
-        kept, too_large, deferred = _within_file_bounds(out)
-        if too_large or deferred:
-            over = [*too_large, *deferred]
-            headers = await asyncio.to_thread(parse_unified_patch, b"".join(over))
-            too_large_ids = self._changes_named(headers, changes, len(too_large))
-        else:
-            headers = None
-            too_large_ids = ()
-        document = await asyncio.to_thread(parse_unified_patch, kept)
+        budgeted = await asyncio.to_thread(_within_file_bounds, out, changes)
+        document = await asyncio.to_thread(parse_unified_patch, budgeted.kept)
         patches, left_out = self._patches_from(document, changes)
-        if headers is not None:
-            # A file past the bounds is what it is, and only a file with no section of its
-            # own in what was parsed can be one.
-            unread = {change.id for change in left_out}
-            too_large_ids = tuple(file_id for file_id in too_large_ids if file_id in unread)
-            deferred_ids = tuple(change.id for change in left_out if change.id not in too_large_ids)
-            return PatchHydration(patches=patches, too_large=too_large_ids, deferred=deferred_ids)
+        # A file past the bounds is what it is; the rest of what has no section was not produced.
+        over = {*budgeted.too_large, *budgeted.deferred}
+        left_out = [change for change in left_out if change.id not in over]
         if left_out and pathspec is not None:
             pairless = [
                 change
@@ -551,18 +633,32 @@ class GitDiffSource:
             ]
             limited = _pathspec(pairless)
             if pairless and limited is not None:
-                out = await self._patch(resolved, limited, renames=False)
-                document = await asyncio.to_thread(parse_unified_patch, out)
-                found, still_out = self._patches_from(document, pairless)
-                patches.update(found)
-                left_out = [
-                    *[change for change in left_out if change not in pairless],
-                    *still_out,
-                ]
-        return PatchHydration(patches=patches, left_out=tuple(change.id for change in left_out))
+                try:
+                    out = await self._patch(resolved, limited, renames=False)
+                except GitCommandError as exc:
+                    log.info("the retry without renames failed: %s", failure_detail(exc))
+                else:
+                    document = await asyncio.to_thread(parse_unified_patch, out)
+                    found, still_out = self._patches_from(document, pairless)
+                    patches.update(found)
+                    left_out = [
+                        *[change for change in left_out if change not in pairless],
+                        *still_out,
+                    ]
+        return PatchHydration(
+            patches=patches,
+            left_out=tuple(change.id for change in left_out),
+            too_large=budgeted.too_large,
+            deferred=budgeted.deferred,
+        )
 
     async def _patch(
-        self, resolved: ResolvedComparison, pathspec: list[str] | None, *, renames: bool = True
+        self,
+        resolved: ResolvedComparison,
+        pathspec: list[str] | None,
+        *,
+        renames: bool = True,
+        diff_filter: str | None = None,
     ) -> bytes:
         return await run_git_at(
             [
@@ -570,6 +666,12 @@ class GitDiffSource:
                 "--literal-pathspecs",
                 "diff",
                 *(["-M50", "-C"] if renames else ["--no-renames"]),
+                *([] if diff_filter is None else [f"--diff-filter={diff_filter}"]),
+                # The shape the parser reads, whatever a folder's configuration says: Git's
+                # own prefixes, which name a hunkless section, and no external driver.
+                "--src-prefix=a/",
+                "--dst-prefix=b/",
+                "--no-ext-diff",
                 "--diff-merges=first-parent",
                 *self._endpoints(resolved),
                 *([] if pathspec is None else ["--", *pathspec]),
@@ -577,42 +679,22 @@ class GitDiffSource:
             self._location,
         )
 
-    def _changes_named(
-        self, headers: ChangeSetDocument, changes: Sequence[FileChange], first: int
-    ) -> tuple[str, ...]:
-        """The ids of *changes* that the first *first* sections of *headers* are."""
-
-        def sides(change: FileChange) -> tuple[str | None, str | None]:
-            return (
-                change.old.path if change.old else None,
-                change.new.path if change.new else None,
-            )
-
-        named = {sides(parsed) for parsed in headers.manifest.files[:first]}
-        return tuple(change.id for change in changes if sides(change) in named)
-
     def _patches_from(
         self, document: ChangeSetDocument, changes: Sequence[FileChange]
     ) -> tuple[dict[str, FilePatch], list[FileChange]]:
         """The sections of *document* that are these changes, and the changes with none."""
-
-        def side_key(side: EntrySide | None) -> tuple[str | None, str | None]:
-            return (side.path if side else None, side.path_b64 if side else None)
-
-        parsed_by_sides: dict[
-            tuple[tuple[str | None, str | None], tuple[str | None, str | None]], FilePatch
-        ] = {}
+        parsed_by_sides: dict[tuple[_SideKey, _SideKey], FilePatch] = {}
         for parsed_change in document.manifest.files:
             parsed = document.patches.get(parsed_change.id)
             if parsed is not None:
-                key = (side_key(parsed_change.old), side_key(parsed_change.new))
+                key = (_side_key(parsed_change.old), _side_key(parsed_change.new))
                 parsed_by_sides.setdefault(key, parsed)
 
         result: dict[str, FilePatch] = {}
         left_out: list[FileChange] = []
         for change in changes:
             file_id = change.id
-            wanted = (side_key(change.old), side_key(change.new))
+            wanted = (_side_key(change.old), _side_key(change.new))
             parsed = parsed_by_sides.get(wanted)
             if parsed is not None:
                 result[file_id] = FilePatch(
@@ -630,7 +712,7 @@ class GitDiffSource:
     @staticmethod
     def _merge_type_change_sections(
         document: ChangeSetDocument,
-        wanted: tuple[tuple[str | None, str | None], tuple[str | None, str | None]],
+        wanted: tuple[_SideKey, _SideKey],
     ) -> tuple[Hunk, ...] | None:
         """A type change arrives as delete + add sections; the manifest has one T.
 

@@ -412,6 +412,22 @@ def test_a_path_holding_the_prefix_needs_only_the_header() -> None:
     assert only.old is not None and only.old.path == "spaced b/x.txt"
 
 
+def test_every_c_escape_git_writes_is_undone() -> None:
+    """Git's `quote_c_style` writes nine letters after a backslash and octal for the rest;
+    the unquoting undid four of them (review of #284, B2). `tests/test_diff_git_adapter.py`
+    holds the same against Git's own output for every byte."""
+    quoted = b'"a/bell\\a back\\b tab\\t nl\\n vt\\v ff\\f cr\\r quote\\" slash\\\\ oct\\101.txt"'
+    document = parse_unified_patch(
+        b"diff --git " + quoted + b" " + quoted.replace(b'"a/', b'"b/') + b"\n"
+        b"deleted file mode 100644\n"
+        b"index e69de29..0000000\n"
+    )
+    only = document.manifest.files[0]
+    assert only.old is not None
+    assert only.old.path == 'bell\a back\b tab\t nl\n vt\v ff\f cr\r quote" slash\\ octA.txt'
+    assert document.resolved.warnings == ()
+
+
 def test_quoted_paths_with_no_hunks_are_kept() -> None:
     """A patch written by a stock Git quotes a name that is not ASCII, each side on its own."""
     document = parse_unified_patch(
