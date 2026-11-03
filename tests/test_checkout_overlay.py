@@ -2112,3 +2112,30 @@ def test_no_history_is_believed_only_when_the_walk_reads_every_commit(
     (checkout / ".git" / "objects" / replica["M3"][:2] / replica["M3"][2:]).unlink()
     with pytest.raises(git_process.GitCommandError):
         asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
+
+
+def test_a_merge_base_that_is_not_the_best_is_not_believed(
+    linear: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git import shallow
+    from metabrowser.git.process import repository_store_target
+
+    replica = linear.replica
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    target = repository_store_target(git_dir=linear.store)
+    real = shallow.run_git
+
+    async def older(args: list[str], **kwargs: Any) -> bytes:
+        # Git before 2.45 can keep a redundant candidate when its reduction walk ends
+        # early on a commit it cannot read; M3 is a common ancestor, and M4 the best one.
+        if args[0] == "merge-base":
+            return (replica["M3"] + "\n").encode("ascii")
+        return await real(args, **kwargs)
+
+    assert asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"])) == (
+        shallow.MergeBaseAnswer(replica["M4"], certain=True)
+    )
+    monkeypatch.setattr(shallow, "run_git", older)
+    answer = asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
+    assert answer == shallow.MergeBaseAnswer(replica["M3"], certain=False)
