@@ -4,7 +4,12 @@ type MetabrowserRenderContext = {
   /** A Git revision, when a surface asks a view for a comparison rather than a file. */
   revision?: string;
   /** Two endpoints, when a surface asks the diff view for a comparison between them. */
-  comparison?: { left: string; right: string; base_policy: "direct" | "merge_base" };
+  comparison?: {
+    left: string;
+    right: string;
+    base_policy: "direct" | "merge_base";
+    route?: string;
+  };
   /** The served pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
@@ -21,7 +26,12 @@ type MetabrowserViewSpec = {
    * address `render` asks, so the browser's cache answers the render. The diff view has one.
    */
   prefetch?: (
-    comparison: { left: string; right: string; base_policy: "direct" | "merge_base" },
+    comparison: {
+      left: string;
+      right: string;
+      base_policy: "direct" | "merge_base";
+      route?: string;
+    },
     signal?: AbortSignal,
   ) => Promise<unknown>;
 };
