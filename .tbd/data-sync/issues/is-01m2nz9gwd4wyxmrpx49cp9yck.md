@@ -3,9 +3,9 @@ type: is
 id: is-01m2nz9gwd4wyxmrpx49cp9yck
 title: "GitHub pull requests on an existing checkout: shared records, no writes to the user's repository"
 kind: feature
-status: open
+status: in_progress
 priority: 1
-version: 27
+version: 29
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: null
 labels: []
@@ -23,12 +23,14 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-09-16T20:42:19.915Z
-updated_at: 2026-11-03T02:06:04.286Z
+updated_at: 2026-11-03T06:47:09.713Z
 started_at: 2026-09-16T21:12:28.713Z
 ---
 Enable hosted capabilities for an ordinary user-owned Git checkout without converting or copying it into a managed repository entry. Discover credential-free provider remote candidates read-only; resolve an unambiguous candidate through the provider registry to stable RepositoryRef; require explicit selection for multiple GitHub remotes and fork/upstream ambiguity; attach the session without persisting its absolute path; reuse the global provider mirror and lazily create or hydrate the shared repository store only for branch, diff, or PR content. Derive the canonical RepositoryStoreId deterministically from provider kind, canonical instance, raw stable repository opaque ID, and Git object format; converge verified objects and aliases under ordered locks and CAS without a mutable provider-to-store pointer. Prove no writes to files or .git, two local clones plus HTTPS/SSH sources reuse one provider repository and canonical store under the same auth context, different auth contexts remain isolated, failed convergence leaves aliases unchanged, purge/detach preserves shared reachable state, and local dirty state remains a filesystem overlay rather than mirror input.
 
 ## Notes
+
+2026-11-03 status: branch claude/pulls-5-checkout, cut from c2059f4e; its first commit 483b3a17 revises the plan's steps 5 and 6 to the overlay decision. Implementation in progress: identity and a source with no store, the tab and page on a checkout, the rules as tests, the hostile corpus under both profiles. Files changed on a checkout stays unavailable with the reason until step 6.
 
 2026-11-02, from #283's owner: hold steps 5 and 6 until they send one more head, #283 with #284 merged in (order #280, #284, #283). It brings typed answers base_uncertain, commits_unavailable, lender_missing, parent_unavailable; GitCommitStats counts can be null for a commit whose parent is past a shallow boundary, so arithmetic must handle null; ref_on_origin can be null while a served ref has been swept and not refetched, which does not mean gone from origin; the pull page's session prints from tests/dom/github-pull-page-session.js and github-pull-page-second-session.js, so new output goes in the second or is asserted.
 

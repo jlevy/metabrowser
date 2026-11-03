@@ -3,10 +3,11 @@ type: is
 id: is-01m6f39zpnk9rc3kjy552b88qj
 title: "Step 4: changed files in a row, expandable like a folder"
 kind: feature
-status: open
+status: in_progress
 priority: 1
-version: 9
+version: 12
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
+delegate: claude-code@spud10
 labels: []
 dependencies:
   - type: blocks
@@ -18,12 +19,17 @@ child_order_hints:
   - is-01m6f3aa89emxbf0rwesa8gt7x
   - is-01m6f3aapq93hetda33rkdc9zv
   - is-01m6f3dkmagq7az0j52zq4je42
+hold: null
+hold_until: null
 created_at: 2026-11-02T21:40:35.668Z
-updated_at: 2026-11-02T22:39:08.235Z
+updated_at: 2026-11-03T06:47:09.338Z
+started_at: 2026-11-03T06:46:31.128Z
 ---
 Delivery step 4, added 2026-11-02. A row is a container: it expands to its changed files as a tree using the Files tree's row contract, from one gh request per 100 files with no Git. File rows open /pull/<n>/files/<path>. See the plan's Changed Files in a Row.
 
 ## Notes
+
+2026-11-03 status: branch claude/pulls-4-files, head c2059f4e (overlay work merged in). Data half done at a84968ab (mb-ywt7, mb-cl42; make test green): PullFileList from the local comparison or GitHub's list, read progressively, routes pull-files and pull-files-refresh, the browserless tree model. Second half in progress: rendering under each row (mb-jagq), /pull/<n>/files/<path> (mb-e8cs), the keyboard jump through scrollToFile (mb-zx9q), the diff accessor (mb-w5rc), changed_files on the record (mb-egnj).
 
 2026-11-02: the performance study has reported (exp-040 on origin/claude/v012-pr-review-perf). The gate on the tree's shape and keyboard is lifted; jump-scrolling waits for the scrollToFile contract (mb-zx9q). Binding: build the tree from a file list and never from hydrated documents. The plan's gh pulls/<n>/files list satisfies this and needs no Git. A windowed list is likely needed past a few hundred files, and the tree must be bounded or virtualized at 1,183 rows.
 

@@ -5,7 +5,7 @@ title: "Step 2: open any pull request from a repository server"
 kind: feature
 status: in_progress
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -23,11 +23,13 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:40:32.618Z
-updated_at: 2026-11-02T23:54:55.783Z
+updated_at: 2026-11-03T06:47:03.153Z
 started_at: 2026-11-02T22:48:21.918Z
 ---
 Delivery step 2 and the riskiest: routes take a number, a provider-kept set replaces the single companion, one attended pull request, what starts a fetch, the job bound, and the Browse code cases. Checkpoint: on a server opened from a repository URL, /pull/<n> for any number offers Fetch and then shows the page.
 
 ## Notes
+
+2026-11-03 status: PR #281, layer 2 of stack 286, head 5d5546fc, CI 9 of 9 green, mergeable. Reviews A, B, C (round 1) and D (round 2) addressed (mb-fve3, mb-t3gn, mb-cv0q closed); round 3 not warranted. Since 24deeb22 only forward merges. Route changes: /api/source/refresh can answer 429 too_many; its {"for":"commit"} answers carry pull_refresh. Children close at merge.
 
 Implemented on claude/pulls-2-open-any, PR https://github.com/jlevy/metabrowser/pull/281, head d44412bd. Checkpoint seen in real Chrome with the real gh on pallets/click. make test and make lint-check pass on the final commit. Awaiting independent review; not closed.
