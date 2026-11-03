@@ -607,14 +607,35 @@ def test_existing_checkout_source_refuses_unknown_cache_before_writing(
         path = config if damage == "config_future" else layout
         replacement = "f00" if damage == "unknown" else "f02"
         path.write_text(path.read_text().replace("format: f01", f"format: {replacement}", 1))
-    before = fingerprint(isolated.home)
-    config_before = fingerprint(config.parent)
+
+    def snapshot(root: Path) -> dict[str, tuple[int, int, int, bytes | str | None]]:
+        entries = {}
+        for path in root.rglob("*"):
+            status = path.lstat()
+            payload = (
+                path.readlink().as_posix()
+                if path.is_symlink()
+                else path.read_bytes()
+                if path.is_file()
+                else None
+            )
+            entries[path.relative_to(root).as_posix()] = (
+                status.st_ino,
+                status.st_mtime_ns,
+                status.st_mode,
+                payload,
+            )
+        return entries
+
+    before = snapshot(isolated.home)
+    config_before = snapshot(config.parent)
+    assert before and config_before
     with pytest.raises(PullDataError) as refused:
         checkout_module.claim_source(repository)
     assert refused.value.state == "cache_unwritable"
     assert str(refused.value) == "the repository could not be recorded in the cache"
-    assert fingerprint(isolated.home) == before
-    assert fingerprint(config.parent) == config_before
+    assert snapshot(isolated.home) == before
+    assert snapshot(config.parent) == config_before
 
 
 def test_other_pull_read_crossing_attachment_uses_store_for_every_refresh(
