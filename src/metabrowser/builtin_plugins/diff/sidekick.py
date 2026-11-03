@@ -45,12 +45,13 @@ from metabrowser.builtin_plugins.diff.comparison_cache import (
     encode_body,
 )
 from metabrowser.diff.adapters.base import DiffSourceError
-from metabrowser.diff.adapters.git import GitDiffSource, PatchHydration
-from metabrowser.diff.adapters.patch_file import (
-    MAX_PATCH_BYTES,
-    name_paths,
-    parse_unified_patch,
+from metabrowser.diff.adapters.git import (
+    GitDiffSource,
+    PatchHydration,
+    mark_past_the_bounds,
+    say_left_out,
 )
+from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, parse_unified_patch
 from metabrowser.diff.format import (
     Availability,
     BasePolicy,
@@ -224,11 +225,15 @@ async def document_handler(request: Request) -> JSONResponse:
     return JSONResponse(dump_document(document))
 
 
-def _kept_key(location: GitLocation, intent: dict[str, Any]) -> tuple[str, ...] | None:
+def _kept_key(location: GitLocation, intent: dict[str, Any], store: str) -> tuple[str, ...] | None:
     """The comparison's key in memory, or None for one whose answer can change.
 
-    A store, and a request whose every endpoint is a full commit ID. A folder's answer
-    depends on its working tree and its configuration, and a name's on where it points now.
+    A store, named by its Git directory and its token *store*, and a request whose every
+    endpoint is a full commit ID. The token is in the key because the store's
+    ``info/attributes`` is in the token (review of #284, D2): an edit to it moves every
+    address and tag, and has to move what this process holds as well, or a request at the
+    new address is answered with the old body. A folder's answer depends on its working
+    tree and its configuration, and a name's on where it points now.
     """
     if not isinstance(location.target, RepositoryStoreTarget):
         return None
@@ -236,7 +241,7 @@ def _kept_key(location: GitLocation, intent: dict[str, Any]) -> tuple[str, ...] 
     if not all(_FULL_COMMIT_ID.fullmatch(endpoint) for endpoint in endpoints):
         return None
     policy = str(intent.get("base_policy", ""))
-    return (str(location.target.git_dir), *endpoints, policy)
+    return (str(location.target.git_dir), store, *endpoints, policy)
 
 
 def middleware_sends_gzip(accept_encoding: str) -> bool:
@@ -319,16 +324,21 @@ async def comparison_handler(request: Request) -> Response:
         )
 
     location = session_git_location()
-    kept_key = _kept_key(location, intent)
+    # The token names the store in the key, the tag and the address alike; one stat a request.
+    store = (
+        store_tag(location.target.git_dir)
+        if isinstance(location.target, RepositoryStoreTarget)
+        else ""
+    )
+    kept_key = _kept_key(location, intent, store)
     headers: dict[str, str] = {}
     # A validator this process did not issue is honored only once the store has answered
     # for the commits, so a store holding neither answers its plain refusal.
     revalidate = False
     if kept_key is not None:
-        assert isinstance(location.target, RepositoryStoreTarget)
-        store = store_tag(location.target.git_dir)
         answer_key = (*kept_key, wanted_file)
-        identity = hashlib.sha256("\0".join(answer_key[1:]).encode()).hexdigest()[:32]
+        # What the tag names past the store: the endpoints, the policy and the file.
+        identity = hashlib.sha256("\0".join(answer_key[2:]).encode()).hexdigest()[:32]
         etag = build_scoped_etag(f"comparison-{store}-{identity}")
         immutable = (
             request.query_params.get("build", "") == BUILD_TAG
@@ -427,8 +437,8 @@ async def comparison_handler(request: Request) -> Response:
             }
         )
     if hydration.left_out:
-        projected, resolved = _say_left_out(projected, resolved, hydration.left_out)
-    projected = _past_the_bounds(projected, hydration)
+        projected, resolved = say_left_out(projected, resolved, hydration.left_out)
+    projected = mark_past_the_bounds(projected, hydration)
     document = _document_from(resolved, manifest, tuple(projected), hydration.patches)
     # A large answer is seconds of serializing and compressing, so neither is done on the
     # event loop: 29 MB took 712 ms to serialize, measured in explorations/performance-loop.
@@ -442,38 +452,6 @@ async def comparison_handler(request: Request) -> Response:
 
 def _json_body(document: ChangeSetDocument) -> bytes:
     return bytes(JSONResponse(dump_document(document)).body)
-
-
-def _past_the_bounds(files: list[FileChange], hydration: PatchHydration) -> list[FileChange]:
-    """Say what became of the files one run could not hydrate."""
-    if not hydration.too_large and not hydration.deferred:
-        return files
-    states = {
-        **dict.fromkeys(hydration.too_large, Availability.too_large),
-        **dict.fromkeys(hydration.deferred, Availability.deferred),
-    }
-    return [
-        change.model_copy(update={"availability": states[change.id]})
-        if change.id in states
-        else change
-        for change in files
-    ]
-
-
-def _say_left_out(
-    files: list[FileChange], resolved: ResolvedComparison, left_out: tuple[str, ...]
-) -> tuple[list[FileChange], ResolvedComparison]:
-    """Mark the files the diff did not produce, and name them, keeping every other file."""
-    gone = set(left_out)
-    marked = [
-        change.model_copy(update={"availability": Availability.failed})
-        if change.id in gone
-        else change
-        for change in files
-    ]
-    named = [_change_display_path(change) for change in files if change.id in gone]
-    warning = f"{len(named)} file(s) could not be read from the produced diff: {name_paths(named)}"
-    return marked, resolved.model_copy(update={"warnings": (*resolved.warnings, warning)})
 
 
 def _document_from(

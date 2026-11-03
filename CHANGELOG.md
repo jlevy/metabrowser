@@ -1036,7 +1036,17 @@ Large pull requests:
   stands for another’s or for a folder’s on the same origin.
   Its documents are unchanged, and a folder’s comparison keeps nothing and sends neither
   header. A store’s reads see none of the reader’s attributes files (`HOME`,
-  `XDG_CONFIG_HOME` and the system file), so every reader gets the same answer.
+  `XDG_CONFIG_HOME` and the system file), so every reader gets the same answer, and no
+  commit’s `.gitattributes`: Git 2.43 reads a bare repository’s from its default branch,
+  so on that Git a store’s comparison of two fixed commits changed with a fetch that
+  moved `HEAD`, and 2.50 reads none; a store read now names the store’s empty tree as
+  its attributes source, and the same two commits answer the same bytes on every Git
+  Metabrowser admits. A store’s own `info/attributes` is the one attributes input a store
+  read honors; it is in the store’s token and in the key an answer is kept under, so an
+  edit to it moves every address and is answered afresh by a running server.
+  A folder’s comparison keeps honoring its working tree’s `.gitattributes`, its
+  `.git/info/attributes`, and the reader’s own attributes files and configuration, as
+  `git diff` in that folder does.
 - A pull request’s Conversation fetches Files changed when the browser is idle, so the
   tab opens with no request.
   A pull request’s page no longer fetches the repository’s file catalog until its search
@@ -1097,6 +1107,14 @@ Fixes:
   the loaded ones, a file that leaves the viewport after its answer arrived is rendered
   rather than asked for again, and one file’s render failing no longer stops the files
   after it from loading.
+  A file whose render fails after the server answered says so where its lines would be
+  and is counted the same way; before, it showed nothing and counted as loaded.
+
+- `metab --diff` on a comparison whose whole patch is past 8 MiB answers every file,
+  each file past what one run hydrates asked for alone, as the page does once a reader
+  has reached every file; a file too large for one patch is listed as `too_large`, and
+  `--diff-check` refuses such a comparison by name.
+  Before, it answered `diff error: file 'fN' not found in the produced diff`.
 
 - A `.env` or `.env.local` that cannot be read as text no longer stops `metab` with a
   traceback in every mode.

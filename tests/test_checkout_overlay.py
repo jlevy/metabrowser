@@ -456,8 +456,8 @@ def test_a_fetch_negotiates_from_the_matching_remote_and_only_what_the_store_can
     trace = linear.tmp_path / "git-trace"
     real = git_process.git_environment
 
-    def traced(policy: Any = None) -> dict[str, str]:
-        return {**real(policy), "GIT_TRACE": str(trace)}
+    def traced(policy: Any = None, **kwargs: Any) -> dict[str, str]:
+        return {**real(policy, **kwargs), "GIT_TRACE": str(trace)}
 
     monkeypatch.setattr(git_process, "git_environment", traced)
     checkout = clone_checkout(replica, linear.tmp_path / "fork")
@@ -727,8 +727,8 @@ def test_no_git_process_runs_with_the_checkout_as_its_repository(
     trace = merge_heavy.tmp_path / "git-trace"
     real = git_process.git_environment
 
-    def traced(policy: Any = None) -> dict[str, str]:
-        return {**real(policy), "GIT_TRACE": str(trace)}
+    def traced(policy: Any = None, **kwargs: Any) -> dict[str, str]:
+        return {**real(policy, **kwargs), "GIT_TRACE": str(trace)}
 
     monkeypatch.setattr(git_process, "git_environment", traced)
     checkout = clone_checkout(

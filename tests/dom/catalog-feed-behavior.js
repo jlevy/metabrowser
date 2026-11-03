@@ -204,6 +204,51 @@ async function main() {
         !catalog.calls.some((call) => call.kind === "change" || call.kind === "event-change"),
     );
 
+    // Held while the index is still being built (Qodo on #284): the changes dropped while
+    // held are for files the walker had reached, and the fetch the release starts lists
+    // every file the index holds, those among them, as a prefix; the files reached after
+    // the release arrive as changes, since nothing is held. So the completion that follows
+    // marks the catalog complete with no refetch, and nothing is missing from it.
+    const indexing = makeCatalog();
+    const indexingFetch = makeFetch();
+    const early = sandbox.MetabrowserCatalogFeed.create({
+      catalog: indexing,
+      fetchImpl: indexingFetch.impl,
+    });
+    early.hold();
+    early.start();
+    early.onCatalogChange({ upserts: [{ p: "reached-while-held.txt", e: ".txt" }], removes: [] });
+    early.release();
+    await tick();
+    indexingFetch.pending[0].resolve(
+      jsonResponse({ complete: false, files: [{ p: "reached-while-held.txt", e: ".txt" }] }),
+    );
+    await tick();
+    await tick();
+    check(
+      "a release fetch during indexing is the index so far, merged",
+      indexing.calls[0]?.kind === "bulk" &&
+        indexing.calls[0].coverage === "partial" &&
+        indexing.calls[0].authoritative === false &&
+        indexing.calls[0].files[0].p === "reached-while-held.txt",
+    );
+    early.onCatalogChange({
+      upserts: [{ p: "reached-after-release.txt", e: ".txt" }],
+      removes: [],
+    });
+    await tick();
+    check(
+      "a change after the release applies",
+      indexing.calls.at(-1)?.kind === "change" &&
+        indexing.calls.at(-1).payload.upserts[0].p === "reached-after-release.txt",
+    );
+    early.onIndexComplete();
+    await tick();
+    check(
+      "completion after a release fetch during indexing is complete with no refetch",
+      indexingFetch.pending.length === 1 && indexing.calls.at(-1)?.kind === "markComplete",
+    );
+
     const idleCatalog = makeCatalog();
     const neverStarted = makeFetch();
     const idle = sandbox.MetabrowserCatalogFeed.create({

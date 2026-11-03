@@ -17,6 +17,7 @@ from metabrowser.git import tree_source as tree_module
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
     READ_POLICY,
+    GitCommandTarget,
     GitLocation,
     GitProcessPolicy,
     repository_store_target,
@@ -112,9 +113,11 @@ def test_a_store_target_without_a_policy_never_reads_under_the_ambient_policy(
     chosen: list[GitProcessPolicy | None] = []
     real_environment = process_module.git_environment
 
-    def recording_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
+    def recording_environment(
+        policy: GitProcessPolicy | None = None, *, target: GitCommandTarget | None = None
+    ) -> dict[str, str]:
         chosen.append(policy)
-        return real_environment(policy)
+        return real_environment(policy, target=target)
 
     monkeypatch.setattr(process_module, "git_environment", recording_environment)
 

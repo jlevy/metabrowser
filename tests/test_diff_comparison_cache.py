@@ -228,36 +228,51 @@ def test_a_readers_global_attributes_do_not_reach_a_store(
     store, base, target = _store(tmp_path)
     two = (("left", base), ("right", target), ("base_policy", "direct"))
 
-    async def ask() -> dict[str, str]:
-        monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
+    async def ask(*, fresh: bool = True) -> tuple[dict[str, str], str]:
+        """What each file is, and the cache control, from a fresh process or this one."""
+        if fresh:
+            monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
         async with pinned_client(store, target) as (client, _subject):
-            response = await client.get(_route(*two))
+            response = await client.get(
+                _route(*two, ("build", BUILD_TAG), ("store", store_tag(store)))
+            )
             assert response.status_code == 200
             return {
                 (c.get("new") or c["old"])["path"]: c["availability"]
                 for c in response.json()["manifest"]["files"]
-            }
+            }, response.headers["cache-control"]
 
-    before = asyncio.run(ask())
+    before, _ = asyncio.run(ask())
     assert before["a.py"] == "ready"
     xdg = tmp_path / "xdg"
     (xdg / "git").mkdir(parents=True)
     (xdg / "git" / "attributes").write_text("*.py -diff\n")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
-    assert asyncio.run(ask()) == before
+    assert asyncio.run(ask())[0] == before
     monkeypatch.delenv("XDG_CONFIG_HOME")
     home = tmp_path / "home"
     (home / ".config" / "git").mkdir(parents=True)
     (home / ".config" / "git" / "attributes").write_text("*.py -diff\n")
     monkeypatch.setenv("HOME", str(home))
-    assert asyncio.run(ask()) == before
+    assert asyncio.run(ask())[0] == before
     # The store's own `info/attributes` is an input Git reads whatever else is isolated,
-    # so it moves the store's token, and with it every address and tag.
+    # so it moves the store's token, and with it every address and tag, and the key in
+    # memory (review of #284, D2): one process answers the edit as a fresh one would.
+    # Before, the memory was keyed without the token, and a request at the new address
+    # was answered with the old body, `immutable`.
+    one_process = ComparisonCache()
+    monkeypatch.setattr(sidekick, "_COMPARISONS", one_process)
     before_token = store_tag(store)
+    kept, control = asyncio.run(ask(fresh=False))
+    assert kept["a.py"] == "ready" and control.endswith("immutable")
+    assert one_process.sizes()["bodies"] == 1
     (store / "info").mkdir(exist_ok=True)
     (store / "info" / "attributes").write_text("*.py -diff\n")
     assert store_tag(store) != before_token
-    assert asyncio.run(ask())["a.py"] == "binary"
+    edited, control = asyncio.run(ask(fresh=False))
+    assert edited["a.py"] == "binary" and control.endswith("immutable")
+    assert one_process.sizes()["bodies"] == 2, "the old answer is kept under its own key"
+    assert asyncio.run(ask())[0] == edited, "what a fresh process answers"
 
 
 def test_a_kept_answer_is_the_bytes_of_a_computed_one(
@@ -322,7 +337,12 @@ def _plain_request(**params: str) -> Any:
 def test_a_stores_default_branch_attributes_change_nothing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A fetch moves a store's HEAD, so if its `.gitattributes` counted the key would be wrong."""
+    """A fetch moves a store's HEAD, and nothing in the key, the tag or the address names
+    HEAD, so its `.gitattributes` must not count. Git 2.43 reads a bare repository's
+    attributes from HEAD and 2.50 reads no commit's (review of #284, D1: the admitted-git
+    job on 2.43.7 answered one patch where it had answered every file), so a store read
+    names the store's empty tree as its attributes source, and the same two commits answer
+    the same bytes from a fresh process on each Git the Makefile admits."""
     work = tmp_path / "work"
     work.mkdir()
     base, target = build_diff_fixture(work)
@@ -330,20 +350,22 @@ def test_a_stores_default_branch_attributes_change_nothing(
     git(work.parent, "clone", "-q", "--bare", "--template=", str(work), str(store))
     two = (("left", base), ("right", target), ("base_policy", "direct"))
 
-    async def ask() -> dict[str, Any]:
+    async def ask() -> tuple[dict[str, Any], str]:
         monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
         async with pinned_client(store, target) as (client, _subject):
             response = await client.get(_route(*two))
             assert response.status_code == 200
-            return response.json()
+            return response.json(), response.headers["etag"]
 
-    before = asyncio.run(ask())
+    before, etag = asyncio.run(ask())
+    assert all(c["availability"] == "ready" for c in before["manifest"]["files"][:1])
     (work / ".gitattributes").write_text("* -diff\n")
     git(work, "add", "-A")
     git(work, "commit", "-qm", "attributes on the default branch")
     git(store, "fetch", "-q", str(work), "main:main")
     assert b"-diff" in git(store, "show", "HEAD:.gitattributes")
-    assert asyncio.run(ask()) == before
+    assert asyncio.run(ask()) == (before, etag)
+    assert all(c["availability"] == "ready" for c in before["manifest"]["files"][:1])
 
 
 def test_one_computation_however_many_ask_together() -> None:
