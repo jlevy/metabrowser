@@ -1042,6 +1042,21 @@ Fixes:
   `--diff-check` refuses such a comparison by name.
   Before, it answered `diff error: file 'fN' not found in the produced diff`.
 
+- A diff draws the lines of the files on its first screen, and one screen more, when it
+  opens, and each later file that came with it when the reader reaches it, from what the
+  page already has, so nothing more is asked of the server.
+  Every file’s bar is there at once and holds its own height, a file the reader is
+  looking at stays where it is as others fill in, and a file looks the same once drawn.
+  Before, a diff drew every file it was sent in one task the page waited on, at load, on
+  Back, and on opening Files changed: on a 1,031-file pull request that was 114,609 page
+  nodes and about 1.1 s, and it is now 23,451 nodes and a longest task of 114 to 330 ms,
+  with the first line 1.4x to 2.0x sooner, measured in Chrome under load.
+  A commit’s diff in a served folder and a `.patch` file’s view are the same view and
+  draw the same way; a diff that fits on its first two screens is drawn whole at once,
+  as before. The browser’s find in page now finds a line only in a file that has been
+  drawn, as on GitHub; it still finds every file by its path, and going to the file
+  draws its lines.
+
 - A `.env` or `.env.local` that cannot be read as text no longer stops `metab` with a
   traceback in every mode.
   It is skipped with a warning naming the file, so a repository whose `.env` is not
