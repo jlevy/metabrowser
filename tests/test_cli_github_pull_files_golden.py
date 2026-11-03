@@ -23,6 +23,7 @@ from typing import Any
 import pytest
 
 from metabrowser.builtin_plugins.github import gh, pull_list, pulls
+from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     ANOTHER_READER,
@@ -32,6 +33,7 @@ from tests.github_pull_fixture import (
     TREE_PULL,
     Origin,
     account,
+    catalog_entries,
     file_item,
     file_pages,
     files_page,
@@ -39,9 +41,7 @@ from tests.github_pull_fixture import (
     generated_item,
     in_a_stable_order,
     install_fake_gh,
-    list_page,
     logged_gh_calls,
-    ok,
     tree_files,
 )
 from tests.golden_harness import (
@@ -204,18 +204,16 @@ def test_golden_pull_files_listed_refreshed_and_refused(
     moved = tree_files()
     moved[0] = file_item("README.md", "modified", None, 5, 1)
     first_page = files_page(TREE_PULL, 1)
-    pushed = _api(
-        _api(online, list_page("all"), ok(list_page("all"), [pushed_row])),
-        first_page,
-        file_pages(TREE_PULL, moved)[first_page],
-    )
+    pushed = _api(online, first_page, file_pages(TREE_PULL, moved)[first_page])
+    pushed = {**pushed, "api": {**pushed["api"], **catalog_entries([pushed_row])}}
     session.answer(pushed)
     request = tmp_path / "list-request.json"
-    request.write_text('{"retry": true}\n', encoding="utf-8")
+    request.write_text('{"state": "all", "target": 500, "retry": true}\n', encoding="utf-8")
     listed_again = session.run(
         CANONICAL, "--api", "/api/plugin/github/pulls-refresh", "--data", str(request)
     )
     assert listed_again.exit_code == 0, listed_again.stderr
+    assert _after(listed_again)["repository_total"] == 1
     stale = session.get(f"?number={TREE_PULL}&limit=1")
     assert stale.payload()["state"] == "stale"
     reread = _after(session.post({"number": TREE_PULL}))
@@ -235,8 +233,12 @@ def test_golden_pull_files_listed_refreshed_and_refused(
     labelled = session.get(f"?number={TREE_PULL}&limit=0").payload()
     assert (labelled["state"], labelled["reader"]) == ("stale", "gh:octo-reader")
 
+    labels = Labels()
+    catalog = read_catalog(session.home, origin_identity(CANONICAL).slug)
+    assert catalog is not None
+    labels.add(catalog.epoch, "<CATALOG_EPOCH_1>")
     rendered = normalize_pull_comparison_scopes(
-        label_home(Labels().apply("".join(session.blocks)), session.home)
+        label_home(labels.apply("".join(session.blocks)), session.home)
     )
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered

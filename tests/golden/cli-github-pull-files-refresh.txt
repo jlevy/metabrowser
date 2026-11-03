@@ -713,10 +713,14 @@ status: 202
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": null,
+    "total": null,
+    "repository_total": null,
+    "count_at": null,
+    "catalog_fetched": 0,
+    "generation": null,
     "fetched": 0,
     "complete": false,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
@@ -740,10 +744,14 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:02:00Z"
   },
+  "total": 1,
+  "repository_total": 1,
+  "count_at": "2026-09-17T12:02:00Z",
+  "catalog_fetched": 1,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 1,
   "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -751,7 +759,7 @@ status: 200
 --- stderr ---
 --- gh ---
 gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1
+gh api graphql catalog state=all cursor=start
 gh auth status
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull-files?number=106&limit=1'
 exit: 0
