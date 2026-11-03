@@ -26,7 +26,9 @@ only a pull request with a record, and only when that record is stale and not tr
 the window. So nothing a link can do adds to the cache.
 
 Which pull requests a server has is :func:`pull_host`'s to say, and nothing else here
-knows whether it is a mirror.
+knows whether it is a mirror or a checkout. A checkout's server has no store, so it answers a
+record with no comparison, ``no_store``, whoever wrote it, and a server with a store answers
+a record written that way as ``stale``.
 """
 
 from __future__ import annotations
@@ -39,10 +41,16 @@ import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal, TypedDict
 
 from metabrowser.builtin_plugins.github import pulls
+from metabrowser.builtin_plugins.github.checkout import (
+    checkout_pulls,
+    served_checkout,
+    start_pull_refresh,
+)
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     RecordAbsence,
@@ -52,6 +60,7 @@ from metabrowser.builtin_plugins.github.served_pull import (
     PullRefreshOutcome,
     ServedPull,
     ServedPulls,
+    written_without_store,
 )
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_record
 from metabrowser.git.tree_source import GitRevisionSubject
@@ -60,6 +69,7 @@ from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
     PullJobStart,
     mirror_session,
+    refresh_coordinator,
 )
 from metabrowser.source import RepositorySubject
 from metabrowser.view_routes import parse_pull_number
@@ -99,14 +109,36 @@ def _parse_stamp(stamp: str) -> datetime:
 
 
 def pull_state(
-    record: PullRecord | RecordAbsence, *, now: datetime, refreshing: bool = False
+    record: PullRecord | RecordAbsence,
+    *,
+    now: datetime,
+    refreshing: bool = False,
+    has_store: bool = True,
 ) -> tuple[PullState, RecordAbsence | None]:
-    """The state a cached record (or its absence) is in at *now*."""
+    """The state a cached record (or its absence) is in at *now*.
+
+    A record written with no store, by a checkout's server, is stale whatever its age on a
+    server that *has_store*, which can give it its Files changed.
+    """
 
     if not isinstance(record, PullRecord):
         return ("pending", None) if refreshing else ("absent", record)
+    if has_store and written_without_store(record):
+        return "stale", None
     age = now - _parse_stamp(record.fetched_at)
     return ("current" if age <= timedelta(seconds=FRESHNESS_WINDOW_S) else "stale"), None
+
+
+def _without_store(dumped: dict[str, Any]) -> dict[str, Any]:
+    """A record as a server with no store has it: no comparison, ``no_store``.
+
+    A checkout's server may read a record a mirror wrote, with a comparison of commits in
+    that mirror's store. It has no store of its own, and it never reads the checkout's, so
+    it offers no Files changed for it. A new dictionary: *dumped* is the parsed cache's.
+    """
+
+    unavailable = {**dumped.get("unavailable", {}), "comparison": "no_store"}
+    return {**dumped, "comparison": None, "unavailable": unavailable}
 
 
 def comparison_route(record: PullRecord) -> str | None:
@@ -183,11 +215,27 @@ class PullHost:
 
 
 def pull_host(app: Any) -> PullHost | None:
-    """This server's pull requests, or ``None``: on a mirror, those the provider keeps."""
+    """This server's pull requests, or ``None``.
+
+    On a mirror, those the provider keeps. On a folder, those of a served checkout's
+    repository (:mod:`.checkout`), whose jobs run on the server's refresh coordinator with
+    no store.
+    """
 
     session = mirror_session(app)
-    served = None if session is None else session.pull_requests
-    if session is None or not isinstance(served, ServedPulls):
+    if session is None:
+        checkout = served_checkout(app)
+        coordinator = refresh_coordinator(app)
+        if checkout is None or coordinator is None:
+            return None
+        pulls = checkout_pulls(checkout)
+        return PullHost(
+            pulls,
+            lambda number: coordinator.running(pulls.key(number)),
+            partial(start_pull_refresh, coordinator, pulls),
+        )
+    served = session.pull_requests
+    if not isinstance(served, ServedPulls):
         return None
     return PullHost(served, session.pull_refreshing, session.request_pull_refresh)
 
@@ -244,8 +292,14 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         )
     served = host.pulls
     record, dumped = cached_pull_record(served.home, served.slug, view.number)
+    has_store = served.git_dir is not None
     # Through the module, so records and their age share one clock seam.
-    state, absence = pull_state(record, now=pulls.utc_now(), refreshing=view.refreshing)
+    state, absence = pull_state(
+        record, now=pulls.utc_now(), refreshing=view.refreshing, has_store=has_store
+    )
+    if not has_store and isinstance(record, PullRecord) and dumped is not None:
+        dumped = _without_store(dumped)
+        record = record.model_copy(update={"comparison": None})
     return PullEnvelope(
         state=state,
         reason=absence,

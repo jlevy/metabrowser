@@ -18,8 +18,8 @@ not be read. ``at_cap`` says the list holds as many pages as it may, so no more 
 asked for. Rows come as a window, by ``limit`` and ``after`` (a row's number), and
 ``next_after`` is where the next window of cached rows starts.
 
-Which repository a server lists is :func:`listed_repository`'s to say, and nothing else
-here knows whether it is a mirror.
+Which repository a server lists is :func:`served_repository`'s to say, and nothing else
+here knows whether it is a mirror or a checkout.
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any, Final, Literal, TypedDict
 
 from metabrowser.builtin_plugins.github import pull_list
+from metabrowser.builtin_plugins.github.checkout import served_checkout
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, utc_stamp
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_LIST_PAGES,
@@ -185,6 +186,19 @@ def listed_repository(mirror: MirrorSession | None) -> ListedRepository | None:
     return ListedRepository(home=served.home, slug=served.slug, owner=owner, repo=repo)
 
 
+def served_repository(app: Any) -> ListedRepository | None:
+    """The GitHub repository this server lists, or ``None``.
+
+    On a mirror, what it mirrors; on a folder, what a served checkout's ``origin`` names
+    (:mod:`.checkout`), read from memory once the route has resolved it.
+    """
+
+    mirror = mirror_session(app)
+    if mirror is not None:
+        return listed_repository(mirror)
+    return served_checkout(app)
+
+
 def _job_key(repository: ListedRepository, name: PullListName) -> str:
     """The single-flight key of a list's refresh: one per source and list."""
 
@@ -203,7 +217,7 @@ class ListView:
 def list_view(app: Any, name: PullListName) -> ListView:
     """The server's repository and whether list *name* is refreshing, read on the loop."""
 
-    repository = listed_repository(mirror_session(app))
+    repository = served_repository(app)
     coordinator = refresh_coordinator(app)
     refreshing = (
         repository is not None
@@ -518,6 +532,7 @@ __all__ = [
     "list_view",
     "list_window",
     "listed_repository",
+    "served_repository",
     "pull_list_envelope",
     "refresh_request",
     "refresh_wanted",

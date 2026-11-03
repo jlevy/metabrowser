@@ -52,6 +52,27 @@ _TOO_MANY: Final = {
 }
 
 
+async def _resolve(request: Request) -> None:
+    """On a folder, find the served checkout's repository off the loop, once per root.
+
+    A route reads it from memory after this, as it reads a mirror's. Nothing before a
+    route is asked for resolves it, so a folder whose Pulls tab is never opened reads none
+    of its checkout for this.
+    """
+
+    from metabrowser.builtin_plugins.github.checkout import ensure_resolved
+
+    await ensure_resolved(request.app)
+
+
+def _without_store(envelope: Any) -> bool:
+    """Whether the record an envelope carries was written with no store."""
+
+    record = envelope.get("record")
+    unavailable = record.get("unavailable") if isinstance(record, dict) else None
+    return isinstance(unavailable, dict) and unavailable.get("comparison") == "no_store"
+
+
 async def pull_handler(request: Request) -> Response:
     """``GET /api/plugin/github/pull?number=<n>`` — see :mod:`.pull_route`.
 
@@ -75,11 +96,12 @@ async def pull_handler(request: Request) -> Response:
         number = requested_number(request.query_params)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     view = pull_view(pull_host(request.app), get_source_session().subject, number)
     stamp = await asyncio.to_thread(record_stamp, view)
     envelope = await asyncio.to_thread(pull_envelope, view)
     if view.kept is not None:
-        view.kept.saw_record(envelope["fetched_at"])
+        view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
     etag = envelope_etag(envelope, stamp)
     headers = {**_NO_STORE, "etag": etag}
     if matches_if_none_match(request, etag):
@@ -102,6 +124,7 @@ async def pull_markdown_handler(request: Request) -> JSONResponse:
         number = requested_number(request.query_params)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     view = pull_view(pull_host(request.app), get_source_session().subject, number)
     status_code, body = await asyncio.to_thread(
         render_part, view, request.query_params.get("part", "")
@@ -164,6 +187,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
         ask = refresh_request(body)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     host = pull_host(request.app)
     if host is None:
         return JSONResponse(
@@ -175,7 +199,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     view = pull_view(host, get_source_session().subject, ask.number)
     envelope = await asyncio.to_thread(pull_envelope, view)
     if view.kept is not None:
-        view.kept.saw_record(envelope["fetched_at"])
+        view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
     # ``status_route`` is where a one-shot ``--api`` reads how the refresh ended.
     answer = {"refresh": started, "pull": dict(envelope), "status_route": status_route(ask.number)}
     if started == "too_many":
@@ -208,6 +232,7 @@ async def pulls_handler(request: Request) -> Response:
         window = list_window(request.query_params)
     except ListRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     view = list_view(request.app, window.name)
     stamp = await asyncio.to_thread(list_file_stamp, view, window.name)
     envelope = await asyncio.to_thread(pull_list_envelope, view, window)
@@ -248,6 +273,7 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
         ask = refresh_request(body)
     except ListRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     view = list_view(request.app, ask.name)
     if view.repository is None or view.coordinator is None:
         return JSONResponse(
@@ -283,6 +309,7 @@ async def pull_files_handler(request: Request) -> Response:
         window = files_window(request.query_params)
     except FilesRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     view = files_view(request.app, window.number)
     stamp = await asyncio.to_thread(files_file_stamp, view)
     envelope = await asyncio.to_thread(pull_files_envelope, view, window)
@@ -322,6 +349,7 @@ async def pull_files_refresh_handler(request: Request) -> JSONResponse:
         ask = files_refresh_request(body)
     except FilesRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     view = files_view(request.app, ask.number)
     if view.repository is None or view.coordinator is None:
         return JSONResponse(

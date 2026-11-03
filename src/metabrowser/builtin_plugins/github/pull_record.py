@@ -16,6 +16,8 @@ below, on public pull requests read with ``gh api`` on 2026-09-23.
 from __future__ import annotations
 
 import json
+import os
+import stat
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal
@@ -34,6 +36,7 @@ from metabrowser.cache.paths import (
     source_pull_record,
     source_pull_refresh,
     source_pulls_directory,
+    source_record,
 )
 from metabrowser.home import (
     PrivateStorageError,
@@ -427,15 +430,33 @@ def serialize_pull_record(record: PullRecord) -> bytes:
     return data
 
 
+def ensure_pulls_directory(home: Path, slug: str) -> None:
+    """Create or verify the source's ``pulls`` directory, inside a published source only.
+
+    A source directory is published whole, with its ``source.yml``, by a mirror's
+    acquisition or a checkout's first write (:mod:`.checkout`). So a write under a slug no
+    source holds raises ``FileNotFoundError`` and creates nothing: not the home, and not a
+    directory the cache would report as a damaged source. Blocking.
+    """
+
+    try:
+        status = os.lstat(home / source_record(slug, "source.yml"))
+    except FileNotFoundError:
+        raise FileNotFoundError("no source is published under this slug") from None
+    if not stat.S_ISREG(status.st_mode):
+        raise FileNotFoundError("no source is published under this slug")
+    ensure_private_directory(home, source_pulls_directory(slug))
+
+
 def write_pull_record(home: Path, slug: str, record: PullRecord) -> None:
     """Publish *record* atomically under its source. Blocking; run it off the event loop.
 
     Raises :class:`RecordTooLargeError`, or the home's ``PrivateStorageError`` or an
-    ``OSError`` when the cache cannot take it.
+    ``OSError`` when the cache cannot take it, a slug no source holds among them.
     """
 
     data = serialize_pull_record(record)
-    ensure_private_directory(home, source_pulls_directory(slug))
+    ensure_pulls_directory(home, slug)
     write_private_file_atomic(home, source_pull_record(slug, record.number), data)
 
 
@@ -507,7 +528,7 @@ def write_refresh_stamp(home: Path, slug: str, relative: str, stamp: PullRefresh
     Blocking; run it off the event loop.
     """
 
-    ensure_private_directory(home, source_pulls_directory(slug))
+    ensure_pulls_directory(home, slug)
     write_private_file_atomic(home, relative, stamp.model_dump_json().encode("utf-8"))
 
 
@@ -568,6 +589,7 @@ __all__ = [
     "apply_text_budget",
     "cut_escaped",
     "cut_text",
+    "ensure_pulls_directory",
     "escaped_size",
     "fit_record",
     "read_pull_record",

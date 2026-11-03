@@ -18,6 +18,11 @@ how the last refresh ended, read from what the last command kept beside the reco
 refresh that fails leaves the record as it was. The next automatic attempt waits a
 window, so a missing ``gh`` is not asked on every poll, nor again by a command started
 just after one that asked, and after ``rate_limited`` it waits for GitHub's ``reset_at``.
+
+A checkout served as a folder has a set too, of its repository with no store
+(:mod:`.checkout`): its jobs are keyed by the source's slug, and its records are written
+with no comparison, ``no_store``. A server that has a store treats such a record as stale
+whatever its age, so its Files changed is not left unavailable.
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Final, TypedDict
 
 from metabrowser.builtin_plugins.github import pulls
+from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_record import PullRecord, read_pull_record
 
 if TYPE_CHECKING:
@@ -64,20 +70,37 @@ def _stamp(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _job_prefix(published: PublishedSource | ListedRepository) -> str:
+    """What a refresh's key starts with: the store a mirror fetches into, or a checkout's slug."""
+
+    return published.slug if isinstance(published, ListedRepository) else published.store_key
+
+
+def written_without_store(record: PullRecord) -> bool:
+    """Whether *record* was written by a server with no store, so it has no Files changed."""
+
+    return record.unavailable.get("comparison") == "no_store"
+
+
 @dataclass(eq=False)
 class ServedPull:
-    """One pull request: its source, number, record time, and last refresh."""
+    """One pull request: its source, number, record time, and last refresh.
 
-    published: PublishedSource
+    *published* is a mirror's source, or a checkout's repository, which has no store.
+    ``without_store`` says the record held was written with no store.
+    """
+
+    published: PublishedSource | ListedRepository
     number: int
     fetched_at: str | None = None
     last: PullRefreshOutcome | None = None
+    without_store: bool = False
     _last_attempt: datetime | None = field(default=None, repr=False)
     _refreshing: bool = field(default=False, repr=False)
 
     @property
     def key(self) -> str:
-        return f"{self.published.store_key}:pull/{self.number}"
+        return f"{_job_prefix(self.published)}:pull/{self.number}"
 
     @property
     def refreshing(self) -> bool:
@@ -92,10 +115,17 @@ class ServedPull:
         refresh attempted within the window counts as fresh too, whether or not it
         succeeded, so a failing ``gh`` is asked once a window rather than on every poll.
         After ``rate_limited`` no attempt is due before ``reset_at``, when GitHub said.
+        A record written with no store is fresh only where there is none, a checkout's: a
+        mirror refreshes it whatever its age, for its Files changed.
         """
 
         window = timedelta(seconds=window_s)
-        if self.fetched_at is not None and now - _parse_stamp(self.fetched_at) <= window:
+        unserved = self.without_store and not isinstance(self.published, ListedRepository)
+        if (
+            not unserved
+            and self.fetched_at is not None
+            and now - _parse_stamp(self.fetched_at) <= window
+        ):
             return False
         last = self.last
         if (
@@ -105,13 +135,18 @@ class ServedPull:
             and now < _parse_stamp(last["reset_at"])
         ):
             return False
+        if unserved and last is not None and last["outcome"] == "succeeded":
+            # What succeeded was a server with no store writing that record. This one's
+            # refresh, which fetches the head into its store, has not been tried.
+            return True
         return self._last_attempt is None or now - self._last_attempt > window
 
-    def saw_record(self, fetched_at: str | None) -> None:
-        """Adopt a record time the pull route read, if newer, so status and it agree."""
+    def saw_record(self, fetched_at: str | None, *, without_store: bool = False) -> None:
+        """Adopt a record the pull route read, if newer, so status and it agree."""
 
         if fetched_at is not None and (self.fetched_at is None or fetched_at > self.fetched_at):
             self.fetched_at = fetched_at
+            self.without_store = without_store
 
     async def refresh(self) -> None:
         """Read the pull request again; a failure is kept as :attr:`last`."""
@@ -131,12 +166,13 @@ class ServedPull:
         finally:
             self._refreshing = False
         self.fetched_at = record.fetched_at
+        self.without_store = written_without_store(record)
         self.last = PullRefreshOutcome(
             outcome="succeeded", message=None, reset_at=None, at=record.fetched_at
         )
 
 
-def served_pull(published: PublishedSource, number: int) -> ServedPull:
+def served_pull(published: PublishedSource | ListedRepository, number: int) -> ServedPull:
     """One pull request, knowing when its cached record was fetched, if it was.
 
     Blocking and bounded: it reads the record and the last refresh's stamp once. Call it
@@ -145,19 +181,28 @@ def served_pull(published: PublishedSource, number: int) -> ServedPull:
 
     record = read_pull_record(published.home, published.slug, number)
     fetched_at = record.fetched_at if isinstance(record, PullRecord) else None
+    without_store = isinstance(record, PullRecord) and written_without_store(record)
     last = last_refresh(published, number)
     if last is None:
-        return ServedPull(published=published, number=number, fetched_at=fetched_at)
+        return ServedPull(
+            published=published,
+            number=number,
+            fetched_at=fetched_at,
+            without_store=without_store,
+        )
     return ServedPull(
         published=published,
         number=number,
         fetched_at=fetched_at,
         last=last,
+        without_store=without_store,
         _last_attempt=_parse_stamp(last["at"]),
     )
 
 
-def last_refresh(published: PublishedSource, number: int) -> PullRefreshOutcome | None:
+def last_refresh(
+    published: PublishedSource | ListedRepository, number: int
+) -> PullRefreshOutcome | None:
     """How the last refresh of *number* ended, in any process. Blocking and bounded."""
 
     stamp = pulls.last_refresh(published, number)
@@ -177,7 +222,7 @@ class ServedPulls:
     on changing a state nothing reads any more.
     """
 
-    published: PublishedSource
+    published: PublishedSource | ListedRepository
     _kept: OrderedDict[int, ServedPull] = field(default_factory=OrderedDict[int, ServedPull])
     _attended: int | None = None
 
@@ -191,10 +236,20 @@ class ServedPulls:
 
     @property
     def source(self) -> str:
-        return self.published.source.normalized
+        published = self.published
+        if isinstance(published, ListedRepository):
+            return published.source
+        return published.source.normalized
+
+    @property
+    def git_dir(self) -> Path | None:
+        """The store a refresh fetches into, or ``None`` on a checkout, which has none."""
+
+        published = self.published
+        return None if isinstance(published, ListedRepository) else published.git_dir
 
     def key(self, number: int) -> str:
-        return f"{self.published.store_key}:pull/{number}"
+        return f"{_job_prefix(self.published)}:pull/{number}"
 
     def held(self, number: int) -> ServedPull | None:
         """Pull request *number*'s state when it is in memory. Reads nothing."""
@@ -238,4 +293,5 @@ __all__ = [
     "ServedPulls",
     "last_refresh",
     "served_pull",
+    "written_without_store",
 ]

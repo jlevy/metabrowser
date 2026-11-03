@@ -1419,9 +1419,10 @@ async def index(
         else ""
     )
     # The Pulls tab is decided here, from what the page already knows: a pin whose mirror is a
-    # hosted repository. It costs a folder nothing, not even a script in a bundle, and a
-    # mirror's page draws it at first paint, so the tabs never shift when it arrives.
-    pulls_tab = git_pin and repository_context is not None
+    # hosted repository, or a checkout, a subdirectory of one too, whose `origin` is on
+    # github.com. It costs a plain folder nothing, not even a script in a bundle, and a page
+    # that has it draws it at first paint, so the tabs never shift when it arrives.
+    pulls_tab = repository_context is not None
     pulls_in_front = pulls_tab and (pull_page or pull_list)
     files_active = "" if pulls_in_front else " active"
     files_selected = "false" if pulls_in_front else "true"
