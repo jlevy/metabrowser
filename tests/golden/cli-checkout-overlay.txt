@@ -317,7 +317,7 @@ cloned https://github.com/octo/demo in 0.0 s
 
 ## A depth-3 clone of a merge-heavy history, where Git alone answers A1 and the truth is A4 (2450c5fafb08ffe7cd0020e0b94edd7f598ccd91). With no rounds of deepening allowed: base_uncertain, no diff.
 
-# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/shallow --api /api/plugin/github/pull
+# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/shallow --api '/api/plugin/github/pull?number=1'
 exit: 0
 --- stdout ---
 {
@@ -389,7 +389,7 @@ pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago, borrowing objects from <ROOT>/shallow
 
-# metab https://github.com/octo/demo/pull/1 --api /api/plugin/github/pull
+# metab https://github.com/octo/demo/pull/1 --api '/api/plugin/github/pull?number=1'
 exit: 0
 --- stdout ---
 {
@@ -414,7 +414,7 @@ pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 
 ## A depth-1 clone: Git's answer is empty, which is uncertain and not no history.
 
-# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/shallowest --api /api/plugin/github/pull
+# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/shallowest --api '/api/plugin/github/pull?number=1'
 exit: 0
 --- stdout ---
 {
@@ -434,7 +434,7 @@ selection: pull_request
 pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
 pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 
-# metab https://github.com/octo/demo/pull/1 --api /api/plugin/github/pull
+# metab https://github.com/octo/demo/pull/1 --api '/api/plugin/github/pull?number=1'
 exit: 0
 --- stdout ---
 {
@@ -457,7 +457,7 @@ pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 
 ## Offline: a comparison the record cannot settle stays base_uncertain, and asking the comparison route for the tips directly does not guess either.
 
-# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/offline --api /api/plugin/github/pull
+# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/offline --api '/api/plugin/github/pull?number=1'
 exit: 0
 --- stdout ---
 {
@@ -728,7 +728,7 @@ status: 200
 
 ## The checkout collected an ancestor, M3 (1c7d32c9919db8947b6015c121fc24b463909cd1), that the store never held: the comparison needs it, and the record says commits_unavailable, never no_merge_base.
 
-# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/collected --api /api/plugin/github/pull
+# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/collected --api '/api/plugin/github/pull?number=1'
 exit: 0
 --- stdout ---
 {
@@ -750,7 +750,7 @@ selection: pull_request
 pin: 806ef37f15fef9c34a47873090c6169008db8cd2 (pull request 1 head)
 pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 
-# metab https://github.com/octo/demo/pull/1 --api /api/plugin/github/pull
+# metab https://github.com/octo/demo/pull/1 --api '/api/plugin/github/pull?number=1'
 exit: 0
 --- stdout ---
 {

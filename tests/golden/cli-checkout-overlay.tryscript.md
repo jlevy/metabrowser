@@ -302,11 +302,11 @@ Its fixture allowed no rounds of deepening, as when offline, so the record says
 deepening does is in `tests/golden/cli-checkout-overlay.txt`.
 
 ```console
-$ metab --cache-dir home-shallow --config-dir config https://github.com/octo/demo/pull/1 --api /api/plugin/github/pull
+$ metab --cache-dir home-shallow --config-dir config https://github.com/octo/demo/pull/1 --api '/api/plugin/github/pull?number=1'
 selection: pull_request
 pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
 pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/pull
+api: /api/plugin/github/pull?number=1
 status: 200
 {
   "state": "stale",
@@ -314,6 +314,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "number": 1,
   "pin": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
+  "pin_ref": "refs/pull/1/head",
   "fetched_at": "2026-09-17T12:00:00Z",
   "fresh_for_s": 60.0,
   "refreshing": false,
