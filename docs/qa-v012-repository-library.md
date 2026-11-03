@@ -1508,8 +1508,8 @@ address.
 1. The page shows **Count to two in the app #7** with an **Open** badge,
    `forker wants to merge 2 commits into octo:topic from forker:count-to-two`, the
    opened and updated times, **View on GitHub**, **Browse code**, and the `enhancement`
-   label. The status line reads `Fetched … by gh:octo-reader`; the records were fetched
-   on 2026-09-17, so it first adds `may be out of date` and offers **Refresh**, and the
+   label. The status line reads `Fetched … by octo-reader`; the records were fetched on
+   2026-09-17, so it first adds `may be out of date` and offers **Refresh**, and the
    freshness row at the foot of the navigation pane refreshes on its own and links
    **Pull request #7**.
 2. The description shows as plain text at first, then after a moment as Markdown
@@ -1528,8 +1528,8 @@ address.
    served head, `one` and `two`, with line 2 highlighted.
    Back returns to the pull-request page.
 6. Click **Refresh** while the record is stale.
-   The status line reads `Refreshing…` and then `Fetched just now by gh:octo-reader`;
-   the conversation does not flicker or jump.
+   The status line reads `Refreshing…` and then `Fetched just now by octo-reader`; the
+   conversation does not flicker or jump.
 7. Open `/pull/8/files`. The page says `This server serves pull request #7.` with **Open
    pull request #7**; click it.
    The address becomes `/pull/7/files` without a reload and the page shows pull request
