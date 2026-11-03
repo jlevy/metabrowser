@@ -434,6 +434,20 @@ async def comparison_at(
         # revision, no such file in the comparison.
         return _error("diff_comparison", str(exc), 404, path=revision)
     except GitError as exc:
+        if isinstance(location.target, RepositoryStoreTarget):
+            from metabrowser.git.object_failures import observed_object_failures
+
+            commits = (revision,) if revision else (left, right)
+            observed = observed_object_failures.remember(location.target, commits, exc)
+            if observed is not None:
+                if observed.state == "object_corrupt" and kept_key is not None:
+                    _COMPARISONS.invalidate(kept_key)
+                message = (
+                    "An object in this comparison does not match its ID."
+                    if observed.state == "object_corrupt"
+                    else "An object in this comparison is missing; refresh the pull request to fetch it."
+                )
+                return _error(observed.state, message, 409, path=revision)
         return _git_failure(exc, revision)
 
     if wanted_file:

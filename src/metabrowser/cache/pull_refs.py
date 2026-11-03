@@ -115,6 +115,7 @@ type PullFetchFailure = Literal[
     "commits_unavailable",
     "comparison_timeout",
     "comparison_too_large",
+    "object_corrupt",
 ]
 
 
@@ -442,6 +443,15 @@ async def fetch_commit(published: PublishedSource, oid: str) -> None:
     await _fetch(published, [oid])
 
 
+async def fetch_objects(
+    published: PublishedSource, oids: tuple[str, ...], *, timeout_s: float
+) -> None:
+    """Fetch explicitly observed full object IDs, without changing a branch or PR ref."""
+    if not oids or not all(is_full_revision(oid) for oid in oids):
+        raise ValueError("not full object IDs")
+    await _fetch(published, list(dict.fromkeys(oids)), timeout_s=timeout_s)
+
+
 async def comparison_endpoints(
     published: PublishedSource,
     *,
@@ -494,6 +504,9 @@ async def _endpoints_from(
             "comparison_too_large", "the comparison history exceeded the read limit"
         ) from exc
     except GitCommandError as exc:
+        from metabrowser.git.object_failures import observed_object_failures
+
+        observed_object_failures.remember(_target(published), (base_commit, head), exc)
         log.debug("merge-base of %s and %s failed: %s", base_commit, head, exc.stderr_summary)
         raise PullRefError(
             "commits_unavailable",
@@ -560,6 +573,7 @@ __all__ = [
     "comparison_endpoints",
     "deepen_until_certain",
     "fetch_commit",
+    "fetch_objects",
     "fetch_into_store",
     "fetch_pull_head",
     "has_commit",
