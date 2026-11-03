@@ -71,7 +71,11 @@ if TYPE_CHECKING:
 # real pull requests of 42, 101, 663 and 1,183 files: 3.1 to 4.1 KB a file, 4.9 MB at 1,183. So
 # the manifest's own cap of 2,000 files would retain 8.2 MB, and sixteen of those 131 MB, which
 # an ordinary session comes nowhere near. A reader moving between recent pull requests keeps
-# every one of them.
+# every one of them. What the reader's machine pays is RSS, which is more: filling the cache
+# with twenty distinct comparisons of 1,325 to 2,000 files on one store, at load 8.1 to 8.6, took
+# the server from 103 MB to 293 MB at the sixteenth and 296 MB after the twentieth, so the bound
+# holds and plateaus there, at about 190 MB that includes the allocator's high-water mark from
+# computing them (review of #284, E5).
 MAX_CACHED_MANIFESTS = 16
 
 # Encoded answers kept in memory, in compressed bytes. Measured the same day: a first page is 144
