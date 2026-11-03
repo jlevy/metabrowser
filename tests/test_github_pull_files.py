@@ -606,3 +606,120 @@ def test_usable_local_listing_needs_no_github_while_rate_limited(
     listed = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
     assert listed.listed_from == "comparison" and listed.rows
     assert not Path(os.environ["FAKE_GH_LOG"]).exists()
+
+
+@pytest.mark.parametrize("failure", ["missing", "truncated"])
+def test_successive_local_lists_keep_network_hold_until_expiry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repository: ListedRepository,
+    failure: str,
+) -> None:
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    local = _comparison_for_limit_test(tmp_path)
+    limited = PullRefreshStamp(
+        outcome="rate_limited",
+        message="GitHub said to wait",
+        reset_at="2026-09-18T00:00:00Z",
+        at="2026-09-17T12:00:00Z",
+        reader="gh:reader",
+    )
+    write_files_refresh(repository.home, repository.slug, TREE_PULL, limited)
+    # A real local success must report its own outcome/time, without erasing a
+    # network hold that still applies if this store later cannot supply the list.
+    for seconds in (1, 61):
+        now = FETCHED_AT + timedelta(seconds=seconds)
+        monkeypatch.setattr(pull_list, "utc_now", lambda now=now: now)
+        listed = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
+        assert listed.listed_from == "comparison" and listed.rows
+        succeeded = read_files_refresh(repository.home, repository.slug, TREE_PULL)
+        assert succeeded is not None
+        assert (succeeded.outcome, succeeded.at, succeeded.reader, succeeded.reset_at) == (
+            "succeeded",
+            listed.fetched_at,
+            None,
+            limited.reset_at,
+        )
+        assert pull_list.rate_limit_holds(succeeded, now=now)
+    log = Path(os.environ["FAKE_GH_LOG"])
+    assert not log.exists()
+
+    record = SimpleNamespace(comparison=SimpleNamespace(base=local.base, head=local.head))
+    monkeypatch.setattr(
+        "metabrowser.builtin_plugins.github.pull_files_route._facts",
+        lambda *_: SimpleNamespace(updated_at=None, record=record),
+    )
+    view = FilesView(TREE_PULL, repository, None, False, None)
+    envelope = pull_files_envelope(view, FilesWindow(TREE_PULL))
+    assert envelope["state"] == "current" and envelope["rows"]
+    assert envelope["last_refresh"] == {
+        "outcome": "succeeded",
+        "message": None,
+        "reset_at": limited.reset_at,
+        "at": listed.fetched_at,
+    }
+    assert files_refresh_wanted(view, FilesRefreshRequest(TREE_PULL, True)) == (False, None)
+
+    if failure == "missing":
+        local = LocalComparison(tmp_path / "missing.git", local.base, local.head)
+    else:
+        monkeypatch.setattr("metabrowser.diff.adapters.git.MAX_MANIFEST_FILES", 1)
+    with pytest.raises(PullDataError) as held:
+        asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
+    assert (held.value.state, held.value.reset_at) == ("rate_limited", limited.reset_at)
+    assert not log.exists(), "even account reads must wait for the original reset"
+    assert read_files_refresh(repository.home, repository.slug, TREE_PULL) == succeeded
+    assert read_pull_files(repository.home, repository.slug, TREE_PULL) == listed
+    # The skipped fallback has not replaced the valid local rows or their successful
+    # refresh outcome; the envelope still describes this exact cached comparison.
+    assert pull_files_envelope(view, FilesWindow(TREE_PULL)) == envelope
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(hours=12))
+    fallback = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
+    assert (fallback.listed_from, len(fallback.rows)) == ("github", 2)
+    assert len(log.read_text().splitlines()) == 3
+    finished = read_files_refresh(repository.home, repository.slug, TREE_PULL)
+    assert finished is not None and finished.outcome == "succeeded"
+    assert finished.reset_at is None
+
+
+def test_local_cache_failure_keeps_the_network_hold(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    _answer(tmp_path, monkeypatch, {})
+    local = _comparison_for_limit_test(tmp_path)
+    limited = PullRefreshStamp(
+        outcome="rate_limited", reset_at="2026-09-18T00:00:00Z", at="2026-09-17T12:00:00Z"
+    )
+    write_files_refresh(repository.home, repository.slug, TREE_PULL, limited)
+
+    async def refuse(*_: object) -> None:
+        raise PullDataError("cache_unwritable", "the list could not be written")
+
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.pull_files_refresh._write", refuse)
+    with pytest.raises(PullDataError, match="could not be written"):
+        asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
+    failed = read_files_refresh(repository.home, repository.slug, TREE_PULL)
+    assert failed is not None and failed.outcome == "cache_unwritable"
+    assert failed.reset_at == limited.reset_at
+    with pytest.raises(PullDataError) as held:
+        asyncio.run(refresh_pull_files(repository, TREE_PULL, local=None, slot=_free))
+    assert (held.value.state, held.value.reset_at) == ("rate_limited", limited.reset_at)
+    assert not Path(os.environ["FAKE_GH_LOG"]).exists()
+
+
+@pytest.mark.parametrize("reset", ["not-a-timestamp", "2026-13-17T12:00:00Z"])
+def test_malformed_saved_reset_does_not_become_a_network_hold(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, reset: str
+) -> None:
+    from metabrowser.cache.paths import source_pull_files_refresh
+
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    valid = PullRefreshStamp(outcome="succeeded", at="2026-09-17T12:00:00Z")
+    write_files_refresh(repository.home, repository.slug, TREE_PULL, valid)
+    path = repository.home / source_pull_files_refresh(repository.slug, TREE_PULL)
+    path.write_text(json.dumps({**valid.model_dump(), "reset_at": reset}), encoding="utf-8")
+    assert read_files_refresh(repository.home, repository.slug, TREE_PULL) is None
+    listed = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=None, slot=_free))
+    assert (listed.listed_from, len(listed.rows)) == ("github", 2)
+    assert len(Path(os.environ["FAKE_GH_LOG"]).read_text().splitlines()) == 3

@@ -484,7 +484,9 @@ class PullRefreshStamp(_Model):
     """``succeeded`` or a failure state, why, when GitHub's limit lifts, and when.
 
     ``reader`` is the account it ran as, when it got as far as asking; a list says by it
-    that the account has changed since the list was fetched.
+    that the account has changed since the list was fetched. ``reset_at`` is the network
+    hold, independent of the latest outcome: a local-only file refresh can succeed
+    without lifting GitHub's limit.
     """
 
     outcome: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,40}$")]
