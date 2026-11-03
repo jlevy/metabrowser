@@ -837,7 +837,8 @@ def test_a_commit_fetch_the_queue_has_no_room_for_says_so_beside_the_mirrors() -
 def test_a_pending_miss_whose_pull_request_job_was_refused_waits_for_room() -> None:
     """A full queue refused the attended pull request's job, so it has not run, and the commit
     may be one only it brings: the miss stays pending, and a later ask that finds room starts
-    the job and then waits for it."""
+    the job and then waits for it. A fetch of the mirror that ran since the miss is not asked
+    for again on every ask meanwhile: only that job can bring more."""
 
     async def scenario() -> None:
         stand = _Stand()
@@ -855,16 +856,19 @@ def test_a_pending_miss_whose_pull_request_job_was_refused_waits_for_room() -> N
             await ask()
         await stand.end_mirror()
         assert stand.events[-1] == "pull 8"
-        # The mirror's fetch ended, and the queue is still full: still pending, not "not found".
-        with pytest.raises(SelectionPendingError):
+        # The mirror's fetch ended, and the queue is still full: still pending, not "not found",
+        # and the mirror is not fetched again.
+        with pytest.raises(SelectionPendingError) as waiting:
             await ask()
-        assert not session.pull_refreshing(20)
+        assert waiting.value.refresh == "joined"
+        assert not session.pull_refreshing(20) and not session.refreshing()
         await stand.end(8)
-        await stand.end_mirror()
+        assert stand.events.count("mirror") == 1, stand.events
         # Now there is room, so this ask starts 20's job, and the miss waits for it.
-        with pytest.raises(SelectionPendingError):
+        with pytest.raises(SelectionPendingError) as waiting:
             await ask()
-        assert session.pull_refreshing(20)
+        assert waiting.value.refresh == "started"
+        assert session.pull_refreshing(20) and not session.refreshing()
         while session.refreshing() or any(
             session.pull_refreshing(number) for number in (*range(9, 16), 7, 20)
         ):

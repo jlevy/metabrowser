@@ -1131,7 +1131,10 @@ class MirrorSession:
             if len(self._misses) >= MAX_REMEMBERED_MISSES:
                 self._misses.pop(next(iter(self._misses)))
             seen = self._misses[key] = _Miss(self._refreshes_ended, self._fetches_ran)
-        started = self._refresh_mirror(companion_stale=False)
+        # While the pull request's job is refused, a fetch of the mirror that ran since the
+        # miss has brought all a fetch of it can, so only that job is asked for again.
+        mirror_done = seen.pull_job_refused and seen.fetches_ran < self._fetches_ran
+        started = "joined" if mirror_done else self._refresh_mirror(companion_stale=False)
         # A commit the mirror lacks may be a newer one of the attended pull request, which
         # only that refresh fetches; a branch or tag never is. Another number may be attended
         # by the time its job ends, so the miss remembers the job. One a full queue refused
@@ -1141,6 +1144,8 @@ class MirrorSession:
             seen.pull_job_refused = asked == "too_many"
             if not seen.pull_job_refused:
                 seen.pull_jobs.add(self.companion.key)
+            if mirror_done and asked == "started":
+                started = "started"
         return SelectionPendingError(started)
 
 
