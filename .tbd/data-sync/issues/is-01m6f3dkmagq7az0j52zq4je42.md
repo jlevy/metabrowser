@@ -3,9 +3,9 @@ type: is
 id: is-01m6f3dkmagq7az0j52zq4je42
 title: "Keyboard: walking changed files jumps the diff to that file"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 9
+version: 11
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m6f39zpnk9rc3kjy552b88qj
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:42:34.377Z
-updated_at: 2026-11-03T07:36:49.231Z
+updated_at: 2026-11-03T20:17:10.161Z
 started_at: 2026-11-03T06:46:33.001Z
+closed_at: 2026-11-03T20:17:10.161Z
+close_reason: "Completed by forward commits in the PR-support stack; independent reviews, rechecks and dispositions are published on the owning PRs. Final integration ea771741211193a387c1771e04df29b5a9698100 passed make verify (4712 Python, 9 expected skips, 373 transcripts), 8 public live tests, installed-wheel Chrome (22 actions, 25 unchanged checkout/Git fingerprints), and all 171 CI jobs across 19 current-head runs on 14 PRs. Final clean review: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . No PR merged."
+resolution: null
+duplicate_of: null
 ---
 The user, 2026-11-02: easy to scroll through files within a PR, and it may require rapid scrolling of the diff view to the relevant file when we navigate between files. Acceptance: changed-file rows are a Navigational Row Collection with the same contract as PR rows. Moving between files scrolls the diff straight to that file's bar, an immediate jump and not smooth scrolling, and focus stays in the nav. The file arrives hydrated even past MAX_HYDRATED_FILES, since builtin_plugins/diff/sidekick.py has a wanted_file path. Holding a key queues no request per row: latest wins, older ones cancelled. The position holds: neighbours hydrating above the target must not move it, and Back's history.state.pullPlace restore is kept. The selection follows a reader who scrolls the diff by hand, without stealing focus. It holds on the stress case, a real pull request of 1,183 files and +281,131 lines, so the tree stays bounded or virtualized; budgets come from the performance study. Pin in a browserless session with a golden, plus real-Chrome evidence for the scrolling.
 
@@ -34,3 +38,5 @@ The user, 2026-11-02: easy to scroll through files within a PR, and it may requi
 2026-11-03: scrollToFile contract from PR #284 at 1251d874, may still change through its reviews; wait for the other session to send its addressed head before merging. The shell calls pullPageHost.page().scrollToFile(path), where path may be GitHub's filename, a rename's old path, or a deleted file's path. It answers synchronously: {kind:'jumped', fileId, path, availability, lines}, where lines resolves to painted, none, failed, or superseded; {kind:'not_in_comparison', path, listTruncated}, nothing moves; {kind:'no_diff', path}; {kind:'disposed', path}. fileForPath(path) asks without moving. From Conversation, call setTab('files') and then whenFilesReady(). Call it on every key repeat and do not debounce. Documented in docs/large-content-rendering.md and pinned by tests/dom/diff-file-jump-session.js. Also: the comparison route takes &build=, and Conversation prefetches Files changed through builtin_plugins/github/comparison-prefetch.js, so do not add a second fetch of the comparison. A very large list's mount is one long task of 262-628 ms; tell the other session before touching that. Base order: #280, #284, #283.
 
 2026-11-02: budgets from the performance study, explorations/performance-loop/experiments/exp-040-files-changed-recomputes-the-whole-patch-per-request.md on origin/claude/v012-pr-review-perf at a377ef0a; read its jump section. Bar on screen within 50 ms; first lines within 150 ms for any file N; drift 0 px; key delivered at 33 ms per step (30 per second); at most 1 request in flight, the resting file; queue empty within 300 ms of key-up; no task over 50 ms. Do not drive jumps by scrolling to DOM you then hydrate: hydrating neighbours pushed the target 53,661 px off screen. Call the diff view's scrollToFile API being built on claude/v012-large-pr-perf, with target-first hydration, cancellation, and no drift, rather than reimplementing it. The other session sends its contract when it lands; do not merge jump-scrolling before then.
+
+2026-11-03 completion clarification (supersedes the paused handoff status, preserving its history): changed-file keyboard walking, bounded tree rendering, currentFile/onCurrentFile scroll following, history/Back restoration, navigation ownership cancellation and focus retention are implemented and independently reviewed in the integrated stack. Real Chrome and production browserless sessions cover the completed flow, so the earlier never-rendered/no-current-file-feedback statements are historical. Measured large-PR results retain their exact build and load provenance; they are not a claim that every wall-clock budget passes or that the separate quiet-machine follow-up mb-jwfx is complete. Frozen candidate: 2bd58827700e951c3cd7359efd6fd20bfe33f96d. Supporting validation available to the coordinator includes completed independent source reviews, eight public read-only live GitHub tests, 22 Chrome checks and 25 unchanged checkout/common-Git fingerprints. These are supporting results, not a claim that final gates have finished: exact-head make verify is still running, and the normal push and remote CI remain pending. No PR has been merged. Keep this bead open until the coordinator records the final gates; no closure or sync is performed by this note.

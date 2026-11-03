@@ -3,9 +3,9 @@ type: is
 id: is-01m6g771qn4n0pce8m7sdmmhxy
 title: Complete changed-file tree lifecycle and keyboard integration before publishing WIP
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 9
+version: 10
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -20,8 +20,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-03T08:08:08.180Z
-updated_at: 2026-11-03T09:02:45.054Z
+updated_at: 2026-11-03T20:17:10.147Z
 started_at: 2026-11-03T08:10:51.617Z
+closed_at: 2026-11-03T20:17:10.147Z
+close_reason: "Completed by forward commits in the PR-support stack; independent reviews, rechecks and dispositions are published on the owning PRs. Final integration ea771741211193a387c1771e04df29b5a9698100 passed make verify (4712 Python, 9 expected skips, 373 transcripts), 8 public live tests, installed-wheel Chrome (22 actions, 25 unchanged checkout/Git fingerprints), and all 171 CI jobs across 19 current-head runs on 14 PRs. Final clean review: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . No PR merged."
+resolution: null
+duplicate_of: null
 ---
 The unpublished #287 tree WIP had no tabindex=0 file anchor, no first-read recovery control, no settled freshness poll, and no diff scroll-follow lifecycle subscription. Completing these with production-controller and host golden evidence in codex/pulls-files-completion-01a1a051; measured Chrome152 tree painting at1,183 real and3,000 stress files.
 

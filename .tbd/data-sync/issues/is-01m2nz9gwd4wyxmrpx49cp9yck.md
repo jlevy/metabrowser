@@ -3,9 +3,9 @@ type: is
 id: is-01m2nz9gwd4wyxmrpx49cp9yck
 title: "GitHub pull requests on an existing checkout: shared records, no writes to the user's repository"
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 31
+version: 33
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: null
 labels: []
@@ -23,8 +23,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-09-16T20:42:19.915Z
-updated_at: 2026-11-03T07:25:52.817Z
+updated_at: 2026-11-03T20:17:10.154Z
 started_at: 2026-09-16T21:12:28.713Z
+closed_at: 2026-11-03T20:17:10.154Z
+close_reason: "Completed by forward commits in the PR-support stack; independent reviews, rechecks and dispositions are published on the owning PRs. Final integration ea771741211193a387c1771e04df29b5a9698100 passed make verify (4712 Python, 9 expected skips, 373 transcripts), 8 public live tests, installed-wheel Chrome (22 actions, 25 unchanged checkout/Git fingerprints), and all 171 CI jobs across 19 current-head runs on 14 PRs. Final clean review: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . No PR merged."
+resolution: null
+duplicate_of: null
 ---
 Enable hosted capabilities for an ordinary user-owned Git checkout without converting or copying it into a managed repository entry. Discover credential-free provider remote candidates read-only; resolve an unambiguous candidate through the provider registry to stable RepositoryRef; require explicit selection for multiple GitHub remotes and fork/upstream ambiguity; attach the session without persisting its absolute path; reuse the global provider mirror and lazily create or hydrate the shared repository store only for branch, diff, or PR content. Derive the canonical RepositoryStoreId deterministically from provider kind, canonical instance, raw stable repository opaque ID, and Git object format; converge verified objects and aliases under ordered locks and CAS without a mutable provider-to-store pointer. Prove no writes to files or .git, two local clones plus HTTPS/SSH sources reuse one provider repository and canonical store under the same auth context, different auth contexts remain isolated, failed convergence leaves aliases unchanged, purge/detach preserves shared reachable state, and local dirty state remains a filesystem overlay rather than mirror input.
 
@@ -62,3 +66,5 @@ SURPRISES. (a) classify_root_argument gives a bare repository URL selection kind
 2026-10-01, re-planned at the user's request: 'we also need to consider how to offer that (having views and refreshing on the github PRs and other data) on top of an existing checkout as well as a metabrowser-owned cache checkout'. Not started; sequenced after the mirror case (mb-lnkl, then on-demand pull-request open, then mb-iw1v). Thin-mirror design for a local checkout served as a folder: (1) Identity: the GitHub repository is read from the checkout's origin remote (github.com only; which remote on a fork is a user decision, origin first, a setting later). (2) One set of records: the pull-request list and per-PR records are keyed by the repository identity and live in Metabrowser's cache (cache/sources/<slug>/pulls/), shared by a checkout and a cache mirror of the same repository; a source directory with records and no store must be a valid cache state. Nothing is written into the user's checkout. (3) No writes to the user's repository: no fetch of refs/pull/<n>/head into the user's .git (the stack's rule: no branch, index, worktree or ref writes). Conversation, reviews and checks need no Git objects and work on any checkout. Files changed and View file work when the base and head commits are already in the checkout; otherwise the page offers an explicit fetch into Metabrowser's own mirror (a full clone, so the user's choice). A cache-side store that borrows the checkout's objects (alternates) is possible and left out of the first version (a gc in the user's repository can break it). (4) Network only when asked: opening a local folder makes no network request today and that stays true; on a checkout the list loads when the user opens the Pulls tab and refreshes in the background only while that tab is in use. A cache mirror already refreshes in the background. (5) Trust: the folder is trusted, pull-request text is not; it renders through the inert allowlist regardless of the folder's profile, and the hostile-content tests run under both profiles. Suggested PRs: one for the tab and PR pages on a checkout (identity, shared records, lazy gh check, network on use), one for Files changed on a checkout. The earlier description below predates the thin mirror.
 
 2026-09-30: deferred by the user's 2026-09-23 decision (thin-mirror plan, Decisions). Not part of v0.12; does not gate mb-n2ro. The design text predates the thin mirror (provider store, auth contexts, leases and SDK panels are retired); re-plan against the thin-mirror plan before starting.
+
+2026-11-03 completion clarification (supersedes the paused handoff status, preserving its history): the approved thin-mirror checkout workflow is implemented through step 6. Existing main and linked checkouts, including subdirectories, use shared PR records and the managed comparison store while retaining the folder source root and pin. The completed CLI/recording/parity/docs and browser evidence replace the earlier half-done/not-run statements. The older provider-store/auth-context design description is historical; the approved thin-mirror plan is the delivered scope. Opening Files changed does not automatically acquire a store. With no_store, the reader explicitly selects Fetch changes to acquire a borrowing overlay; reads do not fetch or write into the checkout. Frozen candidate: 2bd58827700e951c3cd7359efd6fd20bfe33f96d. Supporting validation available to the coordinator includes completed independent source reviews, eight public read-only live GitHub tests, 22 Chrome checks and 25 unchanged checkout/common-Git fingerprints. These are supporting results, not a claim that final gates have finished: exact-head make verify is still running, and the normal push and remote CI remain pending. No PR has been merged. Keep this bead open until the coordinator records the final gates; no closure or sync is performed by this note.

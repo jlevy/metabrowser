@@ -3,9 +3,9 @@ type: is
 id: is-01m6gab1sz6qn15qwkpe0wtnha
 title: "Recorders: close owned pin readers on the serving event loop"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 5
+version: 6
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m6g771qn4n0pce8m7sdmmhxy
 hold: null
 hold_until: null
 created_at: 2026-11-03T09:02:45.054Z
-updated_at: 2026-11-03T11:44:15.745Z
+updated_at: 2026-11-03T20:17:09.680Z
 started_at: 2026-11-03T09:05:02.695Z
+closed_at: 2026-11-03T20:17:09.680Z
+close_reason: "Completed by forward commits in the PR-support stack; independent reviews, rechecks and dispositions are published on the owning PRs. Final integration ea771741211193a387c1771e04df29b5a9698100 passed make verify (4712 Python, 9 expected skips, 373 transcripts), 8 public live tests, installed-wheel Chrome (22 actions, 25 unchanged checkout/Git fingerprints), and all 171 CI jobs across 19 current-head runs on 14 PRs. Final clean review: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . No PR merged."
+resolution: null
+duplicate_of: null
 ---
 The page recorder manually attached a closed subject with no opener. Pin switches then created owned live subjects which the no-opener lifespan did not close. Under failed-only pytest temp retention, the subsequent panel recorder could reuse the same truncated cache directory and inherit a batch reader tied to a closed event loop. Use serve_subject_opener in both recorders so startup and shutdown own the readers. Production pool behavior is unchanged; the page and panel recorder modules pass together after the fix.
 

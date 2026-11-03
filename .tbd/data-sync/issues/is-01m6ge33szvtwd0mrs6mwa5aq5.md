@@ -3,14 +3,18 @@ type: is
 id: is-01m6ge33szvtwd0mrs6mwa5aq5
 title: "PR #283 F2: recycle stale pooled readers after successful object recovery"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 labels: []
 dependencies: []
 parent_id: is-01m6g5f41jkfzt0ywcsgxms6j4
 created_at: 2026-11-03T10:08:19.262Z
-updated_at: 2026-11-03T11:44:11.322Z
+updated_at: 2026-11-03T20:17:09.720Z
+closed_at: 2026-11-03T20:17:09.720Z
+close_reason: "Completed by forward commits in the PR-support stack; independent reviews, rechecks and dispositions are published on the owning PRs. Final integration ea771741211193a387c1771e04df29b5a9698100 passed make verify (4712 Python, 9 expected skips, 373 transcripts), 8 public live tests, installed-wheel Chrome (22 actions, 25 unchanged checkout/Git fingerprints), and all 171 CI jobs across 19 current-head runs on 14 PRs. Final clean review: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . No PR merged."
+resolution: null
+duplicate_of: null
 ---
 Independent Review F at4dcbc0dd primes two real pack readers, detects corruption in one, repairs/replaces the backing pack, then authenticates recovery with fresh actors. Another pooled actor retains the unlinked old corrupt pack: later reads alternate genuine/object_corrupt after success. Checkout writer owns safe generation-based retirement including checked-out leases, with negative-control regression; no lender writes or abrupt cancellation of active readers.
 

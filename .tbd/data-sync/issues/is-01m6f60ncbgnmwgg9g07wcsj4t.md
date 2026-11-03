@@ -3,15 +3,19 @@ type: is
 id: is-01m6f60ncbgnmwgg9g07wcsj4t
 title: "Overlay stores step 2: healing, commits_unavailable, and blob verification"
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 4
+version: 5
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 created_at: 2026-11-02T22:27:55.913Z
-updated_at: 2026-11-03T11:44:20.648Z
+updated_at: 2026-11-03T20:17:10.189Z
+closed_at: 2026-11-03T20:17:10.189Z
+close_reason: "Completed by forward commits in the PR-support stack; independent reviews, rechecks and dispositions are published on the owning PRs. Final integration ea771741211193a387c1771e04df29b5a9698100 passed make verify (4712 Python, 9 expected skips, 373 transcripts), 8 public live tests, installed-wheel Chrome (22 actions, 25 unchanged checkout/Git fingerprints), and all 171 CI jobs across 19 current-head runs on 14 PRs. Final clean review: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . No PR merged."
+resolution: null
+duplicate_of: null
 ---
 Plan step 2, needed for the owner's goal and proposed for 0.12.x: the healing job (sweep, by commit ID, then the ref), commits_unavailable, blob verification once measured, --checkout as repair, and the replica fixtures. After step 1 is reviewed.
 
