@@ -1688,6 +1688,82 @@ export function mountPullPage(container, ctx, mb) {
   const currentFileListeners = new Set();
   /** @type {(() => void) | null} */
   let unwatchCurrentFile = null;
+  /** @type {number | null} */
+  let currentFileFrame = null;
+  /** @type {ReturnType<typeof window.setTimeout> | null} */
+  let currentFileTimer = null;
+  let currentFileGeneration = 0;
+
+  function cancelCurrentFileBridge() {
+    currentFileGeneration += 1;
+    if (currentFileFrame !== null) {
+      window.cancelAnimationFrame(currentFileFrame);
+      currentFileFrame = null;
+    }
+    if (currentFileTimer !== null) {
+      window.clearTimeout(currentFileTimer);
+      currentFileTimer = null;
+    }
+  }
+
+  /**
+   * The diff subscription immediately measures its current file. Let the mounted bars
+   * paint first, so that read does not force their layout into the mounting task. The
+   * page's explicit currentFile/onCurrentFile calls retain their immediate snapshot.
+   *
+   * @param {HTMLElement} host
+   * @param {{dispose?: () => void} | null} handle
+   */
+  function watchCurrentFileAfterPaint(host, handle) {
+    cancelCurrentFileBridge();
+    const generation = currentFileGeneration;
+    const owns = () =>
+      generation === currentFileGeneration &&
+      !listening.signal.aborted &&
+      diffHost === host &&
+      diffHandle === handle;
+    const subscribe = () => {
+      if (!owns()) {
+        return;
+      }
+      const reporting =
+        /** @type {{onCurrentFile?: (listener: (file: Extract<import("../diff/diff-view.js").FileLookup, {kind: "file"}> | null) => void) => () => void} | null} */ (
+          handle
+        );
+      const unwatch =
+        reporting?.onCurrentFile?.((file) => {
+          if (owns()) {
+            reportCurrentFile(file);
+          }
+        }) ?? null;
+      if (owns()) {
+        unwatchCurrentFile = unwatch;
+      } else {
+        unwatch?.();
+      }
+    };
+    if (typeof window.requestAnimationFrame === "function") {
+      currentFileFrame = window.requestAnimationFrame(() => {
+        if (!owns()) {
+          return;
+        }
+        currentFileFrame = window.requestAnimationFrame(() => {
+          if (owns()) {
+            currentFileFrame = null;
+            subscribe();
+          }
+        });
+      });
+    } else {
+      // No animation frames in a nonvisual host. Readiness never waits for this task.
+      currentFileTimer = window.setTimeout(() => {
+        if (owns()) {
+          currentFileTimer = null;
+          subscribe();
+        }
+      }, 0);
+    }
+  }
   /** @type {string | null} */
   let reportedFileId = null;
   /** @param {Extract<import("../diff/diff-view.js").FileLookup, {kind: "file"}> | null} file */
@@ -2203,6 +2279,7 @@ export function mountPullPage(container, ctx, mb) {
   let diffMounted = Promise.resolve();
 
   function disposeDiff() {
+    cancelCurrentFileBridge();
     unwatchCurrentFile?.();
     unwatchCurrentFile = null;
     diffHandle?.dispose?.();
@@ -2289,11 +2366,7 @@ export function mountPullPage(container, ctx, mb) {
         return;
       }
       diffHandle = handle;
-      const reporting =
-        /** @type {{onCurrentFile?: (listener: (file: Extract<import("../diff/diff-view.js").FileLookup, {kind: "file"}> | null) => void) => () => void} | null} */ (
-          handle
-        );
-      unwatchCurrentFile = reporting?.onCurrentFile?.(reportCurrentFile) ?? null;
+      watchCurrentFileAfterPaint(host, handle);
       landFile();
     } catch {
       if (diffHost !== host) {

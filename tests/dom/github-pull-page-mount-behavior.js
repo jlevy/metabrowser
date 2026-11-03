@@ -88,6 +88,14 @@ async function settle() {
 }
 async function run() {
   const timers = new Map();
+  const frames = new Map();
+  const paintFrame = () => {
+    const ready = [...frames.values()];
+    frames.clear();
+    for (const callback of ready) {
+      callback();
+    }
+  };
   globalThis.document = {
     visibilityState: "visible",
     addEventListener() {},
@@ -102,6 +110,12 @@ async function run() {
       return id;
     },
     clearTimeout: (id) => timers.delete(id),
+    requestAnimationFrame: (callback) => {
+      const id = frames.size + 1;
+      frames.set(id, callback);
+      return id;
+    },
+    cancelAnimationFrame: (id) => frames.delete(id),
   };
   globalThis.DOMParser = class {
     parseFromString() {
@@ -193,21 +207,119 @@ async function run() {
     assert.match(container.textContent, /Mounted comparison/);
     assert.equal(mounted, 1);
     assert.equal(handle.currentFile().path, "src/one.py");
+    assert.equal(reportFile, null, "readiness settles without subscribing in the mount task");
+    const immediate = [];
+    handle.onCurrentFile((file) => immediate.push(file?.path ?? null))();
+    assert.deepEqual(immediate, ["src/one.py"], "explicit subscribers get an immediate snapshot");
+    paintFrame();
+    assert.equal(reportFile, null, "the first frame may paint before the bridge reads layout");
     currentFile = { ...currentFile, path: "src/two.py", fileId: "two" };
+    paintFrame();
+    assert.equal(files.at(-1), "src/two.py", "the bridge reads the latest selection after paint");
+    currentFile = { ...currentFile, path: "src/three.py", fileId: "three" };
     reportFile(currentFile);
-    assert.equal(files.at(-1), "src/two.py", "the page forwards a hand-scrolled file");
+    assert.equal(files.at(-1), "src/three.py", "the page forwards a hand-scrolled file");
+    handle.land({ tab: "" });
+    assert.equal(unsubscriptions, 1, "replacement releases the diff subscription");
+    handle.setTab("files");
+    await settle();
+    await handle.whenFilesReady();
+    paintFrame();
+    const abandoned = [...frames.values()][0];
+    assert.ok(abandoned, "the replacement owns a pending second frame");
+    handle.land({ tab: "" });
+    assert.equal(frames.size, 0, "replacement cancels the pending frame");
+    handle.setTab("files");
+    await settle();
+    await handle.whenFilesReady();
+    const disposedFrame = [...frames.values()][0];
+    abandoned();
+    assert.equal(reportFile, null, "an already queued old frame cannot observe its replacement");
     unwatchFile();
     handle.dispose();
-    assert.equal(unsubscriptions, 1, "disposal releases the diff subscription");
+    disposedFrame();
+    assert.equal(reportFile, null, "disposal makes queued bridge work inert");
+    assert.equal(frames.size, 0, "disposal cancels owned frames");
     handle.onCurrentFile(() => {
       throw Error("a disposed page must not retain subscriptions");
     });
-    assert.equal(disposed, 1);
+    assert.equal(disposed, 3);
     retry.events.get("click")();
     await settle();
-    assert.equal(mounted, 1, "a stale Retry cannot remount a disposed page");
+    assert.equal(mounted, 3, "a stale Retry cannot remount a disposed page");
   }
-  return { failedAssetsRecover: true, failedRenderRecovers: true, staleRetryIsInert: true };
+  delete window.requestAnimationFrame;
+  delete window.cancelAnimationFrame;
+  document.visibilityState = "hidden";
+  const fallbackTasks = new Map();
+  window.setTimeout = (callback, delay) => {
+    const id = Symbol();
+    fallbackTasks.set(id, { callback, delay });
+    return id;
+  };
+  window.clearTimeout = (id) => fallbackTasks.delete(id);
+  let hiddenSubscriptions = 0;
+  let hiddenUnsubscriptions = 0;
+  const hiddenOptions = { number: 7, tab: "files", reader: { initial, fetchAfterMs: 0 } };
+  const hiddenApi = {
+    ensureAsset: async () => {},
+    ensureKindAssets: async () => {},
+    getRegisteredView: () => ({
+      render: async () => ({
+        currentFile: () => ({ kind: "file", path: "src/now.py", fileId: "now" }),
+        onCurrentFile(listener) {
+          hiddenSubscriptions += 1;
+          listener({ kind: "file", path: "src/now.py", fileId: "now" });
+          return () => {
+            hiddenUnsubscriptions += 1;
+          };
+        },
+        dispose() {},
+      }),
+    }),
+    formatAge: () => ({ label: "now", className: "age" }),
+    formatTimestamp: () => "now",
+    navigation: { href: () => "/view/" },
+    sourceKind: () => "git_revision",
+    icons: { toggle: "" },
+  };
+  const hidden = page.mountPullPage(new Element("main"), hiddenOptions, hiddenApi);
+  await settle();
+  await hidden.whenFilesReady();
+  assert.equal(hiddenSubscriptions, 0, "hidden/no-frame readiness does not wait for the bridge");
+  const fallback = [...fallbackTasks.values()].find((task) => task.delay === 0);
+  assert.ok(fallback, "a nonvisual host owns a later bridge task");
+  hidden.dispose();
+  fallback.callback();
+  assert.equal(hiddenSubscriptions, 0, "disposal invalidates even a queued fallback task");
+  assert.equal(fallbackTasks.size, 0);
+  const reentrant = page.mountPullPage(new Element("main"), hiddenOptions, hiddenApi);
+  await settle();
+  await reentrant.whenFilesReady();
+  let armed = false;
+  reentrant.onCurrentFile(() => {
+    if (armed) {
+      reentrant.dispose();
+    }
+  });
+  armed = true;
+  const reentrantTask = [...fallbackTasks.values()].find((task) => task.delay === 0);
+  assert.ok(reentrantTask);
+  reentrantTask.callback();
+  assert.equal(hiddenSubscriptions, 1);
+  assert.equal(
+    hiddenUnsubscriptions,
+    1,
+    "reentrant disposal releases the just-created subscription",
+  );
+  return {
+    failedAssetsRecover: true,
+    failedRenderRecovers: true,
+    staleRetryIsInert: true,
+    bridgeAfterPaint: true,
+    bridgeFramesOwned: true,
+    hiddenReadiness: true,
+  };
 }
 module.exports = { Element, recorded, root, settle };
 if (require.main === module) {
