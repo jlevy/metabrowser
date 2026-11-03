@@ -26,6 +26,8 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import server
+from metabrowser.builtin_plugins.diff import sidekick
+from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache
 from metabrowser.cache import pull_refs
 from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.identity import repository_store_id, source_identity, store_key
@@ -1422,6 +1424,81 @@ def test_a_shallow_folder_refuses_a_boundary_commits_diff_the_same_way(
     assert [c["parent_ids"] for c in log["commits"] if c["id"] == replica["A5"]] == [[]]
     above = ok([str(checkout), "--api", f"{_COMPARISON}?revision={replica['A6']}"]).payload()
     assert above["resolved"]["left"]["id"] == replica["A5"]
+
+
+# ── What a store's kept comparison may depend on ────────────────────
+#
+# ``builtin_plugins/diff/comparison_cache.py`` keeps a store's answer for two commit IDs in
+# memory, and a browser keeps it as immutable. Each test below is one of the inputs that
+# file says a borrowing store adds, read in one process, so the kept answers are in play.
+
+
+def test_a_refusal_at_the_boundary_is_not_kept_once_the_checkout_deepens(
+    merge_heavy: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _no_deepening(monkeypatch)
+    replica = merge_heavy.replica
+    checkout = _shallow_heavy(merge_heavy)
+    merge_heavy.pull("--checkout", str(checkout))
+    own_diff = f"{_COMPARISON}?revision={replica['A5']}"
+    from_base = f"{_COMPARISON}?left={replica['M7']}&right={replica['H2']}&base_policy=merge_base"
+    assert "parent_unavailable" in refused([PULL, "--api", own_diff]).stdout
+    assert "base_uncertain" in refused([PULL, "--api", from_base]).stdout
+    pinned_git(checkout, "remote", "set-url", "origin", replica.url)
+    pinned_git(checkout, "fetch", "-q", "--unshallow", "origin")
+    pinned_git(checkout, "remote", "set-url", "origin", REMOTE_SPELLING)
+    for route in (own_diff, from_base):
+        assert ok([PULL, "--api", route]).payload()["resolved"]["left"]["id"] == replica["A4"]
+
+
+def test_a_lenders_own_attributes_change_no_comparison(
+    linear: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Git reads the attributes of the repository it runs in, which is the store."""
+
+    replica = linear.replica
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    route = f"{_COMPARISON}?left={replica['M3']}&right={replica['M5']}"
+    before = ok([PULL, "--api", route]).stdout
+    (checkout / ".git" / "info").mkdir(exist_ok=True)
+    (checkout / ".git" / "info" / "attributes").write_text("* binary\n", encoding="utf-8")
+    monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
+    after = ok([PULL, "--api", route])
+    assert after.stdout == before
+    assert after.payload()["manifest"]["files"][0]["binary"] is False
+
+
+def test_a_kept_comparison_is_still_its_commits_diff_when_the_lender_loses_them(
+    linear: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A kept answer is what any store holding the two commits answers, so it stays.
+
+    One computed after the loss is refused and kept by nobody, and a validator the process
+    did not issue is not honored, since the store no longer answers for the commits.
+    """
+
+    replica = linear.replica
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    ok([CANONICAL, "--checkout", str(checkout), "--no-serve"])
+    apply_capabilities(untrusted=True, no_active_content=False, allow_edits=False)
+    serve_published(asyncio.run(acquire_source(SOURCE, home=linear.home)))
+    params = {"left": replica["M3"], "right": replica["M5"]}
+    with TestClient(server.app, raise_server_exceptions=False) as client:
+        kept = client.get(_COMPARISON, params=params)
+        assert kept.status_code == 200
+        packs = checkout / ".git" / "objects" / "pack"
+        shutil.move(packs, linear.tmp_path / "collected")
+        packs.mkdir()
+        again = client.get(_COMPARISON, params=params)
+        assert (again.status_code, again.content) == (200, kept.content)
+        monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
+        computed = client.get(_COMPARISON, params=params)
+        assert computed.status_code == 404 and "unknown revision" in computed.text
+        validated = client.get(
+            _COMPARISON, params=params, headers={"if-none-match": kept.headers["etag"]}
+        )
+        assert validated.status_code == 404
 
 
 # ── The checks that admit a lender hold for as long as it lends ─────

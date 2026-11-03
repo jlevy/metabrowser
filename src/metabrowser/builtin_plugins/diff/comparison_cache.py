@@ -28,8 +28,20 @@ What the answer depends on, other than the two commit IDs:
   without and which Git reads whatever else is isolated, is folded into the store's token.
   ``tests/test_diff_comparison_cache.py`` holds that a ``.gitattributes`` at its HEAD
   changes nothing, on each Git the Makefile admits.
-- The commit graph, for ``merge_base``: fixed for a commit unless the store is shallow, and
-  no store is. ``git/process.py`` fetches with no ``--depth``.
+- The commit graph, for ``merge_base`` and ``revision``. A store that borrows from a shallow
+  checkout is shallow too, with a boundary that follows the checkout's (``cache/lender.py``).
+  There a merge base is answered only when ``git/shallow.py`` shows it certain, which makes
+  it the full graph's, and a commit at the boundary has its diff refused as
+  ``parent_unavailable``. Both refusals are computed again, so a deepening of the store or
+  of the checkout changes no answer that was kept.
+- What a borrowing store can read, which neither the key nor the token names. Its objects
+  are a full mirror's less what the checkout lacks or has since collected, so a comparison
+  that needs one it cannot read fails, and is not kept, and one that succeeds is the answer
+  any store holding those commits gives. A kept answer therefore stays true when the lender
+  later loses the commits, as a browser's copy stays true across a restart, and a repair
+  that names another checkout moves no address. The lender's own ``info/attributes`` is
+  never read: Git reads the attributes of the repository it runs in.
+  ``tests/test_checkout_overlay.py`` holds each of these on a replica.
 
 A folder has inputs of its own beyond those, so it is never cached this way: its working
 tree's ``.gitattributes``, which an edit changes, ``.git/config``, and the reader's Git
