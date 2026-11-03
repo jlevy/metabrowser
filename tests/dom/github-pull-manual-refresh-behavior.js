@@ -63,12 +63,15 @@ async function run() {
   }
   const noStore = structuredClone(current);
   noStore.record.unavailable = { comparison: "no_store" };
+  noStore.record.comparison = null;
+  noStore.comparison_route = null;
   const options = {
     number: current.number,
     tab: "files",
     nowMs: Date.parse("2026-09-17T12:00:30Z"),
   };
   assert.equal(describePull(noStore, options).canRefresh, false);
+  assert.equal(describePull(noStore, options).canFetchComparison, true);
   assert.equal(
     describePull(
       {

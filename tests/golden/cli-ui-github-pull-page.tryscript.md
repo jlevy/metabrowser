@@ -1276,7 +1276,17 @@ $ node tests/dom/github-pull-page-second-session.js
     "what is not a place is no place: \"nonsense\"": "pane at 0; entry \"nonsense\"; 0 written; nothing running",
     "dispose ends all of it": "pane at 900; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; nothing running",
     "a disposed keeper does nothing": "pane at 900; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; nothing running"
-  }
+  },
+  "pageRoutes": [
+    "/pull/7 is #7's conversation: true",
+    "/pull/7/ is #7's conversation: true",
+    "/pull/7/files is #7's files: true",
+    "/pull/7/files/src/app.py is #7's files: true",
+    "/pull/7/files/src/app.py is #7's conversation: false",
+    "/pull/70/files is #7's files: false",
+    "/pull/7/filesx is #7's files: false",
+    "/pull/8/files/src/app.py is #7's files: false"
+  ]
 }
 ? 0
 ```

@@ -206,3 +206,20 @@ def test_sha256_endpoints_round_trip_through_the_manifest_bank(
         assert (adopted.resolved.left.id, adopted.resolved.right.id) == (base, head)
 
     asyncio.run(run())
+
+
+def test_another_cached_pr_comparison_does_not_switch_the_served_pin(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    stand, client = pinned_pull
+    original = client.get("/api/plugin/github/pull?number=7").json()
+    stand.refresh(10)
+    other = client.get("/api/plugin/github/pull?number=10").json()
+    assert other["record"]["comparison"] is not None
+    assert other["pin"] == original["pin"]
+    stand.calls()
+    compared = client.get(other["comparison_route"])
+    assert compared.status_code == 200
+    assert compared.json()["resolved"]["right"]["id"] == other["record"]["comparison"]["head"]
+    assert client.get("/api/plugin/github/pull?number=7").json()["pin"] == original["pin"]
+    assert stand.calls() == [], "a cached comparison read fetched the network"

@@ -10,9 +10,12 @@ never waits on the network. It answers one of:
 - ``current``: a list of the pull request as it is now, by the freshness rule below;
 - ``stale``: an older list, still shown.
 
-**Freshness.** A list from the local comparison belongs to its ``head``, so it is current
-while the record's head is that commit. A list from GitHub is current while the pull
-request's ``updated_at`` is no newer than the list's ``fetched_at``, because any push
+**Freshness.** A local list belongs to both resolved comparison endpoints, ``base`` and
+``head``, and is current only while the record names that exact comparison. An older local
+list without a saved base, or a record with no comparison, is stale. GitHub-derived lists
+do not depend on locally resolved endpoints: discovering a comparison later leaves their
+freshness on the provider's ``updated_at`` and account rules. A GitHub list is current while
+the pull request's ``updated_at`` is no newer than the list's ``fetched_at``, because any push
 updates it; the newer of the record's and a cached list row's is read. With neither, the
 list ages by the refresh coordinator's window. A list another account read, or one whose
 last refresh ended ``account_changed``, is stale, as a list of pull requests is.
@@ -120,6 +123,7 @@ class PullFilesEnvelope(TypedDict):
     fetched_at: str | None
     reader: str | None
     head: str | None
+    base: str | None
     fresh_for_s: float
     refreshing: bool
     last_refresh: LastRefresh | None
@@ -300,9 +304,8 @@ def _cached_files(
 
 @dataclass(frozen=True, slots=True)
 class _Facts:
-    """What the cache knows of the pull request itself: its head, and when it changed."""
+    """The cached pull request and the newest known provider update time."""
 
-    head: str | None
     updated_at: str | None
     record: PullRecord | None
 
@@ -313,7 +316,6 @@ def _facts(home: Path, slug: str, number: int) -> _Facts:
     row = cached_list_row(home, slug, number)
     times = [moment for moment in (held and held.pull.updated_at, row and row.updated_at) if moment]
     return _Facts(
-        head=held.pull.head.sha if held is not None else None,
         updated_at=max(times) if times else None,
         record=held,
     )
@@ -329,7 +331,13 @@ def _read_by_another(listed: PullFileList, stamp: PullRefreshStamp | None) -> bo
 
 def _state(listed: PullFileList, stamp: PullRefreshStamp | None, facts: _Facts) -> FilesState:
     if listed.listed_from == "comparison":
-        return "current" if facts.head is not None and facts.head == listed.head else "stale"
+        comparison = facts.record.comparison if facts.record is not None else None
+        current = (
+            comparison is not None
+            and listed.base is not None
+            and (listed.base, listed.head) == (comparison.base, comparison.head)
+        )
+        return "current" if current else "stale"
     if _read_by_another(listed, stamp):
         return "stale"
     fetched = pull_list.parse_stamp(listed.fetched_at)
@@ -360,6 +368,7 @@ def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelo
         fetched_at=None,
         reader=None,
         head=None,
+        base=None,
         fresh_for_s=FRESHNESS_WINDOW_S,
         refreshing=view.refreshing,
         last_refresh=None,
@@ -397,6 +406,7 @@ def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelo
         "fetched_at": listed.fetched_at,
         "reader": listed.reader,
         "head": listed.head,
+        "base": listed.base,
         "last_refresh": last_refresh,
         "fetched": len(listed.rows),
         "pages": listed.pages,

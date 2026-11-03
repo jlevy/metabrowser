@@ -36,6 +36,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
+from metabrowser import server
 from metabrowser.builtin_plugins.github import gh, pull_list, pull_list_refresh, pulls
 from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
 from metabrowser.builtin_plugins.github.pull_list import (
@@ -53,7 +54,7 @@ from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.git import repo as git_repo
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.server import app
-from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source import reset_source_session, serve_subject_opener
 from metabrowser.source_routes import PIN_HEADER
 from tests.github_pull_fixture import (
     ANOTHER_READER,
@@ -200,10 +201,10 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             store_identity=published.store_id,
             ref=f"refs/remotes/origin/{DEFAULT_BRANCH}",
         )
-        await subject.aclose()
         return subject
 
-    attach_subject(asyncio.run(_pin()))
+    # The serving lifespan owns the pin and any subjects a pin switch replaces it with.
+    serve_subject_opener(_pin)
     serve_mirror(
         StoreMirror.from_published(replace(published, source=source)),
         pull_requests=ServedPulls(published),
@@ -418,11 +419,35 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 ask(state="all", retry=True)
                 settled()
             later["landing_gh_missing"] = read(limit="0")
+
+            # An empty cached list is still read while its refresh looks for new rows.
+            empty = PullList(
+                schema_version=pull_list.PULL_LIST_SCHEMA,
+                source=CANONICAL,
+                list="all",
+                fetched_at=utc_stamp(FETCHED_AT),
+                reader="gh:octo-reader",
+                pages=1,
+                complete=True,
+                truncated=False,
+                etags=(ListPageMark(etag=None, numbers=(), truncated=False),),
+                rows=(),
+            )
+            write_pull_list(home, slug, empty)
+            gate.clear()
+            ask(state="all", retry=True)
+            later["landing_empty_refreshing"] = read(limit="0")
+            gate.set()
+            settled()
+            later["landing_found_rows"] = read(limit="0")
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
-    # A server with no GitHub repository, which has nothing to list.
+    # A server with no GitHub repository, independent of the checkout running this test.
     reset_source_session()
+    plain = tmp_path / "no-repository"
+    plain.mkdir()
+    server._set_root_dir(plain)
     with TestClient(app) as client:
         recorded["not_github"] = _answer(client.get(_PULLS, params={"limit": "100"}))
         recorded["not_github_refresh"] = _answer(
@@ -486,6 +511,9 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["landing_absent"]["body"]["last_refresh"] is None
     assert recorded["landing_pending"]["body"]["refreshing"] is True
     assert recorded["landing_gh_missing"]["body"]["last_refresh"]["outcome"] == "gh_missing"
+    empty = recorded["landing_empty_refreshing"]["body"]
+    assert (empty["fetched"], empty["complete"], empty["refreshing"]) == (0, True, True)
+    assert recorded["landing_found_rows"]["body"]["fetched"] > 0
     check_recording(RECORDING, _stored_once(recorded), transcript=TRANSCRIPT, indent=1)
 
 
@@ -523,3 +551,14 @@ def test_the_recording_holds_every_failure_the_plan_names() -> None:
         "cache_unwritable",
     ):
         assert f"failed {name}" in recording, name
+
+
+def test_polling_checkout_landing_keeps_its_origin_refusal() -> None:
+    """Landing polling keeps the served-checkout context and stops after its refusal."""
+
+    landing = run_session("github-pulls-panel-session.js", "--part", "all")["landing"]
+    assert landing["a polling checkout landing preserves its origin refusal"] == {
+        "said": ["This checkout's origin is not a GitHub repository Metabrowser can list."],
+        "requests": ["GET /api/plugin/github/pulls?limit=0"],
+        "timers": [],
+    }

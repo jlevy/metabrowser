@@ -113,6 +113,24 @@ async function main() {
     });
   }
   stories["a list fills page by page"] = fill;
+  const rowExpansion = tree.createRowExpansion();
+  const expandedRows = [rowExpansion.shown(7), rowExpansion.shown(8)];
+  rowExpansion.expand(8);
+  expandedRows.push(rowExpansion.shown(9));
+  if (!rowExpansion.isExpanded(8)) {
+    throw Error("a reader's expansion must survive page replacement");
+  }
+  stories["only automatic row expansions close when the page moves"] = expandedRows;
+  stories["a long tree draws only its viewport and overscan"] = [0, 12000, 200000].map((top) =>
+    tree.windowRange({
+      count: 4539,
+      rowHeight: 24,
+      viewTop: top,
+      viewBottom: top + 700,
+      listTop: 0,
+      overscan: 40,
+    }),
+  );
   const whole = tree.buildFileTree(holder.rows());
 
   // The chain a reader closes stays closed for every folder in it.
@@ -144,6 +162,22 @@ async function main() {
 
   // Other lists, and each way a refresh can end.
   const local = recorded.comparison;
+  const localHolder = tree.holdFileList(local.number);
+  localHolder.accept(local);
+  const changedBase = {
+    ...local,
+    base: local.base === "b".repeat(40) ? "c".repeat(40) : "b".repeat(40),
+    offset: local.rows.length,
+    rows: [],
+  };
+  if (localHolder.accept(changedBase)) {
+    throw Error("rows from a different local base must not append");
+  }
+  if (!localHolder.query().endsWith("offset=0")) {
+    throw Error("a changed local base must restart the window");
+  }
+  stories["an unchanged head with a different local base starts again at zero"] =
+    localHolder.query();
   stories["a list from the local comparison"] = {
     ...describe(local),
     rows: show(tree.visibleRows(tree.buildFileTree(local.rows), tree.initialExpansion(local, 150))),
@@ -213,7 +247,184 @@ async function main() {
       throw new Error(`invariant broken: ${name}`);
     }
   }
-  process.stdout.write(`${JSON.stringify({ stories, invariants }, null, 2)}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ stories, controller: await controllerStory(tree), invariants }, null, 2)}\n`,
+  );
+}
+
+/** The production controller's network, timers, keys, and address changes without a DOM. */
+async function controllerStory(tree) {
+  const timers = new Map();
+  const reads = [];
+  const requests = [];
+  const jumps = [];
+  const opens = [];
+  let model = null;
+  let nextTimer = 0;
+  let visible = true;
+  const controller = tree.createFileTreeController(
+    {
+      request: async (method, route, options) => {
+        requests.push(
+          `${method} ${route}${options.body ? ` ${JSON.stringify(options.body)}` : ""}`,
+        );
+        if (method === "POST") {
+          return { status: 202, etag: null, body: { files: recorded["filling 0"] } };
+        }
+        const answer = reads.shift();
+        if (answer === "failure") {
+          throw Error("connection failed");
+        }
+        if (answer === undefined) {
+          throw Error("no read scripted");
+        }
+        return { status: 200, etag: null, body: recorded[answer] };
+      },
+      schedule: (callback, delay) => {
+        const key = ++nextTimer;
+        timers.set(key, { callback, delay });
+        return key;
+      },
+      cancel: (key) => timers.delete(key),
+      now: () => Date.parse("2026-09-17T12:00:30Z"),
+      isVisible: () => visible,
+      formatTime: (iso) => iso,
+      render: (next) => {
+        model = next;
+      },
+      markAnchor() {},
+      markCurrent() {},
+      markMuted() {},
+      page: () => ({
+        fileForPath: () => ({ kind: "file" }),
+        showFile: (path) => {
+          jumps.push(path);
+          return { kind: "jumped" };
+        },
+      }),
+      open: (route) => opens.push(route),
+      leave() {},
+    },
+    { number: 106, autoExpandFiles: 300 },
+  );
+  const settle = async () => {
+    for (let at = 0; at < 10; at += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+  };
+  const fire = async (delay) => {
+    const entry = [...timers].find(([, timer]) => timer.delay === delay);
+    if (entry === undefined) {
+      throw Error(`no timer at ${delay}`);
+    }
+    timers.delete(entry[0]);
+    entry[1].callback();
+    await settle();
+  };
+  const story = [];
+  const look = (step) =>
+    story.push({
+      step,
+      requests: requests.splice(0),
+      held: controller.snapshot().held,
+      current: controller.current(),
+      notice: model.notice?.text ?? null,
+      timers: [...timers.values()].map((timer) => timer.delay),
+    });
+  reads.push("failure");
+  controller.expand();
+  await settle();
+  if (model.notice?.action !== "retry") {
+    throw Error("a failed read needs Retry");
+  }
+  look("a failed first read offers Retry and keeps reading");
+  reads.push("absent");
+  await controller.retry();
+  if (requests.some((line) => line.startsWith("POST"))) {
+    throw Error("an address alone fetched");
+  }
+  look("Retry reads the cache; an address alone fetches nothing");
+  controller.expand({ reader: true });
+  await settle();
+  look("a reader's expansion asks for an uncached list");
+  for (const name of ["filling 1", "filling 2", "filled"]) {
+    reads.push(name);
+    await fire(tree.FILES_POLL_MS);
+    look(name);
+  }
+  const file = model.rows.find((row) => row.kind === "file");
+  controller.focused(file.id);
+  const beforeWalk = requests.length;
+  for (let at = 0; at < 8; at += 1) {
+    controller.move(1, { repeat: true });
+  }
+  if (requests.length !== beforeWalk || opens.length !== 0) {
+    throw Error("a held key moved the address or read");
+  }
+  controller.released();
+  if (opens.length !== 1 || !opens[0].replace || !opens[0].jumped) {
+    throw Error("a key's stop must replace one entry");
+  }
+  story.push({
+    step: "held keys jump every file but replace history once on release",
+    jumps: jumps.length,
+    opens: opens.splice(0),
+  });
+  controller.activateAnchor();
+  if (opens.length !== 1 || opens[0].replace) {
+    throw Error("Enter must push the file's address");
+  }
+  story.push({ step: "Enter pushes the focused file", opens: opens.splice(0) });
+  const shown = "weird/bell\u0007name.txt";
+  controller.followCurrent(shown);
+  if (controller.current() !== shown || !model.rows.some((row) => row.id === shown)) {
+    throw Error("a scrolled file must be revealed");
+  }
+  look("a file reported by the page is revealed without moving its address");
+  const pairAt = model.rows.findIndex(
+    (row, at) => row.kind === "file" && model.rows[at + 1]?.kind === "file",
+  );
+  const startWalk = () => {
+    controller.focused(model.rows[pairAt].id);
+    controller.move(1, { repeat: true });
+    if (controller.snapshot().walking === null) {
+      throw Error("the probe needs a pending file walk");
+    }
+  };
+  startWalk();
+  const target = controller.snapshot().walking;
+  controller.followCurrent(target);
+  controller.released();
+  if (opens.length !== 1 || opens[0].file !== target) {
+    throw Error("scroll feedback cancelled the active walk");
+  }
+  story.push({
+    step: "the walk's own scroll report does not cancel its final address",
+    opens: opens.splice(0),
+  });
+  startWalk();
+  controller.setCurrent(shown);
+  controller.released();
+  if (controller.snapshot().walking !== null || opens.length !== 0) {
+    throw Error("a later route must cancel the old walk");
+  }
+  look("a later route cancels a pending file walk");
+  startWalk();
+  controller.setShown(false);
+  controller.released();
+  if (controller.snapshot().walking !== null || opens.length !== 0) {
+    throw Error("a hidden panel must cancel the old walk");
+  }
+  look("hiding the panel cancels a pending file walk");
+  controller.collapse();
+  if (timers.size !== 0) {
+    throw Error("a collapsed tree must stop polling");
+  }
+  visible = false;
+  controller.onVisibilityChange();
+  look("a closed or hidden tree has no timer");
+  controller.dispose();
+  return story;
 }
 
 main().catch((error) => {

@@ -6,8 +6,8 @@
 // URL; the shell supplies the pane, this loads that plugin, and the view gets the host's `open`.
 // The view owns everything else: fetching the record, polling, refreshing, and Files changed.
 //
-// `/pull/<n>[/files]` and `/pulls` are the pull requests' address space (Browser URL
-// Grammar). Only such an address, or the Pulls tab, reaches this code, so it is no startup
+// `/pull/<n>[/files[/<path>]]` and `/pulls` are the pull requests' address space (Browser
+// URL Grammar). Only such an address, or the Pulls tab, reaches this code, so it is no startup
 // script of any other page. The server writes it into the shell of a pull-request address,
 // where the page needs it before it can show anything; anything else takes it as the
 // `pull-route` on-demand bundle.
@@ -26,44 +26,89 @@
   const PULL_LISTS = Object.freeze(["all", "open", "closed"]);
 
   /**
-   * Encode a pull request's page: `/pull/<n>` for its conversation,
-   * `/pull/<n>/files` for its Files changed.
+   * Whether *segment* may be one segment of a changed file's path: a path in the pull
+   * request's comparison, checked for shape as view_routes._pull_file_segments checks it.
    *
-   * @param {number} number
-   * @param {string} [tab]
-   * @returns {string}
+   * @param {string} segment
    */
-  function pullHref(number, tab = "") {
-    if (!PULL_NUMBER_PATTERN.test(String(number)) || !PULL_TABS.includes(tab)) {
-      throw new TypeError("pull route requires a pull-request number and a known tab");
-    }
-    return `${PULL_PREFIX}${number}${tab ? `/${tab}` : ""}`;
+  function isFileSegment(segment) {
+    return (
+      segment !== "" &&
+      segment !== "." &&
+      segment !== ".." &&
+      !segment.includes("/") &&
+      !segment.includes("\\") &&
+      !segment.includes("\0")
+    );
   }
 
   /**
-   * Parse a pull-request page route, or null when the location is not one.
+   * Encode a pull request's page: `/pull/<n>` for its conversation,
+   * `/pull/<n>/files` for its Files changed, and `/pull/<n>/files/<path>` for one file
+   * of it, each segment of the path percent-encoded. This is the one way a path written
+   * by whoever opened the pull request reaches an address.
+   *
+   * @param {number} number
+   * @param {string} [tab]
+   * @param {string} [file]
+   * @returns {string}
+   */
+  function pullHref(number, tab = "", file = "") {
+    if (!PULL_NUMBER_PATTERN.test(String(number)) || !PULL_TABS.includes(tab)) {
+      throw new TypeError("pull route requires a pull-request number and a known tab");
+    }
+    const head = `${PULL_PREFIX}${number}${tab ? `/${tab}` : ""}`;
+    if (!file) {
+      return head;
+    }
+    const segments = typeof file === "string" && tab === "files" ? file.split("/") : [""];
+    if (!segments.every(isFileSegment)) {
+      throw new TypeError("pull route names a file of Files changed by a normalized path");
+    }
+    try {
+      return `${head}/${segments.map((segment) => encodeURIComponent(segment)).join("/")}`;
+    } catch (error) {
+      throw new TypeError("pull route names a file by a path that is not Unicode", {
+        cause: error,
+      });
+    }
+  }
+
+  /**
+   * Parse a pull-request page route, or null when the location is not one. `file` is the
+   * changed file it names, or "" for the page.
    *
    * @param {string} pathname
-   * @returns {Readonly<{number: number, tab: string}> | null}
+   * @returns {Readonly<{number: number, tab: string, file: string}> | null}
    */
   function parsePull(pathname) {
     if (typeof pathname !== "string" || !pathname.startsWith(PULL_PREFIX)) {
       return null;
     }
     const segments = pathname.slice(PULL_PREFIX.length).split("/");
-    if (segments.length > 1 && segments[segments.length - 1] === "") {
+    // A trailing slash names the same page; a file has none.
+    if ((segments.length === 2 || segments.length === 3) && segments[segments.length - 1] === "") {
       segments.pop();
     }
-    const [number, tab = ""] = segments;
+    const [number, tab = "", ...inner] = segments;
     if (
-      segments.length > 2 ||
       !PULL_NUMBER_PATTERN.test(number) ||
       !PULL_TABS.includes(tab) ||
-      (segments.length === 2 && !tab)
+      (segments.length >= 2 && !tab) ||
+      (inner.length > 0 && tab !== "files")
     ) {
       return null;
     }
-    return Object.freeze({ number: Number(number), tab });
+    let decoded;
+    try {
+      decoded = inner.map((segment) => decodeURIComponent(segment));
+    } catch {
+      return null;
+    }
+    if (!decoded.every(isFileSegment)) {
+      return null;
+    }
+    return Object.freeze({ number: Number(number), tab, file: decoded.join("/") });
   }
 
   /**
@@ -107,10 +152,13 @@
    * and anything else mounts the page. A step between the list's filters changes nothing
    * here, since the pane says the same of each.
    *
+   * A landing on one changed file's address, `/pull/<n>/files/<path>`, also names the
+   * file: the page shows it in Files changed, as a click on its row in the Pulls tab does.
+   *
    * @param {string} pathname
    * @param {number | "list" | null} shown
    * @param {boolean} heldTarget
-   * @returns {Readonly<{action: "tab", tab: string} | {action: "mount", number: number, tab: string} | {action: "list"}> | null}
+   * @returns {Readonly<{action: "tab", tab: string, file?: string} | {action: "mount", number: number, tab: string, file?: string} | {action: "list"}> | null}
    */
   function pullHistoryAction(pathname, shown, heldTarget) {
     if (heldTarget) {
@@ -123,9 +171,10 @@
     if (route === null) {
       return null;
     }
+    const file = route.file ? { file: route.file } : {};
     return route.number === shown
-      ? Object.freeze({ action: "tab", tab: route.tab })
-      : Object.freeze({ action: "mount", number: route.number, tab: route.tab });
+      ? Object.freeze({ action: "tab", tab: route.tab, ...file })
+      : Object.freeze({ action: "mount", number: route.number, tab: route.tab, ...file });
   }
 
   /**
@@ -143,14 +192,19 @@
    * Pulls tab also carries `reader`, which only the page reads. *mountList* is the same
    * for the list's address.
    *
-   * @template {{setTab?: (tab: string) => void, flush?: () => void, dispose?: () => void}} Handle
+   * A route that names one changed file lands on it: the page's `showFile`, once the page
+   * holds the pane, shows Files changed at that file. The host keeps the page it made, and
+   * `pageFor` hands it to what sits beside the pane, the Pulls tab, which walks a pull
+   * request's files without moving the address on every key.
+   *
+   * @template {{land?: (route: {tab: string, file?: string}) => void, setTab?: (tab: string) => void, showFile?: (path: string) => unknown, flush?: () => void, dispose?: () => void}} Handle
    * @param {{
    *   claim: () => number,
    *   isCurrent: (claim: number) => boolean,
    *   mount: (
    *     claim: number,
    *     route: Readonly<{number: number, tab: string, reader?: unknown}>,
-   *     open: (route: {number: number, tab: string, reader?: unknown, replace?: boolean}) => Promise<{status: string}>,
+   *     open: (route: {number: number, tab: string, file?: string, reader?: unknown, replace?: boolean}) => Promise<{status: string}>,
    *   ) => Promise<Handle | null | undefined>,
    *   mountList: (claim: number) => Promise<Handle | null | undefined>,
    *   pathname: () => string,
@@ -171,6 +225,7 @@
     function dispose() {
       const held = page;
       page = null;
+      notifyPage();
       try {
         held?.handle?.dispose?.();
       } catch (error) {
@@ -179,17 +234,37 @@
     }
 
     /**
+     * A route's place on a page that holds the pane: its tab, or the one file it names.
+     *
+     * @param {Handle | null} handle
+     * @param {Readonly<{tab: string, file?: string}>} route
+     * @param {boolean} restore Whether the current history entry owns a saved place.
+     */
+    function land(handle, route, restore) {
+      if (restore) {
+        handle?.land?.(route);
+      } else if (route.file && typeof handle?.showFile === "function") {
+        handle.showFile(route.file);
+      } else {
+        handle?.setTab?.(route.tab);
+      }
+    }
+
+    /**
      * Claim the pane for a page and mount it.
      *
      * @param {number | "list"} number
      * @param {(claim: number) => Promise<Handle | null | undefined>} mount
+     * @param {string} [file] The changed file the route names, which the page lands on.
+     * @param {boolean} [restore] A route landing, rather than a reader's new selection.
      * @returns {Promise<{status: "opened" | "cancelled"}>}
      */
-    async function take(number, mount) {
+    async function take(number, mount, file = "", restore = true) {
       const claim = deps.claim();
       /** @type {NonNullable<typeof page>} */
       const mine = { number, claim, handle: null };
       page = mine;
+      notifyPage();
       const handle = await mount(claim);
       if (page !== mine || !deps.isCurrent(claim)) {
         handle?.dispose?.();
@@ -198,25 +273,40 @@
       if (!handle) {
         // Nothing holds the pane, so the next route to this page mounts it again.
         page = null;
+        notifyPage();
         return { status: "opened" };
       }
       mine.handle = handle;
+      notifyPage();
+      if (file) {
+        land(handle, { tab: "files", file }, restore);
+      }
       return { status: "opened" };
     }
 
     /**
-     * Show a route's page, or switch its tab when that page is already shown.
+     * Show a route's page, or switch its tab, or go to its file, when that page is already
+     * shown.
      *
-     * @param {Readonly<{number: number, tab: string, reader?: unknown}>} route
+     * @param {Readonly<{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown}>} route
+     * @param {{restore?: boolean}} [how]
      * @returns {Promise<{status: "opened" | "cancelled"}>}
      */
-    async function show(route) {
+    async function show(route, how = {}) {
       const current = shown();
       if (current !== null && current.number === route.number) {
-        current.handle?.setTab?.(route.tab);
+        // A walk of the Pulls tab's files jumped the page there itself, key by key.
+        if (route.jumped !== true) {
+          land(current.handle, route, how.restore !== false);
+        }
         return { status: "opened" };
       }
-      return take(route.number, (claim) => deps.mount(claim, route, open));
+      return take(
+        route.number,
+        (claim) => deps.mount(claim, route, open),
+        route.file ?? "",
+        how.restore !== false,
+      );
     }
 
     /** Show the list's address in the pane, unless it already holds the pane. */
@@ -235,15 +325,19 @@
      *
      * A route with *replace* is a key's skim through the Pulls tab's rows: it replaces the
      * entry, as the file tree's and Git's keys do, so a reader who passed ten rows leaves
-     * them with one Back. A click, Enter, and the page's own links push.
+     * them with one Back. A click, Enter, and the page's own links push. A *file* is one
+     * row of a pull request's changed files, and its address is that file's. *jumped* says
+     * the page of that number shows the file already, since a walk of its files jumped it key
+     * by key, so only the address moves.
      *
-     * @param {{number: number, tab: string, reader?: unknown, replace?: boolean}} route
+     * @param {{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean}} route
      */
     function open(route) {
       const number = Number(route.number);
+      const file = typeof route.file === "string" ? route.file : "";
       let href;
       try {
-        href = pullHref(number, route.tab);
+        href = pullHref(number, route.tab, file);
       } catch (error) {
         return Promise.reject(error);
       }
@@ -259,8 +353,11 @@
         Object.freeze({
           number,
           tab: route.tab,
+          ...(file ? { file } : {}),
+          ...(route.jumped === true ? { jumped: true } : {}),
           ...(route.reader === undefined ? {} : { reader: route.reader }),
         }),
+        { restore: false },
       );
     }
 
@@ -274,28 +371,62 @@
       const current = shown();
       const landing = pullHistoryAction(pathname, current ? current.number : null, heldTarget);
       if (landing?.action === "tab") {
-        current?.handle?.setTab?.(landing.tab);
+        land(current?.handle ?? null, landing, true);
       } else if (landing?.action === "mount") {
-        void show(Object.freeze({ number: landing.number, tab: landing.tab }));
+        void show(
+          Object.freeze({
+            number: landing.number,
+            tab: landing.tab,
+            ...(landing.file ? { file: landing.file } : {}),
+          }),
+        );
       } else if (landing?.action === "list") {
         void showList();
       }
       return landing;
     }
 
-    return Object.freeze({
+    /** The handle of the pull request's page holding the pane, or null. */
+    function shownPage() {
+      const current = shown();
+      return current === null || current.number === "list" ? null : current.handle;
+    }
+
+    const host = Object.freeze({
       dispose,
       onHistory,
       open,
       /** The handle of the pull request's page holding the pane, for what sits beside it, or null. */
-      page: () => {
-        const current = shown();
-        return current === null || current.number === "list" ? null : current.handle;
-      },
+      page: shownPage,
+      /**
+       * The page of pull request *number* when it holds the pane, or null: what the Pulls
+       * tab's changed files of that pull request jump in.
+       *
+       * @param {number} number
+       */
+      pageFor: (number) => (shown()?.number === number ? shownPage() : null),
       show,
       showList,
       shown: () => shown()?.number ?? null,
     });
+    attached = host;
+    notifyPage();
+    return host;
+  }
+
+  /**
+   * The host the shell made, which it makes once, for what sits beside the pane and cannot
+   * reach the shell's own copy: the Pulls tab. Null until a pull-request route has opened.
+   *
+   * @type {{pageFor: (number: number) => unknown} | null}
+   */
+  let attached = null;
+  /** @type {Set<() => void>} */
+  const pageListeners = new Set();
+  function notifyPage() {
+    for (const listener of pageListeners) {
+      listener();
+    }
   }
 
   /**
@@ -348,6 +479,13 @@
   }
 
   window.MetabrowserPullRoute = Object.freeze({
+    /** @returns {{pageFor: (number: number) => unknown} | null} */
+    attachedHost: () => attached,
+    /** A page became available, started replacement, or was disposed. @param {() => void} listener */
+    onPageChange(listener) {
+      pageListeners.add(listener);
+      return () => pageListeners.delete(listener);
+    },
     createPullPageHost,
     createViewMount,
     parsePull,

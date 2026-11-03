@@ -1809,5 +1809,59 @@
    "next_after": null,
    "rows": []
   }
+ },
+ "landing_empty_refreshing": {
+  "status": 200,
+  "etag": "\"pulls-37\"",
+  "body": {
+   "state": "stale",
+   "reason": null,
+   "source": "https://github.com/octo/demo",
+   "list": "all",
+   "fetched_at": "2026-09-17T12:00:00Z",
+   "reader": "gh:octo-reader",
+   "fresh_for_s": 60.0,
+   "refreshing": true,
+   "last_refresh": {
+    "outcome": "gh_missing",
+    "message": "GitHub CLI (gh) is not on PATH",
+    "reset_at": null,
+    "at": "2026-09-24T12:00:00Z"
+   },
+   "fetched": 0,
+   "complete": true,
+   "truncated": false,
+   "at_cap": false,
+   "limit": 0,
+   "next_after": null,
+   "rows": []
+  }
+ },
+ "landing_found_rows": {
+  "status": 200,
+  "etag": "\"pulls-38\"",
+  "body": {
+   "state": "current",
+   "reason": null,
+   "source": "https://github.com/octo/demo",
+   "list": "all",
+   "fetched_at": "2026-09-24T12:00:00Z",
+   "reader": "gh:octo-reader",
+   "fresh_for_s": 60.0,
+   "refreshing": false,
+   "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-24T12:00:00Z"
+   },
+   "fetched": 100,
+   "complete": false,
+   "truncated": false,
+   "at_cap": false,
+   "limit": 0,
+   "next_after": null,
+   "rows": []
+  }
  }
 }

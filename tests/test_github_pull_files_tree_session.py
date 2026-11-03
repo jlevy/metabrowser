@@ -239,3 +239,15 @@ def test_the_recording_holds_every_failure_the_plan_names() -> None:
     for name in _FAILURES:
         assert recording[f"failed {name}"]["last_refresh"]["outcome"] == name
     assert json.dumps(recording).count('"capped": true') >= 1
+
+
+def test_removed_focused_file_transfers_focus_after_replacement_paint() -> None:
+    """A refreshed list retains keyboard ownership and never steals unrelated focus."""
+
+    assert run_session("github-pull-files-focus-behavior.js") == [
+        {"scenario": "survivor", "focus": "a.py"},
+        {"scenario": "empty", "focus": "owner"},
+        {"scenario": "other focus", "focus": "elsewhere"},
+        {"scenario": "windowed survivor", "focus": "a000.py"},
+        {"scenario": "windowed other focus", "focus": "elsewhere"},
+    ]

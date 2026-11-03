@@ -109,6 +109,34 @@ $ node tests/dom/pulls-nav-session.js
       "focus on": "/pull/3898",
       "address": "/pull/3898"
     },
+    "Right enters changed files": {
+      "handled": true,
+      "did": [],
+      "focus on": "/pull/3900/files/src/a.py",
+      "address": "/pull/3898"
+    },
+    "J in changed files has its own scope": {
+      "handled": true,
+      "did": [
+        "the shell opened /pull/3900/files/src/b.py, replacing"
+      ],
+      "focus on": "/pull/3900/files/src/b.py",
+      "address": "/pull/3900/files/src/b.py"
+    },
+    "Enter in changed files pushes that file": {
+      "handled": true,
+      "did": [
+        "the shell opened /pull/3900/files/src/b.py, pushing"
+      ],
+      "focus on": "/pull/3900/files/src/b.py",
+      "address": "/pull/3900/files/src/b.py"
+    },
+    "Left returns to the parent pull-request row": {
+      "handled": true,
+      "did": [],
+      "focus on": "/pull/3900",
+      "address": "/pull/3900/files/src/b.py"
+    },
     "the overlay closes over a Pulls row: no Files row is handed back": null,
     "back in Files: J walks the file tree": {
       "handled": true,
@@ -132,7 +160,8 @@ $ node tests/dom/pulls-nav-session.js
     "/pulls": {
       "names": {
         "page": null,
-        "filter": "all"
+        "filter": "all",
+        "file": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -141,7 +170,8 @@ $ node tests/dom/pulls-nav-session.js
     "/pulls?state=closed": {
       "names": {
         "page": null,
-        "filter": "closed"
+        "filter": "closed",
+        "file": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -150,7 +180,8 @@ $ node tests/dom/pulls-nav-session.js
     "/pulls?state=merged": {
       "names": {
         "page": null,
-        "filter": "all"
+        "filter": "all",
+        "file": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -159,7 +190,8 @@ $ node tests/dom/pulls-nav-session.js
     "/pull/7": {
       "names": {
         "page": 7,
-        "filter": null
+        "filter": null,
+        "file": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -168,7 +200,8 @@ $ node tests/dom/pulls-nav-session.js
     "/pull/7/files": {
       "names": {
         "page": 7,
-        "filter": null
+        "filter": null,
+        "file": null
       },
       "from Files": "pulls",
       "from Pulls": null,
@@ -474,6 +507,41 @@ $ node tests/dom/pulls-nav-session.js
         "keys": "Enter or Space",
         "action": "Open pull request",
         "description": "Open the focused pull request."
+      },
+      {
+        "keys": "Right arrow",
+        "action": "Show changed files",
+        "description": "Show the focused pull request's changed files, or go to the first."
+      },
+      {
+        "keys": "Left arrow",
+        "action": "Hide changed files",
+        "description": "Hide the focused pull request's changed files."
+      },
+      {
+        "keys": "Up arrow or K",
+        "action": "Previous changed file",
+        "description": "Show the previous changed file in Files changed."
+      },
+      {
+        "keys": "Down arrow or J",
+        "action": "Next changed file",
+        "description": "Show the next changed file in Files changed."
+      },
+      {
+        "keys": "Left arrow",
+        "action": "Parent or collapse",
+        "description": "Collapse the focused folder, or go to the row that holds it."
+      },
+      {
+        "keys": "Right arrow",
+        "action": "Child or expand",
+        "description": "Expand the focused folder, or go to its first row."
+      },
+      {
+        "keys": "Enter or Space",
+        "action": "Open changed file",
+        "description": "Open the focused changed file, or toggle the focused folder."
       }
     ]
   },

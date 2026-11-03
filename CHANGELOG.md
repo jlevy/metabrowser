@@ -447,6 +447,10 @@ GitHub URLs and HTTPS:
   address, `/pulls`. Selecting a row reads the pull request in the same page, fetching
   it if it has no record; holding K, J, or an arrow walks the rows and opens the one it
   stops on, and one Back leaves the rows however many were passed.
+  Rows expand into a windowed changed-files tree with folder navigation and inline
+  change counts. Selecting a file opens `/pull/<n>/files/<path>` and jumps Files changed
+  in place; keyboard walks keep focus in the tree and replace one history entry when
+  they stop. The selected file follows a reader’s diff scroll.
   Opening a GitHub repository now runs `gh` for its list of pull requests once the first
   file tree has painted, at most once a minute, whether or not the tab is opened; the
   request names the repository and carries `gh`’s own sign-in.

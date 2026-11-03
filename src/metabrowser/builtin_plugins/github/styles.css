@@ -407,13 +407,14 @@
   content-visibility: auto;
   contain-intrinsic-block-size: auto 41.5px;
 }
-/* Two lines and one target: the state icon, the title, and the age on the first, and the muted
-   line under the title. The row centers its boxes and its text opts in to the first line's
+/* Two lines and one target: the chevron, the state icon, the title, and the age on the first,
+   and the muted line under the title. A row is a container, so its chevron leads in the 16px
+   box a folder's takes (docs/design-system.md, "Container Rows"). The row centers its boxes and its text opts in to the first line's
    baseline (docs/design-system.md, "Row Text Shares a Baseline"); the muted line is alone on
    its own, with no baseline to share. */
 .github-pulls-row {
   display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
+  grid-template-columns: 16px 16px minmax(0, 1fr) auto;
   align-items: center;
   min-height: var(--ui-row-height);
   padding: 2px 12px 2px 10px;
@@ -449,9 +450,110 @@
   white-space: nowrap;
 }
 .github-pulls-meta {
-  grid-column: 2 / -1;
+  grid-column: 3 / -1;
   color: var(--muted);
   font-size: var(--ui-small-font-size);
+}
+/* The registry's chevron, at the tree's 12px glyph in a 16px box; `.collapsed` and `.expanded`
+   on the row turn it, as they turn a folder's. */
+.github-pulls-toggle,
+.github-pull-files-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+}
+
+/* A pull request's changed files, under its row: the Files tree's row contract, drawn a window
+   at a time. Every row is one row tall, since a row's place is its index times that height, and
+   is laid out at its depth's indent, one level in from the pull request's row. */
+.github-pull-files-rows {
+  position: relative;
+}
+.github-pull-file-row,
+.github-pull-folder-row {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--ui-row-height);
+  padding: 2px 12px 2px calc(10px + var(--github-pull-file-depth, 1) * var(--tree-indent));
+  border-left: 2px solid transparent;
+  gap: 6px;
+  color: var(--text);
+  font-size: var(--nav-font-size);
+  text-decoration: none;
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+  scroll-margin-block-start: calc(var(--chip-height) + 12px);
+}
+.github-pull-file-row:hover,
+.github-pull-folder-row:hover {
+  background: var(--hover-bg);
+}
+.github-pull-file-row:focus-visible,
+.github-pull-folder-row:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+  background: var(--hover-bg);
+}
+.github-pull-file-row.selected {
+  background: var(--highlight-bg);
+  border-left-color: var(--highlight-bar);
+}
+/* A row the comparison does not hold: it is listed, and the diff has nothing to show of it. */
+.github-pull-file-muted {
+  color: var(--muted);
+}
+.github-pull-file-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The inline change stats (docs/design-system.md, "Inline Change Stats"), at the end of the row. */
+.github-pull-file-stats {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 4px;
+  margin-left: auto;
+  font-size: var(--ui-small-font-size);
+  font-variant-numeric: tabular-nums;
+}
+.github-pull-file-stats > .diff-stat-add {
+  color: var(--status-success);
+  font-weight: var(--weight-bold);
+}
+.github-pull-file-stats > .diff-stat-del {
+  color: var(--status-error);
+  font-weight: var(--weight-bold);
+}
+.github-pull-file-row
+  > :is(.github-pull-file-badge, .github-pull-file-name, .github-pull-file-stats),
+.github-pull-folder-row > .github-pull-file-name {
+  align-self: baseline;
+}
+.github-pull-files-line {
+  margin: 0;
+  padding: 2px 12px 2px calc(10px + var(--tree-indent) + 22px);
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+.github-pull-files-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 12px 4px calc(10px + var(--tree-indent));
+  padding: 4px 8px;
+}
+.github-pull-files-loading {
+  height: calc(var(--ui-row-height) * 3);
+  margin-inline-start: calc(10px + var(--tree-indent) + 22px);
 }
 .github-pulls-foot {
   display: flex;

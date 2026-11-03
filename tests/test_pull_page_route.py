@@ -31,31 +31,60 @@ STYLES_CSS = PAGE_JS.parent / "styles.css"
 @pytest.mark.parametrize(
     ("raw", "decoded"),
     [
-        (b"/pull/7", (7, "")),
-        (b"/pull/7/", (7, "")),
-        (b"/pull/7/files", (7, "files")),
-        (b"/pull/7/files/", (7, "files")),
-        (b"/pull/9999999999", (9999999999, "")),
+        (b"/pull/7", (7, "", "")),
+        (b"/pull/7/", (7, "", "")),
+        (b"/pull/7/files", (7, "files", "")),
+        (b"/pull/7/files/", (7, "files", "")),
+        (b"/pull/9999999999", (9999999999, "", "")),
+        # One changed file: a path in the comparison, decoded one segment at a time.
+        (b"/pull/7/files/x", (7, "files", "x")),
+        (b"/pull/7/files/src/app.py", (7, "files", "src/app.py")),
+        (b"/pull/7/files/docs/a%20b/%E9%9B%AA.md", (7, "files", "docs/a b/雪.md")),
+        (b"/pull/7/files/a%25b", (7, "files", "a%b")),
+        (b"/pull/7/files/.github/workflows/ci.yml", (7, "files", ".github/workflows/ci.yml")),
         (b"/pull/0", None),
         (b"/pull/07", None),
         (b"/pull/7/commits", None),
-        (b"/pull/7/files/x", None),
+        (b"/pull/7/commits/x", None),
+        (b"/pull/7/x", None),
         (b"/pull/7//", None),
         (b"/pull/%37", None),
         (b"/pull/", None),
         (b"/pulls/7", None),
+        # A file has no trailing slash, and its path is normalized: nothing that is not one.
+        (b"/pull/7/files/src/", None),
+        (b"/pull/7/files//x", None),
+        (b"/pull/7/files/../x", None),
+        (b"/pull/7/files/%2E%2E/x", None),
+        (b"/pull/7/files/a/./b", None),
+        (b"/pull/7/files/a%2Fb", None),
+        (b"/pull/7/files/a%5Cb", None),
+        (b"/pull/7/files/a%00b", None),
+        (b"/pull/7/files/a%ZZ", None),
+        (b"/pull/7/files/%FF", None),
+        (b"/pull/7/%66iles/x", None),
     ],
 )
-def test_the_pull_route_grammar(raw: bytes, decoded: tuple[int, str] | None) -> None:
+def test_the_pull_route_grammar(raw: bytes, decoded: tuple[int, str, str] | None) -> None:
     assert decode_safe_pull_route(raw) == decoded
     if decoded is not None:
         assert decode_safe_pull_route(format_pull_href(*decoded).encode()) == decoded
 
 
 def test_format_pull_href_refuses_what_the_route_does_not_parse() -> None:
-    for number, tab in ((0, ""), (7, "commits"), (10**10, "")):
+    for number, tab, file in (
+        (0, "", ""),
+        (7, "commits", ""),
+        (10**10, "", ""),
+        (7, "", "src/app.py"),
+        (7, "files", "src/"),
+        (7, "files", "../x"),
+        (7, "files", "a\\b"),
+        (7, "files", "a\0b"),
+        (7, "files", "\ud800"),
+    ):
         with pytest.raises(ValueError, match="pull route"):
-            format_pull_href(number, tab)
+            format_pull_href(number, tab, file)
 
 
 def test_the_pull_route_serves_the_shell_and_the_plugin_for_its_kind() -> None:
@@ -66,7 +95,9 @@ def test_the_pull_route_serves_the_shell_and_the_plugin_for_its_kind() -> None:
         # The shell loads a plugin's assets by the kinds its views consume.
         config = re.search(r"configureAssets\((\{.*?\})\);", shell.text)
         assert config is not None and '"pull-request": [{"name": "github"' in config.group(1)
-        for refused in ("/pull/0", "/pull/7/commits"):
+        # One changed file's address is the same page, and its path is never looked up.
+        assert client.get("/pull/7/files/no/such/file.py").status_code == 200
+        for refused in ("/pull/0", "/pull/7/commits", "/pull/7/files/src/", "/pull/7/files/%2E%2E"):
             answer = client.get(refused)
             assert (answer.status_code, answer.text) == (400, "Invalid pull-request route.")
 

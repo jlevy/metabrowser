@@ -154,6 +154,42 @@ $ node tests/dom/github-pull-files-tree-session.js
         ]
       }
     ],
+    "only automatic row expansions close when the page moves": [
+      {
+        "expand": [
+          7
+        ],
+        "collapse": []
+      },
+      {
+        "expand": [
+          8
+        ],
+        "collapse": [
+          7
+        ]
+      },
+      {
+        "expand": [
+          9
+        ],
+        "collapse": []
+      }
+    ],
+    "a long tree draws only its viewport and overscan": [
+      {
+        "start": 0,
+        "end": 70
+      },
+      {
+        "start": 460,
+        "end": 570
+      },
+      {
+        "start": 4539,
+        "end": 4539
+      }
+    ],
     "a chain row toggles as one": {
       "closed": [
         "v assets/ (1)",
@@ -212,6 +248,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "label": "Modified"
       }
     ],
+    "an unchanged head with a different local base starts again at zero": "number=7&offset=0",
     "a list from the local comparison": {
       "status": "current",
       "reason": null,
@@ -361,6 +398,147 @@ $ node tests/dom/github-pull-files-tree-session.js
       "held": 100
     }
   },
+  "controller": [
+    {
+      "step": "a failed first read offers Retry and keeps reading",
+      "requests": [
+        "GET /api/plugin/github/pull-files?number=106&offset=0"
+      ],
+      "held": 0,
+      "current": null,
+      "notice": "The server did not answer.",
+      "timers": [
+        1000
+      ]
+    },
+    {
+      "step": "Retry reads the cache; an address alone fetches nothing",
+      "requests": [
+        "GET /api/plugin/github/pull-files?number=106&offset=0"
+      ],
+      "held": 0,
+      "current": null,
+      "notice": "Its changed files have not been listed yet.",
+      "timers": [
+        60000
+      ]
+    },
+    {
+      "step": "a reader's expansion asks for an uncached list",
+      "requests": [
+        "POST /api/plugin/github/pull-files-refresh {\"number\":106,\"retry\":false}"
+      ],
+      "held": 0,
+      "current": null,
+      "notice": null,
+      "timers": [
+        1000
+      ]
+    },
+    {
+      "step": "filling 1",
+      "requests": [
+        "GET /api/plugin/github/pull-files?number=106&offset=0"
+      ],
+      "held": 100,
+      "current": null,
+      "notice": null,
+      "timers": [
+        1000
+      ]
+    },
+    {
+      "step": "filling 2",
+      "requests": [
+        "GET /api/plugin/github/pull-files?number=106&offset=100"
+      ],
+      "held": 200,
+      "current": null,
+      "notice": null,
+      "timers": [
+        1000
+      ]
+    },
+    {
+      "step": "filled",
+      "requests": [
+        "GET /api/plugin/github/pull-files?number=106&offset=200"
+      ],
+      "held": 249,
+      "current": null,
+      "notice": null,
+      "timers": [
+        60000
+      ]
+    },
+    {
+      "step": "held keys jump every file but replace history once on release",
+      "jumps": 5,
+      "opens": [
+        {
+          "file": "src/app/plugins/github/mod_002.py",
+          "replace": true,
+          "jumped": true
+        }
+      ]
+    },
+    {
+      "step": "Enter pushes the focused file",
+      "opens": [
+        {
+          "file": "src/app/plugins/github/mod_002.py",
+          "replace": false,
+          "jumped": false
+        }
+      ]
+    },
+    {
+      "step": "a file reported by the page is revealed without moving its address",
+      "requests": [],
+      "held": 249,
+      "current": "weird/bell\u0007name.txt",
+      "notice": null,
+      "timers": [
+        60000
+      ]
+    },
+    {
+      "step": "the walk's own scroll report does not cancel its final address",
+      "opens": [
+        {
+          "file": "docs/removed.md",
+          "replace": true,
+          "jumped": true
+        }
+      ]
+    },
+    {
+      "step": "a later route cancels a pending file walk",
+      "requests": [],
+      "held": 249,
+      "current": "weird/bell\u0007name.txt",
+      "notice": null,
+      "timers": [
+        60000
+      ]
+    },
+    {
+      "step": "hiding the panel cancels a pending file walk",
+      "requests": [],
+      "held": 249,
+      "current": "docs/removed.md",
+      "notice": null,
+      "timers": []
+    },
+    {
+      "step": "a closed or hidden tree has no timer",
+      "requests": [],
+      "held": 249,
+      "current": "docs/removed.md",
+      "notice": null,
+      "timers": []
+    }
+  ],
   "invariants": {
     "filled rows are the list's rows": true,
     "no single-child folder is its own row": true,

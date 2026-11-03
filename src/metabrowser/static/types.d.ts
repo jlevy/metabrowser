@@ -30,29 +30,53 @@ type MetabrowserPullReader = {
   walking?: () => boolean;
 };
 
-/** *replace* is a key's skim through the Pulls tab: the history entry is replaced, not pushed. */
-type MetabrowserPullRoute = { number: number; tab: string; reader?: unknown; replace?: boolean };
+/** *replace* is a key's skim through the Pulls tab: the history entry is replaced, not pushed.
+ *  *file* is one changed file, whose address is `/pull/<n>/files/<path>`. */
+type MetabrowserPullRoute = {
+  number: number;
+  tab: string;
+  file?: string;
+  /** The page of that number shows the file already: only the address moves. */
+  jumped?: boolean;
+  reader?: unknown;
+  replace?: boolean;
+};
 
 type MetabrowserPullsNavHost = Readonly<{
   filter: string;
   current: number | null;
+  /** The changed file the address names, or null. */
+  file: string | null;
   shown: boolean;
   refreshAhead: boolean;
   /** A checkout served as a folder: its list is of its `origin`, read only once shown. */
   checkout: boolean;
   scrollRoot: HTMLElement | null;
   open(route: MetabrowserPullRoute): unknown;
+  /** A changed file's address, through the route's encoder; null where a path is not one. */
+  fileHref(number: number, path: string): string | null;
+  /** The page of that pull request while it holds the pane, else null. */
+  pageFor(number: number): unknown;
+  onPageChange(listener: () => void): () => void;
   filterChanged(state: string): void;
 }>;
 
 /** What the list's view hands the Pulls tab's host. */
 type MetabrowserPullsPanelHandle = Readonly<{
   setShown(shown: boolean): void;
-  setCurrent(number: number | null): void;
+  setCurrent(number: number | null, file?: string | null): void;
   setFilter(state: string): void;
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
   released(): void;
   activateAnchor(): boolean;
+  /** Right and Left on a pull request's row: its changed files open, or close. */
+  expand(): boolean;
+  collapse(): boolean;
+  /** The keys of a changed file's row. */
+  moveFile(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
+  fileLeft(): boolean;
+  fileRight(): boolean;
+  activateFile(): boolean;
   dispose(): void;
 }>;
 
@@ -496,7 +520,13 @@ type MetabrowserSourceLineAnchorState = Readonly<{
 
 type MetabrowserPullRouteRuntime = Readonly<{
   createPullPageHost<
-    Handle extends { setTab?(tab: string): void; flush?(): void; dispose?(): void },
+    Handle extends {
+      land?(route: { tab: string; file?: string }): void;
+      setTab?(tab: string): void;
+      showFile?(path: string): unknown;
+      flush?(): void;
+      dispose?(): void;
+    },
   >(deps: {
     claim(): number;
     isCurrent(claim: number): boolean;
@@ -515,8 +545,8 @@ type MetabrowserPullRouteRuntime = Readonly<{
       pathname: string,
       heldTarget: boolean,
     ): Readonly<
-      | { action: "tab"; tab: string }
-      | { action: "mount"; number: number; tab: string }
+      | { action: "tab"; tab: string; file?: string }
+      | { action: "mount"; number: number; tab: string; file?: string }
       | { action: "list" }
     > | null;
     open(route: MetabrowserPullRoute): Promise<{ status: "opened" | "cancelled" }>;
@@ -524,6 +554,8 @@ type MetabrowserPullRouteRuntime = Readonly<{
     showList(): Promise<{ status: "opened" | "cancelled" }>;
     /** The handle of the pull request's page holding the pane; null for the list or none. */
     page(): Handle | null;
+    /** The page of that pull request when it holds the pane, else null. */
+    pageFor(number: number): Handle | null;
     shown(): number | "list" | null;
   }>;
   createViewMount(shell: {
@@ -537,18 +569,21 @@ type MetabrowserPullRouteRuntime = Readonly<{
     kind: string,
     context: Record<string, unknown>,
   ) => Promise<{ setTab?(tab: string): void; flush?(): void; dispose?(): void } | null>;
-  parsePull(pathname: string): Readonly<{ number: number; tab: string }> | null;
+  /** The host the shell made, for the Pulls tab beside the pane; null until one is made. */
+  attachedHost(): { pageFor(number: number): unknown } | null;
+  onPageChange(listener: () => void): () => void;
+  parsePull(pathname: string): Readonly<{ number: number; tab: string; file: string }> | null;
   parsePulls(pathname: string, search?: string): Readonly<{ state: string }> | null;
   pullHistoryAction(
     pathname: string,
     shown: number | "list" | null,
     heldTarget: boolean,
   ): Readonly<
-    | { action: "tab"; tab: string }
-    | { action: "mount"; number: number; tab: string }
+    | { action: "tab"; tab: string; file?: string }
+    | { action: "mount"; number: number; tab: string; file?: string }
     | { action: "list" }
   > | null;
-  pullHref(number: number, tab?: string): string;
+  pullHref(number: number, tab?: string, file?: string): string;
   pullsHref(state?: string): string;
 }>;
 

@@ -11,6 +11,8 @@ env:
 patterns:
   TIMESTAMP: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
   APP_HOME: '[^\s"]+/home'
+  BUILD: '[0-9a-f]{12}'
+  STORE: '[0-9a-f]{16}'
 before: >-
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
   --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" . --files
@@ -41,14 +43,14 @@ Every command below answers from that cache, and none reaches the network.
 asked it would show.
 These lists are weeks old and still `current`: a list from GitHub is current while the
 pull request’s `updated_at` is no newer than the list, and one from the local comparison
-while the record’s head is the list’s. Refreshes that complete, each typed failure, and
-a force-push are in `tests/golden/cli-github-pull-files-refresh.txt` and
+while the record’s base and head match the list’s. Refreshes that complete, each typed
+failure, and a force-push are in `tests/golden/cli-github-pull-files-refresh.txt` and
 `tests/golden/cli-github-pull-files-failures.txt`.
 
 ## Test: a pull request the mirror holds is listed from its local comparison
 
-`listed_from` is `comparison`, `head` the commit the list belongs to, and no `reader`,
-since no account read it.
+`listed_from` is `comparison`, `base` and `head` identify the comparison, and no
+`reader`, since no account read it.
 A row keeps the path, the path before a rename, GitHub’s status, and the line counts;
 `display` is the path as it is painted.
 
@@ -65,6 +67,7 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": null,
   "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -125,6 +128,7 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -202,6 +206,7 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -269,6 +274,7 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -310,6 +316,7 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -349,6 +356,7 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:someone-else",
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -404,6 +412,7 @@ status: 200
   "fetched_at": null,
   "reader": null,
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
@@ -432,6 +441,7 @@ status: 200
   "fetched_at": null,
   "reader": null,
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
@@ -460,6 +470,7 @@ status: 200
   "fetched_at": null,
   "reader": null,
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
@@ -512,6 +523,67 @@ Error: /api/plugin/github/pull-files-refresh returned HTTP 400
 ? 1
 ```
 
+## Test: one changed file’s address is the page’s Files changed, and the list says whether it holds it
+
+A file row in the Pulls tab is a link to `/pull/<n>/files/<path>`, the path spelled one
+percent-encoded segment at a time.
+`--show` reports the page the shell mounts there, `pull-request` on its Files changed
+tab, and what the cached list of changed files says of that path: whether it is listed,
+with GitHub’s status, or not.
+The path is a name in the comparison and nothing on disk: no file of the served tree is
+read, and a path the list lacks is reported, not refused.
+A name the display rule changes is printed as it is painted.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --show /pull/7/files/docs/new.md
+show: /pull/7/files/docs/new.md
+route: /pull/7/files/docs/new.md
+kind: pull-request
+views: pull-request (default)
+model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 check_runs=2 statuses=1 tab=files comparison_route=/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=[BUILD]&store=[STORE]; file=docs/new.md file_list=current listed=added complete=True
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --show /pull/106/files/weird/bell%07name.txt
+show: /pull/106/files/weird/bell%07name.txt
+route: /pull/106/files/weird/bell%07name.txt
+kind: pull-request
+views: pull-request (default)
+model: pull envelope; state=absent reason=not_cached tab=files comparison_route=None; file=weird/bell�name.txt file_list=current listed=added complete=True
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --show /pull/7/files/no/such/file.py
+show: /pull/7/files/no/such/file.py
+route: /pull/7/files/no/such/file.py
+kind: pull-request
+views: pull-request (default)
+model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 check_runs=2 statuses=1 tab=files comparison_route=/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=[BUILD]&store=[STORE]; file=no/such/file.py file_list=current listed=no complete=True
+? 0
+```
+
+A pull request with no list of files says so, and a read does not fetch one.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --show /pull/9/files/docs/new.md
+show: /pull/9/files/docs/new.md
+route: /pull/9/files/docs/new.md
+kind: pull-request
+views: pull-request (default)
+model: pull envelope; state=stale pull_state=closed fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=0 reviews=0 review_comments=0 check_runs=2 statuses=1 tab=files comparison_route=/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=[BUILD]&store=[STORE]; file=docs/new.md file_list=absent file_list_reason=not_cached
+? 0
+```
+
+A path that is not a normalized one is not an address of this grammar.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --show /pull/7/files/docs/../new.md
+Error: /pull/7/files/docs/../new.md is not a route this grammar accepts
+? 1
+```
+
 ## Test: a folder has no repository to list
 
 ```console
@@ -527,6 +599,7 @@ status: 200
   "fetched_at": null,
   "reader": null,
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
@@ -574,6 +647,7 @@ status: 202
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": null,
     "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -605,6 +679,7 @@ status: 200
   "fetched_at": "[TIMESTAMP]",
   "reader": null,
   "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -645,6 +720,7 @@ status: 200
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "head": null,
+    "base": null,
     "fresh_for_s": 60.0,
     "refreshing": false,
     "last_refresh": {

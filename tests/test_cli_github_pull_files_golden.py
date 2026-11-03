@@ -50,6 +50,7 @@ from tests.golden_harness import (
     check_golden,
     isolate_cli,
     label_home,
+    normalize_pull_comparison_scopes,
     origin_identity,
     quoted,
     run_metab,
@@ -234,7 +235,9 @@ def test_golden_pull_files_listed_refreshed_and_refused(
     labelled = session.get(f"?number={TREE_PULL}&limit=0").payload()
     assert (labelled["state"], labelled["reader"]) == ("stale", "gh:octo-reader")
 
-    rendered = label_home(Labels().apply("".join(session.blocks)), session.home)
+    rendered = normalize_pull_comparison_scopes(
+        label_home(Labels().apply("".join(session.blocks)), session.home)
+    )
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
     check_golden("cli-github-pull-files-refresh.txt", rendered)
@@ -333,6 +336,8 @@ def test_golden_pull_files_failures(
         pulls_directory.chmod(0o700)
     assert _after(unwritable)["last_refresh"]["outcome"] == "cache_unwritable"
 
-    rendered = label_home(Labels().apply("".join(session.blocks)), session.home)
+    rendered = normalize_pull_comparison_scopes(
+        label_home(Labels().apply("".join(session.blocks)), session.home)
+    )
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     check_golden("cli-github-pull-files-failures.txt", rendered)

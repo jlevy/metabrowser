@@ -1108,7 +1108,16 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "a server with no repository": "This server serves no GitHub repository.",
     "a checkout whose origin cannot be listed": "This checkout's origin is not a GitHub repository Metabrowser can list.",
     "a mirror": "Select a pull request.",
-    "a list with no rows, and no gh": "Install GitHub CLI and sign in to read this repository's pull requests."
+    "a list with no rows, and no gh": "Install GitHub CLI and sign in to read this repository's pull requests.",
+    "a polling checkout landing preserves its origin refusal": {
+      "said": [
+        "This checkout's origin is not a GitHub repository Metabrowser can list."
+      ],
+      "requests": [
+        "GET /api/plugin/github/pulls?limit=0"
+      ],
+      "timers": []
+    }
   },
   "the list's address, on a first visit": [
     {
@@ -1150,6 +1159,85 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "Install GitHub CLI and sign in to read this repository's pull requests."
       ],
       "timers": []
+    }
+  ],
+  "the list's address recovers": [
+    {
+      "step": "connection",
+      "before": {
+        "said": [
+          "Could not read pull requests. Trying again."
+        ],
+        "timers": [
+          30000
+        ]
+      },
+      "after": {
+        "said": [
+          "Install GitHub CLI and sign in to read this repository's pull requests."
+        ],
+        "timers": []
+      },
+      "requests": [
+        "GET /api/plugin/github/pulls?limit=0",
+        "GET /api/plugin/github/pulls?limit=0"
+      ]
+    },
+    {
+      "step": "non-envelope",
+      "before": {
+        "said": [
+          "Could not read pull requests. Trying again."
+        ],
+        "timers": [
+          30000
+        ]
+      },
+      "after": {
+        "said": [
+          "Install GitHub CLI and sign in to read this repository's pull requests."
+        ],
+        "timers": []
+      },
+      "requests": [
+        "GET /api/plugin/github/pulls?limit=0",
+        "GET /api/plugin/github/pulls?limit=0"
+      ]
+    },
+    {
+      "step": "pin changed",
+      "before": {
+        "said": [],
+        "timers": []
+      },
+      "after": {
+        "said": [],
+        "timers": []
+      },
+      "requests": [
+        "GET /api/plugin/github/pulls?limit=0"
+      ]
+    },
+    {
+      "step": "empty refreshing",
+      "before": {
+        "said": [
+          "No pull requests."
+        ],
+        "timers": [
+          1000
+        ]
+      },
+      "after": {
+        "said": [
+          "Select a pull request."
+        ],
+        "timers": []
+      },
+      "requests": [
+        "GET /api/plugin/github/pulls?limit=0",
+        "GET /api/plugin/github/pulls?limit=0"
+      ]
     }
   ],
   "reader": [
@@ -1273,14 +1361,20 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "the list": "ul .github-pulls-list role=\"tree\" aria-label=\"Pull requests of octo/demo: 102 pull requests\"",
     "a row": [
       "li .github-pulls-item role=\"none\"",
-      "a .github-pulls-row href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" tabindex=\"-1\" aria-posinset=\"1\" aria-setsize=\"102\""
+      "a .github-pulls-row.collapsed href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"false\" tabindex=\"-1\" aria-posinset=\"1\" aria-setsize=\"102\""
     ],
-    "the row whose page is shown": "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\"",
+    "the row whose page is shown": "a .github-pulls-row.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-owns=\"github-pull-files-105\" aria-posinset=\"2\" aria-setsize=\"102\"",
     "its parts": [
+      "span .github-pulls-toggle aria-hidden=\"true\"",
       "span .github-pull-state-icon role=\"img\" aria-label=\"Open\"",
       "span .github-pulls-title",
       "span .github-pulls-age.age-hour",
       "span .github-pulls-meta"
+    ],
+    "its changed files, read from the cache": "/api/plugin/github/pull-files?number=105&offset=0",
+    "they hang under it as a group it owns": [
+      "a .github-pulls-row.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-owns=\"github-pull-files-105\" aria-posinset=\"2\" aria-setsize=\"102\"",
+      "div .tree-children.github-pull-files role=\"group\" id=\"github-pull-files-105\" aria-label=\"Changed files of #105: 2 files\""
     ],
     "a title written as markup is one text node": [
       {
@@ -1298,6 +1392,10 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "an age, before": "2h",
     "an age, two hours on": "4h",
     "rows built to tell it": 0,
+    "closing twelve expanded trees enforces retention immediately": {
+      "whileExpanded": 10,
+      "afterClosingAll": 9
+    },
     "disposed: what is left in the tab": 0
   }
 }

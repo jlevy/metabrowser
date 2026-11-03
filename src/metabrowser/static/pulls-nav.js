@@ -15,6 +15,8 @@
   const PANEL_ID = "pulls";
   const KIND = "pull-request-list";
   const KEY_SCOPE = "pull-rows";
+  // A pull request's changed files are rows of their own: J and K on one move between files.
+  const FILE_KEY_SCOPE = "pull-files";
   // When the view's code and the cached list are read ahead of the tab, on a page that is not
   // showing it: once the shell's own work is done, and no later than this.
   const PREFETCH_IDLE_TIMEOUT_MS = 2000;
@@ -22,18 +24,22 @@
   /**
    * What an address names, for the panel: a pull request's page, or the list and its filter.
    *
+   * `file` is the changed file a page's address names, or null.
+   *
    * @param {MetabrowserPublicPullRouteRuntime} routes
    * @param {string} pathname
    * @param {string} search
-   * @returns {Readonly<{page: number | null, filter: string | null}> | null}
+   * @returns {Readonly<{page: number | null, filter: string | null, file: string | null}> | null}
    */
   function pullAddress(routes, pathname, search) {
     const list = routes.parsePulls(pathname, search);
     if (list !== null) {
-      return Object.freeze({ page: null, filter: list.state });
+      return Object.freeze({ page: null, filter: list.state, file: null });
     }
     const page = routes.parsePull(pathname);
-    return page === null ? null : Object.freeze({ page: page.number, filter: null });
+    return page === null
+      ? null
+      : Object.freeze({ page: page.number, filter: null, file: page.file || null });
   }
 
   /**
@@ -67,7 +73,8 @@
    *   loadView(kind: string): Promise<MetabrowserPublicViewSpec | null | undefined>,
    *   container(): HTMLElement | null,
    *   scrollRoot(): HTMLElement | null,
-   *   openPull(route: {number: number, tab: string, reader?: unknown, replace?: boolean}): Promise<unknown>,
+   *   openPull(route: {number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean}): Promise<unknown>,
+   *   pageFor(number: number): unknown,
    *   schedulePrefetch(callback: () => void): unknown,
    *   cancelPrefetch(handle: unknown): void,
    *   showFailure(container: HTMLElement): void,
@@ -126,6 +133,7 @@
               pullsNav: Object.freeze({
                 filter,
                 current: here?.page ?? null,
+                file: here?.file ?? null,
                 shown,
                 // A checkout reads and refreshes nothing until the tab is shown, by the plan's
                 // rule for a checkout: the network only once the reader opens the tab. On a
@@ -138,8 +146,20 @@
                 checkout,
                 scrollRoot: deps.scrollRoot(),
                 open: (
-                  /** @type {{number: number, tab: string, reader?: unknown, replace?: boolean}} */ route,
+                  /** @type {{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown, replace?: boolean}} */ route,
                 ) => deps.openPull(route),
+                // A changed file's row links to its address through the route's encoder, and
+                // has no link where the path cannot be one.
+                fileHref: (/** @type {number} */ number, /** @type {string} */ path) => {
+                  try {
+                    return deps.routes.pullHref(number, "files", path);
+                  } catch {
+                    return null;
+                  }
+                },
+                // The page a file row jumps in, while it is that pull request's.
+                pageFor: (/** @type {number} */ number) => deps.pageFor(number),
+                onPageChange: (listener) => deps.routes.onPageChange(listener),
                 filterChanged: filterChanged,
               }),
             })
@@ -152,7 +172,8 @@
           handle = mounted ?? null;
           // The reader may have moved on while it loaded.
           handle?.setShown(shown);
-          handle?.setCurrent(address()?.page ?? null);
+          const there = address();
+          handle?.setCurrent(there?.page ?? null, there?.file ?? null);
         } catch (error) {
           console.error("metabrowser pulls tab: the list could not load", error);
           if (shown && !disposed) {
@@ -228,7 +249,7 @@
       }
       const here = address();
       if (handle !== null) {
-        handle.setCurrent(here?.page ?? null);
+        handle.setCurrent(here?.page ?? null, here?.file ?? null);
         if (here?.filter) {
           handle.setFilter(here.filter);
         }
@@ -266,6 +287,13 @@
         handle?.released();
       },
       activateAnchor: () => handle?.activateAnchor() ?? false,
+      expand: () => handle?.expand() ?? false,
+      collapse: () => handle?.collapse() ?? false,
+      /** @param {-1 | 1} delta @param {{repeat?: boolean}} [how] */
+      moveFile: (delta, how) => handle?.moveFile(delta, how) ?? false,
+      fileLeft: () => handle?.fileLeft() ?? false,
+      fileRight: () => handle?.fileRight() ?? false,
+      activateFile: () => handle?.activateFile() ?? false,
       dispose() {
         disposed = true;
         shown = false;
@@ -333,6 +361,110 @@
         scope: KEY_SCOPE,
         surfaces: { help: "always" },
       }),
+      shortcuts.register({
+        bindings: [{ key: "ArrowRight" }],
+        copy: {
+          action: "Show changed files",
+          description: "Show the focused pull request's changed files, or go to the first.",
+          hint: "Files",
+        },
+        group: "pull-requests",
+        handler: () => nav.expand(),
+        id: "pulls.files",
+        order: 40,
+        scope: KEY_SCOPE,
+        surfaces: { help: "always" },
+      }),
+      shortcuts.register({
+        bindings: [{ key: "ArrowLeft" }],
+        copy: {
+          action: "Hide changed files",
+          description: "Hide the focused pull request's changed files.",
+          hint: "Files",
+        },
+        group: "pull-requests",
+        handler: () => nav.collapse(),
+        id: "pulls.hide-files",
+        order: 50,
+        scope: KEY_SCOPE,
+        surfaces: { help: "always" },
+      }),
+      // A pull request's changed files, a collection of their own: moving shows the file in
+      // Files changed, and the folders open and close as the Files tree's do.
+      shortcuts.register({
+        bindings: [{ key: "ArrowUp" }, { key: "k" }],
+        copy: {
+          action: "Previous changed file",
+          description: "Show the previous changed file in Files changed.",
+          hint: "Browse",
+        },
+        group: "pull-requests",
+        handler: (context) => nav.moveFile(-1, { repeat: repeating(context) === true }),
+        id: "pulls.files.previous",
+        order: 60,
+        repeat: true,
+        scope: FILE_KEY_SCOPE,
+        surfaces: { help: "always" },
+      }),
+      shortcuts.register({
+        bindings: [{ key: "ArrowDown" }, { key: "j" }],
+        copy: {
+          action: "Next changed file",
+          description: "Show the next changed file in Files changed.",
+          hint: "Browse",
+        },
+        group: "pull-requests",
+        handler: (context) => nav.moveFile(1, { repeat: repeating(context) === true }),
+        id: "pulls.files.next",
+        order: 70,
+        repeat: true,
+        scope: FILE_KEY_SCOPE,
+        surfaces: { help: "always" },
+      }),
+      shortcuts.register({
+        bindings: [{ key: "ArrowLeft" }],
+        copy: {
+          action: "Parent or collapse",
+          description: "Collapse the focused folder, or go to the row that holds it.",
+          hint: "Navigate folders",
+        },
+        group: "pull-requests",
+        handler: () => nav.fileLeft(),
+        id: "pulls.files.parent",
+        order: 80,
+        repeat: true,
+        scope: FILE_KEY_SCOPE,
+        surfaces: { help: "always" },
+      }),
+      shortcuts.register({
+        bindings: [{ key: "ArrowRight" }],
+        copy: {
+          action: "Child or expand",
+          description: "Expand the focused folder, or go to its first row.",
+          hint: "Navigate folders",
+        },
+        group: "pull-requests",
+        handler: () => nav.fileRight(),
+        id: "pulls.files.child",
+        order: 90,
+        repeat: true,
+        scope: FILE_KEY_SCOPE,
+        surfaces: { help: "always" },
+      }),
+      shortcuts.register({
+        bindings: [{ key: "Enter" }, { key: " " }],
+        copy: {
+          action: "Open changed file",
+          description: "Open the focused changed file, or toggle the focused folder.",
+          hint: "Open",
+        },
+        group: "pull-requests",
+        handler: () => nav.activateFile(),
+        id: "pulls.files.open",
+        order: 100,
+        scope: FILE_KEY_SCOPE,
+        surfaces: { help: "always" },
+      }),
     ];
   }
 
@@ -347,10 +479,30 @@
   let unregisterKeys = [];
   /** @type {(() => void) | null} */
   let deactivateScope = null;
+  /** The scope active while a row has focus: a pull request's row's, or a changed file's. */
+  /** @type {string | null} */
+  let activeScope = null;
 
-  /** @param {EventTarget | null} target */
-  const isRow = (target) =>
-    target instanceof Element && target.closest("a.github-pulls-row") !== null;
+  /**
+   * Which keys a focused element takes: a pull request's row's, a changed file's row's, or
+   * none.
+   *
+   * @param {EventTarget | null} target
+   */
+  const scopeOf = (target) =>
+    !(target instanceof Element)
+      ? null
+      : target.closest("a.github-pulls-row") !== null
+        ? KEY_SCOPE
+        : target.closest(".github-pull-file-row, .github-pull-folder-row") !== null
+          ? FILE_KEY_SCOPE
+          : null;
+
+  function leaveScope() {
+    deactivateScope?.();
+    deactivateScope = null;
+    activeScope = null;
+  }
 
   /**
    * Bind the row keys to a registry, which a page brought back from the back/forward cache
@@ -363,8 +515,7 @@
       unregister();
     }
     unregisterKeys = [];
-    deactivateScope?.();
-    deactivateScope = null;
+    leaveScope();
     if (current !== null && shortcuts !== null) {
       unregisterKeys = registerKeys(current, shortcuts);
       boundShortcuts = shortcuts;
@@ -414,6 +565,8 @@
         shell.openPullRequest(route).catch((error) => {
           console.error("metabrowser pulls tab: the pull request could not open", error);
         }),
+      // The page host the shell made, which pull-route.js keeps for what sits beside the pane.
+      pageFor: (number) => routes.attachedHost()?.pageFor(number) ?? null,
       schedulePrefetch: (callback) =>
         typeof window.requestIdleCallback === "function"
           ? window.requestIdleCallback(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS })
@@ -442,8 +595,11 @@
     container?.addEventListener(
       "focusin",
       (event) => {
-        if (isRow(event.target) && deactivateScope === null) {
-          deactivateScope = boundShortcuts?.activateScope(KEY_SCOPE) ?? null;
+        const scope = scopeOf(event.target);
+        if (scope !== null && scope !== activeScope) {
+          leaveScope();
+          deactivateScope = boundShortcuts?.activateScope(scope) ?? null;
+          activeScope = scope;
         }
       },
       { signal },
@@ -451,9 +607,8 @@
     container?.addEventListener(
       "focusout",
       (event) => {
-        if (!isRow(/** @type {FocusEvent} */ (event).relatedTarget)) {
-          deactivateScope?.();
-          deactivateScope = null;
+        if (scopeOf(/** @type {FocusEvent} */ (event).relatedTarget) !== activeScope) {
+          leaveScope();
         }
       },
       { signal },

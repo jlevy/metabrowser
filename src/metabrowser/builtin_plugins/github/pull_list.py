@@ -459,6 +459,8 @@ class PullFileList(_Model):
     fetched_at: Timestamp
     reader: Reader | None
     head: Sha | None
+    # Older comparison lists lack the base and remain readable, but the route calls them stale.
+    base: Sha | None = None
     pages: int = Field(ge=0, le=MAX_FILE_PAGES)
     last_page: Annotated[int, Field(ge=1)] | None
     complete: bool
@@ -483,8 +485,8 @@ class PullFileList(_Model):
             if not self.complete or self.capped:
                 raise ValueError("a comparison's list is whole")
             return self
-        if self.reader is None or self.head is not None or self.pages < 1:
-            raise ValueError("GitHub's list names its reader and holds a page")
+        if self.reader is None or self.head is not None or self.base is not None or self.pages < 1:
+            raise ValueError("GitHub's list names its reader and pages, not local endpoints")
         if len(self.marks) != self.pages:
             raise ValueError("GitHub's list has one mark per page it holds")
         if sum(mark.rows for mark in self.marks) != len(self.rows):

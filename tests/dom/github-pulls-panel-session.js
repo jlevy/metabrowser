@@ -34,6 +34,13 @@ for (const [index, answer] of answers.entries()) {
   answer.body.rows = whole[index];
 }
 const panelPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pulls-panel.js");
+// A list of changed files as the route answered it, for the row whose page is shown.
+const filesRecorded = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-files-responses.json"), "utf8"),
+);
+for (const envelope of Object.values(filesRecorded)) {
+  envelope.rows = envelope.rows.map((row) => JSON.parse(row));
+}
 const pagePath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pull-page.js");
 // What the server answers of a record, for a page a reader's selection opens.
 const pageRecorded = JSON.parse(
@@ -109,7 +116,7 @@ function createPage() {
       const line = `${method} ${route}${body}${etag}`;
       log.push(line);
       return new Promise((resolve, reject) => {
-        const request = { route, method, etag: options.etag, resolve };
+        const request = { route, method, etag: options.etag, resolve, reject };
         waiting.push(request);
         // As fetch does: an aborted request settles at once with an AbortError.
         options.signal?.addEventListener("abort", () => {
@@ -173,6 +180,12 @@ function createPage() {
       assert(waiting.length > index, "no request is waiting for an answer");
       const [request] = waiting.splice(index, 1);
       request.resolve({ status: recording.status, etag: recording.etag, body: recording.body });
+      await settle();
+    },
+    /** Reject the oldest read as fetch does when the connection fails. */
+    async reject() {
+      assert(waiting.length > 0, "no request is waiting for rejection");
+      waiting.shift().reject(new Error("connection failed"));
       await settle();
     },
     /**
@@ -859,6 +872,65 @@ async function run() {
   look("the refresh failed: it says why, and reads no more");
   following.dispose();
 
+  // The polling landing carries the checkout's context through its eventual refusal.
+  page = createPage();
+  const checkoutSaid = [];
+  const checkoutLanding = panel.followLanding({
+    request: page.deps.request,
+    schedule: page.deps.schedule,
+    cancel: page.deps.cancel,
+    isVisible: page.deps.isVisible,
+    formatTime,
+    checkout: true,
+    say: (line) => checkoutSaid.push(line),
+  });
+  await settle();
+  await page.answer(recorded.not_github);
+  landing["a polling checkout landing preserves its origin refusal"] = {
+    said: checkoutSaid,
+    requests: page.requests(),
+    timers: page.timerDelays(),
+  };
+  checkoutLanding.dispose();
+
+  const landingRecovery = [];
+  for (const failure of ["connection", "non-envelope", "pin changed", "empty refreshing"]) {
+    page = createPage();
+    const recoverySaid = [];
+    const recovery = panel.followLanding({
+      request: page.deps.request,
+      schedule: page.deps.schedule,
+      cancel: page.deps.cancel,
+      isVisible: page.deps.isVisible,
+      formatTime,
+      say: (line) => recoverySaid.push(line),
+    });
+    await settle();
+    if (failure === "connection") {
+      await page.reject();
+    } else if (failure === "non-envelope") {
+      await page.answer({ status: 503, etag: null, body: { error: "unavailable" } });
+    } else {
+      await page.answer(
+        failure === "pin changed" ? recorded.pin_changed : recorded.landing_empty_refreshing,
+      );
+    }
+    const before = { said: recoverySaid.splice(0), timers: page.timerDelays() };
+    if (failure !== "pin changed") {
+      await page.fire();
+      await page.answer(
+        failure === "empty refreshing" ? recorded.landing_found_rows : recorded.landing_gh_missing,
+      );
+    }
+    landingRecovery.push({
+      step: failure,
+      before,
+      after: { said: recoverySaid.splice(0), timers: page.timerDelays() },
+      requests: page.requests(),
+    });
+    recovery.dispose();
+  }
+
   return {
     steps,
     failures,
@@ -867,6 +939,7 @@ async function run() {
     spelled,
     landing,
     "the list's address, on a first visit": firstVisit,
+    "the list's address recovers": landingRecovery,
     reader: await readerStory(),
     paint: await paintStory(panel),
   };
@@ -1011,6 +1084,9 @@ class FakeNode {
     this.childNodes.splice(this.childNodes.indexOf(node), 1);
     node.parentNode = null;
   }
+  remove() {
+    this.parentNode?.drop(this);
+  }
   replaceChildren(...nodes) {
     for (const child of [...this.childNodes]) {
       this.drop(child);
@@ -1053,6 +1129,7 @@ class FakeElement extends FakeNode {
     this.attributes = new Map();
     this.dataset = {};
     this.style = {};
+    this.listeners = new Map();
     this.hidden = false;
     this.classes = new Set();
   }
@@ -1106,7 +1183,18 @@ class FakeElement extends FakeNode {
   get firstElementChild() {
     return this.childNodes.find((child) => child instanceof FakeElement) ?? null;
   }
-  addEventListener() {}
+  addEventListener(type, listener) {
+    this.listeners.set(type, listener);
+  }
+  closest(selector) {
+    const [tag, name] = selector.split(".");
+    for (let node = this; node !== null; node = node.parentNode) {
+      if ((!tag || node.localName === tag) && (!name || node.classList?.contains(name))) {
+        return node;
+      }
+    }
+    return null;
+  }
   querySelectorAll() {
     return [];
   }
@@ -1168,6 +1256,7 @@ async function paintStory(panel) {
     },
     HTMLElement: FakeElement,
     Element: FakeElement,
+    MouseEvent: class {},
     DOMParser: class {
       parseFromString() {
         return { body: { firstElementChild: new FakeElement("svg") } };
@@ -1230,6 +1319,10 @@ async function paintStory(panel) {
           refreshAhead: false,
           scrollRoot: null,
           open: (route) => opened.push(route.number),
+          file: null,
+          fileHref: (number, path) => `/pull/${number}/files/${path}`,
+          pageFor: () => null,
+          onPageChange: () => () => {},
           filterChanged() {},
         },
       },
@@ -1237,6 +1330,10 @@ async function paintStory(panel) {
     );
     await settle();
     await answer(first);
+    // The row of the page shown opens its changed files, read from the cache: the tree's
+    // session holds what they are, and this one where they hang.
+    const filesRead = answers[0].route;
+    await answer({ status: 200, etag: null, body: filesRecorded.comparison });
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
     const row = (item) => item.firstElementChild;
@@ -1245,7 +1342,9 @@ async function paintStory(panel) {
       "a row": [described(hostile), described(row(hostile))],
       "the row whose page is shown": described(row(shown)),
       "its parts": row(shown).childNodes.map(described),
-      "a title written as markup is one text node": row(hostile).childNodes[1].childNodes.map(
+      "its changed files, read from the cache": filesRead,
+      "they hang under it as a group it owns": shown.childNodes.map(described),
+      "a title written as markup is one text node": row(hostile).childNodes[2].childNodes.map(
         (node) => ({ node: node.nodeName, data: node.data }),
       ),
       "rows built for the first window": built,
@@ -1272,7 +1371,7 @@ async function paintStory(panel) {
     story["rows held"] = list.childNodes.length;
     // Two hours on, the list unchanged: a poll's answer moves the freshness, and with it each
     // row's age, in place.
-    const age = () => row(shown).childNodes[2].textContent;
+    const age = () => row(shown).childNodes[3].textContent;
     story["an age, before"] = age();
     built = 0;
     now += 2 * 60 * 60 * 1000;
@@ -1284,6 +1383,45 @@ async function paintStory(panel) {
     await settle();
     story["an age, two hours on"] = age();
     story["rows built to tell it"] = built;
+    // Reader-opened trees can all be expanded together. Closing them must apply the bound
+    // immediately, without waiting for another tree to be created.
+    const many = list.childNodes
+      .filter((item) => Number(row(item).dataset.number) !== current)
+      .slice(0, 12);
+    const click = (item) => list.listeners.get("click")({ target: row(item), preventDefault() {} });
+    const retained = () =>
+      list.childNodes.filter((item) =>
+        item.childNodes.some(
+          (child) => child instanceof FakeElement && child.classList.contains("github-pull-files"),
+        ),
+      ).length;
+    for (const item of many) {
+      click(item);
+    }
+    for (const item of many.slice(0, -1)) {
+      click(item);
+    }
+    const whileExpanded = retained();
+    assert(
+      whileExpanded === panel.MAX_HELD_TREES + 2,
+      "expanded and current trees must survive trimming",
+    );
+    click(many.at(-1));
+    const afterClosingAll = retained();
+    assert(afterClosingAll === panel.MAX_HELD_TREES + 1, "closed trees must be bounded on close");
+    assert(
+      row(many[0]).getAttribute("aria-owns") === null,
+      "the longest-closed tree must go first",
+    );
+    assert(row(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");
+    assert(
+      row(many.at(-1)).getAttribute("aria-owns") !== null,
+      "the most recently closed tree must remain",
+    );
+    story["closing twelve expanded trees enforces retention immediately"] = {
+      whileExpanded,
+      afterClosingAll,
+    };
     mounted.dispose();
     story["disposed: what is left in the tab"] = container.childNodes.length;
     return story;

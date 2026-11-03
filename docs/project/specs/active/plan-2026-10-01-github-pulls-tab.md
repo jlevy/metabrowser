@@ -672,8 +672,10 @@ that expand and collapse exactly as they do in the Files tab.
   [inline change stats](../../../design-system.md#inline-change-stats).
 - A folder whose only child is a folder is drawn as one row, `src/metabrowser`, as
   GitHub’s file tree draws it.
-- Folders start expanded up to a measured file count, past which only the top level
-  does. Step 4 measures it.
+- Folders start expanded through the measured 3,000-file list cap.
+  A larger page-count estimate starts at the top level.
+  The tree paints a viewport window; the measurements are beside `AUTO_EXPAND_FILES` and
+  `FILE_ROWS_OVERSCAN` in the GitHub plugin.
 
 **The gesture.** As with a folder, clicking a row is one gesture: it opens the pull
 request and toggles its files.
@@ -749,13 +751,19 @@ a pull request never opened, on a mirror and a checkout alike.
 The page’s Files changed stays the diff’s authority, and both sources list the same
 comparison.
 
-**Freshness.** A list from the local comparison belongs to its head commit, so it is
-current while the row’s head is that commit.
-A list from GitHub is current while its row’s `updated_at` is no newer than the time the
-list was fetched, because any push to a pull request updates that field.
-So a repository’s many cached lists cost nothing until the pull request changes, and a
-refresh needs no window of its own.
-A conditional request covers the rest.
+**Freshness.** A local list belongs to both resolved comparison endpoints, `base` and
+`head`, and is current only while the record names that exact comparison.
+Older cached local lists without a saved base are stale; a comparison that becomes
+unavailable also makes its local list stale.
+The browser treats a changed base as another list.
+A GitHub list uses the provider’s `updated_at` and account freshness rules, including
+when a local comparison becomes known later.
+It is current while the newest cached provider update is no newer than the list’s fetch
+time, because pushes and retargeting update that field; a refresh that observes another
+account makes it stale.
+Reading a cached list starts no Git or network.
+The refresh coordinator holds repeated attempts to its freshness window; conditional
+GitHub page reads reuse unchanged rows.
 
 **What starts a fetch.** Expanding a row is a reader’s action in the shell’s chrome,
 behind the same `POST` rule.
@@ -1050,6 +1058,14 @@ acquisition. Each updates
   The tab is registered only when a pin is served.
 
 **Step 4: changed files in a row.**
+
+The browser checkpoint includes the file address and host, progressive file-list
+controller, windowed tree, keyboard, and scroll-follow subscription.
+Its production controller runs in `github-pull-files-tree-session.js`;
+`navigation-route-behavior.js` pins the file-address and page-availability lifecycle.
+Chrome 152 measured navigation paint with 1,183 and 2,003 public filenames and a
+3,000-file stress list; this does not replace the large-diff work’s hydration and drift
+measurements.
 
 - *Reviewed:* that a list is read progressively with an honest count and no Git, or from
   the local comparison when both commits are in the store; that a path is only ever text

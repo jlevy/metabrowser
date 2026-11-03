@@ -38,6 +38,7 @@ from tests.github_pull_fixture import (
     clone_checkout,
     files_scenario,
     git_env,
+    in_a_stable_order,
     install_fake_gh,
     logged_gh_calls,
 )
@@ -53,9 +54,6 @@ from tests.golden_harness import (
     run_metab,
 )
 from tests.required_tools import needs_git
-from tests.test_cli_github_pull_golden import (
-    _in_a_stable_order,  # pyright: ignore[reportPrivateUsage]
-)
 
 pytestmark = [
     needs_git,
@@ -108,7 +106,7 @@ class _Session:
             result.block(
                 " ".join(quoted(arg) for arg in shown),
                 **sections,
-                gh=_in_a_stable_order(logged_gh_calls(self.tmp_path)),
+                gh=in_a_stable_order(logged_gh_calls(self.tmp_path)),
             )
         )
         return result

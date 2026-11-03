@@ -353,6 +353,7 @@ async def _from_comparison(
             fetched_at=utc_stamp(pull_list.utc_now()),
             reader=None,
             head=local.head,
+            base=local.base,
             pages=0,
             last_page=None,
             complete=True,
