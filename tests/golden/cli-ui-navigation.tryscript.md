@@ -629,7 +629,7 @@ $ node tests/dom/navigation-route-behavior.js
     "back from a file view is the controller's": null,
     "back onto a view route is not a page's": null,
     "history onto a changed file's address names the file": [{"action":"tab","tab":"files","file":"src/app.py"},{"action":"mount","number":7,"tab":"files","file":"src/app.py"},null],
-    "the list's addresses": [{"state":"all"},{"state":"closed"},{"state":"all"},null,null,"/pulls","/pulls?state=open","TypeError: pulls route requires a list of pull requests"],
+    "the list's addresses": [{"state":"open"},{"state":"closed"},{"state":"open"},null,null,"/pulls","/pulls","/pulls?state=all","TypeError: pulls route requires a list of pull requests"],
     "history and the list's address": [{"action":"list"},{"action":"list"},null,null,{"action":"mount","number":7,"tab":""}],
     "root href": "/view/",
     "folder href keeps its slash": "/view/docs/",

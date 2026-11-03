@@ -329,7 +329,6 @@ async def pulls_handler(request: Request) -> Response:
     from metabrowser.builtin_plugins.github.pull_list_route import (
         ListRequestError,
         envelope_etag,
-        list_file_stamp,
         list_view,
         list_window,
         pull_list_envelope,
@@ -341,9 +340,8 @@ async def pulls_handler(request: Request) -> Response:
         return _invalid_request(str(exc))
     await _resolve(request)
     view = list_view(request.app, window.name)
-    stamp = await asyncio.to_thread(list_file_stamp, view, window.name)
     envelope = await asyncio.to_thread(pull_list_envelope, view, window)
-    etag = envelope_etag(envelope, stamp, window)
+    etag = envelope_etag(envelope, window)
     headers = {**_NO_STORE, "etag": etag}
     if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=headers)
@@ -351,15 +349,10 @@ async def pulls_handler(request: Request) -> Response:
 
 
 async def pulls_refresh_handler(request: Request) -> JSONResponse:
-    """``POST /api/plugin/github/pulls-refresh`` — start or join one list's refresh.
+    """Start/join automatic catalog backfill; state/target prioritize a display window.
 
-    The body may name ``state`` (``all`` by default), ``more``, which extends the list by
-    one GitHub page, after the running refresh if it joins one, and ``retry``, a reader's
-    own click. ``refresh`` says whether this request ``started`` the job or ``joined`` one
-    that was running, answered ``202``, or that it is ``not_due``, answered ``200``: before
-    GitHub's limit lifts, whoever asked, or tried within the freshness window, for an
-    automatic request or a ``more`` with no page to read. ``pulls`` is the envelope as of
-    that moment without its rows.
+    The default state is open and target is 500. The background worker continues to
+    all metadata after that prefix. Retry cannot bypass a provider rate-limit hold.
     """
 
     from metabrowser.builtin_plugins.github.pull_list_route import (

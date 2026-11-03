@@ -26,6 +26,7 @@ from typing import Any
 import pytest
 
 from metabrowser.builtin_plugins.github import gh, pull_list
+from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
     ANOTHER_READER,
@@ -33,14 +34,11 @@ from tests.github_pull_fixture import (
     FETCHED_AT,
     Origin,
     account,
+    catalog_entries,
     generated_item,
     install_fake_gh,
-    list_entries,
     list_item,
-    list_page,
     logged_gh_calls,
-    next_link,
-    ok,
     pull_bodies,
     scenario,
 )
@@ -82,6 +80,8 @@ class _Session:
         monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
         monkeypatch.setattr(pull_list, "utc_now", lambda: self.now)
         self.blocks: list[str] = []
+        self.labels = Labels()
+        self.epochs: set[str] = set()
         self.answer(scenario(origin))
 
     def answer(self, answers: dict[str, Any]) -> None:
@@ -97,6 +97,10 @@ class _Session:
 
     def _run(self, *args: str, **sections: list[str]) -> Invocation:
         result = run_metab(args)
+        catalog = read_catalog(self.home, origin_identity(CANONICAL).slug)
+        if catalog is not None and catalog.epoch not in self.epochs:
+            self.epochs.add(catalog.epoch)
+            self.labels.add(catalog.epoch, f"<CATALOG_EPOCH_{len(self.epochs)}>")
         shown = [arg.removeprefix(f"{self.tmp_path}/") for arg in args]
         self.blocks.append(
             result.block(
@@ -149,92 +153,82 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
 ) -> None:
     session = _Session(tmp_path, monkeypatch, pull_origin)
     online = scenario(session.origin)
-    first_path, second_path = list_page("all"), list_page("all", 2)
-    slug = origin_identity(CANONICAL).slug
     known = {
         number: list_item(parts["pull"]) for number, parts in pull_bodies(session.origin).items()
     }
+    items = []
+    for number in range(606, 10, -1):
+        stamp = (FETCHED_AT - timedelta(days=1) + timedelta(seconds=number)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        items.append(dict(generated_item(number), created_at=stamp, updated_at=stamp))
+    items.extend(known[number] for number in (10, 9, 8, 7))
+    online = {**online, "api": {**online["api"], **catalog_entries(items)}}
+    session.answer(online)
 
-    # Nothing is cached, and a read asks gh nothing.
+    # Cache-only reads neither create a catalog nor ask GitHub for one.
     empty = session.get()
     assert empty.exit_code == 0, empty.stderr
-    assert (empty.payload()["state"], empty.payload()["reason"]) == ("absent", "not_cached")
+    assert (empty.payload()["list"], empty.payload()["reason"]) == ("open", "not_cached")
+    assert not read_catalog(session.home, origin_identity(CANONICAL).slug)
 
-    # The default list. The command waits for the job and prints the envelope after it.
-    started = session.post({})
+    # The requested prefix goes first, then all metadata is backfilled in the same job.
+    # No per-PR detail, Git comparison or patch request appears in its gh call log.
+    started = session.post({"target": 500})
     assert started.exit_code == 0, started.stderr
-    assert _after(started)["list"] == "all"
-    assert _after(started)["state"] == "current"
-    assert (_after(started)["fetched"], _after(started)["complete"]) == (100, False)
-
-    # Windows of what is cached, with no gh: the newest, the next, and the last, which is
-    # where this incomplete list's cached rows end although GitHub has more.
-    newest = session.get("?limit=2")
-    assert _numbers(newest) == [106, 105]
-    assert newest.payload()["next_after"] == 105
-    assert _numbers(session.get("?limit=2&after=105")) == [104, 103]
-    end = session.get("?limit=4&after=11")
-    assert _numbers(end) == [10, 9, 8, 7]
-    assert [row["merged"] for row in end.payload()["rows"]] == [False, False, True, False]
-    assert end.payload()["next_after"] is None
-
-    # Tried within the window: an automatic request starts nothing.
-    waiting = session.post({"state": "all"})
-    assert waiting.exit_code == 0 and json.loads(waiting.stdout.split("status: 200\n")[1])[
-        "refresh"
-    ] == ("not_due")
-
-    # One more GitHub page, asking for that page alone, and now the list is complete.
-    extended = session.post({"more": True})
-    assert (_after(extended)["fetched"], _after(extended)["complete"]) == (102, True)
-    assert _numbers(session.get("?limit=2&after=7")) == [6, 5]
-
-    # Nothing more to read: asking again would reread what is held, so it waits a window.
-    no_more = session.post({"more": True})
-    assert json.loads(no_more.stdout.split("status: 200\n")[1])["refresh"] == "not_due"
-
-    # A refresh rereads each page it holds, conditionally, and a 304 reuses its rows.
-    session.advance(61)
-    assert session.get("?limit=0").payload()["state"] == "stale"
-    reread = session.post({})
-    assert _after(reread)["fetched"] == 102 and _after(reread)["state"] == "current"
-
-    # The list moved between the two page reads: a pull request opened, so the first page
-    # is new, and another opened after it, so 8 is on both pages. The number dedupes it.
-    session.advance(61)
-    moved_first = [
-        *(generated_item(number) for number in range(107, 10, -1)),
-        *(known[number] for number in (10, 9, 8)),
-    ]
-    moved_second = [known[8], known[7], generated_item(6), generated_item(5)]
-    moved = _api(
-        _api(
-            online, first_path, ok(first_path, moved_first, next_link("repos/octo/demo/pulls", 1))
-        ),
-        second_path,
-        ok(second_path, moved_second),
+    filled = _after(started)
+    assert (filled["list"], filled["fetched"], filled["total"]) == ("open", 598, 598)
+    assert (filled["repository_total"], filled["catalog_fetched"], filled["complete"]) == (
+        600,
+        600,
+        True,
     )
+    assert "repos/octo/demo/pulls/" not in session.blocks[-1]
+
+    # Windows stay small even though the catalog has more than the first displayed 500.
+    newest = session.get("?limit=2")
+    assert _numbers(newest) == [606, 605]
+    assert newest.payload()["next_after"] == 605
+    assert _numbers(session.get("?limit=2&after=605")) == [604, 603]
+    assert _numbers(session.get("?limit=2&after=10")) == [7]
+    generation = newest.payload()["generation"]
+    no_network = session.post({"target": 1000})
+    assert no_network.exit_code == 0
+    assert json.loads(no_network.stdout.split("status: 200\n")[1])["refresh"] == "not_due"
+    assert session.get("?limit=0").payload()["generation"] == generation
+
+    # Filters project one shared catalog, including merged PRs in Closed.
+    assert [
+        (row["number"], row["merged"]) for row in session.get("?state=closed").payload()["rows"]
+    ] == [(9, False), (8, True)]
+    assert session.get("?state=all&limit=0").payload()["total"] == 600
+
+    # A changed PR is merged through UPDATED_AT without rescanning the old creation pages.
+    session.advance(61)
+    changed = dict(
+        known[10],
+        title="Retitled after catalog backfill",
+        updated_at=f"{session.now:%Y-%m-%dT%H:%M:%SZ}",
+    )
+    added = dict(
+        generated_item(607), updated_at=changed["updated_at"], created_at=changed["updated_at"]
+    )
+    moved_items = [added, *(changed if item["number"] == 10 else item for item in items)]
+    moved = {**online, "api": {**online["api"], **catalog_entries(moved_items)}}
     session.answer(moved)
-    shifted = session.post({})
-    assert _after(shifted)["fetched"] == 103
-    assert _numbers(session.get("?limit=3&after=9")) == [8, 7, 6]
+    refreshed = session.post({})
+    assert refreshed.exit_code == 0, refreshed.stdout
+    after = _after(refreshed)
+    assert (after["total"], after["repository_total"], after["catalog_fetched"]) == (599, 601, 601)
+    assert "catalog state=updated" in session.blocks[-1]
+    assert "catalog state=all" not in session.blocks[-1]
+    assert _numbers(session.get("?limit=2")) == [607, 606]
+    assert session.get("?after=11&limit=1").payload()["rows"][0]["title"] == changed["title"]
 
-    # The other two lists are their own files, each fetched when asked for.
-    session.answer(online)
-    assert _after(session.post({"state": "open"}))["fetched"] == 2
-    assert _numbers(session.get("?state=open")) == [10, 7]
-    assert _after(session.post({"state": "closed"}))["fetched"] == 2
-    closed = session.get("?state=closed")
-    assert [(row["number"], row["merged"]) for row in closed.payload()["rows"]] == [
-        (9, False),
-        (8, True),
-    ]
-
-    # Another account. A refresh that fails under it leaves the list labelled with the
-    # reader who fetched it, and stale though it is young.
+    # A failed account switch preserves the old catalog and its reader label.
     session.answer(
         _with(
-            online,
+            moved,
             auth=account(ANOTHER_READER),
             api_failure={"stderr": "error connecting to api.github.com\n", "exit": 1},
         )
@@ -243,20 +237,29 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
     labelled = session.get("?limit=0").payload()
     assert (labelled["state"], labelled["reader"]) == ("stale", "gh:octo-reader")
 
-    # One that succeeds replaces the whole file, sends no other reader's ETag, and starts
-    # again from the first page, for Load more as for a refresh. This list has no more to
-    # read, so its Load more waits a window as a refresh would.
-    session.advance(61)
-    session.answer(_with(online, auth=account(ANOTHER_READER)))
-    replaced = _after(session.post({"more": True}))
-    assert (replaced["reader"], replaced["fetched"]) == (f"gh:{ANOTHER_READER}", 100)
+    # A successful switch starts with that account's own catalog and cursors.
+    replacement = scenario(session.origin)
+    base_items = [
+        *(generated_item(number) for number in range(106, 10, -1)),
+        *(known[number] for number in (10, 9, 8, 7)),
+    ]
+    replacement = {
+        **replacement,
+        "auth": account(ANOTHER_READER),
+        "api": {**replacement["api"], **catalog_entries(base_items, reader=ANOTHER_READER)},
+    }
+    session.answer(replacement)
+    replaced = _after(session.post({"retry": True}))
+    assert (replaced["reader"], replaced["repository_total"], replaced["catalog_fetched"]) == (
+        f"gh:{ANOTHER_READER}",
+        100,
+        100,
+    )
+    assert replaced["generation"].split(":")[0] != generation.split(":")[0]
 
-    # The lists and stamps lie beside the source's own records, where the cache reads
-    # nothing as damage: the source and its store are published, with no problems.
-    cached = session.local(f"/api/cache/source/{slug}")
+    cached = session.local(f"/api/cache/source/{origin_identity(CANONICAL).slug}")
     assert cached.exit_code == 0, cached.stderr
-
-    rendered = label_home(Labels().apply("".join(session.blocks)), session.home)
+    rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
     check_golden("cli-github-pulls-refresh.txt", rendered)
@@ -267,25 +270,14 @@ def test_golden_pull_list_failures(
 ) -> None:
     session = _Session(tmp_path, monkeypatch, pull_origin)
     online = scenario(session.origin)
-    first_path = list_page("all")
+    first_path = "graphql:updated:start"
     assert session.post({}).exit_code == 0
+    baseline = session.get("?limit=0").payload()
 
-    # Each typed failure, asked for as a reader's Retry so the window does not hold it.
-    # The cached list outlives them all.
-    limited_primary = {
-        "status": 403,
-        "headers": {"X-Ratelimit-Remaining": "0", "X-Ratelimit-Reset": "1790181960"},
-        "body": {"message": "API rate limit exceeded"},
-    }
+    # Every typed refusal keeps the last published catalog readable.
     failures: list[tuple[str, dict[str, Any]]] = [
         ("not_logged_in", _with(online, auth={"stdout": '{"hosts":{}}\n', "exit": 0})),
-        (
-            "gh_too_old",
-            _with(
-                online,
-                auth={"stderr": "unknown flag: --json\n\nUsage: gh auth status\n", "exit": 1},
-            ),
-        ),
+        ("gh_too_old", _with(online, auth={"stderr": "unknown flag: --json\n", "exit": 1})),
         (
             "not_found_or_private",
             _api(online, first_path, {"status": 404, "body": {"message": "Not Found"}}),
@@ -298,65 +290,44 @@ def test_golden_pull_list_failures(
         ),
         ("gh_failed", _api(online, first_path, {"status": 200, "raw": "not JSON"})),
     ]
+    session.advance(61)
     for state, answers in failures:
         session.answer(answers)
         refused = session.post({"retry": True})
         assert refused.exit_code == 1, (state, refused.stdout)
-        assert _after(refused)["last_refresh"]["outcome"] == state
-        assert _after(refused)["fetched"] == 100, state
-        assert _after(refused)["state"] == "current", state
+        result = _after(refused)
+        assert result["last_refresh"]["outcome"] == state
+        assert result["fetched"] == baseline["fetched"]
 
-    # The account changed during the pages. The list is young, and the stamp names the
-    # account the job started as, which is the list's, but the active one is another's.
     session.answer(_with(online, auth=[account(), account(ANOTHER_READER)]))
     switched = session.post({"retry": True})
     assert switched.exit_code == 1
     assert _after(switched)["last_refresh"]["outcome"] == "account_changed"
-    assert (_after(switched)["state"], _after(switched)["fetched"]) == ("stale", 100)
-
+    assert _after(switched)["state"] == "stale"
     with monkeypatch.context() as patched:
         patched.setattr(gh, "gh_executable", lambda: None)
-        missing = session.post({"retry": True})
-    assert _after(missing)["last_refresh"]["outcome"] == "gh_missing"
+        assert _after(session.post({"retry": True}))["last_refresh"]["outcome"] == "gh_missing"
 
-    # Offline, the list still opens, and asks gh nothing.
     session.answer(
         _with(online, api_failure={"stderr": "error connecting to api.github.com\n", "exit": 1})
     )
     offline = session.get("?limit=1")
-    assert offline.exit_code == 0 and offline.payload()["fetched"] == 100
+    assert offline.exit_code == 0 and offline.payload()["fetched"] == baseline["fetched"]
 
-    # A limit with a time on it holds a reader's Retry and Load more as well, asking gh
-    # nothing, since each request GitHub refuses moves the time on. Past it they run.
-    slow_down = {
-        "status": 429,
-        "headers": {"Retry-After": "120"},
-        "body": {"message": "slow down"},
-    }
+    # Rate holds cover retries and a larger display demand, and expire at their boundary.
+    slow_down = {"status": 429, "headers": {"Retry-After": "120"}, "body": {"message": "slow down"}}
     session.answer(_api(online, first_path, slow_down))
     limited = session.post({"retry": True})
     assert limited.exit_code == 1
     assert _after(limited)["last_refresh"]["outcome"] == "rate_limited"
     session.answer(online)
-    for body in ({"retry": True}, {"more": True}):
+    for body in ({"retry": True}, {"target": 1000}):
         waited = session.post(body)
         assert waited.exit_code == 0
         assert json.loads(waited.stdout.split("status: 200\n")[1])["refresh"] == "not_due"
     session.advance(121)
     assert _after(session.post({"retry": True}))["last_refresh"]["outcome"] == "succeeded"
 
-    # It holds automatic requests past the window too, until that time.
-    session.answer(_api(online, first_path, limited_primary))
-    assert session.post({"retry": True}).exit_code == 1
-    session.advance(61)
-    session.answer(online)
-    held = session.post({})
-    assert json.loads(held.stdout.split("status: 200\n")[1])["refresh"] == "not_due"
-    session.advance(7 * 24 * 3600)
-    assert _after(session.post({}))["last_refresh"]["outcome"] == "succeeded"
-
-    # The cache will not take the list, nor the stamp: the command still says why, and
-    # the list as it was is still there to read once it can be.
     slug = origin_identity(CANONICAL).slug
     pulls_directory = session.home / "sources" / slug / "pulls"
     pulls_directory.chmod(0o500)
@@ -369,20 +340,7 @@ def test_golden_pull_list_failures(
     session.answer(online)
     assert _after(session.post({"retry": True}))["last_refresh"]["outcome"] == "succeeded"
 
-    rendered = label_home(Labels().apply("".join(session.blocks)), session.home)
+    rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
     check_golden("cli-github-pulls-failures.txt", rendered)
-
-
-def test_list_entries_cover_what_the_transcript_asks_for(pull_origin: Origin) -> None:
-    """The fixture's full page is full, since a short page with a next link reads on."""
-
-    entries = list_entries(pull_origin)
-    assert len(entries[list_page("all")]["body"]) == 100
-    assert "Link" in entries[list_page("all")]["headers"]
-    assert "Link" not in entries[list_page("all", 2)]["headers"]
-    # GitHub's own shape: merged_at, and no merged flag, unlike a single pull request.
-    item = entries[list_page("all")]["body"][-2]
-    assert item["merged_at"] is not None and "merged" not in item
-    assert {"url", "body", "_links"} <= set(item)

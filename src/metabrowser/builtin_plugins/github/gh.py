@@ -26,7 +26,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 from metabrowser.git.process import (
     forget_process_group,
@@ -119,6 +119,10 @@ class GhUnavailableError(GhError):
 
     def __init__(self, message: str = "GitHub CLI (gh) is not on PATH") -> None:
         super().__init__(message, state="gh_missing")
+
+
+class GhCursorError(GhError):
+    """A provider cursor expired or is invalid; its bounded scan can restart."""
 
 
 class GhOutputTooLargeError(GhError):
@@ -411,6 +415,78 @@ async def gh_api(path: str, *, etag: str | None = None, now: datetime | None = N
     return response
 
 
+async def gh_graphql(
+    query: str,
+    variables: Mapping[str, str | int | bool | None],
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Execute an internal fixed read-only query with separately encoded variables.
+
+    GraphQL can return HTTP 200 with errors and partial data. No caller receives that
+    partial data, especially a cursor it could mistakenly persist as completed work.
+    """
+    if not query.lstrip().startswith("query"):
+        raise ValueError("only a fixed GraphQL query is supported")
+    args = ["api", "graphql", "--hostname", GH_HOSTNAME, "--method", "POST", "--include"]
+    args.extend(("-f", f"query={query}"))
+    for name, value in variables.items():
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            raise ValueError("invalid GraphQL variable name")
+        if value is None:
+            continue
+        if isinstance(value, str):
+            args.extend(("-f", f"{name}={value}"))
+        else:
+            args.extend(("-F", f"{name}={json.dumps(value)}"))
+    completed = await _run(args, timeout_s=GH_API_TIMEOUT_S, max_bytes=GH_API_MAX_BYTES)
+    response = parse_included_response(completed.stdout)
+    if response is None:
+        raise _failure_without_response(completed)
+    moment = now or datetime.now(UTC)
+    refused = _refusal(response, now=moment)
+    if refused is not None:
+        raise refused
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise GhError("GitHub answered with an unreadable GraphQL response")
+    errors = payload.get("errors")
+    if errors:
+        failures = errors if isinstance(errors, list) else []
+        limited = any(
+            isinstance(error, dict)
+            and (
+                error.get("type") == "RATE_LIMITED"
+                or "rate limit" in str(error.get("message", "")).lower()
+            )
+            for error in failures
+        )
+        if limited:
+            reset = rate_limit_reset(GhResponse(429, response.headers, response.body), now=moment)
+            raise GhError(
+                "GitHub's API rate limit is exhausted",
+                state="rate_limited",
+                reset_at=None if reset == "unknown" else reset,
+            )
+        if any(
+            isinstance(error, dict)
+            and "cursor" in str(error.get("message", "")).lower()
+            and any(
+                word in str(error.get("message", "")).lower()
+                for word in ("invalid", "exist", "expired")
+            )
+            for error in failures
+        ):
+            raise GhCursorError("GitHub could not resume the metadata cursor")
+        if any(isinstance(error, dict) and error.get("type") == "NOT_FOUND" for error in failures):
+            raise GhError("GitHub has no readable repository here", state="not_found_or_private")
+        raise GhError("GitHub could not complete the metadata query")
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise GhError("GitHub answered without query data")
+    return data
+
+
 def parse_account(stdout: bytes) -> str | None:
     """The active github.com login from ``gh auth status --json hosts``, or ``None``.
 
@@ -471,6 +547,7 @@ __all__ = [
     "GhUnavailableError",
     "gh_account",
     "gh_api",
+    "gh_graphql",
     "gh_environment",
     "gh_executable",
     "parse_account",

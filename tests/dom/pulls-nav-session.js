@@ -286,7 +286,7 @@ async function run() {
   page.take();
   host.routeChanged();
   log.push({ "Files chosen by hand at Open: the same place keeps it": page.take() });
-  page.shell.address = new URL("/pulls", "http://x");
+  page.shell.address = new URL("/pulls?state=all", "http://x");
   host.routeChanged();
   log.push({ "Back to All: the list is in front": page.take() });
   page.shell.host.filterChanged("closed");

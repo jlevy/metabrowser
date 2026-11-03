@@ -28,10 +28,20 @@ Metabrowser recognizes a github.com `origin` and can read the checkout’s `HEAD
 fork, the list belongs to `origin`, usually the fork; the tab names the repository.
 A folder without a recognized GitHub repository has no Pulls tab.
 
-Choose **Pulls** beside Files and Git, then **All**, **Open**, or **Closed**. The list
-shows the newest pull requests first, with their open, draft, merged, or closed state.
-**Load more** reads another page; a cached list may be only part of the repository’s
-pull requests. Selecting a row opens its page and fetches its record when needed.
+Choose **Pulls** beside Files and Git.
+It starts on **Open**; the filters are **Open**, **Closed**, and **All**. Closed
+includes merged pull requests.
+The list shows the newest pull requests first, with their open, draft, merged, or closed
+state. The status gives the repository’s total and name, with the number in bold.
+
+Metabrowser caches a lightweight catalog of titles, authors, states, branches, and dates
+in the background, publishing each page as it arrives and resuming unfinished work.
+It initially displays up to 500 matching pull requests.
+When more exist, **Showing last 500** appears below the total; **Fetch more** expands
+the displayed window.
+Descriptions, comments, reviews, and checks are separate: selecting a row opens its page
+and fetches that record when needed.
+Diffs are generated from the Git objects in the cache.
 
 Expand a row to see its changed files, grouped into folders with change counts.
 Selecting a file opens Files changed at that file.

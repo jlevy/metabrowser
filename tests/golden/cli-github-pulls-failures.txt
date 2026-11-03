@@ -9,29 +9,33 @@ status: 202
     "state": "pending",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": null,
     "reader": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": null,
+    "total": null,
+    "repository_total": null,
+    "count_at": null,
+    "catalog_fetched": 0,
+    "generation": null,
     "fetched": 0,
     "complete": false,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
   "state": "current",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
@@ -42,10 +46,14 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -58,8 +66,47 @@ cloned https://github.com/octo/demo in 0.0 s
 --- gh ---
 gh api repos/octo/demo --jq .size
 gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1
+gh api graphql catalog state=open cursor=start
 gh auth status
+gh api graphql catalog state=all cursor=start
+gh auth status
+gh api graphql catalog state=all cursor=all-100
+gh auth status
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
+  "fetched": 100,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+## The clock moves on 61 s, to 2026-09-17T12:01:01Z.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -68,10 +115,10 @@ status: 202
 {
   "refresh": "started",
   "pulls": {
-    "state": "current",
+    "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
@@ -82,23 +129,27 @@ status: 202
       "reset_at": null,
       "at": "2026-09-17T12:00:00Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
-  "state": "current",
+  "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
@@ -107,12 +158,16 @@ status: 200
     "outcome": "not_logged_in",
     "message": "gh is not signed in to github.com; run gh auth login",
     "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
+    "at": "2026-09-17T12:01:01Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -131,10 +186,10 @@ status: 202
 {
   "refresh": "started",
   "pulls": {
-    "state": "current",
+    "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
@@ -143,25 +198,29 @@ status: 202
       "outcome": "not_logged_in",
       "message": "gh is not signed in to github.com; run gh auth login",
       "reset_at": null,
-      "at": "2026-09-17T12:00:00Z"
+      "at": "2026-09-17T12:01:01Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
-  "state": "current",
+  "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
@@ -170,12 +229,16 @@ status: 200
     "outcome": "gh_too_old",
     "message": "this gh is too old to report its account; install gh 2.81.0 or newer",
     "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
+    "at": "2026-09-17T12:01:01Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -194,10 +257,10 @@ status: 202
 {
   "refresh": "started",
   "pulls": {
-    "state": "current",
+    "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
@@ -206,39 +269,47 @@ status: 202
       "outcome": "gh_too_old",
       "message": "this gh is too old to report its account; install gh 2.81.0 or newer",
       "reset_at": null,
-      "at": "2026-09-17T12:00:00Z"
+      "at": "2026-09-17T12:01:01Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
-  "state": "current",
+  "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "not_found_or_private",
-    "message": "GitHub has no such repository, or it is private and the gh account cannot read it",
+    "message": "GitHub has no such pull request, or it is private and the gh account cannot read it",
     "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
+    "at": "2026-09-17T12:01:01Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -249,7 +320,7 @@ Error: the refresh ended with not_found_or_private
 {"retry": true}
 --- gh ---
 gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
+gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -258,37 +329,41 @@ status: 202
 {
   "refresh": "started",
   "pulls": {
-    "state": "current",
+    "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "not_found_or_private",
-      "message": "GitHub has no such repository, or it is private and the gh account cannot read it",
+      "message": "GitHub has no such pull request, or it is private and the gh account cannot read it",
       "reset_at": null,
-      "at": "2026-09-17T12:00:00Z"
+      "at": "2026-09-17T12:01:01Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
-  "state": "current",
+  "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
@@ -297,12 +372,16 @@ status: 200
     "outcome": "network_error",
     "message": "gh could not reach api.github.com",
     "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
+    "at": "2026-09-17T12:01:01Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -313,7 +392,7 @@ Error: the refresh ended with network_error
 {"retry": true}
 --- gh ---
 gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
+gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -322,10 +401,10 @@ status: 202
 {
   "refresh": "started",
   "pulls": {
-    "state": "current",
+    "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
@@ -334,25 +413,29 @@ status: 202
       "outcome": "network_error",
       "message": "gh could not reach api.github.com",
       "reset_at": null,
-      "at": "2026-09-17T12:00:00Z"
+      "at": "2026-09-17T12:01:01Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
-  "state": "current",
+  "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
@@ -361,12 +444,16 @@ status: 200
     "outcome": "gh_failed",
     "message": "GitHub answered with something other than JSON",
     "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
+    "at": "2026-09-17T12:01:01Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -377,7 +464,7 @@ Error: the refresh ended with gh_failed
 {"retry": true}
 --- gh ---
 gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
+gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -386,10 +473,10 @@ status: 202
 {
   "refresh": "started",
   "pulls": {
-    "state": "current",
+    "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
@@ -398,39 +485,47 @@ status: 202
       "outcome": "gh_failed",
       "message": "GitHub answered with something other than JSON",
       "reset_at": null,
-      "at": "2026-09-17T12:00:00Z"
+      "at": "2026-09-17T12:01:01Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
   "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "account_changed",
-    "message": "the active gh account changed during the read, so what was read is discarded; open the list again",
+    "message": "the active gh account changed during the read",
     "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
+    "at": "2026-09-17T12:01:01Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -441,7 +536,7 @@ Error: the refresh ended with account_changed
 {"retry": true}
 --- gh ---
 gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
+gh api graphql catalog state=updated cursor=start
 gh auth status
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
@@ -454,34 +549,38 @@ status: 202
     "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "account_changed",
-      "message": "the active gh account changed during the read, so what was read is discarded; open the list again",
+      "message": "the active gh account changed during the read",
       "reset_at": null,
-      "at": "2026-09-17T12:00:00Z"
+      "at": "2026-09-17T12:01:01Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
-  "state": "current",
+  "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
@@ -490,12 +589,16 @@ status: 200
     "outcome": "gh_missing",
     "message": "GitHub CLI (gh) is not on PATH",
     "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
+    "at": "2026-09-17T12:01:01Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -511,10 +614,10 @@ exit: 0
 api: /api/plugin/github/pulls?limit=1
 status: 200
 {
-  "state": "current",
+  "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
@@ -523,12 +626,16 @@ status: 200
     "outcome": "gh_missing",
     "message": "GitHub CLI (gh) is not on PATH",
     "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
+    "at": "2026-09-17T12:01:01Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 1,
   "next_after": 106,
   "rows": [
@@ -560,10 +667,10 @@ status: 202
 {
   "refresh": "started",
   "pulls": {
-    "state": "current",
+    "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
@@ -572,39 +679,47 @@ status: 202
       "outcome": "gh_missing",
       "message": "GitHub CLI (gh) is not on PATH",
       "reset_at": null,
-      "at": "2026-09-17T12:00:00Z"
+      "at": "2026-09-17T12:01:01Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
-  "state": "current",
+  "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "rate_limited",
-    "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z",
-    "reset_at": "2026-09-17T12:02:00Z",
-    "at": "2026-09-17T12:00:00Z"
+    "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:03:01Z",
+    "reset_at": "2026-09-17T12:03:01Z",
+    "at": "2026-09-17T12:01:01Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -615,7 +730,7 @@ Error: the refresh ended with rate_limited
 {"retry": true}
 --- gh ---
 gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
+gh api graphql catalog state=updated cursor=start
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -624,29 +739,33 @@ status: 200
 {
   "refresh": "not_due",
   "pulls": {
-    "state": "current",
+    "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
     "refreshing": false,
     "last_refresh": {
       "outcome": "rate_limited",
-      "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z",
-      "reset_at": "2026-09-17T12:02:00Z",
-      "at": "2026-09-17T12:00:00Z"
+      "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:03:01Z",
+      "reset_at": "2026-09-17T12:03:01Z",
+      "at": "2026-09-17T12:01:01Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
 --- stderr ---
 --- body ---
@@ -660,35 +779,39 @@ status: 200
 {
   "refresh": "not_due",
   "pulls": {
-    "state": "current",
+    "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
     "refreshing": false,
     "last_refresh": {
       "outcome": "rate_limited",
-      "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z",
-      "reset_at": "2026-09-17T12:02:00Z",
-      "at": "2026-09-17T12:00:00Z"
+      "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:03:01Z",
+      "reset_at": "2026-09-17T12:03:01Z",
+      "at": "2026-09-17T12:01:01Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
 --- stderr ---
 --- body ---
-{"more": true}
+{"target": 1000}
 --- gh ---
-## The clock moves on 121 s, to 2026-09-17T12:02:01Z.
+## The clock moves on 121 s, to 2026-09-17T12:03:02Z.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -700,35 +823,39 @@ status: 202
     "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "rate_limited",
-      "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z",
-      "reset_at": "2026-09-17T12:02:00Z",
-      "at": "2026-09-17T12:00:00Z"
+      "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:03:01Z",
+      "reset_at": "2026-09-17T12:03:01Z",
+      "at": "2026-09-17T12:01:01Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
   "state": "current",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
-  "fetched_at": "2026-09-17T12:02:01Z",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:03:02Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
   "refreshing": false,
@@ -736,12 +863,16 @@ status: 200
     "outcome": "succeeded",
     "message": null,
     "reset_at": null,
-    "at": "2026-09-17T12:02:01Z"
+    "at": "2026-09-17T12:03:02Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:03:02Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -751,7 +882,7 @@ status: 200
 {"retry": true}
 --- gh ---
 gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
+gh api graphql catalog state=updated cursor=start
 gh auth status
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
@@ -764,8 +895,8 @@ status: 202
     "state": "current",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
-    "fetched_at": "2026-09-17T12:02:01Z",
+    "list": "open",
+    "fetched_at": "2026-09-17T12:03:02Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
     "refreshing": true,
@@ -773,205 +904,47 @@ status: 202
       "outcome": "succeeded",
       "message": null,
       "reset_at": null,
-      "at": "2026-09-17T12:02:01Z"
+      "at": "2026-09-17T12:03:02Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:03:02Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
   "state": "current",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
-  "fetched_at": "2026-09-17T12:02:01Z",
-  "reader": "gh:octo-reader",
-  "fresh_for_s": 60.0,
-  "refreshing": false,
-  "last_refresh": {
-    "outcome": "rate_limited",
-    "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
-    "reset_at": "2026-09-23T16:46:00Z",
-    "at": "2026-09-17T12:02:01Z"
-  },
-  "fetched": 100,
-  "complete": false,
-  "truncated": false,
-  "at_cap": false,
-  "limit": 0,
-  "next_after": null,
-  "rows": []
-}
---- stderr ---
-Error: the refresh ended with rate_limited
---- body ---
-{"retry": true}
---- gh ---
-gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
-## The clock moves on 61 s, to 2026-09-17T12:03:02Z.
-# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
-exit: 0
---- stdout ---
-api: /api/plugin/github/pulls-refresh
-status: 200
-{
-  "refresh": "not_due",
-  "pulls": {
-    "state": "stale",
-    "reason": null,
-    "source": "https://github.com/octo/demo",
-    "list": "all",
-    "fetched_at": "2026-09-17T12:02:01Z",
-    "reader": "gh:octo-reader",
-    "fresh_for_s": 60.0,
-    "refreshing": false,
-    "last_refresh": {
-      "outcome": "rate_limited",
-      "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
-      "reset_at": "2026-09-23T16:46:00Z",
-      "at": "2026-09-17T12:02:01Z"
-    },
-    "fetched": 100,
-    "complete": false,
-    "truncated": false,
-    "at_cap": false,
-    "limit": 0,
-    "next_after": null,
-    "rows": []
-  },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
-}
---- stderr ---
---- body ---
-{}
---- gh ---
-## The clock moves on 604800 s, to 2026-09-24T12:03:02Z.
-# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
-exit: 0
---- stdout ---
-api: /api/plugin/github/pulls-refresh
-status: 202
-{
-  "refresh": "started",
-  "pulls": {
-    "state": "stale",
-    "reason": null,
-    "source": "https://github.com/octo/demo",
-    "list": "all",
-    "fetched_at": "2026-09-17T12:02:01Z",
-    "reader": "gh:octo-reader",
-    "fresh_for_s": 60.0,
-    "refreshing": true,
-    "last_refresh": {
-      "outcome": "rate_limited",
-      "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
-      "reset_at": "2026-09-23T16:46:00Z",
-      "at": "2026-09-17T12:02:01Z"
-    },
-    "fetched": 100,
-    "complete": false,
-    "truncated": false,
-    "at_cap": false,
-    "limit": 0,
-    "next_after": null,
-    "rows": []
-  },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
-}
-after: /api/plugin/github/pulls?state=all&limit=0
-status: 200
-{
-  "state": "current",
-  "reason": null,
-  "source": "https://github.com/octo/demo",
-  "list": "all",
-  "fetched_at": "2026-09-24T12:03:02Z",
-  "reader": "gh:octo-reader",
-  "fresh_for_s": 60.0,
-  "refreshing": false,
-  "last_refresh": {
-    "outcome": "succeeded",
-    "message": null,
-    "reset_at": null,
-    "at": "2026-09-24T12:03:02Z"
-  },
-  "fetched": 100,
-  "complete": false,
-  "truncated": false,
-  "at_cap": false,
-  "limit": 0,
-  "next_after": null,
-  "rows": []
-}
---- stderr ---
---- body ---
-{}
---- gh ---
-gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
-gh auth status
-# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
-exit: 1
---- stdout ---
-api: /api/plugin/github/pulls-refresh
-status: 202
-{
-  "refresh": "started",
-  "pulls": {
-    "state": "current",
-    "reason": null,
-    "source": "https://github.com/octo/demo",
-    "list": "all",
-    "fetched_at": "2026-09-24T12:03:02Z",
-    "reader": "gh:octo-reader",
-    "fresh_for_s": 60.0,
-    "refreshing": true,
-    "last_refresh": {
-      "outcome": "succeeded",
-      "message": null,
-      "reset_at": null,
-      "at": "2026-09-24T12:03:02Z"
-    },
-    "fetched": 100,
-    "complete": false,
-    "truncated": false,
-    "at_cap": false,
-    "limit": 0,
-    "next_after": null,
-    "rows": []
-  },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
-}
-after: /api/plugin/github/pulls?state=all&limit=0
-status: 200
-{
-  "state": "current",
-  "reason": null,
-  "source": "https://github.com/octo/demo",
-  "list": "all",
-  "fetched_at": "2026-09-24T12:03:02Z",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:03:02Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "cache_unwritable",
-    "message": "the list of pull requests could not be written to the cache",
+    "message": "the metadata catalog could not be written; clear the affected repository cache and retry",
     "reset_at": null,
-    "at": "2026-09-24T12:03:02Z"
+    "at": "2026-09-17T12:03:02Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:03:02Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -982,7 +955,7 @@ Error: the refresh ended with cache_unwritable
 {"retry": true}
 --- gh ---
 gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
+gh api graphql catalog state=updated cursor=start
 gh auth status
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
@@ -995,35 +968,39 @@ status: 202
     "state": "current",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
-    "fetched_at": "2026-09-24T12:03:02Z",
+    "list": "open",
+    "fetched_at": "2026-09-17T12:03:02Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
       "outcome": "cache_unwritable",
-      "message": "the list of pull requests could not be written to the cache",
+      "message": "the metadata catalog could not be written; clear the affected repository cache and retry",
       "reset_at": null,
-      "at": "2026-09-24T12:03:02Z"
+      "at": "2026-09-17T12:03:02Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:03:02Z",
+    "catalog_fetched": 102,
+    "generation": "<CATALOG_EPOCH_1>:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
   "state": "current",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
-  "fetched_at": "2026-09-24T12:03:02Z",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:03:02Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
   "refreshing": false,
@@ -1031,12 +1008,16 @@ status: 200
     "outcome": "succeeded",
     "message": null,
     "reset_at": null,
-    "at": "2026-09-24T12:03:02Z"
+    "at": "2026-09-17T12:03:02Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:03:02Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH_1>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -1046,5 +1027,5 @@ status: 200
 {"retry": true}
 --- gh ---
 gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
+gh api graphql catalog state=updated cursor=start
 gh auth status

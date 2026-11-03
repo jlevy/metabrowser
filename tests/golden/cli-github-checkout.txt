@@ -8,16 +8,20 @@ status: 200
   "state": "absent",
   "reason": "not_cached",
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": null,
   "reader": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
+  "total": null,
+  "repository_total": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
   "fetched": 0,
   "complete": false,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -87,29 +91,33 @@ status: 202
     "state": "pending",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": null,
     "reader": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": null,
+    "total": null,
+    "repository_total": null,
+    "count_at": null,
+    "catalog_fetched": 0,
+    "generation": null,
     "fetched": 0,
     "complete": false,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
   "state": "current",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
@@ -120,10 +128,14 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -133,7 +145,11 @@ status: 200
 {}
 --- gh ---
 gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1
+gh api graphql catalog state=open cursor=start
+gh auth status
+gh api graphql catalog state=all cursor=start
+gh auth status
+gh api graphql catalog state=all cursor=all-100
 gh auth status
 # metab checkout --api /api/cache/source/github-com--octo--demo--46386669dc01
 exit: 0
@@ -299,7 +315,7 @@ show: /pulls
 route: /pulls
 kind: pull-request-list
 views: pull-request-list (default)
-model: pull-request list envelope; state=current list=all fetched=100 complete=False truncated=False at_cap=False refreshing=False reader=gh:octo-reader fetched_at=2026-09-17T12:00:00Z
+model: pull-request list envelope; state=current list=open total=100 repository_total=102 catalog_fetched=102 fetched=100 complete=True truncated=False refreshing=False reader=gh:octo-reader fetched_at=2026-09-17T12:00:00Z
 --- stderr ---
 --- gh ---
 # metab checkout --api '/api/plugin/github/pull-markdown?number=10&part=body'
@@ -459,7 +475,7 @@ status: 200
   "state": "current",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
@@ -470,10 +486,14 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -489,7 +509,7 @@ status: 200
   "state": "current",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
@@ -500,10 +520,14 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH>:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -520,16 +544,20 @@ status: 200
   "state": "absent",
   "reason": "not_cached",
   "source": "https://github.com/someone/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": null,
   "reader": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
+  "total": null,
+  "repository_total": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
   "fetched": 0,
   "complete": false,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -547,43 +575,51 @@ status: 202
     "state": "pending",
     "reason": null,
     "source": "https://github.com/someone/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": null,
     "reader": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": null,
+    "total": null,
+    "repository_total": null,
+    "count_at": null,
+    "catalog_fetched": 0,
+    "generation": null,
     "fetched": 0,
     "complete": false,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
   "state": "absent",
   "reason": "not_cached",
   "source": "https://github.com/someone/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": null,
   "reader": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
     "outcome": "not_found_or_private",
-    "message": "GitHub has no such repository, or it is private and the gh account cannot read it",
+    "message": "GitHub has no such pull request, or it is private and the gh account cannot read it",
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
+  "total": null,
+  "repository_total": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
   "fetched": 0,
   "complete": false,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -594,7 +630,7 @@ Error: the refresh ended with not_found_or_private
 {"retry": true}
 --- gh ---
 gh auth status
-gh api repos/someone/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1
+gh api graphql catalog state=open cursor=start
 ## A remote the plugin's grammar refuses, and one that is not GitHub, list nothing
 # metab odd-checkout --api '/api/plugin/github/pulls?limit=0'
 exit: 0
@@ -605,16 +641,20 @@ status: 200
   "state": "absent",
   "reason": "not_github",
   "source": null,
-  "list": "all",
+  "list": "open",
   "fetched_at": null,
   "reader": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
+  "total": null,
+  "repository_total": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
   "fetched": 0,
   "complete": false,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -644,16 +684,20 @@ status: 200
   "state": "absent",
   "reason": "not_github",
   "source": null,
-  "list": "all",
+  "list": "open",
   "fetched_at": null,
   "reader": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
+  "total": null,
+  "repository_total": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
   "fetched": 0,
   "complete": false,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []

@@ -223,7 +223,15 @@ def _describe_pull_list(payload: dict[str, Any]) -> str:
     parts = [f"state={payload.get('state')}", f"list={payload.get('list')}"]
     if payload.get("reason") is not None:
         parts.append(f"reason={payload['reason']}")
-    for name in ("fetched", "complete", "truncated", "at_cap", "refreshing"):
+    for name in (
+        "total",
+        "repository_total",
+        "catalog_fetched",
+        "fetched",
+        "complete",
+        "truncated",
+        "refreshing",
+    ):
         parts.append(f"{name}={payload.get(name)}")
     if payload.get("reader") is not None:
         parts.append(f"reader={payload['reader']}")

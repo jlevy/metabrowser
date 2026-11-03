@@ -70,7 +70,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | Bounded byte-chunk hook |
 | `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `github/pull-comparison` for Files changed, at one changed file for `/pull/<n>/files/<path>` |
-| `pull-request-list` | No file; the shell mounts it in the Pulls tab, and in the pane at `/pulls` | Pull requests | `github/pulls` envelope; `github/pulls-refresh` for the refresh and the next page; `github/pull` for a row’s record |
+| `pull-request-list` | No file; the shell mounts it in the Pulls tab, and in the pane at `/pulls` | Pull requests | `github/pulls` envelope; `github/pulls-refresh` for resumable catalog warming; `github/pull` for a row’s record |
 
 Two kinds are also **containers** — folder-like entries whose children are addressable
 (see [nav containers](arch-nav-containers.md)): `folder` (children are files and
@@ -292,30 +292,38 @@ The page applies the same allowlist again, rebuilding the nodes it inserts.
 See
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
 
-`github/pulls?state=&limit=&after=` answers one of the served repository’s three lists
-of pull requests (`all`, the default, `open`, or `closed`) from the cache alone:
-`absent` (with `not_github`, `not_cached`, `schema_mismatch`, or `unreadable`),
-`pending`, `current`, or `stale`, plus the `reader` who fetched it, `refreshing`, how
-its last refresh ended (`last_refresh`), and the honest count: `fetched` is the rows
-held, `complete` is false when GitHub has more, `truncated` is true when a bound cut a
-row’s text or an item could not be read, and `at_cap` says the list holds as many pages
-as it may. `rows` is a window, newest first by number, of at most `limit` rows (default
-100, 0 for the envelope alone) after the number `after`, and `next_after` starts the
-next one. A row keeps only what a list shows; `merged` is read from `merged_at`, since a
-list’s item has no such flag.
-It sends an entity tag over everything but the rows, as `github/pull` does.
-A list is fetched only by a refresh.
-`POST github/pulls-refresh` takes `state`, `more`, and `retry`, starts or joins that
-list’s refresh, and answers `202` at once, naming `github/pulls` with its query as its
-`status_route`, which a one-shot `--api` prints after the refresh ends, exiting 1 when
-it failed. `"more": true` extends the list by one GitHub page, and one that joins a
-refresh is read after it, in the same job.
-`"retry": true`, and a `more` with a page to read, are a reader’s own action.
-Any other request, an automatic one or a `more` on a complete list or one at its cap, is
-held to one attempt a window, and past `rate_limited` nothing runs until `reset_at`,
-whoever asked. A request held by either answers `refresh: "not_due"` with `200`. Any
-other key or value is `invalid_request` (400), and a server with no GitHub repository
-answers `not_github` (409). See
+`github/pulls?state=&limit=&after=` reads an indexed window of the served repository’s
+metadata catalog. `state` is `open` by default, `closed` (including merged), or `all`.
+The envelope is `absent` (`not_github` or `not_cached`), `pending`, `current`, or
+`stale`, with the labelled `reader`, `refreshing`, and `last_refresh`. `total` and
+`repository_total` are GitHub’s selected-filter and all-PR counts, nullable before a
+page arrives; `count_at` dates them.
+`fetched` and `catalog_fetched` count cached matching and all rows independently.
+`complete` means the all-PR backfill reached its end; `truncated` says a row field was
+bounded.
+
+`rows` is newest first by number, with at most `limit` rows (default 100, maximum 1,000,
+zero for status alone), below `after`. `next_after` continues cached rows only.
+A per-filter `generation` changes when existing content or the leading prefix changes;
+older appends and count-only changes preserve it.
+A client replaces a held window only after it has collected that window under one
+source, reader, and generation.
+The ETag covers the bounded envelope and rows.
+GET opens SQLite read-only and runs neither Git nor `gh`.
+
+`POST github/pulls-refresh` takes `state`, `target` (default 500), and `retry`. It
+starts or joins one repository catalog job, returning `202` with a filter-specific
+`status_route`; the one-shot CLI waits for its outcome.
+`target` prioritizes a display prefix, while background work continues through all
+lightweight metadata.
+A higher target on a complete, fresh catalog needs no provider request.
+Joining a job updates its requested filter and target; an explicit retry is retained
+until the worker consumes it.
+Automatic refresh waits one freshness window after completion or failure.
+Explicit retry checks changed metadata even while fresh, but neither bypasses a known
+`rate_limited` reset.
+A held request returns `200` with `refresh: "not_due"`. Unknown fields or invalid values
+return `invalid_request` (400); no GitHub repository returns `not_github` (409). See
 [Lists of pull requests](arch-repository-sources-and-provider-mirrors.md#lists-of-pull-requests).
 
 `GET github/pull-files?number=<n>&offset=&limit=` answers one pull request’s changed

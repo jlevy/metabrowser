@@ -769,51 +769,63 @@ on a store and a served shallow checkout alike; a real root commit is unchanged.
 
 ### Lists of pull requests
 
-A repository’s pull requests are three lists, GitHub’s three `state` values, each its
-own file beside the records: `sources/<slug>/pulls/list-<name>.json`, with how its last
-refresh ended in `list-<name>.refresh.json` (`cache/paths.py: source_pull_list`). One
-file per list makes each a prefix of one GitHub listing, so `complete` has one meaning.
-`builtin_plugins/github/pull_list.py` holds the Pydantic models and every bound, with
-the measurements beside the constants; a list whose `schema_version` differs is
-refetched. Listing takes the home, the slug, and the owner and repository
-(`ListedRepository`), never a store, and runs no Git: `tests/test_github_pull_list.py`
-lists a source directory that has no store, with a `git` first on `PATH` that fails and
-logs.
+The GitHub plugin owns one disposable SQLite metadata catalog at
+`sources/<slug>/pulls/catalog.sqlite3` (`pull_catalog.py`). Rows are keyed by PR number;
+a `(state, number)` index serves Open and Closed windows, with merged rows classified as
+closed. The checkpoint holds repository identity, account, exact provider counts, cached
+counts, scan cursors, freshness, and content generations.
+Listing takes only `ListedRepository` (home, slug, owner, repository), never a Git
+store.
 
-`refresh_pull_list` (`pull_list_refresh.py`) reads the account before and after the
-pages, and a list read across a switch is discarded as `account_changed`. It reads every
-page the file holds, one `gh api` request each, newest first
-(`sort=created&direction=desc`), and each full-size page goes with its own
-`If-None-Match` when the same reader read it last: a `304` reuses that page’s rows, by
-the numbers its mark in `etags` names.
-A complete list’s last page goes without one when it may be full, because a pull request
-that closes or reopens below it starts a new page and leaves its body unchanged, and a
-`304` carries no `Link`. The list is assembled over the job’s duration and is not
-atomic: a pull request that opens or closes between two page reads can appear twice,
-which the number dedupes, or be missed until the next refresh.
-`"more": true` reads only the next page and appends it, up to the cap of ten pages, and
-the file keeps its `fetched_at`; on a list another account read, it starts again from
-the first page. A list names its reader, and pages from two readers are never joined: a
-successful refresh by another account replaces the whole file, and until then the list
-is shown, labelled, and `stale` once a refresh has run as someone else or ended
-`account_changed`. A failure leaves the file as it was and is kept in the stamp, whose
-`reader` says who it ran as; a cache that will not take the stamp either has it kept in
-the server’s memory.
-A success is stamped as of the list’s `fetched_at`, so the age the route calls `stale`
-and the window an automatic refresh waits for read one clock, and a stamp older than the
-list says nothing of it.
-A job that stops on something it does not name keeps a `gh_failed` stamp with a fixed
-message, so a bug is held to the window and not run on every poll.
+`refresh_pull_list` requests fixed GraphQL pages of at most 100 lightweight rows.
+Descriptions, comments, reviews, checks, patches, and repository objects are absent.
+The worker prioritizes the requested filter’s newest display prefix, then backfills all
+PRs in descending creation order.
+It resumes a committed cursor after cancellation or restart.
+A changed account or repository identity atomically replaces the catalog; a rejected
+cursor restarts that scan once without discarding already cached rows.
+GraphQL errors, including HTTP 200 with partial data, never advance a checkpoint.
 
-The job runs on the server’s refresh coordinator under the key `<slug>:pulls/<name>`, so
-it counts against the limit of two and shutdown cancels it, and it takes no turn at the
-mirror’s fetch, since it never touches a store.
-`GET /api/plugin/github/pulls` parses a list only when its file changed.
-The paging loop, `read_list`, is shared with the record (`gh_lists.py`).
+A refresh scans descending `UPDATED_AT` pages through the inclusive previous watermark.
+It captures the next watermark at scan start and advances freshness only when that scan
+finishes.
+Backfill pages never make old metadata fresh, and a row’s `updated_at` prevents
+older backfill from overwriting a newer update.
+Provider counts are dated observations, not counts derived from cached rows; the
+all/open/closed fields need not be an atomic snapshot of a changing repository.
+Rows absent from an incomplete scan are not inferred deleted.
+A deleted or newly inaccessible historical PR may remain in the disposable catalog until
+it is rebuilt.
 
-The server’s `served_repository` chooses its `StoreMirror` or the served checkout’s
-validated GitHub origin.
-A source that supplies neither answers `not_github`.
+Each page commits its rows, counts, and cursor in one short transaction under the
+existing source-alias lock.
+A checkpoint revision rejects a publisher superseded by another process.
+Cached counts change from each row’s old and new state, avoiding a whole-catalog count
+or rewrite per page.
+Network and Git work never run under the lock.
+Cancellation abandons a waiting publisher before it can write.
+One job per source holds a coordinator network slot for one page at a time and yields
+between pages, so opening an individual PR can proceed during a long backfill.
+
+GET uses bounded indexed queries in a read-only transaction.
+Private-path admission checks the database and existing SQLite sidecars, and rejects
+WAL-format databases before SQLite opens them.
+The writer uses rollback journals.
+Readers and writers admit only the exact two tables and required index; extra triggers,
+views, or altered schema are refused before a checkpoint or row is used.
+The database is initialized in memory and published atomically, so an interrupted
+initialization cannot expose a half-built schema.
+Empty initialization remnants can be rebuilt by an explicit write; corrupt or unknown
+schemas receive a typed cache-write refusal requiring the affected repository cache to
+be cleared. Reads create no database, journal, source, or store and never widen
+permissions. SQLite value limits and a read instruction budget bound malformed-cache
+work.
+
+The last outcome remains in `list-all.refresh.json`. A failed refresh preserves the last
+committed page; a stamp that cannot be written is retained in process memory.
+Automatic retries wait a freshness window, and a known rate-limit reset holds every
+request. The server’s `served_repository` selects its managed store or a served
+checkout’s validated GitHub origin; neither yields a source for an unrelated folder.
 
 ### Pull requests beside a checkout
 
@@ -872,9 +884,10 @@ fetch.
 A pull request’s changed files are one more file beside its record:
 `sources/<slug>/pulls/<n>.files.json`, with `<n>.files.refresh.json` for how its last
 refresh ended (`cache/paths.py: source_pull_files`). `PullFileList` in `pull_list.py`
-holds the model and its bounds with their measurements, written and read as a list of
-pull requests is. A row keeps `path`, `previous_path`, GitHub’s `status`, and the line
-counts; GitHub’s embedded patch is dropped before anything is kept.
+holds the model and its bounds with their measurements, written atomically as a private
+JSON file and read with a byte limit.
+A row keeps `path`, `previous_path`, GitHub’s `status`, and the line counts; GitHub’s
+embedded patch is dropped before anything is kept.
 The path is the row’s identity, a rename’s new path, since the diff view jumps to a file
 by its path.
 

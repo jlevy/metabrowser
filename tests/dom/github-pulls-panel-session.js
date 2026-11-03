@@ -3,7 +3,7 @@
 // The panel talks to the server through two GitHub plugin routes, and reads a row's record
 // through a third. Every list answer here is one the in-process application gave while it
 // served the stand-in in tests/github_pull_fixture.py, recorded in
-// tests/fixtures/github-pulls-panel-responses.json; tests/test_github_pulls_panel_session.py
+// the lifecycle, cached-window and changed-prefix fixtures; tests/test_github_pulls_panel_session.py
 // replays that story and fails when the recording drifts, so this session never runs on an
 // envelope a test wrote by hand. A row's record is the pull-request page's business and its
 // recording's: an answer here stands for one, and only the fact that it was asked for counts.
@@ -19,8 +19,13 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 const repoRoot = path.resolve(__dirname, "../..");
-const recorded = JSON.parse(
-  fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pulls-panel-responses.json"), "utf8"),
+const recorded = Object.assign(
+  {},
+  ...[
+    "github-pulls-panel-responses.json",
+    "github-pulls-catalog-window-responses.json",
+    "github-pulls-catalog-prefix-responses.json",
+  ].map((name) => JSON.parse(fs.readFileSync(path.join(repoRoot, "tests/fixtures", name), "utf8"))),
 );
 // The recording holds each distinct window once: an answer whose rows an earlier answer carried
 // names that answer, and reads here as those rows.
@@ -70,6 +75,8 @@ function summarize(model) {
     listName: model.listName,
     origin: model.origin,
     count: model.count,
+    window: model.window,
+    progress: model.progress,
     freshness: model.freshness,
     empty: model.empty,
     notice: model.notice,
@@ -223,6 +230,7 @@ function createPage() {
       await settle();
     },
     waitingCount: () => waiting.length,
+    rowsVersion: () => model?.rowsVersion,
     /** Run the timer with this delay, or the only one. */
     async fire(delayMs) {
       const match = [...timers.entries()].filter(
@@ -263,267 +271,100 @@ function createPage() {
 async function run() {
   const panel = await import(pathToFileURL(panelPath).href);
   const steps = [];
-
-  // A page that is not a mirror's would read nothing here at all; this is a panel told only to
-  // read, which asks for nothing more.
   let page = createPage();
   let controller = panel.createPullsController(page.deps, { filter: "all", current: null });
   void controller.start({ shown: false });
   await settle();
-  steps.push(
-    page.observe("the tab is not open: the list is read once, for later", controller, {
-      paint: false,
-    }),
-  );
   await page.answer(recorded.absent);
-  steps.push(page.observe("nothing is cached, and nothing asks to fetch it", controller));
-
+  steps.push(page.observe("hidden: one cache read and no provider work", controller));
   controller.setShown(true);
   await settle();
-  steps.push(page.observe("the tab opens: its first read is a 304", controller, { paint: false }));
   await page.notModified();
-  steps.push(page.observe("so the refresh is asked for", controller));
+  steps.push(page.observe("opening starts the all-history catalog job", controller));
   await page.answer(recorded.refresh_started);
-  steps.push(page.observe("the refresh started; the panel waits in the shape of rows", controller));
-
-  await page.fire(panel.FAST_POLL_MS ?? 1000);
-  await page.answer(recorded.pending);
-  steps.push(page.observe("a fast poll while it runs", controller, { paint: false }));
-  page.clock.now += panel.LONG_WAIT_MS;
   await page.fire(1000);
   await page.answer(recorded.pending);
-  steps.push(page.observe("a long wait says why it may be waiting", controller));
-
+  steps.push(page.observe("the catalog runs independently of the panel", controller));
   await page.fire(1000);
   await page.answer(recorded.current);
-  steps.push(page.observe("the list arrives, newest first", controller));
-
+  steps.push(page.observe("the top cache page arrives", controller));
+  await page.answer(recorded.more_window);
+  steps.push(page.observe("cached windows fill only the display budget", controller));
+  assert(controller.snapshot().rows === 102, "the real catalog holds 102 rows");
   controller.setShown(false);
-  steps.push(page.observe("hidden: no timer", controller, { paint: false }));
+  steps.push(page.observe("hidden: no presentation timer", controller, { paint: false }));
   controller.setShown(true);
   await settle();
   await page.notModified();
-  steps.push(
-    page.observe("shown again: one read, and a 304 paints nothing", controller, { paint: false }),
-  );
-
-  page.setVisible(false);
-  controller.onVisibilityChange();
-  steps.push(page.observe("the page is hidden: no timer", controller, { paint: false }));
-  page.setVisible(true);
-  controller.onVisibilityChange();
-  await settle();
-  await page.notModified();
-  steps.push(
-    page.observe("the page is shown again: it polls at once", controller, { paint: false }),
-  );
-  // Back brings the page from the back/forward cache after the pin moved: it polls before the
-  // pin guard's own check, and the refusal is the guard's to answer, by a reload.
-  page.setVisible(false);
-  controller.onVisibilityChange();
-  page.setVisible(true);
-  controller.onVisibilityChange();
-  await settle();
-  await page.answer(recorded.pin_changed);
-  steps.push(page.observe("a poll the pin guard refused: the list says nothing of it", controller));
-
-  // The end of the rows held, and the next GitHub page. A reader's reaching it is the ask.
-  const toEnd = controller.reachedEnd();
-  await settle();
-  steps.push(
-    page.observe("the end of the list asks for the next page", controller, { paint: false }),
-  );
-  await page.answer(recorded.more_started);
-  await toEnd;
-  steps.push(page.observe("Load more says it is loading", controller));
-  await page.fire(1000);
-  await page.answer(recorded.more_refreshing);
-  steps.push(page.observe("still reading it", controller, { paint: false }));
-  await page.fire(1000);
-  await page.answer(recorded.more_done);
-  steps.push(
-    page.observe("it is in, and the next window of rows is asked for", controller, {
-      paint: false,
-    }),
-  );
-  await page.answer(recorded.more_window);
-  steps.push(page.observe("the rows after the first window are appended", controller));
-  await controller.reachedEnd();
-  await controller.loadMore();
-  steps.push(page.observe("a complete list asks for nothing more", controller, { paint: false }));
-  // A poll asks for the top window with its tag, however many rows are held: a list that did
-  // not change is a 304, and not every held row again.
-  await page.fire();
-  await page.notModified();
-  steps.push(
-    page.observe("the next poll reads the top window, and it is unchanged", controller, {
-      paint: false,
-    }),
-  );
-
-  // The filters. Each is its own list, read when it is first chosen and kept.
+  steps.push(page.observe("reopening reads one tagged cache window", controller, { paint: false }));
   controller.setFilter("open");
   await settle();
-  steps.push(page.observe("Open is chosen", controller, { paint: false }));
   await page.answer(recorded.open_current);
-  steps.push(page.observe("its own rows: a draft and an open one", controller));
-  controller.setFilter("all", { fromAddress: true });
-  steps.push(page.observe("All again paints what it held at once", controller));
-  await page.notModified();
-  steps.push(page.observe("and its read is a 304", controller, { paint: false }));
+  steps.push(page.observe("Open has its exact matching count", controller));
   controller.setFilter("closed");
   await settle();
-  // A newer answer wins: this request is let go when the filter changes again.
   controller.setFilter("all", { fromAddress: true });
   await settle();
-  steps.push(
-    page.observe("a filter left before it answered is let go", controller, { paint: false }),
-  );
   await page.notModified();
-  steps.push(page.observe("All's read is a 304", controller, { paint: false }));
-
-  // Stale, and refreshing in the background with the rows in place.
-  page.clock.now += 61_000;
-  await page.fire();
-  await page.answer(recorded.stale);
-  steps.push(page.observe("a minute on, the list is stale, and asks", controller));
-  await page.answer(recorded.refresh_again);
-  await page.fire();
-  await page.answer(recorded.stale_refreshing);
-  steps.push(page.observe("it refreshes with its rows in place", controller));
-  await page.fire();
-  await page.answer(recorded.refreshed);
-  // Another list file: the rows held past the top window are read again, once.
-  await page.answer(recorded.refreshed_whole);
-  steps.push(
-    page.observe("refreshed: the whole range is read once, and no row repainted", controller),
-  );
+  steps.push(page.observe("leaving a filter aborts its read", controller, { paint: false }));
   controller.dispose();
 
-  // Each way a refresh can end. A cached list shows under every one.
-  const failures = {};
-  for (const [name, answer] of Object.entries(recorded)) {
-    if (name.startsWith("failed ")) {
-      failures[name.slice("failed ".length)] = (({ notice, status, freshness }) => ({
-        status,
-        freshness,
-        notice,
-      }))(
-        panel.describePulls(answer.body, {
-          filter: "all",
-          rows: answer.body.rows.map((row) => panel.describeRow(row, "octo/demo")),
-          rowsVersion: 1,
-          nowMs: Date.parse(answer.body.fetched_at) + 30_000,
-          formatTime: (iso) => new Date(iso).toISOString(),
-          more: false,
-          waitedMs: 0,
-          error: null,
-        }),
-      );
-    }
+  // A large real catalog is read in bounded cache pages. Older backfill progress does not
+  // replace the prefix or silently enlarge the display budget.
+  page = createPage();
+  page.clock.now = Date.parse(recorded.large_0.body.fetched_at) + 30_000;
+  controller = panel.createPullsController(page.deps, { filter: "closed", current: null });
+  void controller.start({ shown: true });
+  await settle();
+  for (let index = 0; index < 5; index += 1) {
+    await page.answer(recorded[`large_${index}`]);
   }
-
-  // Retry: a reader's action, which the server may hold, and which says what happened.
-  page = createPage();
-  controller = panel.createPullsController(page.deps, { filter: "all", current: null });
-  void controller.start({ shown: true });
+  assert(controller.snapshot().rows === 500, "initial display must stop at 500");
+  steps.push(page.observe("500 shown while the catalog continues in the background", controller));
+  await page.answer(recorded.large_resume_started);
+  const beforeProgress = page.rowsVersion();
+  controller.onVisibilityChange();
   await settle();
-  await page.answer(recorded["failed network_error"]);
-  steps.push(page.observe("offline: the rows show, with what to do", controller));
-  await page.notModified().catch(() => {});
-  const retried = controller.retry();
+  await page.answer(recorded.large_progress);
+  assert(controller.snapshot().rows === 500, "catalog growth must not grow display");
+  assert(page.rowsVersion() === beforeProgress, "older appends preserve prefix identity");
+  steps.push(page.observe("6,000 cached: the same 500 rows stay in place", controller));
+  void controller.loadMore();
   await settle();
-  steps.push(page.observe("Retry asks as a reader", controller, { paint: false }));
-  await page.answer(recorded.refresh_again);
-  await retried;
-  steps.push(page.observe("the retry is under way", controller, { paint: false }));
-  controller.dispose();
-
-  page = createPage();
-  controller = panel.createPullsController(page.deps, { filter: "all", current: null });
-  void controller.start({ shown: true });
-  await settle();
-  await page.answer(recorded["failed rate_limited"]);
-  steps.push(page.observe("rate limited: no Retry, and when it lifts", controller));
-  controller.dispose();
-
-  // A server with no repository: nothing is asked of it.
-  page = createPage();
-  controller = panel.createPullsController(page.deps, { filter: "all", current: null });
-  void controller.start({ shown: true });
-  await settle();
-  await page.answer(recorded.not_github);
-  steps.push(page.observe("a server with no GitHub repository", controller));
-  controller.dispose();
-
-  // A checkout's list names the repository it lists, its origin, which on a fork is the fork.
-  page = createPage();
-  controller = panel.createPullsController(page.deps, {
-    filter: "all",
-    current: null,
-    checkout: true,
-  });
-  void controller.start({ shown: true });
-  await settle();
-  await page.answer(recorded.stale);
-  steps.push(page.observe("a checkout's list names its origin", controller));
-  controller.dispose();
-
-  // And a checkout's origin the plugin's grammar refuses, which the route answers as not_github.
-  page = createPage();
-  controller = panel.createPullsController(page.deps, {
-    filter: "all",
-    current: null,
-    checkout: true,
-  });
-  void controller.start({ shown: true });
-  await settle();
-  await page.answer(recorded.not_github);
-  steps.push(page.observe("a checkout whose origin cannot be listed", controller));
-  controller.dispose();
-
-  // A mirror reads the list ahead of the tab, and starts its refresh, once and by itself.
-  page = createPage();
-  controller = panel.createPullsController(page.deps, { filter: "all", current: null });
-  void controller.start({ shown: false, refreshAhead: true });
-  await settle();
-  await page.answer(recorded.stale);
+  for (let index = 5; index < 10; index += 1) {
+    await page.answer(recorded[`large_${index}`]);
+  }
+  assert(controller.snapshot().rows === 1000, "Fetch more grows display by 500");
   steps.push(
-    page.observe("a mirror's read ahead: a stale list asks", controller, { paint: false }),
+    page.observe("Fetch more displays another 500 cached rows without provider work", controller),
   );
-  await page.answer(recorded.refresh_again);
+  controller.onVisibilityChange();
+  await settle();
+  await page.answer(recorded.moved_0);
+  assert(controller.snapshot().rows === 1000, "a changed prefix is staged before replacement");
+  for (let index = 1; index < 10; index += 1) {
+    await page.answer(recorded[`moved_${index}`]);
+  }
+  assert(page.holds(6001), "coherent staged prefix must include the new PR");
   steps.push(
-    page.observe("and nothing polls a list that is not shown", controller, { paint: false }),
+    page.observe("a new PR revalidates the display through ten bounded cache pages", controller),
   );
   controller.dispose();
 
-  // Keyboard, on a full window.
+  // Holding a key marks only the two changed rows, with one cache-only detail read at rest.
   page = createPage();
   controller = panel.createPullsController(page.deps, { filter: "all", current: null });
   void controller.start({ shown: true });
   await settle();
   await page.answer(recorded.current);
-  steps.push(
-    page.observe("the first row takes Tab when none is current", controller, { paint: false }),
-  );
-  await page.answer(recorded.not_due).catch(() => {});
-  controller.setShown(true);
-  page.clock.now += 0;
-
-  const movedAtTop = controller.move(-1);
-  steps.push({
-    ...page.observe("Up at the first row is clamped: no row opens", controller, { paint: false }),
-    handled: movedAtTop,
-  });
+  await page.answer(recorded.more_window);
+  page.observe("ready", controller, { paint: false });
+  controller.move(-1);
+  steps.push(page.observe("Up at the first row is clamped", controller, { paint: false }));
   controller.move(1);
   await settle();
-  steps.push(
-    page.observe("one press reads the row's record at once", controller, { paint: false }),
-  );
   await page.record();
-  steps.push(page.observe("and opens it, with what it read", controller, { paint: false }));
-
-  // A key held down: only the two rows at each step.
+  steps.push(page.observe("one press opens with its cached record", controller, { paint: false }));
   for (let step = 0; step < 40; step += 1) {
     controller.move(1, { repeat: true });
   }
@@ -533,276 +374,75 @@ async function run() {
   );
   controller.released();
   await settle();
-  const stopped = page.observe("the key is let go", controller, { paint: false });
-  steps.push(stopped);
+  steps.push(page.observe("the key is let go", controller, { paint: false }));
   await page.record();
   steps.push(page.observe("the row it stopped on opens", controller, { paint: false }));
-
-  // A release the page never saw: the wait for a next key opens it.
-  controller.move(1, { repeat: true });
-  controller.move(1, { repeat: true });
-  await page.fire(panel.WALK_SETTLE_MS);
-  await settle();
-  steps.push(
-    page.observe("a key's release that was not seen: the wait opens it", controller, {
-      paint: false,
-    }),
-  );
-  // The newest opening wins, and the older read is let go.
-  controller.move(1);
-  await settle();
-  controller.move(1);
-  await settle();
-  steps.push(page.observe("two presses: the older read is let go", controller, { paint: false }));
-  await page.record();
-  steps.push(page.observe("and only the newest opens", controller, { paint: false }));
-
-  // Back lands while a press still waits for its row's record: the address wins, and the row
-  // it left does not open over it.
   controller.move(1);
   await settle();
   controller.setCurrent(70);
   await page.record();
-  steps.push(
-    page.observe("Back while a row waits for its record: that row does not open", controller, {
-      paint: false,
-    }),
-  );
-
-  // The address moved: the row follows, and nothing is fetched or opened.
-  controller.setCurrent(90);
-  steps.push(page.observe("the address names another row", controller, { paint: false }));
-  controller.setCurrent(null);
-  steps.push(page.observe("the address names no row", controller, { paint: false }));
-  controller.setCurrent(90);
-  page.clock.now += 0;
-  // A pointer rests on a row: its record is read once, and a click needs no second read.
+  steps.push(page.observe("Back wins over a pending row opening", controller, { paint: false }));
   controller.peek(80);
   controller.peek(80);
   await settle();
-  steps.push(page.observe("a pointer rests on a row: one read", controller, { paint: false }));
   await page.record();
   controller.activate(80);
   await settle();
   steps.push(
-    page.observe("the click opens at once, with no second read", controller, {
+    page.observe("a repeated hover and click reuse one cached record", controller, {
       paint: false,
     }),
   );
   controller.dispose();
 
-  // A page opened at a row the first window does not hold: further windows are read for it.
-  page = createPage();
-  controller = panel.createPullsController(page.deps, { filter: "all", current: 5 });
-  void controller.start({ shown: true });
-  await settle();
-  await page.answer(recorded.more_done);
-  steps.push(
-    page.observe("the current row is not in the first window", controller, {
-      paint: false,
-    }),
-  );
-  await page.answer(recorded.more_window);
-  steps.push(
-    page.observe("the next window holds it, and it is brought into view", controller, {
-      paint: false,
-    }),
-  );
-  // The end of the list: a held key stops there and does not ask again.
-  const held = controller.snapshot().rows;
-  assert(held === 102, "the two windows hold every row");
-  controller.dispose();
-
-  // In Closed, an address's row the first window does not hold is not chased: a filtered list
-  // may not hold it at all, and the chase would read every window to the end for nothing.
-  page = createPage();
-  controller = panel.createPullsController(page.deps, { filter: "closed", current: 50 });
-  void controller.start({ shown: true });
-  await settle();
-  await page.answer(recorded.at_cap_window);
-  steps.push(
-    page.observe("in Closed, a row past the first window is not chased", controller, {
-      paint: false,
-    }),
-  );
-  controller.dispose();
-
-  // A window and a poll that cross: the window lands first, and the poll, answered from another
-  // list file, reads the whole range it now holds instead of dropping the rows just added.
-  page = createPage();
-  controller = panel.createPullsController(page.deps, { filter: "all", current: null });
-  void controller.start({ shown: true });
-  await settle();
-  await page.answer(recorded.more_done);
-  page.observe("", controller, { paint: false });
-  void controller.reachedEnd();
-  await page.fire();
-  steps.push(page.observe("a window and a poll are both asked for", controller, { paint: false }));
-  await page.answer(recorded.more_window);
-  await page.answer(recorded.refreshed);
-  steps.push(
-    page.observe("the window lands first, and the poll reads the whole range", controller, {
-      paint: false,
-    }),
-  );
-  await page.answer(recorded.refreshed_whole);
-  const crossed = page.observe("so no row the window added is dropped", controller, {
-    paint: false,
-  });
-  crossed.rowsHeld = controller.snapshot().rows;
-  steps.push(crossed);
-  controller.dispose();
-
-  // The list at its cap, where a refresh found pull request 1001 opened, so every window moved
-  // by a row. A window asked for the earlier rows, and the poll answered first: the window
-  // follows rows the list no longer holds, so it is dropped and asked again from the new cursor.
-  page = createPage();
-  controller = panel.createPullsController(page.deps, { filter: "closed", current: null });
-  void controller.start({ shown: true });
-  await settle();
-  await page.answer(recorded.at_cap_window);
-  page.observe("", controller, { paint: false });
-  void controller.reachedEnd();
-  await page.fire();
-  steps.push(
-    page.observe("a window and a poll of the list at its cap", controller, { paint: false }),
-  );
-  await page.answer(recorded.at_cap_moved, 1);
-  steps.push(
-    page.observe("the poll lands first: a pull request opened, and the rows moved", controller, {
-      paint: false,
-    }),
-  );
-  await page.answer(recorded.at_cap_window_2);
-  steps.push(
-    page.observe(
-      "the window of the earlier rows is dropped, and asked after the new cursor",
-      controller,
-      {
-        paint: false,
-      },
-    ),
-  );
-  await page.answer(recorded.at_cap_moved_after_902);
-  const between = page.observe("so the row between the two cursors is held", controller, {
-    paint: false,
-  });
-  Object.assign(between, { rowsHeld: controller.snapshot().rows, "holds 901": page.holds(901) });
-  steps.push(between);
-  controller.dispose();
-
-  // A range read again while a window lands: the window makes the range short, so it is not
-  // taken, and the next poll reads the list again.
-  page = createPage();
-  controller = panel.createPullsController(page.deps, { filter: "closed", current: null });
-  void controller.start({ shown: true });
-  await settle();
-  await page.answer(recorded.at_cap_window);
-  void controller.reachedEnd();
-  await settle();
-  await page.answer(recorded.at_cap_window_2);
-  page.observe("", controller, { paint: false });
-  await page.fire();
-  await page.answer(recorded.at_cap_moved);
-  void controller.reachedEnd();
-  await settle();
-  steps.push(
-    page.observe(
-      "200 rows held: the range is read again, and a window asked while it is out",
-      controller,
-      {
-        paint: false,
-      },
-    ),
-  );
-  await page.answer(recorded.at_cap_moved_after_801, 1);
-  const appended = page.observe("the window lands first, and is appended", controller, {
-    paint: false,
-  });
-  appended.rowsHeld = controller.snapshot().rows;
-  steps.push(appended);
-  await page.answer(recorded.at_cap_moved_whole);
-  const short = page.observe("then the range, short of the window: it is not taken", controller, {
-    paint: false,
-  });
-  short.rowsHeld = controller.snapshot().rows;
-  steps.push(short);
-  await page.fire();
-  await page.poll(recorded.at_cap_moved);
-  steps.push(page.observe("so the next poll reads the list again", controller, { paint: false }));
-  controller.dispose();
-
-  // A range read again that does not land: the reader chooses Open while it is out, and comes
-  // back. The tag is taken only with the rows, so Closed's poll is not answered by a 304 over
-  // the rows it held before.
-  page = createPage();
-  controller = panel.createPullsController(page.deps, { filter: "closed", current: null });
-  void controller.start({ shown: true });
-  await settle();
-  await page.answer(recorded.at_cap_window);
-  void controller.reachedEnd();
-  await settle();
-  await page.answer(recorded.at_cap_window_2);
-  await page.fire();
-  await page.answer(recorded.at_cap_moved);
-  page.observe("", controller, { paint: false });
-  controller.setFilter("open");
-  await settle();
-  steps.push(
-    page.observe("Open is chosen while Closed's range is read again", controller, { paint: false }),
-  );
-  await page.answer(recorded.open_current);
-  controller.setFilter("closed", { fromAddress: true });
-  await settle();
-  steps.push(
-    page.observe("Closed again: its poll names the tag of the rows it holds", controller, {
-      paint: false,
-    }),
-  );
-  await page.poll(recorded.at_cap_moved);
-  steps.push(
-    page.observe("so the list file it has not read is read again", controller, { paint: false }),
-  );
-  await page.answer(recorded.at_cap_moved_whole);
-  const caughtUp = page.observe("and the pull request that opened is held", controller, {
-    paint: false,
-  });
-  Object.assign(caughtUp, { rowsHeld: controller.snapshot().rows, "holds 1001": page.holds(1001) });
-  steps.push(caughtUp);
-  controller.dispose();
-
-  // Disposal ends it: an answer after it paints nothing, and no timer is left.
+  const failures = {};
+  for (const [name, answer] of Object.entries(recorded)) {
+    if (!name.startsWith("failed ")) {
+      continue;
+    }
+    const model = panel.describePulls(answer.body, {
+      filter: "all",
+      rows: answer.body.rows.map((row) => panel.describeRow(row, "octo/demo")),
+      rowsVersion: 1,
+      nowMs: Date.parse(answer.body.fetched_at) + 30_000,
+      formatTime: (iso) => new Date(iso).toISOString(),
+      more: false,
+      waitedMs: 0,
+      error: null,
+    });
+    failures[name.slice("failed ".length)] = {
+      status: model.status,
+      freshness: model.freshness,
+      notice: model.notice,
+    };
+  }
+  for (const [name, context] of [
+    ["a server with no GitHub repository", {}],
+    ["a checkout whose origin cannot be listed", { checkout: true }],
+  ]) {
+    page = createPage();
+    controller = panel.createPullsController(page.deps, {
+      filter: "open",
+      current: null,
+      ...context,
+    });
+    void controller.start({ shown: true });
+    await settle();
+    await page.answer(recorded.not_github);
+    steps.push(page.observe(name, controller));
+    controller.dispose();
+  }
   page = createPage();
   controller = panel.createPullsController(page.deps, { filter: "all", current: null });
   void controller.start({ shown: true });
   await settle();
   controller.dispose();
   await settle();
-  const disposed = page.observe("dispose lets the read go", controller, { paint: false });
-  disposed.timers = page.timerDelays();
-  steps.push(disposed);
-
-  // What the panel says at its cap, and of a list with cut rows.
-  const atCap = recorded.at_cap.body;
-  const held1000 = panel.describePulls(atCap, {
-    filter: "closed",
-    rows: Array.from({ length: atCap.fetched }, () => null),
-    rowsVersion: 1,
-    nowMs: Date.parse(atCap.fetched_at),
-    formatTime: (iso) => iso,
-    more: false,
-    waitedMs: 0,
-    error: null,
+  steps.push({
+    ...page.observe("dispose aborts presentation reads", controller, { paint: false }),
+    timers: page.timerDelays(),
   });
-  const cap = {
-    count: held1000.count,
-    listName: held1000.listName,
-    loadMore: held1000.loadMore,
-    github: held1000.github,
-    notice: held1000.notice,
-  };
 
-  // What a row shows, whatever its author wrote. Text stays text; it is only ever a string.
   const hostile = panel.describeRow(
     {
       number: 7,
@@ -818,13 +458,10 @@ async function run() {
     },
     "octo/demo",
   );
-
-  // GitHub spells an owner in its own case and a source is lowercased: the same repository.
   const spelled = panel.describeRow(
     { number: 8, state: "open", base_ref: "main", head_ref: "topic", head_repository: "OCTO/demo" },
     "octo/demo",
   ).refs;
-
   const formatTime = (iso) => new Date(iso).toISOString();
   const landing = {
     "a server with no repository": panel.describeLanding(recorded.not_github.body, formatTime),
@@ -934,7 +571,6 @@ async function run() {
   return {
     steps,
     failures,
-    cap,
     hostile,
     spelled,
     landing,
@@ -1058,153 +694,7 @@ async function readerStory() {
 // text, an append that builds only the rows it adds, and ages told again as time passes. What
 // only a browser has -- layout, focus rings, scrolling -- stays the paint exemption's.
 
-class FakeNode {
-  constructor(nodeName) {
-    this.nodeName = nodeName;
-    this.childNodes = [];
-    this.parentNode = null;
-  }
-  append(...nodes) {
-    for (const node of nodes) {
-      this.adopt(typeof node === "string" ? new FakeText(node) : node);
-    }
-  }
-  adopt(node) {
-    if (node.nodeName === "#fragment") {
-      for (const child of [...node.childNodes]) {
-        this.adopt(child);
-      }
-      return;
-    }
-    node.parentNode?.drop(node);
-    node.parentNode = this;
-    this.childNodes.push(node);
-  }
-  drop(node) {
-    this.childNodes.splice(this.childNodes.indexOf(node), 1);
-    node.parentNode = null;
-  }
-  remove() {
-    this.parentNode?.drop(this);
-  }
-  replaceChildren(...nodes) {
-    for (const child of [...this.childNodes]) {
-      this.drop(child);
-    }
-    this.append(...nodes);
-  }
-  contains(node) {
-    for (let at = node; at; at = at.parentNode) {
-      if (at === this) {
-        return true;
-      }
-    }
-    return false;
-  }
-  get textContent() {
-    return this.childNodes.map((child) => child.textContent).join("");
-  }
-  set textContent(value) {
-    this.replaceChildren(String(value));
-  }
-}
-
-class FakeText extends FakeNode {
-  constructor(data) {
-    super("#text");
-    this.data = data;
-  }
-  get textContent() {
-    return this.data;
-  }
-  set textContent(value) {
-    this.data = String(value);
-  }
-}
-
-class FakeElement extends FakeNode {
-  constructor(tag) {
-    super(tag.toUpperCase());
-    this.localName = tag;
-    this.attributes = new Map();
-    this.dataset = {};
-    this.style = {};
-    this.listeners = new Map();
-    this.hidden = false;
-    this.classes = new Set();
-  }
-  get classList() {
-    const classes = this.classes;
-    return {
-      add(...names) {
-        for (const name of names) {
-          classes.add(name);
-        }
-      },
-      remove(...names) {
-        for (const name of names) {
-          classes.delete(name);
-        }
-      },
-      contains: (name) => classes.has(name),
-      toggle(name, on) {
-        const wanted = on ?? !classes.has(name);
-        if (wanted) {
-          classes.add(name);
-        } else {
-          classes.delete(name);
-        }
-        return wanted;
-      },
-    };
-  }
-  get className() {
-    return [...this.classes].join(" ");
-  }
-  set className(value) {
-    this.classes = new Set(String(value).split(/\s+/).filter(Boolean));
-  }
-  setAttribute(name, value) {
-    if (name === "class") {
-      this.className = value;
-    } else if (name.startsWith("data-")) {
-      this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] =
-        String(value);
-    } else {
-      this.attributes.set(name, String(value));
-    }
-  }
-  getAttribute(name) {
-    return name === "class" ? this.className : (this.attributes.get(name) ?? null);
-  }
-  removeAttribute(name) {
-    this.attributes.delete(name);
-  }
-  get firstElementChild() {
-    return this.childNodes.find((child) => child instanceof FakeElement) ?? null;
-  }
-  addEventListener(type, listener) {
-    this.listeners.set(type, listener);
-  }
-  closest(selector) {
-    const [tag, name] = selector.split(".");
-    for (let node = this; node !== null; node = node.parentNode) {
-      if ((!tag || node.localName === tag) && (!name || node.classList?.contains(name))) {
-        return node;
-      }
-    }
-    return null;
-  }
-  querySelectorAll() {
-    return [];
-  }
-  focus() {}
-  scrollIntoView() {}
-  set innerHTML(html) {
-    this.childNodes = [];
-    this.markup = html;
-  }
-}
+const { FakeNode, FakeElement } = require("./pulls-test-dom.js");
 
 /** One element as a line: its tag, classes, and attributes. */
 function described(element) {
@@ -1242,7 +732,6 @@ async function paintStory(panel) {
     importNode: (node) => new FakeElement(node.localName),
   };
   /** @type {((entries: {isIntersecting: boolean}[]) => void) | null} */
-  let reachEnd = null;
   const saved = {};
   const globals = {
     document,
@@ -1263,9 +752,6 @@ async function paintStory(panel) {
       }
     },
     IntersectionObserver: class {
-      constructor(callback) {
-        reachEnd = callback;
-      }
       observe() {}
       disconnect() {}
     },
@@ -1337,7 +823,24 @@ async function paintStory(panel) {
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
     const row = (item) => item.firstElementChild;
+    const status = container.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-status"),
+    );
+    const total = status.firstElementChild;
+    assert(
+      total.childNodes[0].localName === "strong" && total.childNodes[0].textContent === "102",
+      "only the exact repository number is strong",
+    );
+    assert(
+      total.childNodes[1].nodeName === "#text" &&
+        total.childNodes[1].textContent === " PRs on octo/demo",
+      "repository and label must remain plain text",
+    );
     const story = {
+      "only the exact number is bold": total.childNodes.map((node) => ({
+        node: node.nodeName,
+        text: node.textContent,
+      })),
       "the list": described(list),
       "a row": [described(hostile), described(row(hostile))],
       "the row whose page is shown": described(row(shown)),
@@ -1361,13 +864,17 @@ async function paintStory(panel) {
       return stringify(value, ...rest);
     };
     try {
-      reachEnd?.([{ isIntersecting: true }]);
+      // Initial cache filling already requested this second window.
       await settle();
       await answer(recorded.more_window);
     } finally {
       JSON.stringify = stringify;
     }
-    story["a window of 2 appended to 100: rows built, aged, keyed"] = [built, aged, keyed];
+    story["a cached window of 2 auto-fills the budget: rows built, aged, keyed"] = [
+      built,
+      aged,
+      keyed,
+    ];
     story["rows held"] = list.childNodes.length;
     // Two hours on, the list unchanged: a poll's answer moves the freshness, and with it each
     // row's age, in place.

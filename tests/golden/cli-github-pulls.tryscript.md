@@ -25,11 +25,9 @@ before: >-
 `https://github.com/octo/demo` and, with a fake `gh` and a clock fixed at
 2026-09-17T12:00:00Z, these lists of its pull requests:
 
-| List | Held |
-| --- | --- |
-| `all`, the default | One full page, 106 down to 7, and GitHub has more |
-| `open` | 10 and 7, complete, as another account read it |
-| `closed` | Nothing |
+The shared catalog contains 102 PRs (100 Open and two Closed, including one merged),
+last read by another account.
+Its opaque epoch is fixed by the fixture, as its clock is.
 
 Every command below answers from that cache, and none reaches the network or needs a Git
 the acquisition floor admits.
@@ -40,10 +38,12 @@ A refresh that completes and a list that is `current` are in
 `tests/golden/cli-github-pulls-refresh.txt`, and each typed failure in
 `tests/golden/cli-github-pulls-failures.txt`.
 
-## Test: the default list is `all`, a window of its rows at a time
+## Test: the default list is Open, a window of cached rows at a time
 
-No `state` means `all`. `fetched` is how many rows are held, `complete` is false because
-the last page read had a next page, and `next_after` is where the next window starts.
+No `state` means `open`. `total` is the exact selected-filter count, `repository_total`
+is the exact all-PR count, and `catalog_fetched` says how much metadata is cached.
+The complete catalog remains separate from each bounded response window; `next_after`
+names the next cached window.
 A row keeps what a list shows: GitHub’s description, repository objects, and URLs are
 not in it, and `merged` is read from `merged_at`.
 
@@ -55,9 +55,9 @@ status: 200
   "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
-  "reader": "gh:octo-reader",
+  "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -66,10 +66,14 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "00000000000000000000000000000001:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 2,
   "next_after": 105,
   "rows": [
@@ -122,7 +126,7 @@ status: 200
   "source": "https://github.com/octo/demo",
   "list": "all",
   "fetched_at": "2026-09-17T12:00:00Z",
-  "reader": "gh:octo-reader",
+  "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -131,10 +135,14 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
-  "fetched": 100,
-  "complete": false,
+  "total": 102,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "00000000000000000000000000000001:1",
+  "fetched": 102,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 2,
   "next_after": 103,
   "rows": [
@@ -175,12 +183,12 @@ status: 200
 ? 0
 ```
 
-## Test: the last window ends the cached rows of an incomplete list
+## Test: the last window ends the cached Open rows
 
-`next_after` is null here because no cached row is left, and `complete` is still false,
-because GitHub has more.
-The four rows are an open draft, a closed pull request whose fork was deleted, a merged
-one, and an open one from a fork.
+`next_after` is null because no cached Open row remains; `complete` is true because the
+catalog holds the complete list.
+The window includes a draft and a PR from a fork; Closed rows are projected separately
+below.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=4&after=11'
@@ -190,9 +198,9 @@ status: 200
   "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
-  "reader": "gh:octo-reader",
+  "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -201,10 +209,14 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "00000000000000000000000000000001:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 4,
   "next_after": null,
   "rows": [
@@ -224,6 +236,200 @@ status: 200
       "labels": [],
       "merged": false
     },
+    {
+      "number": 7,
+      "title": "Count to two in the app",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "forker",
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "count-to-two",
+      "head_repository": "forker/demo",
+      "labels": [
+        "enhancement"
+      ],
+      "merged": false
+    },
+    {
+      "number": 6,
+      "title": "Work item 6",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "created_at": "2026-09-17T08:06:00Z",
+      "updated_at": "2026-09-17T08:06:00Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-6",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "merged": false
+    },
+    {
+      "number": 5,
+      "title": "Work item 5",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "created_at": "2026-09-17T08:05:00Z",
+      "updated_at": "2026-09-17T08:05:00Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-5",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "merged": false
+    }
+  ]
+}
+? 0
+```
+
+## Test: `limit=0` answers the envelope alone
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
+api: /api/plugin/github/pulls?limit=0
+status: 200
+{
+  "state": "stale",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:someone-else",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "00000000000000000000000000000001:0",
+  "fetched": 100,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+? 0
+```
+
+## Test: a list another account fetched is shown as it is, labelled with its reader
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=open&after=11&limit=2'
+api: /api/plugin/github/pulls?state=open&after=11&limit=2
+status: 200
+{
+  "state": "stale",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:someone-else",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "00000000000000000000000000000001:0",
+  "fetched": 100,
+  "complete": true,
+  "truncated": false,
+  "limit": 2,
+  "next_after": 7,
+  "rows": [
+    {
+      "number": 10,
+      "title": "WIP: draft the next page",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "author": "maintainer",
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "wip",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "merged": false
+    },
+    {
+      "number": 7,
+      "title": "Count to two in the app",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "forker",
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "count-to-two",
+      "head_repository": "forker/demo",
+      "labels": [
+        "enhancement"
+      ],
+      "merged": false
+    }
+  ]
+}
+? 0
+```
+
+## Test: Closed rows come from the shared catalog without fetching
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=closed'
+api: /api/plugin/github/pulls?state=closed
+status: 200
+{
+  "state": "stale",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "closed",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:someone-else",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 2,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "00000000000000000000000000000001:0",
+  "fetched": 2,
+  "complete": true,
+  "truncated": false,
+  "limit": 100,
+  "next_after": null,
+  "rows": [
     {
       "number": 9,
       "title": "spam",
@@ -257,152 +463,8 @@ status: 200
       "head_repository": "octo/demo",
       "labels": [],
       "merged": true
-    },
-    {
-      "number": 7,
-      "title": "Count to two in the app",
-      "state": "open",
-      "draft": false,
-      "merged_at": null,
-      "author": "forker",
-      "created_at": "2026-09-16T10:57:23Z",
-      "updated_at": "2026-09-16T17:39:01Z",
-      "closed_at": null,
-      "base_ref": "topic",
-      "head_ref": "count-to-two",
-      "head_repository": "forker/demo",
-      "labels": [
-        "enhancement"
-      ],
-      "merged": false
     }
   ]
-}
-? 0
-```
-
-## Test: `limit=0` answers the envelope alone
-
-```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
-api: /api/plugin/github/pulls?limit=0
-status: 200
-{
-  "state": "stale",
-  "reason": null,
-  "source": "https://github.com/octo/demo",
-  "list": "all",
-  "fetched_at": "2026-09-17T12:00:00Z",
-  "reader": "gh:octo-reader",
-  "fresh_for_s": 60.0,
-  "refreshing": false,
-  "last_refresh": {
-    "outcome": "succeeded",
-    "message": null,
-    "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
-  },
-  "fetched": 100,
-  "complete": false,
-  "truncated": false,
-  "at_cap": false,
-  "limit": 0,
-  "next_after": null,
-  "rows": []
-}
-? 0
-```
-
-## Test: a list another account fetched is shown as it is, labelled with its reader
-
-```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=open'
-api: /api/plugin/github/pulls?state=open
-status: 200
-{
-  "state": "stale",
-  "reason": null,
-  "source": "https://github.com/octo/demo",
-  "list": "open",
-  "fetched_at": "2026-09-17T12:00:00Z",
-  "reader": "gh:someone-else",
-  "fresh_for_s": 60.0,
-  "refreshing": false,
-  "last_refresh": {
-    "outcome": "succeeded",
-    "message": null,
-    "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
-  },
-  "fetched": 2,
-  "complete": true,
-  "truncated": false,
-  "at_cap": false,
-  "limit": 100,
-  "next_after": null,
-  "rows": [
-    {
-      "number": 10,
-      "title": "WIP: draft the next page",
-      "state": "open",
-      "draft": true,
-      "merged_at": null,
-      "author": "maintainer",
-      "created_at": "2026-09-16T10:57:23Z",
-      "updated_at": "2026-09-16T17:39:01Z",
-      "closed_at": null,
-      "base_ref": "topic",
-      "head_ref": "wip",
-      "head_repository": "octo/demo",
-      "labels": [],
-      "merged": false
-    },
-    {
-      "number": 7,
-      "title": "Count to two in the app",
-      "state": "open",
-      "draft": false,
-      "merged_at": null,
-      "author": "forker",
-      "created_at": "2026-09-16T10:57:23Z",
-      "updated_at": "2026-09-16T17:39:01Z",
-      "closed_at": null,
-      "base_ref": "topic",
-      "head_ref": "count-to-two",
-      "head_repository": "forker/demo",
-      "labels": [
-        "enhancement"
-      ],
-      "merged": false
-    }
-  ]
-}
-? 0
-```
-
-## Test: a list nothing has fetched is absent, and a read does not fetch it
-
-```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=closed'
-api: /api/plugin/github/pulls?state=closed
-status: 200
-{
-  "state": "absent",
-  "reason": "not_cached",
-  "source": "https://github.com/octo/demo",
-  "list": "closed",
-  "fetched_at": null,
-  "reader": null,
-  "fresh_for_s": 60.0,
-  "refreshing": false,
-  "last_refresh": null,
-  "fetched": 0,
-  "complete": false,
-  "truncated": false,
-  "at_cap": false,
-  "limit": 100,
-  "next_after": null,
-  "rows": []
 }
 ? 0
 ```
@@ -426,7 +488,7 @@ $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https
 api: /api/plugin/github/pulls?limit=1001
 status: 400
 {
-  "error": "\"limit\" is a whole number from 0 to 1000",
+  "error": "\"limit\" is outside its allowed range",
   "code": "invalid_request"
 }
 Error: /api/plugin/github/pulls?limit=1001 returned HTTP 400
@@ -457,16 +519,20 @@ status: 200
   "state": "absent",
   "reason": "not_github",
   "source": null,
-  "list": "all",
+  "list": "open",
   "fetched_at": null,
   "reader": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
+  "total": null,
+  "repository_total": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
   "fetched": 0,
   "complete": false,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -500,7 +566,7 @@ show: /pulls
 route: /pulls
 kind: pull-request-list
 views: pull-request-list (default)
-model: pull-request list envelope; state=stale list=all fetched=100 complete=False truncated=False at_cap=False refreshing=False reader=gh:octo-reader fetched_at=2026-09-17T12:00:00Z
+model: pull-request list envelope; state=stale list=open total=100 repository_total=102 catalog_fetched=102 fetched=100 complete=True truncated=False refreshing=False reader=gh:someone-else fetched_at=2026-09-17T12:00:00Z
 ? 0
 ```
 
@@ -510,7 +576,7 @@ show: /pulls?state=open
 route: /pulls?state=open
 kind: pull-request-list
 views: pull-request-list (default)
-model: pull-request list envelope; state=stale list=open fetched=2 complete=True truncated=False at_cap=False refreshing=False reader=gh:someone-else fetched_at=2026-09-17T12:00:00Z
+model: pull-request list envelope; state=stale list=open total=100 repository_total=102 catalog_fetched=102 fetched=100 complete=True truncated=False refreshing=False reader=gh:someone-else fetched_at=2026-09-17T12:00:00Z
 ? 0
 ```
 
@@ -526,7 +592,7 @@ show: /pulls
 route: /pulls
 kind: pull-request-list
 views: pull-request-list (default)
-model: pull-request list envelope; state=absent list=all reason=not_github fetched=0 complete=False truncated=False at_cap=False refreshing=False
+model: pull-request list envelope; state=absent list=open reason=not_github total=None repository_total=None catalog_fetched=0 fetched=0 complete=False truncated=False refreshing=False
 ? 0
 ```
 
@@ -548,9 +614,9 @@ status: 202
     "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
-    "reader": "gh:octo-reader",
+    "reader": "gh:someone-else",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -559,25 +625,29 @@ status: 202
       "reset_at": null,
       "at": "2026-09-17T12:00:00Z"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "00000000000000000000000000000001:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
-after: /api/plugin/github/pulls?state=all&limit=0
+after: /api/plugin/github/pulls?state=open&limit=0
 status: 200
 {
   "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
-  "list": "all",
+  "list": "open",
   "fetched_at": "2026-09-17T12:00:00Z",
-  "reader": "gh:octo-reader",
+  "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -586,10 +656,14 @@ status: 200
     "reset_at": null,
     "at": "[TIMESTAMP]"
   },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "00000000000000000000000000000001:0",
   "fetched": 100,
-  "complete": false,
+  "complete": true,
   "truncated": false,
-  "at_cap": false,
   "limit": 0,
   "next_after": null,
   "rows": []
@@ -613,9 +687,9 @@ status: 200
     "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
-    "list": "all",
+    "list": "open",
     "fetched_at": "2026-09-17T12:00:00Z",
-    "reader": "gh:octo-reader",
+    "reader": "gh:someone-else",
     "fresh_for_s": 60.0,
     "refreshing": false,
     "last_refresh": {
@@ -624,15 +698,19 @@ status: 200
       "reset_at": null,
       "at": "[TIMESTAMP]"
     },
+    "total": 100,
+    "repository_total": 102,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 102,
+    "generation": "00000000000000000000000000000001:0",
     "fetched": 100,
-    "complete": false,
+    "complete": true,
     "truncated": false,
-    "at_cap": false,
     "limit": 0,
     "next_after": null,
     "rows": []
   },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
 }
 ? 0
 ```

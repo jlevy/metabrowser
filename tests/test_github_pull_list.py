@@ -1,26 +1,20 @@
-"""What the transcripts of the list routes cannot show.
-
-``tests/test_cli_github_pulls_golden.py`` and ``tests/golden/cli-github-pulls.tryscript.md``
-pin what the routes answer. These add the evidence a transcript has no way to give: that
-listing runs no Git and needs no store, what never reaches a written file, that every list
-written can be read back, how a page is read past an oversized item, and what happens
-while a job is running. Each says why it is here.
-"""
+"""Catalog storage, paging, ownership and cancellation beyond the route transcripts."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import os
+import shlex
+import sqlite3
+import subprocess
 import threading
-from collections.abc import Iterator
 from datetime import timedelta
+from functools import partial
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from starlette.testclient import TestClient
 
 from metabrowser.builtin_plugins.github import (
     gh,
@@ -29,100 +23,459 @@ from metabrowser.builtin_plugins.github import (
     pull_list_refresh,
     pull_list_route,
 )
-from metabrowser.builtin_plugins.github.gh_lists import PullDataError, read_list
-from metabrowser.builtin_plugins.github.pull_list import (
-    MAX_LIST_PAGES,
-    MAX_LIST_ROWS,
-    MAX_PULL_LIST_BYTES,
-    PULL_LIST_SCHEMA,
-    ListedRepository,
-    ListPageMark,
-    PullList,
-    PullListRow,
-    read_list_refresh,
-    read_pull_list,
-    refresh_is_due,
-    serialize_pull_list,
-    write_list_refresh,
-    write_pull_list,
+from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError
+from metabrowser.builtin_plugins.github.gh_lists import PullDataError, read_list, utc_stamp
+from metabrowser.builtin_plugins.github.pull_catalog import (
+    CatalogState,
+    catalog_row,
+    catalog_window,
+    publish_page,
+    read_catalog,
 )
-from metabrowser.builtin_plugins.github.pull_list_refresh import refresh_pull_list
+from metabrowser.builtin_plugins.github.pull_list import (
+    ListedRepository,
+    PullRefreshStamp,
+    read_list_refresh,
+    refresh_is_due,
+    write_list_refresh,
+)
+from metabrowser.builtin_plugins.github.pull_list_refresh import (  # pyright: ignore[reportPrivateUsage]
+    _row,
+    refresh_pull_list,
+)
 from metabrowser.builtin_plugins.github.pull_list_route import (
     ListRequestError,
     ListView,
+    ListWindow,
     RefreshRequest,
     list_window,
-    listed_repository,
+    pull_list_envelope,
     refresh_request,
     refresh_wanted,
 )
-from metabrowser.builtin_plugins.github.pull_record import MAX_LABELS, PullRefreshStamp
-from metabrowser.cache.acquire import PublishedSource, acquire_source
-from metabrowser.cache.paths import source_pull_list
-from metabrowser.cache.served_mirror import StoreMirror
-from metabrowser.cache.urls import GitSource
-from metabrowser.cli import api_cli
-from metabrowser.cli.asgi_client import ApiResponse
-from metabrowser.mirror_refresh import serve_mirror
-from metabrowser.server import app
-from metabrowser.source_routes import PIN_HEADER
-from tests.cache_home_fixture import (
+from metabrowser.cache.locks import run_lock_section, source_alias_lock
+from metabrowser.home import ensure_private_directory, write_private_file_atomic
+from metabrowser.mirror_refresh import RefreshCoordinator
+from tests.cache_home_fixture import (  # pyright: ignore[reportPrivateUsage]
     FixtureSource,
-    _stage_and_publish_source,  # pyright: ignore[reportPrivateUsage]
+    _stage_and_publish_source,
     build_empty_home,
 )
 from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
     READER,
-    Origin,
     account,
+    catalog_entries,
     generated_item,
     install_fake_gh,
-    list_page,
     next_link,
     ok,
-    scenario,
+    seed_catalog,
 )
-from tests.golden_harness import run_metab, serve_published
-from tests.required_tools import needs_git
-from tests.test_cache_acquire import _allow_installed_git
 
-pytestmark = [
-    needs_git,
-    pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX script"),
-]
-
-PULLS = "/api/plugin/github/pulls"
-REFRESH = "/api/plugin/github/pulls-refresh"
-_JSON = {"content-type": "application/json"}
 SOURCE = FixtureSource("https", CANONICAL)
-_SECRET = "ghp_exampleSecretTokenValue0123456789"
+STAMP = utc_stamp(FETCHED_AT)
+
+
+@pytest.fixture
+def repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ListedRepository:
+    home = tmp_path / "home"
+    build_empty_home(home)
+    _stage_and_publish_source(home, SOURCE, opened=False)
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
+    return ListedRepository(home, SOURCE.slug, "octo", "demo")
+
+
+def _path(repository: ListedRepository) -> Path:
+    return repository.home / f"sources/{repository.slug}/pulls/catalog.sqlite3"
+
+
+def _seed(repository: ListedRepository, items: list[dict[str, Any]], **kwargs: Any) -> CatalogState:
+    return seed_catalog(repository, items, fetched_at=STAMP, **kwargs)
+
+
+def _provider(
+    monkeypatch: pytest.MonkeyPatch,
+    items: list[dict[str, Any]],
+    *,
+    reader: str = READER,
+    repository_id: str = "R_demo",
+) -> list[str]:
+    entries = catalog_entries(items, reader=reader, repository_id=repository_id)
+    calls: list[str] = []
+
+    async def active() -> str:
+        return reader
+
+    async def graphql(query: str, variables: Any, **kwargs: Any) -> dict[str, Any]:
+        tail = query.split("page:pullRequests", 1)[1]
+        name = (
+            "updated"
+            if "field:UPDATED_AT" in tail
+            else "closed"
+            if "states:[CLOSED,MERGED]" in tail
+            else "open"
+            if "states:OPEN" in tail
+            else "all"
+        )
+        key = f"graphql:{name}:{variables.get('cursor') or 'start'}"
+        calls.append(key)
+        return entries[key]["body"]["data"]
+
+    monkeypatch.setattr(pull_list_refresh, "active_account", active)
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", graphql)
+    return calls
+
+
+def test_backfill_all_beyond_old_cap_with_small_indexed_windows(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    items = [generated_item(number) for number in range(1, 1206)]
+    calls = _provider(monkeypatch, items)
+    state = asyncio.run(refresh_pull_list(repository, "open"))
+    assert state.cached == state.totals == {"all": 1205, "open": 1205, "closed": 0}
+    assert state.done["all"]
+    assert calls[:5] == [
+        f"graphql:open:{'start' if not n else f'open-{n}'}" for n in range(0, 500, 100)
+    ]
+    assert len(calls) == 18
+    _, first, after = catalog_window(repository.home, repository.slug, "open", limit=100)
+    _, second, _ = catalog_window(repository.home, repository.slug, "open", limit=100, after=after)
+    assert (first[0]["number"], second[0]["number"]) == (1205, 1105)
+    assert not any(
+        (_path(repository).parent / f"list-{name}.json").exists()
+        for name in ("all", "open", "closed")
+    )
+    assert not list((repository.home / "repository-stores").iterdir())
+    calls.clear()
+    assert not refresh_wanted(ListView(repository, None, False), RefreshRequest("open", 2000))
+    assert asyncio.run(refresh_pull_list(repository, "open", target=2000)).cached == state.cached
+    assert calls == []
+
+
+def test_actual_gh_transport_keeps_only_lightweight_metadata(
+    repository: ListedRepository, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    item = generated_item(7)
+    item["body"] = "private body must not be retained"
+    answers = {"auth": account(), "api": catalog_entries([item]), "api_failure": None}
+    for key, value in install_fake_gh(tmp_path, answers).items():
+        monkeypatch.setenv(key, value)
+    no_git = tmp_path / "no-git"
+    no_git.mkdir()
+    git_log = tmp_path / "git-calls"
+    executable = no_git / "git"
+    executable.write_text(f"#!/bin/sh\nprintf x >> {shlex.quote(str(git_log))}\nexit 77\n")
+    executable.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{no_git}{os.pathsep}{os.environ['PATH']}")
+    state = asyncio.run(refresh_pull_list(repository, "all"))
+    assert not git_log.exists()
+    assert state.cached["all"] == 1
+    assert b"private body" not in _path(repository).read_bytes()
+    log = [
+        json.loads(line)["args"]
+        for line in (tmp_path / "fake-gh-log.jsonl").read_text().splitlines()
+    ]
+    assert [args[:2] for args in log if args[0] == "api"] == [["api", "graphql"]]
+    assert not list((repository.home / "repository-stores").iterdir())
+
+
+def test_append_generation_counts_and_stale_backfill_guard(repository: ListedRepository) -> None:
+    before = _seed(repository, [generated_item(10), generated_item(9)], complete=False)
+    proposed = before.model_copy(update={"count_at": STAMP})
+    assert publish_page(repository, before, proposed, (_row(generated_item(8))[0],))
+    appended = read_catalog(repository.home, repository.slug)
+    assert appended is not None
+    assert appended.generation("open") == before.generation("open")
+    fresh = generated_item(10) | {
+        "title": "new title",
+        "state": "closed",
+        "updated_at": "2026-10-02T12:00:00Z",
+    }
+    assert publish_page(repository, appended, appended, (_row(fresh)[0],))
+    moved = read_catalog(repository.home, repository.slug)
+    assert moved is not None and moved.cached == {"all": 3, "open": 2, "closed": 1}
+    assert moved.generation("open") != before.generation("open")
+    assert publish_page(repository, moved, moved, (_row(generated_item(10))[0],))
+    assert catalog_row(repository.home, repository.slug, 10).title == "new title"  # type: ignore[union-attr]
+    assert not publish_page(repository, before, before, ())
+
+
+def test_reader_change_replaces_rows_atomically(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old = _seed(repository, [generated_item(9)])
+    _provider(monkeypatch, [generated_item(2)], reader="other-reader")
+    state = asyncio.run(refresh_pull_list(repository, "all"))
+    assert state.reader == "gh:other-reader" and state.epoch != old.epoch
+    assert catalog_row(repository.home, repository.slug, 9) is None
+    assert catalog_row(repository.home, repository.slug, 2) is not None
+
+
+def test_incremental_refresh_visits_updated_prefix_only_and_manual_retry_runs(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    items = [generated_item(n) for n in range(1, 301)]
+    old = _seed(repository, items)
+    items[0] |= {"title": "changed oldest", "updated_at": "2026-10-02T12:00:00Z"}
+    calls = _provider(monkeypatch, items)
+    updated = asyncio.run(refresh_pull_list(repository, "open", retry=True))
+    assert calls == ["graphql:updated:start"]
+    assert updated.done["all"] and updated.watermark != old.watermark
+    row = catalog_row(repository.home, repository.slug, 1)
+    assert row is not None and row.title == "changed oldest"
+    assert updated.generation("open") != old.generation("open")
+
+
+def test_cancelled_backfill_keeps_checkpoint_and_resumes(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    items = [generated_item(n) for n in range(1, 251)]
+    calls = _provider(monkeypatch, items)
+    real = pull_list_refresh._read_page  # pyright: ignore[reportPrivateUsage]
+
+    async def exercise() -> None:
+        waiting = asyncio.Event()
+
+        async def held(*args: Any, **kwargs: Any) -> Any:
+            if args[2] == "all-100":
+                waiting.set()
+                await asyncio.Event().wait()
+            return await real(*args, **kwargs)
+
+        monkeypatch.setattr(pull_list_refresh, "_read_page", held)
+        task = asyncio.create_task(refresh_pull_list(repository, "all"))
+        await waiting.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(exercise())
+    state = read_catalog(repository.home, repository.slug)
+    assert state is not None and state.cached["all"] == 100 and state.cursors["all"] == "all-100"
+    monkeypatch.setattr(pull_list_refresh, "_read_page", real)
+    calls.clear()
+    final = asyncio.run(refresh_pull_list(repository, "all"))
+    assert calls == ["graphql:all:all-100", "graphql:all:all-200"]
+    assert final.cached["all"] == 250 and final.done["all"]
+
+
+@pytest.mark.parametrize(
+    "replacement", [False, True], ids=["expired-cursor", "repository-replaced"]
+)
+def test_saved_cursor_can_restart_without_losing_or_looping(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, replacement: bool
+) -> None:
+    state = _seed(repository, [generated_item(9)], complete=False)
+    state2 = state.model_copy(update={"cursors": {"all": "expired", "open": None, "closed": None}})
+    assert publish_page(repository, state, state2, ())
+    calls = _provider(
+        monkeypatch, [generated_item(2)], repository_id="R_new" if replacement else "R_demo"
+    )
+    real = pull_list_refresh._read_page  # pyright: ignore[reportPrivateUsage]
+
+    async def changed(*args: Any, **kwargs: Any) -> Any:
+        if args[2] == "expired":
+            if not replacement:
+                raise GhCursorError("the cursor is invalid")
+            return await real(args[0], args[1], None, **kwargs)
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(pull_list_refresh, "_read_page", changed)
+    final = asyncio.run(refresh_pull_list(repository, "all"))
+    assert final.done["all"] and len(calls) <= 2
+    assert (catalog_row(repository.home, repository.slug, 9) is None) == replacement
+
+
+def _fingerprint(directory: Path) -> dict[str, tuple[bytes, int, int]]:
+    return {
+        str(path.relative_to(directory)): (
+            path.read_bytes(),
+            path.stat().st_mode,
+            path.stat().st_mtime_ns,
+        )
+        for path in directory.rglob("*")
+        if path.is_file()
+    }
+
+
+def test_cache_only_get_is_nonmutating_and_counts_are_not_cached_counts(
+    repository: ListedRepository,
+) -> None:
+    state = _seed(repository, [generated_item(4)], complete=False)
+    proposed = state.model_copy(update={"totals": {"all": 1375, "open": 800, "closed": 575}})
+    assert publish_page(repository, state, proposed, ())
+    before = _fingerprint(repository.home)
+    envelope = pull_list_envelope(ListView(repository, None, False), ListWindow("open"))
+    assert (
+        envelope["total"],
+        envelope["repository_total"],
+        envelope["fetched"],
+        envelope["catalog_fetched"],
+    ) == (800, 1375, 1, 1)
+    assert not envelope["complete"] and envelope["next_after"] is None
+    assert _fingerprint(repository.home) == before
+
+
+@pytest.mark.parametrize(
+    "damage", ["wal", "oversized-row", "bad-checkpoint", "future-schema", "symlink", "shared"]
+)
+def test_untrusted_catalog_reads_are_bounded_and_never_modify(
+    repository: ListedRepository, tmp_path: Path, damage: str
+) -> None:
+    _seed(repository, [generated_item(1)])
+    path = _path(repository)
+    if damage in {"wal", "oversized-row", "bad-checkpoint", "future-schema"}:
+        with sqlite3.connect(path) as db:
+            if damage == "wal":
+                assert db.execute("PRAGMA journal_mode=WAL").fetchone()[0] == "wal"
+            elif damage == "oversized-row":
+                db.execute("UPDATE pulls SET body=?", (" " * 100_000,))
+            elif damage == "bad-checkpoint":
+                db.execute("UPDATE checkpoint SET value=?", ('{"schema_version": 1}',))
+            else:
+                db.execute("PRAGMA user_version=999")
+    elif damage == "symlink":
+        saved = tmp_path / "saved.sqlite3"
+        path.rename(saved)
+        path.symlink_to(saved)
+    else:
+        path.chmod(0o644)
+    before = _fingerprint(repository.home)
+    assert catalog_window(repository.home, repository.slug, "all", limit=100) == (None, [], None)
+    assert _fingerprint(repository.home) == before
+
+
+def test_empty_initialization_recovers_but_future_schema_refuses_explicitly(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    relative = f"sources/{repository.slug}/pulls/catalog.sqlite3"
+    ensure_private_directory(repository.home, f"sources/{repository.slug}/pulls")
+    write_private_file_atomic(repository.home, relative, b"")
+    _provider(monkeypatch, [generated_item(1)])
+    assert asyncio.run(refresh_pull_list(repository, "all")).cached["all"] == 1
+    with sqlite3.connect(_path(repository)) as db:
+        db.execute("PRAGMA user_version=999")
+    before = _path(repository).read_bytes()
+    with pytest.raises(PullDataError, match="clear the affected") as caught:
+        asyncio.run(refresh_pull_list(repository, "all", retry=True))
+    assert caught.value.state == "cache_unwritable"
+    assert _path(repository).read_bytes() == before
+
+
+def test_lock_waiter_cancellation_cannot_publish_later(repository: ListedRepository) -> None:
+    state = _seed(repository, [generated_item(1)])
+    entered, release = threading.Event(), threading.Event()
+
+    def hold() -> None:
+        with source_alias_lock(repository.home, repository.slug):
+            entered.set()
+            release.wait(5)
+
+    thread = threading.Thread(target=hold)
+    thread.start()
+    assert entered.wait(5)
+
+    async def exercise() -> None:
+        task = asyncio.create_task(
+            run_lock_section(
+                partial(publish_page, repository, state, state, (_row(generated_item(2))[0],))
+            )
+        )
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        release.set()
+        thread.join(5)
+    assert catalog_row(repository.home, repository.slug, 2) is None
+    assert read_catalog(repository.home, repository.slug) == state
+
+
+def test_rate_hold_and_failed_attempts_preserve_rows(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _seed(repository, [generated_item(1)])
+    stamp = PullRefreshStamp(
+        outcome="rate_limited",
+        at=STAMP,
+        reader=f"gh:{READER}",
+        reset_at=utc_stamp(FETCHED_AT + timedelta(minutes=2)),
+    )
+    write_list_refresh(repository.home, repository.slug, "all", stamp)
+    assert not refresh_wanted(ListView(repository, None, False), RefreshRequest("all", retry=True))
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(minutes=3))
+    _provider(monkeypatch, [])
+
+    async def refused(*args: Any, **kwargs: Any) -> Any:
+        raise GhError("safe refusal", state="not_logged_in")
+
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", refused)
+    with pytest.raises(PullDataError):
+        asyncio.run(refresh_pull_list(repository, "all", retry=True))
+    assert read_catalog(repository.home, repository.slug) == state
+    assert read_list_refresh(repository.home, repository.slug, "all").outcome == "not_logged_in"  # type: ignore[union-attr]
+
+
+def test_late_demand_joins_and_cancel_cleans_coordinator_state(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def exercise() -> None:
+        coordinator = RefreshCoordinator(limit=1)
+        entered, release = asyncio.Event(), asyncio.Event()
+        observed: list[Any] = []
+
+        async def held(*args: Any, **kwargs: Any) -> None:
+            entered.set()
+            await release.wait()
+            observed.extend([kwargs["demand"](), kwargs["take_retry"](), kwargs["take_retry"]()])
+
+        monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", held)
+        view = ListView(repository, coordinator, False)
+        assert pull_list_route.start_refresh(view, RefreshRequest("open"), wanted=True) == "started"
+        await entered.wait()
+        assert (
+            pull_list_route.start_refresh(view, RefreshRequest("closed", 1500, True), wanted=True)
+            == "joined"
+        )
+        release.set()
+        await coordinator.drain(timeout_s=2)
+        assert observed == [("closed", 1500), True, False]
+        await coordinator.aclose()
+        assert not pull_list_route._DEMANDS  # pyright: ignore[reportPrivateUsage]
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize(
+    "params",
+    [{"limit": "1001"}, {"limit": "-1"}, {"after": "0"}, {"after": "01"}, {"state": "merged"}],
+)
+def test_invalid_window_is_refused(params: dict[str, str]) -> None:
+    with pytest.raises(ListRequestError):
+        list_window(params)
+
+
+@pytest.mark.parametrize(
+    "body", [{"more": True}, {"target": True}, {"target": 0}, {"retry": 1}, {"state": "merged"}]
+)
+def test_invalid_refresh_is_refused(body: dict[str, Any]) -> None:
+    with pytest.raises(ListRequestError):
+        refresh_request(body)
+
+
+def test_default_open_and_unbounded_display_target() -> None:
+    assert list_window({}) == ListWindow("open")
+    assert refresh_request({"target": 5000}) == RefreshRequest("open", 5000)
 
 
 def _answers(pages: dict[str, Any], **changes: Any) -> dict[str, Any]:
     return {"auth": account(), "api": pages, "api_failure": None, **changes}
-
-
-def _page(number: int, items: list[dict[str, Any]], *, more: bool = False) -> dict[str, Any]:
-    path = list_page("all", number)
-    return {path: ok(path, items, next_link("repos/octo/demo/pulls", number) if more else None)}
-
-
-@pytest.fixture
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """An application home with one source directory, published with no store."""
-
-    path = tmp_path / "home"
-    build_empty_home(path)
-    _stage_and_publish_source(path, SOURCE, opened=False)
-    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
-    return path
-
-
-@pytest.fixture
-def repository(home: Path) -> ListedRepository:
-    return ListedRepository(home, SOURCE.slug, "octo", "demo")
 
 
 def _answer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, answers: dict[str, Any]) -> None:
@@ -141,489 +494,6 @@ def _asked(tmp_path: Path) -> list[list[str]]:
 
 def _api_paths(calls: list[list[str]]) -> list[str]:
     return [call[-1] for call in calls if call[0] == "api"]
-
-
-# ── No Git, no store ───────────────────────────────────────────
-
-
-def test_listing_succeeds_for_a_source_directory_with_no_store(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, home: Path
-) -> None:
-    """The independent evidence that listing touches no Git.
-
-    There is no store to read and no ``git`` to run: one that fails and logs is first on
-    ``PATH``, which a transcript over a mirror could not rule out. Listing takes only the
-    home, the slug, and the names, so nothing here hands it a ``PublishedSource``.
-    """
-
-    bin_directory = tmp_path / "no-git"
-    bin_directory.mkdir()
-    git_log = tmp_path / "git-calls.log"
-    git = bin_directory / "git"
-    git.write_text(f'#!/bin/sh\necho "$*" >> {git_log}\nexit 1\n', encoding="utf-8")
-    git.chmod(0o755)
-    _answer(tmp_path, monkeypatch, _answers(_page(1, [generated_item(2), generated_item(1)])))
-    monkeypatch.setenv("PATH", f"{bin_directory}{os.pathsep}{os.environ['PATH']}")
-
-    listed = asyncio.run(refresh_pull_list(repository, "all"))
-
-    assert [row.number for row in listed.rows] == [2, 1]
-    assert not git_log.exists()
-    assert not list((home / "repository-stores").iterdir())
-    assert read_pull_list(home, SOURCE.slug, "all") == listed
-    stamp = read_list_refresh(home, SOURCE.slug, "all")
-    assert stamp is not None and stamp.outcome == "succeeded"
-
-    # The source directory is still what the cache calls it, with the list beside it.
-    root = tmp_path / "root"
-    root.mkdir()
-    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
-    cached = run_metab([str(root), "--api", f"/api/cache/source/{SOURCE.slug}"])
-    assert cached.exit_code == 0, cached.stderr
-    row = cached.payload()["source"] if "source" in cached.payload() else cached.payload()
-    assert row["publication"] == "unattached"
-
-
-# ── What a written file holds ───────────────────────────────────
-
-
-def test_no_written_file_carries_a_credential_or_a_dropped_field(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, home: Path
-) -> None:
-    """Written files are not in any transcript, and neither is what gh printed for itself.
-
-    The token is everywhere a careless job could copy it from: gh's environment, what
-    ``gh auth status`` answers, a response header, and gh's standard error on a failure.
-    """
-
-    monkeypatch.setenv("GH_TOKEN", _SECRET)
-    item = {**generated_item(1), "body": "a description only GitHub keeps"}
-    path = list_page("all")
-    answers = _answers({path: ok(path, [item], {"X-Oauth-Scopes": _SECRET})})
-    answers["auth"] = {
-        "stdout": account()["stdout"].replace('"keyring"', json.dumps(_SECRET)),
-        "exit": 0,
-    }
-    _answer(tmp_path, monkeypatch, answers)
-    asyncio.run(refresh_pull_list(repository, "all"))
-    failing = {**answers, "api_failure": {"stderr": f"Authorization: {_SECRET}\n", "exit": 1}}
-    _answer(tmp_path, monkeypatch, failing)
-    with pytest.raises(PullDataError):
-        asyncio.run(refresh_pull_list(repository, "all"))
-
-    written = [entry for entry in (home / "sources").rglob("*") if entry.is_file()]
-    assert {entry.name for entry in written} >= {"list-all.json", "list-all.refresh.json"}
-    for entry in written:
-        text = entry.read_text(encoding="utf-8")
-        assert _SECRET not in text, entry.name
-    listed = (home / source_pull_list(SOURCE.slug, "all")).read_text(encoding="utf-8")
-    assert "a description only GitHub keeps" not in listed
-    assert "api.github.com" not in listed and "2700AF" not in listed and "_links" not in listed
-
-
-def test_a_failed_refresh_leaves_the_file_byte_for_byte(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, home: Path
-) -> None:
-    """A transcript shows the same rows; only this compares the bytes and the inode."""
-
-    answers = _answers(_page(1, [generated_item(1)]))
-    _answer(tmp_path, monkeypatch, answers)
-    asyncio.run(refresh_pull_list(repository, "all"))
-    target = home / source_pull_list(SOURCE.slug, "all")
-    before, inode = target.read_bytes(), target.stat().st_ino
-    failing = {**answers, "api_failure": {"stderr": "dial tcp: i/o timeout\n", "exit": 1}}
-    _answer(tmp_path, monkeypatch, failing)
-    with pytest.raises(PullDataError) as failed:
-        asyncio.run(refresh_pull_list(repository, "all"))
-    assert failed.value.state == "network_error"
-    assert (target.read_bytes(), target.stat().st_ino) == (before, inode)
-
-
-# ── Bounds ──────────────────────────────────────────────────────
-
-
-def _hostile_item(number: int) -> dict[str, Any]:
-    """Every field at its longest, in the characters that cost the most to write."""
-
-    control = "\x01" * 10_000
-    labels = [{"name": control} for _label in range(MAX_LABELS + 20)]
-    side = {"ref": control, "repo": {"full_name": control}}
-    return {
-        **generated_item(number),
-        "title": control,
-        "labels": labels,
-        "head": side,
-        "base": side,
-        "user": {"login": "a" * 100},
-    }
-
-
-def test_a_list_of_the_worst_rows_the_bounds_allow_can_be_read_back(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, home: Path
-) -> None:
-    """The read bound holds at the cap, for rows no real repository has.
-
-    A real page is a few hundred bytes a row, so no transcript comes near it. Escaping
-    counts: a control character costs six bytes written.
-    """
-
-    rows = pull_list_refresh._rows([_hostile_item(1)])  # pyright: ignore[reportPrivateUsage]
-    assert rows[1] is True
-    row = rows[0][0]
-    worst = PullList(
-        schema_version=PULL_LIST_SCHEMA,
-        source=repository.source,
-        list="all",
-        fetched_at="2026-09-17T12:00:00Z",
-        reader=f"gh:{READER}",
-        pages=MAX_LIST_PAGES,
-        complete=False,
-        truncated=True,
-        etags=tuple(
-            ListPageMark(
-                etag='W/"' + "e" * 256 + '"',
-                numbers=tuple(
-                    range(9_999_999_999 - page * 100, 9_999_999_999 - page * 100 - 100, -1)
-                ),
-                truncated=True,
-            )
-            for page in range(MAX_LIST_PAGES)
-        ),
-        rows=tuple(
-            row.model_copy(update={"number": 9_999_999_999 - index})
-            for index in range(MAX_LIST_ROWS)
-        ),
-    )
-    data = serialize_pull_list(worst)
-    assert len(data) <= MAX_PULL_LIST_BYTES
-    write_pull_list(home, SOURCE.slug, worst)
-    assert read_pull_list(home, SOURCE.slug, "all") == worst
-
-
-_HOSTILE_TEXT = "\x1b[31mred\x1b[0m \x9b2J \u202eright-to-left\u202c \x07\x08\x00 end"
-
-
-def test_hostile_text_reaches_a_written_file_only_escaped(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    repository: ListedRepository,
-    home: Path,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """What a pull request's author chooses, seen by nobody until a terminal or a log prints it.
-
-    Neither a file's bytes nor a debug log is in a transcript. C1 and bidi controls are text
-    as far as JSON goes, so a file holds them as they are and only C0 is pinned here.
-    """
-
-    side = {"ref": _HOSTILE_TEXT, "repo": {"full_name": _HOSTILE_TEXT}}
-    hostile = {
-        **generated_item(2),
-        "title": _HOSTILE_TEXT,
-        "labels": [{"name": _HOSTILE_TEXT}],
-        "head": side,
-        "base": side,
-        "user": {"login": f"evil{_HOSTILE_TEXT}"},
-    }
-    unreadable = {**generated_item(1), "number": _HOSTILE_TEXT}
-    _answer(tmp_path, monkeypatch, _answers(_page(1, [hostile, unreadable])))
-    with caplog.at_level("DEBUG", logger="metabrowser.builtin_plugins.github.gh_lists"):
-        listed = asyncio.run(refresh_pull_list(repository, "all"))
-
-    row = listed.rows[0]
-    assert (row.number, row.title, row.head_ref) == (2, _HOSTILE_TEXT, _HOSTILE_TEXT)
-    # A login outside GitHub's grammar is no login, and an unreadable number is no row.
-    assert row.author is None
-    assert ([each.number for each in listed.rows], listed.truncated) == ([2], True)
-
-    written = (home / source_pull_list(SOURCE.slug, "all")).read_bytes()
-    assert not [byte for byte in written if byte < 0x20]
-    assert json.loads(written)["rows"][0]["title"] == _HOSTILE_TEXT
-
-    # The record of the item left out quotes it, so an escape in it stays text.
-    left_out = [record.getMessage() for record in caplog.records if "left out" in record.message]
-    assert left_out
-    assert not [text for text in left_out if "\x1b" in text or "\x00" in text]
-
-
-def test_a_row_past_its_bounds_is_cut_and_says_so(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
-) -> None:
-    long_title = {**generated_item(3), "title": "x" * 5000}
-    many_labels = {
-        **generated_item(2),
-        "labels": [{"name": f"label-{index}"} for index in range(MAX_LABELS + 1)],
-    }
-    fine = generated_item(1)
-    _answer(tmp_path, monkeypatch, _answers(_page(1, [long_title, many_labels, fine])))
-    listed = asyncio.run(refresh_pull_list(repository, "all"))
-    title_row, labels_row, _fine_row = listed.rows
-    assert len(title_row.title) == pull_list.MAX_ROW_TITLE_BYTES
-    assert len(labels_row.labels) == MAX_LABELS
-    assert listed.truncated and listed.complete
-    assert listed.etags[0].truncated
-
-
-@pytest.mark.parametrize(
-    "broken",
-    [
-        {"number": "seven"},
-        {"state": "reopened"},
-        {"created_at": "yesterday"},
-        {"head": None},
-        {"base": {"ref": None}},
-    ],
-)
-def test_an_item_that_cannot_be_read_is_left_out_and_said(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    repository: ListedRepository,
-    broken: dict[str, Any],
-) -> None:
-    items = [{**generated_item(2), **broken}, generated_item(1)]
-    _answer(tmp_path, monkeypatch, _answers(_page(1, items)))
-    listed = asyncio.run(refresh_pull_list(repository, "all"))
-    assert [row.number for row in listed.rows] == [1]
-    assert listed.truncated
-
-
-def test_every_list_a_file_can_hold_is_one_listing() -> None:
-    """A list that fails these reads as ``unreadable`` and the next refresh replaces it."""
-
-    row = PullListRow.model_validate(
-        {
-            "number": 2,
-            "title": "t",
-            "state": "open",
-            "draft": False,
-            "merged_at": None,
-            "author": None,
-            "created_at": "2026-09-17T12:00:00Z",
-            "updated_at": "2026-09-17T12:00:00Z",
-            "closed_at": None,
-            "base_ref": "b",
-            "head_ref": "h",
-            "head_repository": None,
-            "labels": [],
-        }
-    )
-    fields: dict[str, Any] = {
-        "schema_version": PULL_LIST_SCHEMA,
-        "source": CANONICAL,
-        "list": "all",
-        "fetched_at": "2026-09-17T12:00:00Z",
-        "reader": "gh:octo",
-        "pages": 1,
-        "complete": True,
-        "truncated": False,
-        "etags": (ListPageMark(etag=None, numbers=(2,), truncated=False),),
-        "rows": (row,),
-    }
-    PullList.model_validate(fields)
-    for changes in (
-        {"rows": (row, row)},
-        {"rows": (row.model_copy(update={"number": 1}), row)},
-        {"pages": 2},
-        {"etags": (ListPageMark(etag=None, numbers=(9,), truncated=False),)},
-        {"list": "merged"},
-        {"reader": "someone"},
-    ):
-        with pytest.raises(ValueError):
-            PullList.model_validate({**fields, **changes})
-
-
-@pytest.mark.parametrize(
-    ("content", "absence"),
-    [
-        (b"{not json", "unreadable"),
-        (b'{"schema_version": 999}', "schema_mismatch"),
-        (json.dumps({"schema_version": PULL_LIST_SCHEMA}).encode(), "unreadable"),
-    ],
-)
-def test_a_damaged_or_older_file_is_no_list(
-    home: Path, content: bytes, absence: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from metabrowser.home import ensure_private_directory, write_private_file_atomic
-
-    ensure_private_directory(home, f"sources/{SOURCE.slug}/pulls")
-    write_private_file_atomic(home, source_pull_list(SOURCE.slug, "all"), content)
-    assert read_pull_list(home, SOURCE.slug, "all") == absence
-
-
-def _plant_list(home: Path, **changes: Any) -> None:
-    """A file of a list with these fields changed, as no model of ours would write it."""
-
-    from metabrowser.home import ensure_private_directory, write_private_file_atomic
-
-    payload = json.loads(serialize_pull_list(_a_list(rows=(), complete=True)))
-    ensure_private_directory(home, f"sources/{SOURCE.slug}/pulls")
-    write_private_file_atomic(
-        home, source_pull_list(SOURCE.slug, "all"), json.dumps(payload | changes).encode()
-    )
-
-
-def test_a_mark_holds_what_gh_api_will_send() -> None:
-    """Written beside the model, since ``pull_list`` loads no ``gh``. The two must not part."""
-
-    assert gh._ETAG.pattern == pull_list.ETAG_PATTERN  # pyright: ignore[reportPrivateUsage]
-
-
-@pytest.mark.parametrize(
-    "etag",
-    ['W/"has space"', "not quoted", '"' + "e" * 257 + '"', '"a"\n', '"a" -H "b"'],
-    ids=["space", "unquoted", "too_long", "newline", "an_option"],
-)
-def test_a_stored_mark_gh_api_would_refuse_is_no_list(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    home: Path,
-    repository: ListedRepository,
-    etag: str,
-) -> None:
-    """``gh_api`` raises on such a value, which is no failure the job names.
-
-    So it is refused where it is read: the file is ``unreadable``, as the reader's
-    docstring promises for anything outside the model, and the next refresh replaces it.
-    """
-
-    mark = {"etag": etag, "numbers": [], "truncated": False}
-    _plant_list(home, etags=[mark])
-    assert read_pull_list(home, SOURCE.slug, "all") == "unreadable"
-    _answer(tmp_path, monkeypatch, _answers(_page(1, [generated_item(1)])))
-    listed = asyncio.run(refresh_pull_list(repository, "all"))
-    assert [row.number for row in listed.rows] == [1]
-    stamp = read_list_refresh(home, SOURCE.slug, "all")
-    assert stamp is not None and stamp.outcome == "succeeded"
-
-
-def test_a_fetched_at_that_is_no_moment_is_no_list(home: Path) -> None:
-    """The pattern admits a month 13, and the route ages a list by this field."""
-
-    _plant_list(home, fetched_at="2026-13-45T25:61:61Z")
-    assert read_pull_list(home, SOURCE.slug, "all") == "unreadable"
-
-
-def test_a_file_past_the_read_bound_or_for_another_list_is_no_list(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, home: Path
-) -> None:
-    _answer(tmp_path, monkeypatch, _answers(_page(1, [generated_item(1)])))
-    listed = asyncio.run(refresh_pull_list(repository, "all"))
-    target = home / source_pull_list(SOURCE.slug, "open")
-    target.write_bytes(serialize_pull_list(listed))
-    target.chmod(0o600)
-    assert read_pull_list(home, SOURCE.slug, "open") == "unreadable"
-    monkeypatch.setattr(pull_list, "MAX_PULL_LIST_BYTES", 16)
-    assert read_pull_list(home, SOURCE.slug, "all") == "unreadable"
-
-
-def test_a_list_stops_growing_at_its_cap_and_says_so(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
-) -> None:
-    """Load more ten times over, past the cap: too many pages for a transcript to print."""
-
-    pages: dict[str, Any] = {}
-    number = MAX_LIST_ROWS + 100
-    for page_number in range(1, MAX_LIST_PAGES + 1):
-        items = [generated_item(number - index) for index in range(100)]
-        number -= 100
-        pages |= _page(page_number, items, more=True)
-    _answer(tmp_path, monkeypatch, _answers(pages))
-    listed = asyncio.run(refresh_pull_list(repository, "all", more=True))
-    for _extension in range(MAX_LIST_PAGES - 1):
-        listed = asyncio.run(refresh_pull_list(repository, "all", more=True))
-    assert (listed.pages, len(listed.rows), listed.complete) == (MAX_LIST_PAGES, 1000, False)
-    _asked(tmp_path)
-
-    # The route holds a further click to the window, since it could only reread all ten.
-    view = ListView(repository, None, False)
-    ask = RefreshRequest("all", more=True, retry=False)
-    assert refresh_wanted(view, ask) is False
-    assert _asked(tmp_path) == []
-
-    # A job asked for more anyway, past the window, rereads what is held, and never page 11.
-    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=61))
-    assert refresh_wanted(view, ask) is True
-    again = asyncio.run(refresh_pull_list(repository, "all", more=True))
-    paths = _api_paths(_asked(tmp_path))
-    assert paths == [list_page("all", number) for number in range(1, MAX_LIST_PAGES + 1)]
-    assert again.rows == listed.rows
-
-
-def _closed(number: int) -> dict[str, Any]:
-    return {**generated_item(number), "state": "closed", "closed_at": "2026-09-17T12:00:00Z"}
-
-
-def _asked_conditionally(calls: list[list[str]]) -> dict[str, bool]:
-    """Each page a job asked for, and whether it sent ``If-None-Match``."""
-
-    return {
-        call[-1]: any(arg.startswith("If-None-Match") for arg in call)
-        for call in calls
-        if call[0] == "api"
-    }
-
-
-def test_a_full_last_page_is_read_whole_since_a_304_cannot_say_what_follows_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
-) -> None:
-    """A pull request that closes goes in at its created rank, under every row held.
-
-    Here that is a new page 2 below a page 1 whose body has not changed, so GitHub would
-    answer page 1's ETag ``304``, and a ``304`` carries no ``Link``. A transcript could show
-    this, but what it pins is the sequence of requests that lets ``complete`` be believed.
-    """
-
-    first, second = list_page("closed", 1), list_page("closed", 2)
-    page_one = [_closed(number) for number in range(200, 100, -1)]
-    _answer(tmp_path, monkeypatch, _answers({first: ok(first, page_one)}))
-    listed = asyncio.run(refresh_pull_list(repository, "closed"))
-    assert (listed.pages, listed.complete, len(listed.rows)) == (1, True, 100)
-    assert _asked_conditionally(_asked(tmp_path)) == {first: False}
-
-    # Nothing has changed: the page is still read whole, and the list still complete.
-    unchanged = asyncio.run(refresh_pull_list(repository, "closed"))
-    assert (unchanged.pages, unchanged.complete, unchanged.rows) == (1, True, listed.rows)
-    assert _asked_conditionally(_asked(tmp_path)) == {first: False}
-
-    # Pull request 3 closes. The same body, now with a next page.
-    pages = {
-        first: ok(first, page_one, next_link("repos/octo/demo/pulls", 1)),
-        second: ok(second, [_closed(3)]),
-    }
-    _answer(tmp_path, monkeypatch, _answers(pages))
-    moved = asyncio.run(refresh_pull_list(repository, "closed"))
-    assert (moved.pages, moved.complete, len(moved.rows)) == (1, False, 100)
-    assert _asked_conditionally(_asked(tmp_path)) == {first: False}
-
-    # So the reader can reach it.
-    extended = asyncio.run(refresh_pull_list(repository, "closed", more=True))
-    assert (extended.pages, extended.complete, len(extended.rows)) == (2, True, 101)
-    assert _asked_conditionally(_asked(tmp_path)) == {second: False}
-
-    # A page that is not last, and a short last page, stay conditional: a pull request that
-    # goes in below a short page changes its body, so its 304 says all there is to say.
-    settled = asyncio.run(refresh_pull_list(repository, "closed"))
-    assert (settled.pages, settled.complete, settled.rows) == (2, True, extended.rows)
-    assert _asked_conditionally(_asked(tmp_path)) == {first: True, second: True}
-
-
-def test_a_last_page_that_lost_an_item_may_have_been_full(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
-) -> None:
-    """Its mark holds fewer than a hundred numbers, and GitHub may have sent a hundred."""
-
-    first = list_page("all", 1)
-    items = [generated_item(number) for number in range(200, 100, -1)]
-    items[50] = {"number": "not a number"}
-    _answer(tmp_path, monkeypatch, _answers({first: ok(first, items)}))
-    listed = asyncio.run(refresh_pull_list(repository, "all"))
-    assert (listed.complete, listed.truncated, len(listed.rows)) == (True, True, 99)
-    _asked(tmp_path)
-    asyncio.run(refresh_pull_list(repository, "all"))
-    assert _asked_conditionally(_asked(tmp_path)) == {first: False}
-
-
-# ── One page of a list ─────────────────────────────────────────
 
 
 def _read_second_page(cap_bytes: int, monkeypatch: pytest.MonkeyPatch) -> Any:
@@ -694,29 +564,6 @@ def test_an_item_too_large_alone_ends_its_page_saying_more_may_follow(
     assert (read.left_out, read.more, read.etag) == (True, True, None)
 
 
-def test_a_page_read_in_pieces_has_no_etag_and_is_asked_in_full_again(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
-) -> None:
-    """Its mark says so, and a refresh does not send an ETag it never had."""
-
-    monkeypatch.setattr("metabrowser.builtin_plugins.github.gh.GH_API_MAX_BYTES", 16_000)
-    full, half = _sized_path(100, 1), _sized_path(50, 1)
-    too_large = [generated_item(number) for number in range(30, 0, -1)]
-    entries = {full: ok(full, too_large), half: ok(half, [generated_item(1)])}
-    _answer(tmp_path, monkeypatch, _answers(entries))
-    listed = asyncio.run(refresh_pull_list(repository, "all"))
-    assert listed.etags[0].etag is None
-    _asked(tmp_path)
-    asyncio.run(refresh_pull_list(repository, "all"))
-    conditional = [
-        call for call in _asked(tmp_path) if any(arg.startswith("If-None-Match") for arg in call)
-    ]
-    assert conditional == []
-
-
-# ── When a refresh may start ───────────────────────────────────
-
-
 @pytest.mark.parametrize(
     ("stamp", "seconds", "due"),
     [
@@ -744,539 +591,399 @@ def test_an_automatic_refresh_waits_a_window_and_for_a_reset(
     assert refresh_is_due(kept, now=FETCHED_AT + timedelta(seconds=seconds)) is due
 
 
-def _a_list(**changes: Any) -> PullList:
-    fields: dict[str, Any] = {
-        "schema_version": PULL_LIST_SCHEMA,
-        "source": CANONICAL,
-        "list": "all",
-        "fetched_at": "2026-09-17T12:00:00Z",
-        "reader": f"gh:{READER}",
-        "pages": 1,
-        "complete": False,
-        "truncated": False,
-        "etags": (ListPageMark(etag=None, numbers=(), truncated=False),),
-        "rows": (),
-    }
-    return PullList(**(fields | changes))
-
-
 @pytest.mark.parametrize(
-    ("stamp", "state"),
+    ("errors", "state"),
     [
-        (None, "current"),
-        # The reader who fetched it, whatever else has gone wrong since.
-        ({"outcome": "succeeded", "reader": f"gh:{READER}"}, "current"),
-        ({"outcome": "network_error", "reader": f"gh:{READER}"}, "current"),
-        # No account was read, so the stamp says nothing of one.
-        ({"outcome": "not_logged_in"}, "current"),
-        # Another account has run since it was fetched.
-        ({"outcome": "network_error", "reader": "gh:other"}, "stale"),
-        # The account changed during the pages, so the stamp names the one it started as,
-        # which may be this list's, and the one active now is not.
-        ({"outcome": "account_changed", "reader": f"gh:{READER}"}, "stale"),
-        ({"outcome": "account_changed", "reader": "gh:other"}, "stale"),
+        ([{"type": "RATE_LIMITED", "message": "rate limit exhausted"}], "rate_limited"),
+        ([{"type": "NOT_FOUND", "message": "secret repository name"}], "not_found_or_private"),
+        ([{"message": "invalid cursor"}], "gh_failed"),
+        ([{"message": "arbitrary private upstream detail"}], "gh_failed"),
     ],
 )
-def test_what_a_young_list_is_called_by_how_its_last_refresh_ended(
-    monkeypatch: pytest.MonkeyPatch, stamp: dict[str, Any] | None, state: str
+def test_graphql_200_errors_never_publish_partial_data(
+    monkeypatch: pytest.MonkeyPatch, errors: list[dict[str, str]], state: str
 ) -> None:
-    """Every row of the rule, without a fake ``gh`` account switch for each."""
+    async def run(args: Any, **kwargs: Any) -> Any:
+        payload = json.dumps({"data": {"must_not_escape": True}, "errors": errors}).encode()
+        return subprocess.CompletedProcess(
+            args, 0, b"HTTP/2.0 200 OK\r\nx-ratelimit-reset: 1789646400\r\n\r\n" + payload, b""
+        )
 
-    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
-    kept = None if stamp is None else PullRefreshStamp(at="2026-09-17T12:00:00Z", **stamp)
-    assert pull_list_route._state(_a_list(), kept) == state  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(gh, "_run", run)
+    with pytest.raises(GhError) as caught:
+        asyncio.run(gh.gh_graphql("query Fixed { viewer { login } }", {}, now=FETCHED_AT))
+    assert caught.value.state == state
+    assert "secret" not in str(caught.value) and "private upstream" not in str(caught.value)
 
 
-@pytest.mark.parametrize(
-    "stamp",
-    [
-        {"outcome": "network_error", "reader": "gh:other"},
-        {"outcome": "account_changed", "reader": f"gh:{READER}"},
-    ],
-)
-def test_a_stamp_older_than_the_list_says_nothing_of_it(
-    monkeypatch: pytest.MonkeyPatch, stamp: dict[str, Any]
+def test_graphql_variables_are_separate_literal_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    async def run(args: list[str], **kwargs: Any) -> Any:
+        calls.append(args)
+        return subprocess.CompletedProcess(
+            args, 0, b'HTTP/2.0 200 OK\r\n\r\n{"data":{"ok":true}}', b""
+        )
+
+    monkeypatch.setattr(gh, "_run", run)
+    assert asyncio.run(
+        gh.gh_graphql(
+            "query Fixed { viewer { login } }",
+            {"owner": "--help", "cursor": "@private-file", "count": 100, "omit": None},
+        )
+    ) == {"ok": True}
+    assert calls[0][-6:] == ["-f", "owner=--help", "-f", "cursor=@private-file", "-F", "count=100"]
+    with pytest.raises(ValueError):
+        asyncio.run(gh.gh_graphql("mutation Unsafe {}", {}))
+
+
+def test_provider_account_change_and_malformed_rows_leave_checkpoint(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A process that stops between the two writes leaves the last job's stamp beside its list.
+    state = _seed(repository, [generated_item(7)])
+    _provider(monkeypatch, [generated_item(2)])
+    real = pull_list_refresh.gh_graphql
 
-    No transcript can stop a process there.
-    """
+    async def wrong_account(*args: Any, **kwargs: Any) -> Any:
+        answer = await real(*args, **kwargs)
+        answer["viewer"]["login"] = "other"
+        return answer
 
-    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
-    earlier = PullRefreshStamp(at="2026-09-17T11:58:00Z", **stamp)
-    assert pull_list_route._state(_a_list(), earlier) == "current"  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", wrong_account)
+    with pytest.raises(PullDataError) as caught:
+        asyncio.run(refresh_pull_list(repository, "all", retry=True))
+    assert caught.value.state == "account_changed"
+    assert read_catalog(repository.home, repository.slug) == state
+
+    async def wrong_row(*args: Any, **kwargs: Any) -> Any:
+        answer = await real(*args, **kwargs)
+        answer["repository"]["page"]["nodes"][0]["number"] = "not-a-number"
+        return answer
+
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", wrong_row)
+    with pytest.raises(PullDataError):
+        asyncio.run(refresh_pull_list(repository, "all", retry=True))
+    assert read_catalog(repository.home, repository.slug) == state
 
 
-def test_a_more_ages_the_list_and_the_window_by_one_clock(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    home: Path,
+def test_network_slot_is_released_between_pages(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _provider(monkeypatch, [generated_item(n) for n in range(1, 201)])
+    real = pull_list_refresh._read_page  # pyright: ignore[reportPrivateUsage]
+
+    async def exercise() -> None:
+        slot = asyncio.Semaphore(1)
+        entered, next_read = asyncio.Event(), asyncio.Event()
+        order: list[str] = []
+
+        async def held(*args: Any, **kwargs: Any) -> Any:
+            order.append(str(args[2]))
+            if args[2] is None:
+                entered.set()
+                await next_read.wait()
+            return await real(*args, **kwargs)
+
+        monkeypatch.setattr(pull_list_refresh, "_read_page", held)
+        task = asyncio.create_task(refresh_pull_list(repository, "all", slot=slot))
+        await entered.wait()
+
+        async def foreground() -> None:
+            async with slot:
+                order.append("foreground")
+
+        foreground_task = asyncio.create_task(foreground())
+        await asyncio.sleep(0)
+        next_read.set()
+        await asyncio.gather(task, foreground_task)
+        assert order == ["None", "foreground", "all-100"]
+
+    asyncio.run(exercise())
+
+
+def test_page_publication_cas_and_counts_do_not_walk_the_catalog(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = _seed(repository, [generated_item(n) for n in range(1, 2001)], complete=False)
+    queries: list[str] = []
+    original = sqlite3.connect
+
+    def traced(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        db = original(*args, **kwargs)
+        db.set_trace_callback(queries.append)
+        return db
+
+    monkeypatch.setattr(sqlite3, "connect", traced)
+    assert publish_page(repository, state, state, (_row(generated_item(2001))[0],))
+    assert not publish_page(repository, state, state, (_row(generated_item(2002))[0],))
+    current = read_catalog(repository.home, repository.slug)
+    assert current is not None and current.cached["all"] == 2001
+    assert publish_page(repository, current, current, (_row(generated_item(2002))[0],))
+    assert not any("COUNT(" in query.upper() for query in queries)
+    with original(_path(repository)) as db:
+        plans = db.execute(
+            "EXPLAIN QUERY PLAN SELECT body FROM pulls WHERE state=? AND number<? ORDER BY number DESC LIMIT 100",
+            ("open", 1000),
+        ).fetchall()
+    assert any("SEARCH pulls USING INDEX pulls_state_number" in plan[3] for plan in plans)
+
+
+def test_hostile_bounded_rows_round_trip_without_dropped_rows(repository: ListedRepository) -> None:
+    items = [
+        generated_item(n) | {"title": "\x00" * 3000, "labels": [{"name": "\x00" * 100}] * 100}
+        for n in range(1, 101)
+    ]
+    state = _seed(repository, items)
+    loaded, rows, _ = catalog_window(repository.home, repository.slug, "all", limit=100)
+    assert loaded == state and len(rows) == 100
+    assert all(len(json.dumps(row).encode()) < 32 * 1024 for row in rows)
+
+
+def test_closed_includes_merged_and_duplicate_pages_do_not_inflate_cached(
     repository: ListedRepository,
 ) -> None:
-    """A list that reads ``stale`` is one an automatic request may refresh.
-
-    **Load more** keeps ``fetched_at``, since it read no held page again, so its stamp is
-    as of that moment too. The transcript's clock moves in whole blocks, and this needs a
-    ``more`` late in a window.
-    """
-
-    pages = {
-        **_page(1, [generated_item(number) for number in range(200, 100, -1)], more=True),
-        **_page(2, [generated_item(number) for number in range(100, 0, -1)]),
-    }
-    _answer(tmp_path, monkeypatch, _answers(pages))
-    asyncio.run(refresh_pull_list(repository, "all"))
-
-    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=59))
-    extended = asyncio.run(refresh_pull_list(repository, "all", more=True))
-    assert (extended.pages, extended.fetched_at) == (2, "2026-09-17T12:00:00Z")
-    automatic = RefreshRequest("all", more=False, retry=False)
-    assert refresh_wanted(ListView(repository, None, False), automatic) is False
-
-    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=61))
-    stamp = read_list_refresh(home, SOURCE.slug, "all")
-    assert pull_list_route._state(extended, stamp) == "stale"  # pyright: ignore[reportPrivateUsage]
-    assert refresh_wanted(ListView(repository, None, False), automatic) is True
+    item = generated_item(1) | {"state": "closed", "merged_at": STAMP, "closed_at": STAMP}
+    state = _seed(repository, [item])
+    assert publish_page(repository, state, state, (_row(item)[0], _row(item)[0]))
+    loaded, rows, _ = catalog_window(repository.home, repository.slug, "closed", limit=100)
+    assert loaded is not None and loaded.cached == {"all": 1, "open": 0, "closed": 1}
+    assert rows[0]["merged"] is True
 
 
-_RATE_LIMITED = {"outcome": "rate_limited", "reset_at": "2026-09-17T13:00:00Z"}
+@pytest.mark.parametrize("suffix", ["-journal", "-wal", "-shm"])
+@pytest.mark.parametrize("kind", ["shared", "symlink"])
+def test_catalog_sidecars_follow_private_path_admission(
+    repository: ListedRepository, tmp_path: Path, suffix: str, kind: str
+) -> None:
+    _seed(repository, [generated_item(1)])
+    side = Path(str(_path(repository)) + suffix)
+    if kind == "shared":
+        side.write_bytes(b"untrusted")
+        side.chmod(0o644)
+    else:
+        other = tmp_path / "other"
+        other.write_bytes(b"untrusted")
+        other.chmod(0o600)
+        side.symlink_to(other)
+    before = _fingerprint(repository.home)
+    assert catalog_window(repository.home, repository.slug, "all", limit=100) == (None, [], None)
+    assert _fingerprint(repository.home) == before
 
 
-@pytest.mark.parametrize(
-    ("stamp", "listing", "ask", "seconds", "wanted"),
-    [
-        # An automatic request waits a window.
-        ({"outcome": "succeeded"}, "growing", {}, 60, False),
-        ({"outcome": "succeeded"}, "growing", {}, 61, True),
-        # A reader's Retry does not.
-        ({"outcome": "network_error"}, "growing", {"retry": True}, 0, True),
-        # Nor a Load more on a list that can grow, or on no list at all, which reads page 1.
-        ({"outcome": "succeeded"}, "growing", {"more": True}, 0, True),
-        ({"outcome": "succeeded"}, None, {"more": True}, 0, True),
-        # One another account fetched can grow too, and that job starts from page 1 instead.
-        ({"outcome": "succeeded", "reader": "gh:other"}, "growing", {"more": True}, 0, True),
-        # A Load more that could only reread what is held waits, like an automatic request.
-        ({"outcome": "succeeded"}, "complete", {"more": True}, 60, False),
-        ({"outcome": "succeeded"}, "complete", {"more": True}, 61, True),
-        ({"outcome": "succeeded"}, "at_cap", {"more": True}, 60, False),
-        ({"outcome": "succeeded"}, "at_cap", {"more": True}, 61, True),
-        # A reader's Retry on a list that cannot grow is still a reader's Retry.
-        ({"outcome": "succeeded"}, "complete", {"retry": True}, 0, True),
-        # While GitHub's limit holds nothing may ask, a reader included, and not past it.
-        (_RATE_LIMITED, "growing", {}, 0, False),
-        (_RATE_LIMITED, "growing", {"retry": True}, 0, False),
-        (_RATE_LIMITED, "growing", {"more": True}, 0, False),
-        (_RATE_LIMITED, "growing", {"retry": True, "more": True}, 3599, False),
-        (_RATE_LIMITED, "growing", {"retry": True}, 3600, True),
-        (_RATE_LIMITED, "growing", {"more": True}, 3600, True),
-        # No time to wait for: a reader may ask, and an automatic request waits a window.
-        ({"outcome": "rate_limited"}, "growing", {"retry": True}, 0, True),
-        ({"outcome": "rate_limited"}, "growing", {"more": True}, 0, True),
-        ({"outcome": "rate_limited"}, "growing", {}, 60, False),
-    ],
-)
-def test_what_each_request_may_start(
-    home: Path,
+def test_missing_source_is_not_created_by_catalog_publication(repository: ListedRepository) -> None:
+    missing = ListedRepository(repository.home, "missing-source", "octo", "demo")
+    state = CatalogState(
+        source=missing.source,
+        repository_id="R_demo",
+        reader=f"gh:{READER}",
+        fetched_at=STAMP,
+        count_at=STAMP,
+    )
+    with pytest.raises(FileNotFoundError):
+        publish_page(missing, None, state, ())
+    assert not (repository.home / "sources/missing-source").exists()
+
+
+def test_cancelled_job_releases_demand_ownership(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def exercise() -> None:
+        entered = asyncio.Event()
+        coordinator = RefreshCoordinator(limit=1)
+
+        async def held(*args: Any, **kwargs: Any) -> None:
+            entered.set()
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", held)
+        pull_list_route.start_refresh(
+            ListView(repository, coordinator, False), RefreshRequest("open"), wanted=True
+        )
+        await entered.wait()
+        await coordinator.aclose()
+        assert not pull_list_route._DEMANDS  # pyright: ignore[reportPrivateUsage]
+
+    asyncio.run(exercise())
+
+
+def test_two_coordinators_have_independent_demand_ownership(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def exercise() -> None:
+        coordinators = [RefreshCoordinator(limit=1), RefreshCoordinator(limit=1)]
+        release = asyncio.Event()
+        entered = 0
+        all_entered = asyncio.Event()
+        observed: list[Any] = []
+
+        async def held(*args: Any, **kwargs: Any) -> None:
+            nonlocal entered
+            entered += 1
+            if entered == 2:
+                all_entered.set()
+            await release.wait()
+            observed.append(kwargs["demand"]())
+
+        monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", held)
+        for coord, name in zip(coordinators, ("open", "closed"), strict=True):
+            pull_list_route.start_refresh(
+                ListView(repository, coord, False), RefreshRequest(name), wanted=True
+            )
+        await all_entered.wait()
+        release.set()
+        await asyncio.gather(*(coord.drain(timeout_s=2) for coord in coordinators))
+        assert set(observed) == {("open", 500), ("closed", 500)}
+        await asyncio.gather(*(coord.aclose() for coord in coordinators))
+        assert not pull_list_route._DEMANDS  # pyright: ignore[reportPrivateUsage]
+
+    asyncio.run(exercise())
+
+
+def test_overlapping_worker_keeps_rate_hold_and_stops_before_next_page(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _provider(monkeypatch, [generated_item(n) for n in range(1, 251)])
+    real = pull_list_refresh._read_page  # pyright: ignore[reportPrivateUsage]
+    reset = utc_stamp(FETCHED_AT + timedelta(minutes=2))
+
+    async def exercise() -> None:
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def provider(*args: Any, **kwargs: Any) -> Any:
+            task = asyncio.current_task()
+            if task is not None and task.get_name() == "limited-worker":
+                raise PullDataError("rate_limited", "provider hold", reset_at=reset)
+            if args[2] is None:
+                entered.set()
+                await release.wait()
+            return await real(*args, **kwargs)
+
+        monkeypatch.setattr(pull_list_refresh, "_read_page", provider)
+        first = asyncio.create_task(refresh_pull_list(repository, "all"))
+        await entered.wait()
+        other = asyncio.create_task(refresh_pull_list(repository, "all"), name="limited-worker")
+        with pytest.raises(PullDataError):
+            await other
+        release.set()
+        with pytest.raises(PullDataError) as caught:
+            await first
+        assert caught.value.state == "rate_limited"
+
+    asyncio.run(exercise())
+    stamp = read_list_refresh(repository.home, repository.slug, "all")
+    assert stamp is not None and stamp.reset_at == reset
+    state = read_catalog(repository.home, repository.slug)
+    assert state is not None and state.cached["all"] == 100
+    assert calls == ["graphql:all:start"]
+
+
+def test_repository_reset_reports_known_provider_total_between_pages(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old = _seed(repository, [generated_item(n) for n in range(1, 201)], complete=False)
+    resumed = old.model_copy(update={"cursors": {"all": "all-100", "open": None, "closed": None}})
+    assert publish_page(repository, old, resumed, ())
+    _provider(monkeypatch, [generated_item(n) for n in range(1, 18)], repository_id="R_replaced")
+    real = pull_list_refresh._read_page  # pyright: ignore[reportPrivateUsage]
+    observed: list[Any] = []
+
+    async def provider(*args: Any, **kwargs: Any) -> Any:
+        if args[2] == "all-100":
+            return await real(args[0], args[1], None, **kwargs)
+        envelope = pull_list_envelope(ListView(repository, None, True), ListWindow("all"))
+        observed.append(
+            (envelope["total"], envelope["repository_total"], envelope["catalog_fetched"])
+        )
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(pull_list_refresh, "_read_page", provider)
+    assert asyncio.run(refresh_pull_list(repository, "all")).cached["all"] == 17
+    assert observed == [(17, 17, 0)]
+
+
+@pytest.mark.parametrize("outcome", ["succeeded", "network_error"])
+def test_outcome_writer_cannot_erase_another_workers_hold(
+    repository: ListedRepository, outcome: Any
+) -> None:
+    hold = PullRefreshStamp(
+        outcome="rate_limited", at=STAMP, reset_at=utc_stamp(FETCHED_AT + timedelta(minutes=2))
+    )
+    write_list_refresh(repository.home, repository.slug, "all", hold)
+    write_list_refresh(
+        repository.home, repository.slug, "all", PullRefreshStamp(outcome=outcome, at=STAMP)
+    )
+    assert read_list_refresh(repository.home, repository.slug, "all") == hold
+
+
+def test_cancelled_stamp_waiter_cannot_publish_after_lock_release(
     repository: ListedRepository,
-    monkeypatch: pytest.MonkeyPatch,
-    stamp: dict[str, Any],
-    listing: str | None,
-    ask: dict[str, bool],
-    seconds: int,
-    wanted: bool,
 ) -> None:
-    """Every row of the rule at once, which a transcript would take a clock move per row for."""
+    entered, release = threading.Event(), threading.Event()
 
-    if listing is not None:
-        pages = MAX_LIST_PAGES if listing == "at_cap" else 1
-        mark = ListPageMark(etag=None, numbers=(), truncated=False)
-        kept_list = _a_list(pages=pages, complete=listing == "complete", etags=(mark,) * pages)
-        write_pull_list(home, SOURCE.slug, kept_list)
-    kept = PullRefreshStamp(at="2026-09-17T12:00:00Z", **stamp)
-    write_list_refresh(home, SOURCE.slug, "all", kept)
-    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=seconds))
-    request = RefreshRequest("all", ask.get("more", False), ask.get("retry", False))
-    assert refresh_wanted(ListView(repository, None, False), request) is wanted
+    def hold() -> None:
+        with source_alias_lock(repository.home, repository.slug):
+            entered.set()
+            release.wait(5)
 
+    thread = threading.Thread(target=hold)
+    thread.start()
+    assert entered.wait(5)
 
-def test_a_stamp_the_cache_will_not_take_is_kept_for_the_process(
-    home: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Without it an unwritable cache would ask gh on every poll, and report nothing."""
+    async def exercise() -> None:
+        stamp = PullRefreshStamp(outcome="succeeded", at=STAMP)
+        task = asyncio.create_task(
+            run_lock_section(
+                partial(write_list_refresh, repository.home, repository.slug, "all", stamp)
+            )
+        )
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
 
-    def refuse(*_args: object, **_kwargs: object) -> None:
-        raise OSError("read-only")
-
-    stamp = PullRefreshStamp(outcome="cache_unwritable", at="2026-09-17T12:00:00Z")
-    monkeypatch.setattr(pull_list, "write_refresh_stamp", refuse)
-    write_list_refresh(home, SOURCE.slug, "all", stamp)
-    assert read_list_refresh(home, SOURCE.slug, "all") == stamp
-    assert not refresh_is_due(read_list_refresh(home, SOURCE.slug, "all"), now=FETCHED_AT)
-    monkeypatch.undo()
-    written = PullRefreshStamp(outcome="succeeded", at="2026-09-17T12:00:00Z")
-    write_list_refresh(home, SOURCE.slug, "all", written)
-    assert read_list_refresh(home, SOURCE.slug, "all") == written
+    try:
+        asyncio.run(exercise())
+    finally:
+        release.set()
+        thread.join(5)
+    assert read_list_refresh(repository.home, repository.slug, "all") is None
 
 
 @pytest.mark.parametrize(
-    "params",
+    "alter",
     [
-        {"state": "merged"},
-        {"limit": "-1"},
-        {"limit": "1001"},
-        {"limit": "ten"},
-        {"after": "0"},
-        {"after": "1x"},
-        {"after": "99999999999"},
+        "CREATE TRIGGER unexpected AFTER INSERT ON pulls BEGIN DELETE FROM pulls WHERE number <> NEW.number; END",
+        "DROP INDEX pulls_state_number",
+        "CREATE VIEW unexpected AS SELECT number FROM pulls",
+        "CREATE TABLE unexpected(value TEXT)",
     ],
 )
-def test_a_window_outside_its_bounds_is_refused(params: dict[str, str]) -> None:
-    with pytest.raises(ListRequestError):
-        list_window(params)
-
-
-@pytest.mark.parametrize(
-    "body",
-    [{"state": "merged"}, {"more": "yes"}, {"retry": 1}, {"number": 7}, {"state": None}],
-)
-def test_a_refresh_request_outside_its_shape_is_refused(body: dict[str, Any]) -> None:
-    with pytest.raises(ListRequestError):
-        refresh_request(body)
-
-
-def test_a_mirror_of_another_host_lists_nothing() -> None:
-    """A transcript of this needs a mirror that is not GitHub's and a request; this is the rule."""
-
-    def mirror(address: str) -> Any:
-        source = GitSource(transport="https", form="url", normalized=address)
-        served = StoreMirror(
-            home=Path("/nonexistent"),
-            store_key="0" * 64,
-            store_id=f"sha256:{'0' * 64}",
-            source=source,
-            slug="demo-0000",
-        )
-        return SimpleNamespace(mirror=served)
-
-    assert listed_repository(None) is None
-    assert listed_repository(mirror("https://gitlab.example/octo/demo")) is None
-    found = listed_repository(mirror(CANONICAL))
-    assert found is not None and (found.owner, found.repo, found.slug) == (
-        "octo",
-        "demo",
-        "demo-0000",
-    )
-
-
-def test_a_one_shot_command_follows_a_status_route_with_its_query() -> None:
-    """Which list a refresh was of is in the route, so the query has to survive."""
-
-    answered = ApiResponse(
-        202, json.dumps({"status_route": f"{PULLS}?state=open&limit=0"}).encode()
-    )
-    follow = api_cli._follow_route(REFRESH, answered)  # pyright: ignore[reportPrivateUsage]
-    assert follow == f"{PULLS}?state=open&limit=0"
-    elsewhere = ApiResponse(202, json.dumps({"status_route": "https://e.x/"}).encode())
-    assert api_cli._follow_route(REFRESH, elsewhere) is None  # pyright: ignore[reportPrivateUsage]
-
-
-# ── The routes on a served mirror ──────────────────────────────
-
-
-@pytest.fixture
-def served(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
-) -> Iterator[tuple[TestClient, PublishedSource]]:
-    """A mirror of the repository, served as a one-shot command serves it."""
-
-    cache = tmp_path / "served-home"
-    monkeypatch.setenv("METABROWSER_CACHE_DIR", str(cache))
-    _allow_installed_git(monkeypatch)
-    local = pull_origin.url
-    monkeypatch.setattr(
-        "metabrowser.cache.acquire.remote_url_for",
-        lambda source: local if source.normalized == CANONICAL else source.normalized,  # pyright: ignore[reportUnknownLambdaType, reportUnknownMemberType]
-    )
-    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
-    _answer(tmp_path, monkeypatch, scenario(pull_origin))
-    source = GitSource(transport="https", form="url", normalized=CANONICAL)
-    published = asyncio.run(acquire_source(source, home=cache))
-    serve_published(published)
-    _asked(tmp_path)
-    try:
-        with TestClient(app) as client:
-            yield client, published
-    finally:
-        serve_mirror(None)
-
-
-def _settle(client: TestClient, state: str = "all") -> dict[str, Any]:
-    for _attempt in range(2500):
-        answer = client.get(f"{PULLS}?state={state}&limit=0").json()
-        if not answer["refreshing"]:
-            return answer
-        threading.Event().wait(0.02)
-    raise AssertionError("the refresh did not finish")
-
-
-def _held_refresh(
-    monkeypatch: pytest.MonkeyPatch,
-) -> tuple[threading.Event, list[tuple[str, bool]]]:
-    """Each job's first read waits for the event, and then runs against the fake ``gh``."""
-
-    release = threading.Event()
-    runs: list[tuple[str, bool]] = []
-    real = pull_list_refresh.refresh_pull_list
-
-    async def held(repository: ListedRepository, name: Any, *, more: bool = False) -> PullList:
-        runs.append((name, more))
-        await asyncio.to_thread(release.wait, 30)
-        return await real(repository, name, more=more)
-
-    monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", held)
-    return release, runs
-
-
-def test_a_request_while_a_refresh_runs_joins_it(
-    served: tuple[TestClient, PublishedSource], monkeypatch: pytest.MonkeyPatch
+def test_incompatible_sqlite_schema_is_refused_before_reads_or_writes(
+    repository: ListedRepository, alter: str
 ) -> None:
-    """A one-shot command ends each job before its next request, so it can never join."""
-
-    client, _published = served
-    release, runs = _held_refresh(monkeypatch)
-    try:
-        first = client.post(REFRESH, json={}, headers=_JSON)
-        assert (first.status_code, first.headers["cache-control"]) == (202, "no-store")
-        assert first.json()["refresh"] == "started"
-        assert first.json()["pulls"]["state"] == "pending"
-        again = client.post(REFRESH, json={"state": "all", "retry": True}, headers=_JSON)
-        assert (again.status_code, again.json()["refresh"]) == (202, "joined")
-        # Each list is its own job.
-        other = client.post(REFRESH, json={"state": "open"}, headers=_JSON)
-        assert other.json()["refresh"] == "started"
-        assert client.get(f"{PULLS}?limit=0").json()["refreshing"] is True
-    finally:
-        release.set()
-    _settle(client)
-    _settle(client, "open")
-    assert sorted(runs) == [("all", False), ("open", False)]
+    state = _seed(repository, [generated_item(1)])
+    path = _path(repository)
+    with sqlite3.connect(path) as db:
+        db.execute(alter)
+    before = _fingerprint(repository.home)
+    assert catalog_window(repository.home, repository.slug, "all", limit=100) == (None, [], None)
+    with pytest.raises(ValueError, match="unsupported catalog schema"):
+        publish_page(repository, state, state, (_row(generated_item(2))[0],))
+    assert _fingerprint(repository.home) == before
 
 
-def test_a_more_that_joins_a_refresh_extends_the_list_after_it(
-    served: tuple[TestClient, PublishedSource], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize("owner", ["OcTo", "someone"])
+def test_fake_graphql_respects_repository_identity(
+    repository: ListedRepository, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, owner: str
 ) -> None:
-    """A reader's **Load more** during the list's automatic refresh is not lost.
-
-    The whole of it is one job, so ``refreshing`` stays true until the page is in the list.
-    """
-
-    client, _published = served
-    release, runs = _held_refresh(monkeypatch)
-    try:
-        assert client.post(REFRESH, json={}, headers=_JSON).json()["refresh"] == "started"
-        joined = client.post(REFRESH, json={"more": True}, headers=_JSON)
-        assert (joined.status_code, joined.json()["refresh"]) == (202, "joined")
-        assert client.get(f"{PULLS}?limit=0").json()["refreshing"] is True
-    finally:
-        release.set()
-    after = _settle(client)
-    assert runs == [("all", False), ("all", True)]
-    assert (after["fetched"], after["complete"]) == (102, True)
-    assert _api_paths(_asked(tmp_path)) == [list_page("all", 1), list_page("all", 2)]
-
-    # It was asked of that job alone: the next job extends nothing.
-    assert client.post(REFRESH, json={"retry": True}, headers=_JSON).json()["refresh"] == "started"
-    _settle(client)
-    assert runs == [("all", False), ("all", True), ("all", False)]
-
-
-def test_a_more_that_joins_a_more_is_the_same_page(
-    served: tuple[TestClient, PublishedSource], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Two clicks while one page is being read ask for that page, and not for two."""
-
-    client, _published = served
-    release, runs = _held_refresh(monkeypatch)
-    try:
-        assert client.post(REFRESH, json={"more": True}, headers=_JSON).json()["refresh"] == (
-            "started"
-        )
-        assert client.post(REFRESH, json={"more": True}, headers=_JSON).json()["refresh"] == (
-            "joined"
-        )
-    finally:
-        release.set()
-    _settle(client)
-    assert runs == [("all", True)]
-
-
-def test_a_more_that_joins_a_refresh_that_fails_runs_nothing_further(
-    served: tuple[TestClient, PublishedSource],
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    pull_origin: Origin,
-) -> None:
-    """The stamp says the refresh failed, which is the answer the reader's **Retry** is for."""
-
-    client, _published = served
-    _answer(
-        tmp_path,
-        monkeypatch,
-        scenario(pull_origin) | {"auth": {"stdout": '{"hosts":{}}\n', "exit": 0}},
-    )
-    release, runs = _held_refresh(monkeypatch)
-    try:
-        client.post(REFRESH, json={}, headers=_JSON)
-        client.post(REFRESH, json={"more": True}, headers=_JSON)
-    finally:
-        release.set()
-    after = _settle(client)
-    assert runs == [("all", False)]
-    assert after["last_refresh"]["outcome"] == "not_logged_in"
-
-
-def test_a_more_that_joins_a_refresh_that_completes_the_list_reads_nothing_further(
-    served: tuple[TestClient, PublishedSource],
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    pull_origin: Origin,
-) -> None:
-    """The list the job ended with has no next page, so there is nothing to extend it with."""
-
-    client, _published = served
-    path = list_page("all", 1)
-    answers = scenario(pull_origin)
-    answers["api"] = {**answers["api"], path: ok(path, [generated_item(7)])}
-    _answer(tmp_path, monkeypatch, answers)
-    release, runs = _held_refresh(monkeypatch)
-    try:
-        client.post(REFRESH, json={}, headers=_JSON)
-        client.post(REFRESH, json={"more": True}, headers=_JSON)
-    finally:
-        release.set()
-    after = _settle(client)
-    assert runs == [("all", False)]
-    assert (after["fetched"], after["complete"]) == (1, True)
-
-
-def test_a_job_that_stops_on_something_unexpected_says_so_and_waits_a_window(
-    served: tuple[TestClient, PublishedSource],
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """A bug has no stamp of its own, and without one every poll would run the job again.
-
-    A transcript cannot show this: nothing a fake ``gh`` answers should reach it.
-    """
-
-    client, _published = served
-    runs: list[str] = []
-
-    async def stops(_repository: ListedRepository, name: str, *, more: bool = False) -> None:
-        runs.append(name)
-        raise RuntimeError("a path and a token that must not reach a file: ghp_x")
-
-    monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", stops)
-    assert client.post(REFRESH, json={}, headers=_JSON).json()["refresh"] == "started"
-    after = _settle(client)
-    assert after["last_refresh"]["outcome"] == "gh_failed"
-    assert "ghp_x" not in json.dumps(after)
-    assert "a background refresh failed" in caplog.text
-
-    # Held to the window, as any failure is, and a reader's Retry still runs it.
-    waiting = client.post(REFRESH, json={}, headers=_JSON)
-    assert (waiting.status_code, waiting.json()["refresh"]) == (200, "not_due")
-    assert runs == ["all"]
-    assert client.post(REFRESH, json={"retry": True}, headers=_JSON).json()["refresh"] == "started"
-    _settle(client)
-    assert runs == ["all", "all"]
-
-
-def test_a_read_never_starts_anything(
-    served: tuple[TestClient, PublishedSource], tmp_path: Path
-) -> None:
-    """Following a link cannot fetch. A golden lists no gh for one command; this asks twice."""
-
-    client, _published = served
-    for route in (PULLS, f"{PULLS}?state=open", f"{PULLS}?state=closed&limit=0"):
-        for _again in range(2):
-            answer = client.get(route).json()
-            assert (answer["state"], answer["refreshing"]) == ("absent", False)
-    assert _asked(tmp_path) == []
-
-
-def test_the_route_answers_an_unchanged_list_with_a_304(
-    served: tuple[TestClient, PublishedSource],
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    pull_origin: Origin,
-) -> None:
-    """A one-shot command sends no ``If-None-Match``, and a page polls with one."""
-
-    client, _published = served
-    client.post(REFRESH, json={}, headers=_JSON)
-    _settle(client)
-    answer = client.get(f"{PULLS}?limit=2")
-    tag = answer.headers["etag"]
-    assert answer.headers["cache-control"] == "no-store"
-    unchanged = client.get(f"{PULLS}?limit=2", headers={"if-none-match": tag})
-    assert (unchanged.status_code, unchanged.content) == (304, b"")
-    # Another window of the same list is another answer.
-    other = {"if-none-match": tag}
-    assert client.get(f"{PULLS}?limit=2&after=105", headers=other).status_code == 200
-    assert client.get(f"{PULLS}?limit=3", headers=other).status_code == 200
-    # A refresh within the same second replaces the file, and the tag with it.
-    client.post(REFRESH, json={"retry": True}, headers=_JSON)
-    _settle(client)
-    assert client.get(f"{PULLS}?limit=2", headers=other).status_code == 200
-
-
-def test_the_route_parses_a_list_again_only_when_it_changed(
-    served: tuple[TestClient, PublishedSource], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The memo a poll relies on: no transcript can see a parse that did not happen."""
-
-    client, _published = served
-    client.post(REFRESH, json={}, headers=_JSON)
-    _settle(client)
-    parsed: list[str] = []
-    real = pull_list_route.read_pull_list
-
-    def counted(home: Path, slug: str, name: Any) -> Any:
-        parsed.append(name)
-        return real(home, slug, name)
-
-    monkeypatch.setattr(pull_list_route, "read_pull_list", counted)
-    client.get(PULLS)
-    first = len(parsed)
-    client.get(PULLS)
-    client.get(f"{PULLS}?limit=1&after=50")
-    assert len(parsed) == first
-    client.post(REFRESH, json={"retry": True}, headers=_JSON)
-    _settle(client)
-    client.get(PULLS)
-    assert len(parsed) > first
-
-
-def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
-    served: tuple[TestClient, PublishedSource],
-) -> None:
-    """Route safety: content cannot reach it with a link, an image, or a form."""
-
-    client, _published = served
-    assert client.get(REFRESH).status_code == 405
-    for content, status in (
-        (b"[]", 400),
-        (b"{", 400),
-        (b'{"state": "merged"}', 400),
-        (b'{"more": 1}', 400),
-        (b'{"x": "' + b"y" * 2000 + b'"}', 413),
-    ):
-        refused = client.post(REFRESH, content=content, headers=_JSON)
-        assert (refused.status_code, refused.json()["code"]) == (status, "invalid_request")
-    other = {**_JSON, "origin": "https://example.invalid"}
-    assert client.post(REFRESH, json={}, headers=other).status_code == 403
-    plain = {"content-type": "text/plain"}
-    assert client.post(REFRESH, content=b"{}", headers=plain).status_code == 415
-    outdated = client.post(REFRESH, json={}, headers={**_JSON, PIN_HEADER: "0" * 40})
-    assert (outdated.status_code, outdated.json()["code"]) == (409, "pin_changed")
+    answers = {"auth": account(), "api": catalog_entries([generated_item(1)]), "api_failure": None}
+    for key, value in install_fake_gh(tmp_path, answers).items():
+        monkeypatch.setenv(key, value)
+    selected = ListedRepository(repository.home, repository.slug, owner, "DeMo")
+    request = pull_list_refresh._read_page(selected, "all", None, login=READER)  # pyright: ignore[reportPrivateUsage]
+    if owner == "OcTo":
+        assert asyncio.run(request).totals["all"] == 1
+    else:
+        with pytest.raises(PullDataError) as caught:
+            asyncio.run(request)
+        assert caught.value.state == "not_found_or_private"

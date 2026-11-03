@@ -91,7 +91,7 @@
     let disposed = false;
     /** @type {unknown} */
     let prefetch = null;
-    let filter = "all";
+    let filter = "open";
     /** @type {string | null} */
     let lastPlace = null;
 

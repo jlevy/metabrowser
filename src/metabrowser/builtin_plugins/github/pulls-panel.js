@@ -1,9 +1,9 @@
 // The Pulls tab's list: every pull request of the repository, newest first, each with its
-// state's icon, from the cache at once and refreshed in the background while it is shown.
+// state's icon, from the cache at once while the backend fills its lightweight catalog.
 //
 // Every decision lives here without a DOM. `describePulls` turns one list's envelope and
 // rows into what the panel shows; `createPullsController` owns the filters, the windows of
-// rows, reading a next GitHub page, polling and refreshing only while the panel is shown,
+// rows, bounded cached windows, polling only while shown and prioritizing metadata fetches,
 // which row is current and which takes Tab, and opening a row. `mountPullsPanel` is the
 // browser glue: real fetch, timers, and paint. tests/dom/github-pulls-panel-session.js runs
 // the same functions from the command line.
@@ -17,7 +17,8 @@
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. A list's refresh is asked for while the panel is shown, which the server
-// holds to one attempt a window. A row's record is read when the reader stops on it: that
+// holds to one attempt a window; an accepted catalog job continues while hidden. A row's
+// record is read when the reader stops on it: that
 // read is local and runs no gh, and only a page opened by a reader's selection asks to fetch
 // a record the cache lacks. A key held down selects rows and opens only the one it stops on,
 // so a walk costs no request per row.
@@ -37,33 +38,23 @@ import {
   SLOW_POLL_MS,
 } from "./pull-page.js";
 import { displayState, PULL_STATES, pullStateIcon } from "./pull-state.js";
+import { createPullsWindow } from "./pulls-window.js";
 
 const PULLS_ROUTE = "/api/plugin/github/pulls";
 const REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
 const PULL_ROUTE = "/api/plugin/github/pull";
 
-export const LISTS = Object.freeze(["all", "open", "closed"]);
+export const LISTS = Object.freeze(["open", "closed", "all"]);
 const LIST_LABELS = Object.freeze({ all: "All", open: "Open", closed: "Closed" });
 const FILTER_GROUP = "github-pulls-filter";
 
-// Rows asked for at a time, one GitHub page, as the route's own default. The tab appends plain
-// rows, which costs what the new rows cost and not what the list holds.
-//
-// Measured 2026-11-03 in headless Chrome 152 on pallets/click at the cap, one page of 1,000 real
-// rows, 20,700 nodes and 4.8 MB of heap, load average 4 to 6. Each number is load-independent or
-// is the median of several runs:
-//
-// - The tab's activation to its next paint: 60 to 70 ms as plain rows, past `--loading-state-delay`,
-//   and 14 to 23 ms with `content-visibility: auto` on each item (forced layout 66 ms and 2.9 ms).
-//   At one window of 100 rows, 10 to 15 ms, and a first show after the read ahead is the same.
-// - A window appended: 7 to 8 ms of main-thread tasks, the same at the 100th row as the 1,000th.
-// - A step of a held key, at 30 steps a second, 200 steps: its handler took 0.3 to 0.6 ms, and
-//   each event 24 ms at the slowest to its next paint, the same at 100 rows and 1,000. One row's
-//   class, tab stop, focus, and bringing it into view took 0.4 ms in place.
-//
-// So plain rows carry the cap, MAX_LIST_ROWS in pull_list.py, with no windowing module: what is
-// mounted costs what is on screen. The Git tab windows because its history has no such cap.
+// Catalog cache reads remain one provider page. The backend may cache every PR;
+// the controller initially materializes500 and only explicit Fetch more grows it.
+// The paint independently mounts a variable-height viewport and protected anchors.
 export const WINDOW_ROWS = 100;
+export const DISPLAY_ROWS = 500;
+// Viewport neighbors; measured catalog-window evidence is recorded with the feature.
+export const PULL_ROWS_OVERSCAN = 40;
 // How long a walk waits for a next key before it opens the row it reached, once a key is
 // repeating. A key's release opens it at once, so this is only for a release the page does
 // not see, and it is past macOS's default repeat of 90 ms, so a held key never waits it out.
@@ -80,9 +71,8 @@ export const PEEK_MS = 60;
 // Records read ahead and not yet opened. A record is at most MAX_PULL_RECORD_BYTES, and a
 // reader rests on a few rows at most before opening one.
 export const MAX_PEEKED = 4;
-// A list's job is one to three seconds a page when GitHub answers, so a wait past this is a
-// wait for its turn: pull-request jobs queued before it hold the refresh slots. Measured
-// 2026-11-03 on pallets/click: 1.7 s with nothing queued, and 35 s behind MAX_PULL_JOBS.
+// An initially empty catalog explains a long wait after this presentation delay. Metadata
+// backfill and selected pull-request detail acquisition remain separate backend jobs.
 export const LONG_WAIT_MS = 10000;
 // Folders start open up to the measured file-list cap. Chrome 152, 2026-11-03: the
 // first 1,183 files of django/django#15387 made 1,503 rows; 3,000 stress files made
@@ -130,7 +120,11 @@ const CHECKOUT_NOT_LISTED =
  *   fetched: number,
  *   complete: boolean,
  *   truncated: boolean,
- *   at_cap: boolean,
+ *   total: number | null,
+ *   repository_total: number | null,
+ *   catalog_fetched: number,
+ *   generation: string | null,
+ *   count_at: string | null,
  *   limit: number,
  *   next_after: number | null,
  *   rows: Record<string, any>[],
@@ -164,6 +158,10 @@ const CHECKOUT_NOT_LISTED =
  *   listName: string,
  *   origin: string | null,
  *   count: string | null,
+ *   countNumber: string | null,
+ *   countSuffix: string | null,
+ *   window: string | null,
+ *   progress: string | null,
  *   freshness: string | null,
  *   empty: string | null,
  *   notice: {severity: "warning" | "error" | null, text: string, retry: boolean} | null,
@@ -298,11 +296,15 @@ export function describePulls(envelope, page) {
     rowsVersion: page.rowsVersion,
     // How many rows the list has, which a window appended does not move: each row's place is
     // told against it, and not against the rows held or drawn so far.
-    setSize: Math.max(envelope?.fetched ?? 0, page.rows.length),
+    setSize: envelope?.total ?? Math.max(envelope?.fetched ?? 0, page.rows.length),
     skeleton: false,
     listName: "Pull requests",
     origin: null,
     count: null,
+    countNumber: null,
+    countSuffix: null,
+    window: null,
+    progress: null,
     freshness: null,
     empty: null,
     notice: null,
@@ -332,6 +334,18 @@ export function describePulls(envelope, page) {
     // is often empty: so the tab names the repository it lists, and how it chose it.
     model.origin = `Pull requests of ${repository}, this checkout's origin`;
   }
+  if (envelope.repository_total !== null && repository !== null) {
+    model.countNumber = new Intl.NumberFormat("en-US").format(envelope.repository_total);
+    model.countSuffix = ` PR${envelope.repository_total === 1 ? "" : "s"} on ${repository}`;
+    model.count = model.countNumber + model.countSuffix;
+  }
+  if (envelope.total !== null && page.rows.length > 0 && page.rows.length < envelope.total) {
+    model.window = `Showing last ${new Intl.NumberFormat("en-US").format(page.rows.length)}`;
+  }
+  if (!envelope.complete || envelope.refreshing) {
+    const cached = new Intl.NumberFormat("en-US").format(envelope.catalog_fetched);
+    model.progress = `${envelope.refreshing ? "Fetching catalog…" : "Catalog paused"} · ${cached} cached`;
+  }
   if (!holding && (envelope.state === "absent" || envelope.state === "pending")) {
     // Nothing to show yet. The shape of rows, unless the wait is one a reader must act on.
     model.skeleton = failure === null;
@@ -342,7 +356,7 @@ export function describePulls(envelope, page) {
     if (envelope.refreshing && page.waitedMs >= LONG_WAIT_MS) {
       model.notice = {
         severity: null,
-        text: "Still waiting for the list… Pull requests being fetched go first.",
+        text: "Still waiting for the pull-request catalog…",
         retry: false,
       };
     }
@@ -350,16 +364,14 @@ export function describePulls(envelope, page) {
   }
   const name = repository === null ? "Pull requests" : `Pull requests of ${repository}`;
   if (envelope.state === "current" || envelope.state === "stale") {
-    const count = pullsCount(envelope.fetched);
-    model.count = envelope.complete ? count : `${count} · GitHub has more`;
-    model.listName = `${name}: ${model.count}`;
+    model.listName = `${name}: ${pullsCount(envelope.total ?? envelope.fetched)}`;
     const reader = text(envelope.reader).replace(/^gh:/, "");
-    const age = relativeAge(envelope.fetched_at, page.nowMs);
+    const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
     const stale = envelope.state === "stale" ? " · may be out of date" : "";
     model.freshness = envelope.refreshing
       ? `Refreshing… · fetched ${age} by ${reader}`
       : `Fetched ${age} by ${reader}${stale}`;
-    if (envelope.fetched === 0 && envelope.complete) {
+    if (envelope.total === 0 || (envelope.fetched === 0 && envelope.complete)) {
       model.empty =
         page.filter === "all" ? "No pull requests." : `No ${page.filter} pull requests.`;
     }
@@ -385,14 +397,8 @@ export function describePulls(envelope, page) {
   }
   if (page.more) {
     model.loadMore = "loading";
-  } else if (
-    holding &&
-    (page.rows.length < envelope.fetched || (!envelope.complete && !envelope.at_cap))
-  ) {
+  } else if (holding && envelope.total !== null && page.rows.length < envelope.total) {
     model.loadMore = "ready";
-  }
-  if (envelope.at_cap && repository !== null) {
-    model.github = `https://github.com/${repository}/pulls`;
   }
   return model;
 }
@@ -415,7 +421,7 @@ export function describeLanding(envelope, formatTime, checkout = false) {
   if (envelope !== null && envelope.fetched === 0 && failure !== null) {
     return failure.text;
   }
-  if (envelope?.fetched === 0 && envelope.complete) {
+  if (envelope?.repository_total === 0 && envelope.complete) {
     return "No pull requests.";
   }
   return "Select a pull request.";
@@ -496,6 +502,8 @@ function pinChanged(response) {
  *   waitingSince: number | null,
  *   more: boolean,
  *   error: string | null,
+ *   displayLimit: number,
+ *   priorityTarget: number,
  * }} HeldList
  */
 
@@ -513,26 +521,18 @@ function emptyList() {
     waitingSince: null,
     more: false,
     error: null,
+    displayLimit: DISPLAY_ROWS,
+    priorityTarget: 0,
   };
 }
 
 /**
- * Which list file an answer's rows come from. A refresh writes a new `fetched_at`, a next
- * GitHub page more rows, and another account its own name; a refresh that is starting, or a
- * list that went stale, changes none of them. So an answer that names the same file leaves the
- * rows held as they are, and only one that names another is read again whole.
- *
+ * Identity of the displayed prefix. Older catalog appends and count-only progress keep
+ * it stable; changed existing rows, new leading rows and account resets change it.
  * @param {PullsEnvelope} envelope
  */
 function contentOf(envelope) {
-  return JSON.stringify([
-    envelope.source,
-    envelope.fetched_at,
-    envelope.reader,
-    envelope.fetched,
-    envelope.complete,
-    envelope.truncated,
-  ]);
+  return JSON.stringify([envelope.source, envelope.list, envelope.reader, envelope.generation]);
 }
 
 /**
@@ -547,7 +547,7 @@ export function createPullsController(deps, options = {}) {
   const lists = new Map(LISTS.map((name) => [name, emptyList()]));
   let filter = LISTS.includes(options.filter ?? "")
     ? /** @type {string} */ (options.filter)
-    : "all";
+    : "open";
   /** @type {number | null} */
   let current = options.current ?? null;
   /** The row that takes Tab: the current one, or else the first. @type {number | null} */
@@ -565,6 +565,11 @@ export function createPullsController(deps, options = {}) {
   // a refresh started must not replace the refresh's answer when it lands after it.
   let sent = 0;
   let shownRequest = 0;
+  let requestEpoch = 0;
+  /** @type {AbortController | null} */
+  let windowRead = null;
+  /** @type {Set<AbortController>} */
+  const refreshReads = new Set();
   /** @type {string | null} */
   let painted = null;
 
@@ -703,7 +708,13 @@ export function createPullsController(deps, options = {}) {
   let chasing = false;
   function chaseCurrent() {
     const list = held();
-    if (filter !== "all" || current === null || list.keys.has(current) || list.nextAfter === null) {
+    if (
+      filter !== "all" ||
+      current === null ||
+      list.keys.has(current) ||
+      list.nextAfter === null ||
+      list.rows.length >= list.displayLimit
+    ) {
       return;
     }
     if (current < list.nextAfter) {
@@ -713,11 +724,9 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Hold the rows of a list file the panel has not read: the top window's, when that is all
-   * it holds, and otherwise the whole range it holds, read again. A window appended while
-   * that range is read makes it short, so it is not taken, and the next poll reads it again.
-   * Whether the rows were held is the answer: the poll takes the top window's tag only with
-   * them, so a read that did not land is not answered by a 304 next time.
+   * Stage a changed prefix in bounded cache pages before replacing the displayed rows.
+   * Every page must name the same source, reader and generation. A concurrent append or
+   * filter change discards the staged rows, and the old tag remains until a coherent read.
    *
    * @param {HeldList} list
    * @param {PullsEnvelope} top
@@ -726,39 +735,61 @@ export function createPullsController(deps, options = {}) {
    * @returns {Promise<boolean>}
    */
   async function holdContent(list, top, content, asked) {
-    let answer = top;
-    let named = content;
-    if (list.rows.length > WINDOW_ROWS) {
-      const name = filter;
-      const version = list.version;
-      const whole = await deps.request(
+    const name = filter;
+    const version = list.version;
+    const desired = Math.min(
+      list.displayLimit,
+      Math.max(WINDOW_ROWS, list.rows.length),
+      top.fetched,
+    );
+    const rows = top.rows.slice(0, desired);
+    let after = top.next_after;
+    while (rows.length < desired && after !== null) {
+      const response = await deps.request(
         "GET",
-        `${PULLS_ROUTE}?state=${name}&limit=${list.rows.length}`,
+        `${PULLS_ROUTE}?state=${name}&limit=${WINDOW_ROWS}&after=${after}`,
         { signal: asked.signal },
       );
-      if (disposed || name !== filter) {
+      if (
+        disposed ||
+        asked.request < shownRequest ||
+        name !== filter ||
+        asked.signal.aborted ||
+        list.version !== version ||
+        response.status !== 200 ||
+        !isEnvelope(response.body) ||
+        contentOf(response.body) !== content
+      ) {
         return false;
       }
-      if (whole.status !== 200 || !isEnvelope(whole.body) || list.version !== version) {
+      const seen = new Set(rows.map((row) => row.number));
+      const next = response.body.rows.filter((row) => !seen.has(row.number));
+      if (next.length === 0) {
         return false;
       }
-      answer = whole.body;
-      named = contentOf(answer);
-      if (asked.request >= shownRequest) {
-        holdEnvelope(list, answer);
-      }
+      rows.push(...next.slice(0, desired - rows.length));
+      after = response.body.next_after;
     }
-    holdRows(list, answer.rows, answer.source);
-    list.nextAfter = answer.next_after;
-    list.content = named;
+    if (
+      disposed ||
+      asked.request < shownRequest ||
+      name !== filter ||
+      asked.signal.aborted ||
+      list.version !== version
+    ) {
+      return false;
+    }
+    holdRows(list, rows, top.source);
+    list.nextAfter = after;
+    list.content = content;
+    peeked.clear();
     return true;
   }
 
   /**
    * Read the list's top window: the route's tag says whether anything changed, so a poll of
-   * an unchanged list is a 304 however many rows are held. An answer from another list file
-   * replaces the rows; when more are held than the top window, they are read again whole,
-   * once, so a list that changed is read in full only when it did.
+   * an unchanged list is a 304 however many rows are held. Catalog counts and older-page
+   * progress keep the held prefix. A new generation stages that prefix in bounded pages.
    *
    * @param {boolean} [first] The panel's first read of this list, which a panel not shown
    *   still takes, so it opens with its rows.
@@ -771,6 +802,7 @@ export function createPullsController(deps, options = {}) {
     const list = held();
     polling = true;
     const request = ++sent;
+    const epoch = requestEpoch;
     const controller = new AbortController();
     inflight = controller;
     try {
@@ -779,25 +811,47 @@ export function createPullsController(deps, options = {}) {
         `${PULLS_ROUTE}?state=${name}&limit=${WINDOW_ROWS}`,
         { etag: list.etag, signal: controller.signal },
       );
-      if (disposed || name !== filter) {
+      if (
+        disposed ||
+        request < shownRequest ||
+        name !== filter ||
+        epoch !== requestEpoch ||
+        controller.signal.aborted
+      ) {
         return;
       }
       if (response.status === 200 && isEnvelope(response.body)) {
         if (request >= shownRequest) {
-          shownRequest = request;
-          holdEnvelope(list, response.body);
           const content = contentOf(response.body);
-          if (
+          const coherent =
             content === list.content ||
             (await holdContent(list, response.body, content, {
               request,
               signal: controller.signal,
-            }))
+            }));
+          if (
+            coherent &&
+            request >= shownRequest &&
+            epoch === requestEpoch &&
+            !controller.signal.aborted
           ) {
+            shownRequest = request;
+            holdEnvelope(list, response.body);
             list.etag = response.etag;
-          }
-          if (list.more && !response.body.refreshing && list.nextAfter === null) {
-            list.more = false;
+            if (
+              list.nextAfter === null &&
+              list.rows.length < Math.min(list.displayLimit, response.body.fetched)
+            ) {
+              list.nextAfter = list.rows.at(-1)?.number ?? null;
+            }
+            if (
+              list.more &&
+              (list.rows.length >= list.displayLimit ||
+                (response.body.total !== null && list.rows.length >= response.body.total) ||
+                !response.body.refreshing)
+            ) {
+              list.more = false;
+            }
           }
         }
       } else if (response.status === 304) {
@@ -806,7 +860,7 @@ export function createPullsController(deps, options = {}) {
         list.error = `The list is unavailable (HTTP ${response.status}).`;
       }
     } catch {
-      if (disposed || name !== filter || controller.signal.aborted) {
+      if (disposed || request < shownRequest || name !== filter || controller.signal.aborted) {
         return;
       }
       list.error = "The server did not answer.";
@@ -817,7 +871,7 @@ export function createPullsController(deps, options = {}) {
         polling = false;
       }
     }
-    if (disposed || name !== filter) {
+    if (disposed || name !== filter || epoch !== requestEpoch) {
       return;
     }
     settleAnchor();
@@ -826,8 +880,8 @@ export function createPullsController(deps, options = {}) {
       deps.reveal(current);
     }
     chaseCurrent();
-    // A reader who asked for the next GitHub page gets its rows without asking twice.
-    if (list.more && list.nextAfter !== null) {
+    // Fill the reader's display budget from cached metadata, independently of provider paging.
+    if (list.nextAfter !== null && list.rows.length < list.displayLimit) {
       await loadWindow();
     }
     scheduleNext();
@@ -848,36 +902,49 @@ export function createPullsController(deps, options = {}) {
       disposed ||
       !deps.isVisible() ||
       envelope === null ||
-      envelope.refreshing ||
       envelope.reason === "not_github"
     ) {
       return;
     }
-    if (envelope.state !== "absent" && envelope.state !== "stale") {
+    const target = Math.min(list.displayLimit, envelope.total ?? list.displayLimit);
+    const needsRows = envelope.fetched < target && list.priorityTarget < target;
+    const needsCatalog = !envelope.complete && !envelope.refreshing;
+    if (
+      !needsRows &&
+      !needsCatalog &&
+      (envelope.refreshing || (envelope.state !== "absent" && envelope.state !== "stale"))
+    ) {
       return;
     }
     const windowMs = envelope.fresh_for_s * 1000;
-    if (list.askedAt !== null && deps.now() - list.askedAt < windowMs) {
+    if (!needsRows && list.askedAt !== null && deps.now() - list.askedAt < windowMs) {
       return;
     }
     list.askedAt = deps.now();
-    void ask({ state: filter });
+    list.priorityTarget = target;
+    void ask({ state: filter, target: list.displayLimit });
   }
 
   /**
    * Send a refresh and take the envelope it answers with. The answer has no rows.
    *
-   * @param {{state: string, more?: boolean, retry?: boolean}} body
+   * @param {{state: string, target: number, retry?: boolean}} body
    */
   async function ask(body) {
     const name = body.state;
     const list = /** @type {HeldList} */ (lists.get(name));
     const request = ++sent;
-    const reader = body.retry === true || body.more === true;
+    const reader = body.retry === true || list.more;
+    const epoch = requestEpoch;
+    const controller = new AbortController();
+    refreshReads.add(controller);
     try {
-      const response = await deps.request("POST", REFRESH_ROUTE, { body });
+      const response = await deps.request("POST", REFRESH_ROUTE, {
+        body,
+        signal: controller.signal,
+      });
       const answer = /** @type {{pulls?: unknown, error?: unknown} | null} */ (response.body);
-      if (disposed) {
+      if (disposed || epoch !== requestEpoch || controller.signal.aborted) {
         return;
       }
       if (
@@ -903,49 +970,66 @@ export function createPullsController(deps, options = {}) {
         list.more = false;
       }
     } catch {
-      if (reader && !disposed) {
+      if (reader && !disposed && epoch === requestEpoch && !controller.signal.aborted) {
         list.error = "The refresh request failed.";
         list.more = false;
       }
+    } finally {
+      refreshReads.delete(controller);
     }
-    if (!disposed && name === filter) {
+    if (!disposed && name === filter && epoch === requestEpoch) {
       render();
       scheduleNext();
     }
   }
 
   /** Read the next window of rows the list already holds. Local, and runs no gh. */
-  let loadingWindow = false;
   async function loadWindow() {
     const list = held();
     const name = filter;
-    if (disposed || loadingWindow || list.nextAfter === null) {
+    if (
+      disposed ||
+      windowRead !== null ||
+      list.nextAfter === null ||
+      list.rows.length >= list.displayLimit
+    ) {
       return;
     }
-    loadingWindow = true;
-    const request = ++sent;
-    // The rows it follows: a poll that replaces them while it is read makes it another list's.
+    const controller = new AbortController();
+    windowRead = controller;
+    const epoch = requestEpoch;
     const version = list.version;
     const after = list.nextAfter;
-    let superseded = false;
+    const content = list.content;
+    let advanced = false;
     try {
       const response = await deps.request(
         "GET",
         `${PULLS_ROUTE}?state=${name}&limit=${WINDOW_ROWS}&after=${after}`,
-        {},
+        { signal: controller.signal },
       );
-      if (disposed) {
+      if (
+        disposed ||
+        epoch !== requestEpoch ||
+        name !== filter ||
+        controller.signal.aborted ||
+        windowRead !== controller
+      ) {
         return;
       }
-      superseded = list.version !== version || list.nextAfter !== after;
-      if (superseded) {
-        // Its rows follow rows the list no longer holds, so they are dropped.
-      } else if (response.status === 200 && isEnvelope(response.body)) {
-        // The rows after the ones held, and only if nothing changed under them.
+      if (list.version !== version || list.nextAfter !== after) {
+        return;
+      }
+      if (response.status === 200 && isEnvelope(response.body)) {
+        if (contentOf(response.body) !== content) {
+          list.etag = null;
+          return;
+        }
         const repository = repositoryName(response.body.source);
         const fresh = response.body.rows
           .map((row) => describeRow(row, repository))
-          .filter((row) => !list.keys.has(row.number));
+          .filter((row) => !list.keys.has(row.number))
+          .slice(0, list.displayLimit - list.rows.length);
         for (const row of fresh) {
           list.keys.set(row.number, list.rows.length);
           list.rows.push(row);
@@ -953,47 +1037,52 @@ export function createPullsController(deps, options = {}) {
         if (fresh.length > 0) {
           list.version += 1;
         }
-        // The poll's tag is the top window's, which a window leaves as it was.
-        if (request >= shownRequest) {
-          shownRequest = request;
-          holdEnvelope(list, response.body);
-        }
+        holdEnvelope(list, response.body);
         list.nextAfter = response.body.next_after;
-        if (list.nextAfter === null) {
+        advanced = fresh.length > 0 && list.nextAfter !== after;
+        if (
+          list.rows.length >= list.displayLimit ||
+          (response.body.total !== null && list.rows.length >= response.body.total)
+        ) {
           list.more = false;
         }
       } else if (!pinChanged(response)) {
         list.error = `The list is unavailable (HTTP ${response.status}).`;
       }
     } catch {
-      if (!disposed) {
+      if (!disposed && epoch === requestEpoch && !controller.signal.aborted) {
         list.error = "The server did not answer.";
       }
     } finally {
-      loadingWindow = false;
+      if (windowRead === controller) {
+        windowRead = null;
+      }
     }
-    if (superseded && !disposed && name === filter) {
-      // The reader asked for the rows after the end, which the replaced list has too.
-      await loadWindow();
-      return;
-    }
-    if (!disposed && name === filter) {
+    if (!disposed && epoch === requestEpoch && name === filter) {
       settleAnchor();
       render();
       if (chasing && current !== null && list.keys.has(current)) {
         chasing = false;
         deps.reveal(current);
-      } else {
-        chaseCurrent();
+      }
+      if (advanced && list.nextAfter !== null && list.rows.length < list.displayLimit) {
+        await loadWindow();
+      } else if (
+        advanced &&
+        list.nextAfter === null &&
+        list.envelope !== null &&
+        list.rows.length < Math.min(list.displayLimit, list.envelope.total ?? list.displayLimit) &&
+        list.priorityTarget < list.displayLimit
+      ) {
+        list.priorityTarget = list.displayLimit;
+        await ask({ state: name, target: list.displayLimit });
       }
     }
   }
 
   /**
-   * The next rows: a window of what is held, or else, on a reader's action, one more GitHub
-   * page. *retrying* is a press of the button: reaching the end of the list by itself never
-   * asks again after a failure.
-   *
+   * Read cached rows within the display budget. A button grows it by500 and can
+   * prioritize metadata that the background catalog walk has not reached yet.
    * @param {boolean} retrying
    */
   function next(retrying) {
@@ -1002,21 +1091,27 @@ export function createPullsController(deps, options = {}) {
     if (disposed || envelope === null) {
       return Promise.resolve();
     }
-    if (list.nextAfter !== null) {
+    if (retrying) {
+      if (envelope.total !== null && list.rows.length >= envelope.total) {
+        return Promise.resolve();
+      }
+      list.displayLimit += DISPLAY_ROWS;
+      list.more = true;
+      render();
+    }
+    if (list.nextAfter !== null && list.rows.length < list.displayLimit) {
       return loadWindow();
     }
-    // A list with nothing yet has no end to reach, and no next page to name.
-    const holds = envelope.state === "current" || envelope.state === "stale";
-    if (!holds || envelope.complete || envelope.at_cap || list.more) {
-      return Promise.resolve();
+    if (
+      retrying &&
+      (envelope.total === null || envelope.fetched < Math.min(list.displayLimit, envelope.total))
+    ) {
+      list.priorityTarget = list.displayLimit;
+      return ask({ state: filter, target: list.displayLimit });
     }
-    const failed = envelope.last_refresh !== null && envelope.last_refresh.outcome !== "succeeded";
-    if (failed && !retrying) {
-      return Promise.resolve();
-    }
-    list.more = true;
+    list.more = false;
     render();
-    return ask({ state: filter, more: true });
+    return Promise.resolve();
   }
 
   /** @param {number} number */
@@ -1047,7 +1142,12 @@ export function createPullsController(deps, options = {}) {
     const done = deps
       .request("GET", `${PULL_ROUTE}?number=${number}`, { signal: controller.signal })
       .then((response) => {
-        if (response.status !== 200) {
+        if (
+          response.status !== 200 ||
+          disposed ||
+          controller.signal.aborted ||
+          reading?.controller !== controller
+        ) {
           return null;
         }
         const answer = { etag: response.etag, body: response.body };
@@ -1112,6 +1212,23 @@ export function createPullsController(deps, options = {}) {
     deps.open({ number, tab: "", replace, reader: { fetchAfterMs, initial, walking } });
   }
 
+  function cancelReads() {
+    requestEpoch += 1;
+    inflight?.abort();
+    inflight = null;
+    polling = false;
+    windowRead?.abort();
+    windowRead = null;
+    reading?.controller.abort();
+    reading = null;
+    for (const controller of refreshReads) {
+      controller.abort();
+    }
+    refreshReads.clear();
+    opening += 1;
+    clearWalk();
+  }
+
   /**
    * The list rows changed under the panel: a new filter, or it became visible.
    *
@@ -1122,12 +1239,7 @@ export function createPullsController(deps, options = {}) {
     if (disposed || !LISTS.includes(name) || name === filter) {
       return;
     }
-    inflight?.abort();
-    inflight = null;
-    polling = false;
-    // A row of the list being left that is still waiting to open does not open over it.
-    opening += 1;
-    clearWalk();
+    cancelReads();
     filter = name;
     settleAnchor();
     painted = null;
@@ -1159,6 +1271,7 @@ export function createPullsController(deps, options = {}) {
       shown = visible;
       if (!visible) {
         clearTimer();
+        cancelReads();
         return;
       }
       if (current !== null && held().keys.has(current)) {
@@ -1302,7 +1415,7 @@ export function createPullsController(deps, options = {}) {
         return Promise.resolve();
       }
       held().error = null;
-      return ask({ state: filter, retry: true });
+      return ask({ state: filter, target: held().displayLimit, retry: true });
     },
     onVisibilityChange() {
       if (disposed) {
@@ -1310,6 +1423,7 @@ export function createPullsController(deps, options = {}) {
       }
       if (!deps.isVisible()) {
         clearTimer();
+        cancelReads();
         return;
       }
       void poll();
@@ -1318,8 +1432,7 @@ export function createPullsController(deps, options = {}) {
       disposed = true;
       clearTimer();
       clearWalk();
-      inflight?.abort();
-      reading?.controller.abort();
+      cancelReads();
       peeked.clear();
     },
     snapshot: () => ({
@@ -1328,6 +1441,7 @@ export function createPullsController(deps, options = {}) {
       anchor,
       shown,
       rows: held().rows.length,
+      displayLimit: held().displayLimit,
       nextAfter: held().nextAfter,
       etag: held().etag,
       peeked: [...peeked.keys()],
@@ -1422,6 +1536,10 @@ export function mountPullsPanel(container, ctx, mb) {
     "aria-label": "Loading pull requests",
   });
   const foot = h("div", { class: "github-pulls-foot" });
+  const moreButton = /** @type {HTMLButtonElement} */ (
+    h("button", { type: "button", class: "btn github-pulls-more" }, ["Fetch more"])
+  );
+  moreButton.addEventListener("click", () => void controller.loadMore());
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   container.classList.add("github-pulls");
   container.replaceChildren(filters, status, notice, skeleton, list, empty, foot, live);
@@ -1444,6 +1562,17 @@ export function mountPullsPanel(container, ctx, mb) {
   /** The rows last painted, in their order: an append leaves them as they were. @type {PullRow[]} */
   let paintedRows = [];
   let paintedVersion = -1;
+  const rowWindow = createPullsWindow({ estimate: 41.5, overscan: PULL_ROWS_OVERSCAN });
+  /** @type {Map<number, number>} */
+  let rowIndices = new Map();
+  /** @type {Map<string, HTMLElement>} */
+  const gaps = new Map();
+  /** @type {{number: number, offset: number} | null} */
+  let readingPlace = null;
+  /** @type {number | null} */
+  let windowFrame = null;
+  let windowDisposed = false;
+
   /** The minute the rows' ages were last told in. */
   let agedIn = Math.floor(Date.now() / 60_000);
   /** @type {number | null} */
@@ -1671,86 +1800,183 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * Paint the rows. An answer that appends keeps every row it held, the same objects in the
-   * same order, so only the new ones are built: an append costs what the rows added cost, and
-   * not what the list holds. Any other answer reuses the rows that say the same.
+   * Retain the logical row order and measurements; only the viewport builds DOM rows.
    *
    * @param {PullRow[]} rows
-   * @returns {number} The first row whose place in the list may have moved.
    */
   function paintRows(rows) {
-    const kept = paintedRows.length;
-    const appends = rows.length >= kept && paintedRows.every((row, index) => rows[index] === row);
-    if (appends) {
-      const fragment = document.createDocumentFragment();
-      for (const row of rows.slice(kept)) {
-        const entry = buildRow(row, JSON.stringify(row));
-        painted.set(row.number, entry);
-        fragment.append(entry.item);
-      }
-      list.append(fragment);
-    } else {
-      const focused =
-        document.activeElement instanceof HTMLElement &&
-        list.contains(document.activeElement) &&
-        document.activeElement.dataset.number
-          ? Number(document.activeElement.dataset.number)
-          : null;
-      const order = rows.map((row) => {
-        const key = JSON.stringify(row);
-        let entry = painted.get(row.number);
-        if (entry === undefined || entry.key !== key) {
-          entry = buildRow(row, key);
-          painted.set(row.number, entry);
-        }
-        return entry;
-      });
-      const held = new Set(rows.map((row) => row.number));
-      for (const number of [...painted.keys()]) {
-        if (!held.has(number)) {
-          painted.delete(number);
-        }
-      }
-      list.replaceChildren(...order.map((entry) => entry.item));
-      if (focused !== null) {
-        painted.get(focused)?.row.focus({ preventScroll: true });
+    paintedRows = rows.slice();
+    rowIndices = new Map(rows.map((row, index) => [row.number, index]));
+    rowWindow.setRows(rows.map((row) => row.number));
+  }
+
+  function visiblePlace() {
+    const view = tab.scrollRoot?.getBoundingClientRect();
+    if (view === undefined) {
+      return null;
+    }
+    const visible = [...painted.entries()].sort(
+      (left, right) => (rowIndices.get(left[0]) ?? 0) - (rowIndices.get(right[0]) ?? 0),
+    );
+    for (const [number, entry] of visible) {
+      const box = entry.item.getBoundingClientRect();
+      if (box.bottom > view.top && box.top < view.bottom) {
+        return { number, offset: box.top - view.top };
       }
     }
-    paintedRows = rows.slice();
-    return appends ? kept : 0;
+    return null;
+  }
+
+  function queueWindow() {
+    if (windowDisposed || windowFrame !== null) {
+      return;
+    }
+    windowFrame = window.requestAnimationFrame(() => {
+      windowFrame = null;
+      paintViewport();
+    });
+  }
+
+  const rowSizes =
+    typeof ResizeObserver === "function"
+      ? new ResizeObserver((entries) => {
+          let changed = false;
+          for (const entry of entries) {
+            const number = Number(/** @type {HTMLElement} */ (entry.target).dataset.number);
+            const box = entry.borderBoxSize[0];
+            if (box !== undefined) {
+              changed = rowWindow.measure(number, box.blockSize) || changed;
+            }
+          }
+          if (changed) {
+            queueWindow();
+          }
+        })
+      : null;
+
+  function paintViewport() {
+    if (windowDisposed) {
+      return;
+    }
+    const view = tab.scrollRoot?.getBoundingClientRect();
+    const listTop = view === undefined ? 0 : list.getBoundingClientRect().top;
+    const focusBefore =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const active =
+      document.activeElement instanceof Element
+        ? document.activeElement.closest("li.github-pulls-item")
+        : null;
+    const focused = active instanceof HTMLElement ? Number(active.dataset.number) : null;
+    const protectedRows = [currentRow, anchorRow, focused];
+    const pieces = rowWindow.range(
+      view === undefined ? 0 : view.top - listTop,
+      view === undefined ? DISPLAY_ROWS * 41.5 : view.bottom - listTop,
+      protectedRows,
+    );
+    const wanted = new Set(pieces.filter((part) => part.kind === "row").map((part) => part.number));
+    for (const [number, entry] of painted) {
+      if (wanted.has(number)) {
+        continue;
+      }
+      rowSizes?.unobserve(entry.item);
+      trees.get(number)?.detach();
+      entry.item.remove();
+      painted.delete(number);
+    }
+    /** @type {Node[]} */
+    const nodes = [];
+    const usedGaps = new Set();
+    for (const part of pieces) {
+      if (part.kind === "gap") {
+        const key = `${part.start}:${part.end}`;
+        let gap = gaps.get(key);
+        if (gap === undefined) {
+          gap = h("li", {
+            class: "github-pulls-spacer",
+            role: "presentation",
+            "aria-hidden": "true",
+          });
+          gaps.set(key, gap);
+        }
+        gap.style.height = `${part.height}px`;
+        usedGaps.add(key);
+        nodes.push(gap);
+        continue;
+      }
+      const row = paintedRows[part.index];
+      const key = JSON.stringify(row);
+      let entry = painted.get(row.number);
+      if (entry === undefined || entry.key !== key) {
+        if (entry !== undefined) {
+          rowSizes?.unobserve(entry.item);
+          entry.item.remove();
+        }
+        entry = buildRow(row, key);
+        entry.item.dataset.number = String(row.number);
+        painted.set(row.number, entry);
+        rowSizes?.observe(entry.item);
+      }
+      entry.row.setAttribute("aria-posinset", String(part.index + 1));
+      entry.row.setAttribute("aria-setsize", String(placedSize));
+      nodes.push(entry.item);
+    }
+    for (const [key, gap] of gaps) {
+      if (!usedGaps.has(key)) {
+        gap.remove();
+        gaps.delete(key);
+      }
+    }
+    // Insert only missing/moved nodes; a focused file inside a retained row stays connected.
+    let cursor = list.firstChild;
+    for (const node of nodes) {
+      if (node === cursor) {
+        cursor = cursor.nextSibling;
+      } else {
+        list.insertBefore(node, cursor);
+      }
+    }
+    if (readingPlace !== null && tab.scrollRoot !== null) {
+      const entry = painted.get(readingPlace.number);
+      if (entry !== undefined && view !== undefined) {
+        const delta = entry.item.getBoundingClientRect().top - view.top - readingPlace.offset;
+        if (Math.abs(delta) >= 0.5) {
+          tab.scrollRoot.scrollTop += delta;
+        }
+      }
+    }
+    if (focusBefore !== null && document.activeElement === document.body) {
+      const arriving = focusBefore.isConnected
+        ? focusBefore
+        : focused === null
+          ? null
+          : painted.get(focused)?.row;
+      arriving?.focus({ preventScroll: true });
+    }
+    readingPlace = visiblePlace();
+    for (const number of painted.keys()) {
+      const tree = trees.get(number);
+      tree?.controller.setShown(panelShown);
+      tree?.repaint();
+    }
   }
 
   /** The list's size the rows' places were last told against. */
   let placedSize = -1;
 
   /**
-   * Tell each row its place and the list's size, as every Files row is told. The browser would
-   * count them from the rows it has drawn, and `content-visibility: auto` keeps a row not yet
-   * drawn out of the accessibility tree: in Chrome 152, 43 of 100 rows at 800 px tall. Only the
-   * rows from *from* on can have moved, unless the size did.
+   * Tell mounted rows their absolute places and the selected filter's exact size. Spacer
+   * rows do not enter the accessibility tree; catalog progress need not rebuild PR rows.
    *
-   * Measured 2026-11-03 in headless Chrome 152 at the cap, 1,000 rows, eight back-to-back pairs
-   * against the paint without it, at a load average of 13: a window appended took 1.7 ms of
-   * paint against 1.6 ms, a repaint that moves every row's place 14.9 ms against 14.8 ms, and
-   * the tab's activation to its next paint 28.4 ms against 27.7 ms, which this does not run in.
-   *
-   * @param {PullRow[]} rows
    * @param {number} size
-   * @param {number} from
    */
-  function placeRows(rows, size, from) {
-    const resized = size !== placedSize;
+  function placeRows(size) {
     placedSize = size;
-    const total = String(size);
-    for (let index = resized ? 0 : from; index < rows.length; index += 1) {
-      const row = painted.get(rows[index].number)?.row;
-      const at = String(index + 1);
-      if (row !== undefined && row.getAttribute("aria-posinset") !== at) {
-        row.setAttribute("aria-posinset", at);
+    for (const [number, entry] of painted) {
+      const index = rowIndices.get(number);
+      if (index !== undefined) {
+        entry.row.setAttribute("aria-posinset", String(index + 1));
       }
-      if (row !== undefined && row.getAttribute("aria-setsize") !== total) {
-        row.setAttribute("aria-setsize", total);
-      }
+      entry.row.setAttribute("aria-setsize", String(size));
     }
   }
 
@@ -1782,8 +2008,14 @@ export function mountPullsPanel(container, ctx, mb) {
     // A filter's rows are their own list: nothing is kept across a change of filter.
     if (list.dataset.filter !== model.filter) {
       list.dataset.filter = model.filter;
+      for (const [number, entry] of painted) {
+        rowSizes?.unobserve(entry.item);
+        trees.get(number)?.detach();
+      }
       painted.clear();
       paintedRows = [];
+      gaps.clear();
+      readingPlace = null;
       list.replaceChildren();
       paintedVersion = -1;
       for (const chip of filters.querySelectorAll("button")) {
@@ -1794,20 +2026,34 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     if (model.rowsVersion !== paintedVersion) {
       paintedVersion = model.rowsVersion;
-      placeRows(model.rows, model.setSize, paintRows(model.rows));
+      paintRows(model.rows);
+      placeRows(model.setSize);
     } else if (model.setSize !== placedSize) {
-      placeRows(model.rows, model.setSize, model.rows.length);
+      placeRows(model.setSize);
     }
     tellAges();
     list.setAttribute("aria-label", model.listName);
     list.hidden = model.rows.length === 0;
     skeleton.hidden = !model.skeleton;
-    status.replaceChildren(
-      ...[model.origin, model.count, model.freshness]
-        .filter((line) => line !== null)
-        .map((line) => h("span", {}, [/** @type {string} */ (line)])),
-    );
-    status.hidden = model.origin === null && model.count === null && model.freshness === null;
+    const lines = [];
+    if (model.countNumber !== null && model.countSuffix !== null) {
+      lines.push(
+        h("span", { class: "github-pulls-total-line" }, [
+          h("strong", { class: "github-pulls-total" }, [model.countNumber]),
+          model.countSuffix,
+        ]),
+      );
+    }
+    if (model.window !== null) {
+      lines.push(h("span", { class: "github-pulls-window" }, [model.window]));
+    }
+    for (const line of [model.origin, model.progress, model.freshness]) {
+      if (line !== null) {
+        lines.push(h("span", { class: "github-pulls-progress" }, [line]));
+      }
+    }
+    status.replaceChildren(...lines);
+    status.hidden = lines.length === 0;
     empty.textContent = model.empty ?? "";
     empty.hidden = model.empty === null;
     if (model.notice === null) {
@@ -1830,13 +2076,9 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     const footChildren = [];
     if (model.loadMore !== null) {
-      const more = /** @type {HTMLButtonElement} */ (
-        h("button", { type: "button", class: "btn github-pulls-more" }, ["Load more"])
-      );
-      more.disabled = model.loadMore === "loading";
-      more.setAttribute("aria-busy", String(more.disabled));
-      more.addEventListener("click", () => void controller.loadMore());
-      footChildren.push(more);
+      moreButton.disabled = model.loadMore === "loading";
+      moreButton.setAttribute("aria-busy", String(moreButton.disabled));
+      footChildren.push(moreButton);
     }
     if (model.github !== null) {
       footChildren.push(
@@ -1845,14 +2087,29 @@ export function mountPullsPanel(container, ctx, mb) {
         ]),
       );
     }
-    foot.replaceChildren(...footChildren);
+    const sameFoot =
+      foot.childNodes.length === footChildren.length &&
+      footChildren.every((node, index) => foot.childNodes[index] === node);
+    if (!sameFoot) {
+      foot.replaceChildren(...footChildren);
+    }
     if (live.textContent !== model.live) {
       live.textContent = model.live;
     }
+    paintViewport();
   }
 
   const listening = new AbortController();
   const { signal } = listening;
+  nav.scrollRoot?.addEventListener(
+    "scroll",
+    () => {
+      readingPlace = visiblePlace();
+      queueWindow();
+    },
+    { passive: true, signal },
+  );
+
   // A key moved the focus, and not a reader arriving at a row: a walk reads nothing per row.
   let movingFocus = false;
 
@@ -1879,6 +2136,7 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       markAnchor(previous, next, focus) {
         anchorRow = next;
+        paintViewport();
         if (previous !== null) {
           painted.get(previous)?.row.setAttribute("tabindex", "-1");
         }
@@ -1894,6 +2152,7 @@ export function mountPullsPanel(container, ctx, mb) {
         }
       },
       reveal(number) {
+        paintViewport();
         painted.get(number)?.row.scrollIntoView({ block: "nearest" });
       },
       open: (route) => {
@@ -2000,11 +2259,19 @@ export function mountPullsPanel(container, ctx, mb) {
   );
   // A tree that opens, closes, or fills moves every tree below it: each draws what is in view.
   const moved =
-    typeof ResizeObserver === "function" ? new ResizeObserver(() => repaintTrees()) : null;
+    typeof ResizeObserver === "function"
+      ? new ResizeObserver(() => {
+          repaintTrees();
+          queueWindow();
+        })
+      : null;
   moved?.observe(list);
+  if (tab.scrollRoot !== null) {
+    moved?.observe(tab.scrollRoot);
+  }
   function repaintTrees() {
-    for (const tree of trees.values()) {
-      tree.repaint();
+    for (const number of painted.keys()) {
+      trees.get(number)?.repaint();
     }
   }
 
@@ -2021,8 +2288,8 @@ export function mountPullsPanel(container, ctx, mb) {
     setShown(visible) {
       panelShown = visible;
       controller.setShown(visible);
-      for (const tree of trees.values()) {
-        tree.controller.setShown(visible);
+      for (const [number, tree] of trees) {
+        tree.controller.setShown(visible && painted.has(number));
       }
     },
     /**
@@ -2084,6 +2351,12 @@ export function mountPullsPanel(container, ctx, mb) {
     fileRight: () => focused()?.right() ?? false,
     activateFile: () => focused()?.activateAnchor() ?? false,
     dispose() {
+      windowDisposed = true;
+      if (windowFrame !== null) {
+        window.cancelAnimationFrame(windowFrame);
+      }
+      rowSizes?.disconnect();
+      gaps.clear();
       listening.abort();
       atEnd?.disconnect();
       moved?.disconnect();

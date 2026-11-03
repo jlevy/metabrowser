@@ -1,10 +1,10 @@
 """Read GitHub's lists through ``gh``: typed failures, the paging loop, and item helpers.
 
-A pull request's record and a repository's list of pull requests are both one ``gh api``
-request per page, so they share this: :func:`read_list` walks the pages and steps the page
-size down when a page is larger than gh's output cap, and :class:`PullDataError` is the
-one failure either raises. Nothing here reads or writes the cache, and nothing here needs
-a store, so what is listed needs no Git.
+The REST components of a pull request and its fallback changed-file list share this
+paging loop. :func:`read_list` reduces the page size when an answer exceeds the output
+cap, and :class:`PullDataError` names a typed failure. The repository catalog instead
+uses bounded GraphQL pages in :mod:`pull_list_refresh`. Nothing here reads or writes
+the cache or requires a Git store.
 
 The caller passes the clock, which :func:`gh_api` reads a ``Retry-After`` against, so each
 caller's own clock seam reaches it.

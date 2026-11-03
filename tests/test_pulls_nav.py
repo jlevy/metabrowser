@@ -282,6 +282,8 @@ def test_a_rows_text_is_only_ever_text() -> None:
     assert "filters.innerHTML = controls.groupHtml(" in source
     assert "insertAdjacentHTML" not in source
     assert "outerHTML" not in source
-    # No value from GitHub reaches a style or a class: a row's classes are constants.
-    assert ".style." not in source
+    # The window's internally measured numeric gap is the sole inline style. Values from
+    # GitHub remain text; neither titles nor refs reach a style or class assignment.
+    style_lines = re.findall(r"^.*\.style\..*$", source, re.MULTILINE)
+    assert [line.strip() for line in style_lines] == ["gap.style.height = `${part.height}px`;"]
     assert "cssText" not in source

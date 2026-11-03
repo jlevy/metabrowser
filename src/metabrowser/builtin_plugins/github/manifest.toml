@@ -35,16 +35,16 @@ route = "pull-markdown"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_markdown_handler"
 methods = ["GET"]
 
-# One list of the repository's pull requests (all, open, or closed), a window of its
-# cached rows, with a typed absent, pending, current, or stale state. Answers from the
-# cache alone; only a refresh fetches, and it runs no Git.
+# A filtered window of the repository's shared PR catalog (open, closed, or all), with
+# exact remote totals, cached coverage, and typed freshness. GET is cache-only and runs
+# no Git; catalog background work is started separately.
 [[data_hook]]
 route = "pulls"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pulls_handler"
 methods = ["GET"]
 
-# Start or join that list's refresh in the refresh coordinator, or extend it by one GitHub
-# page. A POST with a JSON object body, behind the same-origin guard; it returns at once.
+# Start or join resumable catalog warming, prioritizing the requested display target
+# before backfilling all metadata. Same-origin POST returns before background work.
 [[data_hook]]
 route = "pulls-refresh"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pulls_refresh_handler"

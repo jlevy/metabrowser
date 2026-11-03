@@ -23,7 +23,7 @@
   const PULL_TABS = Object.freeze(["", "files"]);
   // Keep aligned with view_routes.PULLS_ROUTE and cache.paths.PULL_LIST_NAMES.
   const PULLS_PATH = "/pulls";
-  const PULL_LISTS = Object.freeze(["all", "open", "closed"]);
+  const PULL_LISTS = Object.freeze(["open", "closed", "all"]);
 
   /**
    * Whether *segment* may be one segment of a changed file's path: a path in the pull
@@ -112,16 +112,16 @@
   }
 
   /**
-   * The list's address: `/pulls` for all of them and `/pulls?state=<list>` for a filter.
+   * The list's address: `/pulls` for open pull requests and `/pulls?state=<list>` for a filter.
    *
    * @param {string} [state]
    * @returns {string}
    */
-  function pullsHref(state = "all") {
+  function pullsHref(state = "open") {
     if (!PULL_LISTS.includes(state)) {
       throw new TypeError("pulls route requires a list of pull requests");
     }
-    return state === "all" ? PULLS_PATH : `${PULLS_PATH}?state=${state}`;
+    return state === "open" ? PULLS_PATH : `${PULLS_PATH}?state=${state}`;
   }
 
   /**
@@ -137,7 +137,7 @@
       return null;
     }
     const state = new URLSearchParams(search).get("state");
-    return Object.freeze({ state: state !== null && PULL_LISTS.includes(state) ? state : "all" });
+    return Object.freeze({ state: state !== null && PULL_LISTS.includes(state) ? state : "open" });
   }
 
   /**

@@ -1712,8 +1712,9 @@ export function mountPullPage(container, ctx, mb) {
   const header = h("div", { class: "github-pull-header github-pull-column" });
   const body = h("div", { class: "github-pull-body" });
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
-  // Between the header and the body, as wide as the pane, as a file's views are.
+  // Follow the reading column at every width; Files changed keeps the full pane.
   const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Pull request" });
+  const tabColumn = h("div", { class: "github-pull-column" }, [tabBar]);
   container.replaceChildren(header, body, live);
 
   /** @type {PullModel | null} */
@@ -2194,13 +2195,13 @@ export function mountPullPage(container, ctx, mb) {
     children.push(status);
     header.replaceChildren(...children.filter((child) => child !== null));
     if (model.pull === null) {
-      tabBar.remove();
+      tabColumn.remove();
     } else {
       for (const { id, link } of tabLinks) {
         link.classList.toggle("active", model.tab === id);
         link.setAttribute("aria-selected", String(model.tab === id));
       }
-      header.after(tabBar);
+      header.after(tabColumn);
     }
     live.textContent = [model.message, model.failure].filter(Boolean).join(" ");
   }

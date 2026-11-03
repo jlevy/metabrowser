@@ -29,6 +29,7 @@ from typing import Any
 import pytest
 
 from metabrowser.builtin_plugins.github import pull_list, pulls
+from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
 from metabrowser.cache.urls import GitSource
 from tests.checkout_replica import fingerprint
 from tests.github_pull_fixture import (
@@ -164,6 +165,7 @@ def test_golden_a_checkouts_pull_requests(
     listed = session.post(checkout, f"{PULLS}-refresh", {})
     assert listed.exit_code == 0, listed.stderr
     assert (_after(listed)["state"], _after(listed)["fetched"]) == ("current", 100)
+    assert (_after(listed)["total"], _after(listed)["catalog_fetched"]) == (100, 102)
     source = session.home / "sources" / slug
     assert (source / "source.yml").is_file() and not (source / "store-alias.yml").exists()
     assert not list((session.home / "repository-stores").iterdir())
@@ -257,6 +259,9 @@ def test_golden_a_checkouts_pull_requests(
     from urllib.parse import parse_qs, urlsplit
 
     labels = Labels()
+    catalog = read_catalog(session.home, slug)
+    assert catalog is not None
+    labels.add(catalog.epoch, "<CATALOG_EPOCH>")
     query = parse_qs(urlsplit(route).query)
     labels.add(query["build"][0], "<BUILD>")
     labels.add(query["store"][0], "<STORE_TAG>")

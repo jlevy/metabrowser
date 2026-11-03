@@ -14,6 +14,22 @@ It replaces the list, panel, and checkout-attachment designs in
 which predate the thin mirror (beads `mb-lnkl`, `mb-iw1v`, `mb-cbak`; this plan is
 `mb-qftx`).
 
+## Catalog Revision
+
+Owner testing on 2026-11-03 supersedes the original list-paging design below (bead
+`mb-m13a`). The current design uses one lightweight catalog, automatically backfilled
+and incrementally refreshed, with exact totals and resumable page cursors.
+The displayed list starts at 500 matching PRs and grows through **Fetch more**; that
+display window does not cap the catalog.
+Filters are **Open**, **Closed**, and **All**, with Open selected initially.
+Heavy PR records and Git comparisons remain separate from catalog metadata.
+The Conversation and Files changed tabs align with the reading column.
+
+The earlier page caps, All default, whole-list files, and `more` request fields below
+record the original design.
+The current route and storage contracts are in
+[Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
+
 ## Goal
 
 Open a GitHub repository and find its pull requests in a **Pulls** tab beside Files and
@@ -33,7 +49,7 @@ background, and keeps working offline.
 
 - Issues, Actions, and releases.
 - Review submission, comments, merging, or any other write to GitHub.
-  Every request this plan adds is a `GET` through `gh api`.
+  GitHub operations remain read-only through `gh api`; catalog queries use GraphQL.
 - GitHub Enterprise hosts, and SSH as a transport.
   A checkout whose remote is an SSH address on github.com is still identified, because
   identity is read from configuration and nothing is fetched over SSH.

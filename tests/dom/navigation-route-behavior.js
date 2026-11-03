@@ -194,6 +194,7 @@ observe("the list's addresses", [
   pullRoute.parsePull("/pulls"),
   pullRoute.pullsHref(),
   pullRoute.pullsHref("open"),
+  pullRoute.pullsHref("all"),
   refusal(() => pullRoute.pullsHref("merged")),
 ]);
 observe("history and the list's address", [

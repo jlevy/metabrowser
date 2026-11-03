@@ -982,8 +982,9 @@ The page is a header, a [tab bar](#the-tab-bar), and a body, in that order.
 The header and the conversation share a **reading column**: `--doc-measure` plus two
 card insets, centered in a wider pane as a Markdown file’s card and Overview’s stack
 are. So a card’s text box is the one a file’s text has, and the title lines up with the
-cards under it. The tab bar and Files changed are as wide as the pane: a diff is not
-prose, and Split needs the room.
+cards under it. The Conversation and Files changed tabs follow that same column, so the
+first tab aligns with the content on both narrow and wide screens.
+The Files changed body keeps the full pane: a diff needs room for Split.
 
 ### Text
 
@@ -1085,11 +1086,11 @@ Everything goes through `pullStateIcon` and `displayState` in
 | Title | `--nav-font-size`, full contrast, cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity |
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | Number, author, base and head | One muted line at `--ui-small-font-size` | Context, and paths and names are sans |
-| All, Open, Closed | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top | [Choosing Among Values](#choosing-among-values) |
-| Count and freshness | Muted sentences, “Fetched 2 min ago by a reader” | A status sentence is the [Age](#age) exception |
+| Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | [Choosing Among Values](#choosing-among-values) |
+| Count and freshness | Bold numeric total with “PRs on owner/repo”; a separate “Showing last 500” line when the display is partial, followed by muted freshness | A status sentence is the [Age](#age) exception |
 | A refresh’s failure, cut rows | [`.notice`](#notices), `warning`, with **Retry** in it when a reader can act | A cached list still shows under it |
 | No rows yet | The `.recent-loading` shape under `.mb-delayed-loading` | [Loading States Are Shapes](#loading-states-are-shapes-not-sentences) |
-| Load more, Retry | `.btn` | [Control Families](#control-families) |
+| Fetch more, Retry | `.btn` | [Control Families](#control-families) |
 
 A row is two lines and one target, because a pane is narrower than its parts: the state
 icon and the title with the age beside it, sharing a baseline, then the muted line under

@@ -13,7 +13,9 @@ so every commit ID is the same on every machine. It stands in for
 
 ``scenario`` answers every ``gh api`` read of those pull requests from
 ``tests/fixtures/github-pull/responses.json``, scrubbed real responses, and ``gh auth
-status`` for one signed-in account. It answers the repository's lists too:
+status`` for one signed-in account. GraphQL catalog pages contain 102 rows, of which
+100 are open and two are closed. Fixed REST list entries remain available for generic
+transport tests:
 
 | List | Pages |
 | --- | --- |
@@ -27,8 +29,8 @@ Python script run by this interpreter.
 
 Run as a script, it builds ``<directory>/home``, an application home holding the
 mirror and the records of all four pull requests, fetched through the production CLI
-path with the fake ``gh`` and a fixed clock, the first page of the ``all`` list, the
-``open`` list as another account read it, no ``closed`` list, and ``<directory>/root``::
+path with the fake ``gh`` and a fixed clock, a complete metadata catalog last read
+by another account, and ``<directory>/root``::
 
     github_pull_fixture.py <directory>
 
@@ -53,9 +55,13 @@ import subprocess
 import sys
 from collections.abc import Generator, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
+
+if TYPE_CHECKING:
+    from metabrowser.builtin_plugins.github.pull_catalog import CatalogState
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 
 CANONICAL: Final = "https://github.com/octo/demo"
 READER: Final = "octo-reader"
@@ -109,9 +115,14 @@ if args[:1] == ["api"]:
     if failure:
         sys.stderr.write(failure["stderr"])
         sys.exit(failure.get("exit", 1))
-    path, match, index = None, None, 1
+    path, match, index, fields = None, None, 1, {{}}
     while index < len(args):
         arg = args[index]
+        if arg in ("-f", "-F"):
+            key, _, value = args[index + 1].partition("=")
+            fields[key] = value
+            index += 2
+            continue
         if arg in ("--hostname", "--method", "-H", "--jq"):
             if arg == "-H" and args[index + 1].startswith("If-None-Match: "):
                 match = args[index + 1].split(": ", 1)[1]
@@ -120,6 +131,12 @@ if args[:1] == ["api"]:
         if not arg.startswith("-"):
             path = arg
         index += 1
+    if path == "graphql":
+        tail = fields.get("query", "").split("page:pullRequests", 1)[-1]
+        state = "updated" if "field:UPDATED_AT" in tail else "closed" if "states:[CLOSED,MERGED]" in tail else "open" if "states:OPEN" in tail else "all"
+        path = "graphql:" + state + ":" + fields.get("cursor", "start")
+        if fields.get("owner", "").casefold() != "octo" or fields.get("name", "").casefold() != "demo":
+            path = "graphql:unavailable-repository"
     entry = pick(path, scenario["api"].get(path, {{"status": 404, "body": {{"message": "Not Found"}}}}))
     status = entry["status"]
     headers = dict(entry.get("headers", {{}}))
@@ -570,6 +587,22 @@ def logged_gh_calls(directory: Path) -> list[str]:
         if args[:2] == ["auth", "status"]:
             calls.append("gh auth status")
             continue
+        if "graphql" in args:
+            fields = dict(arg.split("=", 1) for arg in args if "=" in arg)
+            tail = fields.get("query", "").split("page:pullRequests", 1)[-1]
+            state = (
+                "updated"
+                if "field:UPDATED_AT" in tail
+                else "closed"
+                if "states:[CLOSED,MERGED]" in tail
+                else "open"
+                if "states:OPEN" in tail
+                else "all"
+            )
+            calls.append(
+                f"gh api graphql catalog state={state} cursor={fields.get('cursor', 'start')}"
+            )
+            continue
         path = next(arg for arg in args if arg.startswith("repos/"))
         if "--jq" in args:
             calls.append(f"gh api {path} --jq {args[args.index('--jq') + 1]}")
@@ -678,9 +711,7 @@ def list_item(pull: Mapping[str, Any]) -> dict[str, Any]:
 def generated_item(number: int) -> dict[str, Any]:
     """A pull request that only lists hold, newer the higher its *number*."""
 
-    minutes = number % 60
-    hour = 8 + number // 60
-    when = f"2026-09-17T{hour:02d}:{minutes:02d}:00Z"
+    when = (FETCHED_AT.replace(hour=8) + timedelta(minutes=number)).strftime("%Y-%m-%dT%H:%M:%SZ")
     side = {"repo": {"full_name": "octo/demo"}}
     return list_item(
         {
@@ -852,10 +883,126 @@ def account(login: str = READER, *, state: str = "success") -> dict[str, Any]:
     return {"stdout": json.dumps({"hosts": {"github.com": [host]}}) + "\n", "exit": 0}
 
 
+def catalog_entries(
+    items: list[dict[str, Any]], *, reader: str = READER, repository_id: str = "R_demo"
+) -> dict[str, Any]:
+    """Fixed GraphQL catalog pages: graphql:<all|open|closed|updated>:<cursor|start>."""
+    totals = {"all": len(items), "open": sum(item["state"] == "open" for item in items)}
+    totals["closed"] = totals["all"] - totals["open"]
+    latest = max((item["updated_at"] for item in items), default=None)
+    entries: dict[str, Any] = {}
+    for name in ("all", "open", "closed", "updated"):
+        selected = [item for item in items if name in {"all", "updated"} or item["state"] == name]
+        selected.sort(
+            key=lambda item: (
+                (item["updated_at"], item["number"]) if name == "updated" else item["number"]
+            ),
+            reverse=True,
+        )
+        for offset in range(0, max(1, len(selected)), 100):
+            cursor = f"{name}-{offset}" if offset else "start"
+            batch = selected[offset : offset + 100]
+            nodes = []
+            for item in batch:
+                head = item["head"].get("repo")
+                nodes.append(
+                    {
+                        "number": item["number"],
+                        "title": item["title"],
+                        "state": "MERGED" if item.get("merged_at") else item["state"].upper(),
+                        "isDraft": item.get("draft", False),
+                        "mergedAt": item.get("merged_at"),
+                        "createdAt": item["created_at"],
+                        "updatedAt": item["updated_at"],
+                        "closedAt": item.get("closed_at"),
+                        "author": item.get("user"),
+                        "baseRefName": item["base"]["ref"],
+                        "headRefName": item["head"]["ref"],
+                        "headRepository": {"nameWithOwner": head["full_name"]} if head else None,
+                        "labels": {
+                            "nodes": [
+                                {"name": label["name"]} for label in item.get("labels", [])[:100]
+                            ],
+                            "pageInfo": {"hasNextPage": len(item.get("labels", [])) > 100},
+                        },
+                    }
+                )
+            key = f"graphql:{name}:{cursor}"
+            body = {
+                "data": {
+                    "viewer": {"login": reader},
+                    "repository": {
+                        "id": repository_id,
+                        **{label: {"totalCount": count} for label, count in totals.items()},
+                        "latest": {"nodes": [{"updatedAt": latest}] if latest else []},
+                        "page": {
+                            "nodes": nodes,
+                            "pageInfo": {
+                                "hasNextPage": offset + 100 < len(selected),
+                                "endCursor": f"{name}-{offset + len(batch)}" if batch else None,
+                            },
+                        },
+                    },
+                }
+            }
+            entries[key] = ok(key, body)
+    return entries
+
+
+def seed_catalog(
+    repository: ListedRepository,
+    items: list[dict[str, Any]],
+    *,
+    reader: str = READER,
+    fetched_at: str = "2026-10-01T12:00:00Z",
+    complete: bool = True,
+    repository_id: str = "R_demo",
+) -> CatalogState:
+    """Seed actual bounded catalog publications without a fake route envelope."""
+    from metabrowser.builtin_plugins.github.pull_catalog import (
+        CatalogState,
+        publish_page,
+        read_catalog,
+    )
+    from metabrowser.builtin_plugins.github.pull_list_refresh import (
+        _row,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    totals = {"all": len(items), "open": sum(item["state"] == "open" for item in items)}
+    totals["closed"] = totals["all"] - totals["open"]
+    state = read_catalog(repository.home, repository.slug)
+    ordered = sorted(items, key=lambda item: item["number"], reverse=True)
+    for offset in range(0, max(1, len(ordered)), 100):
+        proposed = CatalogState(
+            source=repository.source,
+            repository_id=repository_id,
+            reader=f"gh:{reader}",
+            fetched_at=fetched_at,
+            count_at=fetched_at,
+            totals=totals,
+            covered={name: min(offset + 100, totals[name]) for name in totals},
+            done={name: complete and offset + 100 >= len(ordered) for name in totals},
+            watermark=max((item["updated_at"] for item in items), default=None),
+        )
+        if (
+            state is not None
+            and state.reader == proposed.reader
+            and state.repository_id == repository_id
+        ):
+            proposed = proposed.model_copy(update={"epoch": state.epoch})
+        rows = tuple(_row(item)[0] for item in ordered[offset : offset + 100])
+        assert publish_page(repository, state, proposed, rows)
+        state = read_catalog(repository.home, repository.slug)
+    assert state is not None
+    return state
+
+
 def scenario(origin: Origin) -> dict[str, Any]:
     """Signed in as :data:`READER`, answering every read of pull requests 7 to 10."""
 
-    answers = {**api_entries(origin), **list_entries(origin)}
+    lists = list_entries(origin)
+    items = [*lists[list_page("all")]["body"], *lists[list_page("all", 2)]["body"]]
+    answers = {**api_entries(origin), **lists, **catalog_entries(items)}
     return {"auth": account(), "api": answers, "api_failure": None}
 
 
@@ -946,17 +1093,27 @@ def _source_slug() -> str:
 
 
 def build_lists(directory: Path, answers: Mapping[str, Any]) -> None:
-    """The ``all`` list's first page, and the ``open`` list another account read."""
+    """One complete shared catalog, last read as another account, for cache-only goldens."""
 
+    from metabrowser.builtin_plugins.github.pull_catalog import publish_page, read_catalog
     from metabrowser.builtin_plugins.github.pull_list import ListedRepository
     from metabrowser.builtin_plugins.github.pull_list_refresh import refresh_pull_list
 
     repository = ListedRepository(directory / "home", _source_slug(), "octo", "demo")
-    asyncio.run(refresh_pull_list(repository, "all"))
-    os.environ.update(
-        install_fake_gh(directory, {**answers, "auth": account(ANOTHER_READER)}),
-    )
     asyncio.run(refresh_pull_list(repository, "open"))
+    other = json.loads(json.dumps(answers))
+    other["auth"] = account(ANOTHER_READER)
+    for key, entry in other["api"].items():
+        if key.startswith("graphql:"):
+            entry["body"]["data"]["viewer"]["login"] = ANOTHER_READER
+    os.environ.update(install_fake_gh(directory, other))
+    asyncio.run(refresh_pull_list(repository, "open"))
+    # The static read-only fixture has one epoch. Pin that opaque random identity,
+    # just as its clock is pinned; runtime account/reset tests use real unique epochs.
+    current = read_catalog(repository.home, repository.slug)
+    assert current is not None
+    fixed = current.model_copy(update={"epoch": "00000000000000000000000000000001"})
+    assert publish_page(repository, current, fixed, ())
     os.environ.update(install_fake_gh(directory, answers))
 
 

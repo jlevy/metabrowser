@@ -1,81 +1,80 @@
-"""Read one list of a repository's pull requests with ``gh api``, and keep it.
+"""Backfill lightweight PR metadata and refresh only rows changed since a checkpoint.
 
-:func:`refresh_pull_list` is the whole network job, and it runs no Git:
-
-1. the active github.com account, from ``gh auth status``;
-2. the pages, one ``gh api`` request each, ``sort=created&direction=desc``: every page the
-   file holds, or the first page when the file is another reader's or there is none, or
-   with ``more`` only the page after the ones it holds;
-3. the account again: a list read while the active account changed is discarded;
-4. the list, written atomically, and how the refresh ended, beside it.
-
-Each full-size page goes out with its own ``If-None-Match`` when the same reader read it
-last, and a ``304`` reuses that page's rows, which GitHub does not count against the
-primary rate limit. The one exception is a complete list's last page when it may be full,
-which is read whole: see :func:`_page_etag`. A page that fails fails the job, and the file
-stays as it was.
-
-The list is assembled over the job's duration and is not atomic. A pull request that opens
-or closes between two page reads can appear twice, which the number dedupes, or be missed
-until the next refresh; a page read later wins, being newer. ``more`` appends to what the
-file holds, so the file keeps its ``fetched_at`` and a later refresh reads it all again.
-
-Pages from two readers are never joined. A successful refresh by another account replaces
-the whole file, so **Load more** under a new account starts again from the first page.
+Every GitHub page is independently bounded and published before the next begins. The
+server's catalog worker yields its network slot after each page, resumes durable cursors,
+and never fetches a PullRecord, comparison, blob, comment, check or review.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
-from collections.abc import Sequence
+import sqlite3
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Final
-
-from pydantic import ValidationError
+from datetime import timedelta
+from functools import partial
+from typing import Any, Literal
 
 from metabrowser.builtin_plugins.github import pull_list
 from metabrowser.builtin_plugins.github.checkout import claim_source
+from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError, gh_graphql
 from metabrowser.builtin_plugins.github.gh_lists import (
+    READ_FAILURES,
     PullDataError,
     active_account,
     as_dict,
     login_of,
-    read_list,
     readable_items,
     utc_stamp,
+)
+from metabrowser.builtin_plugins.github.pull_catalog import (
+    PAGE_SIZE,
+    CatalogState,
+    publish_page,
+    read_catalog,
 )
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_ROW_LABEL_BYTES,
     MAX_ROW_REF_BYTES,
     MAX_ROW_TITLE_BYTES,
-    PULL_LIST_SCHEMA,
     ListedRepository,
-    ListPageMark,
-    PullList,
     PullListRow,
-    can_extend,
-    read_pull_list,
+    rate_limit_holds,
+    read_list_refresh,
     write_list_refresh,
-    write_pull_list,
 )
-from metabrowser.builtin_plugins.github.pull_record import (
-    API_PAGE_SIZE,
-    MAX_LABELS,
-    PullRefreshStamp,
-    RecordTooLargeError,
-    cut_escaped,
-)
+from metabrowser.builtin_plugins.github.pull_record import MAX_LABELS, PullRefreshStamp, cut_escaped
+from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.paths import PullListName
 from metabrowser.home import PrivateStorageError
+from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 
 log = logging.getLogger(__name__)
 
-_MESSAGE_CHARS: Final = 1000
-# gh's wording for a refused path is a pull request's; a list asks about a repository.
-_NO_REPOSITORY: Final = (
-    "GitHub has no such repository, or it is private and the gh account cannot read it"
-)
+# Two public repositories, two 100-row pages each (2026-11-03): 46–49 KB instead
+# of REST's 1.9–2.2 MB, with every existing row field. GitHub reported cost=1/query.
+# A page remains 100 rows and at most 100 bounded label names on each row.
+_QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
+  viewer { login }
+  repository(owner:$owner,name:$name) {
+    id
+    all:pullRequests(first:1) { totalCount }
+    open:pullRequests(first:1,states:OPEN) { totalCount }
+    closed:pullRequests(first:1,states:[CLOSED,MERGED]) { totalCount }
+    latest:pullRequests(first:1,orderBy:{field:UPDATED_AT,direction:DESC}) { nodes { updatedAt } }
+    page:pullRequests(first:100,after:$cursor,orderBy:{field:ORDER,direction:DESC} FILTER) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number title state isDraft mergedAt createdAt updatedAt closedAt
+        author { login } baseRefName headRefName headRepository { nameWithOwner }
+        labels(first:100) { nodes { name } pageInfo { hasNextPage } }
+      }
+    }
+  }
+}"""
+_FILTERS = {"all": "", "open": ",states:OPEN", "closed": ",states:[CLOSED,MERGED]"}
 
 
 def _required_ref(value: object) -> tuple[str, bool]:
@@ -147,192 +146,296 @@ def _rows(values: Sequence[object]) -> tuple[tuple[PullListRow, ...], bool]:
 
 
 @dataclass(frozen=True, slots=True)
-class _Page:
-    mark: ListPageMark
+class CatalogPage:
+    repository_id: str
     rows: tuple[PullListRow, ...]
-    has_next: bool
+    totals: dict[str, int]
+    cursor: str | None
+    done: bool
+    latest: str | None
+    truncated: bool
 
 
-def _reused_page(previous: PullList, number: int) -> _Page:
-    """Page *number* as *previous* holds it, after GitHub said it is unchanged."""
-
-    mark = previous.etags[number - 1]
-    held = {row.number: row for row in previous.rows}
-    # A 304 carries no Link, so this is what the file knew: :func:`_page_etag` asks whole any
-    # last page that could have gained a next one with its body unchanged.
-    has_next = number < previous.pages or not previous.complete
-    return _Page(mark, tuple(held[each] for each in mark.numbers), has_next)
-
-
-def _page_etag(previous: PullList | None, number: int) -> str | None:
-    """The ETag to ask page *number* with, or ``None`` to read it whole.
-
-    A pull request that closes or reopens goes into ``closed`` or ``open`` at its created
-    rank, which can be below every row a list holds. Below a page that is short, that
-    changes the page's body. Below a page that is full, it starts a new page and leaves
-    the body as it was, so GitHub answers ``304``, with no ``Link``, and the list would go
-    on saying ``complete`` with no way for a reader to reach the rest. So a complete list's
-    last page is read whole when it may be full, as a mark that lost an item may have been.
-    That is one counted request a refresh, for a list whose rows are a multiple of a hundred.
-    """
-
-    if previous is None or number > previous.pages:
-        return None
-    mark = previous.etags[number - 1]
-    may_be_full = len(mark.numbers) == API_PAGE_SIZE or mark.truncated
-    return None if previous.complete and number == previous.pages and may_be_full else mark.etag
+def _graph_row(value: object) -> dict[str, Any]:
+    raw = as_dict(value)
+    state = raw["state"]
+    if state not in {"OPEN", "CLOSED", "MERGED"}:
+        raise ValueError("invalid pull-request state")
+    head = raw.get("headRepository")
+    return {
+        "number": raw["number"],
+        "title": raw["title"],
+        "state": "open" if state == "OPEN" else "closed",
+        "draft": raw["isDraft"],
+        "merged_at": raw["mergedAt"],
+        "created_at": raw["createdAt"],
+        "updated_at": raw["updatedAt"],
+        "closed_at": raw["closedAt"],
+        "user": raw.get("author"),
+        "base": {"ref": raw["baseRefName"]},
+        "head": {
+            "ref": raw["headRefName"],
+            "repo": {"full_name": head.get("nameWithOwner")} if isinstance(head, dict) else None,
+        },
+        "labels": as_dict(raw["labels"])["nodes"],
+    }
 
 
 async def _read_page(
-    repository: ListedRepository, name: PullListName, number: int, previous: PullList | None
-) -> _Page:
-    """Full-size page *number*. *previous*, by the same reader, may make it conditional."""
-
-    try:
-        read = await read_list(
-            f"repos/{repository.owner}/{repository.repo}/pulls",
-            key=None,
-            cap=API_PAGE_SIZE,
-            etag=_page_etag(previous, number),
-            now=pull_list.utc_now,
-            query=f"state={name}&sort=created&direction=desc",
-            first_page=number,
-        )
-    except PullDataError as exc:
-        if exc.state == "not_found_or_private":
-            raise PullDataError(exc.state, _NO_REPOSITORY) from exc
-        raise
-    if read.items is None:
-        # Only a conditional request, which needs a previous list, is answered 304.
-        assert previous is not None
-        return _reused_page(previous, number)
-    rows, cut = _rows(read.items)
-    return _Page(
-        ListPageMark(
-            etag=read.etag,
-            numbers=tuple(row.number for row in rows),
-            truncated=read.left_out or cut,
-        ),
-        rows,
-        read.more,
-    )
-
-
-def _assembled(
     repository: ListedRepository,
     name: PullListName,
-    reader: str,
-    pages: Sequence[_Page],
+    cursor: str | None,
     *,
-    fetched_at: str,
-) -> PullList:
-    """Pages joined into one list: each pull request once, highest number first."""
-
-    by_number = {row.number: row for page in pages for row in page.rows}
-    try:
-        return PullList(
-            schema_version=PULL_LIST_SCHEMA,
-            source=repository.source,
-            list=name,
-            fetched_at=fetched_at,
-            reader=reader,
-            pages=len(pages),
-            complete=not pages[-1].has_next,
-            truncated=any(page.mark.truncated for page in pages),
-            etags=tuple(page.mark for page in pages),
-            rows=tuple(by_number[number] for number in sorted(by_number, reverse=True)),
-        )
-    except ValidationError as exc:
-        raise PullDataError(
-            "gh_failed", "GitHub answered with a list Metabrowser cannot read"
-        ) from exc
-
-
-async def _read_held_pages(
-    repository: ListedRepository, name: PullListName, reader: str, previous: PullList | None
-) -> PullList:
-    wanted = previous.pages if previous is not None else 1
-    pages: list[_Page] = []
-    for number in range(1, wanted + 1):
-        page = await _read_page(repository, name, number, previous)
-        pages.append(page)
-        if not page.has_next:
-            break
-    fetched_at = utc_stamp(pull_list.utc_now())
-    return _assembled(repository, name, reader, pages, fetched_at=fetched_at)
-
-
-async def _read_one_more_page(
-    repository: ListedRepository, name: PullListName, previous: PullList
-) -> PullList:
-    held = [_reused_page(previous, number) for number in range(1, previous.pages + 1)]
-    page = await _read_page(repository, name, previous.pages + 1, None)
-    return _assembled(
-        repository, name, previous.reader, [*held, page], fetched_at=previous.fetched_at
+    login: str,
+    updated: bool = False,
+) -> CatalogPage:
+    query = _QUERY.replace("ORDER", "UPDATED_AT" if updated else "CREATED_AT").replace(
+        "FILTER", "" if updated else _FILTERS[name]
     )
-
-
-async def _write(repository: ListedRepository, listed: PullList) -> None:
     try:
-        await asyncio.to_thread(write_pull_list, repository.home, repository.slug, listed)
-    except (RecordTooLargeError, PrivateStorageError, OSError) as exc:
-        log.debug("could not write the list of pull requests: %s", exc)
+        data = await gh_graphql(
+            query,
+            {
+                "owner": repository.owner,
+                "name": repository.repo,
+                "cursor": cursor,
+            },
+            now=pull_list.utc_now(),
+        )
+    except GhCursorError:
+        raise
+    except GhError as exc:
+        raise PullDataError(exc.state, str(exc), reset_at=exc.reset_at) from exc
+    try:
+        if as_dict(data["viewer"])["login"] != login:
+            raise PullDataError("account_changed", "the active gh account changed during the read")
+        raw = data["repository"]
+        if raw is None:
+            raise PullDataError("not_found_or_private", "GitHub has no readable repository here")
+        repo = as_dict(raw)
+        repository_id = repo["id"]
+        if not isinstance(repository_id, str) or not 1 <= len(repository_id) <= 256:
+            raise ValueError("invalid repository identity")
+        totals = {key: as_dict(repo[key])["totalCount"] for key in _FILTERS}
+        if any(type(value) is not int or value < 0 for value in totals.values()):
+            raise ValueError("invalid repository count")
+        page = as_dict(repo["page"])
+        values = page["nodes"]
+        if not isinstance(values, list) or len(values) > PAGE_SIZE:
+            raise ValueError("invalid metadata page")
+        rows, truncated = _rows([_graph_row(value) for value in values])
+        # A malformed page cannot advance its cursor past rows we could not keep.
+        if len(rows) != len(values):
+            raise ValueError("unreadable metadata row")
+        info = as_dict(page["pageInfo"])
+        more = info["hasNextPage"]
+        following = info["endCursor"]
+        if not isinstance(more, bool) or (
+            following is not None
+            and (not isinstance(following, str) or not 1 <= len(following) <= 1024)
+        ):
+            raise ValueError("invalid metadata cursor")
+        if more and (not rows or following is None or following == cursor):
+            raise ValueError("metadata cursor did not advance")
+        latest_rows = as_dict(repo["latest"])["nodes"]
+        latest = as_dict(latest_rows[0])["updatedAt"] if latest_rows else None
+        if latest is not None:
+            pull_list.parse_stamp(latest)
+        truncated = truncated or any(
+            as_dict(as_dict(as_dict(value)["labels"])["pageInfo"])["hasNextPage"]
+            for value in values
+        )
+        return CatalogPage(repository_id, rows, totals, following, not more, latest, truncated)
+    except (*READ_FAILURES, ValueError, IndexError) as exc:
         raise PullDataError(
-            "cache_unwritable", "the list of pull requests could not be written to the cache"
+            "gh_failed", "GitHub answered with an unreadable metadata page"
         ) from exc
 
 
-async def _refresh(
-    repository: ListedRepository, name: PullListName, login: str, *, more: bool
-) -> PullList:
-    reader = f"gh:{login}"
-    cached = await asyncio.to_thread(read_pull_list, repository.home, repository.slug, name)
-    previous = cached if isinstance(cached, PullList) and cached.reader == reader else None
-    if more and previous is not None and can_extend(previous):
-        listed = await _read_one_more_page(repository, name, previous)
-    else:
-        listed = await _read_held_pages(repository, name, reader, previous)
-    if await active_account() != login:
+def _next_scan(
+    state: CatalogState | None, name: PullListName, target: int
+) -> Literal["all", "open", "closed", "updated"] | None:
+    if state is None:
+        return name
+    if state.delta_started or (
+        pull_list.utc_now() - pull_list.parse_stamp(state.fetched_at)
+        > timedelta(seconds=FRESHNESS_WINDOW_S)
+    ):
+        return "updated"
+    if (
+        not state.done["all"]
+        and not state.done[name]
+        and min(state.covered[name], state.cached[name]) < min(target, state.totals[name])
+    ):
+        return name
+    return "all" if not state.done["all"] else None
+
+
+async def _publish(
+    repository: ListedRepository,
+    previous: CatalogState | None,
+    proposed: CatalogState,
+    rows: tuple[PullListRow, ...],
+) -> bool:
+    try:
+        return await run_lock_section(partial(publish_page, repository, previous, proposed, rows))
+    except (PrivateStorageError, OSError, sqlite3.Error, ValueError) as exc:
         raise PullDataError(
-            "account_changed",
-            "the active gh account changed during the read, so what was read is discarded; "
-            "open the list again",
-        )
-    await _write(repository, listed)
-    return listed
+            "cache_unwritable",
+            "the metadata catalog could not be written; clear the affected repository cache and retry",
+        ) from exc
 
 
 async def refresh_pull_list(
-    repository: ListedRepository, name: PullListName, *, more: bool = False
-) -> PullList:
-    """Read list *name* of *repository* from GitHub and cache it; see the module.
-
-    *more* extends the list by one GitHub page. Raises only :class:`PullDataError`, and a
-    failure leaves the file as it was. How it ended is kept beside the list either way.
-    """
-
+    repository: ListedRepository,
+    name: PullListName,
+    *,
+    target: int = 500,
+    slot: asyncio.Semaphore | None = None,
+    demand: Callable[[], tuple[PullListName, int]] | None = None,
+    retry: bool = False,
+    take_retry: Callable[[], bool] | None = None,
+) -> CatalogState:
+    """Warm a requested prefix, then resume all metadata; each page yields its slot."""
+    repository = await claim_source(repository)
     reader: str | None = None
     try:
-        # A checkout's source is published by its first write, which this is.
-        repository = await claim_source(repository)
         login = await active_account()
         reader = f"gh:{login}"
-        listed = await _refresh(repository, name, login, more=more)
+        restarted: set[str] = set()
+        while True:
+            previous = await asyncio.to_thread(read_catalog, repository.home, repository.slug)
+            state = (
+                previous
+                if previous is not None
+                and previous.reader == reader
+                and previous.source == repository.source
+                else None
+            )
+            selected, wanted = demand() if demand else (name, target)
+            force = take_retry() if take_retry else False
+            scan = (
+                "updated"
+                if (retry or force) and state is not None
+                else _next_scan(state, selected, wanted)
+            )
+            retry = False
+            if scan is None:
+                assert state is not None
+                return state
+            updated = scan == "updated"
+            cursor = (
+                state.delta_cursor if state and updated else state.cursors[scan] if state else None
+            )
+            try:
+                async with slot if slot is not None else contextlib.nullcontext():
+                    held = await asyncio.to_thread(
+                        read_list_refresh, repository.home, repository.slug, "all"
+                    )
+                    if rate_limit_holds(held, now=pull_list.utc_now()):
+                        assert held is not None
+                        raise PullDataError(
+                            "rate_limited",
+                            "GitHub's API rate limit is exhausted",
+                            reset_at=held.reset_at,
+                        )
+                    page = await _read_page(
+                        repository, "all" if updated else scan, cursor, login=login, updated=updated
+                    )
+                    if await active_account() != login:
+                        raise PullDataError(
+                            "account_changed", "the active gh account changed during the read"
+                        )
+            except GhCursorError as exc:
+                if state is None or cursor is None or scan in restarted:
+                    raise PullDataError("gh_failed", str(exc)) from exc
+                restarted.add(scan)
+                cursors, covered = dict(state.cursors), dict(state.covered)
+                if updated:
+                    retry_state = state.model_copy(
+                        update={"delta_cursor": None, "delta_started": False}
+                    )
+                    retry = True
+                else:
+                    cursors[scan], covered[scan] = None, 0
+                    retry_state = state.model_copy(update={"cursors": cursors, "covered": covered})
+                await _publish(repository, previous, retry_state, ())
+                continue
+            now = utc_stamp(pull_list.utc_now())
+            if state is None or state.repository_id != page.repository_id:
+                state = CatalogState(
+                    source=repository.source,
+                    repository_id=page.repository_id,
+                    reader=reader,
+                    fetched_at=now,
+                    count_at=now,
+                    watermark=page.latest,
+                    totals=page.totals,
+                )
+                if cursor is not None:
+                    # A transferred/replaced repository cannot inherit a resume cursor.
+                    await _publish(repository, previous, state, ())
+                    continue
+            changes: dict[str, Any] = {
+                "totals": page.totals,
+                "count_at": now,
+                "truncated": state.truncated or page.truncated,
+            }
+            if updated:
+                watermark = state.delta_watermark if state.delta_started else page.latest
+                reached = page.done or any(
+                    state.watermark is not None and row.updated_at < state.watermark
+                    for row in page.rows
+                )
+                changes.update(
+                    delta_started=not reached,
+                    delta_cursor=None if reached else page.cursor,
+                    delta_watermark=None if reached else watermark,
+                )
+                if reached:
+                    changes.update(fetched_at=now, watermark=watermark or state.watermark)
+            else:
+                cursors, covered, done = dict(state.cursors), dict(state.covered), dict(state.done)
+                cursors[scan], covered[scan], done[scan] = (
+                    page.cursor,
+                    covered[scan] + len(page.rows),
+                    page.done,
+                )
+                changes.update(cursors=cursors, covered=covered, done=done)
+            proposed = state.model_copy(update=changes)
+            accepted = await _publish(repository, previous, proposed, page.rows)
+            if accepted:
+                await run_lock_section(
+                    partial(
+                        write_list_refresh,
+                        repository.home,
+                        repository.slug,
+                        "all",
+                        PullRefreshStamp(
+                            outcome="succeeded",
+                            at=proposed.fetched_at,
+                            reader=reader,
+                        ),
+                    )
+                )
+            await asyncio.sleep(0)
     except PullDataError as exc:
-        stamp = PullRefreshStamp(
-            outcome=exc.state,
-            message=str(exc)[:_MESSAGE_CHARS],
-            reset_at=exc.reset_at,
-            at=utc_stamp(pull_list.utc_now()),
-            reader=reader,
+        await run_lock_section(
+            partial(
+                write_list_refresh,
+                repository.home,
+                repository.slug,
+                "all",
+                PullRefreshStamp(
+                    outcome=exc.state,
+                    message=str(exc)[:1000],
+                    reset_at=exc.reset_at,
+                    at=utc_stamp(pull_list.utc_now()),
+                    reader=reader,
+                ),
+            )
         )
-        await asyncio.to_thread(write_list_refresh, repository.home, repository.slug, name, stamp)
         raise
-    # As of the moment the list is as of. ``more`` keeps ``fetched_at``, and the age the route
-    # calls stale and the window an automatic refresh waits for are one clock.
-    succeeded = PullRefreshStamp(outcome="succeeded", at=listed.fetched_at, reader=reader)
-    await asyncio.to_thread(write_list_refresh, repository.home, repository.slug, name, succeeded)
-    return listed
 
 
 __all__ = ["refresh_pull_list"]

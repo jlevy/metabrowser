@@ -472,20 +472,33 @@ to. The server pins that pull request’s head on the port its `Serving` line re
 opens any other of the repository’s at `/pull/<n>` without moving the pin; several run
 side by side from one cache, one process for each.
 
-A repository’s lists of pull requests are read the same way, from any URL of it:
+A repository’s pull-request catalog is available from any URL of it:
 
 ```shell
-echo '{"state": "all"}' > refresh.json
+echo '{"state": "open", "target": 500}' > refresh.json
 metab https://github.com/owner/repo --api /api/plugin/github/pulls-refresh --data refresh.json
-metab https://github.com/owner/repo --api '/api/plugin/github/pulls?state=all&limit=20'
+metab https://github.com/owner/repo --api '/api/plugin/github/pulls?state=open&limit=100'
 ```
 
-The first command fetches the newest hundred, waits, and exits 1 if that failed, and the
-second answers from the cache, offline too, with no `gh` and no Git.
-`state` is `all` (the default), `open`, or `closed`, each its own list; `{"more": true}`
-fetches one more page, up to ten; `limit` and `after` choose a window of what is cached.
-A list says how many rows it holds in `fetched`, and `complete` is false when GitHub has
-more.
+The first command starts or joins a resumable metadata job and waits for its outcome; it
+exits 1 if the job fails.
+The job prioritizes the newest 500 matching pull requests, then continues through all
+repository metadata.
+The second command reads a cached window, offline too, with no `gh` and no Git.
+`state` is `open` by default, `closed` (including merged), or `all`. `limit` is 0 to
+1,000, and `after` is the last PR number from the preceding window.
+`next_after` names another cached window, not a remote page.
+
+`total` is GitHub’s exact count for the selected filter, `repository_total` its count
+for all pull requests, and `count_at` says when those counts were read.
+`fetched` counts cached matching rows; `catalog_fetched` counts all cached rows.
+`complete` becomes true when the background catalog reaches the end.
+Displaying another 500 rows does not cap or restart that catalog.
+A refresh reads metadata changed since its last checkpoint;
+`{"state": "open", "retry": true}` requests that check even while the cache is fresh,
+subject to a reported rate-limit reset.
+Descriptions, comments, reviews, checks, and comparison objects are separate per-PR
+reads.
 
 Reading pull requests needs `gh` 2.81.0 or newer, signed in with `gh auth login`,
 because `gh api` refuses requests while signed out.

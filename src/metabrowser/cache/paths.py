@@ -21,7 +21,7 @@ REPOSITORY_STORES: Final = "repository-stores"
 STAGING_LOCKS: Final = "locks/staging"
 # The GitHub URL grammar's ``^[1-9][0-9]{0,9}$``.
 MAX_PULL_REQUEST_NUMBER: Final = 9_999_999_999
-# The lists of pull requests a provider keeps, each its own file: GitHub's ``state``.
+# The catalog filters a provider exposes: GitHub's open, closed, or all pull requests.
 type PullListName = Literal["all", "open", "closed"]
 PULL_LIST_NAMES: Final[tuple[PullListName, ...]] = ("all", "open", "closed")
 
@@ -63,18 +63,12 @@ def source_pull_refresh(slug: str, number: int) -> str:
     return source_pull_record(slug, number).removesuffix(".json") + ".refresh.json"
 
 
-def source_pull_list(slug: str, name: PullListName) -> str:
-    """Return ``sources/<slug>/pulls/list-<name>.json`` for one of :data:`PULL_LIST_NAMES`."""
+def source_pull_list_refresh(slug: str, name: PullListName) -> str:
+    """Return ``sources/<slug>/pulls/list-<name>.refresh.json``: its refresh outcome."""
 
     if name not in PULL_LIST_NAMES:
         raise ValueError("invalid pull-request list")
-    return f"{source_pulls_directory(slug)}/list-{name}.json"
-
-
-def source_pull_list_refresh(slug: str, name: PullListName) -> str:
-    """Return ``sources/<slug>/pulls/list-<name>.refresh.json``: how its last refresh ended."""
-
-    return source_pull_list(slug, name).removesuffix(".json") + ".refresh.json"
+    return f"{source_pulls_directory(slug)}/list-{name}.refresh.json"
 
 
 def source_pull_files(slug: str, number: int) -> str:
@@ -125,7 +119,6 @@ __all__ = [
     "source_directory",
     "source_pull_files",
     "source_pull_files_refresh",
-    "source_pull_list",
     "source_pull_list_refresh",
     "source_pull_record",
     "source_pull_refresh",

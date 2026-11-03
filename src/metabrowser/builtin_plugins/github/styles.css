@@ -23,9 +23,9 @@
   padding: 0;
   color: var(--text);
 }
-/* The reading column: the header and the conversation share its edges at every width, and a
-   pane wider than it keeps it centered, as a Markdown file's card and Overview's stack are.
-   The tab bar between them and the diff under Files changed are as wide as the pane. */
+/* The header, tabs, and conversation share the reading column at every width. A wider
+   pane centers it, as a Markdown file's card and Overview's stack are. Files changed keeps
+   the full pane for its diff. */
 .github-pull-column {
   width: 100%;
   max-width: calc(
@@ -384,6 +384,19 @@
 .github-pulls-status > span {
   display: block;
 }
+.github-pulls-total-line {
+  color: var(--text);
+}
+.github-pulls-progress {
+  display: block;
+}
+.github-pulls-total {
+  color: var(--text);
+  font-weight: var(--weight-bold);
+}
+.github-pulls-window {
+  display: block;
+}
 .github-pulls-empty {
   padding-block-start: 6px;
 }
@@ -399,14 +412,17 @@
   margin: 0;
   padding: 0;
   list-style: none;
+  overflow-anchor: none;
 }
-/* A row out of view takes no layout, so the list at its cap costs what is on screen: 60 to 70 ms
-   to show the tab without this, and 14 to 23 ms with it, measured beside WINDOW_ROWS in
-   pulls-panel.js. The size is a row's, until the browser remembers each one's own. */
-.github-pulls-item {
-  content-visibility: auto;
-  contain-intrinsic-block-size: auto 41.5px;
+.github-pulls-spacer {
+  list-style: none;
+  pointer-events: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
+/* The window bounds mounted PR rows; their full intrinsic height includes expanded
+   file trees, so remounting a retained expansion preserves the scroll geometry. */
 /* Two lines and one target: the chevron, the state icon, the title, and the age on the first,
    and the muted line under the title. A row is a container, so its chevron leads in the 16px
    box a folder's takes (docs/design-system.md, "Container Rows"). The row centers its boxes and its text opts in to the first line's

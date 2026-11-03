@@ -222,7 +222,7 @@ export function mountFileTree(host) {
    * A drawn row keeps its element, so focus on it stays.
    */
   function paintWindow() {
-    if (disposed || model === null) {
+    if (disposed || model === null || owner === null) {
       return;
     }
     const rows = model.rows;
@@ -494,6 +494,17 @@ export function mountFileTree(host) {
       if (group.parentNode !== item) {
         item.append(group);
       }
+    },
+    /** Release offscreen DOM while retaining logical folders, selection and cached rows. */
+    detach() {
+      controller.setShown(false);
+      owner?.removeAttribute("aria-owns");
+      owner = null;
+      for (const entry of drawn.values()) {
+        entry.element.remove();
+      }
+      drawn.clear();
+      group.remove();
     },
     /** The list around it moved: draw what is in view now. */
     repaint: paintWindow,

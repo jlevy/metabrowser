@@ -160,7 +160,7 @@ $ node tests/dom/pulls-nav-session.js
     "/pulls": {
       "names": {
         "page": null,
-        "filter": "all",
+        "filter": "open",
         "file": null
       },
       "from Files": "pulls",
@@ -180,7 +180,7 @@ $ node tests/dom/pulls-nav-session.js
     "/pulls?state=merged": {
       "names": {
         "page": null,
-        "filter": "all",
+        "filter": "open",
         "file": null
       },
       "from Files": "pulls",
@@ -237,7 +237,7 @@ $ node tests/dom/pulls-nav-session.js
       {
         "the idle read mounts it, hidden": [
           "load view of pull-request-list",
-          "view rendered: filter all, current null, shown false, kind pull-request-list",
+          "view rendered: filter open, current null, shown false, kind pull-request-list",
           "view told: hidden",
           "view told: current null"
         ],
@@ -291,7 +291,7 @@ $ node tests/dom/pulls-nav-session.js
         "the tab opens: the view mounts, shown": [
           "activated pulls",
           "load view of pull-request-list",
-          "view rendered: filter all, current null, shown true, kind pull-request-list",
+          "view rendered: filter open, current null, shown true, kind pull-request-list",
           "view told: shown",
           "view told: current null"
         ],
@@ -313,7 +313,7 @@ $ node tests/dom/pulls-nav-session.js
           "registered pulls \"Pulls\"",
           "activated pulls",
           "load view of pull-request-list",
-          "view rendered: filter all, current 7, shown true, kind pull-request-list",
+          "view rendered: filter open, current 7, shown true, kind pull-request-list",
           "view told: shown",
           "view told: current 7"
         ],
@@ -393,7 +393,7 @@ $ node tests/dom/pulls-nav-session.js
           "activated pulls",
           "view told: shown",
           "view told: current null",
-          "view told: filter all"
+          "view told: filter open"
         ]
       }
     ],
@@ -417,7 +417,7 @@ $ node tests/dom/pulls-nav-session.js
           "activated files",
           "activated pulls",
           "load view of pull-request-list",
-          "view rendered: filter all, current null, shown true, kind pull-request-list",
+          "view rendered: filter open, current null, shown true, kind pull-request-list",
           "view told: shown",
           "view told: current null"
         ],
@@ -445,7 +445,7 @@ $ node tests/dom/pulls-nav-session.js
     "the page goes while the view loads": [
       {
         "the late mount is disposed": [
-          "view rendered: filter all, current 7, shown false, kind pull-request-list",
+          "view rendered: filter open, current 7, shown false, kind pull-request-list",
           "view disposed"
         ],
         "snapshot": {

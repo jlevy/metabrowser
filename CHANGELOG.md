@@ -437,11 +437,13 @@ GitHub URLs and HTTPS:
   `unavailable`; an item that cannot be read or is too large for one page is left out,
   an `http://` link is left empty, and the list is marked incomplete.
   Lists and text are bounded per pull request, and a cut is reported, never silent.
-  A repository’s lists of pull requests are new: `POST /api/plugin/github/pulls-refresh`
-  fetches the newest hundred of `all`, `open`, or `closed` with `gh` and no Git, and
-  `{"more": true}` one page more, up to ten; `/api/plugin/github/pulls` answers a window
-  of the cached rows, offline too, with the count fetched and whether GitHub has more.
-  A pull request’s changed files are new too:
+  A repository’s pull-request catalog fills incrementally in the background using
+  lightweight GraphQL metadata pages, with exact counts and resumable backfill.
+  `POST /api/plugin/github/pulls-refresh` starts or joins that work and accepts a
+  display `target`; `/api/plugin/github/pulls` answers filtered windows from the cache
+  alone, including offline.
+  Descriptions, conversations, reviews, checks, and Git comparisons remain separate from
+  catalog loading. A pull request’s changed files are new too:
   `POST /api/plugin/github/pull-files-refresh` with `{"number": n}` lists them from the
   mirror’s own comparison when the store holds both commits, with no network, and
   otherwise from GitHub’s list with `gh` and no Git, publishing each page as it arrives;
@@ -450,11 +452,15 @@ GitHub URLs and HTTPS:
 
 - Pulls tab: a GitHub repository opened from its URL has a **Pulls** tab beside Files
   and Git, listing every pull request newest first, with GitHub’s icon for open, draft,
-  merged, and closed, All, Open, and Closed filters, and what to do when `gh` cannot
-  read them. It is in front whenever a pull request’s page is, and at the list’s own
-  address, `/pulls`. Selecting a row reads the pull request in the same page, fetching
-  it if it has no record; holding K, J, or an arrow walks the rows and opens the one it
-  stops on, and one Back leaves the rows however many were passed.
+  merged, and closed, Open, Closed, and All filters (defaulting to Open), and what to do
+  when `gh` cannot read them.
+  It is in front whenever a pull request’s page is, and at the list’s own address,
+  `/pulls`. Selecting a row reads the pull request in the same page, fetching it if it
+  has no record; holding K, J, or an arrow walks the rows and opens the one it stops on,
+  and one Back leaves the rows however many were passed.
+  The status shows a bold numeric total and repository name.
+  Initially up to 500 matching PRs are displayed; **Fetch more** expands that window
+  while catalog metadata continues filling independently.
   Rows expand into a windowed changed-files tree with folder navigation and inline
   change counts. Selecting a file opens `/pull/<n>/files/<path>` and jumps Files changed
   in place; keyboard walks keep focus in the tree and replace one history entry when
@@ -462,6 +468,9 @@ GitHub URLs and HTTPS:
   Opening a GitHub repository now runs `gh` for its list of pull requests once the first
   file tree has painted, at most once a minute, whether or not the tab is opened; the
   request names the repository and carries `gh`’s own sign-in.
+
+- The Conversation and Files changed tabs align with the PR reading column on narrow and
+  wide screens; the diff itself retains the full pane width.
 
 - Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
   way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
