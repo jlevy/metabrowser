@@ -398,7 +398,11 @@ async function run() {
   fetchChanges.events.get("click")();
   await settle();
   assert.equal(posts.length, 1, "a disposed Fetch button starts nothing");
-  globalThis.fetch = async () => ({ status: initial.status, headers: { get: () => null }, json: async () => initial.body });
+  globalThis.fetch = async () => ({
+    status: initial.status,
+    headers: { get: () => null },
+    json: async () => initial.body,
+  });
   delete window.requestAnimationFrame;
   delete window.cancelAnimationFrame;
   document.visibilityState = "hidden";
