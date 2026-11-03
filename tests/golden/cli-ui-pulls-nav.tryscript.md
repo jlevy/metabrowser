@@ -29,6 +29,12 @@ what Help reads for the group.
 `the page’s host` is the module’s own `init` and `dispose` on a page it is played: the
 listeners it adds, that only a walking key’s release ends a walk, and that an `init`
 after a `dispose` listens again.
+`the two trees` is the Files tree and the Pulls list in one navigation pane, both trees
+of `treeitem` rows, with app.js’s `initKeyboardInfrastructure` and
+`resolveApplicationFocusFallback` run verbatim on a stand-in for the DOM whose focus
+events bubble: the Files tree’s keyboard handler is made on the Files tab, so focus on a
+Pulls row leaves each tree its own Tab stop and J, ArrowDown, and Enter are the list’s,
+and the overlay’s focus fallback hands back a Files row only for a Files row.
 
 ```console
 $ node tests/dom/pulls-nav-session.js
@@ -60,6 +66,66 @@ $ node tests/dom/pulls-nav-session.js
     "and J's release ends a walk again": [
       "released"
     ]
+  },
+  "the two trees": {
+    "the shell starts at a file": {
+      "Files": [
+        "file:README.md"
+      ],
+      "Pulls": [
+        "/pull/3900"
+      ]
+    },
+    "a Pulls row takes focus: each tree keeps its own Tab stop": {
+      "Files": [
+        "file:README.md"
+      ],
+      "Pulls": [
+        "/pull/3900"
+      ]
+    },
+    "J on it is the list's": {
+      "handled": true,
+      "did": [
+        "the shell opened /pull/3899, replacing"
+      ],
+      "focus on": "/pull/3899",
+      "address": "/pull/3899"
+    },
+    "ArrowDown too": {
+      "handled": true,
+      "did": [
+        "the shell opened /pull/3898, replacing"
+      ],
+      "focus on": "/pull/3898",
+      "address": "/pull/3898"
+    },
+    "Enter opens the row": {
+      "handled": true,
+      "did": [
+        "the shell opened /pull/3898, pushing"
+      ],
+      "focus on": "/pull/3898",
+      "address": "/pull/3898"
+    },
+    "the overlay closes over a Pulls row: no Files row is handed back": null,
+    "back in Files: J walks the file tree": {
+      "handled": true,
+      "did": [
+        "the Files tree opened /view/setup.py"
+      ],
+      "focus on": "file:setup.py",
+      "address": "/view/setup.py"
+    },
+    "and the Pulls list keeps its Tab stop": {
+      "Files": [
+        "file:setup.py"
+      ],
+      "Pulls": [
+        "/pull/3898"
+      ]
+    },
+    "the overlay closes over a Files row: the Files tree's row is handed back": "file:setup.py"
   },
   "addresses": {
     "/pulls": {
