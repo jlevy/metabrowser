@@ -3,10 +3,11 @@ type: is
 id: is-01m6fa7swqbvb8yz7s1jdykmj8
 title: "Address PR #279 reviews A, B, C: list data, more, 304, staleness"
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 14
+version: 16
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
+delegate: claude-code@spud10
 labels: []
 dependencies: []
 parent_id: is-01m6f9zg2thrbwm74y2hn6eeqq
@@ -24,6 +25,13 @@ child_order_hints:
   - is-01m6fa8hnmcbdrdtrjyskqp9xj
   - is-01m6fa8j1tq51gr43xxs3cnt9r
   - is-01m6fa8je1c18199jrh1tjsjwx
+hold: null
+hold_until: null
 created_at: 2026-11-02T23:41:44.215Z
-updated_at: 2026-11-02T23:42:09.344Z
+updated_at: 2026-11-03T00:13:02.047Z
+started_at: 2026-11-02T23:44:24.269Z
 ---
+
+## Notes
+
+All 13 children closed with dispositions at head 68fbcaaf, replies posted. Left open: CI at that head fails one transcript inherited from the layer below (9ee1ab7f changed --format help without tests/golden/cli-surface.tryscript.md; base run 41547054461 fails the same way). Close once that fix is on the base, merged up here, and CI is green.
