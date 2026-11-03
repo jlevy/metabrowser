@@ -5,7 +5,7 @@ title: Load PR catalog progressively with accurate repository totals and lazy de
 kind: feature
 status: in_progress
 priority: 1
-version: 17
+version: 18
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -29,7 +29,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-03T20:59:41.464Z
-updated_at: 2026-11-03T21:56:11.392Z
+updated_at: 2026-11-03T22:09:04.197Z
 started_at: 2026-11-03T21:00:05.436Z
 ---
 Owner requests incremental/resumable automatic prefetch of the lightweight catalog for all repository PRs, with exact repository/filter totals. Initially show up to500 and expand the display with Fetch more. Fetch full PR description/conversation/reviews/checks only on demand or a small nearby prefetch window; derive diffs from fetched Git objects, audit actual payload sizes and avoid repeated full diff transfers. Filters Open | Closed | All, defaultOpen. Bold numeric status with repository name and Showing last500 when partial. Align Conversation/Files changed tabs with the content column at wide and narrow widths. Preserve cache-only GETs, account/rate/fair scheduling, keyboard/history/visibility ownership and main/linked checkout vsmanaged URL workflows. No compatibility aliases; forward-only childPR above288; no merge.
+
+## Notes
+
+2026-11-03: Implementation complete in forward child branch above ea771741; final publication gates pending. Lightweight GraphQL metadata catalog, resumable background backfill/deltas, exact totals, bounded cached windows, Open default, first500 display, Fetch more, and aligned PR tabs implemented. Independent backend73+10probes and frontend11probe scripts clean after all eight findings corrected. Actual Chrome12-run100/500/1000/5000 matrix passed, at most103 mounted PR rows, including600file noncurrent tree remount, real canceled requests, held keys, scroll restoration, and800/1600alignment. Payload audit measures40–47x smaller catalog responses; no latency speedup claimed. Production337-entry inventory frozen and unchanged. Test-only fixture split preserves all61 recorded envelopes while satisfying2000line review budget. Final make verify, exacthead wheel/live acceptance, normal push/new stackedPR, CI, installedCLI refresh, and final bead closure remain. Deferred removed-row reconciliation and patch-free REST fallback are separately tracked low-priority followups.
