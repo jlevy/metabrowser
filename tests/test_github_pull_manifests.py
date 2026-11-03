@@ -76,7 +76,7 @@ def test_a_damaged_manifest_is_recomputed_once_and_healed(
         elif damage == "identity":
             payload["identity"][-1] = "direct"
         else:
-            payload["schema_version"] = 2
+            payload["schema_version"] = 999
         damaged = json.dumps(payload).encode()
     path.write_bytes(damaged)
     calls = 0
@@ -226,8 +226,14 @@ def test_another_cached_pr_comparison_does_not_switch_the_served_pin(
     assert stand.calls() == [], "a cached comparison read fetched the network"
 
 
+@pytest.mark.parametrize(
+    ("bank_mode", "deny_parent"), [(0o700, False), (0o500, False), (0o400, False), (0o500, True)]
+)
 def test_corrupt_manifest_is_discarded_before_backing_repair_and_restart(
-    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+    pinned_pull: tuple[_Stand, TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+    bank_mode: int,
+    deny_parent: bool,
 ) -> None:
     from metabrowser.git.object_failures import observed_object_failures
     from metabrowser.git.process import repository_store_target
@@ -255,18 +261,192 @@ def test_corrupt_manifest_is_discarded_before_backing_repair_and_restart(
     for path in directory.glob("*.json"):
         path.unlink()
     asyncio.run(pull_manifest.prepare_pull_manifest(stand.published, record))
+    slot = next(directory.glob("*.json"))
+    damaged = slot.read_bytes()
+    directory.chmod(bank_mode)
+    if deny_parent:
+        directory.parent.chmod(0o500)
+    try:
+        if bank_mode == 0o500:
+            with pytest.raises(PermissionError):
+                (directory / "write-witness").write_bytes(b"must fail")
+        stand.calls()
+        _fresh(monkeypatch)
+        refused = client.get(route)
+        assert refused.status_code == 409
+        assert refused.json()["error"] == "object_corrupt"
+        if deny_parent:
+            assert "could not be discarded" in refused.json()["message"]
+            assert "Clear the affected repository cache" in refused.json()["message"]
+            assert str(stand.tmp_path) not in refused.text
+        else:
+            assert "could not be discarded" not in refused.json()["message"]
+        if bank_mode != 0o700 and not deny_parent:
+            epoch = directory.parent / f"github-pull-manifest-{slot.stem}.epoch"
+            assert len(epoch.read_bytes()) == 64
+        # Restore genuine backing data, then discard process-local failure/cache state.
+        if saved is None:
+            loose.unlink()
+        else:
+            loose.write_bytes(saved)
+        assert git(store, "cat-file", "blob", oid) == genuine
+        observed_object_failures.forget_store(repository_store_target(git_dir=store))
+        _fresh(monkeypatch)
+        replayed = client.get(route)
+        assert replayed.status_code == 200
+        assert replayed.json() == expected, "a repaired object must not replay forged statistics"
+        if bank_mode == 0o500:
+            assert slot.read_bytes() == damaged, "the read-only bank was not modified"
+        directory.parent.chmod(0o700)
+        directory.chmod(0o700)
+        if deny_parent:
+            # Neither invalidation could persist; the refusal requires explicit clearing.
+            assert slot.read_bytes() == damaged
+            pull_manifest.write_private_file_atomic(
+                stand.published.home, str(slot.relative_to(stand.published.home)), b"{}"
+            )
+        # A retained epoch survives restored permissions and process restart, without
+        # manual clearing. Only the all-writes-failed case above requires that action.
+        _fresh(monkeypatch)
+        assert client.get(route).json() == expected
+        assert slot.read_bytes() != damaged
+        _fresh(monkeypatch)
+
+        async def forbidden(_source: GitDiffSource, _resolved: ResolvedComparison) -> Any:
+            raise AssertionError("the healed writable bank must resume ordinary cache hits")
+
+        monkeypatch.setattr(GitDiffSource, "manifest", forbidden)
+        assert client.get(route).json() == expected
+        assert stand.calls() == [], "neither read-only serving nor repair reads may fetch"
+    finally:
+        directory.parent.chmod(0o700)
+        directory.chmod(0o700)
+
+
+@pytest.mark.parametrize("bank_mode", [0o700, 0o500])
+def test_manifest_computation_cannot_relabel_itself_after_invalidation(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch, bank_mode: int
+) -> None:
+    stand, client = pinned_pull
+    record = stand.record(7)
+    assert isinstance(record, PullRecord) and record.comparison is not None
+    pair = (record.comparison.base, record.comparison.head)
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
+    directory = stand.published.home / pull_manifest._directory(stand.published)
+    slot = next(directory.glob("*.json"))
+    original_epoch = json.loads(slot.read_bytes())["epoch"]
+    slot.write_bytes(b"{}")
+    real = GitDiffSource.manifest
+    calls = 0
+
+    async def invalidated(source: GitDiffSource, resolved: ResolvedComparison) -> Any:
+        nonlocal calls
+        calls += 1
+        answer = await real(source, resolved)
+        if calls == 1:
+            directory.chmod(bank_mode)
+            try:
+                pull_manifest.invalidate_pull_manifest(stand.published, pair)
+            finally:
+                directory.chmod(0o700)
+        return answer
+
+    monkeypatch.setattr(GitDiffSource, "manifest", invalidated)
     _fresh(monkeypatch)
-    refused = client.get(route)
-    assert refused.status_code == 409
-    assert refused.json()["error"] == "object_corrupt"
-    # Restore genuine backing data, then discard process-local failure/cache state.
-    if saved is None:
-        loose.unlink()
+    expected = client.get(route).json()
+    assert calls == 1
+    # The completed old computation wrote its original epoch, not the new quarantine.
+    assert json.loads(slot.read_bytes())["epoch"] == original_epoch
+    _fresh(monkeypatch)
+    assert client.get(route).json() == expected
+    assert calls == 2
+    assert len(json.loads(slot.read_bytes())["epoch"]) == 64
+    _fresh(monkeypatch)
+    assert client.get(route).json() == expected
+    assert calls == 2
+
+
+@pytest.mark.parametrize("damage", ["missing", "invalid", "symlink"])
+def test_unusable_epoch_bypasses_persistence_without_changing_private_paths(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch, damage: str
+) -> None:
+    stand, client = pinned_pull
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
+    expected = client.get(route).json()
+    directory = stand.published.home / pull_manifest._directory(stand.published)
+    slot = next(directory.glob("*.json"))
+    path = directory.parent / f"github-pull-manifest-{slot.stem}.epoch"
+    victim = stand.tmp_path / "untouched"
+    victim.write_bytes(b"private witness")
+    path.unlink()
+    if damage == "invalid":
+        path.write_bytes(b"invalid epoch")
+        path.chmod(0o600)
+    elif damage == "symlink":
+        path.symlink_to(victim)
+    real = GitDiffSource.manifest
+    calls = 0
+
+    async def counted(source: GitDiffSource, resolved: ResolvedComparison) -> Any:
+        nonlocal calls
+        calls += 1
+        return await real(source, resolved)
+
+    monkeypatch.setattr(GitDiffSource, "manifest", counted)
+    _fresh(monkeypatch)
+    assert client.get(route).json() == expected
+    assert calls == 1
+    assert victim.read_bytes() == b"private witness"
+    if damage == "symlink":
+        assert path.is_symlink()
+    elif damage == "invalid":
+        assert path.read_bytes() == b"invalid epoch"
     else:
-        loose.write_bytes(saved)
-    assert git(store, "cat-file", "blob", oid) == genuine
-    observed_object_failures.forget_store(repository_store_target(git_dir=store))
+        assert len(path.read_bytes()) == 64
+
+
+def test_invalidation_preserves_other_slots_and_their_disk_hits(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stand, client = pinned_pull
+    first = stand.record(7)
+    other = stand.refresh(8)
+    assert isinstance(first, PullRecord) and first.comparison is not None
+    assert isinstance(other, PullRecord) and other.comparison is not None
+
+    def key_for(comparison: Comparison) -> tuple[str, ...]:
+        location = GitLocation.revision(
+            RepositoryStoreTarget(stand.published.git_dir, stand.published.object_format),
+            comparison.head,
+        )
+        intent = {"left": comparison.base, "right": comparison.head, "base_policy": "merge_base"}
+        key = diff.comparison_cache_key(location, intent, store_tag(stand.published.git_dir))
+        assert key is not None
+        return key
+
+    first_key, other_key = key_for(first.comparison), key_for(other.comparison)
+    # Slot collisions are legitimate evictions. Choose a namespace in which these two
+    # actual comparisons do not collide, so this test exercises isolation instead.
+    for namespace in range(32):
+        monkeypatch.setattr(pull_manifest, "BUILD_TAG", f"slot-isolation-{namespace}")
+        if pull_manifest._slot(first_key) != pull_manifest._slot(other_key):
+            break
+    else:
+        raise AssertionError("could not separate the fixture comparison slots")
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     _fresh(monkeypatch)
-    replayed = client.get(route)
-    assert replayed.status_code == 200
-    assert replayed.json() == expected, "a repaired object must not replay forged statistics"
+    expected = client.get(route).json()
+    asyncio.run(pull_manifest.prepare_pull_manifest(stand.published, other))
+    epoch = stand.published.home / pull_manifest._epoch_path(stand.published, first_key)
+    old = epoch.read_bytes()
+    pull_manifest.invalidate_pull_manifest(
+        stand.published, (other.comparison.base, other.comparison.head)
+    )
+    assert epoch.read_bytes() == old
+    _fresh(monkeypatch)
+
+    async def forbidden(_source: GitDiffSource, _resolved: ResolvedComparison) -> Any:
+        raise AssertionError("another slot's invalidation discarded this healthy disk hit")
+
+    monkeypatch.setattr(GitDiffSource, "manifest", forbidden)
+    assert client.get(route).json() == expected

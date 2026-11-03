@@ -570,6 +570,38 @@ def open_private_file(
         os.close(fd)
 
 
+@_without_file_names
+def private_directory_is_writable(home: Path, relative_path: str) -> bool:
+    """Whether a verified private directory currently permits writes, without changing it.
+
+    This is an admission check for disposable caches, not a promise that a later atomic
+    replacement succeeds: permissions, ACLs, free space, or mounts can change afterward.
+    Unsupported effective-access checks refuse admission. Every component is opened by
+    descriptor with the read-only ``refuse`` policy, as for a private record read.
+    """
+    _require_home_argument(home)
+    require_canonical_inventory_path(relative_path, "application-home path", allow_root=True)
+    _verify_home_ancestors(home)
+    path = home
+    fd = _open_home(home)
+    try:
+        for name in relative_path.split("/") if relative_path else ():
+            path = path / name
+            child = _open_directory_entry(fd, name, path, create=False, shared="refuse")
+            os.close(fd)
+            fd = child
+        needed = stat.S_IWUSR | stat.S_IXUSR
+        if stat.S_IMODE(os.fstat(fd).st_mode) & needed != needed:
+            return False
+        if os.fstatvfs(fd).f_flag & os.ST_RDONLY:
+            return False
+        if os.access not in os.supports_dir_fd or os.access not in os.supports_effective_ids:
+            return False
+        return os.access(".", os.W_OK | os.X_OK, dir_fd=fd, effective_ids=True)
+    finally:
+        os.close(fd)
+
+
 def _storage_directory(
     override: str, xdg: str, fallback: str, environ: Mapping[str, str] | None
 ) -> Path:
