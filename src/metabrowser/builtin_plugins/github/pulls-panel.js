@@ -8,11 +8,12 @@
 // browser glue: real fetch, timers, and paint. tests/dom/github-pulls-panel-session.js runs
 // the same functions from the command line.
 //
-// The list is a tree of one level: a row is one anchor in the role of a tree's item, in a list
-// item with no role of its own. Step 4's changed files hang off the item, and add only
-// children: a chevron box before the state icon, a `.tree-children[role="group"]` after the
-// anchor, and `aria-expanded` on an anchor that has one. The walk goes by `rows`, not by the
-// DOM, so it reads the same however a row is drawn.
+// The list is a tree: a row is one anchor in the role of a tree's item, in a list item with no
+// role of its own, and its changed files hang off the item (pull-files-view.js): a chevron
+// box before the state icon, a `.tree-children[role="group"]` after the anchor, which the
+// anchor owns, and `aria-expanded` on it. A click opens the pull request and toggles its
+// files, as a folder's does in the Files tab; Right and Left split the two. The walk goes by
+// `rows`, not by the DOM, so it reads the same however a row is drawn.
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. A list's refresh is asked for while the panel is shown, which the server
@@ -25,6 +26,8 @@
 // from GitHub reaches a class, a style, or markup. The only markup parsed is the shell's own
 // chip group and icons.
 
+import { createRowExpansion } from "./pull-files-tree.js";
+import { mountFileTree } from "./pull-files-view.js";
 import {
   FAST_POLL_MS,
   h,
@@ -81,6 +84,13 @@ export const MAX_PEEKED = 4;
 // wait for its turn: pull-request jobs queued before it hold the refresh slots. Measured
 // 2026-11-03 on pallets/click: 1.7 s with nothing queued, and 35 s behind MAX_PULL_JOBS.
 export const LONG_WAIT_MS = 10000;
+// A pull request's folders start open when its list holds at most this many files, and past
+// it only the top level does, as the first rows decide. Not a bound on any cost: the rows are
+// drawn a window at a time (pull-files-view.js). See the measurement beside it.
+export const AUTO_EXPAND_FILES = 300;
+// Trees of changed files kept while their rows are closed, so one opened again keeps the
+// folders a reader opened. Each holds its list, at most 3,000 rows of text.
+export const MAX_HELD_TREES = 8;
 
 // What the panel says for each way a refresh can end, in what a reader can do about it. Each
 // is the plan's table ("The lazy gh check"), and a cached list shows under any of them.
@@ -1356,9 +1366,9 @@ export function mountPullsPanel(container, ctx, mb) {
   });
   const status = h("p", { class: "github-pulls-status" });
   const notice = h("div", { class: "github-pulls-notice-host" });
-  // A tree of one level now: step 4 hangs a row's changed files off it as a group, so the roles
-  // are a tree's from the start. Its keys are this view's; the Files tree's keyboard handler
-  // is scoped to the Files tab and never sees these rows.
+  // A tree: a row's changed files hang off it as a group. Its keys are this view's, bound by
+  // the tab's host; the Files tree's keyboard handler is scoped to the Files tab and never
+  // sees these rows.
   const list = h("ul", { class: "github-pulls-list", role: "tree" });
   const empty = h("p", { class: "github-pulls-empty" });
   const skeleton = h("div", {
@@ -1395,6 +1405,110 @@ export function mountPullsPanel(container, ctx, mb) {
   let currentRow = nav.current;
   /** @type {number | null} */
   let anchorRow = null;
+
+  /** The registry's disclosure chevron, parsed once: a constant, not the pull request's text. */
+  const chevronSvg = new DOMParser().parseFromString(mb.icons?.toggle || "", "text/html").body
+    .firstElementChild;
+  const chevron = () => (chevronSvg === null ? null : document.importNode(chevronSvg, true));
+  // Narrowed once, for the functions below that run later.
+  const tab = nav;
+
+  // Which rows show their changed files, and each one's tree, by number: open ones, and the
+  // last MAX_HELD_TREES closed, so one opened again is as the reader left it.
+  const expansion = createRowExpansion();
+  /** @type {Map<number, ReturnType<typeof mountFileTree>>} */
+  const trees = new Map();
+  /** The tree a file row with focus is in, whose keys the host's file keys are. */
+  /** @type {number | null} */
+  let focusedTree = null;
+  let panelShown = nav.shown;
+  /** The file the address names, and of which pull request. */
+  let currentFile = nav.file ?? null;
+
+  /**
+   * A pull request's tree, made the first time its row opens.
+   *
+   * @param {number} number
+   */
+  function treeFor(number) {
+    let tree = trees.get(number);
+    if (tree === undefined) {
+      tree = mountFileTree({
+        number,
+        autoExpandFiles: AUTO_EXPAND_FILES,
+        current: number === currentRow ? currentFile : null,
+        shown: panelShown,
+        scrollRoot: tab.scrollRoot,
+        chevron,
+        href: (path) => tab.fileHref(number, path),
+        request: (method, route, options) =>
+          request(method, route, { ...options, signal: options.signal ?? signal }),
+        formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
+        page: () =>
+          /** @type {import("./pull-files-tree.js").FilePage | null} */ (tab.pageFor(number)),
+        open: ({ file, replace, jumped }) => {
+          showPage(number);
+          void tab.open({ number, tab: "files", file, replace, jumped });
+        },
+        leave: () => {
+          const row = painted.get(number)?.row;
+          if (row !== undefined) {
+            controller.focused(number);
+            row.focus({ preventScroll: true });
+          }
+        },
+        focusedIn: () => {
+          focusedTree = number;
+        },
+      });
+      trees.set(number, tree);
+      const entry = painted.get(number);
+      if (entry !== undefined) {
+        tree.attach(entry.item, entry.row);
+      }
+      // Closed trees past the bound go, the longest closed first.
+      const closed = [...trees.keys()].filter((held) => !expansion.isExpanded(held));
+      for (const held of closed.slice(0, Math.max(0, closed.length - MAX_HELD_TREES))) {
+        trees.get(held)?.dispose();
+        trees.delete(held);
+      }
+    }
+    return tree;
+  }
+
+  /**
+   * Open or close a row's files.
+   *
+   * @param {number} number
+   * @param {boolean} open
+   * @param {boolean} reader A reader's own click or key, which may ask GitHub for the list.
+   */
+  function setExpanded(number, open, reader) {
+    if (open) {
+      treeFor(number).controller.expand({ reader });
+    } else {
+      trees.get(number)?.controller.collapse();
+      if (focusedTree === number) {
+        focusedTree = null;
+      }
+    }
+  }
+
+  /**
+   * The page of *number* holds the pane, or none does: its row opens, and the one before it
+   * closes again if only its page had opened it.
+   *
+   * @param {number | null} number
+   */
+  function showPage(number) {
+    const changes = expansion.shown(number);
+    for (const closed of changes.collapse) {
+      setExpanded(closed, false, false);
+    }
+    for (const opened of changes.expand) {
+      setExpanded(opened, true, false);
+    }
+  }
 
   /**
    * The row whose page holds the pane: current, and the tree's one selected item.
@@ -1434,19 +1548,22 @@ export function mountPullsPanel(container, ctx, mb) {
       [when.label],
     );
     const meta = h("span", { class: "github-pulls-meta" }, [row.meta]);
+    // The registry's chevron in the 16px box a folder's takes, since the row is a container.
+    const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
     // item: its level is the list's one, and the browser counts its place among the rows.
     const anchor = /** @type {HTMLAnchorElement} */ (
       h(
         "a",
         {
-          class: "github-pulls-row",
+          class: "github-pulls-row collapsed",
           href: row.href,
           role: "treeitem",
           "aria-level": "1",
+          "aria-expanded": "false",
           tabindex: "-1",
         },
-        [pullStateIcon(row.state), title, updated, meta],
+        [toggle, pullStateIcon(row.state), title, updated, meta],
       )
     );
     anchor.dataset.number = String(row.number);
@@ -1457,6 +1574,8 @@ export function mountPullsPanel(container, ctx, mb) {
       anchor.setAttribute("tabindex", "0");
     }
     const item = h("li", { class: "github-pulls-item", role: "none" }, [anchor]);
+    // Its files, kept across a row built again for what it shows.
+    trees.get(row.number)?.attach(item, anchor);
     return { item, row: anchor, age: updated, key, at, label: when.label };
   }
 
@@ -1648,7 +1767,10 @@ export function mountPullsPanel(container, ctx, mb) {
       reveal(number) {
         painted.get(number)?.row.scrollIntoView({ block: "nearest" });
       },
-      open: (route) => nav.open(route),
+      open: (route) => {
+        showPage(route.number);
+        return nav.open(route);
+      },
       filterChanged: (state) => nav.filterChanged(state),
     },
     { filter: nav.filter, current: nav.current },
@@ -1675,7 +1797,11 @@ export function mountPullsPanel(container, ctx, mb) {
       // A new tab and a copied address are the browser's own.
       if (row !== null && isPlainClick(event)) {
         event.preventDefault();
-        controller.activate(Number(row.dataset.number));
+        const number = Number(row.dataset.number);
+        // One gesture, as a folder's in the Files tab: it opens the pull request and toggles
+        // its files.
+        setExpanded(number, expansion.toggle(number), true);
+        controller.activate(number);
       }
     },
     { signal },
@@ -1734,22 +1860,98 @@ export function mountPullsPanel(container, ctx, mb) {
         )
       : null;
   atEnd?.observe(foot);
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      for (const tree of trees.values()) {
+        tree.controller.onVisibilityChange();
+      }
+    },
+    { signal },
+  );
+  // A tree that opens, closes, or fills moves every tree below it: each draws what is in view.
+  const moved =
+    typeof ResizeObserver === "function" ? new ResizeObserver(() => repaintTrees()) : null;
+  moved?.observe(list);
+  function repaintTrees() {
+    for (const tree of trees.values()) {
+      tree.repaint();
+    }
+  }
+
+  /** The tree a file row with focus is in. */
+  const focused = () => (focusedTree === null ? undefined : trees.get(focusedTree)?.controller);
 
   void controller.start({ shown: nav.shown, refreshAhead: nav.refreshAhead });
+  showPage(nav.current);
 
   return Object.freeze({
-    setShown: controller.setShown,
-    setCurrent: controller.setCurrent,
+    /** @param {boolean} visible */
+    setShown(visible) {
+      panelShown = visible;
+      controller.setShown(visible);
+      for (const tree of trees.values()) {
+        tree.controller.setShown(visible);
+      }
+    },
+    /**
+     * The address names a pull request's page, and maybe one file of it.
+     *
+     * @param {number | null} number
+     * @param {string | null} [file]
+     */
+    setCurrent(number, file = null) {
+      controller.setCurrent(number);
+      currentFile = file;
+      showPage(number);
+      if (number !== null) {
+        trees.get(number)?.controller.setCurrent(file);
+      }
+    },
     setFilter: (/** @type {string} */ state) => controller.setFilter(state, { fromAddress: true }),
     move: controller.move,
-    released: controller.released,
+    released() {
+      controller.released();
+      focused()?.released();
+    },
     activateAnchor: controller.activateAnchor,
+    /** Right on a pull request's row: its files open, or focus goes to the first. */
+    expand() {
+      const number = controller.snapshot().anchor;
+      if (number === null) {
+        return false;
+      }
+      if (expansion.expand(number)) {
+        setExpanded(number, true, true);
+      } else if (!treeFor(number).controller.enter()) {
+        setExpanded(number, true, true);
+      }
+      return true;
+    },
+    /** Left on a pull request's row: its files close. */
+    collapse() {
+      const number = controller.snapshot().anchor;
+      if (number !== null && expansion.collapse(number)) {
+        setExpanded(number, false, true);
+      }
+      return number !== null;
+    },
+    /** @param {-1 | 1} delta @param {{repeat?: boolean}} [how] */
+    moveFile: (delta, how) => focused()?.move(delta, how) ?? false,
+    fileLeft: () => focused()?.left() ?? false,
+    fileRight: () => focused()?.right() ?? false,
+    activateFile: () => focused()?.activateAnchor() ?? false,
     dispose() {
       listening.abort();
       atEnd?.disconnect();
+      moved?.disconnect();
       window.clearTimeout(peekTimer);
       unbindFilters();
       controller.dispose();
+      for (const tree of trees.values()) {
+        tree.dispose();
+      }
+      trees.clear();
       painted.clear();
       container.classList.remove("github-pulls");
       container.replaceChildren();

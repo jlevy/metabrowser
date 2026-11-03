@@ -34,6 +34,13 @@ for (const [index, answer] of answers.entries()) {
   answer.body.rows = whole[index];
 }
 const panelPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pulls-panel.js");
+// A list of changed files as the route answered it, for the row whose page is shown.
+const filesRecorded = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-files-responses.json"), "utf8"),
+);
+for (const envelope of Object.values(filesRecorded)) {
+  envelope.rows = envelope.rows.map((row) => JSON.parse(row));
+}
 const pagePath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pull-page.js");
 // What the server answers of a record, for a page a reader's selection opens.
 const pageRecorded = JSON.parse(
@@ -801,6 +808,9 @@ class FakeNode {
     this.childNodes.splice(this.childNodes.indexOf(node), 1);
     node.parentNode = null;
   }
+  remove() {
+    this.parentNode?.drop(this);
+  }
   replaceChildren(...nodes) {
     for (const child of [...this.childNodes]) {
       this.drop(child);
@@ -1020,6 +1030,9 @@ async function paintStory(panel) {
           refreshAhead: false,
           scrollRoot: null,
           open: (route) => opened.push(route.number),
+          file: null,
+          fileHref: (number, path) => `/pull/${number}/files/${path}`,
+          pageFor: () => null,
           filterChanged() {},
         },
       },
@@ -1027,6 +1040,10 @@ async function paintStory(panel) {
     );
     await settle();
     await answer(first);
+    // The row of the page shown opens its changed files, read from the cache: the tree's
+    // session holds what they are, and this one where they hang.
+    const filesRead = answers[0].route;
+    await answer({ status: 200, etag: null, body: filesRecorded.comparison });
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
     const row = (item) => item.firstElementChild;
@@ -1035,7 +1052,9 @@ async function paintStory(panel) {
       "a row": [described(hostile), described(row(hostile))],
       "the row whose page is shown": described(row(shown)),
       "its parts": row(shown).childNodes.map(described),
-      "a title written as markup is one text node": row(hostile).childNodes[1].childNodes.map(
+      "its changed files, read from the cache": filesRead,
+      "they hang under it as a group it owns": shown.childNodes.map(described),
+      "a title written as markup is one text node": row(hostile).childNodes[2].childNodes.map(
         (node) => ({ node: node.nodeName, data: node.data }),
       ),
       "rows built for the first window": built,
@@ -1062,7 +1081,7 @@ async function paintStory(panel) {
     story["rows held"] = list.childNodes.length;
     // Two hours on, the list unchanged: a poll's answer moves the freshness, and with it each
     // row's age, in place.
-    const age = () => row(shown).childNodes[2].textContent;
+    const age = () => row(shown).childNodes[3].textContent;
     story["an age, before"] = age();
     built = 0;
     now += 2 * 60 * 60 * 1000;
