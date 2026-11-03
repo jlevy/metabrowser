@@ -2112,3 +2112,189 @@ def test_no_history_is_believed_only_when_the_walk_reads_every_commit(
     (checkout / ".git" / "objects" / replica["M3"][:2] / replica["M3"][2:]).unlink()
     with pytest.raises(git_process.GitCommandError):
         asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
+
+
+def test_a_pack_without_its_index_does_not_authorize_sweeping_refs(linear: _Stand) -> None:
+    checkout, files = _no_file_tips_and_unreadable_packs(linear)
+    before = linear.store_refs()
+    indexes = [path for path in files if path.suffix == ".idx"]
+    assert indexes
+    saved = {path: path.read_bytes() for path in indexes}
+    for path in indexes:
+        path.unlink()
+    update = asyncio.run(
+        update_store(linear.home, linear.store.parent.name, remote_url=linear.replica.url)
+    )
+    assert update.outcome is RefreshOutcome.lender_missing, update
+    assert update.swept == ()
+    assert linear.store_refs() == before
+    for path, data in saved.items():
+        path.write_bytes(data)
+    update = asyncio.run(
+        update_store(linear.home, linear.store.parent.name, remote_url=linear.replica.url)
+    )
+    assert update.outcome is RefreshOutcome.succeeded, update
+    assert linear.store_refs() == before
+    assert checkout.is_dir()
+
+
+@pytest.mark.parametrize(
+    ("failure", "state"),
+    [
+        (git_process.GitTimeoutError, "comparison_timeout"),
+        (git_process.GitOutputTooLargeError, "comparison_too_large"),
+    ],
+)
+def test_an_unfinished_merge_base_walk_preserves_the_pull_record(
+    linear: _Stand,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: type[git_process.GitError],
+    state: str,
+) -> None:
+    from metabrowser.git import shallow
+
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    for record in linear.home.glob("sources/*/pulls/1*.json"):
+        record.unlink()
+    real = shallow.run_git
+
+    async def bounded(args: list[str], **kwargs: Any) -> bytes:
+        if args[0] == "merge-base":
+            raise git_process.GitCommandError(args, 1, "")
+        if args[0] == "rev-list":
+            raise failure("injected walk bound")
+        return await real(args, **kwargs)
+
+    monkeypatch.setattr(shallow, "run_git", bounded)
+    record = linear.pull()["record"]
+    assert record["pull"]["title"] == "Add p"
+    assert record["comparison"] is None
+    assert record["unavailable"] == {"comparison": state}
+
+
+def test_old_git_cannot_hide_a_missing_ancestor_below_its_merge_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git import shallow
+    from metabrowser.git.process import repository_store_target
+
+    replica = build_linear(tmp_path / "replica")
+    target = repository_store_target(git_dir=replica.origin)
+    missing = replica["M2"]
+    (replica.origin / "objects" / missing[:2] / missing[2:]).unlink()
+    real = shallow.run_git
+
+    async def older(args: list[str], **kwargs: Any) -> bytes:
+        if args[0] == "merge-base":
+            # Pre-2.45 candidate reduction may succeed after an unreadable ancestor.
+            # Pruning that candidate's history hides the missing commit from rev-list.
+            return (replica["M3"] + "\n").encode("ascii")
+        return await real(args, **kwargs)
+
+    monkeypatch.setattr(shallow, "run_git", older)
+    monkeypatch.setattr(
+        git_process, "detect_git_version", lambda: ((2, 43, 7), "git version 2.43.7")
+    )
+    with pytest.raises(git_process.GitCommandError):
+        asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
+
+
+@pytest.mark.parametrize("version", [(2, 43, 7), (2, 50, 1)])
+@pytest.mark.parametrize("shallow_boundary", [False, True])
+def test_a_complete_criss_cross_graph_keeps_either_best_merge_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    version: tuple[int, int, int],
+    shallow_boundary: bool,
+) -> None:
+    from metabrowser.git import shallow
+    from metabrowser.git.process import repository_store_target
+
+    replica = build_linear(tmp_path / "replica")
+    tree = pinned_git(replica.origin, "rev-parse", f"{replica['M1']}^{{tree}}")
+
+    def commit(name: str, *parents: str) -> str:
+        args = ["commit-tree", tree, "-m", name]
+        for parent in parents:
+            args.extend(("-p", parent))
+        return pinned_git(replica.origin, *args)
+
+    a = commit("a", replica["M1"])
+    b = commit("b", replica["M1"])
+    left = commit("left", a, b)
+    right = commit("right", b, a)
+    if shallow_boundary:
+        (replica.origin / "shallow").write_text(replica["M1"] + "\n", encoding="ascii")
+    monkeypatch.setattr(git_process, "detect_git_version", lambda: (version, "git version test"))
+    target = repository_store_target(git_dir=replica.origin)
+    answer = asyncio.run(shallow.merge_base_answer(target, left, right))
+    assert answer.certain
+    assert answer.merge_base in {a, b}
+
+
+def test_a_running_pull_fetch_requires_its_store_record(linear: _Stand) -> None:
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    published = asyncio.run(_inspect(linear))
+    before = linear.store_refs()
+    (linear.store.parent / "store.yml").unlink()
+    with pytest.raises(pull_refs.PullRefError) as raised:
+        asyncio.run(pull_refs.fetch_pull_head(published, 1))
+    assert raised.value.state == "fetch_failed"
+    assert linear.store_refs() == before
+
+
+def test_a_lender_whose_boundary_became_a_fifo_is_refused_before_git(linear: _Stand) -> None:
+    from metabrowser.cache.lender import lender_problem
+
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    published = asyncio.run(_inspect(linear))
+    assert published.lender is not None
+    os.mkfifo(checkout / ".git" / "shallow")
+    assert lender_problem(published.lender) is not None
+
+
+def test_a_refused_boundary_replace_leaves_no_temporary_symlink(
+    linear: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.cache.lender import attach_lender
+
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    published = asyncio.run(_inspect(linear))
+    assert published.lender is not None
+    replace = os.replace
+
+    def refuse(source: Any, destination: Any) -> None:
+        if Path(destination) == linear.store / "shallow":
+            raise PermissionError("injected boundary publication refusal")
+        replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", refuse)
+    with pytest.raises(PermissionError):
+        attach_lender(linear.store, published.lender)
+    assert not list(linear.store.glob(".shallow.*"))
+
+
+def test_no_history_is_uncertain_if_the_boundary_moves_during_its_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git import shallow
+    from metabrowser.git.process import repository_store_target
+
+    replica = build_linear(tmp_path / "replica")
+    target = repository_store_target(git_dir=replica.origin)
+    real = shallow.run_git
+
+    async def cutting(args: list[str], **kwargs: Any) -> bytes:
+        if args[0] == "merge-base":
+            raise git_process.GitCommandError(args, 1, "")
+        if args[0] == "rev-list":
+            (replica.origin / "shallow").write_text(replica["M4"] + "\n", encoding="ascii")
+        return await real(args, **kwargs)
+
+    monkeypatch.setattr(shallow, "run_git", cutting)
+    answer = asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
+    assert not answer.certain
