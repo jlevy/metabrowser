@@ -3,14 +3,18 @@ type: is
 id: is-01m6g4n54pv6gbm7yzjxbskegg
 title: "Follow-ups from review E on PR 283: merge-base edge cases and a kept error"
 kind: task
-status: open
+status: in_progress
 priority: 2
-version: 1
+version: 2
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
+hold: null
+hold_until: null
 created_at: 2026-11-03T07:23:24.693Z
-updated_at: 2026-11-03T07:23:24.693Z
+updated_at: 2026-11-03T08:05:59.077Z
+started_at: 2026-11-03T08:05:59.077Z
 ---
 From review E (follow-up, round 3) on PR 283 at e8b7ff3d, after f987d033 was reverted at 483e3a83.
 1. Git before 2.45 can keep a redundant merge-base candidate when its reduction meets a commit it cannot read, which on a borrowing store whose lender collected an ancestor could give a non-best merge base. f987d033's counted check closed that but broke criss-cross histories, which have two best merge bases each outside the other's history (review E1). A correct check must accept any best merge base: for example, that every commit both tips reach outside the answer's history is itself an ancestor-free common ancestor, or compare with merge-base --all on a Git that errors on missing commits. Only reachable with Git < 2.45 and a collected ancestor.

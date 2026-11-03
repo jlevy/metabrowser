@@ -3,14 +3,18 @@ type: is
 id: is-01m6g1zdadpx3wxbsnzd6pesyh
 title: "PR #284 E3: a cold comparison grows with the pull request, 0.46 s at 1,031 files and 0.95 s at 1,627"
 kind: bug
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 3
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m6g1yw7yj073zja4jqvz0g8b
+hold: null
+hold_until: null
 created_at: 2026-11-03T06:36:35.020Z
-updated_at: 2026-11-03T06:37:29.578Z
+updated_at: 2026-11-03T08:05:59.067Z
+started_at: 2026-11-03T08:05:59.066Z
 ---
 Medium, from review E of https://github.com/jlevy/metabrowser/pull/284 (https://github.com/jlevy/metabrowser/pull/284#pullrequestreview-5747841588), deferred out of that PR.
 
