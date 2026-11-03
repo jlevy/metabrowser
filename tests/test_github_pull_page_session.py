@@ -514,6 +514,8 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
         "base_uncertain",
         "commits_unavailable",
         "no_store",
+        "comparison_timeout",
+        "comparison_too_large",
     }
     for state, said in unavailable.items():
         assert said["files"].startswith("Files changed is "), state

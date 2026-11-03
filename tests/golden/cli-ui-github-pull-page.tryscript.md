@@ -1035,6 +1035,18 @@ $ node tests/dom/github-pull-page-second-session.js
       "notes": [
         "Files changed could not be read (no store)."
       ]
+    },
+    "comparison_timeout": {
+      "files": "Files changed is unavailable: checking this pull request's history took too long. Refresh to try again.",
+      "notes": [
+        "Files changed could not be read (comparison timeout)."
+      ]
+    },
+    "comparison_too_large": {
+      "files": "Files changed is unavailable: checking this pull request's history exceeded the comparison limit.",
+      "notes": [
+        "Files changed could not be read (comparison too large)."
+      ]
     }
   },
   "checkout": {

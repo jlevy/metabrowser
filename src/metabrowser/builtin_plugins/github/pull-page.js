@@ -636,6 +636,12 @@ export function filesUnavailableText(why) {
   if (why === "no_store") {
     return "Files changed is not shown here: a checkout's server keeps no copy of the pull request's commits, and Metabrowser does not compare them in your checkout. Open the pull request's GitHub address with metab to read it from a mirror.";
   }
+  if (why === "comparison_timeout") {
+    return "Files changed is unavailable: checking this pull request's history took too long. Refresh to try again.";
+  }
+  if (why === "comparison_too_large") {
+    return "Files changed is unavailable: checking this pull request's history exceeded the comparison limit.";
+  }
   if (why === "commits_unavailable") {
     return "Files changed is unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
   }
@@ -1003,9 +1009,9 @@ export function createPullController(deps, options) {
           etag = response.etag;
         }
         error = null;
-      } else if (response.status === 304) {
+      } else if (response.status === 304 || pinChanged(response)) {
         error = null;
-      } else if (!pinChanged(response)) {
+      } else {
         error = `The pull request is unavailable (HTTP ${response.status}).`;
       }
     } catch {
