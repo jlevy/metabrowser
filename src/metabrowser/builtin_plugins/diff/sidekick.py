@@ -352,6 +352,7 @@ async def comparison_at(
         else ""
     )
     kept_key = comparison_cache_key(location, intent, store)
+    body_generation = _COMPARISONS.body_generation()
     answer_key: tuple[str, ...] | None = None
     headers: dict[str, str] = {}
     # A validator this process did not issue is honored only once the store has answered
@@ -485,7 +486,7 @@ async def comparison_at(
     if answer_key is None:
         return Response(body, media_type="application/json")
     encoded = await asyncio.to_thread(encode_body, body)
-    _COMPARISONS.remember_body(answer_key, encoded)
+    _COMPARISONS.remember_body(answer_key, encoded, generation=body_generation)
     return await _encoded_response(request, encoded, headers)
 
 
