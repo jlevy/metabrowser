@@ -310,21 +310,23 @@ def test_a_file_at_the_cap_is_parsed(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert os.environ.get("METABROWSER_LOG_LEVEL") == "DEBUG"
 
 
-def test_a_value_is_not_expanded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Expansion is what makes a parse quadratic, and neither allowed name needs it."""
+def test_ordered_values_are_expanded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Existing dotenv files may compose either allowlisted logging setting."""
 
     (tmp_path / ".env").write_text(
-        "METABROWSER_LOG_LEVEL=${HOME}\nMETABROWSER_REQUEST_LOG=${METABROWSER_LOG_LEVEL}\n",
+        "LEVEL=DE\nLEVEL=${LEVEL}BUG\nMETABROWSER_LOG_LEVEL=${LEVEL}\n"
+        "MODE=verbose\nMETABROWSER_REQUEST_LOG=${MODE}\n",
         encoding="utf-8",
     )
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
-    monkeypatch.delenv("METABROWSER_REQUEST_LOG", raising=False)
+    for key in (*ALLOWED_KEYS, "LEVEL", "MODE"):
+        monkeypatch.delenv(key, raising=False)
 
     load_dotenv_chain()
 
-    assert os.environ.get("METABROWSER_LOG_LEVEL") == "${HOME}"
-    assert os.environ.get("METABROWSER_REQUEST_LOG") == "${METABROWSER_LOG_LEVEL}"
+    assert os.environ.get("METABROWSER_LOG_LEVEL") == "DEBUG"
+    assert os.environ.get("METABROWSER_REQUEST_LOG") == "verbose"
+    assert "LEVEL" not in os.environ and "MODE" not in os.environ
 
 
 def test_a_file_of_bad_statements_warns_once(
