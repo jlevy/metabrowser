@@ -470,6 +470,9 @@ GitHub URLs and HTTPS:
   the description (`body`) or one comment, review, or review comment, and nothing else
   of KPress’s render. `/api/plugin/github/pull` answers with an entity tag and a `304`
   when nothing changed.
+  The description and every comment and review read in the interface sans at a Markdown
+  file’s size and “Max text width”, whichever reading font is chosen, because serif is
+  kept for committed documents.
 
 - A terminal hangup or `SIGTERM` now cancels an acquisition the way Ctrl-C does: Git and
   every helper it started are stopped, staging is removed, and `metab` exits with status
