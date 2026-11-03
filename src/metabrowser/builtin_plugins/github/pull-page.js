@@ -1487,6 +1487,21 @@ export function safeLink(href, base) {
 }
 
 /**
+ * Whether *pathname* is this page's entry on *tab*: `/pull/<n>` or `/pull/<n>/files`, and
+ * for Files changed one changed file's address, `/pull/<n>/files/<path>`, too, since that
+ * is the same tab at a file. Pure.
+ *
+ * @param {string} pathname
+ * @param {number} number
+ * @param {string} tab
+ */
+export function onPageRoute(pathname, number, tab) {
+  const route = `/pull/${number}${tab ? `/${tab}` : ""}`;
+  const here = pathname.replace(/\/$/, "");
+  return here === route || (tab === "files" && here.startsWith(`${route}/`));
+}
+
+/**
  * What Files changed does with the record's comparison. Pure.
  *
  * The diff keeps the comparison it was opened on: a record read at a newer head offers
@@ -2202,6 +2217,42 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     diffHandle = handle;
+    landFile();
+  }
+
+  /** The changed file an address or the Pulls tab asked to see, until the diff can show it. */
+  /** @type {string | null} */
+  let wantedFile = null;
+
+  /**
+   * Go to a file of the mounted diff. docs/large-content-rendering.md ("Going to a file")
+   * says what it promises.
+   *
+   * @param {string} path
+   * @returns {import("../diff/diff-view.js").FileJump | {kind: "no_diff", path: string}}
+   */
+  function jumpTo(path) {
+    const jump =
+      /** @type {{scrollToFile?: (path: string) => import("../diff/diff-view.js").FileJump} | null} */ (
+        diffHandle
+      )?.scrollToFile;
+    // A diff that did not load answers with no handle to jump in.
+    if (typeof jump !== "function") {
+      return { kind: "no_diff", path };
+    }
+    // A jump is the reader's own move, and a list beside the pane is not an input to it.
+    place?.keeper.readerMoved();
+    return jump(path);
+  }
+
+  /** Show the file asked for, once there is a diff to show it in. */
+  function landFile() {
+    if (wantedFile === null || diffHandle === null) {
+      return null;
+    }
+    const path = wantedFile;
+    wantedFile = null;
+    return jumpTo(path);
   }
 
   /** @param {PullModel} model */
@@ -2349,8 +2400,7 @@ export function mountPullPage(container, ctx, mb) {
      * @param {string} next
      */
     setTab(next) {
-      const route = `/pull/${number}${next ? `/${next}` : ""}`;
-      if (TABS.includes(next) && window.location.pathname.replace(/\/$/, "") !== route) {
+      if (TABS.includes(next) && !onPageRoute(window.location.pathname, number, next)) {
         void open({ number, tab: next });
         return;
       }
@@ -2371,15 +2421,30 @@ export function mountPullPage(container, ctx, mb) {
      * @param {string} path
      * @returns {import("../diff/diff-view.js").FileJump | {kind: "no_diff", path: string}}
      */
-    scrollToFile(path) {
-      if (diffHandle === null) {
+    scrollToFile: jumpTo,
+    /**
+     * Show one changed file, as its address `/pull/<n>/files/<path>` names it: Files changed,
+     * with the diff at that file. Whoever calls moves the address, the page host before it or
+     * a walk of the Pulls tab's files once it stops, so this moves none. Until the diff has
+     * mounted the file waits, and the newest asked for is the one shown. A place the entry
+     * saved, which a landing restores, wins over the file's own.
+     *
+     * The answer is the jump's, or `no_diff` for a file that waits for the diff.
+     *
+     * @param {string} path
+     * @returns {import("../diff/diff-view.js").FileJump | {kind: "no_diff", path: string}}
+     */
+    showFile(path) {
+      if (controller.snapshot().tab !== "files") {
+        // In place, with no landing: this entry's saved place is another tab's.
+        controller.setTab("files");
+        place?.keeper.readerMoved();
+      } else if (place?.keeper.snapshot().holding) {
+        wantedFile = null;
         return { kind: "no_diff", path };
       }
-      // A jump is the reader's own move, and a list beside the pane is not an input to it.
-      place?.keeper.readerMoved();
-      return /** @type {{scrollToFile: (path: string) => import("../diff/diff-view.js").FileJump}} */ (
-        diffHandle
-      ).scrollToFile(path);
+      wantedFile = path;
+      return landFile() ?? { kind: "no_diff", path };
     },
     /**
      * Whether Files changed holds a path, typed as `scrollToFile` is: `no_diff` while no
@@ -2429,8 +2494,7 @@ function keepPlace(pane, body, tab, number) {
     write(place) {
       // History can move on before this page is told: the entry is written only while
       // it is still this page's.
-      const route = `/pull/${number}${tab() ? `/${tab()}` : ""}`;
-      if (window.location.pathname.replace(/\/$/, "") === route) {
+      if (onPageRoute(window.location.pathname, number, tab())) {
         window.history.replaceState({ ...window.history.state, [PLACE_KEY]: place }, "");
       }
     },

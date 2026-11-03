@@ -1127,7 +1127,22 @@ async function main() {
     pageDefense: inert,
     filesChanged: files,
   };
-  const second = { filesUnavailable, hunks, place: placeStory(runtime) };
+  // Which address is the page's entry on a tab, for a tab switch from beside the page and for
+  // writing a reader's place: a changed file's address is its Files changed too.
+  const pageRoutes = [
+    ["/pull/7", 7, ""],
+    ["/pull/7/", 7, ""],
+    ["/pull/7/files", 7, "files"],
+    ["/pull/7/files/src/app.py", 7, "files"],
+    ["/pull/7/files/src/app.py", 7, ""],
+    ["/pull/70/files", 7, "files"],
+    ["/pull/7/filesx", 7, "files"],
+    ["/pull/8/files/src/app.py", 7, "files"],
+  ].map(
+    ([pathname, number, tab]) =>
+      `${pathname} is #${number}'s ${tab || "conversation"}: ${runtime.onPageRoute(pathname, number, tab)}`,
+  );
+  const second = { filesUnavailable, hunks, place: placeStory(runtime), pageRoutes };
   const part = process.argv.indexOf("--part");
   const wanted = part === -1 ? "1" : process.argv[part + 1];
   const chosen = wanted === "all" ? { ...first, ...second } : wanted === "2" ? second : first;
