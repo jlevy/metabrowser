@@ -3,9 +3,9 @@ type: is
 id: is-01m6fa7swqbvb8yz7s1jdykmj8
 title: "Address PR #279 reviews A, B, C: list data, more, 304, staleness"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -28,8 +28,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T23:41:44.215Z
-updated_at: 2026-11-03T00:13:02.047Z
+updated_at: 2026-11-03T01:29:43.657Z
 started_at: 2026-11-02T23:44:24.269Z
+closed_at: 2026-11-03T01:29:43.656Z
+close_reason: Reviews A, B, C of step 1 addressed; CI 9 of 9 green at 75627cb6 (#280's addressed head merged up).
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes
