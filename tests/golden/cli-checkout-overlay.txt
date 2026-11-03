@@ -394,7 +394,7 @@ exit: 0
 --- stdout ---
 {
   "state": "current",
-  "comparison_route": "/api/plugin/diff/comparison?left=2450c5fafb08ffe7cd0020e0b94edd7f598ccd91&right=59f44dac07a12a7c3907fbbcda78e35721c9013b&base_policy=merge_base",
+  "comparison_route": "/api/plugin/github/pull-comparison?number=1&left=2450c5fafb08ffe7cd0020e0b94edd7f598ccd91&right=59f44dac07a12a7c3907fbbcda78e35721c9013b&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "comparison": {
     "base": "2450c5fafb08ffe7cd0020e0b94edd7f598ccd91",
     "head": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
@@ -439,7 +439,7 @@ exit: 0
 --- stdout ---
 {
   "state": "current",
-  "comparison_route": "/api/plugin/diff/comparison?left=2450c5fafb08ffe7cd0020e0b94edd7f598ccd91&right=59f44dac07a12a7c3907fbbcda78e35721c9013b&base_policy=merge_base",
+  "comparison_route": "/api/plugin/github/pull-comparison?number=1&left=2450c5fafb08ffe7cd0020e0b94edd7f598ccd91&right=59f44dac07a12a7c3907fbbcda78e35721c9013b&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "comparison": {
     "base": "2450c5fafb08ffe7cd0020e0b94edd7f598ccd91",
     "head": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
@@ -733,7 +733,7 @@ exit: 0
 --- stdout ---
 {
   "state": "current",
-  "comparison_route": "/api/plugin/diff/comparison?left=fbc8399ff0140350e67bec06078d3bbf78200119&right=806ef37f15fef9c34a47873090c6169008db8cd2&base_policy=merge_base",
+  "comparison_route": "/api/plugin/github/pull-comparison?number=1&left=fbc8399ff0140350e67bec06078d3bbf78200119&right=806ef37f15fef9c34a47873090c6169008db8cd2&base_policy=merge_base&build=<BUILD>&store=<STORE>",
   "comparison": {
     "base": "fbc8399ff0140350e67bec06078d3bbf78200119",
     "head": "806ef37f15fef9c34a47873090c6169008db8cd2",
