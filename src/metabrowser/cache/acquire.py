@@ -892,7 +892,6 @@ def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
         raise ValidationFailedError("the published store did not validate")
     if state.default_remote_ref is None or state.default_revision is None:
         raise ValidationFailedError("the published store has no default revision")
-    _require_consistent_borrowing(home / store_directory(key) / "repository.git", store.lender)
     return _published(
         home,
         slug,
@@ -1041,16 +1040,16 @@ async def _settled_hit(
 
     A named checkout changes nothing about a full store or a healthy overlay. It repairs
     an overlay whose checkout has gone, once it has passed the checks a new overlay's
-    checkout does. Nothing else changes a store's mode or what it borrows.
+    checkout does. Nothing else changes a store's mode or what it borrows. A cache route
+    (*inspecting*) reads records and no object, and reports what these checks refuse.
     """
 
+    if inspecting:
+        return found
     recorded = found.lender
+    await asyncio.to_thread(_require_consistent_borrowing, found.git_dir, recorded)
     if checkout is None:
-        if (
-            recorded is not None
-            and not inspecting
-            and not await asyncio.to_thread(lender_present, recorded)
-        ):
+        if recorded is not None and not await asyncio.to_thread(lender_present, recorded):
             raise LenderMissingError(found.source.normalized, recorded)
         return found
     if recorded is None:

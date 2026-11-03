@@ -1245,9 +1245,10 @@ def test_alternates_that_disagree_with_the_record_are_refused_as_damaged(
     tamper(linear.store, linear.tmp_path)
     result = refused([CANONICAL, "--api", STATUS])
     assert "(damaged)" in result.error
-    row = ok([str(linear.tmp_path), "--api", "/api/cache/stores"]).payload()["stores"][0]
-    assert row["publication"] == "damaged"
-    assert row["problems"][0]["code"] == "mismatch"
+    for root in (str(linear.tmp_path), CANONICAL):
+        row = ok([root, "--api", "/api/cache/stores"]).payload()["stores"][0]
+        assert row["publication"] == "damaged"
+        assert row["problems"][0]["code"] == "mismatch"
 
 
 def test_alternates_a_full_store_should_not_have_are_refused(linear: _Stand) -> None:
