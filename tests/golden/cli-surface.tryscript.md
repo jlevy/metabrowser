@@ -128,8 +128,10 @@ $ metab --help
 │                                              data the browser consumes.      │
 │                                              Show: json reports the four     │
 │                                              layers as an object. Api: json  │
-│                                              (default) or yaml renders the   │
-│                                              envelope.                       │
+│                                              or yaml prints the envelope     │
+│                                              alone, so stdout parses; unset  │
+│                                              prints the route and status     │
+│                                              above it, as JSON.              │
 │                                              [default: text]                 │
 │ --index-timeout            SECONDS [x>=0.1]  Maximum time to wait for the    │
 │                                              inventory to finish. Applies to │
