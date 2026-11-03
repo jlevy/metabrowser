@@ -1925,31 +1925,44 @@ export function mountPullPage(container, ctx, mb) {
     diffHost = host;
     diffFor = comparison;
     body.replaceChildren(host);
-    const raw = prefetch.take(comparison);
-    await mb.ensureKindAssets("diff");
-    const view = mb.getRegisteredView("diff", "diff");
-    if (diffHost !== host) {
-      return;
+    try {
+      const raw = prefetch.take(comparison);
+      await mb.ensureKindAssets("diff");
+      const view = mb.getRegisteredView("diff", "diff");
+      if (diffHost !== host) {
+        return;
+      }
+      if (!view) {
+        host.textContent = "The diff plugin is unavailable.";
+        return;
+      }
+      const prefetched = await raw;
+      if (diffHost !== host) {
+        return;
+      }
+      const handle = /** @type {{dispose?: () => void} | null} */ (
+        await view.render(host, {
+          comparison: { left: comparison.left, right: comparison.right, base_policy: "merge_base" },
+          ...(prefetched === undefined ? {} : { raw: prefetched }),
+        })
+      );
+      if (diffHost !== host) {
+        handle?.dispose?.();
+        return;
+      }
+      diffHandle = handle;
+    } catch {
+      if (diffHost !== host) {
+        return;
+      }
+      const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
+      retry.addEventListener("click", () => {
+        if (diffHost === host) {
+          diffMounted = mountDiff(comparison);
+        }
+      });
+      host.replaceChildren(notice("error", ["Files changed could not load. ", retry]));
     }
-    if (!view) {
-      host.textContent = "The diff plugin is unavailable.";
-      return;
-    }
-    const prefetched = await raw;
-    if (diffHost !== host) {
-      return;
-    }
-    const handle = /** @type {{dispose?: () => void} | null} */ (
-      await view.render(host, {
-        comparison: { left: comparison.left, right: comparison.right, base_policy: "merge_base" },
-        ...(prefetched === undefined ? {} : { raw: prefetched }),
-      })
-    );
-    if (diffHost !== host) {
-      handle?.dispose?.();
-      return;
-    }
-    diffHandle = handle;
   }
 
   /** @param {PullModel} model */

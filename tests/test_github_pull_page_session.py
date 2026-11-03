@@ -394,3 +394,14 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     assert allowlist_violations(hook) == []
     assert allowlist_violations(transcript["pageDefense"]) == []
     assert "build badge</a>" in transcript["pageDefense"]
+
+
+def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
+    """Asset and renderer failures recover without a dangling readiness rejection."""
+
+    result = run_session("github-pull-page-mount-behavior.js")
+    assert result == {
+        "failedAssetsRecover": True,
+        "failedRenderRecovers": True,
+        "staleRetryIsInert": True,
+    }
