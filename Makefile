@@ -153,12 +153,14 @@ ADMITTED_GIT_TESTS := \
 	tests/test_acquire_phases.py \
 	tests/test_github_pulls.py \
 	tests/test_github_pull_list.py \
+	tests/test_pulls_nav.py \
 	tests/test_cli_github_pull_golden.py \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cache_async_locks.py \
 	tests/test_cli_no_serve_surface.py \
 	tests/test_diff_view_file_session.py \
 	tests/test_github_pull_page_session.py \
+	tests/test_github_pulls_panel_session.py \
 	tests/test_github_serve.py \
 	tests/test_source_freshness_session.py \
 	tests/test_source_ref_selector_session.py \
@@ -204,6 +206,7 @@ GOLDEN_RECORDERS := \
 	tests/test_source_ref_selector_session.py \
 	tests/test_diff_view_file_session.py \
 	tests/test_github_pull_page_session.py \
+	tests/test_github_pulls_panel_session.py \
 	tests/test_inert_toc.py \
 	tests/test_inert_html.py
 GOLDEN_DRIVERS := \

@@ -95,6 +95,11 @@
       label: "Navigation",
       order: 20,
     }),
+    "pull-requests": Object.freeze({
+      context: "Available while a pull-request row has focus.",
+      label: "Pull requests",
+      order: 25,
+    }),
     "quick-file": Object.freeze({
       context: "Available while Quick File is open.",
       label: "Quick File",

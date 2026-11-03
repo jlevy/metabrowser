@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import os
 import re
-from urllib.parse import quote_from_bytes, unquote_to_bytes
+from typing import Literal
+from urllib.parse import parse_qs, quote, quote_from_bytes, unquote_to_bytes
 
 from metabrowser.inventory_engine.contract import native_inventory_path
 from metabrowser.paths_safe import _safe_path
@@ -17,6 +18,8 @@ from metabrowser.paths_safe import _safe_path
 VIEW_ROUTE_PREFIX = "/view/"
 COMMIT_ROUTE_PREFIX = "/commit/"
 PULL_ROUTE_PREFIX = "/pull/"
+# The list of a repository's pull requests, with `?state=` for a filter, as on GitHub.
+PULLS_ROUTE = "/pulls"
 # The tabs of a pull-request page after its number: the conversation is the page
 # itself, and `files` is its Files changed, spelled as github.com spells it.
 PULL_ROUTE_TABS = ("", "files")
@@ -223,6 +226,26 @@ def decode_safe_pull_route(raw_path: bytes) -> tuple[int, str] | None:
     ):
         return None
     return int(number), tab
+
+
+def parse_pulls_selection(selection: str) -> str | None | Literal[False]:
+    """The list a ``/pulls[?state=<list>]`` selection names.
+
+    ``None`` is the route with no filter, and ``False`` is not this route at all. Which
+    lists exist is the list route's to say, so a name it does not have is refused there.
+    """
+
+    path, _, query = selection.partition("?")
+    if path != PULLS_ROUTE:
+        return False
+    names = parse_qs(query).get("state", [])
+    return names[0] if names else None
+
+
+def format_pulls_href(state: str | None = None) -> str:
+    """Return the list's address, ``/pulls`` or ``/pulls?state=<list>``."""
+
+    return PULLS_ROUTE if state is None else f"{PULLS_ROUTE}?state={quote(state, safe='')}"
 
 
 def _validate_logical_segments(segments: list[str], *, native: bool = False) -> None:

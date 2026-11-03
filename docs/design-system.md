@@ -531,6 +531,7 @@ unsettled rather than consistently offset.
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | File and folder header | Path, file size, and folder summary | Parent button, badges, copy and print buttons, a summary still loading |
+| Pull request row, in [the Pulls tab](#the-pulls-tab) | Title and age | State icon |
 | Diff file bar | Change letter, path, change stats, and notes | Chevron, View file controls, copy button |
 
 The row keeps `align-items: center`, and each text child opts in with
@@ -975,6 +976,65 @@ Until its render arrives a text shows as plain text in the same reading face and
 | Empty state | `--muted`, sentence with a period |  |
 | Refresh, Fetch, Switch to the head | `.btn` |  |
 
+## The Pulls Tab
+
+The list beside Files and Git, on a GitHub repository, shows every pull request newest
+first. Like the page it opens, it has almost no vocabulary of its own.
+`test_the_pulls_tab_carries_the_shells_primitives` holds what follows.
+
+### A Pull Request’s State
+
+Four states, each with the shape GitHub gives it and a color token in GitHub’s hue:
+
+| State | Glyph | Token | Hue |
+| --- | --- | --- | --- |
+| Open | Lucide `git-pull-request` | `--github-pull-open` | Green |
+| Draft | Lucide `git-pull-request-draft` | `--github-pull-draft` | Gray |
+| Merged | Lucide `git-merge` | `--github-pull-merged` | Purple |
+| Closed | Lucide `git-pull-request-closed` | `--github-pull-closed` | Red |
+
+The tokens are the plugin’s, in its stylesheet, as a domain’s tokens are, and each is
+one color seen against two backgrounds: the hue is GitHub’s and the same in both themes.
+Color is never the only signal: the shapes differ, the icon’s accessible name and
+tooltip say the state in the page header’s words, and the page’s state badge is the same
+icon beside its word.
+Everything goes through `pullStateIcon` and `displayState` in
+`builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree.
+`test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` holds the hue and a
+4.5:1 contrast on both grounds, because a badge sets its word in that color.
+
+### Rows
+
+| Part | Primitive | Why |
+| --- | --- | --- |
+| Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
+| Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current | [One Row Contract](#one-chevron-one-row-contract) |
+| State icon | The 16px alignment box around `--icon-glyph` | [One Glyph Size](#one-glyph-size) |
+| Title | `--nav-font-size`, full contrast, cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity |
+| Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
+| Number, author, base and head | One muted line at `--ui-small-font-size` | Context, and paths and names are sans |
+| All, Open, Closed | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top | [Choosing Among Values](#choosing-among-values) |
+| Count and freshness | Muted sentences, “Fetched 2 min ago by a reader” | A status sentence is the [Age](#age) exception |
+| A refresh’s failure, cut rows | [`.notice`](#notices), `warning`, with **Retry** in it when a reader can act | A cached list still shows under it |
+| No rows yet | The `.recent-loading` shape under `.mb-delayed-loading` | [Loading States Are Shapes](#loading-states-are-shapes-not-sentences) |
+| Load more, Retry | `.btn` | [Control Families](#control-families) |
+
+A row is two lines and one target, because a pane is narrower than its parts: the state
+icon and the title with the age beside it, sharing a baseline, then the muted line under
+them.
+It is one link, so a new tab and a copied address are the browser’s own, and all of
+its text is text: GitHub’s users write it, and none of it reaches markup or a style.
+
+### Keys
+
+The rows are a [Navigational Row Collection](#navigational-row-collections), with this
+one difference from what the file tree does.
+Moving is immediate and opening waits for a key to stop, because a pull request’s page
+can cost a fetch where a file cannot: each move changes two rows, a press opens at once,
+and a key held down opens only the row it stops on.
+Help reads the `pull-requests` group of the shortcut registry, and no surface here names
+a key.
+
 ## Keyboard Commands and Help
 
 Application commands have one registry and one document-level dispatcher.
@@ -1028,11 +1088,11 @@ acknowledgement.
 
 The component owns this focused behavior; it is not a document-level application
 shortcut. The maintained registry in
-`test_nav_like_row_sets_share_the_vertical_keyboard_contract` covers the file tree and
-Git history. The adjacent `test_git_row_selection_avoids_full_collection_mutation` pins
-Git’s interaction cost.
-Register every new navigational row collection in the shared check so its Tab order and
-vertical navigation cannot silently fork this contract.
+`test_nav_like_row_sets_share_the_vertical_keyboard_contract` covers the file tree, Git
+history, and the Pulls tab.
+The adjacent `test_git_row_selection_avoids_full_collection_mutation` pins Git’s
+interaction cost. Register every new navigational row collection in the shared check so
+its Tab order and vertical navigation cannot silently fork this contract.
 
 ### Descriptor Contract
 

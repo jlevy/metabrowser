@@ -53,6 +53,7 @@ const sandbox = {
   TextDecoder,
   TextEncoder,
   Uint8Array,
+  URLSearchParams,
 };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
@@ -146,6 +147,25 @@ observe(
   pullRoute.pullHistoryAction("/pull/7", null, true),
 );
 observe("back onto a view route is not a page's", pullRoute.pullHistoryAction("/view/", 7, false));
+
+// The list's address: its filter, and what history does with it.
+observe("the list's addresses", [
+  pullRoute.parsePulls("/pulls", ""),
+  pullRoute.parsePulls("/pulls", "?state=closed"),
+  pullRoute.parsePulls("/pulls", "?state=merged"),
+  pullRoute.parsePulls("/pulls/", ""),
+  pullRoute.parsePull("/pulls"),
+  pullRoute.pullsHref(),
+  pullRoute.pullsHref("open"),
+  refusal(() => pullRoute.pullsHref("merged")),
+]);
+observe("history and the list's address", [
+  pullRoute.pullHistoryAction("/pulls", 7, false),
+  pullRoute.pullHistoryAction("/pulls", null, false),
+  pullRoute.pullHistoryAction("/pulls", "list", false),
+  pullRoute.pullHistoryAction("/pulls", 7, true),
+  pullRoute.pullHistoryAction("/pull/7", "list", false),
+]);
 
 observe("root href", route.href({ path: "" }));
 observe("folder href keeps its slash", route.href({ path: "docs/" }));
@@ -384,6 +404,15 @@ function makePullShell(pathname) {
       mounts.push({ claim, open, resolve });
       return rendered;
     },
+    mountList(claim) {
+      log.push("mount the list's address");
+      let resolve;
+      const rendered = new Promise((settle) => {
+        resolve = settle;
+      });
+      mounts.push({ claim, resolve });
+      return rendered;
+    },
     pathname: () => location.pathname,
     pushHref(href) {
       location.pathname = href;
@@ -392,6 +421,7 @@ function makePullShell(pathname) {
   });
   const page = (number) => ({
     setTab: (tab) => log.push(`#${number} tab "${tab}"`),
+    flush: () => log.push(`#${number} writes its place`),
     dispose: () => log.push(`#${number} disposed`),
   });
   const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -420,6 +450,29 @@ function makePullShell(pathname) {
       shell.host.onHistory("/pull/7/files", true),
     );
     observe("a tab keeps the page and puts the tab in the URL", shell.log);
+  }
+
+  {
+    // The list's address holds the pane as a page does, and a row's open from it, or from a
+    // page, tells what it leaves to write its place into its own history entry first.
+    const shell = makePullShell("/pulls");
+    const listed = shell.host.showList();
+    shell.mounts[0].resolve(shell.page("list"));
+    await listed;
+    observe("the list's address holds the pane", shell.host.shown());
+    await shell.host.showList();
+    shell.host.onHistory("/pulls", false);
+    const first = shell.host.open({ number: 7, tab: "", reader: "the selection" });
+    shell.mounts[1].resolve(shell.page(7));
+    await first;
+    const second = shell.host.open({ number: 8, tab: "" });
+    shell.mounts[2].resolve(shell.page(8));
+    await second;
+    observe("the list's address, then two rows", shell.log);
+    const back = shell.host.onHistory("/pulls", false);
+    shell.mounts[3].resolve(shell.page("list"));
+    await shell.tick();
+    observe("back onto the list's address", [back, shell.host.shown()]);
   }
 
   {

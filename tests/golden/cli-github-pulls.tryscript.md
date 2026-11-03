@@ -486,6 +486,50 @@ Error: /api/plugin/github/pulls-refresh returned HTTP 409
 ? 1
 ```
 
+## Test: the list’s address reports its kind and its state
+
+`/pulls` is the list with no pull request selected, and `?state=` names its filter.
+`--show` reports what the Pulls tab renders it from, without its rows: its state and its
+honest count. It reads the cache alone, as the tab’s first read does.
+A filter the list does not have is the route’s to refuse, and a folder’s server answers
+the same address with nothing to list.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --show /pulls
+show: /pulls
+route: /pulls
+kind: pull-request-list
+views: pull-request-list (default)
+model: pull-request list envelope; state=stale list=all fetched=100 complete=False truncated=False at_cap=False refreshing=False reader=gh:octo-reader fetched_at=2026-09-17T12:00:00Z
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --show '/pulls?state=open'
+show: /pulls?state=open
+route: /pulls?state=open
+kind: pull-request-list
+views: pull-request-list (default)
+model: pull-request list envelope; state=stale list=open fetched=2 complete=True truncated=False at_cap=False refreshing=False reader=gh:someone-else fetched_at=2026-09-17T12:00:00Z
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --show '/pulls?state=merged'
+Error: /pulls?state=merged is not a selection the browser can open (HTTP 400)
+? 1
+```
+
+```console
+$ metab folder --show /pulls
+show: /pulls
+route: /pulls
+kind: pull-request-list
+views: pull-request-list (default)
+model: pull-request list envelope; state=absent list=all reason=not_github fetched=0 complete=False truncated=False at_cap=False refreshing=False
+? 0
+```
+
 ## Test: a refresh returns at once, and the command says how it ended
 
 `pulls-refresh` starts the list’s refresh in the refresh coordinator and answers `202`

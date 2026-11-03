@@ -334,6 +334,7 @@ which space it belongs to:
 | `/commit/<rev>` | One commit’s change set, compared against its first parent | A revision |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
 | `/pull/<n>`, `/pull/<n>/files` | A pull request’s page: its conversation, or its Files changed | A pull-request number, then an optional tab |
+| `/pulls` | A repository’s list of pull requests, with none selected | `?state=` names its filter: `open` or `closed`, and none for all of them |
 | `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
 | `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
 

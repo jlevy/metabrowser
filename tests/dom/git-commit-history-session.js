@@ -318,6 +318,8 @@ async function createPage(start, options = {}) {
   vm.runInContext(
     `
     var PULL_ROUTE_PREFIX = "/pull/";
+    var PULLS_ROUTE = "/pulls";
+    function isPullAddress(pathname) { return pathname.startsWith(PULL_ROUTE_PREFIX) || pathname === PULLS_ROUTE; }
     var previewPane = __previewPane;
     var navigationController = null;
     function beginViewCompositionLoad() { return null; }

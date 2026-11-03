@@ -355,6 +355,14 @@ GitHub URLs and HTTPS:
   `{"more": true}` one page more, up to ten; `/api/plugin/github/pulls` answers a window
   of the cached rows, offline too, with the count fetched and whether GitHub has more.
 
+- Pulls tab: a GitHub repository opened from its URL has a **Pulls** tab beside Files
+  and Git, listing every pull request newest first, with GitHub’s icon for open, draft,
+  merged, and closed, All, Open, and Closed filters, and what to do when `gh` cannot
+  read them. It is in front whenever a pull request’s page is, and at the list’s own
+  address, `/pulls`. Selecting a row reads the pull request in the same page, fetching
+  it if it has no record; holding K, J, or an arrow walks the rows and opens the one it
+  stops on.
+
 - Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
   way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
   header line (“author wants to merge 2 commits into base from head”, and once merged

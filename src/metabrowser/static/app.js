@@ -3584,12 +3584,18 @@ function startIndexProgressPolling() {
  * @property {(() => void) | null | undefined} [onShow] Runs every time
  *   the panel is activated, including the first. Panels use this only
  *   for cheap refresh/retry checks after their lazy initialization.
+ * @property {(() => void) | null | undefined} [onHide] Runs when another
+ *   panel takes its place, so a panel that polls stops while it is hidden.
  */
 
 /** @type {NavPanel[]} */
 var navPanels = [];
 /** @type {Set<string>} */
 var navPanelsShown = new Set();
+/** The panel in front, and where each panel was scrolled to: they share one scroller. */
+var activeNavPanelId = "files";
+/** @type {Map<string, number>} */
+var navPanelScroll = new Map();
 // The pane's claims, phases, and placeholders live in the navigation module so
 // a browserless session can drive exactly what this shell paints.
 var previewPane = window.MetabrowserNavigationRoute.createPreviewPaneLifecycle();
@@ -3792,6 +3798,12 @@ function activateNavPanel(panelId) {
   // the selection still loading underneath, which stranded its placeholder
   // and silently disabled the shown file's Load more; the selection's own
   // response is what should settle the pane.
+  var leaving = activeNavPanelId;
+  var scroller = document.getElementById("tree-content");
+  if (leaving !== panelId && scroller) {
+    navPanelScroll.set(leaving, scroller.scrollTop);
+  }
+  activeNavPanelId = panelId;
   queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
     const selected = btn.dataset.tab === panelId;
     btn.classList.toggle("active", selected);
@@ -3809,6 +3821,10 @@ function activateNavPanel(panelId) {
   const filterBar = document.getElementById("nav-filter-bar");
   if (filterBar) {
     filterBar.style.display = panelId === "files" ? "" : "none";
+  }
+  if (leaving !== panelId && scroller) {
+    scroller.scrollTop = navPanelScroll.get(panelId) ?? 0;
+    navPanels.find((candidate) => candidate.id === leaving)?.onHide?.();
   }
   // Hiding or restoring the bar changes which chrome the scroll shadow
   // belongs to, and no scroll event fires on a tab switch.
@@ -3837,6 +3853,8 @@ function initNavTabs() {
   // this would put the retired tab back on screen.
   registerNavPanel({ id: "files", label: "Files", onFirstShow: null });
   navPanelsShown.add("files");
+  // The server draws the Pulls tab in front at a pull request's address.
+  activeNavPanelId = queryHtml(".tab-btn.active", navBar)?.dataset.tab ?? "files";
 
   queryHtmlAll(".tab-btn", navBar).forEach((btn) => {
     const panelId = btn.dataset.tab;
@@ -3898,10 +3916,12 @@ window.MetabrowserShell = Object.freeze({
   claimPreview,
   endPreviewNavigation,
   isPreviewClaimCurrent,
+  openPullRequest: async (route) => (await loadPullPageHost()).open(route),
   registerNavPanel,
   removeNavPanel,
   renderPreviewHtml,
   renderPreviewNode,
+  shortcuts: () => shortcutRegistry,
   sourceFreshness,
 });
 
@@ -7761,17 +7781,15 @@ function deliverNavigationFragment(target) {
 
 // ── Pull-request page ──────────────────────────────────────────
 //
-// /pull/<n>[/files] is the pull requests' address space. Its page is the view a
-// plugin registers for the `pull-request` kind, the GitHub plugin's. The host in
-// pull-route.js decides what a route does -- switch the shown page's tab or mount a
-// page -- and keeps the tab in the URL; the shell supplies the pane, loads that plugin,
-// and hands it the host's `open`. The view owns everything else: fetching the record,
-// polling, refreshing, and Files changed.
-//
-// Only an address under /pull/ needs pull-route.js. The server adds it to that
-// address's shell; a page that gets there through history takes the `pull-route`
-// bundle. The host is null until one was opened.
+// pull-route.js holds the pull requests' address space and says how the shell and the view
+// meet; the shell supplies the pane and the history. The host is null until a route opened.
 var PULL_ROUTE_PREFIX = "/pull/";
+var PULLS_ROUTE = "/pulls";
+
+/** @param {string} pathname */
+function isPullAddress(pathname) {
+  return pathname.startsWith(PULL_ROUTE_PREFIX) || pathname === PULLS_ROUTE;
+}
 /** @type {ReturnType<NonNullable<Window["MetabrowserPullRoute"]>["createPullPageHost"]> | null} */
 var pullPageHost = null;
 
@@ -7791,7 +7809,7 @@ async function loadPullPageHost() {
   if (!routes) {
     throw new Error("Metabrowser pull-request routes are unavailable");
   }
-  pullPageHost ??= routes.createPullPageHost(pullPageHostDeps());
+  pullPageHost ??= routes.createPullPageHost(pullPageHostDeps(routes));
   return pullPageHost;
 }
 
@@ -7815,7 +7833,14 @@ function showPullPageLoadFailure(claim) {
   );
 }
 
-function pullPageHostDeps() {
+function pullPageHostDeps(routes) {
+  var mountView = routes.createViewMount({
+    sdk: window.metabrowser,
+    isCurrent: (claim) => isPreviewClaimCurrent(claim),
+    renderHtml: (html, claim) => renderPreviewHtml(html, claim),
+    renderNode: (node, claim) => renderPreviewNode(node, claim),
+    showLoadFailure: (claim) => showPullPageLoadFailure(claim),
+  });
   return {
     claim: () => {
       closeLiveStream();
@@ -7826,52 +7851,25 @@ function pullPageHostDeps() {
       return claim;
     },
     isCurrent: (claim) => isPreviewClaimCurrent(claim),
-    mount: async (claim, route, open) => {
-      var sdk = window.metabrowser;
-      var view = null;
-      try {
-        await sdk.ensureKindAssets("pull-request");
-        view = sdk.getRegisteredView("pull-request", "pull-request");
-      } catch (error) {
-        // Not the same as no plugin rendering such pages; the next route tries again.
-        console.error("metabrowser: the pull-request page could not load", error);
-        showPullPageLoadFailure(claim);
-        return null;
-      }
-      if (!isPreviewClaimCurrent(claim)) {
-        return null;
-      }
-      if (!view) {
-        renderPreviewHtml(
-          '<div class="preview-empty">No plugin renders pull-request pages here.</div>',
-          claim,
-        );
-        return null;
-      }
-      var host = document.createElement("div");
-      host.className = "content-body pull-request-host";
-      renderPreviewNode(host, claim);
-      return /** @type {{setTab?: (tab: string) => void, dispose?: () => void} | null} */ (
-        await view.render(host, {
-          kind: "pull-request",
-          number: route.number,
-          tab: route.tab,
-          open: open,
-        })
-      );
-    },
+    mount: (claim, route, open) =>
+      mountView(claim, "pull-request", {
+        number: route.number,
+        tab: route.tab,
+        reader: route.reader,
+        open: open,
+      }),
+    mountList: (claim) => mountView(claim, "pull-request-list", {}),
     pathname: () => window.location.pathname,
-    pushHref: (href) => window.history.pushState(null, "", href),
+    pushHref: (href) => {
+      window.history.pushState(null, "", href);
+      window.MetabrowserPullsNav?.routeChanged();
+    },
   };
 }
 
-// Back and forward can land on a pull-request route without changing a navigation
-// target -- between a page's tabs, or onto an entry a commit replaced -- so the
-// navigation controller does not see them; the host decides (pullHistoryAction).
-// This listener is added as app.js loads, before the controller starts and adds its own,
-// so it reads the target the controller held before this landing. With no host yet,
-// only a landing under /pull/ can be the page's, and it is applied once the host has
-// loaded, unless history has moved on by then.
+// Back and forward between a page's tabs change no navigation target, so the host decides
+// (pullHistoryAction). Added as app.js loads, before the controller adds its own, so it reads
+// the target the controller held. With no host yet it is applied once one has loaded.
 function applyPullHistoryLanding() {
   var pathname = window.location.pathname;
   var heldTarget = navigationController.current() !== null;
@@ -7879,7 +7877,7 @@ function applyPullHistoryLanding() {
     pullPageHost.onHistory(pathname, heldTarget);
     return;
   }
-  if (!pathname.startsWith(PULL_ROUTE_PREFIX)) {
+  if (!isPullAddress(pathname)) {
     return;
   }
   loadPullPageHost().then(
@@ -7922,7 +7920,7 @@ async function applyNavigationTarget(target, context) {
     if (window.MetabrowserNavigationRoute.parseCommit(window.location.pathname)) {
       return { status: "cancelled" };
     }
-    if (window.location.pathname.startsWith(PULL_ROUTE_PREFIX)) {
+    if (isPullAddress(window.location.pathname)) {
       var pullHost = null;
       try {
         pullHost = await loadPullPageHost();
@@ -7940,10 +7938,14 @@ async function applyNavigationTarget(target, context) {
       if (pullRoute) {
         return pullHost.show(pullRoute);
       }
+      if (window.location.pathname === PULLS_ROUTE) {
+        return pullHost.showList();
+      }
     }
     showNavigationLanding();
     return { status: "cancelled" };
   }
+  window.MetabrowserPullsNav?.routeChanged();
   var path = target.path.replace(/\/$/, "");
   // An address that anchors lines or carries `plain=1` opens the file's Source view.
   // Only an address with a fragment or a query can ask for one, and reading it takes
@@ -8085,6 +8087,7 @@ function initKeyboardInfrastructure() {
     return;
   }
   shortcutRegistry = window.MetabrowserKeyboardShortcuts.create({ document: document });
+  window.MetabrowserPullsNav?.bindShortcuts(shortcutRegistry);
   keyboardHelp = window.MetabrowserKeyboardHelp.create({
     document: document,
     hintHost: hintHost,
@@ -8262,6 +8265,9 @@ async function initDeferredShellTools() {
   await _perf.measureAsync("loadShellTools", () => assets.ensureAsset("shell-tools"));
   initKeyboardInfrastructure();
   initQuickFileFinder();
+  window.MetabrowserPullsNav?.init().catch((error) => {
+    console.error("metabrowser pulls tab: init failed", error);
+  });
   await window.MetabrowserGitPanel?.init();
   document.documentElement.dataset.shellToolsReady = "true";
 }

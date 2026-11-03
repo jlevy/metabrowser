@@ -31,6 +31,8 @@
 // stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes in a
 // KPress article of its own making, so a text reads as the same Markdown in a file does.
 
+import { displayState, pullStateIcon } from "./pull-state.js";
+
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
 // otherwise bounds how late a page learns of a refresh another tab started.
@@ -323,17 +325,6 @@ export function commitStatusResult(status) {
   return { tone: STATUS_TONES[state], label: state };
 }
 
-/** @param {Record<string, any>} pull */
-function displayState(pull) {
-  if (pull.merged === true) {
-    return "merged";
-  }
-  if (pull.state === "open") {
-    return pull.draft === true ? "draft" : "open";
-  }
-  return "closed";
-}
-
 /**
  * A side of the pull request as github.com's header names it: the bare branch when head
  * and base are one repository, and `owner:branch` on both sides when they are not, as
@@ -610,7 +601,7 @@ function notes(record) {
  * What the page shows for one answer of the pull route. Pure.
  *
  * @param {PullEnvelope | null} envelope
- * @param {{number: number, tab: string, nowMs: number, error?: string | null}} page
+ * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean}} page
  * @returns {PullModel}
  */
 export function describePull(envelope, page) {
@@ -647,12 +638,15 @@ export function describePull(envelope, page) {
   }
   const record = envelope.record;
   if (envelope.state === "absent" || envelope.state === "pending" || record === null) {
-    model.message =
-      envelope.state === "pending"
-        ? "Fetching the pull request…"
-        : (page.error ?? ABSENCE[envelope.reason ?? ""] ?? ABSENCE.not_cached);
+    const fetching = envelope.state === "pending" || page.fetching === true;
+    model.message = fetching
+      ? "Fetching the pull request…"
+      : (page.error ?? ABSENCE[envelope.reason ?? ""] ?? ABSENCE.not_cached);
     model.canRefresh =
-      envelope.state === "absent" && envelope.reason !== "not_github" && !envelope.refreshing;
+      !fetching &&
+      envelope.state === "absent" &&
+      envelope.reason !== "not_github" &&
+      !envelope.refreshing;
     return model;
   }
   model.recordAt = typeof record.fetched_at === "string" ? record.fetched_at : null;
@@ -773,7 +767,11 @@ function isEnvelope(value) {
  * The polling, refresh, tab, and Markdown state machine for one page.
  *
  * @param {PullDependencies} deps
- * @param {{number: number, tab: string}} options
+ * @param {{
+ *   number: number,
+ *   tab: string,
+ *   reader?: {fetchAfterMs: number, initial: {etag: string | null, body: unknown} | null} | null,
+ * }} options
  */
 export function createPullController(deps, options) {
   const pullRoute = `${PULL_ROUTE}?number=${options.number}`;
@@ -795,6 +793,11 @@ export function createPullController(deps, options) {
   let error = null;
   /** @type {string | null} */
   let painted = null;
+  /** The reader's selection in the Pulls tab that opened this page, if one did. */
+  const reader = options.reader ?? null;
+  let readerAsked = false;
+  /** Asked for by a reader's selection, and the ask is on its way. */
+  let fetching = false;
   /** Markdown by part, for the record fetched at `markdownFor`. @type {Map<string, Record<string, any>>} */
   const markdown = new Map();
   /** @type {string | null} */
@@ -805,7 +808,13 @@ export function createPullController(deps, options) {
   let inFlight = 0;
 
   function model() {
-    return describePull(envelope, { number: options.number, tab, nowMs: deps.now(), error });
+    return describePull(envelope, {
+      number: options.number,
+      tab,
+      nowMs: deps.now(),
+      error,
+      fetching,
+    });
   }
 
   function render() {
@@ -912,6 +921,7 @@ export function createPullController(deps, options) {
     }
     render();
     scheduleNext();
+    fetchForReader();
     if (
       deps.isVisible() &&
       envelope?.state === "stale" &&
@@ -924,6 +934,28 @@ export function createPullController(deps, options) {
         void askForRefresh({ number: options.number });
       }, REFRESH_ASK_MS);
     }
+  }
+
+  /**
+   * A reader chose this page's row in the Pulls tab, and the cache has no record of it: that
+   * is the action that adds one, as a press of Fetch is. A row a key stopped on waits a
+   * moment, so that a reader tapping past it spends nothing.
+   */
+  function fetchForReader() {
+    if (readerAsked || reader === null || envelope === null) {
+      return;
+    }
+    readerAsked = true;
+    if (envelope.state !== "absent" || envelope.reason === "not_github" || envelope.refreshing) {
+      return;
+    }
+    fetching = true;
+    render();
+    askTimer = deps.schedule(() => {
+      askTimer = null;
+      fetching = false;
+      void askForRefresh({ number: options.number, retry: true });
+    }, reader.fetchAfterMs);
   }
 
   /**
@@ -1104,6 +1136,10 @@ export function createPullController(deps, options) {
       clearTimer();
       cancelAsk();
       refreshAskedWhileVisible = false;
+      if (fetching) {
+        fetching = false;
+        readerAsked = false;
+      }
       return;
     }
     void poll();
@@ -1118,6 +1154,12 @@ export function createPullController(deps, options) {
 
   return Object.freeze({
     start: () => {
+      // What the Pulls tab read when the row was chosen: the page paints with no empty frame,
+      // and its first read then asks whether that is still so.
+      const initial = reader?.initial?.body;
+      if (isEnvelope(initial) && accept(initial, 0)) {
+        etag = reader?.initial?.etag ?? null;
+      }
       render();
       return poll(true);
     },
@@ -1428,7 +1470,7 @@ export function conversationAction(previous, next) {
  *
  * @param {Event} event
  */
-function isPlainClick(event) {
+export function isPlainClick(event) {
   return !(
     event instanceof MouseEvent &&
     (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
@@ -1440,7 +1482,7 @@ function isPlainClick(event) {
  * @param {Record<string, string>} [attributes]
  * @param {Array<Node | string | null>} [children]
  */
-function h(tag, attributes = {}, children = []) {
+export function h(tag, attributes = {}, children = []) {
   const element = document.createElement(tag);
   for (const [name, value] of Object.entries(attributes)) {
     element.setAttribute(name, value);
@@ -1688,6 +1730,22 @@ export function mountPullPage(container, ctx, mb) {
     );
 
   /**
+   * The pull request's state: the same icon as its row, beside the word it is named by.
+   *
+   * @param {string} state
+   * @param {string} label
+   */
+  const stateBadge = (state, label) => {
+    const shown = badge(state, label);
+    shown.prepend(
+      pullStateIcon(/** @type {import("./pull-state.js").PullState} */ (state), mb, {
+        named: false,
+      }),
+    );
+    return shown;
+  };
+
+  /**
    * A box about the content, on the shell's primitive; its severity is its border.
    *
    * @param {"warning" | "error" | null} severity
@@ -1741,7 +1799,7 @@ export function mountPullPage(container, ctx, mb) {
           h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
         ]),
         h("div", { class: "github-pull-meta" }, [
-          badge(pull.state, pull.stateLabel),
+          stateBadge(pull.state, pull.stateLabel),
           h("span", {}, [
             pull.actor === null ? null : h("strong", {}, [pull.actor]),
             `${pull.actor === null ? "" : " "}${pull.action} `,
@@ -2103,7 +2161,7 @@ export function mountPullPage(container, ctx, mb) {
       navigate: (href) => window.location.assign(href),
       renderMarkdown,
     },
-    { number, tab: typeof ctx.tab === "string" ? ctx.tab : "" },
+    { number, tab: typeof ctx.tab === "string" ? ctx.tab : "", reader: ctx.reader ?? null },
   );
   document.addEventListener("visibilitychange", controller.onVisibilityChange, {
     signal: listening.signal,
@@ -2119,6 +2177,10 @@ export function mountPullPage(container, ctx, mb) {
       if (changed) {
         place?.keeper.land();
       }
+    },
+    /** History is about to leave this entry: write its place now. */
+    flush() {
+      place?.keeper.flush();
     },
     dispose() {
       listening.abort();
@@ -2175,7 +2237,8 @@ function keepPlace(pane, body, tab, number) {
   const listening = new AbortController();
   const { signal } = listening;
   pane.addEventListener("scroll", keeper.scrolled, { passive: true, signal });
-  pane.addEventListener("click", keeper.flush, { capture: true, signal });
+  // Any click: a nav row's is outside the pane, and leaves this entry all the same.
+  document.addEventListener("click", keeper.flush, { capture: true, signal });
   // Whatever a reader moves the pane with: a wheel, a finger, a scrollbar, a key. Only input
   // says so, since the browser's own scroll anchoring also moves a page that changes height.
   for (const type of ["wheel", "touchstart", "pointerdown"]) {

@@ -46,6 +46,8 @@ from metabrowser.view_routes import (
     format_commit_href,
     format_inventory_view_href,
     format_pull_href,
+    format_pulls_href,
+    parse_pulls_selection,
 )
 
 if TYPE_CHECKING:
@@ -163,6 +165,20 @@ def _describe_pull(payload: dict[str, Any], tab: str) -> str:
     if tab == "files":
         parts.append(f"comparison_route={payload.get('comparison_route')}")
     return "pull envelope; " + " ".join(parts)
+
+
+def _describe_pull_list(payload: dict[str, Any]) -> str:
+    """Summarize the list envelope the tab renders: its state and its honest count."""
+
+    parts = [f"state={payload.get('state')}", f"list={payload.get('list')}"]
+    if payload.get("reason") is not None:
+        parts.append(f"reason={payload['reason']}")
+    for name in ("fetched", "complete", "truncated", "at_cap", "refreshing"):
+        parts.append(f"{name}={payload.get(name)}")
+    if payload.get("reader") is not None:
+        parts.append(f"reader={payload['reader']}")
+        parts.append(f"fetched_at={payload.get('fetched_at')}")
+    return "pull-request list envelope; " + " ".join(parts)
 
 
 def _pull_display_state(pull: dict[str, Any]) -> str:
@@ -348,6 +364,7 @@ async def _ashow_prepared(
 
     commit = None
     pull: tuple[int, str] | None = None
+    pull_list = parse_pulls_selection(path)
     native_selection: str | None = None
     git_wire: str | None = None
     git_candidates: list[str] = []
@@ -371,6 +388,11 @@ async def _ashow_prepared(
         # The page renders the pull request's cached record, which the GitHub plugin's
         # pull route answers for any number; Files changed is the comparison it names.
         route, params = "/api/plugin/github/pull", {"number": str(pull[0])}
+        needs_index = False
+    elif pull_list is not False:
+        # The list's address: what the tab shows, from the cache alone, without its rows.
+        route = "/api/plugin/github/pulls"
+        params = {"limit": "0", **({} if pull_list is None else {"state": pull_list})}
         needs_index = False
     elif filesystem_root is None:
         from metabrowser.git.content_routes import decode_git_view_path
@@ -457,6 +479,11 @@ async def _ashow_prepared(
         kind = "pull-request"
         views = server._views_for_kind(kind)
         model = _describe_pull(payload, tab)
+    elif pull_list is not False:
+        shown_route = format_pulls_href(pull_list)
+        kind = "pull-request-list"
+        views = server._views_for_kind(kind)
+        model = _describe_pull_list(payload)
     elif git_wire is not None:
         identity = payload.get("path", git_wire)
         if not isinstance(identity, str):

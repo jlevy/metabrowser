@@ -8,6 +8,7 @@ hover token. A failure here means a surface forked the vocabulary.
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 
@@ -530,12 +531,17 @@ def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
     design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
     tree = (STATIC / "tree-keyboard-navigation.js").read_text(encoding="utf-8")
     git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+    # The host binds a row's keys in the registry, and the view moves the rows' tab stop.
+    pulls = (STATIC / "pulls-nav.js").read_text(encoding="utf-8") + (
+        REPO_ROOT / BUILTIN_PLUGINS / "github/pulls-panel.js"
+    ).read_text(encoding="utf-8")
 
     assert "### Navigational Row Collections" in design
     assert "test_nav_like_row_sets_share_the_vertical_keyboard_contract" in design
     for source, movement_helper in (
         (tree, "focusAndOpen"),
         (git, "moveCommitRowFocus"),
+        (pulls, "nav.move("),
     ):
         assert movement_helper in source
         assert '"ArrowUp"' in source
@@ -1060,6 +1066,7 @@ _TOGGLE_SOURCES: dict[str, str] = {
     "source-ref-selector.js": "marks a chip of its groupHtml in place",
     "agent_log/index.js": "marks a chip of its groupHtml in place",
     "folder/treemap.js": "marks a chip of its groupHtml in place",
+    "github/pulls-panel.js": "marks a chip of its groupHtml in place",
 }
 _TOGGLE_ARIA = re.compile(
     r"""aria-pressed|aria-checked|radiogroup|menuitemradio|menuitemcheckbox"""
@@ -1222,6 +1229,114 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     assert travel["interpolate-size"] == "allow-keywords"
     assert travel["height"] == "0"
     assert details[".github-pull-hunk-earlier[open]::details-content"]["height"] == "auto"
+
+
+def _oklch_channels(value: str) -> tuple[float, float, float]:
+    """Lightness (0 to 1), chroma, and hue of one `oklch(L% C H)` declaration."""
+
+    found = re.fullmatch(r"oklch\(([\d.]+)% ([\d.]+) ([\d.]+)\)", value.strip())
+    assert found is not None, value
+    return float(found[1]) / 100, float(found[2]), float(found[3])
+
+
+def _relative_luminance(lightness: float, chroma: float, hue: float) -> float:
+    """WCAG relative luminance of an oklch color, from its linear sRGB channels."""
+
+    a = chroma * math.cos(math.radians(hue))
+    b = chroma * math.sin(math.radians(hue))
+    long = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    medium = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    short = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    red = 4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short
+    green = -1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short
+    blue = -0.0041960863 * long - 0.7034186147 * medium + 1.7076147010 * short
+    channels = [min(max(channel, 0.0), 1.0) for channel in (red, green, blue)]
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def _contrast(foreground: str, background: str) -> float:
+    lighter, darker = sorted(
+        (
+            _relative_luminance(*_oklch_channels(foreground)),
+            _relative_luminance(*_oklch_channels(background)),
+        ),
+        reverse=True,
+    )
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_pull_state_colors_keep_their_hue_and_read_on_both_grounds() -> None:
+    """Each state is one color seen against two backgrounds, legible on both.
+
+    `test_themed_colors_keep_their_hue` reads the shell's stylesheet; these tokens are the
+    plugin's, as a domain's tokens are (docs/design-system.md, "Token Layers"). A state's
+    badge sets its name in this color, so it is held to the 4.5:1 of text, on the surface the
+    page's header sits on and on the panel's.
+    """
+
+    github = (REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css").read_text(encoding="utf-8")
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    light_block, dark_block = _theme_blocks()
+    plugin_light = github[github.index(":root {") :].split("}", 1)[0]
+    plugin_dark = github[github.index('[data-theme="dark"] {') :].split("}", 1)[0]
+    assert "--sidebar-bg" in styles
+    for name in ("open", "draft", "merged", "closed"):
+        token = f"--github-pull-{name}"
+        light = _declared(plugin_light, token)
+        dark = _declared(plugin_dark, token)
+        assert _oklch_channels(light)[2] == _oklch_channels(dark)[2], f"{token} changes hue"
+        for theme, block, color in (("light", light_block, light), ("dark", dark_block, dark)):
+            for ground in ("--bg", "--sidebar-bg"):
+                surface = _declared(block, ground)
+                assert _contrast(color, surface) >= 4.5, (
+                    f"{token} on {ground} in the {theme} theme reads at "
+                    f"{_contrast(color, surface):.2f}:1"
+                )
+
+
+def _declared(block: str, token: str) -> str:
+    found = re.search(rf"^\s*{re.escape(token)}:\s*([^;]+);", block, flags=re.MULTILINE)
+    assert found is not None, token
+    return found[1]
+
+
+def test_the_pulls_tab_carries_the_shells_primitives() -> None:
+    """What "The Pulls Tab" says it reuses is what its markup and stylesheet say."""
+
+    panel = (REPO_ROOT / BUILTIN_PLUGINS / "github/pulls-panel.js").read_text(encoding="utf-8")
+    state = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-state.js").read_text(encoding="utf-8")
+    page = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-page.js").read_text(encoding="utf-8")
+    icons = (STATIC / "icons.js").read_text(encoding="utf-8")
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "## The Pulls Tab" in doc
+    assert "test_the_pulls_tab_carries_the_shells_primitives" in doc
+    github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
+    # One Chevron, One Row Contract: the row height, the hover, and a row's own focus ring.
+    row = github[".github-pulls-row"]
+    assert row["min-height"] == "var(--ui-row-height)"
+    assert github[".github-pulls-row:hover"]["background"] == "var(--hover-bg)"
+    assert github[".github-pulls-row.selected"]["background"] == "var(--highlight-bg)"
+    assert github[".github-pulls-row:focus-visible"]["outline"] == "2px solid var(--link)"
+    assert "transition" not in row, "a row crossed by a held key answers with no easing"
+    # Icons: the app's glyph, in the state's color and never its own.
+    assert github[".github-pull-state svg"]["width"] == "var(--icon-glyph)"
+    for name, lucide in (
+        ("gitPullRequest", "git-pull-request"),
+        ("gitPullRequestDraft", "git-pull-request-draft"),
+        ("gitMerge", "git-merge"),
+        ("gitPullRequestClosed", "git-pull-request-closed"),
+    ):
+        assert f"{name}: // Lucide `{lucide}`" in icons
+        assert f'"{name}"' in state
+    # A row and its page match: one state's icon, from one module.
+    assert "pullStateIcon(" in panel and "pullStateIcon(" in page
+    assert 'aria-label", PULL_STATES[state].label' in state
+    # Ages, filters, notices, and the skeleton are the shell's.
+    assert "mb.formatAge(" in panel
+    assert "controls.groupHtml(" in panel
+    assert 'class: "notice github-pulls-notice"' in panel
+    assert '"recent-loading mb-delayed-loading"' in panel
+    assert 'class: "btn github-pulls-more"' in panel
 
 
 def test_the_pull_request_page_carries_the_shells_primitives() -> None:

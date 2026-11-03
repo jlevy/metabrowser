@@ -87,6 +87,24 @@
     serif:
       '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><text x="12" y="18" text-anchor="middle" font-size="20" font-weight="600" font-family="serif">A</text></svg>',
     sans: '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><text x="12" y="18" text-anchor="middle" font-size="20" font-weight="600" font-family="sans-serif">A</text></svg>',
+    // A pull request's state, the shapes GitHub uses for the same four states. Color comes
+    // from where they are drawn: docs/design-system.md, "The Pulls Tab".
+    gitPullRequest: // Lucide `git-pull-request`
+      "<svg " +
+      SA +
+      '><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg>',
+    gitPullRequestDraft: // Lucide `git-pull-request-draft`
+      "<svg " +
+      SA +
+      '><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M18 6V5"/><path d="M18 11v-1"/><line x1="6" x2="6" y1="9" y2="21"/></svg>',
+    gitMerge: // Lucide `git-merge`
+      "<svg " +
+      SA +
+      '><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></svg>',
+    gitPullRequestClosed: // Lucide `git-pull-request-closed`
+      "<svg " +
+      SA +
+      '><circle cx="6" cy="6" r="3"/><path d="M6 9v12"/><path d="m21 3-6 6"/><path d="m21 9-6-6"/><path d="M18 11.5V15"/><circle cx="18" cy="18" r="3"/></svg>',
     // Viz kind shapes. `dep` shares the `doc` shape deliberately so a
     // .md file in the tree reads as the same visual family as a dep
     // node in the graph.

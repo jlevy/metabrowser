@@ -83,15 +83,10 @@
   line-height: 16px;
   white-space: nowrap;
 }
-.github-pull-badge[data-state="open"],
 .github-pull-badge[data-state="success"],
 .github-pull-badge[data-state="APPROVED"] {
   color: var(--status-success);
 }
-.github-pull-badge[data-state="merged"] {
-  color: var(--status-info);
-}
-.github-pull-badge[data-state="closed"],
 .github-pull-badge[data-state="failure"],
 .github-pull-badge[data-state="CHANGES_REQUESTED"] {
   color: var(--status-error);
@@ -99,7 +94,6 @@
 .github-pull-badge[data-state="pending"] {
   color: var(--status-warning);
 }
-.github-pull-badge[data-state="draft"],
 .github-pull-badge[data-state="neutral"],
 .github-pull-badge[data-state="skipped"],
 .github-pull-badge[data-state="cancelled"],
@@ -295,4 +289,173 @@
 }
 .github-pull-merge[data-state="conflicting"] {
   color: var(--status-error);
+}
+
+/* ── A pull request's state ──────────────────────────────────────
+   One vocabulary for a row and its page's header: docs/design-system.md, "The Pulls Tab". The
+   four colors are GitHub's hues in both themes: green, a neutral gray, purple, and red. Each
+   hue stays, and lightness and chroma answer the surface. The shapes differ, and the name is
+   always there, so color is never the only signal. */
+:root {
+  --github-pull-open: oklch(52.4% 0.14 148);
+  --github-pull-draft: oklch(49.5% 0.0215 252);
+  --github-pull-merged: oklch(56.3% 0.207 296);
+  --github-pull-closed: oklch(55.2% 0.205 26);
+}
+[data-theme="dark"] {
+  --github-pull-open: oklch(69.5% 0.18 148);
+  --github-pull-draft: oklch(67.7% 0.0155 252);
+  --github-pull-merged: oklch(68.8% 0.178 296);
+  --github-pull-closed: oklch(66.5% 0.2 26);
+}
+.github-pull-state,
+.github-pull-badge {
+  --github-pull-state-color: currentcolor;
+}
+.github-pull-state[data-state="open"],
+.github-pull-badge[data-state="open"] {
+  --github-pull-state-color: var(--github-pull-open);
+}
+.github-pull-state[data-state="draft"],
+.github-pull-badge[data-state="draft"] {
+  --github-pull-state-color: var(--github-pull-draft);
+}
+.github-pull-state[data-state="merged"],
+.github-pull-badge[data-state="merged"] {
+  --github-pull-state-color: var(--github-pull-merged);
+}
+.github-pull-state[data-state="closed"],
+.github-pull-badge[data-state="closed"] {
+  --github-pull-state-color: var(--github-pull-closed);
+}
+.github-pull-badge[data-state="open"],
+.github-pull-badge[data-state="draft"],
+.github-pull-badge[data-state="merged"],
+.github-pull-badge[data-state="closed"] {
+  color: var(--github-pull-state-color);
+}
+/* The 16px alignment box of a row's icon, around the app's one glyph size. */
+.github-pull-state {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  color: var(--github-pull-state-color);
+}
+.github-pull-state svg {
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+}
+
+/* ── The Pulls tab ───────────────────────────────────────────────
+   docs/design-system.md, "The Pulls Tab". Its controls, notices, and ages are the shell's
+   primitives; what is here is their placement, and a row, which takes the row contract. */
+.github-pulls-filters {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px var(--pane-header-padding-x);
+  background: var(--sidebar-bg);
+}
+.github-pulls-status,
+.github-pulls-empty {
+  margin: 0;
+  padding: 0 var(--pane-header-padding-x) 6px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+.github-pulls-status > span {
+  display: block;
+}
+.github-pulls-empty {
+  padding-block-start: 6px;
+}
+.github-pulls-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 var(--pane-header-padding-x) 6px;
+  padding: 4px 8px;
+}
+.github-pulls-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* A row below the view takes no layout: the list at its cap costs what is on screen. Measured
+   beside WINDOW_ROWS in pulls-panel.js. */
+.github-pulls-item {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 42px;
+}
+.github-pulls-row {
+  display: flex;
+  align-items: flex-start;
+  min-height: var(--ui-row-height);
+  padding: 2px 12px 2px 10px;
+  border-left: 2px solid transparent;
+  gap: 6px;
+  color: var(--text);
+  font-size: var(--nav-font-size);
+  text-decoration: none;
+  cursor: pointer;
+  user-select: var(--toggle-user-select);
+  /* The sticky filters do not cover a row brought into view. */
+  scroll-margin-block-start: calc(var(--chip-height) + 12px);
+}
+.github-pulls-row:hover {
+  background: var(--hover-bg);
+}
+.github-pulls-row:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+  background: var(--hover-bg);
+}
+.github-pulls-row.selected {
+  background: var(--highlight-bg);
+  border-left-color: var(--highlight-bar);
+}
+.github-pulls-row > .github-pull-state {
+  /* The icon's box is as tall as the title's line, so the two stay level. */
+  height: calc(var(--ui-row-height) - 4px);
+}
+.github-pulls-text {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 8px;
+  min-width: 0;
+}
+.github-pulls-title,
+.github-pulls-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.github-pulls-meta {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+.github-pulls-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px var(--pane-header-padding-x);
+  font-size: var(--ui-small-font-size);
+}
+.github-pulls-foot a {
+  color: var(--link);
+  text-decoration: none;
+}
+.github-pulls-foot a:hover {
+  text-decoration: underline;
+}
+.github-pulls-foot a:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
 }

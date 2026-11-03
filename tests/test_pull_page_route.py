@@ -139,7 +139,7 @@ def test_a_readers_place_is_kept_in_the_entry_and_disposed_with_the_page() -> No
 
     source = PAGE_JS.read_text(encoding="utf-8")
     glue = source[source.index("function keepPlace(") :]
-    assert 'pane.addEventListener("click", keeper.flush, { capture: true, signal });' in glue
+    assert 'document.addEventListener("click", keeper.flush, { capture: true, signal });' in glue
     assert 'for (const type of ["wheel", "touchstart", "pointerdown"]) {' in glue
     assert (
         'window.addEventListener("keydown", keeper.readerMoved, { capture: true, signal });' in glue
@@ -222,8 +222,17 @@ def test_a_later_margin_is_the_one_read() -> None:
 
 
 def test_nothing_in_the_pages_stylesheet_can_reach_another_page() -> None:
+    rules = _style_rules()
+    # A state's color tokens, in the two blocks a theme's tokens are declared in. Each names
+    # only those, so it styles nothing itself.
+    themes = (":root", '[data-theme="dark"]')
+    for theme in themes:
+        for declaration in rules[theme].split(";"):
+            assert declaration.strip() == "" or declaration.strip().startswith("--github-pull-")
     assert [
-        selector for selector in _style_rules() if not selector.startswith(".github-pull")
+        selector
+        for selector in rules
+        if not selector.startswith(".github-pull") and selector not in themes
     ] == []
 
 

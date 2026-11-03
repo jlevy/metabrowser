@@ -10,8 +10,40 @@ type MetabrowserRenderContext = {
   number?: number;
   tab?: string;
   open?: (route: { number: number; tab: string }) => unknown;
+  /** A pull request's page opened by a reader's selection in the Pulls tab: what the tab read
+   *  of its record, and how long the page waits before it fetches one the cache lacks. */
+  reader?: MetabrowserPullReader | null;
+  /** The Pulls tab's host, when the shell mounts the list in the tab. */
+  pullsNav?: MetabrowserPullsNavHost;
   raw?: unknown;
 };
+
+type MetabrowserPullReader = {
+  fetchAfterMs: number;
+  initial: { etag: string | null; body: unknown } | null;
+};
+
+type MetabrowserPullRoute = { number: number; tab: string; reader?: unknown };
+
+type MetabrowserPullsNavHost = Readonly<{
+  filter: string;
+  current: number | null;
+  shown: boolean;
+  scrollRoot: HTMLElement | null;
+  open(route: MetabrowserPullRoute): unknown;
+  filterChanged(state: string): void;
+}>;
+
+/** What the list's view hands the Pulls tab's host. */
+type MetabrowserPullsPanelHandle = Readonly<{
+  setShown(shown: boolean): void;
+  setCurrent(number: number | null): void;
+  setFilter(state: string): void;
+  move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
+  released(): void;
+  activateAnchor(): boolean;
+  dispose(): void;
+}>;
 
 type MetabrowserViewSpec = {
   render: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
@@ -439,14 +471,17 @@ type MetabrowserSourceLineAnchorState = Readonly<{
 }>;
 
 type MetabrowserPullRouteRuntime = Readonly<{
-  createPullPageHost<Handle extends { setTab?(tab: string): void; dispose?(): void }>(deps: {
+  createPullPageHost<
+    Handle extends { setTab?(tab: string): void; flush?(): void; dispose?(): void },
+  >(deps: {
     claim(): number;
     isCurrent(claim: number): boolean;
     mount(
       claim: number,
-      route: Readonly<{ number: number; tab: string }>,
-      open: (route: { number: number; tab: string }) => Promise<{ status: string }>,
+      route: Readonly<MetabrowserPullRoute>,
+      open: (route: MetabrowserPullRoute) => Promise<{ status: string }>,
     ): Promise<Handle | null | undefined>;
+    mountList(claim: number): Promise<Handle | null | undefined>;
     pathname(): string;
     pushHref(href: string): void;
   }): Readonly<{
@@ -455,23 +490,39 @@ type MetabrowserPullRouteRuntime = Readonly<{
       pathname: string,
       heldTarget: boolean,
     ): Readonly<
-      { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
+      | { action: "tab"; tab: string }
+      | { action: "mount"; number: number; tab: string }
+      | { action: "list" }
     > | null;
-    open(route: { number: number; tab: string }): Promise<{ status: "opened" | "cancelled" }>;
-    show(
-      route: Readonly<{ number: number; tab: string }>,
-    ): Promise<{ status: "opened" | "cancelled" }>;
-    shown(): number | null;
+    open(route: MetabrowserPullRoute): Promise<{ status: "opened" | "cancelled" }>;
+    show(route: Readonly<MetabrowserPullRoute>): Promise<{ status: "opened" | "cancelled" }>;
+    showList(): Promise<{ status: "opened" | "cancelled" }>;
+    shown(): number | "list" | null;
   }>;
+  createViewMount(shell: {
+    sdk: MetabrowserSdk;
+    isCurrent(claim: number): boolean;
+    renderHtml(html: string, claim: number): unknown;
+    renderNode(node: HTMLElement, claim: number): unknown;
+    showLoadFailure(claim: number): void;
+  }): (
+    claim: number,
+    kind: string,
+    context: Record<string, unknown>,
+  ) => Promise<{ setTab?(tab: string): void; flush?(): void; dispose?(): void } | null>;
   parsePull(pathname: string): Readonly<{ number: number; tab: string }> | null;
+  parsePulls(pathname: string, search?: string): Readonly<{ state: string }> | null;
   pullHistoryAction(
     pathname: string,
-    shown: number | null,
+    shown: number | "list" | null,
     heldTarget: boolean,
   ): Readonly<
-    { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
+    | { action: "tab"; tab: string }
+    | { action: "mount"; number: number; tab: string }
+    | { action: "list" }
   > | null;
   pullHref(number: number, tab?: string): string;
+  pullsHref(state?: string): string;
 }>;
 
 type MetabrowserSourceLineAnchorsRuntime = Readonly<{
@@ -2613,6 +2664,7 @@ declare global {
     label: string;
     onFirstShow: (() => void) | null;
     onShow?: (() => void) | null;
+    onHide?: (() => void) | null;
   };
 
   type MetabrowserPreviewClaim = number;
@@ -2628,14 +2680,18 @@ declare global {
     claimPreview(owner: string): MetabrowserPreviewClaim;
     endPreviewNavigation(claim: MetabrowserPreviewClaim): void;
     isPreviewClaimCurrent(claim: MetabrowserPreviewClaim): boolean;
+    openPullRequest(route: MetabrowserPullRoute): Promise<{ status: string }>;
     registerNavPanel(panel: MetabrowserNavPanel): void;
     removeNavPanel(panelId: string): void;
     renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
     renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
+    shortcuts(): ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null;
     /** The page's freshness controller once it is mounted; null when a folder is served. */
     sourceFreshness(): Promise<MetabrowserSourceFreshnessController | null>;
   };
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
+  type MetabrowserPublicPullRouteRuntime = MetabrowserPullRouteRuntime;
+  type MetabrowserPublicPullsPanelHandle = MetabrowserPullsPanelHandle;
   type MetabrowserPublicPreparedViewComposition = MetabrowserPreparedViewComposition;
   type MetabrowserPublicRenderContext = MetabrowserRenderContext;
   type MetabrowserPublicSdk = MetabrowserSdk;
@@ -2726,6 +2782,14 @@ declare global {
     }>;
     /** static/pull-route.js, the `pull-route` on-demand bundle. */
     MetabrowserPullRoute?: MetabrowserPullRouteRuntime;
+    /** static/pulls-nav.js, which only a shell that drew the Pulls tab has. */
+    MetabrowserPullsNav?: Readonly<{
+      bindShortcuts(
+        shortcuts: ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null,
+      ): void;
+      init(): Promise<void>;
+      routeChanged(): void;
+    }>;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;
