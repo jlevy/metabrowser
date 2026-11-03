@@ -236,7 +236,15 @@ different it is `no-cache`, because a browser’s copy has to meet an upgrade, a
 the browser’s cache is keyed by the address, which has to name the subject or one
 store’s answer would stand for another’s, or for a folder’s, on the same origin.
 A folder’s comparison, and a request naming a ref, carries neither header and keeps
-nothing, and a folder’s page has no `STORE_TAG`.
+nothing, and a folder’s page has no `STORE_TAG`. A store’s reads see no attributes but
+the store’s own `info/attributes`: not the reader’s files, and not the `.gitattributes`
+of any commit, since Git 2.43 reads a bare repository’s from `HEAD` and 2.50 reads none,
+so the attributes source is pinned to the store’s empty tree and the same two commits
+answer the same on every Git the floor admits.
+A folder’s comparison honors its working tree’s `.gitattributes`, its
+`.git/info/attributes`, and the reader’s own attributes files and configuration, diff
+drivers among them, as `git diff` in that folder would: a folder is the reader’s, and
+its answer is not kept.
 `builtin_plugins/diff/comparison_cache.py` says what an answer depends on besides the
 two commit IDs, and `cli-diff-comparison-cache.txt` pins each case.
 `github/pull-markdown?part=<part>` renders one text of the cached record through KPress

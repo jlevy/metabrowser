@@ -17,11 +17,14 @@ changed and the server answered 304.
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
+import pytest
 from starlette.datastructures import Headers
 
+from metabrowser import http_caching
 from metabrowser.http_caching import (
     BUILD_TAG,
     _newest_source_change,
@@ -79,6 +82,46 @@ def test_a_store_tag_names_the_store_and_not_its_path(tmp_path: Path) -> None:
     (one / "info" / "attributes").write_text("*.py -diff\n")
     assert store_tag(one) != tag, "attributes Git reads whatever is isolated are an input"
     assert store_tag(tmp_path / "absent.git") != tag, "a store with no info directory has a tag"
+
+
+def test_a_store_tag_is_read_once_and_follows_every_edit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tag is asked for on every comparison request and every page serve (review of
+    #284, D5), so the attributes file is read when its stat changes and not otherwise; and
+    a file past the bound the digest reads is named by its size and time as well, so an
+    edit past the first MiB moves the tag too (Qodo's comment on `_ATTRIBUTES_TAG_BYTES`)."""
+    store = tmp_path / "store.git"
+    attributes = store / "info" / "attributes"
+    attributes.parent.mkdir(parents=True)
+    reads = 0
+    real = http_caching._attributes_bytes
+
+    def counted(path: Path) -> bytes:
+        nonlocal reads
+        reads += 1
+        return real(path)
+
+    monkeypatch.setattr(http_caching, "_attributes_bytes", counted)
+    none = store_tag(store)
+    assert store_tag(store) == none and reads == 1, "a stat says nothing changed"
+    attributes.write_text("*.py -diff\n")
+    small = store_tag(store)
+    assert small != none and reads == 2
+    assert store_tag(store) == small and reads == 2
+    bound = http_caching._ATTRIBUTES_TAG_BYTES
+    attributes.write_bytes(b"# padding\n" * (bound // 10 + 1) + b"*.py -diff\n")
+    assert attributes.stat().st_size > bound
+    large = store_tag(store)
+    assert large not in (none, small)
+    # Past the bound: the same first MiB, one more rule at the end, and a different size.
+    attributes.write_bytes(b"# padding\n" * (bound // 10 + 1) + b"*.py -diff\n*.md -diff\n")
+    appended = store_tag(store)
+    assert appended != large, "an edit past the first MiB moves the tag"
+    # The same first MiB and the same size, with the rule past the bound rewritten.
+    attributes.write_bytes(b"# padding\n" * (bound // 10 + 1) + b"*.py -diff\n*.rs -diff\n")
+    os.utime(attributes, ns=(attributes.stat().st_atime_ns, attributes.stat().st_mtime_ns + 1))
+    assert store_tag(store) not in (large, appended)
 
 
 def test_an_editable_install_folds_its_newest_change_into_the_build() -> None:

@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from metabrowser.diff.adapters.base import DiffSourceError
-from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, parse_unified_patch
+from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, name_paths, parse_unified_patch
 from metabrowser.diff.format import (
     Availability,
     BasePolicy,
@@ -115,6 +115,44 @@ class PatchHydration:
     left_out: tuple[str, ...] = ()
     too_large: tuple[str, ...] = ()
     deferred: tuple[str, ...] = ()
+
+
+def display_path(change: FileChange) -> str:
+    """The path a reader knows a change by: its new side, else its old."""
+    side = change.new if change.new is not None else change.old
+    return side.path if side is not None else ""
+
+
+def mark_past_the_bounds(files: list[FileChange], hydration: PatchHydration) -> list[FileChange]:
+    """Say what became of the files one run could not hydrate, in each file's availability."""
+    if not hydration.too_large and not hydration.deferred:
+        return files
+    states = {
+        **dict.fromkeys(hydration.too_large, Availability.too_large),
+        **dict.fromkeys(hydration.deferred, Availability.deferred),
+    }
+    return [
+        change.model_copy(update={"availability": states[change.id]})
+        if change.id in states
+        else change
+        for change in files
+    ]
+
+
+def say_left_out(
+    files: list[FileChange], resolved: ResolvedComparison, left_out: tuple[str, ...]
+) -> tuple[list[FileChange], ResolvedComparison]:
+    """Mark the files the diff did not produce, and name them, keeping every other file."""
+    gone = set(left_out)
+    marked = [
+        change.model_copy(update={"availability": Availability.failed})
+        if change.id in gone
+        else change
+        for change in files
+    ]
+    named = [display_path(change) for change in files if change.id in gone]
+    warning = f"{len(named)} file(s) could not be read from the produced diff: {name_paths(named)}"
+    return marked, resolved.model_copy(update={"warnings": (*resolved.warnings, warning)})
 
 
 def _display(raw: bytes) -> tuple[str, str | None]:
@@ -651,6 +689,36 @@ class GitDiffSource:
             too_large=budgeted.too_large,
             deferred=budgeted.deferred,
         )
+
+    async def hydrate_each(
+        self,
+        resolved: ResolvedComparison,
+        file_ids: Sequence[str],
+        *,
+        manifest: ChangeSetManifest | None = None,
+    ) -> PatchHydration:
+        """Every file of *file_ids*, each one past what one run hydrates asked for alone.
+
+        What the page shows once a reader has reached every file, for the command line,
+        which has no reader to wait for (review of #284, Qodo): one run for the files
+        within the bound, then one run a file for the rest, so the whole comparison costs
+        one run more per file past the bound and never fails for being large. A file too
+        large alone is said to be, as the page says it; nothing comes back deferred.
+        """
+        listed = manifest if manifest is not None else await self.manifest(resolved)
+        first = await self.hydrate(resolved, file_ids, manifest=listed)
+        patches = dict(first.patches)
+        too_large = list(first.too_large)
+        left_out = list(first.left_out)
+        for file_id in first.deferred:
+            alone = await self.hydrate(resolved, [file_id], manifest=listed)
+            if alone.deferred:
+                # A single ask is kept or too large; this is a bug in the bounds.
+                raise DiffSourceError(f"file {file_id!r} could not be hydrated alone")
+            patches.update(alone.patches)
+            too_large.extend(alone.too_large)
+            left_out.extend(alone.left_out)
+        return PatchHydration(patches=patches, left_out=tuple(left_out), too_large=tuple(too_large))
 
     async def _patch(
         self,
