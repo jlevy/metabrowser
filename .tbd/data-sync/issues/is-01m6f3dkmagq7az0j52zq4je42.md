@@ -5,7 +5,7 @@ title: "Keyboard: walking changed files jumps the diff to that file"
 kind: task
 status: in_progress
 priority: 1
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -14,12 +14,14 @@ parent_id: is-01m6f39zpnk9rc3kjy552b88qj
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:42:34.377Z
-updated_at: 2026-11-03T06:46:33.004Z
+updated_at: 2026-11-03T07:19:03.930Z
 started_at: 2026-11-03T06:46:33.001Z
 ---
 The user, 2026-11-02: easy to scroll through files within a PR, and it may require rapid scrolling of the diff view to the relevant file when we navigate between files. Acceptance: changed-file rows are a Navigational Row Collection with the same contract as PR rows. Moving between files scrolls the diff straight to that file's bar, an immediate jump and not smooth scrolling, and focus stays in the nav. The file arrives hydrated even past MAX_HYDRATED_FILES, since builtin_plugins/diff/sidekick.py has a wanted_file path. Holding a key queues no request per row: latest wins, older ones cancelled. The position holds: neighbours hydrating above the target must not move it, and Back's history.state.pullPlace restore is kept. The selection follows a reader who scrolls the diff by hand, without stealing focus. It holds on the stress case, a real pull request of 1,183 files and +281,131 lines, so the tree stays bounded or virtualized; budgets come from the performance study. Pin in a browserless session with a golden, plus real-Chrome evidence for the scrolling.
 
 ## Notes
+
+2026-11-03 HANDOFF: implemented on wip/pulls-4-files fff7d6a3, never run in a browser, budgets NOT measured. createFileTreeController.move walks the visible rows (folders and files), clamped. On a file it marks the row current, and when the page holds this pull request it calls page.fileForPath (a not_in_comparison row is muted) and then page.showFile on every key, with no debounce. The address is replaced only when the walk stops (FILE_WALK_SETTLE_MS 120 or key-up), with jumped:true, so the host moves only the address. When the page is another pull request's, a single press opens the file's address at once and a held key opens it when the walk stops. Click and Enter push. Back's pullPlace restore is kept: showFile does not override a place the entry saved. Not done: the selection following a reader's own scroll (needs a diff-view accessor for the file at the top; ask its owner). Candidates for the budget run, reachable in the list: astral-sh/ruff#29121 (1,627 files), #29817 (1,031); django/django#21728 (2,235).
 
 2026-11-03, from #284's owner: the diff view's mount is changing (draw only the first screen's rows at mount; other ready files go through the deferred path with their patches in hand). Do not edit diff-view.js's mount or its deferred scheduler until they send the new head. The scrollToFile and fileForPath contract is meant to stay. Find in page will not reach undrawn rows, so the Pulls nav's jump to a file is how a reader reaches one: never rely on every file's rows being in the DOM; go through scrollToFile.
 
