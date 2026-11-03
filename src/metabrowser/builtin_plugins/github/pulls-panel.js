@@ -84,10 +84,11 @@ export const MAX_PEEKED = 4;
 // wait for its turn: pull-request jobs queued before it hold the refresh slots. Measured
 // 2026-11-03 on pallets/click: 1.7 s with nothing queued, and 35 s behind MAX_PULL_JOBS.
 export const LONG_WAIT_MS = 10000;
-// A pull request's folders start open when its list holds at most this many files, and past
-// it only the top level does, as the first rows decide. Not a bound on any cost: the rows are
-// drawn a window at a time (pull-files-view.js). See the measurement beside it.
-export const AUTO_EXPAND_FILES = 300;
+// Folders start open up to the measured file-list cap. Chrome 152, 2026-11-03: the
+// first 1,183 files of django/django#15387 made 1,503 rows; 3,000 stress files made
+// 4,539. With windowed paint, mounting cost 13.2 and 10.4 ms respectively, and a key's
+// maximum cost was 4.1 and 1.4 ms. A larger page-count estimate starts compact.
+export const AUTO_EXPAND_FILES = 3000;
 // Trees of changed files kept while their rows are closed, so one opened again keeps the
 // folders a reader opened. Each holds its list, at most 3,000 rows of text.
 export const MAX_HELD_TREES = 8;
@@ -1453,6 +1454,31 @@ export function mountPullsPanel(container, ctx, mb) {
   let panelShown = nav.shown;
   /** The file the address names, and of which pull request. */
   let currentFile = nav.file ?? null;
+  /** @type {unknown} */
+  let followedPage = null;
+  /** @type {(() => void) | null} */
+  let unwatchFile = null;
+  function followCurrentFile() {
+    const page = currentRow === null ? null : tab.pageFor(currentRow);
+    if (page === followedPage) {
+      return;
+    }
+    unwatchFile?.();
+    unwatchFile = null;
+    followedPage = page;
+    const reporting =
+      /** @type {{onCurrentFile?: (listener: (file: {path: string} | null) => void) => () => void} | null} */ (
+        page
+      );
+    unwatchFile =
+      reporting?.onCurrentFile?.((file) => {
+        // A tab switch has no file at the top; its explicit address remains the selection.
+        if (file !== null && currentRow !== null) {
+          currentFile = file.path;
+          trees.get(currentRow)?.controller.setCurrent(file.path);
+        }
+      }) ?? null;
+  }
 
   /**
    * A pull request's tree, made the first time its row opens.
@@ -1549,7 +1575,7 @@ export function mountPullsPanel(container, ctx, mb) {
     row.classList.toggle("selected", on);
     if (on) {
       row.setAttribute("aria-current", "page");
-      row.setAttribute("aria-selected", "true");
+      row.setAttribute("aria-selected", String(currentFile === null));
     } else {
       row.removeAttribute("aria-current");
       row.removeAttribute("aria-selected");
@@ -1951,6 +1977,8 @@ export function mountPullsPanel(container, ctx, mb) {
 
   void controller.start({ shown: nav.shown, refreshAhead: nav.refreshAhead });
   showPage(nav.current);
+  const unwatchPage = tab.onPageChange(followCurrentFile);
+  followCurrentFile();
 
   return Object.freeze({
     /** @param {boolean} visible */
@@ -1970,10 +1998,15 @@ export function mountPullsPanel(container, ctx, mb) {
     setCurrent(number, file = null) {
       controller.setCurrent(number);
       currentFile = file;
+      const row = number === null ? undefined : painted.get(number)?.row;
+      if (row !== undefined) {
+        markShown(row, true);
+      }
       showPage(number);
       if (number !== null) {
         trees.get(number)?.controller.setCurrent(file);
       }
+      followCurrentFile();
     },
     setFilter: (/** @type {string} */ state) => controller.setFilter(state, { fromAddress: true }),
     move: controller.move,
@@ -2012,6 +2045,8 @@ export function mountPullsPanel(container, ctx, mb) {
       listening.abort();
       atEnd?.disconnect();
       moved?.disconnect();
+      unwatchPage();
+      unwatchFile?.();
       window.clearTimeout(peekTimer);
       unbindFilters();
       controller.dispose();

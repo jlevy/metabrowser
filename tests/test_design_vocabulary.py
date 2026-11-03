@@ -558,12 +558,17 @@ def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
         REPO_ROOT / BUILTIN_PLUGINS / "github/pulls-panel.js"
     ).read_text(encoding="utf-8")
 
+    pull_files = pulls + (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-files-view.js").read_text(
+        encoding="utf-8"
+    )
+
     assert "### Navigational Row Collections" in design
     assert "test_nav_like_row_sets_share_the_vertical_keyboard_contract" in design
     for source, movement_helper in (
         (tree, "focusAndOpen"),
         (git, "moveCommitRowFocus"),
         (pulls, "nav.move("),
+        (pull_files, "nav.moveFile("),
     ):
         assert movement_helper in source
         assert '"ArrowUp"' in source

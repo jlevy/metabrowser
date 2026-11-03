@@ -475,6 +475,8 @@ function makePullShell(pathname) {
     // A landing mounts the page; its tabs and back and forward switch the tab of the
     // page that holds the pane without claiming it again.
     const shell = makePullShell("/pull/7");
+    const pages = [];
+    const unwatch = pullRoute.onPageChange(() => pages.push(shell.host.pageFor(7) !== null));
     const shown = shell.host.show({ number: 7, tab: "" });
     observe("a page is not shown while it mounts", shell.host.shown());
     shell.mounts[0].resolve(shell.page(7));
@@ -492,6 +494,10 @@ function makePullShell(pathname) {
       shell.host.onHistory("/pull/7/files", true),
     );
     observe("a tab keeps the page and puts the tab in the URL", shell.log);
+    observe("page availability reports mounting then the ready handle", pages);
+    unwatch();
+    shell.host.dispose();
+    observe("a removed page watcher gets no disposal notification", pages);
   }
 
   {

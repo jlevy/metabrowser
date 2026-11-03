@@ -1256,6 +1256,7 @@ async function paintStory(panel) {
           file: null,
           fileHref: (number, path) => `/pull/${number}/files/${path}`,
           pageFor: () => null,
+          onPageChange: () => () => {},
           filterChanged() {},
         },
       },

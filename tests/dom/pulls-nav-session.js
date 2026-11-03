@@ -560,7 +560,7 @@ function twoTreesPage() {
       return false;
     }
     matches(selector) {
-      return matchesCompound(this, selector);
+      return selector.split(",").some((part) => matchesCompound(this, part.trim()));
     }
     closest(selector) {
       for (let at = this; at; at = at.parentElement) {
@@ -733,6 +733,16 @@ function twoTreesPage() {
     make("div", { id: "nav-shortcut-hints" }),
   );
 
+  const changedFiles = ["src/a.py", "src/b.py"].map((path, index) =>
+    make("a", {
+      class: "github-pull-file-row",
+      role: "treeitem",
+      tabindex: index === 0 ? "0" : "-1",
+      href: `/pull/3900/files/${path}`,
+      "data-file": path,
+    }),
+  );
+  pulls[0].parentElement.append(make("div", { role: "group" }, changedFiles));
   const shell = { active: "files", panel: null, address: "/view/" };
   const tabs = { files: filesTab, pulls: pullsTab };
   const context = {
@@ -781,7 +791,7 @@ function twoTreesPage() {
         }
       },
       openPullRequest(route) {
-        shell.address = `/pull/${route.number}`;
+        shell.address = `/pull/${route.number}${route.tab ? `/${route.tab}` : ""}${route.file ? `/${route.file}` : ""}`;
         log.push(`the shell opened ${shell.address}, ${route.replace ? "replacing" : "pushing"}`);
         return Promise.resolve({ status: "opened" });
       },
@@ -811,6 +821,43 @@ function twoTreesPage() {
                 number: Number(next.dataset.number),
                 tab: "",
                 replace: true,
+              });
+              return true;
+            },
+            expand() {
+              changedFiles[0].focus();
+              return true;
+            },
+            collapse() {
+              return true;
+            },
+            moveFile(delta) {
+              const at = changedFiles.indexOf(document.activeElement);
+              const next = changedFiles[Math.max(0, Math.min(changedFiles.length - 1, at + delta))];
+              for (const row of changedFiles) {
+                row.setAttribute("tabindex", row === next ? "0" : "-1");
+              }
+              next.focus();
+              void ctx.pullsNav.open({
+                number: 3900,
+                tab: "files",
+                file: next.dataset.file,
+                replace: true,
+              });
+              return true;
+            },
+            fileLeft() {
+              pulls[0].focus();
+              return true;
+            },
+            fileRight() {
+              return true;
+            },
+            activateFile() {
+              void ctx.pullsNav.open({
+                number: 3900,
+                tab: "files",
+                file: document.activeElement.dataset.file,
               });
               return true;
             },
@@ -883,6 +930,7 @@ function twoTreesPage() {
     context,
     files,
     pulls,
+    changedFiles,
     shell,
     take: () => log.splice(0),
     /** A key pressed where focus is, and its release. */
@@ -930,6 +978,10 @@ async function twoTreesStory() {
   story["J on it is the list's"] = page.press("j");
   story["ArrowDown too"] = page.press("ArrowDown");
   story["Enter opens the row"] = page.press("Enter");
+  story["Right enters changed files"] = page.press("ArrowRight");
+  story["J in changed files has its own scope"] = page.press("j");
+  story["Enter in changed files pushes that file"] = page.press("Enter");
+  story["Left returns to the parent pull-request row"] = page.press("ArrowLeft");
   story["the overlay closes over a Pulls row: no Files row is handed back"] = page.named(
     context.resolveApplicationFocusFallback(context.document.activeElement),
   );

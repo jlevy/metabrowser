@@ -1029,6 +1029,27 @@ The list beside Files and Git, on a GitHub repository, shows every pull request 
 first. Like the page it opens, it has almost no vocabulary of its own.
 `test_the_pulls_tab_carries_the_shells_primitives` holds what follows.
 
+A pull request’s row is a container: its chevron opens a changed-files tree under the
+row, connected by `aria-owns`. Clicking the row opens the page and toggles the tree;
+Right expands or enters it, and Left collapses it.
+The shown page’s row opens automatically and closes when the page moves, unless a reader
+opened it.
+
+Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
+A one-letter change badge replaces the file icon.
+A folder chain is one row.
+Up, Down, J, and K move through the visible rows, with one Tab anchor per file tree.
+A file step calls the diff’s public jump API; a held key replaces the address once it
+stops, while Enter and a click push it.
+A hand-scrolled diff reports its current file through the same public page handle, so
+the tree follows without moving the address.
+
+The tree draws a viewport window, keeping its focused anchor mounted.
+Counts name the files fetched and say when the list is partial or capped; the rows do
+not depend on hydrated diff documents.
+The measured expansion and overscan choices are beside `AUTO_EXPAND_FILES` and
+`FILE_ROWS_OVERSCAN` in the GitHub plugin.
+
 ### A Pull Request’s State
 
 Four states, each with the shape GitHub gives it and a color token in GitHub’s hue:
@@ -1158,7 +1179,7 @@ acknowledgement.
 The component owns this focused behavior; it is not a document-level application
 shortcut. The maintained registry in
 `test_nav_like_row_sets_share_the_vertical_keyboard_contract` covers the file tree, Git
-history, and the Pulls tab.
+history, pull-request rows, and their changed-file trees.
 The adjacent `test_git_row_selection_avoids_full_collection_mutation` pins Git’s
 interaction cost. Register every new navigational row collection in the shared check so
 its Tab order and vertical navigation cannot silently fork this contract.

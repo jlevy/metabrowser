@@ -50,6 +50,7 @@ type MetabrowserPullsNavHost = Readonly<{
   fileHref(number: number, path: string): string | null;
   /** The page of that pull request while it holds the pane, else null. */
   pageFor(number: number): unknown;
+  onPageChange(listener: () => void): () => void;
   filterChanged(state: string): void;
 }>;
 
@@ -557,6 +558,7 @@ type MetabrowserPullRouteRuntime = Readonly<{
   ) => Promise<{ setTab?(tab: string): void; flush?(): void; dispose?(): void } | null>;
   /** The host the shell made, for the Pulls tab beside the pane; null until one is made. */
   attachedHost(): { pageFor(number: number): unknown } | null;
+  onPageChange(listener: () => void): () => void;
   parsePull(pathname: string): Readonly<{ number: number; tab: string; file: string }> | null;
   parsePulls(pathname: string, search?: string): Readonly<{ state: string }> | null;
   pullHistoryAction(

@@ -474,8 +474,9 @@ const FILES_ROUTE = "/api/plugin/github/pull-files";
 const FILES_REFRESH_ROUTE = "/api/plugin/github/pull-files-refresh";
 
 // How often a list that is filling is asked again: a page of GitHub's list took 1.2 to 1.6 s
-// on the 1,183-file pull request, so a second shows each page about as it lands. Only a list
-// that is filling is asked again; any other changes only by a refresh, which this asks for.
+// on the 1,183-file pull request, so a second shows each page about as it lands. Settled
+// lists are read again once a freshness window, and a stale cached list asks for refresh
+// only while its tree and panel are shown. An absent list needs a reader's own expansion.
 export const FILES_POLL_MS = 1000;
 // How long a walk of the files waits for a next key before the address names the file it
 // rests on, once a key is repeating; a key's release names it at once. The diff jumps on every
@@ -582,7 +583,7 @@ export function describeFileTree(envelope, held) {
   if (envelope === null) {
     model.skeleton = held.error === null;
     if (held.error !== null) {
-      model.notice = { severity: "error", text: held.error, action: null };
+      model.notice = { severity: "error", text: held.error, action: "retry" };
     }
     return model;
   }
@@ -854,18 +855,27 @@ export function createFileTreeController(deps, options) {
   /** @param {boolean} [now] */
   function scheduleNext(now = false) {
     clearTimer();
-    if (!live() || envelope === null) {
+    if (!live()) {
       return;
     }
-    if (now || envelope.refreshing || envelope.state === "pending") {
-      timer = deps.schedule(
-        () => {
-          timer = null;
-          void poll();
-        },
-        now ? 0 : FILES_POLL_MS,
-      );
+    if (envelope === null) {
+      timer = deps.schedule(() => {
+        timer = null;
+        void poll();
+      }, FILES_POLL_MS);
+      return;
     }
+    timer = deps.schedule(
+      () => {
+        timer = null;
+        void poll();
+      },
+      now
+        ? 0
+        : envelope.refreshing || envelope.state === "pending"
+          ? FILES_POLL_MS
+          : Math.max(FILES_POLL_MS, envelope.fresh_for_s * 1000),
+    );
   }
 
   /** Read the rows past those held, or all of them for a list that is not the one held. */
@@ -909,6 +919,9 @@ export function createFileTreeController(deps, options) {
       }
     }
     render();
+    if (!again) {
+      askIfDue(false);
+    }
     scheduleNext(again);
   }
 
@@ -957,7 +970,7 @@ export function createFileTreeController(deps, options) {
    * @param {boolean} reader
    */
   function askIfDue(reader) {
-    if (disposed || !expanded || envelope === null || envelope.refreshing) {
+    if (disposed || !expanded || (!reader && !live()) || envelope === null || envelope.refreshing) {
       return;
     }
     if (envelope.reason === "not_github") {
@@ -1018,7 +1031,7 @@ export function createFileTreeController(deps, options) {
    * @param {FilePage} page
    * @param {string} path
    */
-  function jumpIn(page, path) {
+  function jumpInPage(page, path) {
     if (page.fileForPath(path).kind === "not_in_comparison") {
       mute(path);
       return;
@@ -1048,7 +1061,7 @@ export function createFileTreeController(deps, options) {
     markCurrent(path);
     const page = deps.page();
     if (page !== null) {
-      jumpIn(page, path);
+      jumpInPage(page, path);
     }
     if (walkTimer !== null) {
       deps.cancel(walkTimer);
@@ -1152,7 +1165,7 @@ export function createFileTreeController(deps, options) {
       }
       if (!deps.isVisible()) {
         clearTimer();
-      } else if (expanded && envelope?.refreshing) {
+      } else if (expanded && shown) {
         void poll();
       }
     },
@@ -1308,7 +1321,7 @@ export function createFileTreeController(deps, options) {
         return Promise.resolve();
       }
       error = null;
-      return ask(true);
+      return envelope === null ? poll() : ask(true);
     },
     /** Whether a row is one the comparison lacks. @param {string} id */
     isMuted: (id) => muted.has(id),

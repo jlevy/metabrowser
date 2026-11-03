@@ -154,6 +154,7 @@
                 },
                 // The page a file row jumps in, while it is that pull request's.
                 pageFor: (/** @type {number} */ number) => deps.pageFor(number),
+                onPageChange: (listener) => deps.routes.onPageChange(listener),
                 filterChanged: filterChanged,
               }),
             })
@@ -486,7 +487,7 @@
       ? null
       : target.closest("a.github-pulls-row") !== null
         ? KEY_SCOPE
-        : target.closest(".github-pull-file, .github-pull-folder") !== null
+        : target.closest(".github-pull-file-row, .github-pull-folder-row") !== null
           ? FILE_KEY_SCOPE
           : null;
 

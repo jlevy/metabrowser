@@ -714,6 +714,8 @@ $ node tests/dom/navigation-route-behavior.js
     "the shown page's route opens without a push": {"status":"opened"},
     "a landing the controller applies is left to it": null,
     "a tab keeps the page and puts the tab in the URL": ["claim 1 (pull-request)","mount /pull/7","#7 writes its place","push /pull/7/files","#7 tab \"files\"","#7 tab \"files\"","#7 tab \"\""],
+    "page availability reports mounting then the ready handle": [false,false,true],
+    "a removed page watcher gets no disposal notification": [false,false,true],
     "the list's address holds the pane": "list",
     "the list's address, then two rows": ["claim 1 (pull-request)","mount the list's address","#list writes its place","push /pull/7","#list disposed","claim 2 (pull-request)","mount /pull/7","#7 writes its place","push /pull/8","#7 disposed","claim 3 (pull-request)","mount /pull/8"],
     "back onto the list's address": [{"action":"list"},"list"],

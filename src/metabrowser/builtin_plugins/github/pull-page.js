@@ -1666,6 +1666,31 @@ export function mountPullPage(container, ctx, mb) {
   let diffHandle = null;
   /** @type {HTMLElement | null} */
   let diffHost = null;
+  /** @type {Set<(file: Extract<import("../diff/diff-view.js").FileLookup, {kind: "file"}> | null) => void>} */
+  const currentFileListeners = new Set();
+  /** @type {(() => void) | null} */
+  let unwatchCurrentFile = null;
+  /** @type {string | null} */
+  let reportedFileId = null;
+  /** @param {Extract<import("../diff/diff-view.js").FileLookup, {kind: "file"}> | null} file */
+  function reportCurrentFile(file) {
+    const id = file?.fileId ?? null;
+    if (id === reportedFileId) {
+      return;
+    }
+    reportedFileId = id;
+    for (const listener of currentFileListeners) {
+      listener(file);
+    }
+  }
+  /** The mounted diff's answer, without asking it to render anything. */
+  function currentDiffFile() {
+    const current =
+      /** @type {{currentFile?: () => Extract<import("../diff/diff-view.js").FileLookup, {kind: "file"}> | null} | null} */ (
+        diffHandle
+      );
+    return current?.currentFile?.() ?? null;
+  }
   const pane = /** @type {HTMLElement | null} */ (container.closest("[data-kpress-viewport]"));
   // Rooted in the pane that scrolls, which the shell marks. With no root the root is the
   // window, and a margin on it does nothing here: a text past the pane's edge is clipped
@@ -2160,10 +2185,13 @@ export function mountPullPage(container, ctx, mb) {
   let diffMounted = Promise.resolve();
 
   function disposeDiff() {
+    unwatchCurrentFile?.();
+    unwatchCurrentFile = null;
     diffHandle?.dispose?.();
     diffHandle = null;
     diffHost = null;
     diffFor = null;
+    reportCurrentFile(null);
   }
 
   const prefetch = createComparisonPrefetch({
@@ -2233,6 +2261,11 @@ export function mountPullPage(container, ctx, mb) {
         return;
       }
       diffHandle = handle;
+      const reporting =
+        /** @type {{onCurrentFile?: (listener: (file: Extract<import("../diff/diff-view.js").FileLookup, {kind: "file"}> | null) => void) => () => void} | null} */ (
+          handle
+        );
+      unwatchCurrentFile = reporting?.onCurrentFile?.(reportCurrentFile) ?? null;
       landFile();
     } catch {
       if (diffHost !== host) {
@@ -2281,7 +2314,6 @@ export function mountPullPage(container, ctx, mb) {
     const path = wantedFile;
     wantedFile = null;
     return jumpTo(path);
-
   }
 
   /** @param {PullModel} model */
@@ -2491,6 +2523,16 @@ export function mountPullPage(container, ctx, mb) {
     },
     /** Settles when a diff asked for by `setTab("files")` has mounted. */
     whenFilesReady: () => diffMounted,
+    currentFile: currentDiffFile,
+    /** Follow the mounted diff across replacement and tab changes. @param {(file: Extract<import("../diff/diff-view.js").FileLookup, {kind: "file"}> | null) => void} listener */
+    onCurrentFile(listener) {
+      if (listening.signal.aborted) {
+        return () => {};
+      }
+      currentFileListeners.add(listener);
+      listener(currentDiffFile());
+      return () => currentFileListeners.delete(listener);
+    },
     dispose() {
       listening.abort();
       observer?.disconnect();
@@ -2498,6 +2540,7 @@ export function mountPullPage(container, ctx, mb) {
       controller.dispose();
       prefetch.dispose();
       disposeDiff();
+      currentFileListeners.clear();
     },
   });
 }

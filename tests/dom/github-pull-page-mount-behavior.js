@@ -118,6 +118,15 @@ async function run() {
     let fail = true;
     let mounted = 0;
     let disposed = 0;
+    let unsubscriptions = 0;
+    let reportFile = null;
+    let currentFile = {
+      kind: "file",
+      path: "src/one.py",
+      fileId: "one",
+      changeKind: "modified",
+      availability: "ready",
+    };
     const handle = page.mountPullPage(
       container,
       {
@@ -140,6 +149,15 @@ async function run() {
             mounted += 1;
             host.textContent = "Mounted comparison";
             return {
+              currentFile: () => currentFile,
+              onCurrentFile(listener) {
+                reportFile = listener;
+                listener(currentFile);
+                return () => {
+                  unsubscriptions += 1;
+                  reportFile = null;
+                };
+              },
               dispose: () => {
                 disposed += 1;
               },
@@ -160,13 +178,25 @@ async function run() {
       (element) => element.tag === "button" && element.textContent === "Retry",
     );
     assert.ok(retry, "a failed mount offers recovery");
+    assert.equal(handle.currentFile(), null);
+    const files = [];
+    const unwatchFile = handle.onCurrentFile((file) => files.push(file?.path ?? null));
     fail = false;
     retry.events.get("click")();
     await settle();
     await handle.whenFilesReady();
     assert.match(container.textContent, /Mounted comparison/);
     assert.equal(mounted, 1);
+    assert.equal(handle.currentFile().path, "src/one.py");
+    currentFile = { ...currentFile, path: "src/two.py", fileId: "two" };
+    reportFile(currentFile);
+    assert.equal(files.at(-1), "src/two.py", "the page forwards a hand-scrolled file");
+    unwatchFile();
     handle.dispose();
+    assert.equal(unsubscriptions, 1, "disposal releases the diff subscription");
+    handle.onCurrentFile(() => {
+      throw Error("a disposed page must not retain subscriptions");
+    });
     assert.equal(disposed, 1);
     retry.events.get("click")();
     await settle();

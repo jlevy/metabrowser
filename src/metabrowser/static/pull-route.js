@@ -225,6 +225,7 @@
     function dispose() {
       const held = page;
       page = null;
+      notifyPage();
       try {
         held?.handle?.dispose?.();
       } catch (error) {
@@ -259,6 +260,7 @@
       /** @type {NonNullable<typeof page>} */
       const mine = { number, claim, handle: null };
       page = mine;
+      notifyPage();
       const handle = await mount(claim);
       if (page !== mine || !deps.isCurrent(claim)) {
         handle?.dispose?.();
@@ -267,9 +269,11 @@
       if (!handle) {
         // Nothing holds the pane, so the next route to this page mounts it again.
         page = null;
+        notifyPage();
         return { status: "opened" };
       }
       mine.handle = handle;
+      notifyPage();
       if (file) {
         land(handle, { tab: "files", file });
       }
@@ -395,6 +399,7 @@
       shown: () => shown()?.number ?? null,
     });
     attached = host;
+    notifyPage();
     return host;
   }
 
@@ -405,6 +410,13 @@
    * @type {{pageFor: (number: number) => unknown} | null}
    */
   let attached = null;
+  /** @type {Set<() => void>} */
+  const pageListeners = new Set();
+  function notifyPage() {
+    for (const listener of pageListeners) {
+      listener();
+    }
+  }
 
   /**
    * How the shell loads and renders a route-backed kind's view into the pane for a claim. Here
@@ -458,6 +470,11 @@
   window.MetabrowserPullRoute = Object.freeze({
     /** @returns {{pageFor: (number: number) => unknown} | null} */
     attachedHost: () => attached,
+    /** A page became available, started replacement, or was disposed. @param {() => void} listener */
+    onPageChange(listener) {
+      pageListeners.add(listener);
+      return () => pageListeners.delete(listener);
+    },
     createPullPageHost,
     createViewMount,
     parsePull,

@@ -466,8 +466,8 @@
 .github-pull-files-rows {
   position: relative;
 }
-.github-pull-file,
-.github-pull-folder {
+.github-pull-file-row,
+.github-pull-folder-row {
   position: absolute;
   right: 0;
   left: 0;
@@ -483,20 +483,19 @@
   text-decoration: none;
   cursor: pointer;
   user-select: var(--toggle-user-select);
-  transition: background var(--transition-fast);
   scroll-margin-block-start: calc(var(--chip-height) + 12px);
 }
-.github-pull-file:hover,
-.github-pull-folder:hover {
+.github-pull-file-row:hover,
+.github-pull-folder-row:hover {
   background: var(--hover-bg);
 }
-.github-pull-file:focus-visible,
-.github-pull-folder:focus-visible {
+.github-pull-file-row:focus-visible,
+.github-pull-folder-row:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: -2px;
   background: var(--hover-bg);
 }
-.github-pull-file.selected {
+.github-pull-file-row.selected {
   background: var(--highlight-bg);
   border-left-color: var(--highlight-bar);
 }
@@ -528,8 +527,9 @@
   color: var(--status-error);
   font-weight: var(--weight-bold);
 }
-.github-pull-file > :is(.github-pull-file-badge, .github-pull-file-name, .github-pull-file-stats),
-.github-pull-folder > .github-pull-file-name {
+.github-pull-file-row
+  > :is(.github-pull-file-badge, .github-pull-file-name, .github-pull-file-stats),
+.github-pull-folder-row > .github-pull-file-name {
   align-self: baseline;
 }
 .github-pull-files-line {

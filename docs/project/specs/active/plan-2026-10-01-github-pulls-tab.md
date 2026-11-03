@@ -672,8 +672,10 @@ that expand and collapse exactly as they do in the Files tab.
   [inline change stats](../../../design-system.md#inline-change-stats).
 - A folder whose only child is a folder is drawn as one row, `src/metabrowser`, as
   GitHub’s file tree draws it.
-- Folders start expanded up to a measured file count, past which only the top level
-  does. Step 4 measures it.
+- Folders start expanded through the measured 3,000-file list cap.
+  A larger page-count estimate starts at the top level.
+  The tree paints a viewport window; the measurements are beside `AUTO_EXPAND_FILES` and
+  `FILE_ROWS_OVERSCAN` in the GitHub plugin.
 
 **The gesture.** As with a folder, clicking a row is one gesture: it opens the pull
 request and toggles its files.
@@ -1063,6 +1065,14 @@ and `CHANGELOG.md` in the same change.
   The tab is registered only when a pin is served.
 
 **Step 4: changed files in a row.**
+
+The browser checkpoint includes the file address and host, progressive file-list
+controller, windowed tree, keyboard, and scroll-follow subscription.
+Its production controller runs in `github-pull-files-tree-session.js`;
+`navigation-route-behavior.js` pins the file-address and page-availability lifecycle.
+Chrome 152 measured navigation paint with 1,183 and 2,003 public filenames and a
+3,000-file stress list; this does not replace the large-diff work’s hydration and drift
+measurements.
 
 - *Reviewed:* that a list is read progressively with an honest count and no Git, or from
   the local comparison when both commits are in the store; that a path is only ever text
