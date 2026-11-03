@@ -453,7 +453,7 @@ async def comparison_at(
                 message = (
                     "An object in this comparison does not match its ID."
                     if observed.state == "object_corrupt"
-                    else "An object in this comparison is missing; refresh the pull request to fetch it."
+                    else "An object in this comparison is missing. Repair the repository cache, then retry."
                 )
                 return _error(observed.state, message, 409, path=revision)
         return _git_failure(exc, revision)
