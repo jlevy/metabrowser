@@ -3,9 +3,9 @@ type: is
 id: is-01m6fr5ndwyynz3p0n04v5nmkt
 title: "Address PR #285 reviews A, B, and Qodo: the Pulls tab"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 25
+version: 26
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies: []
@@ -36,6 +36,10 @@ child_order_hints:
   - is-01m6fr6jg52mxd2v42pp6968t3
   - is-01m6fr6jvszfqdyka6zmhh9fjz
 created_at: 2026-11-03T03:45:14.170Z
-updated_at: 2026-11-03T03:45:44.312Z
+updated_at: 2026-11-03T04:45:24.364Z
+closed_at: 2026-11-03T04:45:24.363Z
+close_reason: "Reviews A, B, and Qodo's four inline comments on PR #285 dispositioned at d0e277e2 (CI run 41578849645, 9 of 9 green). Replies: https://github.com/jlevy/metabrowser/pull/285#issuecomment-6595667497 (A), #issuecomment-6595667740 (B), #issuecomment-6595668005 (Qodo). All 24 children closed; none deferred."
+resolution: null
+duplicate_of: null
 ---
 Addressing review A (senior, pullrequestreview-5746647815), review B (performance, pullrequestreview-5746969019), and Qodo's four inline comments on https://github.com/jlevy/metabrowser/pull/285 (step 3 of plan-2026-10-01-github-pulls-tab.md). Coordinator decisions on A1-A5 applied.
