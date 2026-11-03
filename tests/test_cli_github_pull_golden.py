@@ -170,6 +170,19 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     assert json.loads(started[started.index("{") :])["refresh"] == "started"
     assert json.loads(ended)["state"] == "current"
     assert json.loads(ended)["record"] == envelope["record"]
+    # Published --api calls without a number retain the attended PR aliases. These
+    # cache reads run no gh; the empty refresh body is an explicit reader action even
+    # though the record is fresh.
+    legacy = session.run(f"{PULL}/7", "--api", ROUTE)
+    assert legacy.payload() == envelope
+    markdown = session.run(f"{PULL}/7", "--api", f"{ROUTE}-markdown?part=body")
+    assert markdown.exit_code == 0 and markdown.payload()["number"] == 7
+    legacy_refresh = session.run(
+        f"{PULL}/7", "--api", f"{ROUTE}-refresh", "--data", _body(tmp_path)
+    )
+    assert legacy_refresh.exit_code == 0
+    assert "status: 202\n" in legacy_refresh.stdout
+    assert f"after: {ROUTE}?number=7\nstatus: 200\n" in legacy_refresh.stdout
     fork_commit = session.run(
         f"{PULL}/7/commits/{origin['fork_earlier'][:7]}", "--show", "src/app.txt"
     )

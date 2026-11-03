@@ -549,6 +549,9 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "staleRetryIsInert": True,
         "checkoutFetchIsExplicit": True,
         "displayedComparisonRepair": True,
+        "bridgeAfterPaint": True,
+        "bridgeFramesOwned": True,
+        "hiddenReadiness": True,
     }
 
 

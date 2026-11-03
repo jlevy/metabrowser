@@ -680,6 +680,15 @@ are named in the record’s `unavailable` rather than failing it.
 `GET /api/plugin/github/pull?number=<n>` reads the record for any pull request and never
 fetches, parsing it again only when the file changed; the one-shot CLI fetches a missing
 record once for the pull request its URL names, and `--no-serve` refreshes it.
+Canonical clients name the number.
+Published `--api` calls that omit it on `pull`, `pull-markdown`, or `pull-refresh`
+address the session’s existing attended pull request, without creating or selecting one.
+Explicit values retain their validation.
+With no attended pull request, the legacy read answers `absent` with `no_pull_request`,
+and valid-part Markdown and refresh requests answer 409 `no_pull_request`. An
+omitted-number refresh defaults to a reader action only when `retry` is omitted too;
+explicit `retry: false` keeps automatic gating.
+The same refresh jobs, bounds, and failure reporting apply to both forms.
 When a pull request cannot be opened, the CLI answers from a cached record, or falls
 back to the default branch or the commit URL’s commit, and says why.
 The route’s `pin` is the served commit, and the record’s head names the head it was read
