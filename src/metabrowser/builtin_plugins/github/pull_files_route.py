@@ -64,7 +64,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
 from metabrowser.builtin_plugins.github.pull_list_route import (
     LastRefresh,
     cached_list_row,
-    listed_repository,
+    served_repository,
 )
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
@@ -78,7 +78,6 @@ from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
     MAX_PULL_JOBS,
     RefreshCoordinator,
-    mirror_session,
     refresh_coordinator,
 )
 from metabrowser.view_routes import parse_pull_number
@@ -209,7 +208,7 @@ def _job_key(repository: ListedRepository, number: int) -> str:
 def files_view(app: Any, number: int) -> FilesView:
     """The server's repository and whether the list of *number* is refreshing. Reads nothing."""
 
-    repository = listed_repository(mirror_session(app))
+    repository = served_repository(app)
     coordinator = refresh_coordinator(app)
     host = pull_host(app)
     refreshing = (
@@ -217,7 +216,7 @@ def files_view(app: Any, number: int) -> FilesView:
         and coordinator is not None
         and coordinator.running(_job_key(repository, number))
     )
-    git_dir = host.pulls.published.git_dir if host is not None else None
+    git_dir = host.pulls.git_dir if host is not None else None
     return FilesView(number, repository, coordinator, refreshing, git_dir)
 
 

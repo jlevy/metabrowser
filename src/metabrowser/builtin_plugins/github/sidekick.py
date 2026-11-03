@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 
 from starlette.responses import JSONResponse, Response
@@ -37,6 +38,11 @@ if TYPE_CHECKING:
 _NO_STORE: Final = {"cache-control": "no-store"}
 # A refresh request carries a few short parameters; a JSON object of any size worth reading fits.
 MAX_REFRESH_REQUEST_BYTES: Final = 1024
+# Eight ready files covered the visible viewport in three paired browser runs on
+# public Ruff PRs of 1,031 and 1,627 files (2026-11-03, Chrome 152, 1400x900). One
+# left visible reserved space at 1,031. Hydrating fifty cost 112–181 ms in the
+# route; eight cost 21 ms. Later files use the existing on-approach loader.
+INITIAL_PULL_FILES: Final = 8
 # A job started or joined is on its way. A request that started none has its answer now,
 # which past the bound on jobs is a refusal.
 _REFRESH_STATUS: Final = {
@@ -50,6 +56,27 @@ _TOO_MANY: Final = {
     "error": "too many pull requests are being fetched; try again when one has finished",
     "code": "too_many",
 }
+
+
+async def _resolve(request: Request) -> None:
+    """On a folder, find the served checkout's repository off the loop, once per root.
+
+    A route reads it from memory after this, as it reads a mirror's. Nothing before a
+    route is asked for resolves it, so a folder whose Pulls tab is never opened reads none
+    of its checkout for this.
+    """
+
+    from metabrowser.builtin_plugins.github.checkout import ensure_resolved
+
+    await ensure_resolved(request.app)
+
+
+def _without_store(envelope: Any) -> bool:
+    """Whether the record an envelope carries was written with no store."""
+
+    record = envelope.get("record")
+    unavailable = record.get("unavailable") if isinstance(record, dict) else None
+    return isinstance(unavailable, dict) and unavailable.get("comparison") == "no_store"
 
 
 async def pull_handler(request: Request) -> Response:
@@ -75,11 +102,16 @@ async def pull_handler(request: Request) -> Response:
         number = requested_number(request.query_params)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     view = pull_view(pull_host(request.app), get_source_session().subject, number)
     stamp = await asyncio.to_thread(record_stamp, view)
     envelope = await asyncio.to_thread(pull_envelope, view)
     if view.kept is not None:
-        view.kept.saw_record(envelope["fetched_at"])
+        view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
+    comparison = (envelope.get("record") or {}).get("comparison")
+    if view.host is not None and isinstance(comparison, dict):
+        served = await view.host.pulls.companion(number)
+        served.note_comparison((comparison["base"], comparison["head"]))
     etag = envelope_etag(envelope, stamp)
     headers = {**_NO_STORE, "etag": etag}
     if matches_if_none_match(request, etag):
@@ -102,11 +134,100 @@ async def pull_markdown_handler(request: Request) -> JSONResponse:
         number = requested_number(request.query_params)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     view = pull_view(pull_host(request.app), get_source_session().subject, number)
     status_code, body = await asyncio.to_thread(
         render_part, view, request.query_params.get("part", "")
     )
     return JSONResponse(body, status_code=status_code, headers=_NO_STORE)
+
+
+async def pull_comparison_handler(request: Request) -> Response:
+    """Read a checkout's pinned PR comparison from its store; never acquire on GET."""
+
+    from metabrowser.builtin_plugins.diff.sidekick import comparison_at
+    from metabrowser.builtin_plugins.github.pull_manifest import (
+        invalidate_pull_manifest,
+        load_pull_manifest,
+    )
+    from metabrowser.builtin_plugins.github.pull_route import (
+        PullRequestError,
+        cached_pull_record,
+        pull_host,
+        requested_number,
+    )
+    from metabrowser.cache.acquire import PublishedSource
+    from metabrowser.git.object_failures import observed_object_failures
+    from metabrowser.git.process import GitLocation, repository_store_target
+    from metabrowser.git.wire import is_full_revision
+    from metabrowser.home import PrivateStorageError
+
+    try:
+        number = requested_number(request.query_params)
+    except PullRequestError as exc:
+        return _invalid_request(str(exc))
+    left = request.query_params.get("left", "")
+    right = request.query_params.get("right", "")
+    if (
+        request.query_params.get("base_policy") != "merge_base"
+        or not is_full_revision(left)
+        or not is_full_revision(right)
+        or "revision" in request.query_params
+    ):
+        return _invalid_request("a pull comparison requires two full commit IDs")
+    await _resolve(request)
+    host = pull_host(request.app)
+    if host is None or host.pulls.git_dir is None:
+        return JSONResponse(
+            {"error": "this comparison has no available repository store", "code": "no_store"},
+            status_code=409,
+            headers=_NO_STORE,
+        )
+    published = host.pulls.published
+    if not isinstance(published, PublishedSource):
+        raise AssertionError("a store-backed pull host has no published source")
+    from metabrowser.builtin_plugins.github.pull_record import PullRecord
+
+    record, _dumped = await asyncio.to_thread(
+        cached_pull_record, published.home, published.slug, number
+    )
+    if not isinstance(record, PullRecord):
+        return JSONResponse(
+            {"error": "this pull request has not been fetched", "code": "not_cached"},
+            status_code=404,
+            headers=_NO_STORE,
+        )
+    served = await host.pulls.companion(number)
+    if record.comparison is not None:
+        served.note_comparison((record.comparison.base, record.comparison.head))
+    # Read-only full-endpoint links remain usable after a restart. Only an already
+    # issued PR pair can gain protected display ownership for POST network repair.
+    if served.issued_comparison((left, right)):
+        served.note_comparison((left, right), displayed=True)
+    target = repository_store_target(git_dir=published.git_dir)
+    response = await comparison_at(
+        request,
+        GitLocation.revision(target, right),
+        max_initial_files=INITIAL_PULL_FILES,
+        manifest_loader=partial(load_pull_manifest, published),
+    )
+
+    if response.status_code == 409 and any(
+        failure.state == "object_corrupt"
+        for failure in observed_object_failures.pending(target, (left, right))
+    ):
+        try:
+            await asyncio.to_thread(invalidate_pull_manifest, published, (left, right))
+        except (OSError, PrivateStorageError):
+            return JSONResponse(
+                {
+                    "error": "object_corrupt",
+                    "message": "An object does not match its ID, and its cached comparison could not be discarded.",
+                },
+                status_code=409,
+                headers=_NO_STORE,
+            )
+    return response
 
 
 async def _json_body(request: Request) -> dict[str, Any] | tuple[str, int]:
@@ -164,18 +285,22 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
         ask = refresh_request(body)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     host = pull_host(request.app)
     if host is None:
         return JSONResponse(
             {"error": "this server serves no GitHub repository", "code": "not_github"},
             status_code=409,
         )
-    started = await start_refresh(host, ask)
+    try:
+        started = await start_refresh(host, ask)
+    except PullRequestError as exc:
+        return _invalid_request(str(exc))
     # Read after the start, on the loop: a job is running, whatever it does next.
     view = pull_view(host, get_source_session().subject, ask.number)
     envelope = await asyncio.to_thread(pull_envelope, view)
     if view.kept is not None:
-        view.kept.saw_record(envelope["fetched_at"])
+        view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
     # ``status_route`` is where a one-shot ``--api`` reads how the refresh ended.
     answer = {"refresh": started, "pull": dict(envelope), "status_route": status_route(ask.number)}
     if started == "too_many":
@@ -208,6 +333,7 @@ async def pulls_handler(request: Request) -> Response:
         window = list_window(request.query_params)
     except ListRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     view = list_view(request.app, window.name)
     stamp = await asyncio.to_thread(list_file_stamp, view, window.name)
     envelope = await asyncio.to_thread(pull_list_envelope, view, window)
@@ -248,6 +374,7 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
         ask = refresh_request(body)
     except ListRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     view = list_view(request.app, ask.name)
     if view.repository is None or view.coordinator is None:
         return JSONResponse(
@@ -283,6 +410,7 @@ async def pull_files_handler(request: Request) -> Response:
         window = files_window(request.query_params)
     except FilesRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     view = files_view(request.app, window.number)
     stamp = await asyncio.to_thread(files_file_stamp, view)
     envelope = await asyncio.to_thread(pull_files_envelope, view, window)
@@ -322,6 +450,7 @@ async def pull_files_refresh_handler(request: Request) -> JSONResponse:
         ask = files_refresh_request(body)
     except FilesRequestError as exc:
         return _invalid_request(str(exc))
+    await _resolve(request)
     view = files_view(request.app, ask.number)
     if view.repository is None or view.coordinator is None:
         return JSONResponse(
@@ -350,6 +479,7 @@ __all__ = [
     "pull_handler",
     "pull_markdown_handler",
     "pull_refresh_handler",
+    "pull_comparison_handler",
     "pulls_handler",
     "pulls_refresh_handler",
 ]

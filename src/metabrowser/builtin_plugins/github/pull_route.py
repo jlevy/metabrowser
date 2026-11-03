@@ -26,7 +26,10 @@ only a pull request with a record, and only when that record is stale and not tr
 the window. So nothing a link can do adds to the cache.
 
 Which pull requests a server has is :func:`pull_host`'s to say, and nothing else here
-knows whether it is a mirror.
+knows whether it is a mirror or a checkout. A checkout with no attached store answers a
+record with no comparison, ``no_store``, whoever wrote it. A server with a store answers
+a record written that way as ``stale``. Only an explicit comparison Fetch may attach a
+store to a checkout's pull records.
 """
 
 from __future__ import annotations
@@ -39,10 +42,17 @@ import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal, TypedDict
 
 from metabrowser.builtin_plugins.github import pulls
+from metabrowser.builtin_plugins.github.checkout import (
+    checkout_job_key,
+    checkout_pulls,
+    served_checkout,
+    start_pull_refresh,
+)
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     RecordAbsence,
@@ -52,20 +62,23 @@ from metabrowser.builtin_plugins.github.served_pull import (
     PullRefreshOutcome,
     ServedPull,
     ServedPulls,
+    written_without_store,
 )
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_record
 from metabrowser.git.tree_source import GitRevisionSubject
-from metabrowser.http_caching import build_scoped_etag
+from metabrowser.git.wire import is_full_revision
+from metabrowser.http_caching import BUILD_TAG, build_scoped_etag, store_tag
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
     PullJobStart,
     mirror_session,
+    refresh_coordinator,
 )
 from metabrowser.source import RepositorySubject
 from metabrowser.view_routes import parse_pull_number
 
 PULL_ROUTE: Final = "/api/plugin/github/pull"
-_REFRESH_FIELDS: Final = frozenset({"number", "retry"})
+_REFRESH_FIELDS: Final = frozenset({"number", "retry", "comparison", "recovery"})
 NUMBER_REQUIRED: Final = '"number" is a pull-request number'
 
 type PullState = Literal["absent", "pending", "current", "stale"]
@@ -99,25 +112,48 @@ def _parse_stamp(stamp: str) -> datetime:
 
 
 def pull_state(
-    record: PullRecord | RecordAbsence, *, now: datetime, refreshing: bool = False
+    record: PullRecord | RecordAbsence,
+    *,
+    now: datetime,
+    refreshing: bool = False,
+    has_store: bool = True,
 ) -> tuple[PullState, RecordAbsence | None]:
-    """The state a cached record (or its absence) is in at *now*."""
+    """The state a cached record (or its absence) is in at *now*.
+
+    A record written with no store, by a checkout's server, is stale whatever its age on a
+    server that *has_store*, which can give it its Files changed.
+    """
 
     if not isinstance(record, PullRecord):
         return ("pending", None) if refreshing else ("absent", record)
+    if has_store and written_without_store(record):
+        return "stale", None
     age = now - _parse_stamp(record.fetched_at)
     return ("current" if age <= timedelta(seconds=FRESHNESS_WINDOW_S) else "stale"), None
 
 
-def comparison_route(record: PullRecord) -> str | None:
+def _without_store(dumped: dict[str, Any]) -> dict[str, Any]:
+    """A record as a server with no store has it: no comparison, ``no_store``.
+
+    A checkout's server may read a record a mirror wrote, with a comparison of commits in
+    that mirror's store. It has no store of its own, and it never reads the checkout's, so
+    it offers no Files changed for it. A new dictionary: *dumped* is the parsed cache's.
+    """
+
+    unavailable = {**dumped.get("unavailable", {}), "comparison": "no_store"}
+    return {**dumped, "comparison": None, "unavailable": unavailable}
+
+
+def comparison_route(record: PullRecord, *, store: str) -> str | None:
     """The diff plugin's comparison of the record's pinned endpoints, or ``None``."""
 
     comparison = record.comparison
     if comparison is None:
         return None
     return (
-        f"/api/plugin/diff/comparison?left={comparison.base}&right={comparison.head}"
-        "&base_policy=merge_base"
+        f"/api/plugin/github/pull-comparison?number={record.number}"
+        f"&left={comparison.base}&right={comparison.head}&base_policy=merge_base"
+        f"&build={BUILD_TAG}&store={store}"
     )
 
 
@@ -180,14 +216,31 @@ class PullHost:
     pulls: ServedPulls
     running: Callable[[int], bool]
     start: Callable[[int], PullJobStart]
+    start_comparison: Callable[[int], PullJobStart] | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
-    """This server's pull requests, or ``None``: on a mirror, those the provider keeps."""
+    """This server's pull requests, or ``None``.
+
+    On a mirror, those the provider keeps. On a folder, those of a served checkout's
+    repository (:mod:`.checkout`), whose jobs run on the server's refresh coordinator.
+    """
 
     session = mirror_session(app)
-    served = None if session is None else session.pull_requests
-    if session is None or not isinstance(served, ServedPulls):
+    if session is None:
+        checkout = served_checkout(app)
+        coordinator = refresh_coordinator(app)
+        if checkout is None or coordinator is None:
+            return None
+        pulls = checkout_pulls(checkout)
+        return PullHost(
+            pulls,
+            lambda number: coordinator.running(checkout_job_key(checkout, number)),
+            partial(start_pull_refresh, coordinator, checkout),
+            partial(start_pull_refresh, coordinator, checkout, comparison=True),
+        )
+    served = session.pull_requests
+    if not isinstance(served, ServedPulls):
         return None
     return PullHost(served, session.pull_refreshing, session.request_pull_refresh)
 
@@ -244,8 +297,19 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         )
     served = host.pulls
     record, dumped = cached_pull_record(served.home, served.slug, view.number)
+    has_store = served.git_dir is not None
     # Through the module, so records and their age share one clock seam.
-    state, absence = pull_state(record, now=pulls.utc_now(), refreshing=view.refreshing)
+    state, absence = pull_state(
+        record, now=pulls.utc_now(), refreshing=view.refreshing, has_store=has_store
+    )
+    if not has_store and isinstance(record, PullRecord) and dumped is not None:
+        dumped = _without_store(dumped)
+        record = record.model_copy(update={"comparison": None})
+    route = (
+        comparison_route(record, store=store_tag(served.git_dir))
+        if isinstance(record, PullRecord) and served.git_dir is not None
+        else None
+    )
     return PullEnvelope(
         state=state,
         reason=absence,
@@ -257,7 +321,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         fresh_for_s=FRESHNESS_WINDOW_S,
         refreshing=view.refreshing,
         last_refresh=view.kept.last if view.kept is not None else served.last_refresh(view.number),
-        comparison_route=comparison_route(record) if isinstance(record, PullRecord) else None,
+        comparison_route=route,
         record=dumped if isinstance(record, PullRecord) else None,
     )
 
@@ -301,13 +365,17 @@ class RefreshRequest:
 
     number: int
     retry: bool
+    comparison: bool = False
+    recovery: tuple[str, str] | None = None
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
     """What a ``POST`` body names, or :class:`PullRequestError`."""
 
     if set(body) - _REFRESH_FIELDS:
-        raise PullRequestError('a refresh request names only "number" and "retry"')
+        raise PullRequestError(
+            'a refresh request names only "number", "retry", "comparison", and "recovery"'
+        )
     number = body.get("number")
     if (
         not isinstance(number, int)
@@ -318,7 +386,31 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
     retry = body.get("retry", False)
     if not isinstance(retry, bool):
         raise PullRequestError('"retry" is true or false')
-    return RefreshRequest(number, retry)
+    comparison = body.get("comparison", False)
+    if not isinstance(comparison, bool) or (comparison and not retry):
+        raise PullRequestError('"comparison" is true or false and requires "retry": true')
+    recovery = body.get("recovery")
+    pair: tuple[str, str] | None = None
+    if recovery is not None:
+        if (
+            comparison
+            or not retry
+            or not isinstance(recovery, dict)
+            or set(recovery) != {"base", "head"}
+        ):
+            raise PullRequestError(
+                '"recovery" names a displayed base and head and requires "retry": true'
+            )
+        base, head = recovery.get("base"), recovery.get("head")
+        if (
+            not isinstance(base, str)
+            or not isinstance(head, str)
+            or not is_full_revision(base)
+            or not is_full_revision(head)
+        ):
+            raise PullRequestError('"recovery" requires two full commit IDs')
+        pair = (base, head)
+    return RefreshRequest(number, retry, comparison, pair)
 
 
 async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart:
@@ -329,6 +421,16 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
     stale and no attempt is due to wait (``not_due`` otherwise).
     """
 
+    queued: ServedPull | None = None
+    if ask.retry and not ask.comparison:
+        served = await host.pulls.companion(ask.number)
+        queued = served
+        if ask.recovery is not None and not served.issued_comparison(ask.recovery):
+            raise PullRequestError("this pull request did not issue the requested comparison")
+        if not served.request_recovery(ask.recovery):
+            return "too_many"
+    if ask.comparison and host.start_comparison is not None:
+        return host.start_comparison(ask.number)
     if host.running(ask.number):
         return "joined"
     if not ask.retry:
@@ -337,7 +439,10 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
             return "not_cached"
         if not served.is_stale(pulls.utc_now(), window_s=FRESHNESS_WINDOW_S):
             return "not_due"
-    return host.start(ask.number)
+    started = host.start(ask.number)
+    if started == "too_many" and queued is not None:
+        queued.discard_recovery(ask.recovery)
+    return started
 
 
 def status_route(number: int) -> str:

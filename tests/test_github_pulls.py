@@ -1256,6 +1256,8 @@ def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
         (b'{"number": 7.5}', 400),
         (b'{"number": 10000000000}', 400),
         (b'{"number": 7, "retry": "yes"}', 400),
+        (b'{"number": 7, "comparison": true}', 400),
+        (b'{"number": 7, "retry": true, "comparison": "yes"}', 400),
         (b'{"number": 7, "state": "open"}', 400),
     ):
         refused = client.post(_REFRESH_ROUTE, content=content, headers=_JSON)

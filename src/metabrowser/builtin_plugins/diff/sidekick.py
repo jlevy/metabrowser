@@ -35,6 +35,7 @@ import gzip
 import hashlib
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from starlette.responses import JSONResponse, Response
@@ -225,7 +226,9 @@ async def document_handler(request: Request) -> JSONResponse:
     return JSONResponse(dump_document(document))
 
 
-def _kept_key(location: GitLocation, intent: dict[str, Any], store: str) -> tuple[str, ...] | None:
+def comparison_cache_key(
+    location: GitLocation, intent: dict[str, Any], store: str
+) -> tuple[str, ...] | None:
     """The comparison's key in memory, or None for one whose answer can change.
 
     A store, named by its Git directory and its token *store*, and a request whose every
@@ -279,7 +282,24 @@ def _git_failure(exc: GitError, path: str) -> JSONResponse:
 
 
 async def comparison_handler(request: Request) -> Response:
-    """A Git comparison at the active subject's location, as a ChangeSetDocument.
+    """The active subject's Git comparison, through the shared comparison service."""
+
+    return await comparison_at(
+        request, session_git_location(), max_initial_files=MAX_HYDRATED_FILES
+    )
+
+
+async def comparison_at(
+    request: Request,
+    location: GitLocation,
+    *,
+    max_initial_files: int = MAX_HYDRATED_FILES,
+    manifest_loader: Callable[
+        [GitDiffSource, dict[str, Any], tuple[str, ...]], Awaitable[ResolvedManifest]
+    ]
+    | None = None,
+) -> Response:
+    """A Git comparison at the supplied trusted location, as a ChangeSetDocument.
 
     ``?revision=<rev>`` compares a commit against its first parent — the
     same resolution ``metab --diff REV`` performs. ``?left=&right=``
@@ -299,6 +319,8 @@ async def comparison_handler(request: Request) -> Response:
     its answer depends on; a folder's address names no store, and its answer carries
     neither header.
     """
+    if not 1 <= max_initial_files <= MAX_HYDRATED_FILES:
+        raise ValueError(f"max_initial_files must be between 1 and {MAX_HYDRATED_FILES}")
     revision = request.query_params.get("revision", "").strip()
     wanted_file = request.query_params.get("file", "")
     left = request.query_params.get("left", "").strip()
@@ -323,21 +345,22 @@ async def comparison_handler(request: Request) -> Response:
             path=revision or f"{left}..{right}",
         )
 
-    location = session_git_location()
     # The token names the store in the key, the tag and the address alike; one stat a request.
     store = (
         store_tag(location.target.git_dir)
         if isinstance(location.target, RepositoryStoreTarget)
         else ""
     )
-    kept_key = _kept_key(location, intent, store)
+    kept_key = comparison_cache_key(location, intent, store)
+    answer_key: tuple[str, ...] | None = None
     headers: dict[str, str] = {}
     # A validator this process did not issue is honored only once the store has answered
     # for the commits, so a store holding neither answers its plain refusal.
     revalidate = False
     if kept_key is not None:
-        answer_key = (*kept_key, wanted_file)
-        # What the tag names past the store: the endpoints, the policy and the file.
+        answer_key = (*kept_key, wanted_file, str(max_initial_files))
+        # The body identity includes the initial hydration count: callers share the
+        # manifest, but a PR page and a generic comparison can draw different prefixes.
         identity = hashlib.sha256("\0".join(answer_key[2:]).encode()).hexdigest()[:32]
         etag = build_scoped_etag(f"comparison-{store}-{identity}")
         immutable = (
@@ -373,6 +396,8 @@ async def comparison_handler(request: Request) -> Response:
     source = GitDiffSource(context.command_location())
 
     async def listed() -> ResolvedManifest:
+        if manifest_loader is not None and kept_key is not None:
+            return await manifest_loader(source, intent, kept_key)
         resolved = await source.resolve(intent)
         return ResolvedManifest(resolved, await source.manifest(resolved))
 
@@ -392,7 +417,7 @@ async def comparison_handler(request: Request) -> Response:
             if change.availability is not Availability.ready:
                 projected.append(change)
                 continue
-            if not wanted_file and len(hydrate_ids) >= MAX_HYDRATED_FILES:
+            if not wanted_file and len(hydrate_ids) >= max_initial_files:
                 projected.append(change.model_copy(update={"availability": Availability.deferred}))
                 continue
             projected.append(change)
@@ -416,6 +441,20 @@ async def comparison_handler(request: Request) -> Response:
         # revision, no such file in the comparison.
         return _error("diff_comparison", str(exc), 404, path=revision)
     except GitError as exc:
+        if isinstance(location.target, RepositoryStoreTarget):
+            from metabrowser.git.object_failures import observed_object_failures
+
+            commits = (revision,) if revision else (left, right)
+            observed = observed_object_failures.remember(location.target, commits, exc)
+            if observed is not None:
+                if observed.state == "object_corrupt" and kept_key is not None:
+                    _COMPARISONS.invalidate(kept_key)
+                message = (
+                    "An object in this comparison does not match its ID."
+                    if observed.state == "object_corrupt"
+                    else "An object in this comparison is missing; refresh the pull request to fetch it."
+                )
+                return _error(observed.state, message, 409, path=revision)
         return _git_failure(exc, revision)
 
     if wanted_file:
@@ -443,10 +482,10 @@ async def comparison_handler(request: Request) -> Response:
     # A large answer is seconds of serializing and compressing, so neither is done on the
     # event loop: 29 MB took 712 ms to serialize, measured in explorations/performance-loop.
     body = await asyncio.to_thread(_json_body, document)
-    if kept_key is None:
+    if answer_key is None:
         return Response(body, media_type="application/json")
     encoded = await asyncio.to_thread(encode_body, body)
-    _COMPARISONS.remember_body((*kept_key, wanted_file), encoded)
+    _COMPARISONS.remember_body(answer_key, encoded)
     return await _encoded_response(request, encoded, headers)
 
 

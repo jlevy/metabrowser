@@ -155,6 +155,8 @@ ADMITTED_GIT_TESTS := \
 	tests/test_github_pull_list.py \
 	tests/test_pulls_nav.py \
 	tests/test_checkout_overlay.py \
+	tests/test_github_checkout.py \
+	tests/test_cli_github_checkout_golden.py \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_pull_golden.py \
 	tests/test_cli_github_pulls_golden.py \
@@ -174,6 +176,8 @@ ADMITTED_GIT_TESTS := \
 	tests/test_source_refs.py \
 	tests/test_mirror_heading_session.py \
 	tests/test_diff_comparison_cache.py \
+	tests/test_github_pull_manifests.py \
+	tests/test_github_comparison_recovery.py \
 	tests/test_admitted_git_gate.py
 
 test-admitted-git:
@@ -212,6 +216,7 @@ GOLDEN_RECORDERS := \
 	tests/test_source_ref_selector_session.py \
 	tests/test_diff_view_file_session.py \
 	tests/test_github_pull_page_session.py \
+	tests/test_cli_github_checkout_golden.py \
 	tests/test_github_pulls_panel_session.py \
 	tests/test_github_pull_files_tree_session.py \
 	tests/test_inert_toc.py \
@@ -229,6 +234,7 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cli_github_pull_files_golden.py \
 	tests/test_cli_checkout_golden.py \
+	tests/test_cli_github_checkout_golden.py \
 	tests/test_diff_comparison_cache.py
 
 golden-update:

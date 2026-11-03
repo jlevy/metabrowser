@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import re
 import threading
 from array import array
@@ -59,7 +60,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, Literal, Protocol, cast
 
 from metabrowser.content_errors import ContentUnavailableError
 from metabrowser.git.process import (
@@ -143,6 +144,34 @@ class GitObjectUnavailableError(GitError, ContentUnavailableError):
     def __init__(self, oid: str) -> None:
         self.oid = oid
         super().__init__(f"object_unavailable: {oid}")
+
+
+class GitObjectCorruptError(GitError, ContentUnavailableError):
+    """Complete object bytes do not match the object ID Git reported."""
+
+    code = "object_corrupt"
+    http_status = 409
+
+    def __init__(self, oid: str) -> None:
+        self.oid = oid
+        super().__init__(f"object_corrupt: {oid}")
+
+
+class _ObjectDigest(Protocol):
+    def update(self, data: bytes, /) -> None: ...
+
+    def hexdigest(self) -> str: ...
+
+
+def _object_digest(oid: str, kind: str, size: int) -> _ObjectDigest:
+    digest = hashlib.sha1() if len(oid) == 40 else hashlib.sha256()
+    digest.update(f"{kind} {size}\0".encode("ascii"))
+    return digest
+
+
+def _verify_digest(oid: str, digest: _ObjectDigest) -> None:
+    if digest.hexdigest() != oid:
+        raise GitObjectCorruptError(oid)
 
 
 class GitBlobTooLargeError(GitError):
@@ -601,6 +630,8 @@ class _BatchObjectReader:
         dropped, the window is kept, and nothing past it is held. A remainder up to
         :data:`BLOB_WINDOW_DRAIN_MAX_BYTES` is drained so the actor stays usable; past
         that the actor is terminated and the next transaction starts a new one.
+        Only a completely consumed object is authenticated; a partial window retains
+        its existing read bound and does not claim a whole-object hash.
         """
 
         require_full_oid(oid)
@@ -620,15 +651,27 @@ class _BatchObjectReader:
             raise GitBatchProtocolError(f"{oid} is {info.kind}, not a blob")
         start = min(offset, info.size)
         stop = min(start + max_bytes, info.size)
-        await _discard_exactly(reader, start)
-        window = await reader.readexactly(stop - start)
         remainder = info.size - stop
+        # A partial window is still useful. Authenticate only when the existing drain
+        # bound consumes the whole object, without reading more just for a hash.
+        digest = (
+            _object_digest(oid, info.kind, info.size)
+            if remainder <= BLOB_WINDOW_DRAIN_MAX_BYTES
+            else None
+        )
+        update = None if digest is None else digest.update
+        await _discard_exactly(reader, start, update=update)
+        window = await reader.readexactly(stop - start)
+        if digest is not None:
+            digest.update(window)
         if remainder > BLOB_WINDOW_DRAIN_MAX_BYTES:
             await self._poison()
             return window, info.size
-        await _discard_exactly(reader, remainder)
+        await _discard_exactly(reader, remainder, update=update)
         if await reader.readexactly(1) != b"\n":
             raise GitBatchProtocolError("contents frame is missing the trailing newline")
+        if digest is not None:
+            _verify_digest(oid, digest)
         return window, info.size
 
     async def read_tree(self, oid: str) -> bytes:
@@ -723,6 +766,9 @@ class _BatchObjectReader:
         trailer = await reader.readexactly(1)
         if trailer != b"\n":
             raise GitBatchProtocolError("contents frame is missing the trailing newline")
+        digest = _object_digest(oid, info.kind, info.size)
+        digest.update(body)
+        _verify_digest(oid, digest)
         return body
 
     async def _ensure(self) -> None:
@@ -864,6 +910,57 @@ async def read_store_blob(
         await _release_pool(pool)
 
 
+async def verify_store_object(
+    target: RepositoryStoreTarget, oid: str, *, max_bytes: int = TEXT_PREVIEW_REQUEST_MAX_BYTES
+) -> bool:
+    """Authenticate one complete object within the existing read bound.
+
+    False means larger than the bound, without reading its body. A missing or corrupt
+    object raises its typed error. Recovery uses this after fetching an observed ID;
+    existence alone cannot prove that an alternate supplied its genuine bytes.
+    """
+
+    # Recovery must see the files a new Git process can see. A pooled actor may still
+    # hold an unlinked pack open after the lender's GC, although a new diff cannot read it.
+    reader = _BatchObjectReader(target)
+    try:
+        info = await reader.info(require_full_oid(oid))
+        if info.size > max_bytes:
+            return False
+        await reader._transact(oid, contents=True, expected=info)
+        return True
+    finally:
+        await reader.aclose()
+
+
+async def verify_store_blobs(
+    target: RepositoryStoreTarget, oids: tuple[str, ...], *, max_bytes: int
+) -> None:
+    """Check requested blobs within one hydration's existing byte budget.
+
+    Batch metadata checks identify missing objects without a history walk. Complete
+    blobs that fit the budget are authenticated; larger ones retain their existing
+    bounded diff/preview behavior without claiming full authentication. One actor serves
+    the whole request. No unbounded body or extra window is read for verification.
+    """
+
+    pool = _retain_pool(target)
+    try:
+        async with pool.checkout() as reader:
+            infos = await reader.info_many(oids)
+            remaining = max_bytes
+            for oid, info in infos.items():
+                if info is None:
+                    raise GitObjectUnavailableError(oid)
+                if info.kind != "blob":
+                    raise GitBatchProtocolError(f"{oid} is {info.kind}, not a blob")
+                if info.size <= remaining:
+                    await reader._transact(oid, contents=True, expected=info)
+                    remaining -= info.size
+    finally:
+        await _release_pool(pool)
+
+
 async def _drain_stderr(proc: asyncio.subprocess.Process) -> None:
     """Read and drop an actor's stderr, so a chatty Git never blocks on a full pipe."""
 
@@ -874,11 +971,16 @@ async def _drain_stderr(proc: asyncio.subprocess.Process) -> None:
         pass
 
 
-async def _discard_exactly(reader: asyncio.StreamReader, count: int) -> None:
+async def _discard_exactly(
+    reader: asyncio.StreamReader, count: int, *, update: Callable[[bytes], None] | None = None
+) -> None:
     """Read and drop *count* bytes without holding more than one chunk of them."""
 
     while count > 0:
-        count -= len(await reader.readexactly(min(count, _STREAM_CHUNK_BYTES)))
+        chunk = await reader.readexactly(min(count, _STREAM_CHUNK_BYTES))
+        if update is not None:
+            update(chunk)
+        count -= len(chunk)
 
 
 async def _read_header(reader: asyncio.StreamReader) -> bytes:
@@ -1607,6 +1709,7 @@ __all__ = [
     "GitBlobTallies",
     "GitBlobTooLargeError",
     "GitObjectUnavailableError",
+    "GitObjectCorruptError",
     "GitPath",
     "GitPathError",
     "GitRevisionSubject",
@@ -1618,6 +1721,8 @@ __all__ = [
     "follow_git_symlinks",
     "git_revision_subject",
     "read_store_blob",
+    "verify_store_object",
+    "verify_store_blobs",
     "ref_branch_name",
     "ref_short_name",
     "require_full_oid",

@@ -71,9 +71,11 @@
    *   schedulePrefetch(callback: () => void): unknown,
    *   cancelPrefetch(handle: unknown): void,
    *   showFailure(container: HTMLElement): void,
+   *   checkout?: boolean,
    * }} deps
    */
   function createPullsNav(deps) {
+    const checkout = deps.checkout === true;
     /** @type {MetabrowserPublicPullsPanelHandle | null} */
     let handle = null;
     /** @type {Promise<void> | null} */
@@ -125,12 +127,15 @@
                 filter,
                 current: here?.page ?? null,
                 shown,
-                // On a mirror, starting the list's refresh once the first tree has settled was
+                // A checkout reads and refreshes nothing until the tab is shown, by the plan's
+                // rule for a checkout: the network only once the reader opens the tab. On a
+                // mirror, starting the list's refresh once the first tree has settled was
                 // measured against leaving it for the tab's first show, nine back-to-back pairs
                 // on pallets/click at a load average of 4 to 6: first row 1.001x and the mirror's
                 // own refresh 0.998x. Started as the page starts, it was 1.09x to 1.14x on the
                 // first row, past the plan's 1.1x, so it starts here and not there.
-                refreshAhead: true,
+                refreshAhead: !checkout,
+                checkout,
                 scrollRoot: deps.scrollRoot(),
                 open: (
                   /** @type {{number: number, tab: string, reader?: unknown, replace?: boolean}} */ route,
@@ -245,7 +250,9 @@
             deps.activate(tab);
           }
         }
-        if (handle === null && mounting === null) {
+        // A checkout's tab mounts on its first show: even the cached read would load the
+        // cache into a folder's server, and its refresh asks GitHub.
+        if (handle === null && mounting === null && !checkout) {
           prefetch = deps.schedulePrefetch(() => {
             prefetch = null;
             void ensureMounted();
@@ -388,6 +395,9 @@
     }
     const nav = createPullsNav({
       routes,
+      // The shell draws the tab on a pin of a GitHub mirror, and on a folder only when it is
+      // a GitHub checkout.
+      checkout: sdk.sourceKind() === "filesystem",
       location: () => window.location,
       pushHref: (href) => window.history.pushState(null, "", href),
       activeTab: () =>

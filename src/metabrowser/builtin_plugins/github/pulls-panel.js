@@ -98,6 +98,10 @@ const ABSENCE = Object.freeze({
   schema_mismatch: "The saved list is from another version, and is being replaced.",
   unreadable: "The saved list could not be read, and is being replaced.",
 });
+// A checkout's tab is drawn for an `origin` on github.com that the plugin's grammar may still
+// refuse, which the route answers as `not_github`.
+const CHECKOUT_NOT_LISTED =
+  "This checkout's origin is not a GitHub repository Metabrowser can list.";
 
 /**
  * @typedef {{outcome: string, message: string | null, reset_at: string | null, at: string}} LastRefresh
@@ -146,6 +150,7 @@ const ABSENCE = Object.freeze({
  *   setSize: number,
  *   skeleton: boolean,
  *   listName: string,
+ *   origin: string | null,
  *   count: string | null,
  *   freshness: string | null,
  *   empty: string | null,
@@ -268,6 +273,7 @@ export function refreshFailure(envelope, formatTime) {
  *   more: boolean,
  *   waitedMs: number,
  *   error: string | null,
+ *   checkout?: boolean,
  * }} page
  * @returns {PullsModel}
  */
@@ -283,6 +289,7 @@ export function describePulls(envelope, page) {
     setSize: Math.max(envelope?.fetched ?? 0, page.rows.length),
     skeleton: false,
     listName: "Pull requests",
+    origin: null,
     count: null,
     freshness: null,
     empty: null,
@@ -304,9 +311,14 @@ export function describePulls(envelope, page) {
   const failure = refreshFailure(envelope, page.formatTime);
   const holding = envelope.fetched > 0 || page.rows.length > 0;
   if (envelope.state === "absent" && envelope.reason === "not_github") {
-    model.empty = ABSENCE.not_github;
+    model.empty = page.checkout === true ? CHECKOUT_NOT_LISTED : ABSENCE.not_github;
     model.live = model.empty;
     return model;
+  }
+  if (page.checkout === true && repository !== null) {
+    // A checkout's heading is its folder, and on a fork its `origin` is the fork, whose list
+    // is often empty: so the tab names the repository it lists, and how it chose it.
+    model.origin = `Pull requests of ${repository}, this checkout's origin`;
   }
   if (!holding && (envelope.state === "absent" || envelope.state === "pending")) {
     // Nothing to show yet. The shape of rows, unless the wait is one a reader must act on.
@@ -380,11 +392,12 @@ export function describePulls(envelope, page) {
  *
  * @param {PullsEnvelope | null} envelope
  * @param {(iso: string) => string} formatTime
+ * @param {boolean} [checkout] A checkout served as a folder.
  * @returns {string}
  */
-export function describeLanding(envelope, formatTime) {
+export function describeLanding(envelope, formatTime, checkout = false) {
   if (envelope?.reason === "not_github") {
-    return ABSENCE.not_github;
+    return checkout ? CHECKOUT_NOT_LISTED : ABSENCE.not_github;
   }
   const failure = envelope === null ? null : refreshFailure(envelope, formatTime);
   if (envelope !== null && envelope.fetched === 0 && failure !== null) {
@@ -514,9 +527,10 @@ function contentOf(envelope) {
  * The filters, windows, polling, and selection of one panel.
  *
  * @param {PullsDependencies} deps
- * @param {{filter?: string, current?: number | null}} [options]
+ * @param {{filter?: string, current?: number | null, checkout?: boolean}} [options]
  */
 export function createPullsController(deps, options = {}) {
+  const checkout = options.checkout === true;
   /** @type {Map<string, HeldList>} */
   const lists = new Map(LISTS.map((name) => [name, emptyList()]));
   let filter = LISTS.includes(options.filter ?? "")
@@ -574,6 +588,7 @@ export function createPullsController(deps, options = {}) {
       more: list.more,
       waitedMs: waiting,
       error: list.error,
+      checkout,
     });
   }
 
@@ -1621,11 +1636,11 @@ export function mountPullsPanel(container, ctx, mb) {
     list.hidden = model.rows.length === 0;
     skeleton.hidden = !model.skeleton;
     status.replaceChildren(
-      ...[model.count, model.freshness]
+      ...[model.origin, model.count, model.freshness]
         .filter((line) => line !== null)
         .map((line) => h("span", {}, [/** @type {string} */ (line)])),
     );
-    status.hidden = model.count === null && model.freshness === null;
+    status.hidden = model.origin === null && model.count === null && model.freshness === null;
     empty.textContent = model.empty ?? "";
     empty.hidden = model.empty === null;
     if (model.notice === null) {
@@ -1717,7 +1732,7 @@ export function mountPullsPanel(container, ctx, mb) {
       open: (route) => nav.open(route),
       filterChanged: (state) => nav.filterChanged(state),
     },
-    { filter: nav.filter, current: nav.current },
+    { filter: nav.filter, current: nav.current, checkout: nav.checkout === true },
   );
 
   const unbindFilters = controls.bind(filters, {
@@ -1853,6 +1868,7 @@ function landingWaits(envelope) {
  *   cancel(handle: unknown): void,
  *   isVisible(): boolean,
  *   formatTime(iso: string): string,
+ *   checkout?: boolean,
  *   say(text: string): void,
  * }} deps
  */
@@ -1885,7 +1901,7 @@ export function followLanding(deps) {
     if (listening.signal.aborted) {
       return;
     }
-    deps.say(describeLanding(envelope, deps.formatTime));
+    deps.say(describeLanding(envelope, deps.formatTime, deps.checkout));
     settled = !landingWaits(envelope);
     if (!settled && deps.isVisible()) {
       const running = envelope?.refreshing === true || envelope?.state === "pending";
@@ -1933,6 +1949,7 @@ export function mountPullsLanding(container, _ctx, mb) {
     cancel: (handle) => window.clearTimeout(/** @type {number | undefined} */ (handle)),
     isVisible: () => document.visibilityState === "visible",
     formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
+    checkout: mb.sourceKind() === "filesystem",
     say(text) {
       if (said.textContent !== text) {
         said.textContent = text;

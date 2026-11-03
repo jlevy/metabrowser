@@ -75,7 +75,13 @@ from tests.github_pull_fixture import (
     page,
     scenario,
 )
-from tests.golden_harness import JSON_BODY, check_recording, run_session, settle
+from tests.golden_harness import (
+    JSON_BODY,
+    check_recording,
+    normalize_pull_comparison_scopes,
+    run_session,
+    settle,
+)
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -158,7 +164,7 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
     for answer in recorded.values():
         if answer["etag"] is not None:
             answer["etag"] = own.setdefault(answer["etag"], f'"pull-{len(own) + 1}"')
-    return recorded
+    return json.loads(normalize_pull_comparison_scopes(json.dumps(recorded)))
 
 
 def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
@@ -413,7 +419,13 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
-    # A server with no GitHub repository, which answers for no number.
+    # A server with no GitHub repository, which answers for no number. Explicitly
+    # choose a plain folder: the test runner itself lives inside a GitHub checkout.
+    from metabrowser.server import _set_root_dir
+
+    plain = tmp_path / "plain-folder"
+    plain.mkdir()
+    _set_root_dir(plain)
     reset_source_session()
     with TestClient(app) as client:
         recorded["not_github"] = _answer(client.get(_PULL, params={"number": 7}))
@@ -507,9 +519,34 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
         "no_merge_base",
         "base_uncertain",
         "commits_unavailable",
+        "no_store",
+        "comparison_timeout",
+        "comparison_too_large",
     }
     for state, said in unavailable.items():
-        assert said["files"].startswith("Files changed is "), state
+        assert said["files"].startswith("Files changed "), state
     assert "does not guess" in unavailable["base_uncertain"]["files"]
     assert "not readable here" in unavailable["commits_unavailable"]["files"]
+    # A checkout's page offers nothing that serves or switches code: it has no pin.
+    for when, checkout_page in transcript["checkout"].items():
+        if when.startswith("a mirror"):
+            continue
+        assert (
+            checkout_page["browse"],
+            checkout_page["headOffer"],
+            checkout_page["comparison"],
+        ) == (None, None, None)
     assert transcript["hunks"] and transcript["place"]
+
+
+def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
+    """Asset and renderer failures recover without a dangling readiness rejection."""
+
+    result = run_session("github-pull-page-mount-behavior.js")
+    assert result == {
+        "failedAssetsRecover": True,
+        "failedRenderRecovers": True,
+        "staleRetryIsInert": True,
+        "checkoutFetchIsExplicit": True,
+        "displayedComparisonRepair": True,
+    }

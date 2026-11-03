@@ -1,0 +1,53 @@
+# metab file://<ORIGIN> --api '/api/file?path=g1-bm90ZS50eHQ'
+exit: 0
+--- stdout ---
+api: /api/file?path=g1-bm90ZS50eHQ
+status: 200
+{
+  "subject": "git_revision",
+  "size": 22,
+  "path": "g1-bm90ZS50eHQ",
+  "display": "note.txt",
+  "mode": "100644",
+  "git_kind": "blob",
+  "symlink": false,
+  "gitlink": false,
+  "oid": "a16e251c35a5a793c82f2070221df3828a0e5cc1",
+  "ext": ".txt",
+  "type": "text",
+  "kind": "text",
+  "views": [
+    {
+      "id": "source",
+      "label": "Source",
+      "default": true,
+      "container_class": "content-body metabrowser-source-host",
+      "printable": true,
+      "print_profile": "source",
+      "render_runtime": "client"
+    }
+  ],
+  "content": "authentic source text\n",
+  "content_offset": 0,
+  "content_bytes": 22,
+  "bytes_read": 22,
+  "content_truncated": false,
+  "content_preview_limit": 2097152,
+  "content_max_preview_limit": 16777216,
+  "highlight_disabled": false
+}
+--- stderr ---
+cloning <ORIGIN> into <HOME>
+cloned <ORIGIN> in 0.0 s
+# metab file://<ORIGIN> --api '/api/file?path=g1-bm90ZS50eHQ'
+exit: 1
+--- stdout ---
+api: /api/file?path=g1-bm90ZS50eHQ
+status: 409
+{
+  "error": "object_corrupt: a16e251c35a5a793c82f2070221df3828a0e5cc1",
+  "code": "object_corrupt",
+  "oid": "a16e251c35a5a793c82f2070221df3828a0e5cc1"
+}
+--- stderr ---
+Error: /api/file?path=g1-bm90ZS50eHQ returned HTTP 409

@@ -29,7 +29,14 @@ from metabrowser.git import repo as git_repo
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.server import app
 from metabrowser.source import attach_subject, reset_source_session
-from tests.github_pull_fixture import CANONICAL, DEFAULT_BRANCH, Origin, install_fake_gh, scenario
+from tests.github_pull_fixture import (
+    CANONICAL,
+    DEFAULT_BRANCH,
+    Origin,
+    clone_checkout,
+    install_fake_gh,
+    scenario,
+)
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -203,6 +210,62 @@ def test_a_mirror_of_anything_else_draws_no_tab(
         serve_mirror(None)
         git_repo.clear_repo_cache()
         reset_source_session()
+
+
+@needs_git
+@pytest.mark.parametrize(
+    ("remote", "served"),
+    [
+        (CANONICAL + ".git", ""),
+        ("git@github.com:octo/demo.git", ""),
+        (CANONICAL + ".git", "src"),
+        # The plugin's grammar refuses it, and the tab then says so: discovery admits it.
+        ("https://github.com/under_score/demo.git", ""),
+    ],
+    ids=["https", "ssh", "subdirectory", "a remote the plugin refuses"],
+)
+def test_a_github_checkout_draws_the_tab_and_puts_it_in_front_at_its_addresses(
+    tmp_path: Path, pull_origin: Origin, remote: str, served: str
+) -> None:
+    """The tab is decided from the repository context the shell already has, for a folder too.
+
+    A subdirectory of the checkout is still its repository's, unlike the Git tab's root
+    rule. Mutation check: decide the tab from a served pin alone, as it was before
+    checkouts, and every case here fails.
+    """
+
+    reset_source_session()
+    from metabrowser import server
+
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout", remote=remote)
+    server._set_root_dir(checkout / served)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(app) as client:
+        elsewhere = client.get("/view/").text
+        assert _tabs(elsewhere)["pulls"] is False
+        assert "/static/pulls-nav.js" in _shell_tools(elsewhere)
+        assert "/static/pulls-nav.js" not in _startup_scripts(elsewhere)
+        for route in ("/pull/7", "/pulls"):
+            assert _tabs(client.get(route).text)["pulls"] is True, route
+    reset_source_session()
+
+
+@needs_git
+def test_a_checkout_of_anything_else_draws_no_tab(tmp_path: Path, pull_origin: Origin) -> None:
+    """A checkout whose ``origin`` is not on github.com is a plain folder to the tab."""
+
+    reset_source_session()
+    from metabrowser import server
+
+    checkout = clone_checkout(
+        pull_origin, tmp_path / "checkout", remote="https://gitlab.example/octo/demo.git"
+    )
+    server._set_root_dir(checkout)  # pyright: ignore[reportPrivateUsage]
+    with TestClient(app) as client:
+        for route in ("/view/", "/pull/7", "/pulls"):
+            html = client.get(route).text
+            assert "pulls" not in _tabs(html), route
+            assert "/static/pulls-nav.js" not in _shell_tools(html), route
+    reset_source_session()
 
 
 def test_a_rows_text_is_only_ever_text() -> None:

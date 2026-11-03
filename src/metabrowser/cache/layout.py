@@ -336,7 +336,7 @@ def _refuse_unrecognized_entries(home: Path) -> None:
         )
 
 
-def _preflight_layout(home: Path, *, history: Sequence[str]) -> None:
+def preflight_layout(home: Path, *, history: Sequence[str] = FORMAT_HISTORY) -> None:
     """Refuse unknown data before locks, skeleton creation, probes, or mode repairs.
 
     ``keep`` leaves a merely over-shared home to the ordinary repairing path, but a
@@ -351,6 +351,11 @@ def _preflight_layout(home: Path, *, history: Sequence[str]) -> None:
     read_config(configuration_directory(), shared="keep")
     if layout is None:
         _refuse_unrecognized_entries(home)
+    elif layout.format not in history:
+        raise LayoutError(
+            f"layout.yml names format {layout.format}, which no Metabrowser release wrote",
+            home / LAYOUT_RECORD,
+        )
 
 
 def migrate_layout(
@@ -371,7 +376,7 @@ def migrate_layout(
 
     version = metabrowser.__version__ if version is None else version
     current = history[-1]
-    _preflight_layout(home, history=history)
+    preflight_layout(home, history=history)
     config = ensure_configuration(version=version)
     with application_cache_lock(home):
         layout = read_layout(home, history=history)
@@ -411,7 +416,7 @@ def open_cache(home: Path | None = None, *, version: str | None = None) -> Cache
     """
 
     home = application_cache() if home is None else home
-    _preflight_layout(home, history=FORMAT_HISTORY)
+    preflight_layout(home, history=FORMAT_HISTORY)
     ensure_storage_root(home)
     ensure_home(home)
     probe = probe_application_cache(home)
@@ -433,6 +438,7 @@ __all__ = [
     "format_number",
     "migrate_layout",
     "open_cache",
+    "preflight_layout",
     "read_config",
     "read_layout",
     "serialize_config",

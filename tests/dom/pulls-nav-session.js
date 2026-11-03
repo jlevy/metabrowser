@@ -69,7 +69,10 @@ async function settle() {
 }
 
 /** A shell, a view, and a log of what the host did to each. */
-function createShell(address, { active = "files", failLoads = 0, slowView = false } = {}) {
+function createShell(
+  address,
+  { active = "files", failLoads = 0, slowView = false, checkout = false } = {},
+) {
   const log = [];
   const shell = { active, address: new URL(address, "http://x"), failLoads, panel: null };
   /** @type {(() => void) | null} */
@@ -153,6 +156,7 @@ function createShell(address, { active = "files", failLoads = 0, slowView = fals
     showFailure() {
       log.push("failure shown");
     },
+    ...(checkout ? { checkout: true } : {}),
   };
   return {
     shell,
@@ -209,6 +213,28 @@ async function run() {
   log.push({ "another tab: it is told": page.take() });
   host.dispose();
   log.push({ "the page goes: it is disposed": page.take(), snapshot: host.snapshot() });
+
+  // Elsewhere on a checkout: nothing is read ahead, so the cache and gh wait for the reader.
+  page = createShell("/view/README.md", { checkout: true });
+  host = nav.createPullsNav(page.deps);
+  log = story("a checkout's page at a file");
+  host.start();
+  log.push({ "the shell starts it: no read ahead": page.take(), snapshot: host.snapshot() });
+  page.runPrefetch();
+  await settle();
+  log.push({ "so nothing mounts while the tab is not shown": page.take() });
+  page.deps.activate("pulls");
+  await settle();
+  log.push({
+    "the tab opens: the view mounts, shown": page.take(),
+    "what it is handed": {
+      refreshAhead: page.shell.host.refreshAhead,
+      checkout: page.shell.host.checkout,
+    },
+  });
+  page.deps.activate("files");
+  log.push({ "Files: it is told, and stops": page.take() });
+  host.dispose();
 
   // At a pull request's address the server draws the tab in front, so the first show is the host's.
   page = createShell("/pull/7/files", { active: "pulls" });
@@ -412,7 +438,11 @@ async function pageHostStory() {
       shortcuts: () => null,
       removeNavPanel: () => told.push("tab removed"),
     },
-    metabrowser: { ensureKindAssets: async () => {}, getRegisteredView: () => view },
+    metabrowser: {
+      ensureKindAssets: async () => {},
+      getRegisteredView: () => view,
+      sourceKind: () => "git_revision",
+    },
     location: { pathname: "/pull/7", search: "" },
     history: { pushState() {} },
     requestIdleCallback: () => 1,

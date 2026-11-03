@@ -106,7 +106,7 @@ $ node tests/dom/github-pull-page-session.js
         "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true}"
       ],
       "timer": "fast",
-      "paints": 1,
+      "paints": 2,
       "paint": {
         "status": "pending",
         "tab": "conversation",
@@ -355,7 +355,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "current",
         "tab": "files",
         "message": null,
-        "canRefresh": false,
+        "canRefresh": true,
         "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
@@ -793,7 +793,7 @@ $ node tests/dom/github-pull-page-session.js
         "POST /api/plugin/github/pull-refresh {\"number\":8,\"retry\":true}"
       ],
       "timer": "fast",
-      "paints": 1,
+      "paints": 2,
       "paint": {
         "status": "stale",
         "message": null,
@@ -877,7 +877,7 @@ $ node tests/dom/github-pull-page-session.js
         "POST /api/plugin/github/pull-refresh {\"number\":14,\"retry\":true}"
       ],
       "timer": "slow",
-      "paints": 1,
+      "paints": 2,
       "paint": {
         "status": "absent",
         "message": "The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
@@ -997,8 +997,10 @@ The session is printed in two parts, by `github-pull-page-session.js` and by
 `github-pull-page-second-session.js`, which runs the same session whole, because
 tryscript matches a command’s expected output as one regular expression, and the
 transcript in one block is larger than V8 compiles.
-The second part is what Files changed says when the comparison is unavailable, the
-review comments’ hunks, and the reader’s place.
+The second part is what Files changed says when the comparison is unavailable, a server
+with no store among them, the page on a checkout, the review comments’ hunks, and the
+reader’s place. A checkout’s page has no pin, so no Browse code and no switch, and it
+says only when the checkout’s is the pull request’s head.
 
 ```console
 $ node tests/dom/github-pull-page-second-session.js
@@ -1027,6 +1029,51 @@ $ node tests/dom/github-pull-page-second-session.js
       "notes": [
         "Files changed could not be read (commits unavailable)."
       ]
+    },
+    "no_store": {
+      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged.",
+      "notes": [
+        "Files changed could not be read (no store)."
+      ]
+    },
+    "comparison_timeout": {
+      "files": "Files changed is unavailable: checking this pull request's history took too long. Refresh to try again.",
+      "notes": [
+        "Files changed could not be read (comparison timeout)."
+      ]
+    },
+    "comparison_too_large": {
+      "files": "Files changed is unavailable: checking this pull request's history exceeded the comparison limit.",
+      "notes": [
+        "Files changed could not be read (comparison too large)."
+      ]
+    }
+  },
+  "checkout": {
+    "HEAD is the pull request's head": {
+      "browse": null,
+      "headOffer": null,
+      "checkoutAtHead": "This checkout's HEAD is this pull request's head.",
+      "comparison": null,
+      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
+    },
+    "HEAD is elsewhere": {
+      "browse": null,
+      "headOffer": null,
+      "checkoutAtHead": null,
+      "comparison": null,
+      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
+    },
+    "no repository context": {
+      "browse": null,
+      "headOffer": null,
+      "checkoutAtHead": null,
+      "comparison": null,
+      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
+    },
+    "a mirror's page, whatever it is handed": {
+      "browse": "switches to refs/pull/7/head",
+      "checkoutAtHead": null
     }
   },
   "hunks": {
@@ -1232,4 +1279,14 @@ $ node tests/dom/github-pull-page-second-session.js
   }
 }
 ? 0
+```
+The production mount keeps the displayed comparison through waiting and failed repairs,
+and remounts it once after success even if metadata has advanced to another head.
+Pending and disposed controls cannot issue duplicate requests.
+Asset and render failures retain their local Retry action; a checkout with no store
+retains its explicit Fetch changes.
+
+```console
+$ node tests/dom/github-pull-page-mount-behavior.js
+{"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsExplicit":true,"displayedComparisonRepair":true}
 ```

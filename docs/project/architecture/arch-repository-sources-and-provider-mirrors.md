@@ -383,8 +383,7 @@ rename into place through the alias commit, and the alias is the sole visibility
 A crash between the two renames leaves a completed store no alias names; it is never a
 visible half-entry, and the next acquisition of the same source reuses it.
 Nothing deletes a published store automatically.
-Attaching a user-owned checkout to a store, and merging stores by provider identity, are
-deferred by the thin-mirror plan.
+Merging stores by provider identity is deferred by the thin-mirror plan.
 
 ### Overlay stores
 
@@ -453,9 +452,34 @@ The design and its experiments are in
    nothing, and a read of a borrowed object answers `object_unavailable`. Cache routes
    read records and no object, so they still answer.
 
-What is not here yet is in the plan’s step 2: a dangling *pin* is detected by the next
-read and refreshed by hand, since nothing heals it, and blob hashes are not verified on
-read.
+Complete object reads verify the Git object ID against the header and bytes, using the
+store’s SHA-1 or SHA-256 format.
+A mismatch is `object_corrupt`. Windowed reads hash discarded prefixes and tails only
+when the existing drain bound consumes the complete object.
+A larger partial window stays useful and makes no claim of whole-object authentication;
+verification does not extend its read bound.
+
+A borrowed comparison verifies only the blobs of the files being hydrated, within the
+existing per-run byte budget.
+It does not hash an entire manifest or walk history.
+Detected corruption prevents a response body from being cached and invalidates any
+in-memory manifest for that comparison.
+
+`git/object_failures.py` keeps at most eight observed object IDs for each of sixteen
+store/commit selections, for ten minutes.
+It retains no object bytes or Git diagnostics.
+`cache/object_recovery.py` handles an explicit recovery: check the displayed immutable
+commits and those observed IDs, fetch missing IDs under the existing fetch lock and
+sweep rules, then authenticate them before clearing the observations.
+The recovery has one sixty-second deadline, including lock waits.
+An ordinary commit fetch can succeed while leaving a descendant blob absent; exact-ID
+fetching repairs that object without changing a ref or writing the checkout.
+A corrupt lender that Git still claims to have remains a typed refusal, and an origin
+that no longer serves a displayed object is `commits_unavailable`.
+
+Measured on macOS with nine alternating pairs, complete-read hashing added 0.021 ms for
+3.9 KiB, 0.029 ms for 64 KB, and 4.586 ms for 8 MiB. The 32 MiB partial-window path
+calls no hash; its timing pairs were too noisy to establish a difference.
 
 ### Cache record contracts
 
@@ -606,6 +630,22 @@ The source directory is enumerated by nothing, so the layout, probe, sweep, and
 `builtin_plugins/github/pull_record.py` holds its Pydantic models and every bound, with
 the measurements beside the constants; a record whose `schema_version` differs is
 refetched, not migrated.
+PR refresh prepares the comparison manifest before publishing the record.
+`builtin_plugins/github/pull_manifest.py` owns a disposable bank at
+`repository-stores/<store-key>/github-pull-manifests/<slot>.json`: sixteen direct-mapped
+slots, each admitted only within the existing 16 MiB PR-record read bound.
+A slot holds a versioned File Diff Format document with no patches, its digest, and the
+full build, store-token, endpoint, and base-policy identity.
+A collision evicts a slot and causes a later miss; it cannot return another comparison.
+The PR comparison route resolves the requested commits before adopting a validated
+manifest, and a missing, corrupt, or mismatched entry is recomputed once through the
+existing shared comparison-cache task and replaced atomically.
+Persistence failure leaves the PR record and computed answer usable.
+`GET /api/plugin/github/pull-comparison` reads only the selected PR’s published store
+and never fetches. Its initial answer hydrates eight ready files.
+The shared diff service retains its fifty-file default for other callers; encoded bodies
+and entity tags include the initial-file policy, while the manifest key is shared.
+
 It names its reader, always `gh:<login>`, because `gh api` refuses requests while signed
 out, and the account is read before and after the API reads so a record read across an
 account switch is discarded.
@@ -751,8 +791,61 @@ mirror’s fetch, since it never touches a store.
 `GET /api/plugin/github/pulls` parses a list only when its file changed.
 The paging loop, `read_list`, is shared with the record (`gh_lists.py`).
 
-The server reaches the repository through its `StoreMirror`, the one served source that
-names a GitHub repository today; a folder’s server answers `not_github`.
+The server’s `served_repository` chooses its `StoreMirror` or the served checkout’s
+validated GitHub origin.
+A source that supplies neither answers `not_github`.
+
+### Pull requests beside a checkout
+
+A folder’s pull routes resolve its checkout’s `origin` to the GitHub plugin’s canonical
+repository identity.
+Metadata reads create nothing, and metadata refreshes can publish an unattached source.
+A healthy store already attached to that source is reused without acquisition or a cache
+timestamp write.
+
+An explicit Files changed Fetch may acquire a store with the checkout as its lender.
+The pull record then uses the same store API and comparison service as a managed URL.
+The served folder root and Git tab stay unchanged; no Git process runs in the checkout,
+and the checkout is never written.
+A served subdirectory resolves to its enclosing checkout before acquisition.
+Lender paths stay inside private cache metadata.
+
+A comparison request that joins an active metadata job is retained until that job can
+acquire the store. Jobs take their turn at the store before consuming a network slot.
+An acquisition failure preserves the last pull record and reports a typed refresh
+outcome. `GET` routes never acquire or fetch.
+
+Files changed offers Refresh even while its record is fresh.
+The reader’s action sends `retry: true` and `recovery: {base, head}` for the comparison
+still displayed. Automatic refresh remains stale-only.
+Metadata updates do not replace displayed changes: a successful repair remounts that
+same comparison once and restores its scroll position; a failed or waiting job leaves it
+in place. The existing newer-changes action remains the way to select a newer head.
+A checkout with `no_store` instead offers Fetch changes.
+
+The server validates complete object IDs and a pair issued by that PR in this session
+before permitting repair.
+Each held PR retains eight issued pairs and protects its last displayed pair from
+metadata eviction. An explicit retry joining a running job is queued, even if that job
+fails; equal queued selections coalesce.
+Number-only explicit refresh continues to repair the current cached comparison.
+Old full-endpoint GET links remain readable after a restart, but an old pair that this
+session cannot associate with the PR cannot authorize network repair.
+No persistent comparison history is added.
+
+Only IDs observed missing while reading that comparison and its two endpoints are
+checked and, when absent, fetched exactly.
+A complete recovered object must match its ID before its failure is cleared.
+Detection of corrupt bytes invalidates in-memory answers and the persisted manifest;
+failure to discard that metadata is reported.
+A corrupt lender is refused without modifying its objects.
+Large partial previews retain their existing read bounds and do not claim a whole-object
+authentication.
+
+If a cached managed source loses its pinned root tree before startup, opening it reports
+a path-free pin-open error without a traceback or automatic clone.
+Live Files Refresh requires a running source; startup does not start an implicit repair
+fetch.
 
 ### Changed files of a pull request
 
@@ -1130,9 +1223,9 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 ### Planned seams
 
 Nothing below is built, and none of it is on the v0.12 path.
-The thin-mirror plan retired the provider mirror and the provider ports and deferred
-attaching a user’s checkout (`mb-cbak`); the rows stay as the design that later work
-starts from.
+The thin-mirror plan retired the provider mirror and provider ports.
+Checkout PR browsing uses the store-backed path described above; these broader provider
+abstractions remain future work.
 
 | Area | Planned boundary | Responsibility |
 | --- | --- | --- |

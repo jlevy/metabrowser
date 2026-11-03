@@ -2112,3 +2112,377 @@ def test_no_history_is_believed_only_when_the_walk_reads_every_commit(
     (checkout / ".git" / "objects" / replica["M3"][:2] / replica["M3"][2:]).unlink()
     with pytest.raises(git_process.GitCommandError):
         asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
+
+
+@pytest.mark.parametrize("defect", ["missing", "empty", "invalid", "directory"])
+def test_a_pack_without_its_index_does_not_authorize_sweeping_refs(
+    linear: _Stand, defect: str
+) -> None:
+    checkout, files = _no_file_tips_and_unreadable_packs(linear)
+    before = linear.store_refs()
+    indexes = [path for path in files if path.suffix == ".idx"]
+    assert indexes
+    saved = {path: path.read_bytes() for path in indexes}
+    for path in indexes:
+        path.unlink()
+        if defect == "empty":
+            path.write_bytes(b"")
+        elif defect == "invalid":
+            path.write_bytes(b"invalid index" * 100)
+        elif defect == "directory":
+            path.mkdir()
+    update = asyncio.run(
+        update_store(linear.home, linear.store.parent.name, remote_url=linear.replica.url)
+    )
+    assert update.outcome is RefreshOutcome.lender_missing, update
+    assert update.swept == ()
+    assert linear.store_refs() == before
+    for path, data in saved.items():
+        if path.is_dir():
+            path.rmdir()
+        path.write_bytes(data)
+    update = asyncio.run(
+        update_store(linear.home, linear.store.parent.name, remote_url=linear.replica.url)
+    )
+    assert update.outcome is RefreshOutcome.succeeded, update
+    assert linear.store_refs() == before
+    assert checkout.is_dir()
+
+
+@pytest.mark.parametrize(
+    ("failure", "state"),
+    [
+        (git_process.GitTimeoutError, "comparison_timeout"),
+        (git_process.GitOutputTooLargeError, "comparison_too_large"),
+    ],
+)
+def test_an_unfinished_merge_base_walk_preserves_the_pull_record(
+    linear: _Stand,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: type[git_process.GitError],
+    state: str,
+) -> None:
+    from metabrowser.git import shallow
+
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    for record in linear.home.glob("sources/*/pulls/1*.json"):
+        record.unlink()
+    real = shallow.run_git
+
+    async def bounded(args: list[str], **kwargs: Any) -> bytes:
+        if args[0] == "merge-base":
+            raise git_process.GitCommandError(args, 1, "")
+        if args[0] == "rev-list":
+            raise failure("injected walk bound")
+        return await real(args, **kwargs)
+
+    monkeypatch.setattr(shallow, "run_git", bounded)
+    record = linear.pull()["record"]
+    assert record["pull"]["title"] == "Add p"
+    assert record["comparison"] is None
+    assert record["unavailable"] == {"comparison": state}
+
+
+def test_old_git_cannot_hide_a_missing_ancestor_below_its_merge_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git import shallow
+    from metabrowser.git.process import repository_store_target
+
+    replica = build_linear(tmp_path / "replica")
+    target = repository_store_target(git_dir=replica.origin)
+    missing = replica["M2"]
+    (replica.origin / "objects" / missing[:2] / missing[2:]).unlink()
+    real = shallow.run_git
+
+    async def older(args: list[str], **kwargs: Any) -> bytes:
+        if args[0] == "merge-base":
+            # Pre-2.45 candidate reduction may succeed after an unreadable ancestor.
+            # Pruning that candidate's history hides the missing commit from rev-list.
+            return (replica["M3"] + "\n").encode("ascii")
+        return await real(args, **kwargs)
+
+    monkeypatch.setattr(shallow, "run_git", older)
+    monkeypatch.setattr(
+        git_process, "detect_git_version", lambda: ((2, 43, 7), "git version 2.43.7")
+    )
+    with pytest.raises(git_process.GitCommandError):
+        asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
+
+
+@pytest.mark.parametrize("version", [(2, 43, 7), (2, 50, 1)])
+@pytest.mark.parametrize("shallow_boundary", [False, True])
+def test_a_complete_criss_cross_graph_keeps_either_best_merge_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    version: tuple[int, int, int],
+    shallow_boundary: bool,
+) -> None:
+    from metabrowser.git import shallow
+    from metabrowser.git.process import repository_store_target
+
+    replica = build_linear(tmp_path / "replica")
+    tree = pinned_git(replica.origin, "rev-parse", f"{replica['M1']}^{{tree}}")
+
+    def commit(name: str, *parents: str) -> str:
+        args = ["commit-tree", tree, "-m", name]
+        for parent in parents:
+            args.extend(("-p", parent))
+        return pinned_git(replica.origin, *args)
+
+    a = commit("a", replica["M1"])
+    b = commit("b", replica["M1"])
+    left = commit("left", a, b)
+    right = commit("right", b, a)
+    if shallow_boundary:
+        (replica.origin / "shallow").write_text(replica["M1"] + "\n", encoding="ascii")
+    monkeypatch.setattr(git_process, "detect_git_version", lambda: (version, "git version test"))
+    target = repository_store_target(git_dir=replica.origin)
+    answer = asyncio.run(shallow.merge_base_answer(target, left, right))
+    assert answer.certain
+    assert answer.merge_base in {a, b}
+
+
+def test_a_running_pull_fetch_requires_its_store_record(linear: _Stand) -> None:
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    published = asyncio.run(_inspect(linear))
+    before = linear.store_refs()
+    (linear.store.parent / "store.yml").unlink()
+    with pytest.raises(pull_refs.PullRefError) as raised:
+        asyncio.run(pull_refs.fetch_pull_head(published, 1))
+    assert raised.value.state == "fetch_failed"
+    assert linear.store_refs() == before
+
+
+def test_a_lender_whose_boundary_became_a_fifo_is_refused_before_git(linear: _Stand) -> None:
+    from metabrowser.cache.lender import lender_problem
+
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    published = asyncio.run(_inspect(linear))
+    assert published.lender is not None
+    os.mkfifo(checkout / ".git" / "shallow")
+    assert lender_problem(published.lender) is not None
+
+
+def test_a_refused_boundary_replace_leaves_no_temporary_symlink(
+    linear: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.cache.lender import attach_lender
+
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    published = asyncio.run(_inspect(linear))
+    assert published.lender is not None
+    replace = os.replace
+
+    def refuse(source: Any, destination: Any) -> None:
+        if Path(destination) == linear.store / "shallow":
+            raise PermissionError("injected boundary publication refusal")
+        replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", refuse)
+    with pytest.raises(PermissionError):
+        attach_lender(linear.store, published.lender)
+    assert not list(linear.store.glob(".shallow.*"))
+
+
+def test_no_history_is_uncertain_if_the_boundary_moves_during_its_verification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git import shallow
+    from metabrowser.git.process import repository_store_target
+
+    replica = build_linear(tmp_path / "replica")
+    target = repository_store_target(git_dir=replica.origin)
+    real = shallow.run_git
+
+    async def cutting(args: list[str], **kwargs: Any) -> bytes:
+        if args[0] == "merge-base":
+            raise git_process.GitCommandError(args, 1, "")
+        if args[0] == "rev-list":
+            (replica.origin / "shallow").write_text(replica["M4"] + "\n", encoding="ascii")
+        return await real(args, **kwargs)
+
+    monkeypatch.setattr(shallow, "run_git", cutting)
+    answer = asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
+    assert not answer.certain
+
+
+@pytest.mark.parametrize("index_version", [1, 2])
+def test_a_complete_pack_index_does_not_claim_a_collected_object(
+    linear: _Stand, index_version: int
+) -> None:
+    from metabrowser.cache.lender import collection_doubt
+
+    checkout, files = _no_file_tips_and_unreadable_packs(linear)
+    for path in files:
+        if path.suffix == ".pack":
+            pinned_git(checkout, "index-pack", f"--index-version={index_version}", str(path))
+    lender = StoreLender(
+        objects=str(checkout / ".git" / "objects"), checkout=str(checkout), remote="origin"
+    )
+    assert collection_doubt(lender, ["f" * 40]) is None
+
+
+@pytest.mark.parametrize("damage", ["partial", "alternates", "format", "changed"])
+def test_borrowing_only_acquisition_never_falls_back_to_a_clone(
+    linear: _Stand, damage: str
+) -> None:
+    from metabrowser.cache import acquire
+
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "strict-checkout")
+
+    def spoil() -> None:
+        if damage in {"partial", "changed"}:
+            pinned_git(checkout, "config", "remote.origin.promisor", "true")
+        elif damage == "alternates":
+            (checkout / ".git/objects/info/alternates").write_text("/unavailable\n")
+        else:
+            pinned_git(checkout, "config", "extensions.objectFormat", "sha256")
+
+    if damage != "changed":
+        spoil()
+    else:
+        original = acquire.remote_url_for
+
+        def changed(source: GitSource) -> str:
+            spoil()
+            return original(source)
+
+        linear.monkeypatch.setattr(acquire, "remote_url_for", changed)
+    before = fingerprint(checkout)
+    phases: list[str] = []
+    with pytest.raises(CheckoutRefusedError):
+        asyncio.run(
+            acquire_source(
+                SOURCE,
+                home=linear.home,
+                checkout=checkout,
+                allow_clone_fallback=False,
+                on_phase=phases.append,
+            )
+        )
+    assert not any(phase.startswith("fetching") for phase in phases), phases
+    assert not linear.store.exists()
+    if damage != "changed":
+        assert fingerprint(checkout) == before
+
+
+def test_borrowing_only_acquisition_reuses_an_existing_full_store(linear: _Stand) -> None:
+    from metabrowser.cache import acquire
+
+    full = asyncio.run(acquire_source(SOURCE, home=linear.home))
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "strict-checkout")
+    pinned_git(checkout, "config", "remote.origin.promisor", "true")
+    before = fingerprint(checkout)
+
+    async def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("a healthy full store must not acquire again")
+
+    linear.monkeypatch.setattr(acquire, "acquire_into_staging", forbidden)
+    reused = asyncio.run(
+        acquire_source(SOURCE, home=linear.home, checkout=checkout, allow_clone_fallback=False)
+    )
+    assert reused.git_dir == full.git_dir and reused.lender is None
+    assert fingerprint(checkout) == before
+
+
+@pytest.mark.parametrize("damage", ["missing", "corrupt", "origin_missing"])
+def test_explicit_recovery_restores_observed_blob_ids_without_writing_checkout(
+    linear: _Stand, damage: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import zlib
+
+    from metabrowser.cache.object_recovery import recover_comparison_objects
+    from metabrowser.git.object_failures import observed_object_failures
+    from metabrowser.git.process import repository_store_target
+    from metabrowser.git.tree_source import GitObjectUnavailableError, read_store_blob
+    from tests.git_pin_harness import pinned_client
+
+    replica = linear.replica
+    work = replica.origin.parent / "source"
+    pinned_git(work, "checkout", "-q", "pr")
+    (work / "m").write_text("changed in the pull request\n")
+    pinned_git(work, "commit", "-qam", "change existing file")
+    head = pinned_git(work, "rev-parse", "HEAD")
+    pinned_git(work, "push", "-q", str(replica.origin), "HEAD:refs/pull/1/head")
+    linear.answer(scenario_for(replica, base=replica["M5"], head=head, earlier=replica["H1"]))
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    aside = linear.tmp_path / "aside"
+    aside.mkdir()
+    for path in (checkout / ".git/objects/pack").iterdir():
+        shutil.move(path, aside / path.name)
+    for pack in aside.glob("*.pack"):
+        with pack.open("rb") as stream:
+            subprocess.run(
+                ["git", "unpack-objects", "-q"],
+                cwd=checkout,
+                stdin=stream,
+                check=True,
+                capture_output=True,
+                env=pinned_git_env(),
+            )
+    envelope = linear.pull("--checkout", str(checkout))
+    base = envelope["record"]["comparison"]["base"]
+    oid = pinned_git(checkout, "rev-parse", f"{base}:m")
+    authentic = pinned_git(checkout, "cat-file", "blob", oid).encode() + b"\n"
+    loose = checkout / ".git/objects" / oid[:2] / oid[2:]
+    assert loose.exists()
+    if damage == "corrupt":
+        forged = b"forged lender bytes\n"
+        loose.unlink()
+        loose.write_bytes(zlib.compress(b"blob " + str(len(forged)).encode() + b"\0" + forged))
+    else:
+        loose.unlink()
+    if damage == "origin_missing":
+        (replica.origin / "objects" / oid[:2] / oid[2:]).unlink()
+    before = fingerprint(checkout)
+    published = asyncio.run(acquire_source(SOURCE, home=linear.home))
+    assert published is not None
+    target = repository_store_target(git_dir=published.git_dir)
+    commits = (base, head)
+    route = f"/api/plugin/diff/comparison?left={base}&right={head}&base_policy=merge_base"
+    monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
+
+    async def run() -> None:
+        # Commit negotiation claims success although the descendant is still missing.
+        if damage == "missing":
+            await pull_refs.fetch_commit(published, head)
+            with pytest.raises(GitObjectUnavailableError):
+                await read_store_blob(target, oid)
+        async with pinned_client(published.git_dir, head) as (client, _subject):
+            if damage == "corrupt":
+                # Another file's request does not scan/hash this whole manifest.
+                untouched = await client.get(route + "&file=p")
+                assert untouched.status_code == 200, untouched.text
+                assert sidekick._COMPARISONS.sizes()["bodies"] == 1
+            response = await client.get(route)
+            assert response.status_code == 409, response.text
+            expected = "object_corrupt" if damage == "corrupt" else "object_unavailable"
+            assert response.json()["error"] == expected
+            if damage == "corrupt":
+                assert sidekick._COMPARISONS.sizes()["bodies"] == 0
+                assert sidekick._COMPARISONS.sizes()["manifests"] == 0
+            pending = observed_object_failures.pending(target, commits)
+            assert [failure.oid for failure in pending] == [oid]
+            # Recovery must keep the displayed endpoints even after the PR ref moves.
+            pinned_git(replica.origin, "update-ref", "refs/pull/1/head", replica["M5"])
+            if damage == "missing":
+                assert await recover_comparison_objects(published, commits) == pending
+                assert await read_store_blob(target, oid) == authentic
+                assert observed_object_failures.pending(target, commits) == ()
+                ready = await client.get(route)
+                assert ready.status_code == 200, ready.text
+                assert ready.json()["patches"]
+            else:
+                with pytest.raises(pull_refs.PullRefError) as refused:
+                    await recover_comparison_objects(published, commits)
+                expected = "object_corrupt" if damage == "corrupt" else "commits_unavailable"
+                assert refused.value.state == expected
+                assert observed_object_failures.pending(target, commits) == pending
+        assert fingerprint(checkout) == before
+
+    asyncio.run(run())

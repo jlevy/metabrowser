@@ -1427,8 +1427,6 @@ def test_serif_is_only_for_documents() -> None:
                     assert value == "var(--prose-sans-font)", (
                         f"{path.name} {selector} points the prose face at {value}"
                     )
-    root = dict(_rules_of(styles))[":root"]
-    assert "".join(root["--message-measure"].split()).endswith("*var(--sans-char-advance))")
     assert dict(_rules_of(styles))['html[data-prose-font="sans"]']["--doc-char-advance"] == (
         "var(--sans-char-advance)"
     )
@@ -1436,6 +1434,7 @@ def test_serif_is_only_for_documents() -> None:
     page = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))[".github-pull"]
     assert page["--kpress-host-font-prose"] == "var(--prose-sans-font)"
     assert page["--doc-measure"] == "var(--message-measure)"
+    assert "var(--message-char-advance, var(--sans-char-advance))" in page["--message-measure"]
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "### Serif Is for Documents" in doc
     assert "test_serif_is_only_for_documents" in doc

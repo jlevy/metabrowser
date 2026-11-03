@@ -42,6 +42,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pydantic import BaseModel, ValidationError
 
+from metabrowser.builtin_plugins.github.checkout import claim_source
 from metabrowser.builtin_plugins.github.gh import GhResponse
 from metabrowser.builtin_plugins.github.gh_lists import (
     READ_FAILURES,
@@ -60,6 +61,8 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     unconditional_304,
     utc_stamp,
 )
+from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+from metabrowser.builtin_plugins.github.pull_manifest import prepare_pull_manifest
 from metabrowser.builtin_plugins.github.pull_record import (
     API_PAGE_SIZE,
     MAX_BODY_BYTES,
@@ -590,7 +593,9 @@ async def _read_api(
 # ── The refresh ─────────────────────────────────────────────────
 
 
-def _owner_and_repo(published: PublishedSource) -> tuple[str, str]:
+def _owner_and_repo(published: PublishedSource | ListedRepository) -> tuple[str, str]:
+    if isinstance(published, ListedRepository):
+        return published.owner, published.repo
     parsed = parse_repository_url(published.source.normalized)
     if parsed is None:
         raise PullDataError(
@@ -630,9 +635,11 @@ def _comparison_of(endpoints: PullEndpoints) -> Comparison:
     )
 
 
-async def _write(published: PublishedSource, record: PullRecord) -> PullRecord:
+async def _write(published: PublishedSource | ListedRepository, record: PullRecord) -> PullRecord:
     try:
         final = fit_record(record)
+        if not isinstance(published, ListedRepository):
+            await prepare_pull_manifest(published, final)
         await asyncio.to_thread(write_pull_record, published.home, published.slug, final)
     except RecordTooLargeError as exc:
         raise PullDataError("record_too_large", str(exc)) from exc
@@ -697,7 +704,7 @@ async def _with_comparison(published: PublishedSource, record: PullRecord) -> Pu
     )
 
 
-async def _refresh(published: PublishedSource, number: int) -> PullRecord:
+async def _refresh(published: PublishedSource | ListedRepository, number: int) -> PullRecord:
     owner, repo = _owner_and_repo(published)
     cached = await asyncio.to_thread(read_pull_record, published.home, published.slug, number)
     for attempt in range(_READ_ATTEMPTS):
@@ -711,6 +718,11 @@ async def _refresh(published: PublishedSource, number: int) -> PullRecord:
                 "the active gh account changed during the read, so what was read is "
                 "discarded; open it again",
             )
+        if isinstance(published, ListedRepository):
+            # A checkout's: no store to fetch the head into, and nothing fetched into the
+            # checkout, so there is no comparison. A server with a store refreshes it.
+            unavailable = {**record.unavailable, "comparison": "no_store"}
+            return await _write(published, record.model_copy(update={"unavailable": unavailable}))
         pull = record.pull
         try:
             fetched = await fetch_pull_head(
@@ -728,15 +740,76 @@ async def _refresh(published: PublishedSource, number: int) -> PullRecord:
     raise AssertionError("unreachable")
 
 
-async def refresh_pull_request(published: PublishedSource, number: int) -> PullRecord:
+async def _recover_comparison(
+    published: PublishedSource, number: int, pair: tuple[str, str] | None
+) -> None:
+    """An explicit retry's displayed selection, or the cached selection for number-only retry."""
+    from metabrowser.builtin_plugins.github.pull_manifest import invalidate_pull_manifest
+    from metabrowser.cache.object_recovery import recover_comparison_objects
+    from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX
+    from metabrowser.cache.pull_refs import base_branch_usable, ref_commit
+    from metabrowser.git.object_failures import observed_object_failures
+    from metabrowser.git.process import repository_store_target
+
+    if pair is None:
+        cached = await asyncio.to_thread(read_pull_record, published.home, published.slug, number)
+        if not isinstance(cached, PullRecord):
+            return
+        if cached.comparison is not None:
+            pair = (cached.comparison.base, cached.comparison.head)
+        else:
+            base = cached.pull.base.sha
+            branch = cached.pull.base.ref
+            if cached.pull.state == "open" and await base_branch_usable(published, branch):
+                base = await ref_commit(published, BRANCH_MIRROR_PREFIX + branch) or base
+            pair = (base, cached.pull.head.sha)
+    target = repository_store_target(git_dir=published.git_dir)
+    failures = observed_object_failures.pending(target, pair)
+    if any(failure.state == "object_corrupt" for failure in failures):
+        try:
+            await asyncio.to_thread(invalidate_pull_manifest, published, pair)
+        except (OSError, PrivateStorageError) as exc:
+            raise PullDataError(
+                "cache_unwritable", "the comparison cache could not discard damaged metadata"
+            ) from exc
+    try:
+        await recover_comparison_objects(published, pair)
+    except PullRefError as exc:
+        state: PullDataState
+        match exc.state:
+            case "object_corrupt":
+                state = "object_corrupt"
+            case "commits_unavailable":
+                state = "commits_unavailable"
+            case "comparison_too_large":
+                state = "comparison_too_large"
+            case _:
+                state = _fetch_failure(exc).state
+        raise PullDataError(state, str(exc)) from exc
+
+
+async def refresh_pull_request(
+    published: PublishedSource | ListedRepository,
+    number: int,
+    *,
+    recover: bool = False,
+    recovery_pair: tuple[str, str] | None = None,
+) -> PullRecord:
     """Read pull request *number* of *published* from GitHub and cache it; see the module.
 
-    Raises only :class:`PullDataError`. A failure leaves any previous record in place.
-    How it ended is kept beside the record either way; see :func:`last_refresh`.
+    *published* is a mirror's source, or a checkout's repository, which has no store: its
+    record is written with no comparison, ``no_store``, and its source is published first
+    if it has never been (:func:`~.checkout.claim_source`). Raises only
+    :class:`PullDataError`. A failure leaves any previous record in place. How it ended is
+    kept beside the record either way; see :func:`last_refresh`.
     """
 
     try:
         try:
+            if isinstance(published, ListedRepository):
+                published = await asyncio.to_thread(claim_source, published)
+            elif recover:
+                await _recover_comparison(published, number, recovery_pair)
             record = await _refresh(published, number)
         except GitError as exc:
             raise _git_failure(number, exc) from exc
@@ -754,7 +827,9 @@ async def refresh_pull_request(published: PublishedSource, number: int) -> PullR
     return record
 
 
-def _keep_stamp(published: PublishedSource, number: int, fields: dict[str, Any]) -> None:
+def _keep_stamp(
+    published: PublishedSource | ListedRepository, number: int, fields: dict[str, Any]
+) -> None:
     try:
         stamp = PullRefreshStamp.model_validate(fields)
         write_pull_refresh(published.home, published.slug, number, stamp)
@@ -763,7 +838,9 @@ def _keep_stamp(published: PublishedSource, number: int, fields: dict[str, Any])
         log.debug("could not keep how pull request %s's refresh ended: %s", number, exc)
 
 
-def last_refresh(published: PublishedSource, number: int) -> PullRefreshStamp | None:
+def last_refresh(
+    published: PublishedSource | ListedRepository, number: int
+) -> PullRefreshStamp | None:
     """How the last refresh of pull request *number* ended, in any process. Blocking."""
 
     return read_pull_refresh(published.home, published.slug, number)

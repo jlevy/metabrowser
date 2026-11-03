@@ -17,7 +17,7 @@
 // no-op for the same comparison, and a record that moved its head cancels the old request.
 
 /**
- * @typedef {{left: string, right: string}} ComparisonEnds
+ * @typedef {{left: string, right: string, route?: string}} ComparisonEnds
  *
  * @typedef {{
  *   load(comparison: ComparisonEnds, signal: AbortSignal): Promise<unknown>,
@@ -39,7 +39,7 @@
  */
 
 /** @param {ComparisonEnds} comparison */
-const keyOf = (comparison) => `${comparison.left}...${comparison.right}`;
+const keyOf = (comparison) => comparison.route ?? `${comparison.left}...${comparison.right}`;
 
 /**
  * The prefetch of one page. Its only way into the diff is `take`.

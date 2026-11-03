@@ -55,6 +55,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     Sha,
     Timestamp,
     Url,
+    ensure_pulls_directory,
     read_refresh_stamp,
     write_refresh_stamp,
 )
@@ -66,12 +67,10 @@ from metabrowser.cache.paths import (
     source_pull_files_refresh,
     source_pull_list,
     source_pull_list_refresh,
-    source_pulls_directory,
 )
 from metabrowser.home import (
     PrivateStorageError,
     SharedEntryPolicy,
-    ensure_private_directory,
     write_private_file_atomic,
 )
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
@@ -273,7 +272,7 @@ def write_pull_list(home: Path, slug: str, listed: PullList) -> None:
     """
 
     data = serialize_pull_list(listed)
-    ensure_private_directory(home, source_pulls_directory(slug))
+    ensure_pulls_directory(home, slug)
     write_private_file_atomic(home, source_pull_list(slug, listed.list), data)
 
 
@@ -519,7 +518,7 @@ def write_pull_files(home: Path, slug: str, listed: PullFileList) -> None:
     """
 
     data = serialize_pull_files(listed)
-    ensure_private_directory(home, source_pulls_directory(slug))
+    ensure_pulls_directory(home, slug)
     write_private_file_atomic(home, source_pull_files(slug, listed.number), data)
 
 
