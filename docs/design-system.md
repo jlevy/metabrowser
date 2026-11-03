@@ -158,6 +158,32 @@ tokens they govern. `tests/test_chrome_typography.py` enforces that list across 
 and plugin stylesheets, so a new monospace use site fails the build until it is
 classified.
 
+### Serif Is for Documents
+
+Serif is reserved for a committed document rendered as one, such as a Markdown file or a
+README on Overview, and only when the reader’s reading font is serif.
+Everything else is sans in either reading font: chrome, and the messages written about
+the content, such as a pull request’s description, comments, and reviews, a commit
+message, and a notice.
+The dividing line is again what the text is.
+A document is what the repository holds, and the reading font exists for reading it at
+length. A message is conversation about the content, and setting it in the document’s
+face makes the two read as one thing.
+
+A message reads at the document’s size in `--prose-sans-font`, the face a document takes
+under the sans reading font, so the face is the only difference, and a pull request’s
+text looks the same as its Markdown would in sans.
+Its width is `--message-measure`, the reader’s same “Max text width” in characters (see
+[Reading Width](#reading-width)).
+
+The serif face reaches a page only through KPress’s `--kpress-host-font-prose` hook,
+which `static/styles.css` points at the reading font.
+A surface of messages that renders through KPress points that hook at
+`--prose-sans-font` and `--doc-measure` at `--message-measure` on its own root, as the
+pull request page does on `.github-pull`, so its KPress prose and its column follow
+together. No other rule names a serif.
+`test_serif_is_only_for_documents` holds this.
+
 ### Keyboard Keys
 
 Every keyboard key rendered anywhere in the app uses the `.kbd` component: always all
@@ -249,8 +275,8 @@ Chrome (interface) sizes:
   views, logs, raw JSON.
 - `--micro-font-size` (10px): deliberately minimized marks — the brand line.
 - `--page-title-font-size` (24px): the title of a page no file stands behind, a pull
-  request’s. It sits above the 25.5px regular serif of a first heading in the text below
-  by its bold sans weight, not by its size.
+  request’s. It sits above the 25.5px regular first heading of the text below by its
+  bold weight, not by its size.
 
 Document (rendered prose) sizes are a single token:
 
@@ -324,14 +350,19 @@ Three tokens, all on `:root`:
 | --- | --- |
 | `--doc-max-chars` | the reader’s setting; the menu writes it, the pre-paint script seeds it |
 | `--doc-char-advance` | average glyph advance per em for the current reading face |
+| `--sans-char-advance` | the same for the interface sans, which messages read in |
 | `--doc-measure` | the resolved length: base × chars × advance |
+| `--message-measure` | the same characters for a message, at the sans advance |
 
 `--doc-measure` is the single source of truth for how wide prose reads anywhere in the
-app, and the only place the character count is converted.
-Every prose surface reads it: the KPress bridge, the folder Overview’s card widths, the
-pull request page’s column, and the fallback `md-body` path a plugin gets when it
-renders Markdown without KPress.
-A new surface that lays out prose reads `--doc-measure`, never a literal.
+app, and it and `--message-measure` beside it are the only places the character count is
+converted. Every prose surface reads it: the KPress bridge, the folder Overview’s card
+widths, the pull request page’s column, and the fallback `md-body` path a plugin gets
+when it renders Markdown without KPress.
+A surface of messages, the pull request page, points `--doc-measure` at
+`--message-measure` on its own root, so the bridge and its column read the message width
+with no second spelling ([Serif Is for Documents](#serif-is-for-documents)). A new
+surface that lays out prose reads `--doc-measure`, never a literal.
 Markdown rebuilt from an untrusted source goes through
 `MetabrowserInertHtml.kpressProse`, which sets it in KPress’s prose element with the
 classes the allowlist removed, so it reaches the same rules.
@@ -951,12 +982,13 @@ prose, and Split needs the room.
 
 ### Text
 
-A description, comment, or review body is prose, and it reads at the document’s size and
-face rather than chrome’s. The page sets it in
-`article.kpress.kpress-inert > .kpress-prose` under `.metabrowser-kpress-host`, the path
-a mirrored Markdown file takes, so KPress’s own rules apply: the prose size and reading
-font, the heading ramp, the graded code sizes in a paragraph, a list, a table, and a
-heading, and the reader’s “Max text width”.
+A description, comment, or review body is prose, and it reads at the document’s size
+rather than chrome’s, in sans whatever the reading font, because it is a message and not
+a committed document ([Serif Is for Documents](#serif-is-for-documents)). The page sets
+it in `article.kpress.kpress-inert > .kpress-prose` under `.metabrowser-kpress-host`,
+the path a mirrored Markdown file takes, so KPress’s own rules apply: the prose size,
+the heading ramp, the graded code sizes in a paragraph, a list, a table, and a heading,
+and the reader’s “Max text width”.
 Nothing restates a ratio.
 The one rule the page adds removes the first and last block’s outer margin, because the
 card’s padding is the space around a text.
@@ -969,7 +1001,7 @@ A text stays inert. The server and `static/inert-html.js` reduce it to the allow
 KPress script loads, and every class in the article is the page’s, chosen by element.
 The route’s answer names KPress’s stylesheets, and that list is the same for every text,
 so a comment does not choose what the page loads.
-Until its render arrives a text shows as plain text in the same reading face and size.
+Until its render arrives a text shows as plain text in the same face and size.
 
 ### Chrome
 

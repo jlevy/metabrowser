@@ -34,6 +34,7 @@ import re
 from metabrowser.git.log import parse_decoration, parse_epoch
 from metabrowser.git.process import GitCommandError, run_git_at
 from metabrowser.git.repo import RepoContext
+from metabrowser.git.shallow import recorded_parents
 from metabrowser.git.wire import (
     GitAuthor,
     GitCommit,
@@ -43,6 +44,18 @@ from metabrowser.git.wire import (
     is_full_revision,
 )
 from metabrowser.settings import GIT_COMMIT_MAX_FILES
+
+# What a commit at a shallow boundary reports for its changes: nothing known. Git grafts
+# such a commit into a root and ``show`` diffs it against the empty tree, so the counts it
+# gives are a whole tree's, not the commit's.
+_CHANGES_UNKNOWN: GitCommitStats = {
+    "files_changed": None,
+    "files_modified": None,
+    "files_added": None,
+    "files_deleted": None,
+    "additions": None,
+    "deletions": None,
+}
 
 _FIELD_SEP = "\x1f"
 
@@ -367,7 +380,22 @@ async def read_commit_detail(
         if any(marker in exc.stderr_summary.lower() for marker in _UNKNOWN_REVISION_MARKERS):
             return None
         raise
-    return parse_commit_detail(raw, context, max_files=max_files)
+    detail = parse_commit_detail(raw, context, max_files=max_files)
+    if detail is None or detail["commit"]["parent_ids"]:
+        return detail
+    if not await recorded_parents(location, detail["commit"]["id"]):
+        return detail
+    # A commit at a shallow boundary: Git showed it as a root, against the empty tree.
+    # Its message and author stand; what it changed is not known here, and the
+    # comparison route says why (``parent_unavailable``).
+    return GitCommitDetail(
+        is_repo=True,
+        commit=detail["commit"],
+        body=detail["body"],
+        stats=dict(_CHANGES_UNKNOWN),  # pyright: ignore[reportArgumentType]
+        files=[],
+        files_truncated=False,
+    )
 
 
 __all__ = [

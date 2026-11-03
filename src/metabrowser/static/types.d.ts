@@ -16,6 +16,14 @@ type MetabrowserRenderContext = {
 type MetabrowserViewSpec = {
   render: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   dispose?: (container: HTMLElement) => void;
+  /**
+   * What `render` would fetch for a comparison, fetched before the view is shown, at the
+   * address `render` asks, so the browser's cache answers the render. The diff view has one.
+   */
+  prefetch?: (
+    comparison: { left: string; right: string; base_policy: "direct" | "merge_base" },
+    signal?: AbortSignal,
+  ) => Promise<unknown>;
 };
 
 type MetabrowserViewDescriptor = {
@@ -461,6 +469,7 @@ type MetabrowserPullRouteRuntime = Readonly<{
     show(
       route: Readonly<{ number: number; tab: string }>,
     ): Promise<{ status: "opened" | "cancelled" }>;
+    page(): Handle | null;
     shown(): number | null;
   }>;
   parsePull(pathname: string): Readonly<{ number: number; tab: string }> | null;
@@ -1678,6 +1687,9 @@ type MetabrowserCatalogFeedApi = Readonly<{
   onResync(): void;
   onSentinelSnapshot(): void;
   start(): void;
+  /** Keep the bulk fetch from starting until `release`. */
+  hold(): void;
+  release(): void;
 }>;
 
 type MetabrowserCatalogFeedRuntime = Readonly<{
@@ -1851,6 +1863,7 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
     getFileIcon?(path: string): { cls?: string; svg?: string };
     maxRows?: number;
     onNotFound?(path: string): void | Promise<void>;
+    onOpen?(): void;
     openFile(path: string): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
     overlay: MetabrowserOverlayRuntime;
     resolveFocusFallback?(previous: HTMLElement | null): HTMLElement | null;
@@ -2233,6 +2246,10 @@ declare global {
     pull_request: number | null;
     selection_state: "pending" | "found" | "not_found" | "fetch_failed" | "superseded" | null;
     selection_href: string | null;
+    /** The checkout a mirror borrows objects from, beside `location`; null otherwise. */
+    borrows: string | null;
+    /** Whether the mirror's history stops at a shallow boundary. */
+    shallow: boolean;
   };
 
   /** The pin and ref a page was rendered for. */
@@ -2534,13 +2551,17 @@ declare global {
     similarity?: number;
   };
 
+  /**
+   * Every count is null for a commit at a shallow boundary, whose changes are not known
+   * here; the panel shows `?` for each, and the comparison says `parent_unavailable`.
+   */
   type MetabrowserGitCommitStats = {
-    files_changed: number;
-    files_modified: number;
-    files_added: number;
-    files_deleted: number;
-    additions: number;
-    deletions: number;
+    files_changed: number | null;
+    files_modified: number | null;
+    files_added: number | null;
+    files_deleted: number | null;
+    additions: number | null;
+    deletions: number | null;
   };
 
   type MetabrowserGitCommitDetail = {
@@ -2776,6 +2797,10 @@ declare global {
     /** Container kinds by extension; see arch-nav-containers.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {
+      /** This build's tag, which a request names to be told its answer cannot change. */
+      BUILD_TAG?: string;
+      /** The served store's token, named beside the build for the same reason; a folder has none. */
+      STORE_TAG?: string;
       CAPABILITIES?: {
         active_content: boolean;
         mutations: boolean;

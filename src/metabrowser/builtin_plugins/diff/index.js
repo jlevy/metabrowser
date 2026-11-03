@@ -33,17 +33,29 @@ function comparisonKey(comparison) {
   return `${comparison.left}${separator}${comparison.right}`;
 }
 
+// Every comparison request names this build and, on a store, the store, so the browser may
+// keep an answer that cannot change without asking again: the server says so only for an
+// address that names both, and a folder's page has no store to name. This is the one place
+// the address is spelled; the pull-request page's prefetch asks `prefetch` below for it, so
+// the browser's cache, keyed by the address, answers the mount from the prefetch.
+const SETTINGS = window.METABROWSER_SETTINGS;
+/** @type {Record<string, string>} */
+const SCOPE_PARAMS = {
+  ...(typeof SETTINGS?.BUILD_TAG === "string" ? { build: SETTINGS.BUILD_TAG } : {}),
+  ...(typeof SETTINGS?.STORE_TAG === "string" ? { store: SETTINGS.STORE_TAG } : {}),
+};
+
 /** @param {string} key @returns {Record<string, string>} */
 function comparisonParams(key) {
   const merged = key.split("...");
   if (merged.length === 2) {
-    return { left: merged[0], right: merged[1], base_policy: "merge_base" };
+    return { left: merged[0], right: merged[1], base_policy: "merge_base", ...SCOPE_PARAMS };
   }
   const direct = key.split("..");
   if (direct.length === 2) {
-    return { left: direct[0], right: direct[1], base_policy: "direct" };
+    return { left: direct[0], right: direct[1], base_policy: "direct", ...SCOPE_PARAMS };
   }
-  return { revision: key };
+  return { revision: key, ...SCOPE_PARAMS };
 }
 
 /**
@@ -224,4 +236,21 @@ mb.registerView("diff", "diff", {
       viewFile,
     });
   },
+  /**
+   * The comparison `render` would fetch for `ctx.comparison`, fetched now, for a page that
+   * will show it: the pull-request page's Conversation. The answer is handed back to
+   * `render` as `ctx.raw`, and a Back onto the page is answered by the browser's cache,
+   * because this request's address is the one `render` would ask.
+   *
+   * @param {{left: string, right: string, base_policy: "direct" | "merge_base"}} comparison
+   * @param {AbortSignal} [signal]
+   * @returns {Promise<unknown>}
+   */
+  prefetch: (comparison, signal) =>
+    mb.fetchPluginData(
+      "diff",
+      "comparison",
+      comparisonParams(comparisonKey(comparison)),
+      signal === undefined ? undefined : { signal },
+    ),
 });

@@ -7701,7 +7701,13 @@ function startInventoryEventStream() {
 // navigation.js is linked by the same shell response, immediately ahead of this
 // script, so the module and this controller always exist together.
 var navigationController = window.MetabrowserNavigationRoute.createController({
-  apply: applyNavigationTarget,
+  apply(target, context) {
+    // A target is a file or a folder, which read the catalog; a pull request's page has none.
+    if (target) {
+      quickFileCatalogFeed?.release();
+    }
+    return applyNavigationTarget(target, context);
+  },
 });
 window.MetabrowserNavigationRoute.attachController(navigationController);
 
@@ -8174,6 +8180,11 @@ function initQuickFileFinder() {
     quickFileCatalogFeed = window.MetabrowserCatalogFeed.create({
       catalog: knownFileCatalog,
     });
+    // A pull request's page does not read the catalog. Its palette and the first file the
+    // reader leaves for do, and each releases it (`catalog-feed.js#hold`).
+    if (window.location.pathname.startsWith(PULL_ROUTE_PREFIX)) {
+      quickFileCatalogFeed.hold();
+    }
     // The stream can open while its on-demand catalog modules are loading.
     // Start here if that open already happened, or if this browser has no live
     // transport; otherwise onopen starts it. JavaScript dispatches neither
@@ -8199,6 +8210,7 @@ function initQuickFileFinder() {
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
     maxRows: QUICK_FILE_RESULT_LIMIT,
+    onOpen: () => quickFileCatalogFeed?.release(),
     overlay: window.MetabrowserOverlay,
     // Coverage grows while the palette is open — the bulk feed lands, then
     // live deltas — so an open search re-runs instead of keeping the result
@@ -8235,6 +8247,7 @@ function clearBrowserFileCache(path) {
 if (typeof window !== "undefined") {
   window.metabrowser.debug = Object.freeze({
     clearFileCache: clearBrowserFileCache,
+    pullPage: () => pullPageHost?.page() ?? null,
     selectFile: selectFile,
   });
 

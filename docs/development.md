@@ -164,7 +164,9 @@ For code that is large, narrowly used, or both.
 
 The tier applies to data as well as code.
 A bulk payload that only one surface reads follows the same rule as a library that only
-one view calls.
+one view calls. A pull request’s Conversation prefetches Files changed, its comparison
+and the diff plugin’s modules, and `builtin_plugins/github/comparison-prefetch.js`
+records what that costs.
 
 ### The Lazy Loading Mechanism
 

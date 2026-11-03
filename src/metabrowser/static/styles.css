@@ -306,9 +306,12 @@
        PT Serif       0.4335  -> 102 chars = 44.2em
        Source Sans 3  0.4039  -> 102 chars = 41.2em */
   --doc-char-advance: 0.4335;
+  /* The interface sans's advance, which a message reads in under either reading
+     font (docs/design-system.md, "Serif Is for Documents"). */
+  --sans-char-advance: 0.4039;
   /* The resolved reading width, as a length. THE single source of truth for
-     how wide prose reads anywhere in the app, and the only place the character
-     count is converted.
+     how wide prose reads anywhere in the app, and with --message-measure below
+     the only place the character count is converted.
 
      A Metabrowser-owned name on purpose. The obvious move is to set
      --kpress-measure here and let everything read that, but KPress declares
@@ -327,6 +330,14 @@
     var(--document-body-font-size) *
     var(--doc-max-chars) *
     var(--doc-char-advance)
+  );
+  /* The same "Max text width" for a message, which is sans whatever the reading
+     font. A surface of messages points --doc-measure at it on its own root, so
+     its column and the KPress bridge follow without a second spelling. */
+  --message-measure: calc(
+    var(--document-body-font-size) *
+    var(--doc-max-chars) *
+    var(--sans-char-advance)
   );
 
   --tree-pane-width: 300px;
@@ -2380,7 +2391,7 @@ html[data-prose-font="sans"] {
   /* The sans face sets narrower than the serif, so the same character count is
      a shorter line. Swapping the ratio with the face keeps "Max text width:
      105" honest across both reading modes instead of only the default one. */
-  --doc-char-advance: 0.4039;
+  --doc-char-advance: var(--sans-char-advance);
 }
 /* The frame: KPress's `.kpress-frame`, a non-scrolling wrapper of the scroll
    pane (server.py). Its transform makes it the containing block for KPress's

@@ -31,6 +31,8 @@
 // stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes in a
 // KPress article of its own making, so a text reads as the same Markdown in a file does.
 
+import { createComparisonPrefetch } from "./comparison-prefetch.js";
+
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
 // otherwise bounds how late a page learns of a refresh another tab started.
@@ -101,6 +103,10 @@ const PANE_KEYS = new Set([
 ]);
 // The key of a place in `history.state`, which no other code of the shell writes into.
 const PLACE_KEY = "pullPlace";
+
+// How long an idle browser may take before Files changed is fetched anyway. A page rendering
+// its conversation is not idle, and the comparison should not wait for all of it.
+const PREFETCH_IDLE_TIMEOUT_MS = 300;
 
 const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
@@ -234,6 +240,7 @@ const TRUNCATED = Object.freeze({
  *   notes: string[],
  *   comparison: {left: string, right: string, headMoved: boolean} | null,
  *   browse: BrowseCode | null,
+ *   filesUnavailable: string,
  *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
  * }} PullModel
  */
@@ -622,6 +629,26 @@ function notes(record) {
 }
 
 /**
+ * What Files changed says in place of a diff, from the state the record names. Pure.
+ *
+ * A merge base the store's shallow history cannot settle is not a failure to read: the
+ * diff could be computed and would be a guess, so the page says that it does not guess
+ * and what would settle it.
+ *
+ * @param {unknown} why The record's `unavailable.comparison`.
+ * @returns {string}
+ */
+export function filesUnavailableText(why) {
+  if (why === "base_uncertain") {
+    return "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
+  }
+  if (why === "commits_unavailable") {
+    return "Files changed is unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
+  }
+  return "Files changed is unavailable: the pull request's base could not be compared with its head.";
+}
+
+/**
  * What the page shows for one answer of the pull route. Pure.
  *
  * @param {PullEnvelope | null} envelope
@@ -647,6 +674,7 @@ export function describePull(envelope, page) {
     notes: [],
     comparison: null,
     browse: null,
+    filesUnavailable: filesUnavailableText(null),
     headOffer: null,
   };
   if (envelope === null) {
@@ -738,6 +766,7 @@ export function describePull(envelope, page) {
       model.browse = { kind: "switch", ref: headRef, at: head.slice(0, 12) };
     }
   }
+  model.filesUnavailable = filesUnavailableText(record.unavailable?.comparison ?? null);
   const comparison = record.comparison;
   if (comparison && typeof comparison.base === "string" && typeof comparison.head === "string") {
     model.comparison = {
@@ -2022,12 +2051,49 @@ export function mountPullPage(container, ctx, mb) {
     body.replaceChildren(...sections);
   }
 
+  /** Settles when the diff last asked for has mounted, or was replaced. */
+  let diffMounted = Promise.resolve();
+
   function disposeDiff() {
     diffHandle?.dispose?.();
     diffHandle = null;
     diffHost = null;
     diffFor = null;
   }
+
+  const prefetch = createComparisonPrefetch({
+    // The diff plugin spells the address, so the request `mountDiff` would make is this
+    // one, byte for byte, and the browser's cache answers a Back from it.
+    async load(comparison, signal) {
+      await mb.ensureKindAssets("diff");
+      const view =
+        /** @type {{prefetch?: (comparison: object, signal: AbortSignal) => Promise<unknown>} | null} */ (
+          mb.getRegisteredView("diff", "diff")
+        );
+      if (typeof view?.prefetch !== "function") {
+        throw new Error("the diff view has no prefetch");
+      }
+      return view.prefetch(
+        { left: comparison.left, right: comparison.right, base_policy: "merge_base" },
+        signal,
+      );
+    },
+    warm() {
+      void mb.ensureKindAssets("diff").catch(() => {});
+    },
+    schedule: (callback) =>
+      typeof window.requestIdleCallback === "function"
+        ? { idle: window.requestIdleCallback(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }) }
+        : { timer: window.setTimeout(callback, PREFETCH_IDLE_TIMEOUT_MS) },
+    cancel(handle) {
+      const { idle, timer } = /** @type {{idle?: number, timer?: number}} */ (handle);
+      if (idle !== undefined) {
+        window.cancelIdleCallback(idle);
+      }
+      window.clearTimeout(timer);
+    },
+    isVisible: () => document.visibilityState === "visible",
+  });
 
   /** @param {{left: string, right: string}} comparison */
   async function mountDiff(comparison) {
@@ -2036,6 +2102,7 @@ export function mountPullPage(container, ctx, mb) {
     diffHost = host;
     diffFor = comparison;
     body.replaceChildren(host);
+    const raw = prefetch.take(comparison);
     await mb.ensureKindAssets("diff");
     const view = mb.getRegisteredView("diff", "diff");
     if (diffHost !== host) {
@@ -2045,9 +2112,14 @@ export function mountPullPage(container, ctx, mb) {
       host.textContent = "The diff plugin is unavailable.";
       return;
     }
+    const prefetched = await raw;
+    if (diffHost !== host) {
+      return;
+    }
     const handle = /** @type {{dispose?: () => void} | null} */ (
       await view.render(host, {
         comparison: { left: comparison.left, right: comparison.right, base_policy: "merge_base" },
+        ...(prefetched === undefined ? {} : { raw: prefetched }),
       })
     );
     if (diffHost !== host) {
@@ -2063,20 +2135,19 @@ export function mountPullPage(container, ctx, mb) {
     const action = filesAction(diffFor, comparison);
     if (comparison === null || action === "unavailable") {
       disposeDiff();
-      body.replaceChildren(
-        notice("error", [
-          "Files changed is unavailable: the pull request's base could not be compared with its head.",
-        ]),
-      );
+      body.replaceChildren(notice("error", [model.filesUnavailable]));
       return;
     }
     if (action === "mount") {
-      void mountDiff(comparison);
+      diffMounted = mountDiff(comparison);
     } else if (action === "offer") {
       const offer = h("button", { type: "button", class: "btn github-pull-newer" }, [
         "Show the newer changes",
       ]);
-      offer.addEventListener("click", () => void mountDiff(comparison));
+      offer.addEventListener("click", () => {
+        // What `whenFilesReady` waits for is the diff last asked for, this one included.
+        diffMounted = mountDiff(comparison);
+      });
       body.querySelector(".github-pull-newer-offer")?.remove();
       const said = notice(null, [
         `The pull request now ends at ${comparison.right.slice(0, 12)}. `,
@@ -2107,6 +2178,9 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     disposeDiff();
+    if (model.comparison !== null) {
+      prefetch.want(model.comparison);
+    }
     const key = conversationKey(model);
     const action = conversationAction(
       { key: bodyKey, recordAt: markdownRecord },
@@ -2172,26 +2246,84 @@ export function mountPullPage(container, ctx, mb) {
     },
     { number, tab: typeof ctx.tab === "string" ? ctx.tab : "" },
   );
-  document.addEventListener("visibilitychange", controller.onVisibilityChange, {
-    signal: listening.signal,
-  });
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      controller.onVisibilityChange();
+      // A page opened behind another tab is not prefetched until it is looked at: the
+      // wish is not recorded while hidden, so it is asked again when shown.
+      if (document.visibilityState === "visible" && shown?.tab !== "files") {
+        const comparison = shown?.comparison ?? null;
+        if (comparison !== null) {
+          prefetch.want(comparison);
+        }
+      }
+    },
+    { signal: listening.signal },
+  );
   void controller.start();
   const place = pane === null ? null : keepPlace(pane, body, () => shown?.tab ?? "", number);
   place?.keeper.land();
   return Object.freeze({
-    /** @param {string} next */
+    /**
+     * Show a tab. A tab owns the address (Browser URL Grammar), so a call from beside the
+     * page goes through the route, which moves the address and calls back here, and Back
+     * then behaves as it does after a click; the route's own calls find the address in
+     * place already.
+     *
+     * @param {string} next
+     */
     setTab(next) {
+      const route = `/pull/${number}${next ? `/${next}` : ""}`;
+      if (TABS.includes(next) && window.location.pathname.replace(/\/$/, "") !== route) {
+        void open({ number, tab: next });
+        return;
+      }
       const changed = controller.snapshot().tab !== next;
       controller.setTab(next);
       if (changed) {
         place?.keeper.land();
       }
     },
+    /**
+     * Go to a file of Files changed, for a list of the pull request's files beside the page.
+     * docs/large-content-rendering.md ("Going to a file") says what it promises.
+     *
+     * @param {string} path
+     * @returns {import("../diff/diff-view.js").FileJump | {kind: "no_diff", path: string}}
+     */
+    scrollToFile(path) {
+      if (diffHandle === null) {
+        return { kind: "no_diff", path };
+      }
+      // A jump is the reader's own move, and a list beside the pane is not an input to it.
+      place?.keeper.readerMoved();
+      return /** @type {{scrollToFile: (path: string) => import("../diff/diff-view.js").FileJump}} */ (
+        diffHandle
+      ).scrollToFile(path);
+    },
+    /**
+     * Whether Files changed holds a path, typed as `scrollToFile` is: `no_diff` while no
+     * diff is mounted, else what the diff says, `file` or `not_in_comparison`.
+     *
+     * @param {string} path
+     * @returns {import("../diff/diff-view.js").FileLookup | {kind: "no_diff", path: string}}
+     */
+    fileForPath(path) {
+      const lookup =
+        /** @type {{fileForPath?: (path: string) => import("../diff/diff-view.js").FileLookup} | null} */ (
+          diffHandle
+        )?.fileForPath;
+      return typeof lookup === "function" ? lookup(path) : { kind: "no_diff", path };
+    },
+    /** Settles when a diff asked for by `setTab("files")` has mounted. */
+    whenFilesReady: () => diffMounted,
     dispose() {
       listening.abort();
       observer?.disconnect();
       place?.dispose();
       controller.dispose();
+      prefetch.dispose();
       disposeDiff();
     },
   });

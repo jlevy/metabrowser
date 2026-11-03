@@ -27,6 +27,7 @@ closed.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import logging
 from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -44,6 +45,7 @@ from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.cli.acquire_cli import _ACQUIRE_CLI_ERRORS, acquire_for_cli
 from metabrowser.cli.asgi_client import INDEX_READY_TIMEOUT_S
+from metabrowser.cli.clone_report import saying_while_waiting
 from metabrowser.cli.common import apply_log_level, maybe_cli_logging
 from metabrowser.cli.hangup import run_cancelling_on_hangup
 from metabrowser.cli.plugin_paths import apply_extra_plugin_dirs
@@ -170,20 +172,29 @@ class _Selected:
         return self.published.source.selection
 
 
-async def _select(source: GitSource, *, allow_pending: bool, serving: bool = False) -> _Selected:
+async def _select(
+    source: GitSource,
+    *,
+    allow_pending: bool,
+    serving: bool = False,
+    checkout: Path | None = None,
+) -> _Selected:
     """Acquire *source*, open the pull request it names, and resolve its selection.
 
     With *allow_pending*, a ref or commit a fetch could bring is not an error: the
     default branch is selected and ``pending`` is set. A mirror this call just cloned
     was fetched a moment ago, so there a missing selection is not found at once rather
     than waiting on a second fetch. *serving* is serve mode, which says when it opens a
-    source from the cache and, after a clone, that the server is next.
+    source from the cache and, after a clone, that the server is next. *checkout* is what
+    ``--checkout`` named.
     """
 
-    published = await acquire_for_cli(
-        source, announce_hit=serving, then="starting the server" if serving else ""
-    )
     selection = source.selection
+    pull_number = selection.pull_request if selection is not None else None
+    then = "" if not serving else "starting the server"
+    if serving and pull_number is not None:
+        then = f"reading pull request {pull_number}"
+    published = await acquire_for_cli(source, announce_hit=serving, then=then, checkout=checkout)
     if selection is None or selection.kind == "repository":
         return _Selected(
             published, published.default_revision, published.default_remote_ref, None, False
@@ -199,7 +210,13 @@ async def _select(source: GitSource, *, allow_pending: bool, serving: bool = Fal
             inside = await resolve_in_mirror(published, selection)
             if isinstance(inside, UnresolvedSelection) and inside.needs_fetch:
                 fetch = "always"
-        pull = await open_pull_for_cli(published, number, fetch=fetch)
+        reading = (
+            saying_while_waiting(f"reading pull request {number}")
+            if serving
+            else contextlib.nullcontext()
+        )
+        async with reading:
+            pull = await open_pull_for_cli(published, number, fetch=fetch)
         head = pull.resolution() if selection.kind == "pull_request" else None
         if head is not None:
             return _Selected(published, head.commit, head.ref, head, False, pull)
@@ -280,7 +297,7 @@ async def _open_pin(selected: _Selected) -> GitRevisionSubject:
 
 @asynccontextmanager
 async def _one_shot_pin(
-    source: GitSource, *, refresh_requested: bool = False
+    source: GitSource, *, refresh_requested: bool = False, checkout: Path | None = None
 ) -> AsyncGenerator[PublishedSource]:
     """Serve the selected pin in this process for one command, then close it.
 
@@ -295,7 +312,7 @@ async def _one_shot_pin(
     branch is served, and the selection once the fetch brings it.
     """
 
-    selected = await _select(source, allow_pending=refresh_requested)
+    selected = await _select(source, allow_pending=refresh_requested, checkout=checkout)
     # One command is one session: nothing a server configured earlier in this process
     # opens a second pin beside this one, and the generation starts at 1.
     reset_source_session()
@@ -337,6 +354,7 @@ def run_show_after_acquire(
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
     no_active_content: bool = False,
     allow_edits: bool = False,
+    checkout: Path | None = None,
 ) -> None:
     """Acquire a source, attach the pin its URL selects, and ``--show``."""
 
@@ -346,7 +364,7 @@ def run_show_after_acquire(
     from metabrowser.cli.show_cli import ashow_active
 
     async def _run() -> None:
-        async with _one_shot_pin(source) as published:
+        async with _one_shot_pin(source, checkout=checkout) as published:
             await ashow_active(
                 path=path,
                 fmt=fmt,
@@ -374,6 +392,7 @@ def run_pin_api(
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
     no_active_content: bool = False,
     allow_edits: bool = False,
+    checkout: Path | None = None,
     headers: bool = True,
 ) -> None:
     """Acquire a source, attach the pin its URL selects, and ``--api``."""
@@ -390,7 +409,9 @@ def run_pin_api(
     refresh_requested = data is not None and route.split("?", 1)[0] == "/api/source/refresh"
 
     async def _run() -> None:
-        async with _one_shot_pin(source, refresh_requested=refresh_requested) as published:
+        async with _one_shot_pin(
+            source, refresh_requested=refresh_requested, checkout=checkout
+        ) as published:
             await aissue_on_active_session(
                 route=route,
                 fmt=fmt,
@@ -418,6 +439,7 @@ def run_pin_api_check(
     index_timeout_s: float = INDEX_READY_TIMEOUT_S,
     no_active_content: bool = False,
     allow_edits: bool = False,
+    checkout: Path | None = None,
 ) -> None:
     """Acquire a source, attach the pin its URL selects, and ``--check-api``."""
 
@@ -432,7 +454,7 @@ def run_pin_api_check(
     apply_extra_plugin_dirs(plugins_dir)
 
     async def _run() -> None:
-        async with _one_shot_pin(source):
+        async with _one_shot_pin(source, checkout=checkout):
             await arun_api_check_active(label=source.normalized, index_timeout_s=index_timeout_s)
 
     run_cancelling_on_hangup(_run())
@@ -446,7 +468,9 @@ class _ServablePin:
     view_href: str
 
 
-async def _prove_servable(source: GitSource, *, path: str) -> _ServablePin:
+async def _prove_servable(
+    source: GitSource, *, path: str, checkout: Path | None = None
+) -> _ServablePin:
     """Acquire, open the selected pin once, and resolve where to open, then close it.
 
     The subject is not kept: its batch readers belong to this event loop, and the
@@ -455,7 +479,7 @@ async def _prove_servable(source: GitSource, *, path: str) -> _ServablePin:
     ``--path`` wins over the URL's own path.
     """
 
-    selected = await _select(source, allow_pending=True, serving=True)
+    selected = await _select(source, allow_pending=True, serving=True, checkout=checkout)
     subject = await _open_pin(selected)
     try:
         if path:
@@ -504,6 +528,7 @@ def run_serve_pin(
     log_level: str = "",
     no_active_content: bool = False,
     allow_edits: bool = False,
+    checkout: Path | None = None,
 ) -> None:
     """Acquire a source and serve the pin its URL selects until interrupted.
 
@@ -525,7 +550,7 @@ def run_serve_pin(
     apply_extra_plugin_dirs(plugins_dir)
     # Acquisition reacts to Ctrl-C, a hangup, and SIGTERM as it does under --no-serve:
     # staging is abandoned and the command exits. Only then does serving take over.
-    servable = run_cancelling_on_hangup(_prove_servable(source, path=path))
+    servable = run_cancelling_on_hangup(_prove_servable(source, path=path, checkout=checkout))
     stop_on_interrupt()
     selected = servable.selected
     ref = ref_short_name(selected.ref)

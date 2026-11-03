@@ -22,6 +22,7 @@ from metabrowser.git.process import (
     as_location,
     attached_worktree_target,
     detect_git_version,
+    empty_tree_oid,
     git_environment,
     parse_git_version,
     repository_store_target,
@@ -80,7 +81,7 @@ def test_isolated_policies_ignore_an_ambient_protocol_allowlist(
 
 
 def test_isolated_policies_drop_every_ambient_git_variable(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Isolation is an allowlist: a spawn gets exactly the variables its policy sets.
 
@@ -94,24 +95,38 @@ def test_isolated_policies_drop_every_ambient_git_variable(
     monkeypatch.setenv("GIT_DEFAULT_REF_FORMAT", "reftable")
     monkeypatch.setenv("GIT_TRACE", "1")
     monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -oProxyCommand=ambient")
+    monkeypatch.setenv("GIT_ATTR_SOURCE", "HEAD")
+    # The system attributes file is off for every isolated policy, acquisition included:
+    # a fetch reads no attributes, so there the variable is inert, and one allowlist is
+    # what isolation is. A store read also names the store's empty tree as the source of
+    # its attributes (review of #284, D1), which a spawn with no store has no tree for.
     isolated = {
         "GIT_OPTIONAL_LOCKS": "0",
         "GIT_TERMINAL_PROMPT": "0",
         "GIT_ASKPASS": "",
         "GIT_CONFIG_GLOBAL": os.devnull,
         "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_ATTR_NOSYSTEM": "1",
         "GIT_NO_LAZY_FETCH": "1",
     }
     ssh_batch = {"GIT_SSH_COMMAND": "ssh -oBatchMode=yes"}
-    for policy, forced in (
-        (ACQUISITION_POLICY, ssh_batch),
-        (STORE_READ_POLICY, ssh_batch),
-        (BATCH_OBJECT_POLICY, {}),
+    store = tmp_path / "store.git"
+    asyncio.run(run_git(["init", "-q", "--bare", "-b", "main", str(store)], cwd=tmp_path))
+    target = repository_store_target(git_dir=store)
+    empty_tree = {"GIT_ATTR_SOURCE": empty_tree_oid("sha1")}
+    for policy, forced, on_a_store in (
+        (ACQUISITION_POLICY, ssh_batch, {}),
+        (STORE_READ_POLICY, ssh_batch, empty_tree),
+        (BATCH_OBJECT_POLICY, {}, empty_tree),
     ):
         env = git_environment(policy)
         assert {
             name: value for name, value in env.items() if name.startswith("GIT_")
         } == isolated | forced, policy.name
+        env = git_environment(policy, target=target)
+        assert {
+            name: value for name, value in env.items() if name.startswith("GIT_")
+        } == isolated | forced | on_a_store, f"{policy.name} on a store"
     ordinary = git_environment(READ_POLICY)
     assert ordinary["GIT_ALLOW_PROTOCOL"] == "file:ext"
     assert ordinary["GIT_TRACE"] == "1"
@@ -120,6 +135,41 @@ def test_isolated_policies_drop_every_ambient_git_variable(
     assert ordinary["GIT_SSH_COMMAND"] == "ssh -oProxyCommand=ambient"
     assert "GIT_NO_LAZY_FETCH" not in ordinary
     assert "GIT_CONFIG_NOSYSTEM" not in ordinary
+    assert ordinary["GIT_ATTR_SOURCE"] == "HEAD"
+    assert "GIT_ATTR_SOURCE" not in git_environment(
+        STORE_READ_POLICY, target=attached_worktree_target(worktree=tmp_path, git_dir=store)
+    ), "a worktree's commands read its own attributes"
+
+
+def test_a_store_read_names_the_empty_tree_of_the_stores_object_format(tmp_path: Path) -> None:
+    """The attributes source is the empty tree of the store's own format (review of #284,
+    D1): a SHA-256 store has its own empty tree, and the SHA-1 one is refused there
+    (``fatal: bad --attr-source or GIT_ATTR_SOURCE``). The id is computed, not run, and
+    agrees with ``git hash-object -t tree /dev/null`` in that store."""
+    for object_format in ("sha1", "sha256"):
+        store = tmp_path / f"{object_format}.git"
+        asyncio.run(
+            run_git(
+                [
+                    "init",
+                    "-q",
+                    "--bare",
+                    "-b",
+                    "main",
+                    f"--object-format={object_format}",
+                    str(store),
+                ],
+                cwd=tmp_path,
+            )
+        )
+        target = repository_store_target(git_dir=store)
+        assert target.object_format == object_format
+        hashed = asyncio.run(run_git(["hash-object", "-t", "tree", os.devnull], target=target))
+        assert empty_tree_oid(target.object_format) == hashed.decode().strip()
+        assert git_environment(STORE_READ_POLICY, target=target)["GIT_ATTR_SOURCE"] == (
+            hashed.decode().strip()
+        )
+    assert empty_tree_oid("sha1") != empty_tree_oid("sha256")
 
 
 def test_no_git_can_ask_a_person_and_isolated_git_speaks_one_locale(

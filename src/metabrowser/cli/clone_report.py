@@ -10,7 +10,9 @@ then how far it has got, then that it is done and what comes next:
     cloned https://github.com/owner/repo in 104 s (742.0 MiB); starting the server
 
 On a terminal the middle line is one status line, rewritten in place. Anywhere else it
-is a whole line every :data:`LOG_INTERVAL_S`, so a log stays short. The numbers are
+is a whole line every :data:`LOG_INTERVAL_S`, so a log stays short. A step after the clone
+that can run for seconds says so the same way, through :func:`saying_while_waiting`. The
+numbers are
 Git's own progress, which :mod:`metabrowser.git.progress` hands over as integers: no
 text Git or the origin wrote is printed here, only this module's words and those
 numbers.
@@ -41,6 +43,7 @@ from typing import Final, TextIO
 
 from metabrowser.cache.paths import CACHE_ROOT
 from metabrowser.cache.records import canonical_now
+from metabrowser.cli.common import maybe_cli_logging
 from metabrowser.git.progress import GitProgress, ProgressStage
 from metabrowser.git.tree_source import display_segment
 from metabrowser.paths_safe import tilde_path
@@ -73,6 +76,11 @@ _STAGE_TEXT: Final[dict[ProgressStage, str]] = {
     "checking": "checking connectivity",
 }
 _FALLBACK_COLUMNS: Final = 80
+
+# How long a step may run before the command says what it is waiting on: the cached read of a
+# pull request takes milliseconds and has nothing to say. Reading one from GitHub took 5.5 to
+# 11 s, measured 2026-11-02, the first thing a reader wonders about after a clone.
+WAIT_QUIET_S: Final = 0.5
 
 # The clock elapsed times are read from; a transcript replaces it to pin them.
 _monotonic = time.monotonic
@@ -178,8 +186,15 @@ class CloneReport:
     """
 
     def __init__(
-        self, url: str, destination: str, *, then: str = "", stream: TextIO | None = None
+        self,
+        url: str,
+        destination: str,
+        *,
+        then: str = "",
+        stream: TextIO | None = None,
+        log_prefix: str | None = None,
     ) -> None:
+        self._log_prefix = f"cloning {url}: " if log_prefix is None else log_prefix
         self._url = url
         self._destination = destination
         self._then = then
@@ -219,6 +234,17 @@ class CloneReport:
             self._received = progress.received_bytes or self._received
         self._status = describe_progress(progress)
         self._show()
+
+    def begin_waiting(self, text: str) -> None:
+        """This report is of one step with no progress of its own, and this is the status."""
+
+        self._status = text
+
+    def first_status_is_due(self) -> None:
+        self._last_shown = _monotonic() - LOG_INTERVAL_S
+
+    def show_status(self) -> None:
+        self._show(now=True)
 
     def tick(self) -> None:
         """Time has passed: show the status again if it is due."""
@@ -262,12 +288,28 @@ class CloneReport:
         self.end_status_line()
         self._cloning = False
 
-    def cache_hit(self, last_fetch_at: str | None) -> None:
-        """Say that the source was already cloned, where, and how old the fetch is."""
+    def note(self, text: str) -> None:
+        """A line about storage: what is borrowed, what is kept, and what could be."""
+
+        self.end_status_line()
+        self._write(text + "\n")
+
+    def clear_status_line(self) -> None:
+        """Take the status line off the terminal, so what is written next replaces it."""
+
+        if self._drawn and self._write("\r" + " " * min(self._drawn, self._width()) + "\r"):
+            self._drawn = 0
+
+    def cache_hit(self, last_fetch_at: str | None, *, borrows: str | None = None) -> None:
+        """Say that the source was already cloned, where, how old the fetch is, and what it borrows."""
 
         line = f"using the clone of {self._url} cached in {self._destination}"
         age = _age_of(last_fetch_at)
-        self._write((line if age is None else f"{line}, fetched {age}") + "\n")
+        if age is not None:
+            line += f", fetched {age}"
+        if borrows is not None:
+            line += f", borrowing objects from {borrows}"
+        self._write(line + "\n")
 
     def _elapsed(self) -> str:
         return format_elapsed(_monotonic() - self._started)
@@ -306,7 +348,7 @@ class CloneReport:
             return
         status = f"{self._status} ({self._elapsed()})"
         if not self._terminal:
-            if self._write(f"cloning {self._url}: {status}\n"):
+            if self._write(f"{self._log_prefix}{status}\n"):
                 self._last_shown = at
             return
         width = self._width()
@@ -338,6 +380,36 @@ class CloneReport:
         return True
 
 
+@contextlib.asynccontextmanager
+async def saying_while_waiting(text: str, *, stream: TextIO | None = None) -> AsyncGenerator[None]:
+    """Say *text* with the time it has taken, once a step has run long enough to wonder.
+
+    The same cadence as a clone's progress: one line rewritten on a terminal, and taken away
+    when the step ends, and elsewhere a whole line, then one every :data:`LOG_INTERVAL_S`.
+    """
+
+    report = CloneReport("", "", stream=stream, log_prefix="")
+    report.begin_waiting(text)
+
+    async def say() -> None:
+        await asyncio.sleep(WAIT_QUIET_S)
+        # The first line is due now, wherever the interval has got to.
+        report.first_status_is_due()
+        while True:
+            report.show_status()
+            await asyncio.sleep(TICK_S)
+
+    saying = asyncio.ensure_future(say())
+    # A log record written meanwhile, with a log level asked for, ends the line first, as
+    # a clone's progress has it: the record would otherwise start after the status text.
+    with maybe_cli_logging(report.end_status_line):
+        try:
+            yield
+        finally:
+            saying.cancel()
+            report.clear_status_line()
+
+
 def _age_of(timestamp: str | None) -> str | None:
     """How long ago a record's canonical *timestamp* was, by the clock records use."""
 
@@ -355,10 +427,12 @@ __all__ = [
     "LOG_INTERVAL_S",
     "REDRAW_INTERVAL_S",
     "TICK_S",
+    "WAIT_QUIET_S",
     "CloneReport",
     "cache_directory_display",
     "describe_progress",
     "format_age",
     "format_elapsed",
     "format_size",
+    "saying_while_waiting",
 ]

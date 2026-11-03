@@ -489,11 +489,27 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     allowlisted tags and attributes is a parse, which a reader of the golden cannot do
     by eye: both what the hook sent and what the page's own defense rebuilt from KPress's
     render alone.
+
+    The script prints its first part unless asked, and its golden is split in two for the
+    size of one block, so this asks for both: the second part's typed states are read here
+    too, and none of them may claim to know what the pull request changed.
     """
 
-    transcript = run_session("github-pull-page-session.js")
+    transcript = run_session("github-pull-page-session.js", "--part", "all")
     steps = {step["step"]: step for step in transcript["steps"]}
     hook = steps["the hook sends the comment inert"]["markdown"][0].split(": ", 1)[1]
     assert allowlist_violations(hook) == []
     assert allowlist_violations(transcript["pageDefense"]) == []
     assert "build badge</a>" in transcript["pageDefense"]
+    unavailable = transcript["filesUnavailable"]
+    assert set(unavailable) == {
+        "fetch_failed",
+        "no_merge_base",
+        "base_uncertain",
+        "commits_unavailable",
+    }
+    for state, said in unavailable.items():
+        assert said["files"].startswith("Files changed is "), state
+    assert "does not guess" in unavailable["base_uncertain"]["files"]
+    assert "not readable here" in unavailable["commits_unavailable"]["files"]
+    assert transcript["hunks"] and transcript["place"]

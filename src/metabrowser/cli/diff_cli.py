@@ -21,9 +21,15 @@ from typing import NoReturn
 import typer
 
 from metabrowser.diff.adapters.base import DiffSourceError
-from metabrowser.diff.adapters.git import GitDiffSource
-from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, parse_unified_patch
-from metabrowser.diff.apply import TreeEntry, TreeSnapshot, apply_change_set
+from metabrowser.diff.adapters.git import (
+    GitDiffSource,
+    PatchHydration,
+    display_path,
+    mark_past_the_bounds,
+    say_left_out,
+)
+from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, name_paths, parse_unified_patch
+from metabrowser.diff.apply import ApplyError, TreeEntry, TreeSnapshot, apply_change_set
 from metabrowser.diff.format import (
     Availability,
     ChangeKind,
@@ -80,15 +86,25 @@ async def _hydrate_git_document(root: Path, spec: str) -> ChangeSetDocument:
     ready_ids = [
         change.id for change in manifest.files if change.availability is Availability.ready
     ]
-    # One diff run and one parse for every file (review R3); the CLI
-    # hydrates the whole comparison, so the bulk path is the only sane one.
-    patches = await source.file_patches(resolved, ready_ids) if ready_ids else {}
+    # One diff run and one parse for the files within the bound (review R3), and one run
+    # a file for the rest, which the page asks for as the reader reaches them: the
+    # document is the page's once every file has been reached, and a file too large alone
+    # is said to be, as the page says it.
+    hydration = (
+        await source.hydrate_each(resolved, ready_ids, manifest=manifest)
+        if ready_ids
+        else PatchHydration({})
+    )
+    files = list(manifest.files)
+    if hydration.left_out:
+        files, resolved = say_left_out(files, resolved, hydration.left_out)
+    files = mark_past_the_bounds(files, hydration)
     document = ChangeSetDocument(
         schema="file-diff-v1",
         schema_version=1,
         resolved=resolved,
-        manifest=manifest,
-        patches=patches,
+        manifest=manifest.model_copy(update={"files": tuple(files)}),
+        patches=hydration.patches,
     )
     return validate_document(dump_document(document))
 
@@ -137,6 +153,9 @@ def _print_text(document: ChangeSetDocument) -> None:
     plus = "?" if totals.additions is None else str(totals.additions)
     minus = "?" if totals.deletions is None else str(totals.deletions)
     typer.echo(f"files {totals.files}  +{plus} -{minus}  ({exactness})")
+    # What the source could not model is said above the files, as the page says it.
+    for warning in resolved.warnings:
+        typer.echo(f"warning: {warning}")
     for change in document.manifest.files:
         typer.echo(_describe(change))
     if document.manifest.truncated:
@@ -190,6 +209,20 @@ def _check_apply(root: Path, document: ChangeSetDocument) -> None:
     if resolved.right.kind is not SnapshotKind.commit or resolved.right.id is None:
         _fail("--diff-check needs a revision comparison, not a patch file")
         return
+    # The oracle applies every file, so a comparison with a file it cannot apply is refused
+    # by name: a file too large for one patch, one the diff did not produce, or one unmerged.
+    unapplied = [
+        change
+        for change in document.manifest.files
+        if change.availability not in (Availability.ready, Availability.binary)
+    ]
+    if unapplied:
+        states = sorted({change.availability.value for change in unapplied})
+        _fail(
+            f"--diff-check cannot apply {len(unapplied)} file(s) that are "
+            f"{', '.join(states)}: {name_paths([display_path(change) for change in unapplied])}"
+        )
+        return
 
     async def run_check() -> tuple[str, str]:
         base_tree = (
@@ -217,7 +250,12 @@ def _check_apply(root: Path, document: ChangeSetDocument) -> None:
         produced = apply_change_set(document, base_tree, resolve_content)
         return produced.tree_hash(), target_tree.tree_hash()
 
-    produced_hash, target_hash = asyncio.run(run_check())
+    try:
+        produced_hash, target_hash = asyncio.run(run_check())
+    except ApplyError as exc:
+        # A document the oracle cannot apply at all is a refusal, not a traceback.
+        _fail(f"--diff-check could not apply this comparison: {exc}")
+        return
     typer.echo(f"produced {produced_hash}")
     typer.echo(f"target   {target_hash}")
     if produced_hash != target_hash:
