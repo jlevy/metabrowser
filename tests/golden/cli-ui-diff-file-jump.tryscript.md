@@ -363,6 +363,50 @@ $ node tests/dom/diff-file-jump-session.js
       "lineRows": 8
     },
     {
+      "step": "held and deferred reservations collapse and return on reopen",
+      "atTop": "r1.py",
+      "asked": [],
+      "partial": "12 of 14 files loaded; the rest load as you reach them",
+      "heights": [
+        {
+          "file": "r5.py",
+          "expanded": 180,
+          "collapsed": 0,
+          "reopened": 180
+        },
+        {
+          "file": "d1.py",
+          "expanded": 180,
+          "collapsed": 0,
+          "reopened": 180
+        }
+      ]
+    },
+    {
+      "step": "a layout choice updates held and deferred reservations before their rows are drawn",
+      "atTop": "r1.py",
+      "asked": [],
+      "partial": "12 of 14 files loaded; the rest load as you reach them",
+      "split": [
+        180,
+        180
+      ],
+      "unified": [
+        260,
+        200
+      ]
+    },
+    {
+      "step": "a width-triggered layout change updates held and deferred reservations too",
+      "atTop": "r1.py",
+      "asked": [],
+      "partial": "12 of 14 files loaded; the rest load as you reach them",
+      "split": [
+        180,
+        180
+      ]
+    },
+    {
       "step": "a key held over held files: nothing drawn it passed, then the file it rests on",
       "atTop": "r9.py",
       "asked": [],

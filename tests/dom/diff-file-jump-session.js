@@ -57,7 +57,14 @@ class LaidOutElement {
     this.innerHTML = "";
     this.dataset = {};
     this.hidden = false;
-    this.style = {};
+    this.style = {
+      setProperty(name, value) {
+        this[name] = value;
+      },
+      removeProperty(name) {
+        delete this[name];
+      },
+    };
     this.children = [];
     this.parentNode = null;
     this.attributes = new Map();
@@ -168,11 +175,15 @@ class LaidOutElement {
     if (this.classList.contains("diff-split-row") || this.classList.contains("diff-line")) {
       return ROW_PX;
     }
-    if (this.classList.contains("diff-file-body-collapsed")) {
-      return 0;
-    }
-    const content = this.children.reduce((total, child) => total + child.layoutHeight(), 0);
-    const reserved = /calc\((\d+) /.exec(this.style.minHeight ?? "");
+    const collapsed = this.classList.contains("diff-file-body-collapsed");
+    const content = collapsed
+      ? 0
+      : this.children.reduce((total, child) => total + child.layoutHeight(), 0);
+    // Inline minima win over height: 0; the stylesheet can override a reservation
+    // supplied through its custom property when the body is collapsed.
+    const reserved = /calc\((\d+) /.exec(
+      this.style.minHeight || (!collapsed && this.style["--diff-reserved-height"]) || "",
+    );
     return Math.max(content, reserved ? Number(reserved[1]) * ROW_PX : 0);
   }
 
@@ -242,6 +253,26 @@ class ScriptedObserver {
       this.callback(entries, this);
     }
     return pane;
+  }
+}
+
+class WidthObserver {
+  static all = [];
+  constructor(callback) {
+    this.callback = callback;
+    WidthObserver.all.push(this);
+  }
+  observe(target) {
+    this.target = target;
+  }
+  unobserve() {
+    this.target = null;
+  }
+  disconnect() {
+    this.target = null;
+  }
+  report(width) {
+    if (this.target) this.callback([{ contentRect: { width } }]);
   }
 }
 
@@ -398,7 +429,10 @@ async function main() {
   /** The loader is the plugin's, one per page, so one page's requests are on at a time. */
   let open = null;
 
-  function mount(document_ = comparison(), { laidOut = true } = {}) {
+  function mount(document_ = comparison(), { laidOut = true, observeWidth = false } = {}) {
+    globalThis.ResizeObserver = observeWidth ? WidthObserver : undefined;
+    globalThis.getComputedStyle = observeWidth ? () => ({ fontSize: "14px" }) : undefined;
+    let changeLayout = null;
     open?.handle.dispose();
     const pane = new LaidOutElement("div");
     pane.isPane = true;
@@ -426,6 +460,13 @@ async function main() {
       highlightSyntax: async () => null,
       isLargeTextPreview: () => true,
       langForPath: () => "",
+      filterControls: {
+        groupHtml: () => "",
+        bind(_control, options) {
+          changeLayout = (layout) => options.onChange("diff-layout", layout, "one");
+          return () => {};
+        },
+      },
     });
     const observer = ScriptedObserver.all.at(-1);
     const sectionOf = (file) =>
@@ -434,6 +475,8 @@ async function main() {
         .find((section) => section.find("diff-file-path")[0].textContent.endsWith(file));
     open = {
       pane,
+      changeLayout: (layout) => changeLayout(layout),
+      resize: (width) => WidthObserver.all.at(-1).report(width),
       window: window_,
       handle,
       requests,
@@ -922,9 +965,11 @@ async function main() {
       drawn: drawnFiles(heldPage),
       reserving: heldPage.pane
         .find("diff-file-body")
-        .filter((body) => body.style.minHeight)
+        .filter((body) => body.style["--diff-reserved-height"] || body.style.minHeight)
         .map((body) => pathOf(body.parentNode)),
-      heldReserves: heldPage.sectionOf("r5.py").find("diff-file-body")[0].style.minHeight,
+      heldReserves: heldPage.sectionOf("r5.py").find("diff-file-body")[0].style[
+        "--diff-reserved-height"
+      ],
     },
   );
   assert(heldPage.requests.length === 0, "a held file was asked for");
@@ -986,6 +1031,84 @@ async function main() {
   );
   assert(heldPage.requests.length === 0, "a jump to a held file asked for it");
 
+  // A reservation must collapse with its body and return on reopen, whether its
+  // answer is held or is still to be fetched.
+  const disclosures = mount(readyComparison(12, 8, 2));
+  const disclosureHeights = [];
+  for (const file of ["r5.py", "d1.py"]) {
+    const section = disclosures.sectionOf(file);
+    const body = section.find("diff-file-body")[0];
+    const bar = section.find("diff-file-bar")[0];
+    const before = body.layoutHeight();
+    bar.dispatch("click");
+    const collapsed = body.layoutHeight();
+    assert(collapsed === 0, "a collapsed reserved body left blank space");
+    bar.dispatch("click");
+    assert(body.layoutHeight() === before, "reopening lost the reserved height");
+    disclosureHeights.push({ file, expanded: before, collapsed, reopened: body.layoutHeight() });
+  }
+  say("held and deferred reservations collapse and return on reopen", disclosures, undefined, {
+    heights: disclosureHeights,
+  });
+
+  // Both layouts must reserve the rows they will actually draw, for answers in
+  // hand and the manifest estimate alike.
+  const switchingDocument = readyComparison(12, 8, 2);
+  switchingDocument.patches.r5.hunks[0].lines.unshift(
+    ...Array.from({ length: 4 }, (_, index) => ({ op: "del", text: "old " + index })),
+  );
+  const switching = mount(switchingDocument);
+  const reservedHeight = (file) =>
+    switching.sectionOf(file).find("diff-file-body")[0].layoutHeight();
+  const splitHeights = [reservedHeight("r5.py"), reservedHeight("d1.py")];
+  switching.changeLayout("unified");
+  const unifiedHeights = [reservedHeight("r5.py"), reservedHeight("d1.py")];
+  assert(
+    unifiedHeights[0] === splitHeights[0] + 4 * ROW_PX,
+    "held reservation kept its old layout",
+  );
+  assert(
+    unifiedHeights[1] === splitHeights[1] + ROW_PX,
+    "deferred reservation kept its old layout",
+  );
+  switching.changeLayout("split");
+  assert(reservedHeight("r5.py") === splitHeights[0], "switching back lost the held reservation");
+  say(
+    "a layout choice updates held and deferred reservations before their rows are drawn",
+    switching,
+    undefined,
+    {
+      split: splitHeights,
+      unified: unifiedHeights,
+    },
+  );
+
+  const resizing = mount(switchingDocument, { observeWidth: true });
+  const heightAtWidth = () =>
+    ["r5.py", "d1.py"].map((file) =>
+      resizing.sectionOf(file).find("diff-file-body")[0].layoutHeight(),
+    );
+  resizing.resize(600);
+  await resizing.turn();
+  assert(
+    JSON.stringify(heightAtWidth()) === JSON.stringify(unifiedHeights),
+    "narrowing kept the old reservations",
+  );
+  resizing.resize(800);
+  await resizing.turn();
+  assert(
+    JSON.stringify(heightAtWidth()) === JSON.stringify(splitHeights),
+    "widening kept the old reservations",
+  );
+  say(
+    "a width-triggered layout change updates held and deferred reservations too",
+    resizing,
+    undefined,
+    {
+      split: heightAtWidth(),
+    },
+  );
+
   // A held key over held files draws nothing until it comes up, then the file it rests on.
   const keyPage = mount(readyComparison(12, 8, 0));
   await keyPage.turn();
@@ -1030,7 +1153,9 @@ async function main() {
   const small = mount(readyComparison(3, 4, 0));
   say("a diff that fits is drawn whole at mount, as before", small, undefined, {
     drawn: drawnFiles(small),
-    reserving: small.pane.find("diff-file-body").filter((body) => body.style.minHeight).length,
+    reserving: small.pane
+      .find("diff-file-body")
+      .filter((body) => body.style["--diff-reserved-height"] || body.style.minHeight).length,
     observers: ScriptedObserver.all.length - observersBefore,
   });
 

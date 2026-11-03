@@ -1258,6 +1258,9 @@ function drawLayout(view, layout) {
   view.layout = layout;
   view.root.dataset.layout = layout;
   renderLayoutControl(view);
+  for (const file of view.deferred.values()) {
+    reserveFileBody(file, layout);
+  }
   view.layoutGeneration += 1;
   const layoutGeneration = view.layoutGeneration;
   if (view.files.length <= LAYOUT_PROJECTION_BATCH_FILES) {
@@ -1750,14 +1753,32 @@ export function firstScreenBudget(screen) {
 function reserveBody(body, rows) {
   if (body.style) {
     // The rows' own height: `line-height: 1.5` at the code font's size, in styles.css.
-    body.style.minHeight = `calc(${rows} * 1.5 * var(--code-font-size, 0.85rem))`;
+    body.style.setProperty(
+      "--diff-reserved-height",
+      `calc(${rows} * 1.5 * var(--code-font-size, 0.85rem))`,
+    );
   }
+}
+
+/**
+ * Reserve the rows this file will draw in the current layout. Held answers use
+ * their patch; a file not fetched yet uses the manifest estimate.
+ * @param {DeferredFile} file
+ * @param {"unified" | "split"} layout
+ */
+function reserveFileBody(file, layout) {
+  reserveBody(
+    file.body,
+    file.held === null
+      ? reservedRows(file.change, layout)
+      : patchRows(file.held.patches[String(file.change.id)], layout),
+  );
 }
 
 /** @param {HTMLElement} body */
 function unreserveBody(body) {
   if (body.style) {
-    body.style.minHeight = "";
+    body.style.removeProperty("--diff-reserved-height");
   }
 }
 
@@ -1987,10 +2008,7 @@ function queueDeferredHydration(section, body, change, revision, view, held = nu
   });
   view.deferredBySection.set(section, id);
   view.hydration.add(id, view.deferred.size);
-  reserveBody(
-    body,
-    held === null ? reservedRows(change, view.layout) : patchRows(held.patches[id], view.layout),
-  );
+  reserveFileBody(/** @type {DeferredFile} */ (view.deferred.get(id)), view.layout);
   if (view.hydrationObserver === null) {
     view.hydrationObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
