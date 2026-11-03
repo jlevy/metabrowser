@@ -1779,31 +1779,54 @@ function settleDeferred(file, view) {
 function renderDeferred(file, loaded, view) {
   const anchor = view.pinned === null ? placeOfTopFile(view) : null;
   settleDeferred(file, view);
+  /** @type {JumpOutcome} */
+  let outcome;
+  try {
+    outcome = spliceDeferred(file, loaded, view);
+  } catch (error) {
+    // The file is settled, so its failure is its own to show and count: the scheduler's
+    // own failure path looks the file up by id and would find nothing (review of #284, D4).
+    outcome = failDeferred(file, error, view);
+  }
+  holdPlace(view, anchor);
+  return outcome;
+}
+
+/**
+ * What a settled file's answer puts in its body.
+ *
+ * @param {DeferredFile} file
+ * @param {{manifest: {files: Record<string, unknown>[]}, patches: Record<string, Record<string, unknown>>}} loaded
+ * @param {MountedDiffState} view
+ * @returns {JumpOutcome}
+ */
+function spliceDeferred(file, loaded, view) {
   const only = loaded.manifest.files[0];
   const patch = only ? loaded.patches[String(only.id)] : undefined;
-  /** @type {JumpOutcome} */
-  let outcome = "none";
   const availability = only ? String(only.availability) : "";
   const reason =
     availability === "deferred" ? DEFERRED_AGAIN_COPY : AVAILABILITY_COPY[availability];
   if (only && patch === undefined && reason) {
     // The server looked and has a reason: a file past the bound of one patch.
     file.body.append(el("div", "diff-availability", reason));
-  } else if (!only || patch === undefined) {
-    return failDeferred(file, new Error("the comparison returned no hunks for this file"), view);
-  } else if (/** @type {unknown[]} */ (patch.hunks).length === 0) {
-    file.body.append(el("div", "diff-availability", "No content changes."));
-  } else {
-    const state = createFileState(only, patch, view.api ?? plainSyntaxApi(), file.body);
-    view.files.push(state);
-    if (!view.awaitingWidth) {
-      renderFileBody(state, view.layout);
-    }
-    scheduleFileEnhancement(view, state);
-    outcome = "painted";
+    return "none";
   }
-  holdPlace(view, anchor);
-  return outcome;
+  if (!only || patch === undefined) {
+    return failDeferred(file, new Error("the comparison returned no hunks for this file"), view);
+  }
+  if (/** @type {unknown[]} */ (patch.hunks).length === 0) {
+    file.body.append(el("div", "diff-availability", "No content changes."));
+    return "none";
+  }
+  const state = createFileState(only, patch, view.api ?? plainSyntaxApi(), file.body);
+  if (!view.awaitingWidth) {
+    renderFileBody(state, view.layout);
+  }
+  // Only a file whose rows are in the page is a file of the view: one whose render threw
+  // would throw again at every relayout.
+  view.files.push(state);
+  scheduleFileEnhancement(view, state);
+  return "painted";
 }
 
 /**
@@ -1888,7 +1911,14 @@ function hydrationHost(view) {
         view,
       ),
     fail(id, error) {
-      const file = fileOf(id);
+      const file = view.deferred.get(id);
+      if (file === undefined) {
+        // Settled already: `renderDeferred` owns a throw past `settleDeferred` and has
+        // counted and said it, so this is the one its own message could not be appended
+        // for. Nothing is settled twice, and the frame it runs in ends clean.
+        reportLoad("file hydration", { fileId: id, hook: "diff/comparison" }, error);
+        return;
+      }
       settleDeferred(file, view);
       failDeferred(file, error, view);
     },

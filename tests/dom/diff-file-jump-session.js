@@ -422,6 +422,23 @@ async function main() {
         request.answered = true;
         request.reject(new Error("refused"));
       },
+      /** An answer whose patch is whatever the step says, malformed included. */
+      answerWith(file, patch) {
+        const request = requests.find((r) => r.file === file && !r.answered && !r.signal.aborted);
+        assert(request, `no live request for ${file}`);
+        request.answered = true;
+        const { __revision: _revision, ...document_ } = comparison();
+        const only = document_.manifest.files.find((f) => (f.new ?? f.old).path === file);
+        request.resolve({
+          ...document_,
+          manifest: {
+            files: [{ ...only, availability: "ready" }],
+            totals: { files: 1, additions: 2, deletions: 1, exact: true },
+            truncated: false,
+          },
+          patches: { [only.id]: { ...patch, file_id: only.id } },
+        });
+      },
       line(jump) {
         return {
           answer: jump && { ...jump, lines: undefined },
@@ -727,6 +744,60 @@ async function main() {
     assert((await lines) === "failed", "a throwing render did not settle the jump");
     assert(log.includes("fail f1"), "a throwing render was not reported as the file's failure");
     assert(loads.length === 2 && loads[1].id === "f2", "a throwing render stopped the scheduler");
+  }
+
+  // ── A render that throws after its file is settled ─────────────
+  // The production render settles the file before it builds its rows, so a throw there
+  // reaches the scheduler's failure path with a file the view no longer holds (review of
+  // #284, D4): the file says it failed where its lines would be, is counted apart from the
+  // loaded ones, and the frame it ran in ends clean, so the next file is still asked for.
+  {
+    const broken = mount();
+    await broken.turn();
+    clock += 1000;
+    const jump = broken.handle.scrollToFile("src/h.py");
+    const realError = console.error;
+    console.error = () => {};
+    // A malformed answer: a hunk the render cannot read.
+    broken.answerWith("src/h.py", { truncated: false, hunks: [null] });
+    await nextTask();
+    await broken.turn();
+    console.error = realError;
+    say(
+      "a render that throws after its file is settled: said, counted, the frame clean",
+      broken,
+      undefined,
+      {
+        lines: await jump.lines,
+        body: broken.sectionOf("src/h.py").find("diff-availability")[0]?.textContent ?? null,
+      },
+    );
+    clock += 1000;
+    await broken.turn();
+    assert(broken.inFlight().length === 1, "the next file on screen was not asked for");
+
+    // The worst case: the body refuses even the failure message, so the throw reaches the
+    // scheduler, whose failure path finds no file to settle and settles nothing twice.
+    const refusing = mount();
+    await refusing.turn();
+    clock += 1000;
+    const stuck = refusing.handle.scrollToFile("src/h.py");
+    refusing.sectionOf("src/h.py").find("diff-file-body")[0].append = () => {
+      throw new Error("the body refuses");
+    };
+    console.error = () => {};
+    refusing.answer("src/h.py", 3);
+    await nextTask();
+    await refusing.turn();
+    console.error = realError;
+    assert((await stuck.lines) === "failed", "a refused render did not settle the jump");
+    assert(
+      refusing.pane.find("diff-partial-note")[0].textContent.includes("1 could not be loaded"),
+      "a refused render was not counted",
+    );
+    clock += 1000;
+    await refusing.turn();
+    assert(refusing.inFlight().length === 1, "a refused render stopped the scheduler");
   }
 
   // A collapsed file opens when it is gone to.

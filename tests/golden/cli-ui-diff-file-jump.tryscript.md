@@ -247,6 +247,17 @@ $ node tests/dom/diff-file-jump-session.js
       ]
     },
     {
+      "step": "a render that throws after its file is settled: said, counted, the frame clean",
+      "atTop": "src/h.py",
+      "asked": [
+        "src/a.py (cancelled)",
+        "src/h.py"
+      ],
+      "partial": "2 of 10 files loaded; 1 could not be loaded; the rest load as you reach them",
+      "lines": "failed",
+      "body": "Could not load this file's changes."
+    },
+    {
       "step": "the reader scrolls: the topmost file on screen is asked for, not all of them",
       "atTop": "src/f.py",
       "asked": [
