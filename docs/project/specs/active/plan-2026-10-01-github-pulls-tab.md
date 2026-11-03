@@ -622,24 +622,51 @@ diff view to the relevant file when we navigate between particular files in a di
 So changed file rows are a Navigational Row Collection too, and walking them drives the
 diff:
 
-- Moving to a file scrolls the diff straight to that file’s bar: an immediate jump, not
-  smooth scrolling, with focus staying in the nav.
-- The file arrives hydrated even past `MAX_HYDRATED_FILES`, through the `wanted_file`
-  path in `builtin_plugins/diff/sidekick.py`.
+- Moving to a file jumps the diff straight to that file’s bar, not smooth scrolling,
+  with focus staying in the nav.
+- The diff view does the jump, and this step does not reimplement it.
+  The panel calls `scrollToFile(path)` on the page host’s page, from the
+  large-pull-request work, which hydrates the target first, cancels what a later key
+  supersedes, and holds the target still while neighbours above it hydrate.
+  It answers at once with a typed kind: `jumped`, `not_in_comparison` (nothing moves),
+  `no_diff`, or `disposed`. From Conversation, the panel switches to Files changed and
+  waits for `whenFilesReady()` first.
+  That work’s `docs/large-content-rendering.md` and its file-jump session are the
+  contract’s authority, so this plan does not restate it.
+- The panel calls it on every key repeat, with no debounce of its own, and never drives
+  a jump by scrolling to markup it then hydrates: in the study, neighbours hydrating
+  above a target pushed it 53,661 px off screen.
 - Holding a key queues no request per row: the latest wins and older ones are cancelled.
-- The position holds: neighbours hydrating above the target do not move it, and Back’s
-  `history.state.pullPlace` restore is kept.
+- The path a row hands over is the file’s path in the pull request, a rename’s new path
+  being the row’s identity.
+- Back’s `history.state.pullPlace` restore is kept.
 - The selection follows a reader who scrolls the diff by hand, without stealing focus.
-- It holds on a real pull request of 1,183 files and +281,131 lines, so the tree stays
-  bounded or virtualized.
-  The large-pull-request performance study sets the budgets, and this step’s data shape
-  waits for its result.
+- The budgets are the large-pull-request study’s, on a real pull request of 1,183 files
+  and +281,131 lines: the file’s bar on screen within 50 ms and its first lines within
+  150 ms, for any file; 0 px drift; keys delivered at 33 ms per step, 30 a second; at
+  most one request in flight, for the file the walk rests on; the queue empty within 300
+  ms of key-up; and no task over 50 ms.
+  So the tree is bounded or windowed at that size.
 
-**The data.** One `gh api` request per 100 files:
+**The data.** The tree is built from a list of files, never from hydrated documents.
+The list has two sources:
+
+- When the store has both of the pull request’s commits, for example for a pull request
+  the mirror has already fetched, it is the local comparison’s manifest, which needs no
+  network and is far faster.
+  The tree adds no second fetch of a comparison the page has already asked for.
+- Otherwise it is GitHub’s list, one `gh api` request per 100 files:
 
 ```
 repos/<owner>/<repo>/pulls/<n>/files?per_page=100&page=<m>
 ```
+
+GitHub’s list is one small read only for a small pull request: the 1,183-file one took
+12 pages at 1.2 to 1.6 s each, 15 to 20 s in all.
+So it is read progressively, and each page is published to the tree as it arrives.
+While it fills, the panel says how much it has: N of M files where the record gives M
+(`changed_files`), and otherwise N files with the page count from the `Link` header,
+since that gives pages and not files.
 
 - A row keeps `path`, `previous_path`, `status`, `additions`, and `deletions`. The patch
   GitHub embeds is dropped.
@@ -649,15 +676,17 @@ repos/<owner>/<repo>/pulls/<n>/files?per_page=100&page=<m>
   A cut list says so, with the count GitHub reported, and the bound is measured as the
   list’s are.
 
-This is deliberately not the record’s comparison.
+GitHub’s list is what lets the tree work without the record’s comparison.
 A comparison needs the record and both commits in a store, which is a `git fetch` per
-expansion and is impossible on a checkout without them; this is one small read that
-needs no Git, for a pull request never opened, on a mirror and a checkout alike.
-The page’s Files changed stays the diff’s authority, and both are GitHub’s list of the
-same comparison.
+expansion and is impossible on a checkout without them; GitHub’s list needs no Git, for
+a pull request never opened, on a mirror and a checkout alike.
+The page’s Files changed stays the diff’s authority, and both sources list the same
+comparison.
 
-**Freshness.** A file list is current while its row’s `updated_at` is no newer than the
-time the list was fetched, because any push to a pull request updates that field.
+**Freshness.** A list from the local comparison belongs to its head commit, so it is
+current while the row’s head is that commit.
+A list from GitHub is current while its row’s `updated_at` is no newer than the time the
+list was fetched, because any push to a pull request updates that field.
 So a repository’s many cached lists cost nothing until the pull request changes, and a
 refresh needs no window of its own.
 A conditional request covers the rest.
@@ -908,6 +937,7 @@ comparison here may use, and 2x is never one.
 | A mirror’s open with the network refresh started at open | The same build with it lazy | Adopted only if first tree and the mirror’s refresh stay within 1.1x; otherwise it stays lazy |
 | Opening the tab on a cached list | The spinner delay | Rows painted before `--loading-state-delay`, so no spinner shows; measured in a real browser at one page and at the cap |
 | Expanding a row with a cached file list | The spinner delay | Rows painted before `--loading-state-delay`, at one file and at the measured cap |
+| Walking a 1,183-file pull request’s files with a held key | The study’s budgets, under [Changed Files in a Row](#changed-files-in-a-row) | Bar within 50 ms and first lines within 150 ms, 0 px drift, one request in flight, the queue empty 300 ms after key-up, no task over 50 ms |
 | The pull-request page’s open after step 2 | The v0.12 page on the same record | Within 1.1x |
 | The list route’s answer at the cap | Its answer at one page | Recorded beside the bound; the parsed list is memoized by file stamp, as `cached_pull_record` does |
 
@@ -922,8 +952,9 @@ merges by itself: the stack lands when the user says so, after the stack below i
 (`tbd shortcut stacked-prs`).
 
 Two steps wait on other work.
-Step 4’s data shape waits for the large-pull-request performance study.
-Steps 5 and 6 follow the owner’s decision on the overlay store, in
+Step 4’s jump to a file calls the large-pull-request work’s `scrollToFile`, so that part
+merges after that work’s reviewed head does; the list, the tree, and its keyboard do not
+wait. Steps 5 and 6 follow the owner’s decision on the overlay store, in
 [PR Review on a Mirror and a Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md),
 which revises this plan’s alternates rejection and in-page fetch; they start after that
 plan’s first step has been reviewed.
@@ -965,9 +996,11 @@ and `CHANGELOG.md` in the same change.
 
 **Step 4: changed files in a row.**
 
-- *Reviewed:* that a list is one small read with no Git; that a path is only ever text
+- *Reviewed:* that a list is read progressively with an honest count and no Git, or from
+  the local comparison when both commits are in the store; that a path is only ever text
   or an encoded address; the freshness rule on a force-push; the tree’s row contract
-  against the Files tree’s, and its keyboard; the measured expansion and render bounds.
+  against the Files tree’s, and its keyboard; the measured expansion and render bounds;
+  and the walking budgets on the 1,183-file pull request.
 - *Leaves out:* review comments in the tree, and checkouts.
 
 **Step 5: the tab and pages on a checkout.**
