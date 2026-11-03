@@ -87,14 +87,27 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  */
 
 /**
+ * @typedef {{manifest: {files: Record<string, unknown>[]}, patches: Record<string, Record<string, unknown>>}} OneFileAnswer
+ *   One file's answer, as the comparison route gives it for one path.
+ *
  * @typedef {object} DeferredFile
  * @property {HTMLElement} section
  * @property {HTMLElement} body
  * @property {Record<string, unknown>} change
+ * @property {OneFileAnswer | null} held The answer already in hand, for a ready file the
+ *   mount did not draw: drawn when it is reached, and never asked for.
  * @property {string} revision
  * @property {HTMLElement | null} box The progress box while it is being asked for.
  * @property {ReturnType<typeof setTimeout> | null} slow
  * @property {number} startedAt
+ */
+
+/**
+ * What the mount draws its first rows by, measured with the root in its container: the
+ * pane's height, how far down the pane the diff starts, and what one file's bar and one row
+ * of lines take on the page.
+ *
+ * @typedef {{paneHeight: number, rootTop: number, barPx: number, rowPx: number}} ScreenGeometry
  */
 
 /**
@@ -1676,17 +1689,68 @@ export function reservedRows(change, layout) {
 }
 
 /**
+ * Rows a patch in hand draws in *layout*, before intraline pairing: a header per hunk, a row
+ * per context line, and each changed run its rows, or its visible rows and the fold control
+ * when it folds. Exact for what the mount would draw, so a ready file it holds back reserves
+ * its own height. Pure.
+ *
+ * @param {Record<string, unknown>} patch
+ * @param {"unified" | "split"} layout
+ */
+export function patchRows(patch, layout) {
+  let rows = patch.truncated ? 1 : 0;
+  for (const hunk of /** @type {{lines?: {op?: unknown}[]}[]} */ (patch.hunks ?? [])) {
+    rows += 1;
+    let adds = 0;
+    let dels = 0;
+    const endRun = () => {
+      const run = layout === "split" ? Math.max(adds, dels) : adds + dels;
+      rows += FOLD_THRESHOLD > 0 && run > FOLD_THRESHOLD ? FOLD_VISIBLE + 1 : run;
+      adds = 0;
+      dels = 0;
+    };
+    for (const line of hunk.lines ?? []) {
+      if (line.op === "context") {
+        endRun();
+        rows += 1;
+      } else if (line.op === "add") {
+        adds += 1;
+      } else {
+        dels += 1;
+      }
+    }
+    endRun();
+  }
+  return rows;
+}
+
+/**
+ * How far below the diff's top the mount draws rows: what the pane shows of the diff, and one
+ * screen more, so the first scroll finds lines and not reserved space. Infinite where nothing
+ * was measured, so a diff mounted where nothing is laid out draws every ready file at once, as
+ * it always did. Pure.
+ *
+ * @param {ScreenGeometry | null} screen
+ */
+export function firstScreenBudget(screen) {
+  if (screen === null) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const shown = Math.max(0, screen.paneHeight - Math.max(0, screen.rootTop));
+  return shown + screen.paneHeight;
+}
+
+/**
  * Hold a file's place on the page until its lines arrive, so what they push down is the
  * difference between this estimate and the truth and not a whole file.
  *
  * @param {HTMLElement} body
- * @param {Record<string, unknown>} change
- * @param {"unified" | "split"} layout
+ * @param {number} rows
  */
-function reserveBody(body, change, layout) {
+function reserveBody(body, rows) {
   if (body.style) {
     // The rows' own height: `line-height: 1.5` at the code font's size, in styles.css.
-    body.style.minHeight = `calc(${reservedRows(change, layout)} * 1.5 * var(--code-font-size, 0.85rem))`;
+    body.style.minHeight = `calc(${rows} * 1.5 * var(--code-font-size, 0.85rem))`;
   }
 }
 
@@ -1706,13 +1770,51 @@ function deferredPath(file) {
 }
 
 /**
- * Ask for one deferred file, behind the standard progress box.
+ * Resolve after the next frame, or reject as aborted when *signal* is, cancelling the frame.
+ * Immediate where there are no frames.
+ *
+ * @param {AbortSignal} signal
+ * @returns {Promise<void>}
+ */
+function afterNextFrame(signal) {
+  return new Promise((resolve, reject) => {
+    if (typeof requestAnimationFrame !== "function") {
+      resolve();
+      return;
+    }
+    /** @type {number} */
+    let handle = 0;
+    const stop = () => {
+      cancelAnimationFrame(handle);
+      reject(new DOMException("The jump moved on.", "AbortError"));
+    };
+    handle = requestAnimationFrame(() => {
+      signal.removeEventListener("abort", stop);
+      resolve();
+    });
+    signal.addEventListener("abort", stop, { once: true });
+  });
+}
+
+/**
+ * Ask for one deferred file, behind the standard progress box. A file whose answer is in hand
+ * is not asked for. When it is the file a jump put at the top, it waits one frame first, so the
+ * frame that shows its bar there is not also the one that draws its rows: drawn in the same
+ * frame, a jump to a held file showed its bar in 49 to 54 ms on a 1,031-file comparison and in
+ * 137 ms on a 1,627-file one, against a budget of 50 (2026-11-03, Chrome 152, load 8 to 21).
  *
  * @param {DeferredFile} file
  * @param {AbortSignal} signal
  * @param {MountedDiffState} view
+ * @returns {Promise<OneFileAnswer>}
  */
 async function loadDeferred(file, signal, view) {
+  if (file.held !== null) {
+    if (view.pinned === file.section) {
+      await afterNextFrame(signal);
+    }
+    return file.held;
+  }
   const path = deferredPath(file);
   file.box = progressBox(`Loading the diff for ${path}`);
   file.body.append(file.box);
@@ -1732,9 +1834,7 @@ async function loadDeferred(file, signal, view) {
   if (!result.ok) {
     throw new Error(`invalid document: ${result.error}`);
   }
-  return /** @type {{manifest: {files: Record<string, unknown>[]}, patches: Record<string, Record<string, unknown>>}} */ (
-    result.document
-  );
+  return /** @type {OneFileAnswer} */ (result.document);
 }
 
 /** @param {DeferredFile} file */
@@ -1748,7 +1848,8 @@ function stopLoading(file) {
 }
 
 /**
- * A deferred file is no longer waited for: it arrived or it failed.
+ * A deferred file is no longer waited for: it arrived or it failed. A file whose answer was in
+ * hand was loaded all along, so it was never counted as one still to load.
  *
  * @param {DeferredFile} file
  * @param {MountedDiffState} view
@@ -1756,7 +1857,9 @@ function stopLoading(file) {
 function settleDeferred(file, view) {
   stopLoading(file);
   unreserveBody(file.body);
-  view.deferredLeft -= 1;
+  if (file.held === null) {
+    view.deferredLeft -= 1;
+  }
   renderPartialNote(view);
   view.hydrationObserver?.unobserve(file.section);
   view.deferred.delete(String(file.change.id));
@@ -1772,7 +1875,7 @@ function settleDeferred(file, view) {
  * is: a jump's file, or the first file at the top of the pane.
  *
  * @param {DeferredFile} file
- * @param {{manifest: {files: Record<string, unknown>[]}, patches: Record<string, Record<string, unknown>>}} loaded
+ * @param {OneFileAnswer} loaded
  * @param {MountedDiffState} view
  * @returns {JumpOutcome}
  */
@@ -1796,7 +1899,7 @@ function renderDeferred(file, loaded, view) {
  * What a settled file's answer puts in its body.
  *
  * @param {DeferredFile} file
- * @param {{manifest: {files: Record<string, unknown>[]}, patches: Record<string, Record<string, unknown>>}} loaded
+ * @param {OneFileAnswer} loaded
  * @param {MountedDiffState} view
  * @returns {JumpOutcome}
  */
@@ -1860,18 +1963,23 @@ function failDeferred(file, error, view) {
  * The comparison payload already hydrates the leading files; observing the
  * remainder prevents a large commit from launching an unbounded request fanout.
  *
+ * A ready file past the first screen takes the same path with its answer in *held*: it is
+ * drawn when it is reached or gone to, one file a frame like the rest, and never asked for.
+ *
  * @param {HTMLElement} section
  * @param {HTMLElement} body
  * @param {Record<string, unknown>} change
  * @param {string} revision
  * @param {MountedDiffState} view
+ * @param {OneFileAnswer | null} [held]
  */
-function queueDeferredHydration(section, body, change, revision, view) {
+function queueDeferredHydration(section, body, change, revision, view, held = null) {
   const id = String(change.id);
   view.deferred.set(id, {
     body,
     box: null,
     change,
+    held,
     revision,
     section,
     slow: null,
@@ -1879,7 +1987,10 @@ function queueDeferredHydration(section, body, change, revision, view) {
   });
   view.deferredBySection.set(section, id);
   view.hydration.add(id, view.deferred.size);
-  reserveBody(body, change, view.layout);
+  reserveBody(
+    body,
+    held === null ? reservedRows(change, view.layout) : patchRows(held.patches[id], view.layout),
+  );
   if (view.hydrationObserver === null) {
     view.hydrationObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
@@ -2176,9 +2287,11 @@ function rememberFile(view, change, section, expand) {
  * @param {Record<string, unknown> | undefined} patch
  * @param {{revision?: string}} context
  * @param {MountedDiffState} view
+ * @param {boolean} draw Whether a ready file's rows are drawn now. One past the first screen
+ *   is held, with its answer, until it is reached.
  * @returns {HTMLElement}
  */
-function renderFileSection(change, patch, context, view) {
+function renderFileSection(change, patch, context, view, draw) {
   sectionSequence += 1;
   const toggleId = `diff-file-toggle-${sectionSequence}`;
   const bodyId = `diff-file-body-${sectionSequence}`;
@@ -2240,6 +2353,12 @@ function renderFileSection(change, patch, context, view) {
     body.append(el("div", "diff-availability", "No content changes."));
     return section;
   }
+  if (!draw) {
+    const id = String(change.id);
+    const held = { manifest: { files: [change] }, patches: { [id]: patch } };
+    queueDeferredHydration(section, body, change, context.revision ?? "", view, held);
+    return section;
+  }
   const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body);
   view.files.push(state);
   if (!view.awaitingWidth) {
@@ -2250,19 +2369,91 @@ function renderFileSection(change, patch, context, view) {
 }
 
 /**
+ * The rows a file's body takes or holds a place for, in *layout*, by the same rules that draw
+ * or reserve it: a ready file's own patch, a deferred file's estimate, and one row for a
+ * sentence. Pure.
+ *
+ * @param {Record<string, unknown>} change
+ * @param {Record<string, unknown> | undefined} patch
+ * @param {{revision?: string}} context
+ * @param {"unified" | "split"} layout
+ */
+function bodyRows(change, patch, context, layout) {
+  const availability = String(change.availability);
+  if (availability === "deferred" && context.revision) {
+    return reservedRows(change, layout);
+  }
+  if (availability === "ready" && patch !== undefined) {
+    return Math.max(1, patchRows(patch, layout));
+  }
+  return 1;
+}
+
+/**
+ * Two empty files of one row each, for measuring what a bar and a row take before anything is
+ * drawn. The root holds them for the measurement alone.
+ */
+function screenProbe() {
+  const probe = el("section", "diff-file");
+  const row = el("div", "diff-line");
+  row.append(el("span", "diff-line-number", "0"));
+  const body = el("div", "diff-file-body");
+  body.append(row);
+  probe.append(el("div", "diff-file-bar"), body);
+  return { probe, row };
+}
+
+/**
+ * The first screen's geometry, read while the root and its probes are laid out for the width
+ * and before anything else changes, so it is the same layout and not another. Null where
+ * nothing is laid out, as in a container with no box or without a browser.
+ *
+ * @param {HTMLElement} root
+ * @param {ReturnType<typeof screenProbe>[]} probes Two, one after the other.
+ * @returns {ScreenGeometry | null}
+ */
+function measureScreen(root, probes) {
+  const owner = root.ownerDocument;
+  const pane = /** @type {HTMLElement | null} */ (
+    root.closest?.("[data-kpress-viewport]") ?? owner?.scrollingElement ?? null
+  );
+  const [first, second] = probes;
+  if (pane === null || typeof first.probe.getBoundingClientRect !== "function") {
+    return null;
+  }
+  const paneHeight = Number(pane.clientHeight);
+  // The document's own scroller's box moves with its scroll; what it shows starts at 0.
+  const paneTop = pane === owner?.scrollingElement ? 0 : pane.getBoundingClientRect().top;
+  const top = first.probe.getBoundingClientRect().top;
+  const rowPx = first.row.getBoundingClientRect().height;
+  const barPx = second.probe.getBoundingClientRect().top - top - rowPx;
+  if (!(paneHeight > 0) || !(rowPx > 0) || !(barPx > 0) || !Number.isFinite(top)) {
+    return null;
+  }
+  return { paneHeight, rootTop: top - paneTop, barPx, rowPx };
+}
+
+/**
  * The width and text size a diff has in *container*, from the root's own box, which is what
- * every later report measures: a container's `clientWidth` also holds its padding. The root
- * is back out before anything can paint.
+ * every later report measures: a container's `clientWidth` also holds its padding. And, from
+ * the same layout, the geometry its first screen is drawn by. The root is back out before
+ * anything can paint.
  *
  * @param {HTMLElement} root
  * @param {HTMLElement} container
  */
 function measureInContainer(root, container) {
+  const probes = [screenProbe(), screenProbe()];
+  root.append(...probes.map(({ probe }) => probe));
   container.append(root);
   const width = root.getBoundingClientRect?.().width ?? 0;
   const fontSize = fontSizeOf(root);
+  const screen = width > 0 ? measureScreen(root, probes) : null;
+  for (const { probe } of probes) {
+    probe.remove();
+  }
   root.remove();
-  return { width, fontSize };
+  return { width, fontSize, screen };
 }
 
 /**
@@ -2283,7 +2474,7 @@ export function mountDiffView(container, document_, api, options = {}) {
   // Measured before the first draw, so a narrow pane never draws Split to throw it away. A
   // container that is not laid out yet has no width, as a commit's stage has none until it
   // is placed, so nothing is drawn until its first report decides.
-  const { width: mountWidth, fontSize } = measureInContainer(root, container);
+  const { width: mountWidth, fontSize, screen } = measureInContainer(root, container);
   const narrow = opensTooNarrowForSplit(mountWidth, fontSize);
   /** @type {MountedDiffState} */
   const view = {
@@ -2359,12 +2550,26 @@ export function mountDiffView(container, document_, api, options = {}) {
     root.append(view.partialNote);
     renderPartialNote(view);
   }
+  // Rows are drawn for the files whose estimated top is within the first screen and one more;
+  // every later ready file is held, with its answer, and drawn when it is reached. The bars
+  // are all here, and each held file reserves its own rows, so the page is as tall as it
+  // will be. Drawing every hydrated file at once was one task of style, layout and commit
+  // proportional to the rows: 1,083 ms at 114,609 nodes on a 1,031-file comparison (review
+  // of #284, E1). The toolbar is counted as about a bar.
+  const budget = firstScreenBudget(screen);
+  let estimatedTop = screen?.barPx ?? 0;
   measureProjection(
     api,
     "diffMount:projection",
     () => {
       for (const change of manifest.files) {
-        root.append(renderFileSection(change, patches[String(change.id)], context, view));
+        const patch = patches[String(change.id)];
+        const draw = estimatedTop < budget;
+        root.append(renderFileSection(change, patch, context, view, draw));
+        if (screen !== null) {
+          estimatedTop +=
+            screen.barPx + bodyRows(change, patch, context, view.layout) * screen.rowPx;
+        }
       }
       if (manifest.truncated) {
         root.append(el("div", "diff-availability", "The change list was truncated at its bounds."));
