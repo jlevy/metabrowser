@@ -1402,3 +1402,40 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # A hunk is the user's code, at the chrome-context mono size, in the app's mono face.
     assert github[".github-pull-hunk"]["font-family"] == "var(--font-mono)"
     assert github[".github-pull-hunk"]["font-size"] == "var(--mono-block-font-size)"
+
+
+# A serif face, named directly or through the token KPress reads it from.
+_SERIF = re.compile(r"--kpress-(?:host-)?font-prose\b|--app-serif-system\b|(?<!sans-)\bserif\b")
+
+
+def test_serif_is_only_for_documents() -> None:
+    """Chrome and messages are sans; serif is a committed document's, as "Serif Is for Documents" says.
+
+    A pull request's description and comments read in the serif of a Markdown file, so a
+    conversation about the content looked like part of it.
+    """
+
+    styles = STATIC / "styles.css"
+    for path in sorted([*STATIC.glob("*.css"), *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.css")]):
+        for selector, declarations in _rules_of(path):
+            family = declarations.get("font-family", "")
+            assert _SERIF.search(family) is None, f"{path.name} {selector} sets a serif: {family}"
+            for name, value in declarations.items():
+                if path == styles and selector.startswith(("html[data-", ":root")):
+                    continue  # the reading font and the font sets, which only documents read
+                if name == "--kpress-host-font-prose":
+                    assert value == "var(--prose-sans-font)", (
+                        f"{path.name} {selector} points the prose face at {value}"
+                    )
+    root = dict(_rules_of(styles))[":root"]
+    assert "".join(root["--message-measure"].split()).endswith("*var(--sans-char-advance))")
+    assert dict(_rules_of(styles))['html[data-prose-font="sans"]']["--doc-char-advance"] == (
+        "var(--sans-char-advance)"
+    )
+    # The pull request page is a surface of messages: its prose face and its width.
+    page = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))[".github-pull"]
+    assert page["--kpress-host-font-prose"] == "var(--prose-sans-font)"
+    assert page["--doc-measure"] == "var(--message-measure)"
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "### Serif Is for Documents" in doc
+    assert "test_serif_is_only_for_documents" in doc

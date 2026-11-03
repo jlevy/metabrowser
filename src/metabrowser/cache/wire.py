@@ -53,6 +53,21 @@ type SourcePublication = Literal[
 
 type StorePublication = Literal["published", "not_private", "damaged"]
 
+type StoreMode = Literal[
+    # Every object is in the store's own directory.
+    "full",
+    # The store borrows from a checkout the reader named, and holds what that lacks.
+    "overlay",
+]
+
+type LenderHealth = Literal[
+    # The checkout an overlay borrows from is there and can lend: it has no alternates
+    # file of its own, and its objects are the reader's own to read.
+    "present",
+    # It is not, or cannot: nothing borrowed can be read until a checkout is named again.
+    "lender_missing",
+]
+
 type ReferenceState = Literal[
     # At least one readable alias names the store.
     "referenced",
@@ -214,8 +229,14 @@ class StoreState(TypedDict):
 
 
 class StoreRecords(TypedDict):
+    """One store's records. ``mode`` and ``lender`` are ``None`` when ``store.yml`` is not
+    readable; ``lender`` is also ``None`` for a full store. The checkout's path is not here:
+    this route names no path, and a served mirror's status is the one place that does."""
+
     id: str
     publication: StorePublication
+    mode: StoreMode | None
+    lender: LenderHealth | None
     identity: StoreIdentity | None
     state: StoreState | None
     problems: list[RecordProblem]
@@ -260,6 +281,7 @@ __all__ = [
     "ConfigRecord",
     "ConfigUpgrade",
     "HomePresence",
+    "LenderHealth",
     "LayoutRecord",
     "LayoutState",
     "Reclamation",
@@ -275,6 +297,7 @@ __all__ = [
     "SourceState",
     "StoreAcquisition",
     "StoreIdentity",
+    "StoreMode",
     "StoreOperation",
     "StorePublication",
     "StoreRecords",

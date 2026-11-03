@@ -46,6 +46,9 @@ fresh without making anyone wait, and renders it.
   reclamation stay off, so a commit that was ever shown stays readable, even after a
   force-push upstream.
   Staging directories left by a crash are still swept.
+  This applies to Metabrowser’s own store;
+  [the checkout plan](plan-2026-11-02-pr-review-mirror-and-checkout.md) says what an
+  overlay borrows, which a checkout’s own `gc` can remove.
 - **Seamless caching, never blocking a request.** A cached page opens from the mirror.
   Network work runs only in background jobs: a server request starts or joins one and
   returns at once. Only a first visit, which has nothing to show yet, waits for its

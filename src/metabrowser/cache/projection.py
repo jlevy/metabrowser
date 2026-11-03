@@ -44,6 +44,7 @@ from metabrowser.cache.layout import (
     read_config,
     read_layout,
 )
+from metabrowser.cache.lender import lender_present, read_alternates
 from metabrowser.cache.listing import ListingLimitError, list_private_directory
 from metabrowser.cache.locks import is_entry_name
 from metabrowser.cache.paths import (
@@ -80,6 +81,7 @@ from metabrowser.cache.wire import (
     CacheStoresResponse,
     ConfigRecord,
     LayoutState,
+    LenderHealth,
     Reclamation,
     RecordName,
     RecordProblem,
@@ -90,6 +92,7 @@ from metabrowser.cache.wire import (
     SourcePublication,
     SourceRow,
     StoreIdentity,
+    StoreMode,
     StorePublication,
     StoreRecords,
     StoreReference,
@@ -705,6 +708,13 @@ def _store_state(state: RepositoryStoreState) -> StoreState:
     }
 
 
+def _borrowing_disagrees(home: Path, key: str, store: RepositoryStore) -> bool:
+    """Whether the alternates file names anything but what ``store.yml`` says it borrows."""
+
+    named = read_alternates(home / store_directory(key) / "repository.git")
+    return named != (store.lender.objects if store.lender is not None else None)
+
+
 def _store_records(home: Path, key: str) -> StoreRecords | None:
     problems: list[RecordProblem] = []
     store = _read(
@@ -736,14 +746,31 @@ def _store_records(home: Path, key: str) -> StoreRecords | None:
                 "message": "store.yml records a different identity than the entry it is in.",
             }
         )
+    if store is not None and _borrowing_disagrees(home, key, store):
+        problems.append(
+            {
+                "record": "store.yml",
+                "code": "mismatch",
+                "message": "store.yml disagrees with the store's alternates file about what "
+                "it borrows.",
+            }
+        )
     publication: StorePublication = "published"
     if any(problem["code"] == "not_private" for problem in problems):
         publication = "not_private"
     elif problems:
         publication = "damaged"
+    mode: StoreMode | None = None
+    lender: LenderHealth | None = None
+    if store is not None:
+        mode = "full" if store.lender is None else "overlay"
+        if store.lender is not None:
+            lender = "present" if lender_present(store.lender) else "lender_missing"
     return {
         "id": store_id,
         "publication": publication,
+        "mode": mode,
+        "lender": lender,
         "identity": None if store is None else _store_identity(store),
         "state": None if state is None else _store_state(state),
         "problems": problems,
@@ -834,6 +861,8 @@ def _stores(limit: int, after: str | None) -> CacheStoresResponse:
             {
                 "id": records["id"],
                 "publication": records["publication"],
+                "mode": records["mode"],
+                "lender": records["lender"],
                 "identity": records["identity"],
                 "state": records["state"],
                 "problems": records["problems"],

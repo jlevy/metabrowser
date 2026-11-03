@@ -155,6 +155,8 @@ status: 200
     "name": "origin",
     "origin": "file://[CWD]/origin.git",
     "location": "[APP_HOME]/repository-stores/[STORE_KEY]/repository.git",
+    "borrows": null,
+    "shallow": false,
     "refreshable": true,
     "latest": null,
     "ref_on_origin": null,

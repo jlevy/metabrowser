@@ -270,6 +270,42 @@
       "expect": "invalid"
     },
     {
+      "name": "store-overlay-borrows-from-a-checkout",
+      "record": "store",
+      "changes": [{ "path": ["lender"], "value": {"objects": "/srv/checkouts/flask/.git/objects", "checkout": "/srv/checkouts/flask", "remote": "upstream"} }],
+      "expect": "valid"
+    },
+    {
+      "name": "store-lender-objects-is-absolute",
+      "record": "store",
+      "changes": [{ "path": ["lender"], "value": {"objects": "checkouts/flask/.git/objects", "checkout": "/srv/checkouts/flask", "remote": "upstream"} }],
+      "expect": "invalid"
+    },
+    {
+      "name": "store-lender-objects-has-no-newline",
+      "record": "store",
+      "changes": [{ "path": ["lender"], "value": {"objects": "/a\n/b", "checkout": "/srv/checkouts/flask", "remote": "upstream"} }],
+      "expect": "invalid"
+    },
+    {
+      "name": "store-lender-remote-never-climbs",
+      "record": "store",
+      "changes": [{ "path": ["lender"], "value": {"objects": "/srv/checkouts/flask/.git/objects", "checkout": "/srv/checkouts/flask", "remote": "up/../../heads"} }],
+      "expect": "invalid"
+    },
+    {
+      "name": "store-lender-rejects-undeclared-field",
+      "record": "store",
+      "changes": [{ "path": ["lender"], "value": {"objects": "/srv/checkouts/flask/.git/objects", "checkout": "/srv/checkouts/flask", "remote": "upstream", "shallow": true} }],
+      "expect": "invalid"
+    },
+    {
+      "name": "store-lender-names-all-it-records",
+      "record": "store",
+      "changes": [{ "path": ["lender"], "value": {"objects": "/srv/checkouts/flask/.git/objects"} }],
+      "expect": "invalid"
+    },
+    {
       "name": "store-state-default-revision",
       "record": "store_state",
       "changes": [],

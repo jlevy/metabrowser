@@ -109,6 +109,72 @@ Plugin SDK:
   release, is gone: it handed a hook the raw active source, which is what the content
   reader replaces.
 
+Reviewing beside a checkout:
+
+- `--checkout <path>` serves a repository or pull-request URL by borrowing objects from
+  a checkout you already have instead of cloning it: a 1.2 GB repository that took 185 s
+  and 1.2 GB as a full mirror took 5 s and about 1 MB.
+
+  The store is the same store, read and served the same way, and it is remembered from
+  then on. Nothing is written to the checkout, and no Git runs in it.
+  See [Beside a checkout](docs/command-line.md#beside-a-checkout).
+
+- Only a checkout you name lends.
+  `metab <url>` inside a checkout clones as before, and prints the `--checkout` command
+  once.
+
+- `/api/source/status` gains `borrows` and `shallow`, and `/api/cache/stores` and
+  `/api/cache/source/<slug>` gain `mode` and `lender`, on every store.
+  `store.yml` gains an optional `lender`, which a full store does not write.
+
+- On a shallow store, a merge base is used only when it is provably right.
+  Otherwise the record’s `unavailable.comparison` is the new `base_uncertain`, Files
+  changed shows no diff, and the pull request’s refresh deepens the store from the
+  origin. A comparison asked for with `base_policy=merge_base` on such a store is refused
+  the same way.
+
+- A checkout that moved is a typed refusal, `lender_missing`, with the recorded path and
+  the command that repairs it; a store whose alternates file disagrees with its record
+  is refused as `damaged`. The same refusal, with its own reason, answers a checkout
+  that can no longer lend: one that has grown an `objects/info/alternates` of its own,
+  whose objects can no longer be read, or whose directory holds another repository now.
+  The checks that admitted a checkout run again on every open that uses it and before
+  every fetch, so a mirror never follows a chain of alternates nothing recorded.
+  A repair that stopped before its record was written is finished by the same
+  `--checkout` command, and a repair takes the store’s fetch lock, so it never changes
+  what a fetch in flight reads.
+  A repair the disk refuses is an `Error:` line naming the reason, never a traceback,
+  and the same command finishes it once the cache can be written.
+
+- A refresh of a mirror that borrows offers the mirror’s own refs to the origin as well
+  as the checkout’s, so it fetches only what the mirror lacks: on a replica, a branch of
+  24 commits the checkout never fetched, moved by one commit, cost that one commit’s
+  three objects per refresh rather than the branch’s 75 again each time.
+
+- A mirror whose checkout cannot be read does not sweep its refs: a present but
+  unreadable checkout answers `lender_missing` and the refs stay.
+  A ref is swept only when the checkout shows its commit gone, so one loose object or
+  one pack it cannot read now, or a checkout whose refs no file holds, as reftable keeps
+  them, leaves every ref in place rather than deleting a live `refs/pull/<n>/head` or
+  the default branch. A served `refs/pull/<n>/head` the sweep removed, because the
+  checkout collected its commits, is unobserved in `/api/source/status`
+  (`ref_on_origin: null`) rather than reported as removed by the origin, which keeps
+  every pull-request head.
+  A boundary the mirror owns is dropped once the checkout has no shallow file, so
+  `shallow` turns `false` when the checkout is deepened or unshallowed.
+
+- A comparison that needs a commit the mirror cannot read is `commits_unavailable` in
+  the record’s `unavailable.comparison`, and `no_merge_base` is only Git’s own answer
+  that the two commits share no history.
+
+- A checkout whose remote is spelled as a path, as `git clone /x/origin.git` records it,
+  is a checkout of the `file://` source of that path, so the documented commands work
+  against a local origin; a `--checkout` refusal lists the checkout’s remotes with any
+  credentials left out, whatever the URL’s scheme, the scp form included.
+
+- Every read of a repository’s `.git` metadata, a folder’s included, now refuses
+  anything but a regular file, so a FIFO planted in a `.git` directory cannot block it.
+
 GitHub URLs and HTTPS:
 
 - A GitHub URL copied from the browser opens the repository it names:
@@ -428,6 +494,9 @@ GitHub URLs and HTTPS:
   allowlisted HTML of the description (`body`) or one comment, review, or review
   comment, and nothing else of KPress’s render.
   `/api/plugin/github/pull` answers with an entity tag and a `304` when nothing changed.
+  The description and every comment and review read in the interface sans at a Markdown
+  file’s size and “Max text width”, whichever reading font is chosen, because serif is
+  kept for committed documents.
 
 - A terminal hangup or `SIGTERM` now cancels an acquisition the way Ctrl-C does: Git and
   every helper it started are stopped, staging is removed, and `metab` exits with status
@@ -986,7 +1055,97 @@ Content source:
   A store target read without a named policy gets the same policy, and whole-tree blob
   sizes are read in chunks that each get the batch deadline.
 
+Large pull requests:
+
+- `diff/comparison` no longer recomputes a comparison on every request.
+  The patch is limited to the files being hydrated, and the manifest is computed once,
+  in one Git run. On a store, a request naming two commit IDs keeps its manifest and
+  answer in memory, sends an `ETag` naming the build and the store, and answers
+  `If-None-Match` with 304; with `&build=` naming this build and `&store=` naming this
+  store, which the page gets as `METABROWSER_SETTINGS.STORE_TAG`, it is also
+  `immutable`, so a browser’s Back makes no request, and one store’s kept answer never
+  stands for another’s or for a folder’s on the same origin.
+  Its documents are unchanged, and a folder’s comparison keeps nothing and sends neither
+  header. A store’s reads see none of the reader’s attributes files (`HOME`,
+  `XDG_CONFIG_HOME` and the system file), so every reader gets the same answer, and no
+  commit’s `.gitattributes`: Git 2.43 reads a bare repository’s from its default branch,
+  so on that Git a store’s comparison of two fixed commits changed with a fetch that
+  moved `HEAD`, and 2.50 reads none; a store read now names the store’s empty tree as
+  its attributes source, and the same two commits answer the same bytes on every Git
+  Metabrowser admits. A store’s own `info/attributes` is the one attributes input a store
+  read honors; it is in the store’s token and in the key an answer is kept under, so an
+  edit to it moves every address and is answered afresh by a running server.
+  A folder’s comparison keeps honoring its working tree’s `.gitattributes`, its
+  `.git/info/attributes`, and the reader’s own attributes files and configuration, as
+  `git diff` in that folder does.
+- A pull request’s Conversation fetches Files changed when the browser is idle, so the
+  tab opens with no request.
+  A pull request’s page no longer fetches the repository’s file catalog until its search
+  palette opens or the reader leaves for a file.
+- A comparison’s 8 MiB bound applies per file, and only to the files a request asked
+  for. One file past it says it is too large to show, a file that would take a request
+  past it loads when the reader reaches it, and neither costs the rest of the
+  comparison. A file past 8 MiB of the whole patch could not be loaded at all before.
+- A diff with files still to load says how many, such as “50 of 1,183 files loaded; the
+  rest load as you reach them”, in a commit’s diff in a served folder as well.
+- A pull request’s record refreshes with its five parts in flight together instead of
+  one after another, and serving one with no record says “reading pull request N” after
+  half a second, on the cadence of a clone’s progress, instead of saying nothing.
+- A deferred file reserves an estimate of its height, the diff asks for one file at a
+  time, the one on screen nearest the top, and renders at most one per frame, and what
+  is at the top of the pane stays there as files fill in.
+  This holds in a commit’s diff in a served folder as well.
+
 Fixes:
+
+- A commit at a shallow repository’s boundary is no longer shown as if it were a root
+  commit. Git grafts such a commit into a root, so its diff was taken against the empty
+  tree and every file read as added, with no warning, in the commit view, `--diff`, and
+  `/api/plugin/diff/comparison?revision=`, on a served shallow checkout and on a mirror
+  borrowing from one alike.
+  The comparison now answers a typed refusal, `parent_unavailable`, that says the parent
+  is beyond the history here, and `/api/git/commit/<id>` reports that commit’s `stats`
+  as `null` counts with no files, which the panel shows as `?`. A real root commit is
+  unchanged. `/api/git/log` still lists the commit with no parents, as Git’s own log does
+  on a shallow clone; the status route says the history is shallow.
+
+- A pull request or a `.patch` file that deletes an empty file now shows its changes.
+  Git writes no hunks for that, nor for a deleted binary file, and the parser could not
+  model the section, emptied the whole document, and left the comparison route answering
+  `404 "file 'f1' not found in the produced diff"`, so such a pull request had no Files
+  changed. A section that still cannot be modeled now keeps its row and is named in
+  `resolved.warnings`, which the diff view shows above the files, and the rest of the
+  comparison is kept. A section with no hunks whose path is quoted or holds ` b/` is read
+  from its `diff --git` line rather than dropped.
+
+- A file whose name Git quotes with `\a`, `\b`, `\f`, `\r` or `\v` now loads: the parser
+  undid only `\n`, `\t`, `\"` and `\\`, so such a file was left out of every comparison
+  and `.patch` file with a warning.
+  A name that begins or ends with a space now loads alone from a comparison, where
+  `file=` was stripped before it was matched.
+  A tree entry Git refuses as a pathspec, such as `..` from a source that runs no fsck,
+  no longer fails the whole page: the comparison runs unrestricted for it.
+
+- A comparison’s patch runs are pinned to Git’s own `a/` and `b/` prefixes and to its
+  internal diff, so a folder’s `diff.noprefix`, `diff.mnemonicPrefix` and
+  `diff.external` no longer reach the parser, where `diff.noprefix` left a mode-only
+  change unnamed and failed.
+  `metab --diff` prints a document’s warnings above its files in text form, as the page
+  shows them. A Git failure behind `diff/comparison` answers “git diff failed” or “git
+  diff timed out” and logs the command; the body no longer spells every path asked for.
+
+- A diff’s “N of M files loaded” note counts a file that could not be loaded apart from
+  the loaded ones, a file that leaves the viewport after its answer arrived is rendered
+  rather than asked for again, and one file’s render failing no longer stops the files
+  after it from loading.
+  A file whose render fails after the server answered says so where its lines would be
+  and is counted the same way; before, it showed nothing and counted as loaded.
+
+- `metab --diff` on a comparison whose whole patch is past 8 MiB answers every file,
+  each file past what one run hydrates asked for alone, as the page does once a reader
+  has reached every file; a file too large for one patch is listed as `too_large`, and
+  `--diff-check` refuses such a comparison by name.
+  Before, it answered `diff error: file 'fN' not found in the produced diff`.
 
 - A `.env` or `.env.local` that cannot be read as text no longer stops `metab` with a
   traceback in every mode.
