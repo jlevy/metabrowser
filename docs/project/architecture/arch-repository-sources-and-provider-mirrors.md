@@ -667,7 +667,7 @@ GitHub’s list, which runs no Git: the account, then
 `tests/test_github_pull_files.py` lists a source directory that has no store, with a
 `git` first on `PATH` that fails and logs.
 
-GitHub’s list is published after every page that leaves it holding more pages than the
+GitHub’s list is published after every page that leaves it holding more rows than the
 file does, as `complete: false` with the page count GitHub’s `Link` gave, so a reader
 sees a first list arrive and a held one never shrinks while it is reread, each page with
 its `If-None-Match` and a full last page whole; the whole list is published at the end.

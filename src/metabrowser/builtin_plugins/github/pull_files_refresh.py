@@ -13,9 +13,9 @@
   on gets the next one.
 
 GitHub's list is read progressively. After every page but the last, what has been read is
-published as ``complete: false`` whenever it holds more pages than the file does, so a
+published as ``complete: false`` whenever it holds more rows than the file does, so a
 reader of ``GET pull-files`` sees a first list arrive page by page, and a list the file
-already holds, whole or stopped part-way, is not replaced by fewer pages while it is read
+already holds, whole or stopped part-way, is not replaced by fewer rows while it is read
 again, each page with its ``If-None-Match``; the whole list is published at the end. A page
 that fails fails the job, and the file stays as last published.
 
@@ -261,7 +261,7 @@ async def _from_github(
         and cached.reader == reader
         else None
     )
-    held = cached.pages if isinstance(cached, PullFileList) else 0
+    held = len(cached.rows) if isinstance(cached, PullFileList) else 0
     fetched_at = utc_stamp(pull_list.utc_now())
     pages: list[_Page] = []
     last_page: int | None = None
@@ -273,17 +273,17 @@ async def _from_github(
         pages.append(page)
         if not page.has_next:
             break
-        # Never fewer pages than the file holds, so a reread does not shrink what a reader has.
-        if len(pages) > held:
-            partial = _assembled(
-                repository,
-                number,
-                reader,
-                pages,
-                last_page=last_page,
-                fetched_at=fetched_at,
-                final=False,
-            )
+        partial = _assembled(
+            repository,
+            number,
+            reader,
+            pages,
+            last_page=last_page,
+            fetched_at=fetched_at,
+            final=False,
+        )
+        # Never fewer rows than the file holds, so a reread does not shrink what a reader has.
+        if len(partial.rows) > held:
             await _write(repository, partial)
     listed = _assembled(
         repository, number, reader, pages, last_page=last_page, fetched_at=fetched_at, final=True
