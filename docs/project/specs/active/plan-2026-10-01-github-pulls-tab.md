@@ -336,12 +336,18 @@ so it is its own pull request with its own independent review.
 
 - `GET pull?number=<n>`, `POST pull-refresh` with `{"number": n}`, and
   `GET pull-markdown?number=<n>&part=<part>`.
-- `number` is required.
-  These are internal contracts that ship as one artifact, so the page, the CLI, and
-  every transcript change in the same commit, with no fallback to “the served one”.
-- `no_pull_request` and the page’s `other_number` state go away.
-  A valid number with no record answers `absent` with `not_cached`, and a server with no
-  GitHub repository answers `not_github`, as the list route does.
+- Canonical clients name `number` explicitly.
+  Published one-shot `--api` calls that omit it address the existing attended pull
+  request; they never create or select one.
+  An explicit value is validated even when an attended pull request exists.
+- With no attended pull request, an omitted-number read retains `absent` with
+  `no_pull_request`; valid-part Markdown and refresh requests retain 409
+  `no_pull_request`. A valid explicit number with no record answers `absent` with
+  `not_cached`, and a server with no GitHub repository answers `not_github`. The page’s
+  `other_number` state goes away.
+- A refresh omitting both `number` and `retry` retains the published empty-body manual
+  refresh. Explicit `retry: false` keeps automatic freshness and rate-limit gating, and
+  all refreshes keep the same job bounds and joining behavior.
 - `"retry": true` in the `POST` body marks a reader’s own action, as on the list route.
 - `--show /pull/<n>` reads the same route, and `_require_served_pull` is removed.
 

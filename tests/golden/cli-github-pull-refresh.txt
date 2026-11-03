@@ -284,6 +284,178 @@ gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
 gh auth status
+# metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "pin_ref": "refs/pull/7/head",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "record": "<RECORD 7>"
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=body'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-markdown?part=body
+status: 200
+{
+  "number": 7,
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "part": "body",
+  "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>",
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8aeaaafb77d8ec54",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/v0.3.5/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/v0.3.5/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "49d55a2dbac06488",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/v0.3.5/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "3899b614d6672436",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/v0.3.5/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "86c6396bc77060cd",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/v0.3.5/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+# metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-refresh --data automatic.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 7,
+    "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "pin_ref": "refs/pull/7/head",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+    "record": "<RECORD 7>"
+  },
+  "status_route": "/api/plugin/github/pull?number=7"
+}
+after: /api/plugin/github/pull?number=7
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "pin_ref": "refs/pull/7/head",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "record": "<RECORD 7>"
+}
+--- stderr ---
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/7 (If-None-Match)
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1 (If-None-Match)
+gh auth status
 # metab https://github.com/octo/demo/pull/7/commits/f7c5a99 --show src/app.txt
 exit: 0
 --- stdout ---

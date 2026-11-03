@@ -427,8 +427,14 @@ model: pull envelope; state=current pull_state=merged fetched_at=2026-11-02T21:4
 
 `/api/plugin/github/pull?number=<n>` reports the record with a state: `current` within a
 minute of its fetch, `stale` after, or `absent` with a reason.
-Its `comparison_route` is Files changed, the merge base of the base branch and the head
-to the head, as GitHub shows it; issue it with `--api` to get the diff.
+For commands opened on a pull-request URL, the published forms without `number` still
+read that attended pull request: `/api/plugin/github/pull` and
+`/api/plugin/github/pull-markdown?part=body`. Posting `{}` to
+`/api/plugin/github/pull-refresh` refreshes it even while fresh; `{"retry": false}`
+retains automatic freshness gating.
+Commands for another pull request should name its number explicitly.
+The envelope’s `comparison_route` is Files changed, the merge base of the base branch
+and the head to the head, as GitHub shows it; issue it with `--api` to get the diff.
 `--diff` does not open an `https://` source, so this route is the way to read one.
 `--format json` prints the envelope alone, for a tool such as `jq`:
 
