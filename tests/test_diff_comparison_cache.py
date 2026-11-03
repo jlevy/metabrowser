@@ -487,3 +487,67 @@ def test_the_routes_gzip_test_is_the_middlewares(tmp_path: Path) -> None:
 def _client_settings() -> str:
     with TestClient(server.app) as client:
         return client.get("/").text
+
+
+def test_corrupt_comparison_invalidation_drops_bodies_and_inflight_admission() -> None:
+    async def run() -> None:
+        cache = ComparisonCache()
+        key = ("store", "token", "left", "right", "merge_base")
+        other = ("another", "token", "left", "right", "merge_base")
+        entered, release = asyncio.Event(), asyncio.Event()
+        answer = Mock(spec=ResolvedManifest)
+
+        async def listing() -> ResolvedManifest:
+            entered.set()
+            await release.wait()
+            return answer
+
+        task = asyncio.create_task(cache.manifest(key, listing))
+        await entered.wait()
+        cache.remember_body((*key, "one"), b"corrupt")
+        cache.remember_body((*other, "two"), b"valid")
+        cache.invalidate(key)
+        release.set()
+        await task
+        await asyncio.sleep(0)
+        assert not cache.has_manifest(key)
+        assert cache.body((*key, "one")) is None
+        assert cache.body((*other, "two")) == b"valid"
+        assert cache.sizes()["body_bytes"] == len(b"valid")
+
+    asyncio.run(run())
+
+
+def test_invalidated_task_reaps_failure_after_its_waiter_cancels() -> None:
+    import gc
+
+    async def run() -> None:
+        cache = ComparisonCache()
+        entered, release, finished = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        errors: list[dict[str, Any]] = []
+        loop = asyncio.get_running_loop()
+        loop.set_exception_handler(lambda _loop, context: errors.append(context))
+
+        async def listing() -> ResolvedManifest:
+            entered.set()
+            await release.wait()
+            finished.set()
+            raise RuntimeError("detached listing failed")
+
+        key = ("store", "selection")
+        waiting = asyncio.create_task(cache.manifest(key, listing))
+        await entered.wait()
+        waiting.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiting
+        cache.invalidate(key)
+        release.set()
+        await finished.wait()
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        gc.collect()
+        await asyncio.sleep(0)
+        assert errors == []
+        assert not cache.has_manifest(key)
+
+    asyncio.run(run())

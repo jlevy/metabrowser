@@ -99,6 +99,7 @@ from metabrowser.git.tree_source import (
     GitBlobIndex,
     GitBlobTallies,
     GitBlobTooLargeError,
+    GitObjectCorruptError,
     GitObjectUnavailableError,
     GitPath,
     GitPathError,
@@ -655,7 +656,9 @@ def _blob_too_large_payload(exc: GitBlobTooLargeError) -> dict[str, Any]:
     }
 
 
-def _object_unavailable_payload(exc: GitObjectUnavailableError) -> dict[str, Any]:
+def _object_unavailable_payload(
+    exc: GitObjectUnavailableError | GitObjectCorruptError,
+) -> dict[str, Any]:
     return {"error": str(exc), "code": exc.code, "oid": exc.oid}
 
 
@@ -668,11 +671,11 @@ def git_content_failure_response(exc: GitError) -> JSONResponse:
 
     Statuses match ``/api/git/*``: a timeout is 504 because a retry can
     plausibly fix it, and any other failure is 500. An object the store lacks
-    and an oversized blob keep their own 404 and 413 envelopes.
+    and an oversized blob keep their own 404 and 413 envelopes; a corrupt object is 409.
     """
 
-    if isinstance(exc, GitObjectUnavailableError):
-        return _json(_object_unavailable_payload(exc), status_code=404)
+    if isinstance(exc, (GitObjectUnavailableError, GitObjectCorruptError)):
+        return _json(_object_unavailable_payload(exc), status_code=exc.http_status)
     if isinstance(exc, GitBlobTooLargeError):
         return _json(_blob_too_large_payload(exc), status_code=413)
     if isinstance(exc, GitTimeoutError):
