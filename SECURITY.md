@@ -172,9 +172,19 @@ Those names are examples of a general rule rather than a list of exceptions.
 A `.env` or `.env.local` file may contribute only `METABROWSER_LOG_LEVEL` and
 `METABROWSER_REQUEST_LOG`. Every other name is read from the process environment or not
 at all, and Metabrowser logs a warning naming any of its own variables it ignored.
-A file that is not a regular file or is larger than 64 KB is skipped with a warning, and
-a value’s `${VAR}` is left as written, so a browsed repository’s file cannot hold the
-command by blocking its read or taking minutes to parse.
+A file that is not a regular file or is larger than 64 KB is skipped with a warning.
+`${VAR}` and `${VAR:-default}` expand in file order: earlier bindings take precedence
+over the process environment during expansion, while an exported setting still wins when
+the two allowed names are applied.
+Helper bindings are never exported.
+Expansion is limited to 1,048,576 characters per value and 4,194,304 characters across
+all values in one file, including overwritten helpers.
+An excess skips that whole file with one warning, without applying any of its settings;
+`.env.local` is still considered.
+Layered lookups and a forward scan keep large binding sets and malformed references from
+causing quadratic work.
+These bounds prevent a browsed repository from exhausting startup resources through
+repeated expansion.
 
 The rule is an allowlist because the loader cannot tell a file the operator wrote from
 one in the repository being browsed, and a denylist secures only the names somebody
