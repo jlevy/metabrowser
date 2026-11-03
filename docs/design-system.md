@@ -394,6 +394,7 @@ Every button belongs to one role-specific primitive:
 | Menu row or segmented menu choice | `.menu-item` or `.menu-seg` |
 | Tab | `.tab-btn` |
 | Collapsible section title | `.section-disclosure-trigger` |
+| Action among links: a text action, below | The context’s text-action class, on `<a>` and `<button>` alike |
 
 These primitives share the type scale, radii, semantic colors, focus treatment, and
 motion tokens, while their shapes communicate different interaction roles.
@@ -413,7 +414,9 @@ commit opens and whether the pin switches, and keyboard and screen-reader users 
 get the element they expect.
 The diff file bar’s [View file](#diff-file-bar), and
 [Browse code and a review comment’s file](#chrome) on a pull request’s page, are text
-actions. Each context sets one look for the `<a>` and the `<button>`.
+actions. Each context sets one look for the `<a>` and the `<button>`, box included: a
+`<button>` is always an atomic inline box, so where a label can wrap, the `<a>` is one
+too, and what follows a wrapped label starts on the next line in both forms.
 
 ### Choosing Among Values
 
