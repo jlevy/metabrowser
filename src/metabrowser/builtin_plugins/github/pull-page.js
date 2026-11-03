@@ -205,9 +205,9 @@ const TRUNCATED = Object.freeze({
 /**
  * What Browse code is. One server has one pin, and other tabs share it, so opening a pull
  * request moves nothing: a `link` goes to the root of what is served, and a `switch` first
- * serves this pull request's head.
+ * serves this pull request's head. `at` is the commit that opens, as a reader sees it.
  *
- * @typedef {{kind: "link"} | {kind: "switch", ref: string}} BrowseCode
+ * @typedef {{kind: "link", at: string} | {kind: "switch", ref: string, at: string}} BrowseCode
  */
 
 /**
@@ -721,7 +721,7 @@ export function describePull(envelope, page) {
   const head = text(pull.head?.sha);
   const headRef = `refs/pull/${pull.number}/head`;
   if (envelope.pin !== null && head !== "") {
-    model.browse = { kind: "link" };
+    model.browse = { kind: "link", at: envelope.pin.slice(0, 12) };
     if (envelope.pin !== head && envelope.pin_ref === headRef) {
       // Served from this pull request's head, and a refresh found a newer one: the ref
       // moved, which the refresh fetched, so the page offers it rather than switching
@@ -735,7 +735,7 @@ export function describePull(envelope, page) {
     } else if (envelope.pin !== head) {
       // Anything else, such as a branch, a tag, or another pull request. Nothing is wrong,
       // so nothing is said: reading a pull request does not need its code served.
-      model.browse = { kind: "switch", ref: headRef };
+      model.browse = { kind: "switch", ref: headRef, at: head.slice(0, 12) };
     }
   }
   const comparison = record.comparison;
@@ -1430,6 +1430,8 @@ export function conversationKey(model) {
     model.reviewComments,
     model.checks,
     model.notes,
+    // A review comment's file is a link or a button by this.
+    model.browse?.kind ?? null,
   ]);
 }
 
@@ -1645,25 +1647,57 @@ export function mountPullPage(container, ctx, mb) {
     });
   }
 
-  /** @param {string} path @param {number | null} line */
-  function fileLink(path, line) {
+  /**
+   * A text action's tooltip and accessible name: which commit opens, and whether the pin
+   * switches, since the link and the button look the same.
+   *
+   * @param {string} label The control's text.
+   * @param {string} what What opens. A path reaches only these attributes, as text.
+   * @param {BrowseCode | null} browse
+   * @returns {Record<string, string>}
+   */
+  function opensAt(label, what, browse) {
+    if (browse === null) {
+      return {};
+    }
+    const detail =
+      browse.kind === "link"
+        ? `Open ${what} at ${browse.at}, the commit this page shows`
+        : `Switch to ${browse.at}, this pull request's head, and open ${what}`;
+    return { "data-tip-text": detail, "aria-label": `${label}: ${detail}` };
+  }
+
+  /**
+   * A review comment's file, as this pull request has it and not as whatever the server
+   * serves has it. So where Browse code moves the pin this does too, and is a button: a link
+   * would open the file under the current pin on a modified click.
+   *
+   * @param {string} path
+   * @param {number | null} line
+   * @param {BrowseCode | null} browse
+   */
+  function fileLink(path, line, browse) {
     const wire = mb.sourceKind() === "git_revision" && path !== "" ? gitPathWire(path) : null;
     if (wire === null) {
       return h("span", { class: "github-pull-file" }, [path]);
     }
     const target = { path: wire, ...(line === null ? {} : { fragment: `L${line}` }) };
-    const link = h("a", { href: mb.navigation.href(target), class: "github-pull-file" }, [
-      line === null ? path : `${path}:${line}`,
-    ]);
+    const href = mb.navigation.href(target);
+    const label = line === null ? path : `${path}:${line}`;
+    const tip = opensAt(label, path, browse);
+    if (browse?.kind === "switch") {
+      const button = h(
+        "button",
+        { type: "button", class: "github-pull-file github-pull-text-action", ...tip },
+        [label],
+      );
+      button.addEventListener("click", () => void controller.browseCode(href));
+      return button;
+    }
+    const link = h("a", { href, class: "github-pull-file", ...tip }, [label]);
     link.addEventListener("click", (event) => {
-      if (!isPlainClick(event)) {
-        return;
-      }
-      event.preventDefault();
-      // The file as this pull request has it, not as whatever the server serves has it.
-      if (shown?.browse?.kind === "switch") {
-        void controller.browseCode(mb.navigation.href(target));
-      } else {
+      if (isPlainClick(event)) {
+        event.preventDefault();
         void mb.navigation.open(target);
       }
     });
@@ -1671,16 +1705,17 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   /**
-   * Browse code, as the model says it is.
+   * Browse code, as the model says it is: a text action, the same to the eye either way.
    *
    * @param {BrowseCode} browse
    */
   function browseControl(browse) {
     const root = mb.navigation.href({ path: "" });
+    const tip = opensAt("Browse code", "the code", browse);
     if (browse.kind === "link") {
-      return h("a", { href: root }, ["Browse code"]);
+      return h("a", { href: root, ...tip }, ["Browse code"]);
     }
-    const button = h("button", { type: "button", class: "btn github-pull-browse" }, [
+    const button = h("button", { type: "button", class: "github-pull-text-action", ...tip }, [
       "Browse code",
     ]);
     button.addEventListener("click", () => void controller.browseCode(root));
@@ -1901,7 +1936,7 @@ export function mountPullPage(container, ctx, mb) {
       ]);
       for (const comment of model.reviewComments) {
         const head = h("div", { class: "github-pull-card-head" }, [
-          fileLink(comment.path, comment.line),
+          fileLink(comment.path, comment.line, model.browse),
           comment.outdated ? " " : "",
           comment.outdated ? badge("outdated", "outdated", "review") : null,
           " ",

@@ -66,14 +66,27 @@
 }
 .github-pull-header a:hover,
 .github-pull-card-head a:hover,
-.github-pull-checks a:hover {
+.github-pull-checks a:hover,
+.github-pull-text-action:hover {
   text-decoration: underline;
 }
 .github-pull-header a:focus-visible,
 .github-pull-card-head a:focus-visible,
-.github-pull-checks a:focus-visible {
+.github-pull-checks a:focus-visible,
+.github-pull-text-action:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 1px;
+}
+/* A text action that moves the pin, which is a button and looks as the links beside it do:
+   docs/design-system.md, "Control Families". */
+.github-pull-text-action {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--link);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
 }
 /* A badge's box and type are `.file-header-badge`; its state is its ink and edge. */
 .github-pull-badge {

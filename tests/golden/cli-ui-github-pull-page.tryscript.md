@@ -336,7 +336,7 @@ $ node tests/dom/github-pull-page-session.js
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
-      "conversation": "keep",
+      "conversation": "repaint",
       "markdown": []
     },
     {

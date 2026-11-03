@@ -1242,6 +1242,16 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     # Links take the link token rather than the browser's blue.
     assert github[".github-pull-header a"]["color"] == "var(--link)"
+    # A button that moves the pin looks as a link does: no primitive's border or fill.
+    action = github[".github-pull-text-action"]
+    assert (action["color"], action["border"], action["background"]) == (
+        "var(--link)",
+        "0",
+        "transparent",
+    )
+    assert "github-pull-browse" not in page and '"Browse code"' in page
+    assert page.count('class: "github-pull-text-action"') == 1
+    assert '"github-pull-file github-pull-text-action"' in page
     # A hunk is the user's code, at the chrome-context mono size, in the app's mono face.
     assert github[".github-pull-hunk"]["font-family"] == "var(--font-mono)"
     assert github[".github-pull-hunk"]["font-size"] == "var(--mono-block-font-size)"
