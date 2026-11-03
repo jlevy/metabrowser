@@ -1,9 +1,9 @@
 """The envelope the pull routes answer, built from the cache and memory alone.
 
 It never runs gh or Git and never waits on the network, so a page opens as fast offline
-as online. Every request names its pull request by number, and a server answers for any
-number of its repository, so it is the same in a one-shot command and a server. It
-reports one of:
+as online. Canonical requests name their pull request by number, and a server answers
+for any number of its repository. Published one-shot calls that omit the number address
+the already attended pull request, without creating one. It reports one of:
 
 - ``absent``: nothing to show, with a ``reason``: this server serves no GitHub repository
   (``not_github``), or no usable record is cached (``not_cached``, ``schema_mismatch``,
@@ -69,7 +69,7 @@ _REFRESH_FIELDS: Final = frozenset({"number", "retry"})
 NUMBER_REQUIRED: Final = '"number" is a pull-request number'
 
 type PullState = Literal["absent", "pending", "current", "stale"]
-type PullAbsence = Literal["not_github"] | RecordAbsence
+type PullAbsence = Literal["not_github", "no_pull_request"] | RecordAbsence
 type PullRefreshStart = PullJobStart | Literal["not_due", "not_cached"]
 
 
@@ -83,7 +83,7 @@ class PullEnvelope(TypedDict):
     state: PullState
     reason: PullAbsence | None
     source: str | None
-    number: int
+    number: int | None
     pin: str | None
     pin_ref: str | None
     fetched_at: str | None
@@ -193,6 +193,14 @@ def pull_host(app: Any) -> PullHost | None:
     return PullHost(served, session.pull_refreshing, session.request_pull_refresh)
 
 
+def attended_number(app: Any) -> int | None:
+    """The existing attended GitHub companion's number, with no read or creation."""
+
+    session = mirror_session(app)
+    companion = None if session is None else session.companion
+    return companion.number if isinstance(companion, ServedPull) else None
+
+
 @dataclass(frozen=True, slots=True)
 class PullView:
     """What the envelope needs from memory, read on the event loop that owns it.
@@ -224,18 +232,18 @@ def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) ->
     )
 
 
-def pull_envelope(view: PullView) -> PullEnvelope:
+def pull_envelope(view: PullView | None) -> PullEnvelope:
     """The envelope for one pull request. Blocking and bounded; run it off the loop."""
 
-    host = view.host
+    host = None if view is None else view.host
     if host is None:
         return PullEnvelope(
             state="absent",
-            reason="not_github",
+            reason="no_pull_request" if view is None else "not_github",
             source=None,
-            number=view.number,
-            pin=view.pin,
-            pin_ref=view.pin_ref,
+            number=None if view is None else view.number,
+            pin=None if view is None else view.pin,
+            pin_ref=None if view is None else view.pin_ref,
             fetched_at=None,
             fresh_for_s=FRESHNESS_WINDOW_S,
             refreshing=False,
@@ -243,6 +251,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
             comparison_route=None,
             record=None,
         )
+    assert view is not None
     served = host.pulls
     record, dumped = cached_pull_record(served.home, served.slug, view.number)
     # Through the module, so records and their age share one clock seam.
@@ -267,10 +276,10 @@ def pull_envelope(view: PullView) -> PullEnvelope:
     )
 
 
-def record_stamp(view: PullView) -> tuple[int, int, int] | None:
+def record_stamp(view: PullView | None) -> tuple[int, int, int] | None:
     """The record file's inode, modification time in nanoseconds, and size."""
 
-    if view.host is None:
+    if view is None or view.host is None:
         return None
     return _file_stamp(view.host.pulls.home, view.host.pulls.slug, view.number)
 
@@ -308,19 +317,29 @@ class RefreshRequest:
     retry: bool
 
 
-def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
-    """What a ``POST`` body names, or :class:`PullRequestError`."""
+def refresh_request(
+    body: Mapping[str, object], *, attended: int | None = None
+) -> RefreshRequest | None:
+    """The explicit selection or existing attended alias; ``None`` if neither exists.
+
+    Only omission uses *attended*. The published empty body requests a manual refresh;
+    an explicit number defaults to automatic, and an explicit retry always wins.
+    """
 
     if set(body) - _REFRESH_FIELDS:
         raise PullRequestError('a refresh request names only "number" and "retry"')
-    number = body.get("number")
+    number = body.get("number", attended)
+    if number is None and "number" not in body:
+        if not isinstance(body.get("retry", True), bool):
+            raise PullRequestError('"retry" is true or false')
+        return None
     if (
         not isinstance(number, int)
         or isinstance(number, bool)
         or not 1 <= number <= MAX_PULL_REQUEST_NUMBER
     ):
         raise PullRequestError(NUMBER_REQUIRED)
-    retry = body.get("retry", False)
+    retry = body.get("retry", "number" not in body)
     if not isinstance(retry, bool):
         raise PullRequestError('"retry" is true or false')
     return RefreshRequest(number, retry)
@@ -361,6 +380,7 @@ __all__ = [
     "PullState",
     "PullView",
     "RefreshRequest",
+    "attended_number",
     "cached_pull_record",
     "comparison_route",
     "envelope_etag",

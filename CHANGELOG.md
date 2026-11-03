@@ -394,12 +394,15 @@ GitHub URLs and HTTPS:
   `/api/plugin/github/pull` adds `refreshing` and `last_refresh`, and answers `pending`
   while the first record is being read.
   Any server of a GitHub repository answers for any number, not only one its URL named.
-  Only `"retry": true`, a reader’s own action, can add a pull request to the cache:
-  without it a number with no record answers `not_cached`, a record inside the window or
-  before a rate limit lifts answers `not_due`, and neither starts anything.
-  Past eight pull requests queued or running, a request is refused 429 `too_many`. The
-  mirror’s fetch and the pull request whose head is served go ahead of that queue, and a
-  list’s refresh does not wait for it.
+  Published `--api` calls that omit `number` still address the attended pull request,
+  and an empty `pull-refresh` body still requests a manual refresh even while fresh.
+  Explicit numbers retain their validation and explicit `retry: false` stays automatic.
+  For an explicit number, only `"retry": true`, a reader’s own action, can add a pull
+  request to the cache: without it a number with no record answers `not_cached`, a
+  record inside the window or before a rate limit lifts answers `not_due`, and neither
+  starts anything. Past eight pull requests queued or running, a request is refused 429
+  `too_many`. The mirror’s fetch and the pull request whose head is served go ahead of
+  that queue, and a list’s refresh does not wait for it.
   The served one may run one over the bound; past that, `/api/source/refresh` answers
   429 `too_many` too when that pull request is all it would refresh.
   A newer head is offered as the source’s `latest`, and `/api/source/pin` accepts
