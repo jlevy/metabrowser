@@ -5,7 +5,7 @@ title: Load PR catalog progressively with accurate repository totals and lazy de
 kind: feature
 status: in_progress
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -25,10 +25,11 @@ child_order_hints:
   - is-01m6hpa99cxdtgg3w4zk75qe25
   - is-01m6hpbyskz9sedf0bkt2t18e9
   - is-01m6hpdkmmd0t8paqm4q5gxy0c
+  - is-01m6hpk8g024g79y02he6x1srw
 hold: null
 hold_until: null
 created_at: 2026-11-03T20:59:41.464Z
-updated_at: 2026-11-03T21:53:06.192Z
+updated_at: 2026-11-03T21:56:11.392Z
 started_at: 2026-11-03T21:00:05.436Z
 ---
 Owner requests incremental/resumable automatic prefetch of the lightweight catalog for all repository PRs, with exact repository/filter totals. Initially show up to500 and expand the display with Fetch more. Fetch full PR description/conversation/reviews/checks only on demand or a small nearby prefetch window; derive diffs from fetched Git objects, audit actual payload sizes and avoid repeated full diff transfers. Filters Open | Closed | All, defaultOpen. Bold numeric status with repository name and Showing last500 when partial. Align Conversation/Files changed tabs with the content column at wide and narrow widths. Preserve cache-only GETs, account/rate/fair scheduling, keyboard/history/visibility ownership and main/linked checkout vsmanaged URL workflows. No compatibility aliases; forward-only childPR above288; no merge.
