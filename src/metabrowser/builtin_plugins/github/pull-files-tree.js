@@ -53,6 +53,7 @@
  *   fetched_at: string | null,
  *   reader: string | null,
  *   head: string | null,
+ *   base: string | null,
  *   fresh_for_s: number,
  *   refreshing: boolean,
  *   last_refresh: {outcome: string, message: string | null, reset_at: string | null, at: string} | null,
@@ -354,7 +355,13 @@ export function visibleRows(tree, expansion, options = {}) {
  * @param {FilesEnvelope} envelope
  */
 function listIdentity(envelope) {
-  return [envelope.listed_from, envelope.fetched_at, envelope.reader, envelope.head].join("|");
+  return [
+    envelope.listed_from,
+    envelope.fetched_at,
+    envelope.reader,
+    envelope.base,
+    envelope.head,
+  ].join("|");
 }
 
 /**

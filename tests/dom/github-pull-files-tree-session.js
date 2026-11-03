@@ -162,6 +162,22 @@ async function main() {
 
   // Other lists, and each way a refresh can end.
   const local = recorded.comparison;
+  const localHolder = tree.holdFileList(local.number);
+  localHolder.accept(local);
+  const changedBase = {
+    ...local,
+    base: local.base === "b".repeat(40) ? "c".repeat(40) : "b".repeat(40),
+    offset: local.rows.length,
+    rows: [],
+  };
+  if (localHolder.accept(changedBase)) {
+    throw Error("rows from a different local base must not append");
+  }
+  if (!localHolder.query().endsWith("offset=0")) {
+    throw Error("a changed local base must restart the window");
+  }
+  stories["an unchanged head with a different local base starts again at zero"] =
+    localHolder.query();
   stories["a list from the local comparison"] = {
     ...describe(local),
     rows: show(tree.visibleRows(tree.buildFileTree(local.rows), tree.initialExpansion(local, 150))),

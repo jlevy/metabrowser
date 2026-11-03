@@ -751,13 +751,19 @@ a pull request never opened, on a mirror and a checkout alike.
 The page’s Files changed stays the diff’s authority, and both sources list the same
 comparison.
 
-**Freshness.** A list from the local comparison belongs to its head commit, so it is
-current while the row’s head is that commit.
-A list from GitHub is current while its row’s `updated_at` is no newer than the time the
-list was fetched, because any push to a pull request updates that field.
-So a repository’s many cached lists cost nothing until the pull request changes, and a
-refresh needs no window of its own.
-A conditional request covers the rest.
+**Freshness.** A local list belongs to both resolved comparison endpoints, `base` and
+`head`, and is current only while the record names that exact comparison.
+Older cached local lists without a saved base are stale; a comparison that becomes
+unavailable also makes its local list stale.
+The browser treats a changed base as another list.
+A GitHub list uses the provider’s `updated_at` and account freshness rules, including
+when a local comparison becomes known later.
+It is current while the newest cached provider update is no newer than the list’s fetch
+time, because pushes and retargeting update that field; a refresh that observes another
+account makes it stale.
+Reading a cached list starts no Git or network.
+The refresh coordinator holds repeated attempts to its freshness window; conditional
+GitHub page reads reuse unchanged rows.
 
 **What starts a fetch.** Expanding a row is a reader’s action in the shell’s chrome,
 behind the same `POST` rule.

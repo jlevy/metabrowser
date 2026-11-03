@@ -65,6 +65,7 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": null,
   "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -125,6 +126,7 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -202,6 +204,7 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -269,6 +272,7 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -310,6 +314,7 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:octo-reader",
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -349,6 +354,7 @@ status: 200
   "fetched_at": "2026-09-17T12:00:00Z",
   "reader": "gh:someone-else",
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -404,6 +410,7 @@ status: 200
   "fetched_at": null,
   "reader": null,
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
@@ -432,6 +439,7 @@ status: 200
   "fetched_at": null,
   "reader": null,
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
@@ -460,6 +468,7 @@ status: 200
   "fetched_at": null,
   "reader": null,
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
@@ -588,6 +597,7 @@ status: 200
   "fetched_at": null,
   "reader": null,
   "head": null,
+  "base": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
@@ -635,6 +645,7 @@ status: 202
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": null,
     "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+    "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -666,6 +677,7 @@ status: 200
   "fetched_at": "[TIMESTAMP]",
   "reader": null,
   "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -706,6 +718,7 @@ status: 200
     "fetched_at": "2026-09-17T12:00:00Z",
     "reader": "gh:octo-reader",
     "head": null,
+    "base": null,
     "fresh_for_s": 60.0,
     "refreshing": false,
     "last_refresh": {

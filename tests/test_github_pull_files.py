@@ -51,6 +51,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
     write_pull_files,
 )
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
+from metabrowser.cache.paths import source_pull_files
 from metabrowser.mirror_refresh import MAX_PULL_JOBS
 from tests.cache_home_fixture import (
     FixtureSource,
@@ -373,6 +374,7 @@ def test_a_borrowed_store_that_can_no_longer_read_the_comparison_falls_through_t
     _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
     borrowed = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
     assert borrowed.listed_from == "comparison"
+    assert (borrowed.base, borrowed.head) == (base, head)
     if lender == "lender_missing":
         shutil.rmtree(checkout)
     else:
@@ -391,7 +393,7 @@ def test_a_borrowed_store_that_can_no_longer_read_the_comparison_falls_through_t
 def test_a_force_push_makes_either_list_stale(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, home: Path
 ) -> None:
-    """GitHub's list goes stale when ``updated_at`` passes it, a local one when the head moves."""
+    """GitHub's list follows provider updates; a local list follows resolved endpoints."""
 
     _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
     _refresh(repository, TREE_PULL)
@@ -400,7 +402,12 @@ def test_a_force_push_makes_either_list_stale(
     route = "metabrowser.builtin_plugins.github.pull_files_route._facts"
 
     def facts(head: str | None, updated_at: str | None) -> SimpleNamespace:
-        return SimpleNamespace(head=head, updated_at=updated_at, record=None)
+        record = (
+            SimpleNamespace(comparison=SimpleNamespace(base="b" * 40, head=head))
+            if head is not None
+            else None
+        )
+        return SimpleNamespace(updated_at=updated_at, record=record)
 
     monkeypatch.setattr(route, lambda *_: facts(None, "2026-09-17T11:59:59Z"))
     assert pull_files_envelope(view, window)["state"] == "current"
@@ -413,6 +420,7 @@ def test_a_force_push_makes_either_list_stale(
             "listed_from": "comparison",
             "reader": None,
             "head": "a" * 40,
+            "base": "b" * 40,
             "pages": 0,
             "last_page": None,
             "marks": [],
@@ -422,6 +430,88 @@ def test_a_force_push_makes_either_list_stale(
     monkeypatch.setattr(route, lambda *_: facts("a" * 40, "2026-09-17T13:00:00Z"))
     assert pull_files_envelope(view, window)["state"] == "current"
     monkeypatch.setattr(route, lambda *_: facts("f" * 40, None))
+    assert pull_files_envelope(view, window)["state"] == "stale"
+
+
+def test_local_list_retarget_and_unknown_old_base_are_stale(
+    home: Path, repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unchanged head cannot make rows from a different base current or block refresh."""
+
+    listed = PullFileList(
+        schema_version=PULL_FILES_SCHEMA,
+        source=CANONICAL,
+        number=7,
+        listed_from="comparison",
+        fetched_at="2026-09-17T12:00:00Z",
+        reader=None,
+        base="b" * 40,
+        head="c" * 40,
+        pages=0,
+        last_page=None,
+        complete=True,
+        capped=False,
+        truncated=False,
+        marks=(),
+        rows=(),
+    )
+    write_pull_files(home, SOURCE.slug, listed)
+    record = SimpleNamespace(comparison=SimpleNamespace(base=listed.base, head=listed.head))
+    facts = SimpleNamespace(updated_at=None, record=record)
+    monkeypatch.setattr(
+        "metabrowser.builtin_plugins.github.pull_files_route._facts", lambda *_: facts
+    )
+    view, window = FilesView(7, repository, None, False, home), FilesWindow(7)
+    assert pull_files_envelope(view, window)["state"] == "current"
+    assert files_refresh_wanted(view, FilesRefreshRequest(7, False))[0] is False
+
+    record.comparison.base = "d" * 40
+    assert pull_files_envelope(view, window)["state"] == "stale"
+    assert files_refresh_wanted(view, FilesRefreshRequest(7, False)) == (
+        True,
+        LocalComparison(home, "d" * 40, "c" * 40),
+    )
+    record.comparison = None
+    assert pull_files_envelope(view, window)["state"] == "stale"
+    record.comparison = SimpleNamespace(base=listed.base, head=listed.head)
+    old_payload = listed.model_dump()
+    del old_payload["base"]
+    # A real cache written by the previous schema has no base field at all.
+    (home / source_pull_files(SOURCE.slug, 7)).write_text(json.dumps(old_payload), encoding="utf-8")
+    old = read_pull_files(home, SOURCE.slug, 7)
+    assert isinstance(old, PullFileList) and old.base is None
+    assert pull_files_envelope(view, window)["state"] == "stale"
+    assert files_refresh_wanted(view, FilesRefreshRequest(7, False))[0] is True
+
+
+def test_github_list_freshness_stays_with_provider_updates_and_account(
+    tmp_path: Path, home: Path, repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A later local comparison does not replace the provider's own freshness evidence."""
+
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    listed = _refresh(repository, TREE_PULL)
+    assert listed.base is None and listed.head is None
+    record = SimpleNamespace(comparison=SimpleNamespace(base="b" * 40, head="c" * 40))
+    facts = SimpleNamespace(updated_at="2026-09-17T11:59:59Z", record=record)
+    monkeypatch.setattr(
+        "metabrowser.builtin_plugins.github.pull_files_route._facts", lambda *_: facts
+    )
+    view, window = FilesView(TREE_PULL, repository, None, False, home), FilesWindow(TREE_PULL)
+    assert pull_files_envelope(view, window)["state"] == "current"
+    record.comparison.base = "d" * 40
+    assert pull_files_envelope(view, window)["state"] == "current"
+    facts.updated_at = "2026-09-17T12:00:01Z"
+    assert pull_files_envelope(view, window)["state"] == "stale"
+    facts.updated_at = "2026-09-17T11:59:59Z"
+    write_files_refresh(
+        home,
+        SOURCE.slug,
+        TREE_PULL,
+        PullRefreshStamp(
+            outcome="account_changed", reader="gh:another-reader", at="2026-09-17T12:00:02Z"
+        ),
+    )
     assert pull_files_envelope(view, window)["state"] == "stale"
 
 

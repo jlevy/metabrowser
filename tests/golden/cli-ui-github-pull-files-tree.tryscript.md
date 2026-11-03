@@ -248,6 +248,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "label": "Modified"
       }
     ],
+    "an unchanged head with a different local base starts again at zero": "number=7&offset=0",
     "a list from the local comparison": {
       "status": "current",
       "reason": null,

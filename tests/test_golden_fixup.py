@@ -100,6 +100,10 @@ _SANDBOX_HOME = "/".join(("/private/var/folders/x/T/tryscript-AbC123", "home"))
             '  "last_fetch_at": "[TIMESTAMP]",\n  "last_outcome": {\n'
             '    "operation": "acquire",\n    "outcome": "succeeded",\n    "at": "[TIMESTAMP]"\n',
         ),
+        (
+            '  "listed_from": "comparison",\n  "fetched_at": "2026-10-01T05:32:00Z",\n',
+            '  "listed_from": "comparison",\n  "fetched_at": "[TIMESTAMP]",\n',
+        ),
         ("padded   \t\nkept\n", "padded\nkept\n"),
     ],
     ids=[
@@ -117,6 +121,7 @@ _SANDBOX_HOME = "/".join(("/private/var/folders/x/T/tryscript-AbC123", "home"))
         "refreshing-elsewhere",
         "failed-pull-refresh",
         "fixture-fetch",
+        "local-file-refresh",
         "trailing-whitespace",
     ],
 )
@@ -133,6 +138,7 @@ def test_captured_output_gets_its_pattern_back(captured: str, restored: str) -> 
         '  "last_fetch_at": "2026-09-17T12:00:05Z",\n',
         '    "reset_at": null,\n    "at": "2026-09-17T12:00:00Z"\n',
         '    "operation": "acquire",\n    "outcome": "succeeded",\n    "at": "2026-09-17T12:00:05Z"\n',
+        '  "listed_from": "comparison",\n  "fetched_at": "2026-09-17T12:00:00Z",\n',
         # A commit time, a record's fetch time, and a schema version are not wall clocks.
         '  "committed_at": "2026-01-01T00:00:00Z",\n  "fetched_at": "2026-09-17T12:00:00Z",\n',
         '  "schema_version": 2,\n  "version": 1,\n',
@@ -148,6 +154,7 @@ def test_captured_output_gets_its_pattern_back(captured: str, restored: str) -> 
         "fixture-fetch",
         "fixture-refresh",
         "fixture-acquire",
+        "fixture-local-files",
         "other-times",
         "other-versions",
         "plain-html",
