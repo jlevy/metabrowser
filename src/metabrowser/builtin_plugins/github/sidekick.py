@@ -71,7 +71,6 @@ async def pull_handler(request: Request) -> Response:
 
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
-        attended_number,
         envelope_etag,
         pull_envelope,
         pull_host,
@@ -81,21 +80,13 @@ async def pull_handler(request: Request) -> Response:
     )
 
     try:
-        number = (
-            requested_number(request.query_params)
-            if "number" in request.query_params
-            else attended_number(request.app)
-        )
+        number = requested_number(request.query_params)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
-    view = (
-        None
-        if number is None
-        else pull_view(pull_host(request.app), get_source_session().subject, number)
-    )
+    view = pull_view(pull_host(request.app), get_source_session().subject, number)
     stamp = await asyncio.to_thread(record_stamp, view)
     envelope = await asyncio.to_thread(pull_envelope, view)
-    if view is not None and view.kept is not None:
+    if view.kept is not None:
         view.kept.saw_record(envelope["fetched_at"])
     etag = envelope_etag(envelope, stamp)
     headers = {**_NO_STORE, "etag": etag}
@@ -192,25 +183,16 @@ async def pull_markdown_handler(request: Request) -> JSONResponse:
     from metabrowser.builtin_plugins.github.pull_markdown import render_part
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
-        attended_number,
         pull_host,
         pull_view,
         requested_number,
     )
 
     try:
-        number = (
-            requested_number(request.query_params)
-            if "number" in request.query_params
-            else attended_number(request.app)
-        )
+        number = requested_number(request.query_params)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
-    view = (
-        None
-        if number is None
-        else pull_view(pull_host(request.app), get_source_session().subject, number)
-    )
+    view = pull_view(pull_host(request.app), get_source_session().subject, number)
     status_code, body = await asyncio.to_thread(
         render_part, view, request.query_params.get("part", "")
     )
@@ -246,9 +228,7 @@ async def _json_body(request: Request) -> dict[str, Any] | tuple[str, int]:
 async def pull_refresh_handler(request: Request) -> JSONResponse:
     """``POST /api/plugin/github/pull-refresh`` — start or join one pull request's refresh.
 
-    Canonical bodies name ``number`` and may name ``retry``, a reader's own click.
-    Omission addresses the existing attended pull request; omitting both fields keeps
-    the published manual-refresh action. ``refresh``
+    The body names ``number``, and may name ``retry``, a reader's own click. ``refresh``
     says whether this request ``started`` the job or ``joined`` one that was running,
     answered ``202``, or why an automatic request started nothing: the record is not due
     (``not_due``), or there is none (``not_cached``), answered ``200``. Past the bound on
@@ -259,7 +239,6 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
 
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
-        attended_number,
         pull_envelope,
         pull_host,
         pull_view,
@@ -272,14 +251,9 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     if isinstance(body, tuple):
         return _invalid_request(*body)
     try:
-        ask = refresh_request(body, attended=attended_number(request.app))
+        ask = refresh_request(body)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
-    if ask is None:
-        return JSONResponse(
-            {"error": "this server serves no pull request", "code": "no_pull_request"},
-            status_code=409,
-        )
     host = pull_host(request.app)
     if host is None:
         return JSONResponse(
