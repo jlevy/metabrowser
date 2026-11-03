@@ -68,7 +68,7 @@ export function buildInertToc(doc, entries) {
   toggle.setAttribute("type", "button");
   toggle.setAttribute("aria-expanded", "false");
   toggle.setAttribute("aria-label", "Table of contents");
-  toggle.setAttribute("title", "Table of contents");
+  toggle.setAttribute("data-tip-text", "Table of contents");
   toggle.append(doc.createTextNode("☰"));
   const backdrop = doc.createElement("div");
   backdrop.className = "kpress-toc-backdrop";

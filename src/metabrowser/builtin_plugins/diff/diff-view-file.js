@@ -62,6 +62,15 @@
  * @typedef {{kind: "navigated", href: string} | {kind: "busy"} | {kind: "abandoned"} | {kind: "refused", message: string}} ViewFileOutcome
  */
 
+/** @typedef {ReturnType<typeof createViewFileOpener>} ViewFileOpener */
+
+/**
+ * What makes a page's opener. The plugin holds the page's host, and the diff view supplies
+ * *released*, which closes over the mounted view.
+ *
+ * @typedef {(options?: {released?: () => void}) => ViewFileOpener} ViewFileOpenerFactory
+ */
+
 const FULL_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const VIEW_PREFIX = "/view/";
 

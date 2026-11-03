@@ -283,12 +283,20 @@ existing `RefreshCoordinator`, under a key of its own per source and state.
   `If-None-Match`. A `304` reuses that page’s rows, and GitHub documents that it does
   not count against the primary rate limit
   ([best practices](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)).
+- A `304` carries no `Link`, and a pull request that closes or reopens goes into
+  `closed` or `open` at its created rank, so under a full last page it starts a new page
+  and leaves that page’s body as it was.
+  A complete list’s last page is therefore read whole when it may be full.
+  That is one counted request a refresh, for a list whose rows are a multiple of a
+  hundred.
 - The list is assembled over the job’s duration and is not atomic.
   A pull request that opens or closes between two page reads can appear twice, which the
   number dedupes, or be missed until the next refresh.
 - A failed refresh leaves the file as it was.
-  The next automatic attempt waits a window, and after `rate_limited` it waits for
-  `reset_at`. The same rule is applied to `ServedPull` in step 2.
+  The next automatic attempt waits a window, and after `rate_limited` nothing runs
+  before `reset_at`, a reader’s own action included, since each request GitHub refuses
+  moves that time on. The route cannot ask `gh` who is active, so an account that was not
+  limited waits too. The same rule is applied to `ServedPull` in step 2.
 - A list job never touches a store, so it does not take the mirror’s fetch turn.
 
 **Typed failures.** The stamp carries the states `gh.py` already names, plus
@@ -297,8 +305,10 @@ existing `RefreshCoordinator`, under a key of its own per source and state.
 **Another reader.** The file names its reader, `gh:<login>`.
 
 - A list fetched by another account is shown as it is, labelled with that reader, and
-  treated as stale. This matches the thin-mirror rule that cached private content stays
-  viewable after a logout or an account switch; the cache is owner-only.
+  treated as stale, as is a list whose last refresh ended `account_changed`, whichever
+  account that stamp names.
+  This matches the thin-mirror rule that cached private content stays viewable after a
+  logout or an account switch; the cache is owner-only.
 - The next successful refresh replaces the whole file.
   Pages from two readers are never joined, and ETags are reused only for the same
   reader, so **Load more** under a new account starts again from the first page.
@@ -312,7 +322,7 @@ handlers in `sidekick.py` that import the rest only when called:
 | Route | Answer |
 | --- | --- |
 | `GET /api/plugin/github/pulls?state=&limit=&after=` | From the cache alone: `state` (`absent`, `pending`, `current`, `stale`), `reason`, `source`, `list`, `fetched_at`, `reader`, `fresh_for_s`, `refreshing`, `last_refresh`, `fetched`, `complete`, `truncated`, `at_cap` (no more may be held), `limit` (0 for the envelope alone), `next_after`, and `rows`. It carries an entity tag, as the pull route does |
-| `POST /api/plugin/github/pulls-refresh` with `{"state": …, "more": false, "retry": false}` | Starts or joins the list’s refresh and answers `202` at once with the envelope and its `status_route`. `"more": true` extends the list by one GitHub page. Those two and `"retry": true` are a reader’s action; an automatic request that is not due answers `200` with `refresh: "not_due"` and starts nothing |
+| `POST /api/plugin/github/pulls-refresh` with `{"state": …, "more": false, "retry": false}` | Starts or joins the list’s refresh and answers `202` at once with the envelope and its `status_route`. `"more": true` extends the list by one GitHub page; one that joins a refresh is read after it, in the same job, so `refreshing` stays true until the page is in the list. `"retry": true`, and a `more` with a page to read, are a reader’s action. Anything else, an automatic request or a `more` on a complete list or one at its cap, waits for one attempt a window. Nothing runs before `reset_at` after `rate_limited`, whoever asked. A request held by either rule answers `200` with `refresh: "not_due"` and starts nothing |
 | `GET /api/plugin/github/pull-files?number=<n>` | One pull request’s changed files, from the cache alone, with the same state fields. See [Changed Files in a Row](#changed-files-in-a-row) |
 | `POST /api/plugin/github/pull-files-refresh` with `{"number": n}` | Starts or joins that list’s refresh |
 
@@ -720,7 +730,13 @@ Jobs run on the server’s `RefreshCoordinator`, keyed by the slug.
 - When the checkout’s `HEAD` is the pull request’s head, the page says so and links the
   root.
 
-**Files changed.** Step 6 has two cases:
+**Files changed.** Step 6 has two cases.
+Both are decided differently by
+[Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
+(2026-11-02): Files changed on a folder server reads an overlay store that borrows the
+served checkout’s objects, never the checkout directly, because the diff commands honor
+a checkout’s `diff.external` and textconv drivers and a direct read cannot bring missing
+commits. The text below stands until that plan’s step 4 rewrites it.
 
 - **The commits are in the checkout.** The page checks for the base and head commits
   with a read-only Git command and shows the diff through the existing comparison route,
@@ -745,9 +761,15 @@ Jobs run on the server’s `RefreshCoordinator`, keyed by the slug.
 
 **The alternates option.** A cache-side store could borrow the checkout’s objects
 through `objects/info/alternates` and fetch only what is missing.
-It is left out at first: a `gc`, a repack, or a move of the user’s repository can remove
-objects the borrowing store depends on, which breaks the rule that no object Metabrowser
-showed is ever lost.
+It was left out at first: a `gc`, a repack, or a move of the user’s repository can
+remove objects the borrowing store depends on, which breaks the rule that no object
+Metabrowser showed is ever lost.
+That decision is revised by
+[Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md)
+(2026-11-02), which measured each of those failures and proposes an overlay store with a
+typed state and a healing fetch; its
+[Open Decisions](plan-2026-11-02-pr-review-mirror-and-checkout.md#open-decisions-for-the-user)
+item 1 is the user’s call on the rule.
 
 **Network only when the user opens the tab.** Opening a folder makes no request today,
 and that stays true.
@@ -987,9 +1009,12 @@ and `CHANGELOG.md` in the same change.
 - **The cache grows.** Each opened pull request adds a record, bounded by
   `MAX_PULL_RECORD_BYTES`, and on a mirror its commits.
   Nothing deletes either in the first version; cache management (`mb-0ybg`) owns that.
-- **Two servers can refresh one repository’s records at once**, a checkout’s and a
-  mirror’s. Writes are atomic replacements, so the later one wins and neither file is
-  torn.
+- **Two servers can refresh one repository’s records or lists at once**, a checkout’s
+  and a mirror’s. Writes are atomic replacements, so the later one wins and neither file
+  is torn. A list’s job writes rows and marks from the one file it read, so what is left
+  is one reader’s self-consistent list.
+  A late `more` can put back an older first page, and its older `fetched_at` goes with
+  it, so the list is `stale` within a window and the next refresh replaces it.
 - **`gh` changes its text.** The runner classifies some failures by `gh`’s messages,
   recorded from one version.
   A changed message degrades to `gh_failed`, which the tab shows with **Retry**.
@@ -1039,6 +1064,10 @@ They are kept because each is cheap to change later.
      head, which a checkout’s server cannot show.
    - *Alternative:* the in-page fetch into Metabrowser’s mirror, as a sixth step.
    - *Affects:* whether a folder’s server ever clones, and one more step.
+   - *Revised 2026-11-02:* the in-page fetch no longer means a clone.
+     [Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
+     makes it an overlay store that borrows the served checkout’s objects, measured at
+     seconds and kilobytes; step 6 here is rewritten when that plan’s step 4 starts.
 
 5. **Whether closed pull requests are listed by default.**
    - *Decided by the user:* yes.

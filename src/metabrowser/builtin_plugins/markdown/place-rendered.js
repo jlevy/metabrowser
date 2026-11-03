@@ -12,11 +12,11 @@
 // bytes. See explorations/performance-loop/experiments/exp-037.
 //
 // This module itself stays in the plugin's static tree, because every Markdown view
-// places its render through it. Measured 2026-11-01 in Chrome 152 on a served folder's
-// first Markdown view: 1,290 bytes transferred and 2,030 decoded, the one module v0.11.0
-// did not request (17 against 16). It imports nothing statically, so it adds no level,
-// the plugin's last module arrived after it, and it is requested only where rendered.js
-// is, when the plugin first loads.
+// places its render through it. Measured 2026-11-02 in Chrome 152 on a served folder's
+// first Markdown view, with this comment in place: 1,490 bytes transferred and 2,537
+// decoded, the one module v0.11.0 did not request (17 against 16). It imports nothing
+// statically, so it adds no level, the plugin's last module arrived after it, and it is
+// requested only where rendered.js is, when the plugin first loads.
 
 /**
  * Put *rendered*'s HTML into *target*, replacing what is there, and resolve its links.

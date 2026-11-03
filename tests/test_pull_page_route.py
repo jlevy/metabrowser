@@ -5,7 +5,7 @@ left to the browser is the shell's route glue and the page's paint; this file pi
 of them can be pinned without one: the route grammar the server and ``--show`` share,
 that ``/pull/`` serves the shell and loads the GitHub plugin for the ``pull-request``
 kind, that the paint parses no HTML but KPress's sanitized Markdown, and that the
-stylesheet spaces a text's markup and reaches nothing outside the page.
+stylesheet reaches nothing outside the page.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import kpress_adapter
-from metabrowser.inert_html import ALLOWED_TAGS, harden
+from metabrowser.inert_html import harden
 from metabrowser.server import app
 from metabrowser.view_routes import decode_safe_pull_route, format_pull_href
 from tests.golden_harness import read_recording
@@ -81,9 +81,12 @@ def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:
 
     source = PAGE_JS.read_text(encoding="utf-8")
     assert "innerHTML" not in source
-    assert "inert.sanitizeHtml(String(rendered.html), shown?.pull?.htmlUrl" in source
+    assert "inert.sanitizeHtml(" in source
+    assert 'shown?.pull?.htmlUrl ?? "https://github.com/"' in source
     assert 'ensureAsset("inert-html")' in source
-    assert "loadKpressAssets" not in source
+    # The route's one list of KPress's stylesheets, and nothing a text could name.
+    assert source.count("mb.loadKpressAssets(") == 1
+    assert "mb.loadKpressAssets(rendered.assets)" in source
     assert "insertAdjacentHTML" not in source and "outerHTML" not in source
     assert source.count('rel: "noopener noreferrer"') == 1
     # GitHub's own rendering of the text is never read.
@@ -169,18 +172,53 @@ def test_a_hunk_is_painted_as_text_in_a_native_disclosure() -> None:
 
     source = PAGE_JS.read_text(encoding="utf-8")
     assert '"data-kind": line.kind }, [line.text])' in source
-    # Stateless: the browser opens it, and nothing of the page listens or remembers.
+    # The browser opens it. The page listens to that event in one place, the function the
+    # session drives, and remembers nothing: a repaint replaces the disclosure.
     assert 'h("details", { class: "github-pull-hunk-earlier" }' in source
-    assert "toggle" not in source
+    assert source.count('"toggle"') == 1
+    assert "tintOnFirstOpen(disclosure, plain, earlier, hunkLines);" in source
+
+
+def test_one_box_scrolls_all_of_a_hunk() -> None:
+    """The lines above the cut and below it move together, under a label that stays put.
+
+    With a scroller each, a wide hunk had a scrollbar in its middle. On pallets/click#3030,
+    in the ``docs/options.md`` comment with its 7 earlier lines open, in headless Chrome:
+    the box has a ``scrollWidth`` of 1,859 px in 1,047, the only scroller in the card; at
+    ``scrollLeft`` 200 both parts' lines move 200 px and the label none; every line is
+    1,859 px wide; and with the disclosure closed the box does not scroll.
+    """
+
+    source = PAGE_JS.read_text(encoding="utf-8")
+    assert 'const box = h("div", { class: "github-pull-hunk-box" });' in source
+    assert "box.append(disclosure);" in source and "box.append(hunkLines(tail));" in source
+    rules = _style_rules()
+    assert "overflow-x: auto" in rules[".github-pull-hunk-box"]
+    assert "overflow" not in rules[".github-pull-hunk"]
+    assert "overflow" not in rules.get(".github-pull-hunk-earlier", "")
+    # As wide as the widest line of either part, so a tint reaches the end of a scrolled line.
+    for selector in (".github-pull-hunk-box", ".github-pull-hunk"):
+        assert "grid-template-columns: minmax(max-content, 1fr)" in rules[selector]
+    # The fold stays the full-width row it is, as wide as the box shows, and stays put.
+    label = rules[".github-pull-hunk-earlier > summary"]
+    assert "position: sticky" in label and "left: 0" in label and "width: 100cqi" in label
+    assert "container-type: inline-size" in rules[".github-pull-hunk-box"]
 
 
 def _vertical_margins(declarations: str) -> tuple[str, str]:
-    """The top and bottom of a rule's ``margin`` shorthand."""
+    """The top and bottom of a rule's ``margin`` shorthand: its last, which is what wins."""
 
-    found = re.search(r"(?:^|;|\s)margin:\s*([^;]+);", declarations)
-    assert found is not None, declarations
-    sides = found.group(1).split()
+    found = re.findall(r"(?:^|;|\s)margin:\s*([^;]+);", declarations)
+    assert found, declarations
+    sides = found[-1].split()
     return sides[0], sides[2] if len(sides) > 2 else sides[0]
+
+
+def test_a_later_margin_is_the_one_read() -> None:
+    """``_style_rules`` joins a selector's rules in source order, and the cascade takes the last."""
+
+    assert _vertical_margins("margin: 0.75em 0;\n  margin: 0;\n") == ("0", "0")
+    assert _vertical_margins("margin: 1.25em 0 0.5em;\n  line-height: 1.25;") == ("1.25em", "0.5em")
 
 
 def test_nothing_in_the_pages_stylesheet_can_reach_another_page() -> None:
@@ -189,88 +227,61 @@ def test_nothing_in_the_pages_stylesheet_can_reach_another_page() -> None:
     ] == []
 
 
-# The block markup of the allowlist a text can arrive with. The shell's reset takes every
-# block's margin away, so a block with no rule of its own runs into the next one. Which
-# margin looks right is judged in a browser; that each block has one is a contract.
-_TEXT_BLOCKS = (
-    "p",
-    "ul",
-    "ol",
-    "dl",
-    "pre",
-    "blockquote",
-    "table",
-    "details",
-    "hr",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-)
+def test_a_text_is_set_in_a_kpress_article_the_page_makes() -> None:
+    """A text reads as the same Markdown a file reads as, because it is the same rules.
 
+    KPress's stylesheets set its type, spacing, lists, tables, and code. The article and
+    every class in it are the page's own, chosen by element (``kpressProse``); the session
+    in ``tests/dom/inert-html-session.js`` pins what that builds.
+    """
 
-@pytest.mark.parametrize("tag", _TEXT_BLOCKS)
-def test_a_block_of_a_text_is_spaced_under_the_shells_reset(tag: str) -> None:
-    assert tag in ALLOWED_TAGS
-    top, bottom = _vertical_margins(_style_rules()[f".github-pull-markdown {tag}"])
-    assert float(top.removesuffix("em")) > 0
-    assert float(bottom.removesuffix("em")) > 0
-
-
-def test_a_lists_markers_have_room_inside_the_card() -> None:
+    source = PAGE_JS.read_text(encoding="utf-8")
+    assert (
+        'h("article", { class: "kpress kpress-inert" }, [inert.kpressProse(nodes, document)])'
+        in (" ".join(source.split()).replace("[ ", "[").replace(" ]", "]"))
+    )
+    assert '{ class: "metabrowser-kpress-host" }' in source
+    # Nothing but the card's own edges is left to this stylesheet.
     rules = _style_rules()
-    for tag in ("ul", "ol", "dd"):
-        assert "padding-left: 1.8em" in rules[f".github-pull-markdown {tag}"]
-    # A nested list is part of its item, so it does not take a block's margin.
-    assert _vertical_margins(rules[".github-pull-markdown li > ul"]) == ("0.25em", "0")
-    assert _vertical_margins(rules[".github-pull-markdown li > ol"]) == ("0.25em", "0")
+    assert "margin-block-start: 0" in rules[".github-pull-text .kpress-prose > :first-child"]
+    assert "margin-block-end: 0" in rules[".github-pull-text .kpress-prose > :last-child"]
+    for selector in rules:
+        assert ".kpress" not in selector.replace(".github-pull-text .kpress-prose > ", "")
 
 
-def test_a_wide_table_scrolls_inside_its_text() -> None:
-    """The card clips what overflows it, so a table wider than its text must scroll itself.
+def test_a_wide_table_and_a_long_word_stay_reachable_in_a_card() -> None:
+    """The card clips what overflows it, so what is too wide must scroll or break itself.
 
-    Measured 2026-11-01 with an 8-column table in a text on pallets/click#3866: 3,349 px in
-    a 673 px card, with 2,689 px out of reach and nothing between them that scrolled.
+    KPress does both, on the classes ``kpressProse`` gives a table's wrapper and a code
+    block. Measured in Chrome 152 on 2026-11-02 in a 661 px text: an 8-column table of
+    400-character cells has a 769 px ``scrollWidth`` in its 661 px wrapper, a 400-character
+    line of code 2,855 px in its 659 px block, and a 400-character word and a long URL
+    break at the text's edge. The card's own ``scrollWidth`` stays its 685 px width.
     """
 
     rules = _style_rules()
     assert "overflow: hidden" in rules[".github-pull-card"]
-    for declaration in ("display: block", "max-width: 100%", "overflow-x: auto"):
-        assert declaration in rules[".github-pull-markdown table"], declaration
-    # A block keeps the table's own layout inside it, and its collapsed borders by
-    # inheritance; a width of its own would stretch a table that fits.
-    assert "border-collapse: collapse" in rules[".github-pull-markdown table"]
-    assert "width: 100%" not in rules[".github-pull-markdown table"].replace("max-width", "")
+    inert_js = (PAGE_JS.parents[2] / "static" / "inert-html.js").read_text(encoding="utf-8")
+    assert 'pre.className = "kpress-code"' in inert_js
+    assert 'table.className = "kpress-table"' in inert_js
+    assert 'parent.className = "kpress-table-wrap"' in inert_js
+    document_css = kpress_adapter.get_kpress_static_asset("css/document.css").content.decode()
+    components_css = kpress_adapter.get_kpress_static_asset("css/components.css").content.decode()
+    assert "overflow-wrap: break-word" in document_css
+    assert (
+        "overflow-x: auto" in components_css[components_css.index(".kpress-table-wrap {") :][:400]
+    )
+    assert "overflow-x: auto" in document_css[document_css.rindex(".kpress-code {") :][:300]
 
 
-def test_a_long_word_breaks_without_stopping_a_wide_table_from_scrolling() -> None:
-    """The card clips a word as it clips a table, so a word or URL too long for its text
-    must break, and only by the rule that leaves a table's cells their min-content.
+def test_a_text_arrives_in_the_two_wrappers_kpress_prose_drops() -> None:
+    """A trim on the prose's children reaches a text's first block only if they are its own."""
 
-    Measured 2026-11-01 on jlevy/metabrowser#267, in a 647 px text: a 400-character word
-    had 1,853 px clipped and a long URL 1,807 px, with no way to reach either.
-    ``overflow-wrap: anywhere`` counts its breaks toward min-content, so a table of
-    unbroken cells crushes to fit instead of scrolling. This stylesheet in headless Chrome,
-    with an 8-column table of such cells in a 647 px text: ``anywhere`` made 81 px columns
-    and no scroll; ``break-word`` keeps 466 px columns, a ``scrollWidth`` of 3,727 px, and
-    the last column reachable, and clips neither the word nor the URL.
-    """
-
-    rules = _style_rules()
-    assert "overflow-wrap: break-word" in rules[".github-pull-markdown"]
-    for selector, declarations in rules.items():
-        if selector.startswith(".github-pull-markdown"):
-            assert "anywhere" not in declarations, selector
-            assert "word-break" not in declarations, selector
-
-
-def test_a_table_at_either_end_of_a_text_is_what_the_deepest_trim_reaches() -> None:
-    """KPress wraps a table in a ``<div>`` of its own, beneath the two every text has."""
-
+    html = read_recording("github-pull-page-responses.json")["markdown body"]["body"]["html"]
+    wrappers = re.match(r"\s*((?:<div>)*)", html)
+    assert wrappers is not None and wrappers.group(1) == "<div>" * 2
     source = "| a | b |\n| --- | --- |\n| 1 | 2 |\n"
-    html = harden(
+    table = harden(
         str(
             kpress_adapter.render_kpress_view(
                 source_text=source,
@@ -285,33 +296,5 @@ def test_a_table_at_either_end_of_a_text_is_what_the_deepest_trim_reaches() -> N
         ),
         "https://github.com/octo/demo/pull/7",
     )
-    assert re.match(r"\s*<div><div><div><table>", html), html
-    assert re.search(r"</table></div></div></div>\s*$", html), html
-    rules = _style_rules()
-    first = ".github-pull-markdown > " + "div:first-child > " * 3 + ":first-child"
-    last = ".github-pull-markdown > " + "div:last-child > " * 3 + ":last-child"
-    assert "margin-top: 0" in rules[first] and "margin-bottom: 0" in rules[last]
-    # No trim names a cell's ancestors, so a cell keeps its padding and borders. What a
-    # cell holds, as raw HTML can give it, is trimmed by the rule for its container.
-    cell = ".github-pull-markdown :is(blockquote, details, dd, th, td) > "
-    assert "margin-top: 0" in rules[f"{cell}:first-child"]
-    assert "margin-bottom: 0" in rules[f"{cell}:last-child"]
-
-
-def test_a_texts_first_and_last_block_are_trimmed_through_its_wrappers() -> None:
-    """The trims reach as deep as what the Markdown route answers actually nests.
-
-    The route's text arrives as ``<div><div><p>``, and a table has its own ``<div>``
-    beneath those. A trim that stops at the outer wrapper leaves the margin it means to
-    remove, with the card's padding on top of it.
-    """
-
-    html = read_recording("github-pull-page-responses.json")["markdown body"]["body"]["html"]
-    wrappers = re.match(r"\s*((?:<div>)*)", html)
-    assert wrappers is not None and wrappers.group(1) == "<div>" * 2
-    rules = _style_rules()
-    for depth in range(4):
-        first = ".github-pull-markdown > " + "div:first-child > " * depth + ":first-child"
-        last = ".github-pull-markdown > " + "div:last-child > " * depth + ":last-child"
-        assert "margin-top: 0" in rules[first], first
-        assert "margin-bottom: 0" in rules[last], last
+    # A table's own wrapper is the third, the one kpressProse names.
+    assert re.match(r"\s*<div><div><div><table>", table), table

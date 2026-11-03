@@ -382,6 +382,18 @@
     });
   }
 
+  // The group's key in the shared chip controls' markup and events.
+  const KIND_GROUP = "source-ref-kind";
+
+  /** The shared chip controls, which the shell loads before anything lazy. */
+  function chipControls() {
+    const controls = window.metabrowser.filterControls;
+    if (!controls) {
+      throw new Error("source ref selector: filter controls are unavailable");
+    }
+    return controls;
+  }
+
   /**
    * Paint one model. Browser only.
    *
@@ -394,15 +406,17 @@
    * @param {(ref: string) => void} choose
    */
   function paint(parts, model, choose) {
-    parts.toggle.textContent = model.button;
+    parts.label.textContent = model.button;
     parts.toggle.setAttribute("aria-expanded", String(model.open));
     parts.panel.hidden = !model.open;
     parts.root.dataset.open = String(model.open);
     if (!model.open) {
       return;
     }
+    // The chip group's markup, kept up to date in place so focus stays on the chosen one.
     for (const [kind, tab] of Object.entries(parts.tabs)) {
-      tab.setAttribute("aria-pressed", String(kind === model.kind));
+      tab.setAttribute("aria-checked", String(kind === model.kind));
+      tab.tabIndex = kind === model.kind ? 0 : -1;
     }
     parts.filter.placeholder = `Filter ${KIND_PLURAL[model.kind]}`;
     parts.filter.setAttribute("aria-label", `Filter ${KIND_PLURAL[model.kind]}`);
@@ -468,26 +482,39 @@
   function build(element) {
     const toggle = document.createElement("button");
     toggle.type = "button";
-    toggle.className = "source-ref-selector-toggle";
+    toggle.className = "chip chip-menu-trigger source-ref-selector-toggle";
     toggle.setAttribute("aria-haspopup", "dialog");
     toggle.dataset.tipText = "Switch branch or tag";
+    const label = document.createElement("span");
+    label.className = "source-ref-selector-label";
+    const caret = document.createElement("span");
+    caret.className = "chip-menu-caret";
+    caret.setAttribute("aria-hidden", "true");
+    caret.innerHTML = window.MetabrowserIcons?.toggle ?? "";
+    toggle.append(label, caret);
     const panel = document.createElement("div");
     panel.className = "source-ref-selector-panel menu";
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-label", "Switch branch or tag");
     panel.hidden = true;
+    // One of two lists, so an exclusive chip group: docs/design-system.md, "Choosing Among
+    // Values". It says nothing until the first paint, which marks the kind shown.
+    const kinds = document.createElement("div");
+    kinds.className = "source-ref-selector-kinds";
+    kinds.innerHTML = chipControls().groupHtml({
+      key: KIND_GROUP,
+      select: "one",
+      layout: "joined",
+      label: "Show",
+      options: [
+        { value: "branch", label: "Branches" },
+        { value: "tag", label: "Tags" },
+      ],
+      value: "branch",
+    });
     const tabs = /** @type {Record<MetabrowserSourceRefKind, HTMLButtonElement>} */ ({});
-    const tabRow = document.createElement("div");
-    tabRow.className = "source-ref-selector-kinds";
-    tabRow.setAttribute("role", "group");
-    tabRow.setAttribute("aria-label", "Show");
-    for (const kind of /** @type {MetabrowserSourceRefKind[]} */ (["branch", "tag"])) {
-      const tab = document.createElement("button");
-      tab.type = "button";
-      tab.className = "source-ref-selector-kind";
-      tab.textContent = kind === "branch" ? "Branches" : "Tags";
-      tabs[kind] = tab;
-      tabRow.append(tab);
+    for (const tab of kinds.querySelectorAll("button")) {
+      tabs[/** @type {MetabrowserSourceRefKind} */ (tab.dataset.chipValue)] = tab;
     }
     const filter = document.createElement("input");
     filter.type = "search";
@@ -502,10 +529,10 @@
     const error = document.createElement("p");
     error.className = "source-ref-selector-error";
     error.setAttribute("role", "alert");
-    panel.append(tabRow, filter, list, note, error);
+    panel.append(kinds, filter, list, note, error);
     element.replaceChildren(toggle, panel);
     element.hidden = false;
-    return { root: element, toggle, panel, tabs, filter, list, note, error };
+    return { root: element, toggle, label, panel, kinds, tabs, filter, list, note, error };
   }
 
   /**
@@ -557,13 +584,13 @@
       },
       { signal },
     );
-    for (const [kind, tab] of Object.entries(parts.tabs)) {
-      tab.addEventListener(
-        "click",
-        () => void mounted.setKind(/** @type {MetabrowserSourceRefKind} */ (kind)),
-        { signal },
-      );
-    }
+    const unbindKinds = chipControls().bind(parts.kinds, {
+      onChange(key, value, select) {
+        if (key === KIND_GROUP && select === "one") {
+          void mounted.setKind(/** @type {MetabrowserSourceRefKind} */ (value));
+        }
+      },
+    });
     parts.filter.addEventListener("input", () => mounted.setQuery(parts.filter.value), {
       signal,
     });
@@ -588,7 +615,8 @@
         }
         /** @type {HTMLElement[]} */
         const stops = [
-          ...Object.values(parts.tabs),
+          // One stop: the group's arrow keys move within it.
+          ...Object.values(parts.tabs).filter((tab) => tab.tabIndex === 0),
           parts.filter,
           ...rows().filter((row) => row.tabIndex === 0 && !row.disabled),
         ];
@@ -654,6 +682,7 @@
       ...mounted,
       dispose() {
         listening.abort();
+        unbindKinds();
         mounted.dispose();
         element.replaceChildren();
         element.hidden = true;

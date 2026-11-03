@@ -36,6 +36,7 @@ from pydantic import (
     Field,
     StringConstraints,
     ValidationError,
+    field_validator,
     model_validator,
 )
 
@@ -113,6 +114,11 @@ MAX_ROW_LABEL_BYTES: Final = 64
 # in-process at a load average near 40).
 MAX_PULL_LIST_BYTES: Final = 10 * 1024 * 1024
 
+# What ``gh_api`` will send as ``If-None-Match``, the same as ``gh.py``'s, which this module
+# does not load. It raises on anything else, which is no failure a job names, so a file
+# holding anything else is refused where it is read.
+ETAG_PATTERN: Final = r'^(?:W/)?"[\x21\x23-\x7e]{1,256}"$'
+
 type PullNumber = Annotated[int, Field(ge=1, le=MAX_PULL_REQUEST_NUMBER)]
 type _RowText = Annotated[str, StringConstraints(max_length=MAX_ROW_REF_BYTES)]
 type _LabelName = Annotated[str, StringConstraints(max_length=MAX_ROW_LABEL_BYTES)]
@@ -168,7 +174,7 @@ class ListPageMark(_Model):
     cut something on it, which a ``304`` also keeps.
     """
 
-    etag: Annotated[str, StringConstraints(max_length=300)] | None
+    etag: Annotated[str, StringConstraints(pattern=ETAG_PATTERN)] | None
     numbers: tuple[PullNumber, ...] = Field(max_length=API_PAGE_SIZE)
     truncated: bool
 
@@ -192,6 +198,13 @@ class PullList(_Model):
     truncated: bool
     etags: tuple[ListPageMark, ...] = Field(max_length=MAX_LIST_PAGES)
     rows: tuple[PullListRow, ...] = Field(max_length=MAX_LIST_ROWS)
+
+    @field_validator("fetched_at")
+    @classmethod
+    def _a_real_moment(cls, value: str) -> str:
+        # The pattern admits a month 13 or a minute 61, and the route ages a list by this.
+        parse_stamp(value)
+        return value
 
     @model_validator(mode="after")
     def _is_one_listing(self) -> Self:
@@ -299,18 +312,28 @@ def read_list_refresh(home: Path, slug: str, name: PullListName) -> PullRefreshS
     return _UNWRITTEN_STAMPS.get(str(home / relative)) or read_refresh_stamp(home, relative)
 
 
+def rate_limit_holds(stamp: PullRefreshStamp | None, *, now: datetime) -> bool:
+    """Whether GitHub said when it will answer again, and that time has not come."""
+
+    return (
+        stamp is not None
+        and stamp.outcome == "rate_limited"
+        and stamp.reset_at is not None
+        and now < parse_stamp(stamp.reset_at)
+    )
+
+
 def refresh_is_due(stamp: PullRefreshStamp | None, *, now: datetime) -> bool:
     """Whether an automatic refresh may start: not tried within the window, or before a limit lifts.
 
     A refresh that succeeded or failed within :data:`FRESHNESS_WINDOW_S` counts the same,
     so a failing ``gh`` is asked once a window rather than on every poll, and after
-    ``rate_limited`` no attempt runs before ``reset_at``. A reader's own action, such as
-    **Load more** or **Retry**, does not ask this.
+    ``rate_limited`` no attempt runs before ``reset_at``.
     """
 
     if stamp is None:
         return True
-    if stamp.outcome == "rate_limited" and stamp.reset_at and now < parse_stamp(stamp.reset_at):
+    if rate_limit_holds(stamp, now=now):
         return False
     return now - parse_stamp(stamp.at) > timedelta(seconds=FRESHNESS_WINDOW_S)
 
@@ -322,6 +345,7 @@ def can_extend(listed: PullList) -> bool:
 
 
 __all__ = [
+    "ETAG_PATTERN",
     "MAX_LIST_PAGES",
     "MAX_LIST_ROWS",
     "MAX_PULL_LIST_BYTES",
@@ -335,6 +359,7 @@ __all__ = [
     "PullListRow",
     "can_extend",
     "parse_stamp",
+    "rate_limit_holds",
     "read_list_refresh",
     "read_pull_list",
     "refresh_is_due",

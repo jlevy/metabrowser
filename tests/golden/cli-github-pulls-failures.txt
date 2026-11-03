@@ -230,70 +230,6 @@ status: 200
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
-    "outcome": "rate_limited",
-    "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z",
-    "reset_at": "2026-09-17T12:02:00Z",
-    "at": "2026-09-17T12:00:00Z"
-  },
-  "fetched": 100,
-  "complete": false,
-  "truncated": false,
-  "at_cap": false,
-  "limit": 0,
-  "next_after": null,
-  "rows": []
-}
---- stderr ---
-Error: the refresh ended with rate_limited
---- body ---
-{"retry": true}
---- gh ---
-gh auth status
-gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
-# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
-exit: 1
---- stdout ---
-api: /api/plugin/github/pulls-refresh
-status: 202
-{
-  "refresh": "started",
-  "pulls": {
-    "state": "current",
-    "reason": null,
-    "source": "https://github.com/octo/demo",
-    "list": "all",
-    "fetched_at": "2026-09-17T12:00:00Z",
-    "reader": "gh:octo-reader",
-    "fresh_for_s": 60.0,
-    "refreshing": true,
-    "last_refresh": {
-      "outcome": "rate_limited",
-      "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z",
-      "reset_at": "2026-09-17T12:02:00Z",
-      "at": "2026-09-17T12:00:00Z"
-    },
-    "fetched": 100,
-    "complete": false,
-    "truncated": false,
-    "at_cap": false,
-    "limit": 0,
-    "next_after": null,
-    "rows": []
-  },
-  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
-}
-after: /api/plugin/github/pulls?state=all&limit=0
-status: 200
-{
-  "state": "current",
-  "reason": null,
-  "source": "https://github.com/octo/demo",
-  "list": "all",
-  "fetched_at": "2026-09-17T12:00:00Z",
-  "reader": "gh:octo-reader",
-  "fresh_for_s": 60.0,
-  "refreshing": false,
-  "last_refresh": {
     "outcome": "not_found_or_private",
     "message": "GitHub has no such repository, or it is private and the gh account cannot read it",
     "reset_at": null,
@@ -477,7 +413,7 @@ status: 202
 after: /api/plugin/github/pulls?state=all&limit=0
 status: 200
 {
-  "state": "current",
+  "state": "stale",
   "reason": null,
   "source": "https://github.com/octo/demo",
   "list": "all",
@@ -515,7 +451,7 @@ status: 202
 {
   "refresh": "started",
   "pulls": {
-    "state": "current",
+    "state": "stale",
     "reason": null,
     "source": "https://github.com/octo/demo",
     "list": "all",
@@ -661,8 +597,8 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "rate_limited",
-    "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
-    "reset_at": "2026-09-23T16:46:00Z",
+    "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z",
+    "reset_at": "2026-09-17T12:02:00Z",
     "at": "2026-09-17T12:00:00Z"
   },
   "fetched": 100,
@@ -680,7 +616,6 @@ Error: the refresh ended with rate_limited
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
-## The clock moves on 61 s, to 2026-09-17T12:01:01Z.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -689,7 +624,7 @@ status: 200
 {
   "refresh": "not_due",
   "pulls": {
-    "state": "stale",
+    "state": "current",
     "reason": null,
     "source": "https://github.com/octo/demo",
     "list": "all",
@@ -699,8 +634,8 @@ status: 200
     "refreshing": false,
     "last_refresh": {
       "outcome": "rate_limited",
-      "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
-      "reset_at": "2026-09-23T16:46:00Z",
+      "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z",
+      "reset_at": "2026-09-17T12:02:00Z",
       "at": "2026-09-17T12:00:00Z"
     },
     "fetched": 100,
@@ -715,9 +650,45 @@ status: 200
 }
 --- stderr ---
 --- body ---
-{}
+{"retry": true}
 --- gh ---
-## The clock moves on 604800 s, to 2026-09-24T12:01:01Z.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pulls": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "all",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "fresh_for_s": 60.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "rate_limited",
+      "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z",
+      "reset_at": "2026-09-17T12:02:00Z",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "fetched": 100,
+    "complete": false,
+    "truncated": false,
+    "at_cap": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+}
+--- stderr ---
+--- body ---
+{"more": true}
+--- gh ---
+## The clock moves on 121 s, to 2026-09-17T12:02:01Z.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -736,8 +707,8 @@ status: 202
     "refreshing": true,
     "last_refresh": {
       "outcome": "rate_limited",
-      "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
-      "reset_at": "2026-09-23T16:46:00Z",
+      "message": "GitHub's API rate limit is exhausted until 2026-09-17T12:02:00Z",
+      "reset_at": "2026-09-17T12:02:00Z",
       "at": "2026-09-17T12:00:00Z"
     },
     "fetched": 100,
@@ -757,7 +728,7 @@ status: 200
   "reason": null,
   "source": "https://github.com/octo/demo",
   "list": "all",
-  "fetched_at": "2026-09-24T12:01:01Z",
+  "fetched_at": "2026-09-17T12:02:01Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
   "refreshing": false,
@@ -765,7 +736,173 @@ status: 200
     "outcome": "succeeded",
     "message": null,
     "reset_at": null,
-    "at": "2026-09-24T12:01:01Z"
+    "at": "2026-09-17T12:02:01Z"
+  },
+  "fetched": 100,
+  "complete": false,
+  "truncated": false,
+  "at_cap": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- body ---
+{"retry": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
+gh auth status
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "all",
+    "fetched_at": "2026-09-17T12:02:01Z",
+    "reader": "gh:octo-reader",
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:02:01Z"
+    },
+    "fetched": 100,
+    "complete": false,
+    "truncated": false,
+    "at_cap": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+}
+after: /api/plugin/github/pulls?state=all&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "all",
+  "fetched_at": "2026-09-17T12:02:01Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "rate_limited",
+    "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
+    "reset_at": "2026-09-23T16:46:00Z",
+    "at": "2026-09-17T12:02:01Z"
+  },
+  "fetched": 100,
+  "complete": false,
+  "truncated": false,
+  "at_cap": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with rate_limited
+--- body ---
+{"retry": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls?state=all&sort=created&direction=desc&per_page=100&page=1 (If-None-Match)
+## The clock moves on 61 s, to 2026-09-17T12:03:02Z.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pulls": {
+    "state": "stale",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "all",
+    "fetched_at": "2026-09-17T12:02:01Z",
+    "reader": "gh:octo-reader",
+    "fresh_for_s": 60.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "rate_limited",
+      "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
+      "reset_at": "2026-09-23T16:46:00Z",
+      "at": "2026-09-17T12:02:01Z"
+    },
+    "fetched": 100,
+    "complete": false,
+    "truncated": false,
+    "at_cap": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+## The clock moves on 604800 s, to 2026-09-24T12:03:02Z.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "stale",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "all",
+    "fetched_at": "2026-09-17T12:02:01Z",
+    "reader": "gh:octo-reader",
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "rate_limited",
+      "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
+      "reset_at": "2026-09-23T16:46:00Z",
+      "at": "2026-09-17T12:02:01Z"
+    },
+    "fetched": 100,
+    "complete": false,
+    "truncated": false,
+    "at_cap": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+}
+after: /api/plugin/github/pulls?state=all&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "all",
+  "fetched_at": "2026-09-24T12:03:02Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-24T12:03:02Z"
   },
   "fetched": 100,
   "complete": false,
@@ -794,7 +931,7 @@ status: 202
     "reason": null,
     "source": "https://github.com/octo/demo",
     "list": "all",
-    "fetched_at": "2026-09-24T12:01:01Z",
+    "fetched_at": "2026-09-24T12:03:02Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
     "refreshing": true,
@@ -802,7 +939,7 @@ status: 202
       "outcome": "succeeded",
       "message": null,
       "reset_at": null,
-      "at": "2026-09-24T12:01:01Z"
+      "at": "2026-09-24T12:03:02Z"
     },
     "fetched": 100,
     "complete": false,
@@ -821,7 +958,7 @@ status: 200
   "reason": null,
   "source": "https://github.com/octo/demo",
   "list": "all",
-  "fetched_at": "2026-09-24T12:01:01Z",
+  "fetched_at": "2026-09-24T12:03:02Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
   "refreshing": false,
@@ -829,7 +966,7 @@ status: 200
     "outcome": "cache_unwritable",
     "message": "the list of pull requests could not be written to the cache",
     "reset_at": null,
-    "at": "2026-09-24T12:01:01Z"
+    "at": "2026-09-24T12:03:02Z"
   },
   "fetched": 100,
   "complete": false,
@@ -859,7 +996,7 @@ status: 202
     "reason": null,
     "source": "https://github.com/octo/demo",
     "list": "all",
-    "fetched_at": "2026-09-24T12:01:01Z",
+    "fetched_at": "2026-09-24T12:03:02Z",
     "reader": "gh:octo-reader",
     "fresh_for_s": 60.0,
     "refreshing": true,
@@ -867,7 +1004,7 @@ status: 202
       "outcome": "cache_unwritable",
       "message": "the list of pull requests could not be written to the cache",
       "reset_at": null,
-      "at": "2026-09-24T12:01:01Z"
+      "at": "2026-09-24T12:03:02Z"
     },
     "fetched": 100,
     "complete": false,
@@ -886,7 +1023,7 @@ status: 200
   "reason": null,
   "source": "https://github.com/octo/demo",
   "list": "all",
-  "fetched_at": "2026-09-24T12:01:01Z",
+  "fetched_at": "2026-09-24T12:03:02Z",
   "reader": "gh:octo-reader",
   "fresh_for_s": 60.0,
   "refreshing": false,
@@ -894,7 +1031,7 @@ status: 200
     "outcome": "succeeded",
     "message": null,
     "reset_at": null,
-    "at": "2026-09-24T12:01:01Z"
+    "at": "2026-09-24T12:03:02Z"
   },
   "fetched": 100,
   "complete": false,

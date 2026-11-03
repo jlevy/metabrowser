@@ -27,7 +27,9 @@
 // class, id, data, style, or event attribute survives, nor any SVG, media, stylesheet,
 // frame, or form; an image becomes a link to it; a link is made absolute against the
 // pull request's github.com page, kept only for http(s), and opened in a new tab with
-// rel="noopener noreferrer"; and no KPress script or stylesheet is loaded for a text.
+// rel="noopener noreferrer"; and no KPress script is loaded for a text. KPress's
+// stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes in a
+// KPress article of its own making, so a text reads as the same Markdown in a file does.
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -52,6 +54,16 @@ export const MARKDOWN_AHEAD = "100% 0px";
 // is where the comment anchors, and github.com shows the same end of it. Eight lines is
 // a display choice, enough to read what a comment is about, and not a bound on any cost.
 export const HUNK_TAIL_LINES = 8;
+// The most of a hunk a comment shows, however long its range; the rest is behind the same
+// disclosure. Unlike the tail this bounds a cost, as a commenter picks the range and a line
+// shown is two nodes in a grid. Measured 2026-11-02 in headless Chrome 152 on a loaded
+// development machine, a fresh process a run, from mount through layout: 250 comments of
+// 16 KiB of blank lines, each with a range over all of them, took 26 to 28 s unbounded and
+// 0.6 s here. The worst a record can do at this bound, 1,000 comments past it, took 1.6 to
+// 1.8 s, and 1.0 s at 50, 2.7 s at 200, and 5.0 to 5.4 s at 400, so the cost is linear in it.
+// It cuts little: of 1,858 multi-line comments read that day across 14 repositories, the
+// 99th percentile was 34 lines, and 2 passed 100, both of 129.
+export const HUNK_RANGE_LINES = 100;
 // How long the pane stays still before its place is written to the history entry. A click
 // writes at once, so this only keeps a moving pane from calling `history.replaceState`,
 // which Safari limits to 100 calls in 30 s.
@@ -84,9 +96,9 @@ export const TABS = Object.freeze(["", "files"]);
 /** @type {Readonly<Record<string, string>>} */
 const ABSENCE = Object.freeze({
   not_github: "This server serves no GitHub repository.",
-  not_cached: "No data for this pull request is cached yet.",
-  schema_mismatch: "The cached data for this pull request is from another version.",
-  unreadable: "The cached data for this pull request could not be read.",
+  not_cached: "This pull request has not been fetched yet.",
+  schema_mismatch: "The saved copy of this pull request is from another version.",
+  unreadable: "The saved copy of this pull request could not be read.",
 });
 
 /** @type {Readonly<Record<string, string>>} */
@@ -100,9 +112,9 @@ const REVIEW_STATES = Object.freeze({
 
 /** @type {Readonly<Record<string, string>>} */
 const MERGEABLE = Object.freeze({
-  mergeable: "No conflicts with the base branch",
-  conflicting: "Conflicts with the base branch",
-  unknown: "Merge status unknown",
+  mergeable: "No conflicts with the base branch.",
+  conflicting: "Conflicts with the base branch.",
+  unknown: "Merge status unknown.",
 });
 
 /** @type {Readonly<Record<string, string>>} */
@@ -151,7 +163,7 @@ const TRUNCATED = Object.freeze({
 
 /**
  * @typedef {{kind: "hunk" | "add" | "del" | "context" | "note", text: string}} HunkLine
- * @typedef {{earlier: HunkLine[], shown: HunkLine[]}} HunkView
+ * @typedef {{earlier: string, earlierLines: number, shown: HunkLine[]}} HunkView
  */
 
 /**
@@ -405,6 +417,14 @@ function hunkLineKind(line) {
 }
 
 /**
+ * @param {string} line
+ * @returns {HunkLine}
+ */
+function hunkLine(line) {
+  return { kind: hunkLineKind(line), text: line };
+}
+
+/**
  * How many lines of its side a review comment covers: one, or a multi-line comment's
  * range. `original_*` number the commit the hunk is from, and `line` and `start_line` the
  * head, or are gone when the comment is outdated. A later commit can change the distance
@@ -425,29 +445,30 @@ function commentedSpan(comment) {
 
 /**
  * What a review comment shows of its hunk: `shown` is the tail, from the start of the
- * commented range if that is further back than `HUNK_TAIL_LINES`, and `earlier` is the
- * rest, in order, for the disclosure. Counted back from the end, where the commented
- * line is, along the comment's side of the diff, because a hunk cut to fit the record has
- * lost its `@@` line and the numbers it starts from. A range reaching above what the
- * record kept shows all of it. A comment is on one side here: the record does not keep
- * `start_side`, so a range starting on the other side is counted on this one, and any of
- * it that falls outside the tail is in the disclosure.
+ * commented range if that is further back than `HUNK_TAIL_LINES` and no further than
+ * `HUNK_RANGE_LINES`, and `earlier` is the text of the rest, `earlierLines` of them, for
+ * the disclosure. One string and not a line each, as this runs on every poll and the page
+ * compares what it answers as JSON: a line's kind is worked out when it is painted.
+ * Counted back from the end, where the commented line is, along the comment's side of the
+ * diff, because a hunk cut to fit the record has lost its `@@` line and the numbers it
+ * starts from. A range reaching above what the record kept shows all of it. A comment is
+ * on one side here: the record does not keep `start_side`, so a range starting on the
+ * other side is counted on this one, and any of it that falls outside the tail is in the
+ * disclosure.
  *
  * @param {string} hunk
  * @param {Record<string, any>} comment
  * @returns {HunkView}
  */
 export function hunkView(hunk, comment) {
-  /** @type {HunkLine[]} */
-  const lines = hunk
-    .replace(/\n$/, "")
-    .split("\n")
-    .map((line) => ({ kind: hunkLineKind(line), text: line }));
+  const lines = hunk.replace(/\n$/, "").split("\n");
   const side = comment.side === "LEFT" ? "del" : "add";
+  const furthest = Math.max(0, lines.length - HUNK_RANGE_LINES);
   let remaining = commentedSpan(comment);
   let rangeStart = lines.length;
-  for (let index = lines.length - 1; index >= 0 && remaining > 0; index -= 1) {
-    if (lines[index].kind === "context" || lines[index].kind === side) {
+  for (let index = lines.length - 1; index >= furthest && remaining > 0; index -= 1) {
+    const kind = hunkLineKind(lines[index]);
+    if (kind === "context" || kind === side) {
       remaining -= 1;
       rangeStart = index;
     }
@@ -456,7 +477,33 @@ export function hunkView(hunk, comment) {
   // A disclosure is a row of its own, so it never hides less than a row's worth: one
   // line, in practice the `@@` line of a hunk just past the tail.
   const cut = first <= 1 ? 0 : first;
-  return { earlier: lines.slice(0, cut), shown: lines.slice(cut) };
+  return {
+    earlier: lines.slice(0, cut).join("\n"),
+    earlierLines: cut,
+    shown: lines.slice(cut).map(hunkLine),
+  };
+}
+
+/**
+ * A disclosure's lines are one text node until it is first opened, when they become a line
+ * each and take their tints, because a record can hold 2,048,000 lines no one opens: 250
+ * comments of 16 KiB of blank lines made 4.1M nodes and took 3.4 s, and take 28,000 and 0.4 s
+ * this way (`HUNK_RANGE_LINES` says how that was measured). One node and not none, so its
+ * text stays in the page for search, and so nothing moves in the frame the browser paints
+ * before it fires `toggle`: the node is as tall as the lines will be. Once, as the lines
+ * stay; a repaint replaces the disclosure, with its listener, and starts it closed.
+ *
+ * @param {EventTarget} details
+ * @param {ChildNode} plain What it holds until then.
+ * @param {string} earlier
+ * @param {(lines: HunkLine[]) => Node} paintLines
+ */
+export function tintOnFirstOpen(details, plain, earlier, paintLines) {
+  details.addEventListener(
+    "toggle",
+    () => plain.replaceWith(paintLines(earlier.split("\n").map(hunkLine))),
+    { once: true },
+  );
 }
 
 /**
@@ -603,9 +650,7 @@ export function describePull(envelope, page) {
     model.message =
       envelope.state === "pending"
         ? "Fetching the pull request…"
-        : (page.error ??
-          ABSENCE[envelope.reason ?? ""] ??
-          "No data for this pull request is cached.");
+        : (page.error ?? ABSENCE[envelope.reason ?? ""] ?? ABSENCE.not_cached);
     model.canRefresh =
       envelope.state === "absent" && envelope.reason !== "not_github" && !envelope.refreshing;
     return model;
@@ -614,9 +659,11 @@ export function describePull(envelope, page) {
   model.message = page.error ?? null;
   model.canRefresh = envelope.state === "stale" && !envelope.refreshing;
   const age = relativeAge(record.fetched_at ?? null, page.nowMs);
+  // The account the record was read as, without the tool that read it.
+  const reader = text(record.reader).replace(/^gh:/, "");
   model.freshness = envelope.refreshing
-    ? `Refreshing… · fetched ${age} by ${text(record.reader)}`
-    : `Fetched ${age} by ${text(record.reader)}${envelope.state === "stale" ? " · may be out of date" : ""}`;
+    ? `Refreshing… · fetched ${age} by ${reader}`
+    : `Fetched ${age} by ${reader}${envelope.state === "stale" ? " · may be out of date" : ""}`;
   const pull = record.pull ?? {};
   const crossRepository = pull.head?.repository !== pull.base?.repository;
   const state = displayState(pull);
@@ -1442,9 +1489,11 @@ export function mountPullPage(container, ctx, mb) {
   const number = typeof ctx.number === "number" ? ctx.number : 0;
   const open = typeof ctx.open === "function" ? ctx.open : () => {};
   container.classList.add("github-pull");
-  const header = h("div", { class: "github-pull-header" });
+  const header = h("div", { class: "github-pull-header github-pull-column" });
   const body = h("div", { class: "github-pull-body" });
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
+  // Between the header and the body, as wide as the pane, as a file's views are.
+  const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Pull request" });
   container.replaceChildren(header, body, live);
 
   /** @type {PullModel | null} */
@@ -1487,10 +1536,18 @@ export function mountPullPage(container, ctx, mb) {
         )
       : null;
 
-  /** @param {string} iso */
-  const when = (iso) => {
+  /**
+   * An age, from the one primitive, with the exact time in its tooltip.
+   *
+   * @param {string} iso
+   */
+  const age = (iso) => {
     const at = Date.parse(iso);
-    return Number.isFinite(at) ? mb.formatTimestamp(at / 1000) : iso;
+    if (!Number.isFinite(at)) {
+      return h("span", {}, [iso]);
+    }
+    const { label, className } = mb.formatAge(at / 1000);
+    return h("span", { class: className, "data-tip-text": mb.formatTimestamp(at / 1000) }, [label]);
   };
 
   /**
@@ -1512,9 +1569,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     element.append(h("div", { class: "github-pull-plain" }, [value]));
     if (truncated) {
-      element.append(
-        h("p", { class: "github-pull-note" }, ["This text was cut; the rest is on GitHub."]),
-      );
+      element.append(notice("warning", ["This text was cut; the rest is on GitHub."]));
     }
     texts.set(part, element);
     if (part === "body" || observer === null) {
@@ -1525,26 +1580,36 @@ export function mountPullPage(container, ctx, mb) {
     return element;
   }
 
+  /** KPress's stylesheets, once. A text stays readable under the shell's if they fail. */
+  /** @type {Promise<void> | null} */
+  let documentStyles = null;
+
   /**
    * @param {string} part
    * @param {Record<string, any>} rendered
    */
   function renderMarkdown(part, rendered) {
-    void inertReady.then((inert) => {
+    documentStyles ??= mb.loadKpressAssets(rendered.assets).catch(() => {});
+    void Promise.all([inertReady, documentStyles]).then(([inert]) => {
       const element = texts.get(part);
       const plain = element?.querySelector(":scope > .github-pull-plain");
       if (!element || !plain || inert === null) {
         return;
       }
-      const holder = h("div", { class: "github-pull-markdown" });
       // KPress's Markdown HTML, reduced to the allowlist on the server; GitHub's own
-      // body_html is never used, and no KPress script or stylesheet is loaded for it.
+      // body_html is never used, and no KPress script is loaded for it.
       // static/inert-html.js parses it into an inert template and inserts only nodes
       // rebuilt from the same allowlist, links made absolute against the pull request.
-      holder.replaceChildren(
-        ...inert.sanitizeHtml(String(rendered.html), shown?.pull?.htmlUrl ?? "https://github.com/"),
+      // The article and the classes on its tables and code blocks are the page's own.
+      const nodes = inert.sanitizeHtml(
+        String(rendered.html),
+        shown?.pull?.htmlUrl ?? "https://github.com/",
       );
-      plain.replaceWith(holder);
+      plain.replaceWith(
+        h("div", { class: "metabrowser-kpress-host" }, [
+          h("article", { class: "kpress kpress-inert" }, [inert.kpressProse(nodes, document)]),
+        ]),
+      );
     });
   }
 
@@ -1552,11 +1617,11 @@ export function mountPullPage(container, ctx, mb) {
   function fileLink(path, line) {
     const wire = mb.sourceKind() === "git_revision" && path !== "" ? gitPathWire(path) : null;
     if (wire === null) {
-      return h("code", {}, [path]);
+      return h("span", { class: "github-pull-file" }, [path]);
     }
     const target = { path: wire, ...(line === null ? {} : { fragment: `L${line}` }) };
     const link = h("a", { href: mb.navigation.href(target), class: "github-pull-file" }, [
-      h("code", {}, [line === null ? path : `${path}:${line}`]),
+      line === null ? path : `${path}:${line}`,
     ]);
     link.addEventListener("click", (event) => {
       if (!isPlainClick(event)) {
@@ -1616,7 +1681,53 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {string} state @param {string} label @param {string} [kind] */
   const badge = (state, label, kind = "state") =>
-    h("span", { class: `github-pull-badge github-pull-${kind}`, "data-state": state }, [label]);
+    h(
+      "span",
+      { class: `file-header-badge github-pull-badge github-pull-${kind}`, "data-state": state },
+      [`${label.charAt(0).toUpperCase()}${label.slice(1)}`],
+    );
+
+  /**
+   * A box about the content, on the shell's primitive; its severity is its border.
+   *
+   * @param {"warning" | "error" | null} severity
+   * @param {Array<Node | string>} children
+   */
+  const notice = (severity, children) =>
+    h(
+      "div",
+      {
+        class: "notice github-pull-notice",
+        ...(severity === null ? {} : { "data-severity": severity }),
+      },
+      children,
+    );
+
+  /** A branch, as the ref chip names one. @param {string} name */
+  const branch = (name) =>
+    h("span", { class: "git-ref git-ref-remote", "data-tip-text": name }, [name]);
+
+  /** The registry's disclosure chevron: the shell's constant, not the pull request's text. */
+  function chevron() {
+    const svg = new DOMParser().parseFromString(mb.icons.toggle || "", "text/html").body
+      .firstElementChild;
+    return svg === null
+      ? null
+      : h("span", { class: "github-pull-fold-chevron", "aria-hidden": "true" }, [
+          document.importNode(svg, true),
+        ]);
+  }
+
+  /** One link per tab, kept across paints so a poll does not take focus from one. */
+  const tabLinks = [
+    { id: "", label: "Conversation" },
+    { id: "files", label: "Files changed" },
+  ].map(({ id, label }) => {
+    const link = pageLink({ number, tab: id }, "tab-btn", [label]);
+    link.setAttribute("role", "tab");
+    tabBar.append(link);
+    return { id, link };
+  });
 
   /** @param {PullModel} model */
   function paintHeader(model) {
@@ -1634,14 +1745,17 @@ export function mountPullPage(container, ctx, mb) {
           h("span", {}, [
             pull.actor === null ? null : h("strong", {}, [pull.actor]),
             `${pull.actor === null ? "" : " "}${pull.action} `,
-            h("code", {}, [pull.base]),
+            branch(pull.base),
             " from ",
-            h("code", {}, [pull.head]),
+            branch(pull.head),
           ]),
         ]),
-        h("div", { class: "github-pull-meta github-pull-quiet" }, [
-          `Opened ${when(pull.created)} · updated ${when(pull.updated)}`,
-          pull.closed && pull.closedLabel ? ` · ${pull.closedLabel} ${when(pull.closed)}` : "",
+        h("div", { class: "github-pull-quiet" }, [
+          "Opened ",
+          age(pull.created),
+          " · updated ",
+          age(pull.updated),
+          ...(pull.closed && pull.closedLabel ? [` · ${pull.closedLabel} `, age(pull.closed)] : []),
           " · ",
           outside(pull.htmlUrl, "", ["View on GitHub"]),
           model.browse === null ? null : " · ",
@@ -1693,20 +1807,16 @@ export function mountPullPage(container, ctx, mb) {
       status.append(h("span", { class: "github-pull-offer" }, [model.headOffer.text, " ", button]));
     }
     children.push(status);
-    if (model.pull !== null) {
-      const tabs = h("div", { class: "github-pull-tabs", role: "tablist" });
-      for (const [id, label] of [
-        ["", "Conversation"],
-        ["files", "Files changed"],
-      ]) {
-        const button = pageLink({ number: model.number, tab: id }, "github-pull-tab", [label]);
-        button.setAttribute("role", "tab");
-        button.setAttribute("aria-selected", String(model.tab === id));
-        tabs.append(button);
-      }
-      children.push(tabs);
-    }
     header.replaceChildren(...children.filter((child) => child !== null));
+    if (model.pull === null) {
+      tabBar.remove();
+    } else {
+      for (const { id, link } of tabLinks) {
+        link.classList.toggle("active", model.tab === id);
+        link.setAttribute("aria-selected", String(model.tab === id));
+      }
+      header.after(tabBar);
+    }
     live.textContent = [model.message, model.failure].filter(Boolean).join(" ");
   }
 
@@ -1733,7 +1843,8 @@ export function mountPullPage(container, ctx, mb) {
       h("section", { class: "github-pull-card" }, [
         h("div", { class: "github-pull-card-head" }, [
           h("strong", {}, [pull.author]),
-          ` opened ${when(pull.created)}`,
+          " opened ",
+          age(pull.created),
         ]),
         textBlock("body", pull.text, pull.truncated),
       ]),
@@ -1745,7 +1856,7 @@ export function mountPullPage(container, ctx, mb) {
       } else {
         head.append(" commented");
       }
-      head.append(item.at === null ? " (pending)" : ` ${when(item.at)}`);
+      head.append(" ", item.at === null ? "(pending)" : age(item.at));
       const card = h("section", { class: `github-pull-card github-pull-${item.kind}` }, [head]);
       if (item.text.trim() !== "" || item.kind === "comment") {
         card.append(textBlock(item.part, item.text, item.truncated));
@@ -1754,7 +1865,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     if (model.reviewComments.length > 0) {
       const threads = h("section", { class: "github-pull-section" }, [
-        h("h2", {}, [`Review comments (${model.reviewComments.length})`]),
+        h("h2", { class: "section-heading" }, [`Review comments (${model.reviewComments.length})`]),
       ]);
       for (const comment of model.reviewComments) {
         const head = h("div", { class: "github-pull-card-head" }, [
@@ -1763,7 +1874,8 @@ export function mountPullPage(container, ctx, mb) {
           comment.outdated ? badge("outdated", "outdated", "review") : null,
           " ",
           h("strong", {}, [comment.author]),
-          ` ${comment.reply ? "replied" : "commented"} ${when(comment.at)}`,
+          ` ${comment.reply ? "replied" : "commented"} `,
+          age(comment.at),
         ]);
         const card = h(
           "div",
@@ -1771,21 +1883,30 @@ export function mountPullPage(container, ctx, mb) {
           [head],
         );
         if (!comment.reply && comment.hunk !== null) {
-          const { earlier, shown: tail } = comment.hunk;
-          if (earlier.length > 0) {
-            // Native, so opening it asks nothing of the page and a repaint just closes it.
-            card.append(
-              h("details", { class: "github-pull-hunk-earlier" }, [
-                h("summary", { class: "section-disclosure-trigger" }, [
-                  `${earlier.length} earlier lines`,
+          const { earlier, earlierLines, shown: tail } = comment.hunk;
+          // One box scrolls all of a hunk sideways, however far it is opened.
+          const box = h("div", { class: "github-pull-hunk-box" });
+          if (earlierLines > 0) {
+            // Native, so the browser opens and closes it and a repaint just closes it.
+            const lines = `line${earlierLines === 1 ? "" : "s"}`;
+            const plain = hunkLines([{ kind: "context", text: earlier }]);
+            const disclosure = h("details", { class: "github-pull-hunk-earlier" }, [
+              h("summary", { class: "fold-expander" }, [
+                chevron(),
+                h("span", { class: "github-pull-fold-closed" }, [
+                  `${earlierLines} earlier ${lines}`,
                 ]),
-                hunkLines(earlier),
+                h("span", { class: "github-pull-fold-open" }, [`Hide ${earlierLines} ${lines}`]),
               ]),
-            );
+              plain,
+            ]);
+            tintOnFirstOpen(disclosure, plain, earlier, hunkLines);
+            box.append(disclosure);
           }
-          card.append(hunkLines(tail));
+          box.append(hunkLines(tail));
+          card.append(box);
           if (comment.hunkTruncated) {
-            card.append(h("p", { class: "github-pull-note" }, ["The start of this hunk was cut."]));
+            card.append(notice("warning", ["The start of this hunk was cut."]));
           }
         }
         card.append(textBlock(comment.part, comment.text, comment.truncated));
@@ -1794,7 +1915,9 @@ export function mountPullPage(container, ctx, mb) {
       sections.push(threads);
     }
     const summary = model.checks;
-    const checksSection = h("section", { class: "github-pull-section" }, [h("h2", {}, ["Checks"])]);
+    const checksSection = h("section", { class: "github-pull-section" }, [
+      h("h2", { class: "section-heading" }, ["Checks"]),
+    ]);
     if (summary === null) {
       checksSection.append(
         h("p", { class: "github-pull-quiet" }, ["No checks or statuses reported."]),
@@ -1827,7 +1950,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     sections.push(checksSection);
     for (const note of model.notes) {
-      sections.push(h("p", { class: "github-pull-note" }, [note]));
+      sections.push(notice("warning", [note]));
     }
     body.replaceChildren(...sections);
   }
@@ -1874,7 +1997,7 @@ export function mountPullPage(container, ctx, mb) {
     if (comparison === null || action === "unavailable") {
       disposeDiff();
       body.replaceChildren(
-        h("p", { class: "github-pull-note" }, [
+        notice("error", [
           "Files changed is unavailable: the pull request's base could not be compared with its head.",
         ]),
       );
@@ -1888,12 +2011,12 @@ export function mountPullPage(container, ctx, mb) {
       ]);
       offer.addEventListener("click", () => void mountDiff(comparison));
       body.querySelector(".github-pull-newer-offer")?.remove();
-      body.prepend(
-        h("p", { class: "github-pull-note github-pull-newer-offer" }, [
-          `The pull request now ends at ${comparison.right.slice(0, 12)}. `,
-          offer,
-        ]),
-      );
+      const said = notice(null, [
+        `The pull request now ends at ${comparison.right.slice(0, 12)}. `,
+        offer,
+      ]);
+      said.classList.add("github-pull-newer-offer");
+      body.prepend(said);
     }
   }
 
@@ -1901,6 +2024,8 @@ export function mountPullPage(container, ctx, mb) {
   function paint(model) {
     shown = model;
     paintHeader(model);
+    // The conversation reads in the column; a diff takes the pane.
+    body.classList.toggle("github-pull-column", model.tab !== "files");
     if (model.pull === null) {
       disposeDiff();
       texts.clear();

@@ -70,17 +70,9 @@
   min-width: 0;
 }
 
+/* Its type and rule are the `.section-heading` it carries; only the space below is local. */
 .folder-overview-panel-heading {
   margin: 0 0 14px;
-  padding: 0 0 var(--section-heading-divider-gap);
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
-  font-family: var(--font-sans);
-  font-size: var(--body-font-size);
-  font-weight: var(--label-font-weight);
-  letter-spacing: var(--label-letter-spacing);
-  line-height: 1.25;
-  text-transform: var(--label-text-transform);
 }
 
 .folder-overview-panel-toggle {

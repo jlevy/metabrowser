@@ -11,7 +11,8 @@ It claims only ``github.com`` (with or without ``www.``) and
 | ``…/tree/<ref-and-path>`` | tree |
 | ``…/blob/<ref-and-path>[#L10][#L10-L20][#L10C5-L20C8]`` (``?plain=1`` kept) | blob |
 | ``…/commit/<oid>``, ``…/pull/<n>/commits/<oid>`` | commit |
-| ``…/pull/<n>[/files|/commits]`` | pull request |
+| ``…/pull/<n>[/commits]`` | pull request |
+| ``…/pull/<n>/files`` | pull request, on its Files changed |
 | ``raw.githubusercontent.com/<o>/<r>/<ref-and-path>`` | blob |
 | ``git@github.com:<o>/<r>.git``, ``ssh://git@github.com/<o>/<r>.git`` (``www.``) | repository |
 
@@ -469,7 +470,10 @@ def _pull_selection(args: list[str], repo_url: str) -> RepositorySelection:
         )
     number = int(args[0])
     tail = args[1:]
-    if tail in ([], ["files"], ["commits"]):
+    if tail == ["files"]:
+        return RepositorySelection(kind="pull_request", pull_request=number, pull_tab="files")
+    # The page has no tab for GitHub's Commits, so that URL opens the page itself.
+    if tail in ([], ["commits"]):
         return RepositorySelection(kind="pull_request", pull_request=number)
     if len(tail) == 2 and tail[0] == "commits":
         return RepositorySelection(

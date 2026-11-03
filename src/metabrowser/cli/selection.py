@@ -233,11 +233,12 @@ def selection_view_href(selection: RepositorySelection, resolved: ResolvedSelect
 
     A file or folder opens at its `/view/` address. A file keeps the URL's `plain=1`
     and line anchor, either of which opens the file's Source view in the browser, where
-    the anchor highlights its lines. A pull request opens at its page, `/pull/<n>`.
+    the anchor highlights its lines. A pull request opens at its page, `/pull/<n>`, on
+    the tab the URL names, as `/pull/<n>/files` does.
     """
 
     if selection.kind == "pull_request" and selection.pull_request is not None:
-        return format_pull_href(selection.pull_request)
+        return format_pull_href(selection.pull_request, selection.pull_tab)
     if selection.kind not in {"tree", "blob"} or not resolved.path:
         return VIEW_ROUTE_PREFIX
     href = VIEW_ROUTE_PREFIX + GitPath(resolved.path).to_wire()
@@ -286,6 +287,8 @@ def selection_lines(
         lines.append(f"lines: {selection.lines.fragment()}")
     if selection.plain:
         lines.append("plain: true")
+    if selection.pull_tab:
+        lines.append(f"tab: {selection.pull_tab}")
     if pull is not None:
         note = pull.note(fallback=selection.kind == "pull_request")
         lines.append(f"pull_request: {pull.number} ({note})")
@@ -309,7 +312,7 @@ def selection_banner(
             "branch and fetching once in the background"
         )
     else:
-        where = GitPath(resolved.path).display() if resolved.path else ""
+        where = GitPath(resolved.path).display() if resolved.path else selection.pull_tab
         anchor = f"#{selection.lines.fragment()}" if selection.lines is not None else ""
         lines.append(f"Selection: {selection.kind} {where}{anchor}".rstrip())
     if pull is not None:

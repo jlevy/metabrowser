@@ -70,7 +70,7 @@ $ node tests/dom/markdown-inert-toc-session.js
   ],
   "enhancerRoot": [
     {
-      "className": "kpress-prose",
+      "className": "kpress-prose kpress-long-text",
       "tocLinks": 0,
       "links": 3
     }

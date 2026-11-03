@@ -8,7 +8,7 @@ list opens as fast offline as online. It answers one of:
   ``unreadable``);
 - ``pending``: no list yet, and a refresh is running;
 - ``current``: a list fetched within the refresh coordinator's freshness window, by the
-  account the last refresh ran as;
+  account the last refresh ran as to its end;
 - ``stale``: an older list, or one fetched by another account, still shown and labelled
   with its ``reader``.
 
@@ -24,6 +24,7 @@ here knows whether it is a mirror.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -39,15 +40,18 @@ from pathlib import Path
 from typing import Any, Final, Literal, TypedDict
 
 from metabrowser.builtin_plugins.github import pull_list
-from metabrowser.builtin_plugins.github.gh_lists import PullDataError
+from metabrowser.builtin_plugins.github.gh_lists import PullDataError, utc_stamp
 from metabrowser.builtin_plugins.github.pull_list import (
     MAX_LIST_PAGES,
     MAX_LIST_ROWS,
     ListedRepository,
     PullList,
+    can_extend,
+    rate_limit_holds,
     read_list_refresh,
     read_pull_list,
     refresh_is_due,
+    write_list_refresh,
 )
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp, RecordAbsence
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
@@ -69,6 +73,7 @@ DEFAULT_LIMIT: Final = 100
 _NUMBER = re.compile(r"^[1-9][0-9]{0,9}$")
 _LIMIT = re.compile(r"^(?:0|[1-9][0-9]{0,3})$")
 _REFRESH_FIELDS: Final = frozenset({"state", "more", "retry"})
+_JOB_STOPPED: Final = "the refresh stopped on an unexpected error, which the server log names"
 
 type ListState = Literal["absent", "pending", "current", "stale"]
 type ListAbsence = Literal["not_github"] | RecordAbsence
@@ -279,11 +284,23 @@ def _window(
     return shown, shown[-1]["number"] if more and shown else None
 
 
+def _another_reader(listed: PullList, stamp: PullRefreshStamp | None) -> bool:
+    """Whether the last refresh shows the active account is not the one that fetched *listed*.
+
+    A stamp names the account its job started as, so one that ended ``account_changed``
+    says this whichever it names. A stamp older than the list was written before it and
+    says nothing of it: a process that stops between the two writes leaves one.
+    """
+
+    if stamp is None or pull_list.parse_stamp(stamp.at) < pull_list.parse_stamp(listed.fetched_at):
+        return False
+    return stamp.outcome == "account_changed" or stamp.reader not in (None, listed.reader)
+
+
 def _state(listed: PullList, stamp: PullRefreshStamp | None) -> ListState:
     age = pull_list.utc_now() - pull_list.parse_stamp(listed.fetched_at)
     fresh = age <= timedelta(seconds=FRESHNESS_WINDOW_S)
-    another_reader = stamp is not None and stamp.reader not in (None, listed.reader)
-    return "current" if fresh and not another_reader else "stale"
+    return "current" if fresh and not _another_reader(listed, stamp) else "stale"
 
 
 def _last_refresh(stamp: PullRefreshStamp | None) -> LastRefresh | None:
@@ -375,41 +392,81 @@ def envelope_etag(
     return build_scoped_etag(f"pulls-{digest[:32]}")
 
 
+# The jobs a reader asked for more of while they ran, by job key, each dropped when the next
+# job for its key starts. Read and written only on the event loop, so a job that finds its
+# key absent ends before another request can add it.
+_MORE_ASKED: set[str] = set()
+
+
 async def _run_refresh(repository: ListedRepository, name: PullListName, *, more: bool) -> None:
     # Here, not at the top: answering from the cache starts no gh, and loads none of it.
     from metabrowser.builtin_plugins.github.pull_list_refresh import refresh_pull_list
 
     try:
-        await refresh_pull_list(repository, name, more=more)
+        listed = await refresh_pull_list(repository, name, more=more)
+        # A job that read the next page has answered the reader's second click too.
+        if not more and _job_key(repository, name) in _MORE_ASKED and can_extend(listed):
+            await refresh_pull_list(repository, name, more=True)
     except PullDataError:
         # Its stamp says how it ended, and the route reports that.
         return
+    except Exception:
+        # A bug, which no stamp names. Keep one, so the route says the job stopped and the
+        # next automatic attempt waits a window instead of running this again on every poll.
+        # The coordinator logs the exception; its text may name a path, so no stamp has it.
+        stopped = PullRefreshStamp(
+            outcome="gh_failed", message=_JOB_STOPPED, at=utc_stamp(pull_list.utc_now())
+        )
+        await asyncio.to_thread(write_list_refresh, repository.home, repository.slug, name, stopped)
+        raise
 
 
 def refresh_wanted(view: ListView, ask: RefreshRequest) -> bool:
     """Whether *ask* may start a refresh. Blocking and bounded; run it off the loop.
 
-    A reader's own action always may. An automatic request may when the list's stamp says
-    one is due.
+    While GitHub's limit holds nothing may, a reader's own action included: it would be a
+    request GitHub asked not to get, and each refusal moves the time on. The route cannot
+    ask ``gh`` who is active, so an account that was not limited waits too.
+
+    Otherwise a reader's **Retry** may, and a **Load more** that has a page to read. A
+    **Load more** that does not, on a complete list or one at its cap, could only reread
+    every page held, so it waits for the list's stamp to say one is due, as an automatic
+    request does.
     """
 
-    if ask.more or ask.retry or view.repository is None:
+    repository = view.repository
+    if repository is None:
         return True
-    stamp = read_list_refresh(view.repository.home, view.repository.slug, ask.name)
-    return refresh_is_due(stamp, now=pull_list.utc_now())
+    now = pull_list.utc_now()
+    stamp = read_list_refresh(repository.home, repository.slug, ask.name)
+    if rate_limit_holds(stamp, now=now):
+        return False
+    if ask.retry:
+        return True
+    if ask.more:
+        listed, _rows = _cached_list(repository.home, repository.slug, ask.name)
+        if not isinstance(listed, PullList) or can_extend(listed):
+            return True
+    return refresh_is_due(stamp, now=now)
 
 
 def start_refresh(view: ListView, ask: RefreshRequest, *, wanted: bool) -> ListRefreshStart:
     """Start the refresh *ask* names, or join the one running. Runs on the event loop.
 
-    A request :func:`refresh_wanted` turned down starts nothing and answers ``not_due``.
+    A ``more`` that joins a job is kept, and that job reads the next page after its refresh,
+    so ``joined`` means the same to a reader whatever was running: the list will have it
+    when ``refreshing`` is false, unless ``last_refresh`` says why not. A request
+    :func:`refresh_wanted` turned down starts nothing and answers ``not_due``.
     """
 
     repository, coordinator = view.repository, view.coordinator
     assert repository is not None and coordinator is not None
     key = _job_key(repository, ask.name)
     if coordinator.running(key):
+        if ask.more and wanted:
+            _MORE_ASKED.add(key)
         return "joined"
+    _MORE_ASKED.discard(key)
     if not wanted:
         return "not_due"
     return coordinator.start(key, partial(_run_refresh, repository, ask.name, more=ask.more))

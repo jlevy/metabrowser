@@ -587,6 +587,8 @@ each text as Markdown through `GET /api/plugin/github/pull-markdown?part=<part>`
 renders one text of the cached record through KPress’s sanitized mode and then reduces
 it to an allowlist of plain markup, on the server and again in the page, so nothing in
 it loads, restyles the page, reaches the application’s handlers, or names an element.
+The page sets the result in a KPress article of its own making, under KPress’s
+stylesheets, so a text reads as the same Markdown in a file does.
 Files changed is the diff plugin’s view over the record’s comparison, passed as two
 endpoints with `base_policy=merge_base`.
 
@@ -609,16 +611,24 @@ page the file holds, one `gh api` request each, newest first
 (`sort=created&direction=desc`), and each full-size page goes with its own
 `If-None-Match` when the same reader read it last: a `304` reuses that page’s rows, by
 the numbers its mark in `etags` names.
-The list is assembled over the job’s duration and is not atomic: a pull request that
-opens or closes between two page reads can appear twice, which the number dedupes, or be
-missed until the next refresh.
+A complete list’s last page goes without one when it may be full, because a pull request
+that closes or reopens below it starts a new page and leaves its body unchanged, and a
+`304` carries no `Link`. The list is assembled over the job’s duration and is not
+atomic: a pull request that opens or closes between two page reads can appear twice,
+which the number dedupes, or be missed until the next refresh.
 `"more": true` reads only the next page and appends it, up to the cap of ten pages, and
 the file keeps its `fetched_at`; on a list another account read, it starts again from
 the first page. A list names its reader, and pages from two readers are never joined: a
 successful refresh by another account replaces the whole file, and until then the list
-is shown, labelled, and `stale` once a refresh has run as someone else.
-A failure leaves the file as it was and is kept in the stamp, whose `reader` says who it
-ran as; a cache that will not take the stamp either has it kept in the server’s memory.
+is shown, labelled, and `stale` once a refresh has run as someone else or ended
+`account_changed`. A failure leaves the file as it was and is kept in the stamp, whose
+`reader` says who it ran as; a cache that will not take the stamp either has it kept in
+the server’s memory.
+A success is stamped as of the list’s `fetched_at`, so the age the route calls `stale`
+and the window an automatic refresh waits for read one clock, and a stamp older than the
+list says nothing of it.
+A job that stops on something it does not name keeps a `gh_failed` stamp with a fixed
+message, so a bug is held to the window and not run on every poll.
 
 The job runs on the server’s refresh coordinator under the key `<slug>:pulls/<name>`, so
 it counts against the limit of two and shutdown cancels it, and it takes no turn at the
@@ -1107,8 +1117,10 @@ Still open, with owners:
   version string are admitted (Phase 1B-a).
 
 The initial-acquisition stall bound, the first-request deadline, and the first-clone
-size limit were measured on 2026-09-23; each measurement is recorded beside its constant
-in `cache/origin.py` and `builtin_plugins/github/provider.py`.
+size limit were measured on 2026-09-23, and the size limit again on 2026-11-02; each
+measurement is recorded beside its constant in `cache/origin.py` and
+`builtin_plugins/github/provider.py`. `METABROWSER_MAX_FIRST_CLONE_KB` moves the size
+limit, and the acquisition deadline still applies.
 
 These choices may tune cost.
 They may not introduce shared working-tree state, make a local checkout cache authority,

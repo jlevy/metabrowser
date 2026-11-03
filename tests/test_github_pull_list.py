@@ -23,6 +23,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser.builtin_plugins.github import (
+    gh,
     gh_lists,
     pull_list,
     pull_list_refresh,
@@ -48,9 +49,12 @@ from metabrowser.builtin_plugins.github.pull_list import (
 from metabrowser.builtin_plugins.github.pull_list_refresh import refresh_pull_list
 from metabrowser.builtin_plugins.github.pull_list_route import (
     ListRequestError,
+    ListView,
+    RefreshRequest,
     list_window,
     listed_repository,
     refresh_request,
+    refresh_wanted,
 )
 from metabrowser.builtin_plugins.github.pull_record import MAX_LABELS, PullRefreshStamp
 from metabrowser.cache.acquire import PublishedSource, acquire_source
@@ -277,7 +281,7 @@ def test_a_list_of_the_worst_rows_the_bounds_allow_can_be_read_back(
         truncated=True,
         etags=tuple(
             ListPageMark(
-                etag='W/"' + "e" * 290 + '"',
+                etag='W/"' + "e" * 256 + '"',
                 numbers=tuple(
                     range(9_999_999_999 - page * 100, 9_999_999_999 - page * 100 - 100, -1)
                 ),
@@ -294,6 +298,52 @@ def test_a_list_of_the_worst_rows_the_bounds_allow_can_be_read_back(
     assert len(data) <= MAX_PULL_LIST_BYTES
     write_pull_list(home, SOURCE.slug, worst)
     assert read_pull_list(home, SOURCE.slug, "all") == worst
+
+
+_HOSTILE_TEXT = "\x1b[31mred\x1b[0m \x9b2J \u202eright-to-left\u202c \x07\x08\x00 end"
+
+
+def test_hostile_text_reaches_a_written_file_only_escaped(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repository: ListedRepository,
+    home: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """What a pull request's author chooses, seen by nobody until a terminal or a log prints it.
+
+    Neither a file's bytes nor a debug log is in a transcript. C1 and bidi controls are text
+    as far as JSON goes, so a file holds them as they are and only C0 is pinned here.
+    """
+
+    side = {"ref": _HOSTILE_TEXT, "repo": {"full_name": _HOSTILE_TEXT}}
+    hostile = {
+        **generated_item(2),
+        "title": _HOSTILE_TEXT,
+        "labels": [{"name": _HOSTILE_TEXT}],
+        "head": side,
+        "base": side,
+        "user": {"login": f"evil{_HOSTILE_TEXT}"},
+    }
+    unreadable = {**generated_item(1), "number": _HOSTILE_TEXT}
+    _answer(tmp_path, monkeypatch, _answers(_page(1, [hostile, unreadable])))
+    with caplog.at_level("DEBUG", logger="metabrowser.builtin_plugins.github.gh_lists"):
+        listed = asyncio.run(refresh_pull_list(repository, "all"))
+
+    row = listed.rows[0]
+    assert (row.number, row.title, row.head_ref) == (2, _HOSTILE_TEXT, _HOSTILE_TEXT)
+    # A login outside GitHub's grammar is no login, and an unreadable number is no row.
+    assert row.author is None
+    assert ([each.number for each in listed.rows], listed.truncated) == ([2], True)
+
+    written = (home / source_pull_list(SOURCE.slug, "all")).read_bytes()
+    assert not [byte for byte in written if byte < 0x20]
+    assert json.loads(written)["rows"][0]["title"] == _HOSTILE_TEXT
+
+    # The record of the item left out quotes it, so an escape in it stays text.
+    left_out = [record.getMessage() for record in caplog.records if "left out" in record.message]
+    assert left_out
+    assert not [text for text in left_out if "\x1b" in text or "\x00" in text]
 
 
 def test_a_row_past_its_bounds_is_cut_and_says_so(
@@ -400,6 +450,59 @@ def test_a_damaged_or_older_file_is_no_list(
     assert read_pull_list(home, SOURCE.slug, "all") == absence
 
 
+def _plant_list(home: Path, **changes: Any) -> None:
+    """A file of a list with these fields changed, as no model of ours would write it."""
+
+    from metabrowser.home import ensure_private_directory, write_private_file_atomic
+
+    payload = json.loads(serialize_pull_list(_a_list(rows=(), complete=True)))
+    ensure_private_directory(home, f"sources/{SOURCE.slug}/pulls")
+    write_private_file_atomic(
+        home, source_pull_list(SOURCE.slug, "all"), json.dumps(payload | changes).encode()
+    )
+
+
+def test_a_mark_holds_what_gh_api_will_send() -> None:
+    """Written beside the model, since ``pull_list`` loads no ``gh``. The two must not part."""
+
+    assert gh._ETAG.pattern == pull_list.ETAG_PATTERN  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "etag",
+    ['W/"has space"', "not quoted", '"' + "e" * 257 + '"', '"a"\n', '"a" -H "b"'],
+    ids=["space", "unquoted", "too_long", "newline", "an_option"],
+)
+def test_a_stored_mark_gh_api_would_refuse_is_no_list(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    home: Path,
+    repository: ListedRepository,
+    etag: str,
+) -> None:
+    """``gh_api`` raises on such a value, which is no failure the job names.
+
+    So it is refused where it is read: the file is ``unreadable``, as the reader's
+    docstring promises for anything outside the model, and the next refresh replaces it.
+    """
+
+    mark = {"etag": etag, "numbers": [], "truncated": False}
+    _plant_list(home, etags=[mark])
+    assert read_pull_list(home, SOURCE.slug, "all") == "unreadable"
+    _answer(tmp_path, monkeypatch, _answers(_page(1, [generated_item(1)])))
+    listed = asyncio.run(refresh_pull_list(repository, "all"))
+    assert [row.number for row in listed.rows] == [1]
+    stamp = read_list_refresh(home, SOURCE.slug, "all")
+    assert stamp is not None and stamp.outcome == "succeeded"
+
+
+def test_a_fetched_at_that_is_no_moment_is_no_list(home: Path) -> None:
+    """The pattern admits a month 13, and the route ages a list by this field."""
+
+    _plant_list(home, fetched_at="2026-13-45T25:61:61Z")
+    assert read_pull_list(home, SOURCE.slug, "all") == "unreadable"
+
+
 def test_a_file_past_the_read_bound_or_for_another_list_is_no_list(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, home: Path
 ) -> None:
@@ -431,11 +534,93 @@ def test_a_list_stops_growing_at_its_cap_and_says_so(
     assert (listed.pages, len(listed.rows), listed.complete) == (MAX_LIST_PAGES, 1000, False)
     _asked(tmp_path)
 
-    # Asking again rereads what is held, and never page 11.
+    # The route holds a further click to the window, since it could only reread all ten.
+    view = ListView(repository, None, False)
+    ask = RefreshRequest("all", more=True, retry=False)
+    assert refresh_wanted(view, ask) is False
+    assert _asked(tmp_path) == []
+
+    # A job asked for more anyway, past the window, rereads what is held, and never page 11.
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=61))
+    assert refresh_wanted(view, ask) is True
     again = asyncio.run(refresh_pull_list(repository, "all", more=True))
     paths = _api_paths(_asked(tmp_path))
     assert paths == [list_page("all", number) for number in range(1, MAX_LIST_PAGES + 1)]
     assert again.rows == listed.rows
+
+
+def _closed(number: int) -> dict[str, Any]:
+    return {**generated_item(number), "state": "closed", "closed_at": "2026-09-17T12:00:00Z"}
+
+
+def _asked_conditionally(calls: list[list[str]]) -> dict[str, bool]:
+    """Each page a job asked for, and whether it sent ``If-None-Match``."""
+
+    return {
+        call[-1]: any(arg.startswith("If-None-Match") for arg in call)
+        for call in calls
+        if call[0] == "api"
+    }
+
+
+def test_a_full_last_page_is_read_whole_since_a_304_cannot_say_what_follows_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    """A pull request that closes goes in at its created rank, under every row held.
+
+    Here that is a new page 2 below a page 1 whose body has not changed, so GitHub would
+    answer page 1's ETag ``304``, and a ``304`` carries no ``Link``. A transcript could show
+    this, but what it pins is the sequence of requests that lets ``complete`` be believed.
+    """
+
+    first, second = list_page("closed", 1), list_page("closed", 2)
+    page_one = [_closed(number) for number in range(200, 100, -1)]
+    _answer(tmp_path, monkeypatch, _answers({first: ok(first, page_one)}))
+    listed = asyncio.run(refresh_pull_list(repository, "closed"))
+    assert (listed.pages, listed.complete, len(listed.rows)) == (1, True, 100)
+    assert _asked_conditionally(_asked(tmp_path)) == {first: False}
+
+    # Nothing has changed: the page is still read whole, and the list still complete.
+    unchanged = asyncio.run(refresh_pull_list(repository, "closed"))
+    assert (unchanged.pages, unchanged.complete, unchanged.rows) == (1, True, listed.rows)
+    assert _asked_conditionally(_asked(tmp_path)) == {first: False}
+
+    # Pull request 3 closes. The same body, now with a next page.
+    pages = {
+        first: ok(first, page_one, next_link("repos/octo/demo/pulls", 1)),
+        second: ok(second, [_closed(3)]),
+    }
+    _answer(tmp_path, monkeypatch, _answers(pages))
+    moved = asyncio.run(refresh_pull_list(repository, "closed"))
+    assert (moved.pages, moved.complete, len(moved.rows)) == (1, False, 100)
+    assert _asked_conditionally(_asked(tmp_path)) == {first: False}
+
+    # So the reader can reach it.
+    extended = asyncio.run(refresh_pull_list(repository, "closed", more=True))
+    assert (extended.pages, extended.complete, len(extended.rows)) == (2, True, 101)
+    assert _asked_conditionally(_asked(tmp_path)) == {second: False}
+
+    # A page that is not last, and a short last page, stay conditional: a pull request that
+    # goes in below a short page changes its body, so its 304 says all there is to say.
+    settled = asyncio.run(refresh_pull_list(repository, "closed"))
+    assert (settled.pages, settled.complete, settled.rows) == (2, True, extended.rows)
+    assert _asked_conditionally(_asked(tmp_path)) == {first: True, second: True}
+
+
+def test_a_last_page_that_lost_an_item_may_have_been_full(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    """Its mark holds fewer than a hundred numbers, and GitHub may have sent a hundred."""
+
+    first = list_page("all", 1)
+    items = [generated_item(number) for number in range(200, 100, -1)]
+    items[50] = {"number": "not a number"}
+    _answer(tmp_path, monkeypatch, _answers({first: ok(first, items)}))
+    listed = asyncio.run(refresh_pull_list(repository, "all"))
+    assert (listed.complete, listed.truncated, len(listed.rows)) == (True, True, 99)
+    _asked(tmp_path)
+    asyncio.run(refresh_pull_list(repository, "all"))
+    assert _asked_conditionally(_asked(tmp_path)) == {first: False}
 
 
 # ── One page of a list ─────────────────────────────────────────
@@ -554,6 +739,161 @@ def test_an_automatic_refresh_waits_a_window_and_for_a_reset(
 ) -> None:
     kept = None if stamp is None else PullRefreshStamp(at="2026-09-17T12:00:00Z", **stamp)
     assert refresh_is_due(kept, now=FETCHED_AT + timedelta(seconds=seconds)) is due
+
+
+def _a_list(**changes: Any) -> PullList:
+    fields: dict[str, Any] = {
+        "schema_version": PULL_LIST_SCHEMA,
+        "source": CANONICAL,
+        "list": "all",
+        "fetched_at": "2026-09-17T12:00:00Z",
+        "reader": f"gh:{READER}",
+        "pages": 1,
+        "complete": False,
+        "truncated": False,
+        "etags": (ListPageMark(etag=None, numbers=(), truncated=False),),
+        "rows": (),
+    }
+    return PullList(**(fields | changes))
+
+
+@pytest.mark.parametrize(
+    ("stamp", "state"),
+    [
+        (None, "current"),
+        # The reader who fetched it, whatever else has gone wrong since.
+        ({"outcome": "succeeded", "reader": f"gh:{READER}"}, "current"),
+        ({"outcome": "network_error", "reader": f"gh:{READER}"}, "current"),
+        # No account was read, so the stamp says nothing of one.
+        ({"outcome": "not_logged_in"}, "current"),
+        # Another account has run since it was fetched.
+        ({"outcome": "network_error", "reader": "gh:other"}, "stale"),
+        # The account changed during the pages, so the stamp names the one it started as,
+        # which may be this list's, and the one active now is not.
+        ({"outcome": "account_changed", "reader": f"gh:{READER}"}, "stale"),
+        ({"outcome": "account_changed", "reader": "gh:other"}, "stale"),
+    ],
+)
+def test_what_a_young_list_is_called_by_how_its_last_refresh_ended(
+    monkeypatch: pytest.MonkeyPatch, stamp: dict[str, Any] | None, state: str
+) -> None:
+    """Every row of the rule, without a fake ``gh`` account switch for each."""
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
+    kept = None if stamp is None else PullRefreshStamp(at="2026-09-17T12:00:00Z", **stamp)
+    assert pull_list_route._state(_a_list(), kept) == state  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "stamp",
+    [
+        {"outcome": "network_error", "reader": "gh:other"},
+        {"outcome": "account_changed", "reader": f"gh:{READER}"},
+    ],
+)
+def test_a_stamp_older_than_the_list_says_nothing_of_it(
+    monkeypatch: pytest.MonkeyPatch, stamp: dict[str, Any]
+) -> None:
+    """A process that stops between the two writes leaves the last job's stamp beside its list.
+
+    No transcript can stop a process there.
+    """
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
+    earlier = PullRefreshStamp(at="2026-09-17T11:58:00Z", **stamp)
+    assert pull_list_route._state(_a_list(), earlier) == "current"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_a_more_ages_the_list_and_the_window_by_one_clock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    home: Path,
+    repository: ListedRepository,
+) -> None:
+    """A list that reads ``stale`` is one an automatic request may refresh.
+
+    **Load more** keeps ``fetched_at``, since it read no held page again, so its stamp is
+    as of that moment too. The transcript's clock moves in whole blocks, and this needs a
+    ``more`` late in a window.
+    """
+
+    pages = {
+        **_page(1, [generated_item(number) for number in range(200, 100, -1)], more=True),
+        **_page(2, [generated_item(number) for number in range(100, 0, -1)]),
+    }
+    _answer(tmp_path, monkeypatch, _answers(pages))
+    asyncio.run(refresh_pull_list(repository, "all"))
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=59))
+    extended = asyncio.run(refresh_pull_list(repository, "all", more=True))
+    assert (extended.pages, extended.fetched_at) == (2, "2026-09-17T12:00:00Z")
+    automatic = RefreshRequest("all", more=False, retry=False)
+    assert refresh_wanted(ListView(repository, None, False), automatic) is False
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=61))
+    stamp = read_list_refresh(home, SOURCE.slug, "all")
+    assert pull_list_route._state(extended, stamp) == "stale"  # pyright: ignore[reportPrivateUsage]
+    assert refresh_wanted(ListView(repository, None, False), automatic) is True
+
+
+_RATE_LIMITED = {"outcome": "rate_limited", "reset_at": "2026-09-17T13:00:00Z"}
+
+
+@pytest.mark.parametrize(
+    ("stamp", "listing", "ask", "seconds", "wanted"),
+    [
+        # An automatic request waits a window.
+        ({"outcome": "succeeded"}, "growing", {}, 60, False),
+        ({"outcome": "succeeded"}, "growing", {}, 61, True),
+        # A reader's Retry does not.
+        ({"outcome": "network_error"}, "growing", {"retry": True}, 0, True),
+        # Nor a Load more on a list that can grow, or on no list at all, which reads page 1.
+        ({"outcome": "succeeded"}, "growing", {"more": True}, 0, True),
+        ({"outcome": "succeeded"}, None, {"more": True}, 0, True),
+        # One another account fetched can grow too, and that job starts from page 1 instead.
+        ({"outcome": "succeeded", "reader": "gh:other"}, "growing", {"more": True}, 0, True),
+        # A Load more that could only reread what is held waits, like an automatic request.
+        ({"outcome": "succeeded"}, "complete", {"more": True}, 60, False),
+        ({"outcome": "succeeded"}, "complete", {"more": True}, 61, True),
+        ({"outcome": "succeeded"}, "at_cap", {"more": True}, 60, False),
+        ({"outcome": "succeeded"}, "at_cap", {"more": True}, 61, True),
+        # A reader's Retry on a list that cannot grow is still a reader's Retry.
+        ({"outcome": "succeeded"}, "complete", {"retry": True}, 0, True),
+        # While GitHub's limit holds nothing may ask, a reader included, and not past it.
+        (_RATE_LIMITED, "growing", {}, 0, False),
+        (_RATE_LIMITED, "growing", {"retry": True}, 0, False),
+        (_RATE_LIMITED, "growing", {"more": True}, 0, False),
+        (_RATE_LIMITED, "growing", {"retry": True, "more": True}, 3599, False),
+        (_RATE_LIMITED, "growing", {"retry": True}, 3600, True),
+        (_RATE_LIMITED, "growing", {"more": True}, 3600, True),
+        # No time to wait for: a reader may ask, and an automatic request waits a window.
+        ({"outcome": "rate_limited"}, "growing", {"retry": True}, 0, True),
+        ({"outcome": "rate_limited"}, "growing", {"more": True}, 0, True),
+        ({"outcome": "rate_limited"}, "growing", {}, 60, False),
+    ],
+)
+def test_what_each_request_may_start(
+    home: Path,
+    repository: ListedRepository,
+    monkeypatch: pytest.MonkeyPatch,
+    stamp: dict[str, Any],
+    listing: str | None,
+    ask: dict[str, bool],
+    seconds: int,
+    wanted: bool,
+) -> None:
+    """Every row of the rule at once, which a transcript would take a clock move per row for."""
+
+    if listing is not None:
+        pages = MAX_LIST_PAGES if listing == "at_cap" else 1
+        mark = ListPageMark(etag=None, numbers=(), truncated=False)
+        kept_list = _a_list(pages=pages, complete=listing == "complete", etags=(mark,) * pages)
+        write_pull_list(home, SOURCE.slug, kept_list)
+    kept = PullRefreshStamp(at="2026-09-17T12:00:00Z", **stamp)
+    write_list_refresh(home, SOURCE.slug, "all", kept)
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=seconds))
+    request = RefreshRequest("all", ask.get("more", False), ask.get("retry", False))
+    assert refresh_wanted(ListView(repository, None, False), request) is wanted
 
 
 def test_a_stamp_the_cache_will_not_take_is_kept_for_the_process(
@@ -679,12 +1019,16 @@ def _settle(client: TestClient, state: str = "all") -> dict[str, Any]:
 def _held_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[threading.Event, list[tuple[str, bool]]]:
+    """Each job's first read waits for the event, and then runs against the fake ``gh``."""
+
     release = threading.Event()
     runs: list[tuple[str, bool]] = []
+    real = pull_list_refresh.refresh_pull_list
 
-    async def held(repository: ListedRepository, name: Any, *, more: bool = False) -> None:
+    async def held(repository: ListedRepository, name: Any, *, more: bool = False) -> PullList:
         runs.append((name, more))
         await asyncio.to_thread(release.wait, 30)
+        return await real(repository, name, more=more)
 
     monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", held)
     return release, runs
@@ -702,7 +1046,7 @@ def test_a_request_while_a_refresh_runs_joins_it(
         assert (first.status_code, first.headers["cache-control"]) == (202, "no-store")
         assert first.json()["refresh"] == "started"
         assert first.json()["pulls"]["state"] == "pending"
-        again = client.post(REFRESH, json={"state": "all", "more": True}, headers=_JSON)
+        again = client.post(REFRESH, json={"state": "all", "retry": True}, headers=_JSON)
         assert (again.status_code, again.json()["refresh"]) == (202, "joined")
         # Each list is its own job.
         other = client.post(REFRESH, json={"state": "open"}, headers=_JSON)
@@ -713,6 +1057,136 @@ def test_a_request_while_a_refresh_runs_joins_it(
     _settle(client)
     _settle(client, "open")
     assert sorted(runs) == [("all", False), ("open", False)]
+
+
+def test_a_more_that_joins_a_refresh_extends_the_list_after_it(
+    served: tuple[TestClient, PublishedSource], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A reader's **Load more** during the list's automatic refresh is not lost.
+
+    The whole of it is one job, so ``refreshing`` stays true until the page is in the list.
+    """
+
+    client, _published = served
+    release, runs = _held_refresh(monkeypatch)
+    try:
+        assert client.post(REFRESH, json={}, headers=_JSON).json()["refresh"] == "started"
+        joined = client.post(REFRESH, json={"more": True}, headers=_JSON)
+        assert (joined.status_code, joined.json()["refresh"]) == (202, "joined")
+        assert client.get(f"{PULLS}?limit=0").json()["refreshing"] is True
+    finally:
+        release.set()
+    after = _settle(client)
+    assert runs == [("all", False), ("all", True)]
+    assert (after["fetched"], after["complete"]) == (102, True)
+    assert _api_paths(_asked(tmp_path)) == [list_page("all", 1), list_page("all", 2)]
+
+    # It was asked of that job alone: the next job extends nothing.
+    assert client.post(REFRESH, json={"retry": True}, headers=_JSON).json()["refresh"] == "started"
+    _settle(client)
+    assert runs == [("all", False), ("all", True), ("all", False)]
+
+
+def test_a_more_that_joins_a_more_is_the_same_page(
+    served: tuple[TestClient, PublishedSource], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two clicks while one page is being read ask for that page, and not for two."""
+
+    client, _published = served
+    release, runs = _held_refresh(monkeypatch)
+    try:
+        assert client.post(REFRESH, json={"more": True}, headers=_JSON).json()["refresh"] == (
+            "started"
+        )
+        assert client.post(REFRESH, json={"more": True}, headers=_JSON).json()["refresh"] == (
+            "joined"
+        )
+    finally:
+        release.set()
+    _settle(client)
+    assert runs == [("all", True)]
+
+
+def test_a_more_that_joins_a_refresh_that_fails_runs_nothing_further(
+    served: tuple[TestClient, PublishedSource],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    pull_origin: Origin,
+) -> None:
+    """The stamp says the refresh failed, which is the answer the reader's **Retry** is for."""
+
+    client, _published = served
+    _answer(
+        tmp_path,
+        monkeypatch,
+        scenario(pull_origin) | {"auth": {"stdout": '{"hosts":{}}\n', "exit": 0}},
+    )
+    release, runs = _held_refresh(monkeypatch)
+    try:
+        client.post(REFRESH, json={}, headers=_JSON)
+        client.post(REFRESH, json={"more": True}, headers=_JSON)
+    finally:
+        release.set()
+    after = _settle(client)
+    assert runs == [("all", False)]
+    assert after["last_refresh"]["outcome"] == "not_logged_in"
+
+
+def test_a_more_that_joins_a_refresh_that_completes_the_list_reads_nothing_further(
+    served: tuple[TestClient, PublishedSource],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    pull_origin: Origin,
+) -> None:
+    """The list the job ended with has no next page, so there is nothing to extend it with."""
+
+    client, _published = served
+    path = list_page("all", 1)
+    answers = scenario(pull_origin)
+    answers["api"] = {**answers["api"], path: ok(path, [generated_item(7)])}
+    _answer(tmp_path, monkeypatch, answers)
+    release, runs = _held_refresh(monkeypatch)
+    try:
+        client.post(REFRESH, json={}, headers=_JSON)
+        client.post(REFRESH, json={"more": True}, headers=_JSON)
+    finally:
+        release.set()
+    after = _settle(client)
+    assert runs == [("all", False)]
+    assert (after["fetched"], after["complete"]) == (1, True)
+
+
+def test_a_job_that_stops_on_something_unexpected_says_so_and_waits_a_window(
+    served: tuple[TestClient, PublishedSource],
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A bug has no stamp of its own, and without one every poll would run the job again.
+
+    A transcript cannot show this: nothing a fake ``gh`` answers should reach it.
+    """
+
+    client, _published = served
+    runs: list[str] = []
+
+    async def stops(_repository: ListedRepository, name: str, *, more: bool = False) -> None:
+        runs.append(name)
+        raise RuntimeError("a path and a token that must not reach a file: ghp_x")
+
+    monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", stops)
+    assert client.post(REFRESH, json={}, headers=_JSON).json()["refresh"] == "started"
+    after = _settle(client)
+    assert after["last_refresh"]["outcome"] == "gh_failed"
+    assert "ghp_x" not in json.dumps(after)
+    assert "a background refresh failed" in caplog.text
+
+    # Held to the window, as any failure is, and a reader's Retry still runs it.
+    waiting = client.post(REFRESH, json={}, headers=_JSON)
+    assert (waiting.status_code, waiting.json()["refresh"]) == (200, "not_due")
+    assert runs == ["all"]
+    assert client.post(REFRESH, json={"retry": True}, headers=_JSON).json()["refresh"] == "started"
+    _settle(client)
+    assert runs == ["all", "all"]
 
 
 def test_a_read_never_starts_anything(

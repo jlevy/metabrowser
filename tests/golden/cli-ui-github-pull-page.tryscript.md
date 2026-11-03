@@ -71,7 +71,7 @@ $ node tests/dom/github-pull-page-session.js
       "paint": {
         "status": "absent",
         "tab": "conversation",
-        "message": "No data for this pull request is cached yet.",
+        "message": "This pull request has not been fetched yet.",
         "canRefresh": true,
         "freshness": null,
         "failure": null,
@@ -145,13 +145,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -242,13 +242,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": "Could not switch to the head (selection_not_found).",
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -301,13 +301,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -353,13 +353,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "files",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -397,13 +397,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -445,13 +445,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 5 min ago by gh:octo-reader · may be out of date",
+        "freshness": "Fetched 5 min ago by octo-reader · may be out of date",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -492,13 +492,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 5 min ago by gh:octo-reader",
+        "freshness": "Refreshing… · fetched 5 min ago by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -548,13 +548,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -604,13 +604,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -685,7 +685,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 5 min ago by gh:octo-reader · may be out of date",
+        "freshness": "Fetched 5 min ago by octo-reader · may be out of date",
         "failure": null,
         "browse": "link to the root",
         "headOffer": null
@@ -713,7 +713,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 5 min ago by gh:octo-reader",
+        "freshness": "Refreshing… · fetched 5 min ago by octo-reader",
         "failure": null,
         "browse": "link to the root",
         "headOffer": null
@@ -732,7 +732,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 5 min ago by gh:octo-reader · may be out of date",
+        "freshness": "Fetched 5 min ago by octo-reader · may be out of date",
         "failure": null,
         "browse": "link to the root",
         "headOffer": null
@@ -795,7 +795,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 24 min ago by gh:octo-reader",
+        "freshness": "Refreshing… · fetched 24 min ago by octo-reader",
         "failure": null,
         "browse": "switches to refs/pull/8/head",
         "headOffer": null
@@ -814,7 +814,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "current",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "browse": "link to the root",
         "headOffer": "refs/pull/7/head"
@@ -841,7 +841,7 @@ $ node tests/dom/github-pull-page-session.js
       "paints": 2,
       "paint": {
         "status": "absent",
-        "message": "No data for this pull request is cached yet.",
+        "message": "This pull request has not been fetched yet.",
         "canRefresh": true,
         "freshness": null,
         "failure": null,
@@ -896,7 +896,7 @@ $ node tests/dom/github-pull-page-session.js
       "paint": {
         "status": "absent",
         "tab": "conversation",
-        "message": "No data for this pull request is cached yet.",
+        "message": "This pull request has not been fetched yet.",
         "canRefresh": true,
         "freshness": null,
         "failure": null,
@@ -1017,7 +1017,7 @@ $ node tests/dom/github-pull-page-session.js hunks-and-place
       ]
     },
     "one line more is past the tail": {
-      "earlier": "2 lines: @@ -1,30 +1,30 @@ def main(): ...  line 22",
+      "earlier": "2 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 22",
       "shown": [
         "context:  line 23",
         "context:  line 24",
@@ -1030,7 +1030,7 @@ $ node tests/dom/github-pull-page-session.js hunks-and-place
       ]
     },
     "a long hunk shows its tail": {
-      "earlier": "25 lines: @@ -1,30 +1,30 @@ def main(): ...  line 23",
+      "earlier": "25 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 23",
       "shown": [
         "context:  line 24",
         "del: -old 25",
@@ -1043,7 +1043,7 @@ $ node tests/dom/github-pull-page-session.js hunks-and-place
       ]
     },
     "a range longer than the tail is all shown, from its first line, not counting a deletion": {
-      "earlier": "14 lines: @@ -1,30 +1,30 @@ def main(): ...  line 13",
+      "earlier": "14 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 13",
       "shown": [
         "context:  line 14",
         "del: -old 15",
@@ -1067,7 +1067,7 @@ $ node tests/dom/github-pull-page-session.js hunks-and-place
       ]
     },
     "a range on the left counts deletions and not additions": {
-      "earlier": "15 lines: @@ -1,30 +1,30 @@ def main(): ...  line 14",
+      "earlier": "15 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 14",
       "shown": [
         "del: -old 15",
         "add: +new 15",
@@ -1090,7 +1090,7 @@ $ node tests/dom/github-pull-page-session.js hunks-and-place
       ]
     },
     "an outdated comment's range is its original one": {
-      "earlier": "14 lines: @@ -1,30 +1,30 @@ def main(): ...  line 13",
+      "earlier": "14 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 13",
       "shown": [
         "context:  line 14",
         "del: -old 15",
@@ -1128,6 +1128,27 @@ $ node tests/dom/github-pull-page-session.js hunks-and-place
         "context:  line 28",
         "context:  line 29",
         "context:  line 30"
+      ]
+    },
+    "a range of the most shown is all shown": {
+      "earlier": "31 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 30",
+      "shown": "100 lines: context:  line 31 ... context:  line 130"
+    },
+    "a range past the most shown shows the most, and the rest is behind the disclosure": {
+      "earlier": "31 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 30",
+      "shown": "100 lines: context:  line 31 ... context:  line 130"
+    },
+    "the other side's lines do not carry a range past the most shown": {
+      "earlier": "145 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... del: -old 142",
+      "shown": [
+        "del: -old 143",
+        "del: -old 144",
+        "del: -old 145",
+        "del: -old 146",
+        "del: -old 147",
+        "del: -old 148",
+        "del: -old 149",
+        "add: +new 30"
       ]
     },
     "a hunk's text is only ever text": {

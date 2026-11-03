@@ -331,6 +331,27 @@ def test_every_python_fixture_that_runs_git_init_reads_the_environment_after_the
     assert spawns, "no fixture runs git init any more, so this check has no subject"
 
 
+def _script_starts_git(text: str) -> bool:
+    return bool(_GIT_WRITE.search(text)) or (
+        "child_process" in text and re.search(r"\bgit\b", text) is not None
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "starts"),
+    [
+        ("git init -q repo", True),
+        ('require("child_process").execFileSync("git", ["status"])', True),
+        ('const spawn = require("child_process").spawn; // every digit counts', False),
+        ('require("child_process"); // a legitimate spawn', False),
+        ('require("child_process"); readFileSync(".gitignore")', False),
+        ('console.log("git status")', False),
+    ],
+)
+def test_the_script_check_reads_git_as_a_word(text: str, starts: bool) -> None:
+    assert _script_starts_git(text) is starts
+
+
 def test_no_script_a_golden_can_run_starts_git() -> None:
     """A golden runs ``node`` and shell scripts in a shell nothing in Python scrubbed.
 
@@ -348,13 +369,10 @@ def test_no_script_a_golden_can_run_starts_git() -> None:
     ]
     assert scripts, "no script is left under tests/, so this check has no subject"
 
-    def starts_git(text: str) -> bool:
-        return bool(_GIT_WRITE.search(text)) or ("child_process" in text and "git" in text)
-
     assert [
         str(path.relative_to(ROOT))
         for path in scripts
-        if starts_git(path.read_text(encoding="utf-8", errors="replace"))
+        if _script_starts_git(path.read_text(encoding="utf-8", errors="replace"))
     ] == []
 
 

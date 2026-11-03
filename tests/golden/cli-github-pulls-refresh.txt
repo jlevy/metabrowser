@@ -473,6 +473,42 @@ status: 200
 }
 --- stderr ---
 --- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pulls": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "all",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "fresh_for_s": 60.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "fetched": 102,
+    "complete": true,
+    "truncated": false,
+    "at_cap": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=all&limit=0"
+}
+--- stderr ---
+--- body ---
+{"more": true}
+--- gh ---
 ## The clock moves on 61 s, to 2026-09-17T12:01:01Z.
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
 exit: 0
@@ -1058,6 +1094,7 @@ status: 200
 }
 --- stderr ---
 --- gh ---
+## The clock moves on 61 s, to 2026-09-17T12:03:03Z.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -1097,7 +1134,7 @@ status: 200
   "reason": null,
   "source": "https://github.com/octo/demo",
   "list": "all",
-  "fetched_at": "2026-09-17T12:02:02Z",
+  "fetched_at": "2026-09-17T12:03:03Z",
   "reader": "gh:someone-else",
   "fresh_for_s": 60.0,
   "refreshing": false,
@@ -1105,7 +1142,7 @@ status: 200
     "outcome": "succeeded",
     "message": null,
     "reset_at": null,
-    "at": "2026-09-17T12:02:02Z"
+    "at": "2026-09-17T12:03:03Z"
   },
   "fetched": 100,
   "complete": false,

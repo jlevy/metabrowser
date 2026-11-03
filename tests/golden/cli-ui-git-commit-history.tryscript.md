@@ -11,8 +11,11 @@ file and commit entries, and prints what the preview pane shows after each step.
 Back onto a commit’s entry used to change the address and leave the file showing.
 Now each entry restores its own view, a step within the commit shown loads nothing, and
 stepping on before a commit answers leaves the later entry in the pane.
-An address with a short commit ID says it needs the full one, and a folder that is not a
-repository has no Git panel listening.
+A step taken before the panel is ready ends on the entry the reader stepped to, and a
+landing that outlives the panel paints nothing.
+An address with a short commit ID says it needs the full lowercase one, a panel that
+went away and came back starts over, and a folder that is not a repository has no Git
+panel listening.
 
 ```console
 $ node tests/dom/git-commit-history-session.js
@@ -146,7 +149,7 @@ $ node tests/dom/git-commit-history-session.js
     },
     "opened": {
       "url": "/commit/aaaaaaa",
-      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character ID, not “aaaaaaa”. Open the commit from the Git tab to get it.",
+      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character lowercase ID, not “aaaaaaa”.",
       "owner": "git",
       "navPanel": "git",
       "requests": [
@@ -155,7 +158,84 @@ $ node tests/dom/git-commit-history-session.js
     },
     "landed": {
       "url": "/commit/aaaaaaa",
-      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character ID, not “aaaaaaa”. Open the commit from the Git tab to get it.",
+      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character lowercase ID, not “aaaaaaa”.",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/aaaaaaa"
+      ]
+    },
+    "unreachable": {
+      "url": "/commit/aaaaaaa",
+      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character lowercase ID, not “aaaaaaa”.",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/aaaaaaa"
+      ]
+    },
+    "uppercase": {
+      "url": "/commit/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "pane": "Full commit ID needed: A commit’s address uses its full 40- or 64-character lowercase ID, not “AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA”.",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      ]
+    }
+  },
+  "stepping before the panel is ready": {
+    "waiting": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "file src/a.py",
+      "owner": "file",
+      "navPanel": "files",
+      "requests": []
+    },
+    "ready": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "commit aaaaaaa",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    "moved": {
+      "url": "/view/src/a.py",
+      "pane": "file src/a.py",
+      "owner": "file",
+      "navPanel": "files",
+      "requests": []
+    }
+  },
+  "a landing when the root stopped being a repository": {
+    "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "pane": "file src/a.py",
+    "owner": "file",
+    "navPanel": "files",
+    "requests": []
+  },
+  "a landing when the repository gate failed once": {
+    "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "pane": "file src/a.py",
+    "owner": "file",
+    "navPanel": "files",
+    "requests": []
+  },
+  "a panel that came back starts over": {
+    "selection": {
+      "url": "/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "pane": "commit aaaaaaa",
+      "owner": "git",
+      "navPanel": "git",
+      "requests": [
+        "GET /api/git/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ]
+    },
+    "refusal": {
+      "url": "/commit/aaaaaaa",
+      "pane": "Could not load this commit.",
       "owner": "git",
       "navPanel": "git",
       "requests": [

@@ -738,7 +738,7 @@
     label.type = "button";
     label.className = "source-freshness-label";
     label.textContent = model.label;
-    label.dataset.tipText = `${model.detail} Click to refresh now.`;
+    label.dataset.tipText = `${model.detail} Press to refresh now.`;
     label.setAttribute("aria-label", `${model.label}. ${model.detail} Refresh now.`);
     label.disabled = model.tone === "refreshing";
     label.addEventListener("click", actions.refresh);

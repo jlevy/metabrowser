@@ -205,7 +205,7 @@ def test_split_console_launcher_finds_the_interpreter_in_either_form(tmp_path: P
     quoted = tmp_path / "it's a venv" / "python"
     quoted.parent.mkdir()
     quoted.write_text("", encoding="utf-8")
-    escaped = str(quoted).replace("'", "'\\''")
+    escaped = str(quoted).replace("'", "'\"'\"'")
 
     assert split_console_launcher(f"#!{python}\nbody\n".encode()) == (python, "body\n")
     assert split_console_launcher((_WRAPPED_HEAD.format(python) + "body\n").encode()) == (
@@ -233,6 +233,18 @@ def test_split_console_launcher_finds_the_interpreter_in_either_form(tmp_path: P
 )
 def test_split_console_launcher_refuses_what_names_no_interpreter(source: bytes) -> None:
     assert split_console_launcher(source) is None
+
+
+@pytest.mark.parametrize("shell", ["sh", "bash", "dash", "zsh"])
+def test_split_console_launcher_refuses_a_shebang_that_names_a_shell(
+    shell: str, tmp_path: Path
+) -> None:
+    """A shell cannot run the Python probe, so it is no interpreter wherever it is installed."""
+
+    interpreter = tmp_path / shell
+    interpreter.write_text("", encoding="utf-8")
+
+    assert split_console_launcher(f"#!{interpreter}\nbody\n".encode()) is None
 
 
 def test_installed_build_attestation_rejects_a_different_python_launcher(

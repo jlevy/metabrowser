@@ -1209,7 +1209,7 @@ With the network, a signed-in `gh` 2.81.0 or newer, and a Git the floor admits
 METABROWSER_LIVE_GITHUB=1 uv --config-file uv.toml run --frozen pytest -rs \
   tests/test_github_pull_live_smoke.py
 uv --config-file uv.toml run --frozen metab \
-  https://github.com/pallets/markupsafe/pull/507 --api /api/plugin/github/pull
+  https://github.com/pallets/markupsafe/pull/507 --api '/api/plugin/github/pull?number=507'
 ```
 
 **Pass:** The smoke test’s Files changed matches GitHub’s file list for merged fork pull

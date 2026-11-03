@@ -687,6 +687,25 @@ def test_the_markdown_route_drops_the_kpress_icon_sprite(
         assert gone not in html, gone
 
 
+def test_the_markdown_route_names_only_kpress_stylesheets_and_the_same_ones_for_any_text(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """A page sets a text in KPress's stylesheets; a comment must not choose what it loads."""
+
+    _stand, client = pinned_pull
+    answer = client.get(
+        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
+    ).json()
+    assets = answer["assets"]["assets"]
+    assert {asset["id"] for asset in assets} >= {"css/document.css", "css/components.css"}
+    assert {asset["loading"] for asset in assets} == {"stylesheet"}
+    assert "import_map" not in answer["assets"]
+    # Computed once, from no text at all.
+    from metabrowser import kpress_adapter
+
+    assert answer["assets"] == kpress_adapter.document_stylesheets()
+
+
 def test_harden_keeps_the_allowlist_and_is_idempotent() -> None:
     from metabrowser.inert_html import harden
 

@@ -176,7 +176,7 @@ def test_embedded_markdown_body_uses_host_reading_size() -> None:
     assert "--body-font-size: 14px;" in css
     assert "--document-body-font-size: 15px;" in css
     root_start = css.index(":root {")
-    root_block = css[root_start : root_start + 9_000]
+    root_block = css[root_start : css.index('[data-theme="dark"] {')]
     assert "--kpress-host-font-size-base: var(--document-body-font-size);" in root_block
     rule_start = css.index(".metabrowser-kpress-host .kpress {")
     rule_block = css[rule_start : rule_start + 1_000]
