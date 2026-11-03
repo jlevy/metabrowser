@@ -67,7 +67,7 @@
    *   loadView(kind: string): Promise<MetabrowserPublicViewSpec | null | undefined>,
    *   container(): HTMLElement | null,
    *   scrollRoot(): HTMLElement | null,
-   *   openPull(route: {number: number, tab: string, reader?: unknown}): Promise<unknown>,
+   *   openPull(route: {number: number, tab: string, reader?: unknown, replace?: boolean}): Promise<unknown>,
    *   schedulePrefetch(callback: () => void): unknown,
    *   cancelPrefetch(handle: unknown): void,
    *   showFailure(container: HTMLElement): void,
@@ -84,7 +84,7 @@
     let prefetch = null;
     let filter = "all";
     /** @type {string | null} */
-    let lastPathname = null;
+    let lastPlace = null;
 
     function address() {
       const { pathname, search } = deps.location();
@@ -132,8 +132,9 @@
                 // first row, past the plan's 1.1x, so it starts here and not there.
                 refreshAhead: true,
                 scrollRoot: deps.scrollRoot(),
-                open: (/** @type {{number: number, tab: string, reader?: unknown}} */ route) =>
-                  deps.openPull(route),
+                open: (
+                  /** @type {{number: number, tab: string, reader?: unknown, replace?: boolean}} */ route,
+                ) => deps.openPull(route),
                 filterChanged: filterChanged,
               }),
             })
@@ -169,7 +170,10 @@
       filter = state;
       const { pathname, search } = deps.location();
       if (deps.routes.parsePulls(pathname, search) !== null) {
-        deps.pushHref(deps.routes.pullsHref(state));
+        const href = deps.routes.pullsHref(state);
+        deps.pushHref(href);
+        // The page is at that place now, so Back to the filter it left is a step to another.
+        lastPlace = href;
       }
     }
 
@@ -188,17 +192,30 @@
     }
 
     /**
+     * What of an address can move a tab: its path, and at the list's address its filter too,
+     * which is part of that address. A fragment or a file's query is a step within one place.
+     *
+     * @param {string} pathname
+     * @param {string} search
+     */
+    function place(pathname, search) {
+      const list = deps.routes.parsePulls(pathname, search);
+      return list === null ? pathname : deps.routes.pullsHref(list.state);
+    }
+
+    /**
      * The address changed, by history or in the page: which tab, and what the panel marks.
-     * A step that stays on one path, such as a fragment in a file, moves no tab, so a reader
-     * who chose Pulls there by hand keeps it.
+     * A step that stays in one place, such as a fragment in a file, moves no tab, so a reader
+     * who chose Pulls there by hand keeps it; Back from one filter of the list to another is
+     * a new place, and shows the list.
      */
     function routeChanged() {
       if (disposed) {
         return;
       }
       const { pathname, search } = deps.location();
-      if (pathname !== lastPathname) {
-        lastPathname = pathname;
+      if (place(pathname, search) !== lastPlace) {
+        lastPlace = place(pathname, search);
         const tab = tabForAddress(deps.routes, pathname, search, deps.activeTab());
         if (tab !== null) {
           deps.activate(tab);
@@ -218,7 +235,7 @@
       start() {
         deps.registerPanel({ id: PANEL_ID, label: "Pulls", onFirstShow: null, onShow, onHide });
         const { pathname, search } = deps.location();
-        lastPathname = pathname;
+        lastPlace = place(pathname, search);
         if (deps.activeTab() === PANEL_ID) {
           // The server drew the tab in front at this address; it has not been told it shows.
           deps.activate(PANEL_ID);
@@ -314,8 +331,11 @@
 
   /** @type {ReturnType<typeof createPullsNav> | null} */
   let current = null;
-  /** The host's listeners on the page, which end with it. */
-  const listening = new AbortController();
+  /** The host's listeners on the page, which end with it; each init makes its own. */
+  /** @type {AbortController | null} */
+  let listening = null;
+  // The keys that walk the rows: only their release ends a walk, and not a modifier's.
+  const WALK_KEYS = new Set(["ArrowUp", "ArrowDown", "j", "k", "J", "K"]);
   /** @type {Array<() => void>} */
   let unregisterKeys = [];
   /** @type {(() => void) | null} */
@@ -407,6 +427,7 @@
     bindShortcuts(shell.shortcuts());
     nav.start();
     const container = document.getElementById("tab-pulls");
+    listening = new AbortController();
     const { signal } = listening;
     container?.addEventListener(
       "focusin",
@@ -427,13 +448,22 @@
       },
       { signal },
     );
-    container?.addEventListener("keyup", () => nav.released(), { signal });
+    container?.addEventListener(
+      "keyup",
+      (event) => {
+        if (WALK_KEYS.has(/** @type {KeyboardEvent} */ (event).key)) {
+          nav.released();
+        }
+      },
+      { signal },
+    );
     window.addEventListener("popstate", nav.routeChanged, { signal });
   }
 
   /** End the tab and everything it holds: the view, the keys, and the listeners. */
   function dispose() {
-    listening.abort();
+    listening?.abort();
+    listening = null;
     bindShortcuts(null);
     current?.dispose();
     current = null;

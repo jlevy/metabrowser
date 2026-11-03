@@ -361,7 +361,10 @@ async def api_source_refresh(request: Request) -> JSONResponse:
     older than the freshness window; inside the window ``refresh`` is ``"fresh"`` and
     no mirror fetch starts, and the answer is ``200`` unless a refresh of the data
     beside the mirror is running. ``"retry": true`` is a reader's own click and always
-    fetches.
+    fetches. That answer also carries ``pull_refresh``: how the attended pull request's
+    refresh was answered (``started``, ``joined``, or ``too_many`` when the queue had no
+    room for it), or null when none was asked for, so a page can tell a fetch that ran
+    from one a full queue refused.
     """
 
     try:
@@ -371,7 +374,13 @@ async def api_source_refresh(request: Request) -> JSONResponse:
         return _error(str(exc), "invalid_request", exc.status_code)
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
-    started = mirror.request_commit_fetch(retry=retry) if for_commit else mirror.request_refresh()
+    pulled: dict[str, Any] = {}
+    if for_commit:
+        fetch = mirror.request_commit_fetch(retry=retry)
+        started: str = fetch.refresh
+        pulled["pull_refresh"] = fetch.pull_refresh
+    else:
+        started = mirror.request_refresh()
     status = source_status(mirror)
     if started == "too_many":
         # Only the attended pull request was stale, and the queue of pull requests is full.
@@ -387,7 +396,8 @@ async def api_source_refresh(request: Request) -> JSONResponse:
     # Nothing scheduled and nothing running is an answer, not accepted work.
     accepted = started != "fresh" or status["refreshing"]
     return JSONResponse(
-        {"refresh": started, "status": dict(status)}, status_code=202 if accepted else 200
+        {"refresh": started, **pulled, "status": dict(status)},
+        status_code=202 if accepted else 200,
     )
 
 

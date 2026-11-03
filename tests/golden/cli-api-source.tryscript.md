@@ -626,6 +626,7 @@ api: /api/source/refresh
 status: 202
 {
   "refresh": "started",
+  "pull_refresh": null,
   "status": {
     "subject": "git_revision",
     "generation": 1,

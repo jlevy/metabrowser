@@ -8,9 +8,11 @@
 // browser glue: real fetch, timers, and paint. tests/dom/github-pulls-panel-session.js runs
 // the same functions from the command line.
 //
-// A row is one anchor in one list item. Step 4's changed files hang off the item: a chevron
-// box before the state icon, and a group after the anchor. The walk goes by `rows`, not by
-// the DOM, so it reads the same however a row is drawn.
+// The list is a tree of one level: a row is one anchor in the role of a tree's item, in a list
+// item with no role of its own. Step 4's changed files hang off the item, and add only
+// children: a chevron box before the state icon, a `.tree-children[role="group"]` after the
+// anchor, and `aria-expanded` on an anchor that has one. The walk goes by `rows`, not by the
+// DOM, so it reads the same however a row is drawn.
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. A list's refresh is asked for while the panel is shown, which the server
@@ -313,7 +315,7 @@ export function describePulls(envelope, page) {
     if (envelope.refreshing && page.waitedMs >= LONG_WAIT_MS) {
       model.notice = {
         severity: null,
-        text: "Still waiting for the list. Pull requests being fetched go first.",
+        text: "Still waiting for the list… Pull requests being fetched go first.",
         retry: false,
       };
     }
@@ -370,13 +372,25 @@ export function describePulls(envelope, page) {
 
 /**
  * What the pane says at the list's own address, `/pulls`: nothing is selected, as on GitHub,
- * or there is nothing to list. Pure.
+ * or there is nothing to list. A list with no rows has nothing to select, so the pane says
+ * what the tab's notice says: why, when a refresh failed. Pure.
  *
  * @param {PullsEnvelope | null} envelope
+ * @param {(iso: string) => string} formatTime
  * @returns {string}
  */
-export function describeLanding(envelope) {
-  return envelope?.reason === "not_github" ? ABSENCE.not_github : "Select a pull request.";
+export function describeLanding(envelope, formatTime) {
+  if (envelope?.reason === "not_github") {
+    return ABSENCE.not_github;
+  }
+  const failure = envelope === null ? null : refreshFailure(envelope, formatTime);
+  if (envelope !== null && envelope.fetched === 0 && failure !== null) {
+    return failure.text;
+  }
+  if (envelope?.fetched === 0 && envelope.complete) {
+    return "No pull requests.";
+  }
+  return "Select a pull request.";
 }
 
 /**
@@ -413,13 +427,19 @@ function isEnvelope(value) {
  *   markCurrent(previous: number | null, next: number | null): void,
  *   markAnchor(previous: number | null, next: number | null, focus: boolean): void,
  *   reveal(number: number): void,
- *   open(route: {number: number, tab: string, reader: {fetchAfterMs: number, initial: unknown}}): unknown,
+ *   open(route: {
+ *     number: number,
+ *     tab: string,
+ *     replace: boolean,
+ *     reader: {fetchAfterMs: number, initial: unknown, walking: () => boolean},
+ *   }): unknown,
  *   filterChanged(state: string): void,
  * }} PullsDependencies
  */
 
 /**
- * A list as far as it has been read.
+ * A list as far as it has been read. *etag* is the route's tag for the list's top window,
+ * which every poll asks for, and *content* says which list file the rows held were read from.
  *
  * @typedef {{
  *   envelope: PullsEnvelope | null,
@@ -427,6 +447,7 @@ function isEnvelope(value) {
  *   keys: Map<number, number>,
  *   version: number,
  *   etag: string | null,
+ *   content: string | null,
  *   nextAfter: number | null,
  *   askedAt: number | null,
  *   waitingSince: number | null,
@@ -443,12 +464,32 @@ function emptyList() {
     keys: new Map(),
     version: 0,
     etag: null,
+    content: null,
     nextAfter: null,
     askedAt: null,
     waitingSince: null,
     more: false,
     error: null,
   };
+}
+
+/**
+ * Which list file an answer's rows come from. A refresh writes a new `fetched_at`, a next
+ * GitHub page more rows, and another account its own name; a refresh that is starting, or a
+ * list that went stale, changes none of them. So an answer that names the same file leaves the
+ * rows held as they are, and only one that names another is read again whole.
+ *
+ * @param {PullsEnvelope} envelope
+ */
+function contentOf(envelope) {
+  return JSON.stringify([
+    envelope.source,
+    envelope.fetched_at,
+    envelope.reader,
+    envelope.fetched,
+    envelope.complete,
+    envelope.truncated,
+  ]);
 }
 
 /**
@@ -609,11 +650,15 @@ export function createPullsController(deps, options = {}) {
     }
   }
 
-  /** Read further windows for a current row the panel has not reached, as far as it can be. */
+  /**
+   * Read further windows for a current row the panel has not reached, as far as it can be.
+   * Only All holds every pull request: in Open or Closed the address may name one the list
+   * does not have, and chasing it would read every window to the end for nothing.
+   */
   let chasing = false;
   function chaseCurrent() {
     const list = held();
-    if (current === null || list.keys.has(current) || list.nextAfter === null) {
+    if (filter !== "all" || current === null || list.keys.has(current) || list.nextAfter === null) {
       return;
     }
     if (current < list.nextAfter) {
@@ -623,8 +668,49 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Read the list's first rows, as many as are held: the route's tag says whether anything
-   * changed, so a poll of an unchanged list is a 304 whatever it holds.
+   * Hold the rows of a list file the panel has not read: the top window's, when that is all
+   * it holds, and otherwise the whole range it holds, read again. A window appended while
+   * that range is read makes it short, so it is not taken, and the next poll reads it again.
+   *
+   * @param {HeldList} list
+   * @param {PullsEnvelope} top
+   * @param {string} content
+   * @param {{request: number, signal: AbortSignal}} asked
+   */
+  async function holdContent(list, top, content, asked) {
+    let answer = top;
+    let named = content;
+    if (list.rows.length > WINDOW_ROWS) {
+      const name = filter;
+      const version = list.version;
+      const whole = await deps.request(
+        "GET",
+        `${PULLS_ROUTE}?state=${name}&limit=${list.rows.length}`,
+        { signal: asked.signal },
+      );
+      if (disposed || name !== filter) {
+        return;
+      }
+      if (whole.status !== 200 || !isEnvelope(whole.body) || list.version !== version) {
+        list.etag = null;
+        return;
+      }
+      answer = whole.body;
+      named = contentOf(answer);
+      if (asked.request >= shownRequest) {
+        holdEnvelope(list, answer);
+      }
+    }
+    holdRows(list, answer.rows, answer.source);
+    list.nextAfter = answer.next_after;
+    list.content = named;
+  }
+
+  /**
+   * Read the list's top window: the route's tag says whether anything changed, so a poll of
+   * an unchanged list is a 304 however many rows are held. An answer from another list file
+   * replaces the rows; when more are held than the top window, they are read again whole,
+   * once, so a list that changed is read in full only when it did.
    *
    * @param {boolean} [first] The panel's first read of this list, which a panel not shown
    *   still takes, so it opens with its rows.
@@ -639,12 +725,12 @@ export function createPullsController(deps, options = {}) {
     const request = ++sent;
     const controller = new AbortController();
     inflight = controller;
-    const limit = Math.max(WINDOW_ROWS, list.rows.length);
     try {
-      const response = await deps.request("GET", `${PULLS_ROUTE}?state=${name}&limit=${limit}`, {
-        etag: list.etag,
-        signal: controller.signal,
-      });
+      const response = await deps.request(
+        "GET",
+        `${PULLS_ROUTE}?state=${name}&limit=${WINDOW_ROWS}`,
+        { etag: list.etag, signal: controller.signal },
+      );
       if (disposed || name !== filter) {
         return;
       }
@@ -652,9 +738,11 @@ export function createPullsController(deps, options = {}) {
         if (request >= shownRequest) {
           shownRequest = request;
           holdEnvelope(list, response.body);
-          holdRows(list, response.body.rows, response.body.source);
-          list.nextAfter = response.body.next_after;
           list.etag = response.etag;
+          const content = contentOf(response.body);
+          if (content !== list.content) {
+            await holdContent(list, response.body, content, { request, signal: controller.signal });
+          }
           if (list.more && !response.body.refreshing && list.nextAfter === null) {
             list.more = false;
           }
@@ -781,16 +869,23 @@ export function createPullsController(deps, options = {}) {
     }
     loadingWindow = true;
     const request = ++sent;
+    // The rows it follows: a poll that replaces them while it is read makes it another list's.
+    const version = list.version;
+    const after = list.nextAfter;
+    let superseded = false;
     try {
       const response = await deps.request(
         "GET",
-        `${PULLS_ROUTE}?state=${name}&limit=${WINDOW_ROWS}&after=${list.nextAfter}`,
+        `${PULLS_ROUTE}?state=${name}&limit=${WINDOW_ROWS}&after=${after}`,
         {},
       );
       if (disposed) {
         return;
       }
-      if (response.status === 200 && isEnvelope(response.body)) {
+      superseded = list.version !== version || list.nextAfter !== after;
+      if (superseded) {
+        // Its rows follow rows the list no longer holds, so they are dropped.
+      } else if (response.status === 200 && isEnvelope(response.body)) {
         // The rows after the ones held, and only if nothing changed under them.
         const repository = repositoryName(response.body.source);
         const fresh = response.body.rows
@@ -803,11 +898,10 @@ export function createPullsController(deps, options = {}) {
         if (fresh.length > 0) {
           list.version += 1;
         }
+        // The poll's tag is the top window's, which a window leaves as it was.
         if (request >= shownRequest) {
           shownRequest = request;
           holdEnvelope(list, response.body);
-          // The route's tag names its window, so the next poll is a 200 once.
-          list.etag = null;
         }
         list.nextAfter = response.body.next_after;
         if (list.nextAfter === null) {
@@ -822,6 +916,11 @@ export function createPullsController(deps, options = {}) {
       }
     } finally {
       loadingWindow = false;
+    }
+    if (superseded && !disposed && name === filter) {
+      // The reader asked for the rows after the end, which the replaced list has too.
+      await loadWindow();
+      return;
     }
     if (!disposed && name === filter) {
       settleAnchor();
@@ -925,11 +1024,14 @@ export function createPullsController(deps, options = {}) {
    * Open a row's page, once its record is read or the wait for it is over. Only the newest
    * opening counts. *fetchAfterMs* is how long the page waits before it fetches a record the
    * cache lacks: a press of a key can be the first of many, and a click means that row.
+   * *replace* is a key's: a skim replaces the history entry, as the file tree's and Git's do,
+   * so Back leaves the list in one step however many rows were passed; a click or Enter pushes.
    *
    * @param {number} number
    * @param {number} fetchAfterMs
+   * @param {boolean} replace
    */
-  async function openRow(number, fetchAfterMs) {
+  async function openRow(number, fetchAfterMs, replace) {
     clearWalk();
     const ticket = ++opening;
     /** @type {{etag: string | null, body: unknown} | null} */
@@ -949,7 +1051,10 @@ export function createPullsController(deps, options = {}) {
       return;
     }
     peeked.delete(number);
-    deps.open({ number, tab: "", reader: { fetchAfterMs, initial } });
+    // While a key is still held the page waits to fetch, whatever its wait was: a first press
+    // held past it would otherwise fetch the row the walk left long ago.
+    const walking = () => !disposed && walkingTo !== null;
+    deps.open({ number, tab: "", replace, reader: { fetchAfterMs, initial, walking } });
   }
 
   /**
@@ -965,6 +1070,9 @@ export function createPullsController(deps, options = {}) {
     inflight?.abort();
     inflight = null;
     polling = false;
+    // A row of the list being left that is still waiting to open does not open over it.
+    opening += 1;
+    clearWalk();
     filter = name;
     settleAnchor();
     painted = null;
@@ -1014,6 +1122,9 @@ export function createPullsController(deps, options = {}) {
       if (disposed || number === current) {
         return;
       }
+      // The address moved by itself, by Back or by a link on the page: a row that is still
+      // waiting for its record to open does not open over it.
+      opening += 1;
       if (walkingTo !== null && walkingTo !== number) {
         clearWalk();
       }
@@ -1063,10 +1174,10 @@ export function createPullsController(deps, options = {}) {
         walkingTo = number;
         walkTimer = deps.schedule(() => {
           walkTimer = null;
-          void openRow(number, REFRESH_ASK_MS);
+          void openRow(number, REFRESH_ASK_MS, true);
         }, WALK_SETTLE_MS);
       } else {
-        void openRow(number, REFRESH_ASK_MS);
+        void openRow(number, REFRESH_ASK_MS, true);
       }
       return true;
     },
@@ -1074,7 +1185,7 @@ export function createPullsController(deps, options = {}) {
     released() {
       if (walkTimer !== null && walkingTo !== null) {
         const number = walkingTo;
-        void openRow(number, REFRESH_ASK_MS);
+        void openRow(number, REFRESH_ASK_MS, true);
       }
     },
     /**
@@ -1092,7 +1203,7 @@ export function createPullsController(deps, options = {}) {
         anchor = number;
         deps.markAnchor(previous, number, false);
       }
-      void openRow(number, 0);
+      void openRow(number, 0, false);
     },
     /** Open the row that holds focus, for Enter and Space. */
     activateAnchor() {
@@ -1100,7 +1211,7 @@ export function createPullsController(deps, options = {}) {
         return false;
       }
       setCurrentRow(anchor);
-      void openRow(anchor, 0);
+      void openRow(anchor, 0, false);
       return true;
     },
     /**
@@ -1245,119 +1356,177 @@ export function mountPullsPanel(container, ctx, mb) {
   });
   const status = h("p", { class: "github-pulls-status" });
   const notice = h("div", { class: "github-pulls-notice-host" });
-  const list = h("ul", { class: "github-pulls-list" });
+  // A tree of one level now: step 4 hangs a row's changed files off it as a group, so the roles
+  // are a tree's from the start. Its keys are this view's; the Files tree's keyboard handler
+  // is scoped to the Files tab and never sees these rows.
+  const list = h("ul", { class: "github-pulls-list", role: "tree" });
   const empty = h("p", { class: "github-pulls-empty" });
-  const skeleton = h("div", { class: "recent-loading mb-delayed-loading", role: "status" });
-  skeleton.setAttribute("aria-label", "Loading pull requests");
+  const skeleton = h("div", {
+    class: "recent-loading mb-delayed-loading",
+    role: "status",
+    "aria-label": "Loading pull requests",
+  });
   const foot = h("div", { class: "github-pulls-foot" });
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   container.classList.add("github-pulls");
   container.replaceChildren(filters, status, notice, skeleton, list, empty, foot, live);
 
-  /** The element of each row held in the list, by number. @type {Map<number, {item: HTMLElement, row: HTMLAnchorElement, key: string}>} */
+  /**
+   * What is painted of each row held, by number: its elements, the key of what it shows, and
+   * when it was updated, whose age moves on while the row stays.
+   *
+   * @typedef {{
+   *   item: HTMLElement,
+   *   row: HTMLAnchorElement,
+   *   age: HTMLElement,
+   *   key: string,
+   *   at: number | null,
+   *   label: string,
+   * }} PaintedRow
+   */
+  /** @type {Map<number, PaintedRow>} */
   const painted = new Map();
+  /** The rows last painted, in their order: an append leaves them as they were. @type {PullRow[]} */
+  let paintedRows = [];
   let paintedVersion = -1;
+  /** The minute the rows' ages were last told in. */
+  let agedIn = Math.floor(Date.now() / 60_000);
   /** @type {number | null} */
   let currentRow = nav.current;
   /** @type {number | null} */
   let anchorRow = null;
 
-  /** @param {string} iso */
-  const age = (iso) => {
-    const at = Date.parse(iso);
-    if (!Number.isFinite(at)) {
-      return { label: "", className: "", tip: "" };
+  /**
+   * The row whose page holds the pane: current, and the tree's one selected item.
+   *
+   * @param {HTMLAnchorElement} row
+   * @param {boolean} on
+   */
+  function markShown(row, on) {
+    row.classList.toggle("selected", on);
+    if (on) {
+      row.setAttribute("aria-current", "page");
+      row.setAttribute("aria-selected", "true");
+    } else {
+      row.removeAttribute("aria-current");
+      row.removeAttribute("aria-selected");
     }
-    const { label, className } = mb.formatAge(at / 1000);
-    return { label, className, tip: mb.formatTimestamp(at / 1000) };
-  };
+  }
 
   /**
+   * One row's elements. Its text is GitHub's users', so it is only ever text.
+   *
    * @param {PullRow} row
-   * @param {{label: string, className: string, tip: string}} when
+   * @param {string} key
+   * @returns {PaintedRow}
    */
-  function buildRow(row, when) {
+  function buildRow(row, key) {
+    const parsed = row.updatedAt === null ? Number.NaN : Date.parse(row.updatedAt) / 1000;
+    const at = Number.isFinite(parsed) ? parsed : null;
+    const when = at === null ? { label: "", className: "" } : mb.formatAge(at);
     const title = h("span", { class: "github-pulls-title" }, [row.title]);
     const updated = h(
       "span",
       {
         class: `github-pulls-age ${when.className}`,
-        ...(when.tip === "" ? {} : { "data-tip-text": when.tip }),
+        ...(at === null ? {} : { "data-tip-text": mb.formatTimestamp(at) }),
       },
       [when.label],
     );
     const meta = h("span", { class: "github-pulls-meta" }, [row.meta]);
+    // A link, so a new tab and a copied address are the browser's, in the role of a tree's
+    // item: its level is the list's one, and the browser counts its place among the rows.
     const anchor = /** @type {HTMLAnchorElement} */ (
-      h("a", { class: "github-pulls-row", href: row.href, tabindex: "-1" }, [
-        pullStateIcon(row.state, mb),
-        h("span", { class: "github-pulls-text" }, [title, updated, meta]),
-      ])
+      h(
+        "a",
+        {
+          class: "github-pulls-row",
+          href: row.href,
+          role: "treeitem",
+          "aria-level": "1",
+          tabindex: "-1",
+        },
+        [pullStateIcon(row.state), title, updated, meta],
+      )
     );
     anchor.dataset.number = String(row.number);
     if (row.number === currentRow) {
-      anchor.classList.add("selected");
-      anchor.setAttribute("aria-current", "page");
+      markShown(anchor, true);
     }
     if (row.number === anchorRow) {
       anchor.setAttribute("tabindex", "0");
     }
-    return h("li", { class: "github-pulls-item" }, [anchor]);
+    const item = h("li", { class: "github-pulls-item", role: "none" }, [anchor]);
+    return { item, row: anchor, age: updated, key, at, label: when.label };
   }
 
-  /** Rows are reused while they say the same, and the ones after them are only appended. */
-  /** @param {PullRow[]} rows */
+  /**
+   * Paint the rows. An answer that appends keeps every row it held, the same objects in the
+   * same order, so only the new ones are built: an append costs what the rows added cost, and
+   * not what the list holds. Any other answer reuses the rows that say the same.
+   *
+   * @param {PullRow[]} rows
+   */
   function paintRows(rows) {
-    const focused =
-      document.activeElement instanceof HTMLElement &&
-      list.contains(document.activeElement) &&
-      document.activeElement.dataset.number
-        ? Number(document.activeElement.dataset.number)
-        : null;
-    const order = [];
-    let extendsPainted = true;
-    let index = 0;
-    const previous = [...painted.keys()];
-    for (const row of rows) {
-      const when = row.updatedAt === null ? null : age(row.updatedAt);
-      const shown = when ?? { label: "", className: "", tip: "" };
-      const key = JSON.stringify(row) + shown.label;
-      let entry = painted.get(row.number);
-      if (entry === undefined || entry.key !== key) {
-        const item = buildRow(row, shown);
-        entry = {
-          item,
-          row: /** @type {HTMLAnchorElement} */ (item.firstElementChild),
-          key,
-        };
-        painted.set(row.number, entry);
-        if (index < previous.length) {
-          extendsPainted = false;
-        }
-      } else if (index >= previous.length || previous[index] !== row.number) {
-        extendsPainted = false;
-      }
-      order.push(entry);
-      index += 1;
-    }
-    if (rows.length < previous.length) {
-      extendsPainted = false;
-    }
-    if (extendsPainted) {
+    const kept = paintedRows.length;
+    const appends = rows.length >= kept && paintedRows.every((row, index) => rows[index] === row);
+    if (appends) {
       const fragment = document.createDocumentFragment();
-      for (const entry of order.slice(previous.length)) {
+      for (const row of rows.slice(kept)) {
+        const entry = buildRow(row, JSON.stringify(row));
+        painted.set(row.number, entry);
         fragment.append(entry.item);
       }
       list.append(fragment);
     } else {
-      const kept = new Set(rows.map((row) => row.number));
-      for (const number of previous) {
-        if (!kept.has(number)) {
+      const focused =
+        document.activeElement instanceof HTMLElement &&
+        list.contains(document.activeElement) &&
+        document.activeElement.dataset.number
+          ? Number(document.activeElement.dataset.number)
+          : null;
+      const order = rows.map((row) => {
+        const key = JSON.stringify(row);
+        let entry = painted.get(row.number);
+        if (entry === undefined || entry.key !== key) {
+          entry = buildRow(row, key);
+          painted.set(row.number, entry);
+        }
+        return entry;
+      });
+      const held = new Set(rows.map((row) => row.number));
+      for (const number of [...painted.keys()]) {
+        if (!held.has(number)) {
           painted.delete(number);
         }
       }
       list.replaceChildren(...order.map((entry) => entry.item));
       if (focused !== null) {
         painted.get(focused)?.row.focus({ preventScroll: true });
+      }
+    }
+    paintedRows = rows.slice();
+  }
+
+  /**
+   * An age is told as of a moment, and a list that does not change keeps its rows: so, at most
+   * once a minute, a paint tells each row's age again, and changes only the ones that moved.
+   */
+  function tellAges() {
+    const minute = Math.floor(Date.now() / 60_000);
+    if (minute === agedIn) {
+      return;
+    }
+    agedIn = minute;
+    for (const entry of painted.values()) {
+      if (entry.at === null) {
+        continue;
+      }
+      const { label, className } = mb.formatAge(entry.at);
+      if (label !== entry.label) {
+        entry.label = label;
+        entry.age.textContent = label;
+        entry.age.className = `github-pulls-age ${className}`;
       }
     }
   }
@@ -1368,6 +1537,7 @@ export function mountPullsPanel(container, ctx, mb) {
     if (list.dataset.filter !== model.filter) {
       list.dataset.filter = model.filter;
       painted.clear();
+      paintedRows = [];
       list.replaceChildren();
       paintedVersion = -1;
       for (const chip of filters.querySelectorAll("button")) {
@@ -1380,6 +1550,7 @@ export function mountPullsPanel(container, ctx, mb) {
       paintedVersion = model.rowsVersion;
       paintRows(model.rows);
     }
+    tellAges();
     list.setAttribute("aria-label", model.listName);
     list.hidden = model.rows.length === 0;
     skeleton.hidden = !model.skeleton;
@@ -1449,15 +1620,13 @@ export function mountPullsPanel(container, ctx, mb) {
       render: paint,
       markCurrent(previous, next) {
         currentRow = next;
-        if (previous !== null) {
-          const row = painted.get(previous)?.row;
-          row?.classList.remove("selected");
-          row?.removeAttribute("aria-current");
+        const leaving = previous === null ? undefined : painted.get(previous)?.row;
+        if (leaving !== undefined) {
+          markShown(leaving, false);
         }
-        if (next !== null) {
-          const row = painted.get(next)?.row;
-          row?.classList.add("selected");
-          row?.setAttribute("aria-current", "page");
+        const arriving = next === null ? undefined : painted.get(next)?.row;
+        if (arriving !== undefined) {
+          markShown(arriving, true);
         }
       },
       markAnchor(previous, next, focus) {
@@ -1593,17 +1762,23 @@ export function mountPullsPanel(container, ctx, mb) {
  *
  * @param {HTMLElement} container
  * @param {MetabrowserPublicRenderContext} _ctx
+ * @param {MetabrowserPublicSdk} mb
  */
-export function mountPullsLanding(container, _ctx) {
+export function mountPullsLanding(container, _ctx, mb) {
   const said = h("div", { class: "preview-empty" });
   container.replaceChildren(said);
   const listening = new AbortController();
+  /** @param {string} iso */
+  const formatTime = (iso) => mb.formatTimestamp(Date.parse(iso) / 1000);
   void request("GET", `${PULLS_ROUTE}?limit=0`, { signal: listening.signal })
     .then((response) => {
-      said.textContent = describeLanding(isEnvelope(response.body) ? response.body : null);
+      said.textContent = describeLanding(
+        isEnvelope(response.body) ? response.body : null,
+        formatTime,
+      );
     })
     .catch(() => {
-      said.textContent = describeLanding(null);
+      said.textContent = describeLanding(null, formatTime);
     });
   return Object.freeze({
     dispose() {

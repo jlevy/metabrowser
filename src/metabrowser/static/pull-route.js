@@ -150,11 +150,12 @@
    *   mount: (
    *     claim: number,
    *     route: Readonly<{number: number, tab: string, reader?: unknown}>,
-   *     open: (route: {number: number, tab: string, reader?: unknown}) => Promise<{status: string}>,
+   *     open: (route: {number: number, tab: string, reader?: unknown, replace?: boolean}) => Promise<{status: string}>,
    *   ) => Promise<Handle | null | undefined>,
    *   mountList: (claim: number) => Promise<Handle | null | undefined>,
    *   pathname: () => string,
    *   pushHref: (href: string) => void,
+   *   replaceHref: (href: string) => void,
    * }} deps
    */
   function createPullPageHost(deps) {
@@ -232,7 +233,11 @@
      * between tabs. The page shown writes its place into its own history entry first: a
      * nav row's click is outside its pane, and a key is no click at all.
      *
-     * @param {{number: number, tab: string, reader?: unknown}} route
+     * A route with *replace* is a key's skim through the Pulls tab's rows: it replaces the
+     * entry, as the file tree's and Git's keys do, so a reader who passed ten rows leaves
+     * them with one Back. A click, Enter, and the page's own links push.
+     *
+     * @param {{number: number, tab: string, reader?: unknown, replace?: boolean}} route
      */
     function open(route) {
       const number = Number(route.number);
@@ -244,7 +249,11 @@
       }
       if (deps.pathname() !== href) {
         shown()?.handle?.flush?.();
-        deps.pushHref(href);
+        if (route.replace === true) {
+          deps.replaceHref(href);
+        } else {
+          deps.pushHref(href);
+        }
       }
       return show(
         Object.freeze({
@@ -293,7 +302,7 @@
    *   isCurrent: (claim: number) => boolean,
    *   renderHtml: (html: string, claim: number) => unknown,
    *   renderNode: (node: HTMLElement, claim: number) => unknown,
-   *   showLoadFailure: (claim: number) => void,
+   *   showLoadFailure: (claim: number, what: string) => void,
    * }} shell
    */
   function createViewMount(shell) {
@@ -304,28 +313,28 @@
      */
     return async (claim, kind, context) => {
       const { sdk } = shell;
+      // Each kind says what it is: a pull request's page, or the list at its address.
+      const page = kind === "pull-request";
+      const what = page ? "pull-request pages" : "the list of pull requests";
       let view = null;
       try {
         await sdk.ensureKindAssets(kind);
         view = sdk.getRegisteredView(kind, kind);
       } catch (error) {
         // Not the same as no plugin rendering such pages; the next route tries again.
-        console.error("metabrowser: the pull-request page could not load", error);
-        shell.showLoadFailure(claim);
+        console.error(`metabrowser: ${what} could not load`, error);
+        shell.showLoadFailure(claim, page ? "the pull-request page" : what);
         return null;
       }
       if (!shell.isCurrent(claim)) {
         return null;
       }
       if (!view) {
-        shell.renderHtml(
-          '<div class="preview-empty">No plugin renders pull-request pages here.</div>',
-          claim,
-        );
+        shell.renderHtml(`<div class="preview-empty">No plugin renders ${what} here.</div>`, claim);
         return null;
       }
       const host = document.createElement("div");
-      host.className = "content-body pull-request-host";
+      host.className = `content-body ${kind}-host`;
       shell.renderNode(host, claim);
       return /** @type {{setTab?: (tab: string) => void, flush?: () => void, dispose?: () => void} | null} */ (
         await view.render(host, { kind, ...context })

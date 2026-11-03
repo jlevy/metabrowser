@@ -155,6 +155,9 @@ state with its own wording, distinct from HTTP, malformed-body, and renderer err
 The `shell` scenarios run the `app.js` functions that compose those decisions with the
 real navigation controller.
 A Files to Git to Files tab switch keeps the loading claim, and the folder still lands.
+The panels share one scroller, and each keeps its own place in it: a switch saves the
+offset of the panel it leaves, puts back the offset of the one it shows, or the top for
+a panel never shown, and tells the panel that leaves.
 Opening a path again after it failed, or after a Git commit replaced it, loads it again,
 while re-opening a path the pane already shows only delivers its fragment.
 The inventory stream’s `onopen` retries only a selection that failed as unreachable, and
@@ -466,6 +469,19 @@ $ node tests/dom/preview-pane-state-session.js
       "panelShows": [
         "git first show",
         "git show"
+      ]
+    },
+    "navPanelsKeepTheirPlace": {
+      "switches": [
+        "scrolled to 400, git chosen: shows 0",
+        "scrolled to 250, files chosen: shows 400",
+        "scrolled to 400, git chosen: shows 250",
+        "scrolled to 250, git chosen: shows 250"
+      ],
+      "told": [
+        "files hidden",
+        "git hidden",
+        "files hidden"
       ]
     },
     "reselectAfterFailure": {

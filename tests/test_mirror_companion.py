@@ -13,6 +13,8 @@ import pytest
 
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import (
+    MAX_FIRST_IN_A_ROW,
+    CommitFetchAnswer,
     MirrorDisplay,
     MirrorRef,
     MirrorSession,
@@ -241,23 +243,27 @@ def test_a_refresh_fetches_only_what_is_stale_and_a_pin_miss_only_the_mirror(
     ("mirror_fresh", "pull_stale", "retry", "answer", "expected"),
     [
         # Inside the freshness window a page's own request fetches nothing at all,
-        (True, False, False, "fresh", []),
+        (True, False, False, ("fresh", None), []),
         # or only the stale pull request, and still says the mirror was not fetched.
-        (True, True, False, "fresh", ["pull start", "pull end"]),
+        (True, True, False, ("fresh", "started"), ["pull start", "pull end"]),
         # Outside the window it fetches the mirror, and the pull request when stale.
-        (False, False, False, "started", ["mirror"]),
-        (False, True, False, "started", ["mirror", "pull start", "pull end"]),
+        (False, False, False, ("started", None), ["mirror"]),
+        (False, True, False, ("started", "started"), ["mirror", "pull start", "pull end"]),
         # A reader's retry fetches both, however fresh they are.
-        (True, False, True, "started", ["mirror", "pull start", "pull end"]),
+        (True, False, True, ("started", "started"), ["mirror", "pull start", "pull end"]),
     ],
 )
 def test_a_commit_fetch_has_a_floor_that_only_a_retry_lifts(
-    mirror_fresh: bool, pull_stale: bool, retry: bool, answer: str, expected: list[str]
+    mirror_fresh: bool,
+    pull_stale: bool,
+    retry: bool,
+    answer: tuple[str, str | None],
+    expected: list[str],
 ) -> None:
     """A link in served content can send a reader to any commit's address, so the fetch a
     page asks for by itself runs only for what is older than the freshness window."""
 
-    async def scenario() -> tuple[str, list[str]]:
+    async def scenario() -> tuple[tuple[str, str | None], list[str]]:
         events: list[str] = []
         coordinator = RefreshCoordinator()
         mirror = _Mirror(events, fetched_at=_now() if mirror_fresh else _OLD)
@@ -267,7 +273,7 @@ def test_a_commit_fetch_has_a_floor_that_only_a_retry_lifts(
         await session.observe()
         answered = session.request_commit_fetch(retry=retry)
         await _settle(coordinator)
-        return answered, events
+        return (answered.refresh, answered.pull_refresh), events
 
     answered, events = asyncio.run(scenario())
     assert answered == answer
@@ -289,10 +295,10 @@ def test_a_commit_fetch_joins_the_mirror_fetch_but_not_the_pull_requests() -> No
         await session.observe()
         session.request_companion_refresh()
         await companion.started.wait()
-        beside = session.request_commit_fetch(retry=False)
+        beside = session.request_commit_fetch(retry=False).refresh
         assert session.refreshing() is False and session.companion_refreshing() is True
         session.request_refresh(for_selection=True)
-        joined = session.request_commit_fetch(retry=False)
+        joined = session.request_commit_fetch(retry=False).refresh
         companion.gate.set()
         await _settle(coordinator)
         return beside, joined, events
@@ -393,6 +399,26 @@ class _Stand:
         self.mirror.gate.set()
         await _spin()
         await self.coordinator.aclose()
+
+    async def warm(self, by: str = "the mirror's") -> None:
+        """Put the stand in a server's usual state: jobs that go first have run with nothing
+        else waiting, as the mirror's does once a window for any served page, or the attended
+        pull request's own, more often than the store's turn lets such jobs go in a row ahead
+        of a waiting one. Then forget them, so a test sees only its own jobs."""
+
+        if by != "the mirror's":
+            await self.session.attend(7)
+        for _ in range(MAX_FIRST_IN_A_ROW + 1):
+            if by == "the mirror's":
+                assert self.session.request_refresh(for_selection=True) == "started"
+                await _spin()
+                await self.end_mirror()
+            else:
+                assert self.session.request_pull_refresh(7) == "started"
+                await _spin()
+                await self.end(7)
+        assert not self.session.refreshing() and not self.session.pull_refreshing(7)
+        self.events.clear()
 
 
 def test_a_job_waiting_its_turn_holds_no_slot_so_a_list_refresh_starts_at_once() -> None:
@@ -630,6 +656,42 @@ def test_a_queued_pull_request_waits_through_at_most_one_job_of_each_that_goes_f
     ]
 
 
+@pytest.mark.parametrize("alone", ["the mirror's", "the attended's"])
+def test_jobs_that_went_first_with_nothing_waiting_do_not_hold_back_the_next_first(
+    alone: str,
+) -> None:
+    """A server open a while has fetched the mirror alone once a window, or refreshed the
+    attended pull request alone. Those went ahead of nothing, so on the first contention after
+    them the attended job still goes ahead of a pull request asked for after it, and that one
+    then waits for one of each that goes first, as from a fresh start."""
+
+    async def scenario() -> list[str]:
+        stand = _Stand()
+        await stand.warm(by=alone)
+        session = stand.session
+        await session.attend(7)
+        assert session.request_refresh(for_selection=True) == "started"
+        await _spin()
+        assert stand.events == ["mirror"]
+        assert session.request_pull_refresh(7) == "started"
+        await _spin()
+        assert session.request_pull_refresh(8) == "started"
+        await _spin()
+        # Each that goes first asks again as soon as it can; 8 still goes after one of each.
+        await stand.end_mirror()
+        session.request_refresh(for_selection=True)
+        await _spin()
+        await stand.end(7)
+        session.request_pull_refresh(7)
+        await _spin()
+        await stand.end_mirror()
+        seen = list(stand.events)
+        await stand.finish()
+        return seen
+
+    assert asyncio.run(scenario()) == ["mirror", "pull 7", "mirror", "pull 8"]
+
+
 @pytest.mark.parametrize("cancelled", ["as the turn passes", "as its turn came"])
 def test_a_job_cancelled_while_it_waits_gives_up_its_place(cancelled: str) -> None:
     """A job cancelled while the turn passes is skipped, and one cancelled after its turn came
@@ -658,7 +720,10 @@ def test_a_job_cancelled_while_it_waits_gives_up_its_place(cancelled: str) -> No
             assert running.done()
         doomed.cancel()
         await asyncio.gather(doomed, return_exceptions=True)
-        await last
+        # A turn nobody passed on leaves the last job waiting for ever: say so, and do not
+        # wait for the test's timeout.
+        await asyncio.wait({last}, timeout=5)
+        assert last.done(), f"the turn was not passed on; ran {order}"
         await running
         return order
 
@@ -746,10 +811,34 @@ def test_a_source_refresh_the_queue_has_no_room_for_says_so_and_starts_nothing()
     assert seen == ["pull 8"], "nothing else started"
 
 
+def test_a_commit_fetch_the_queue_has_no_room_for_says_so_beside_the_mirrors() -> None:
+    """The mirror is fetched, and the answer says the pull request's refresh was refused, so
+    a commit page does not say the origin lacks a commit only that refresh would bring."""
+
+    async def scenario() -> tuple[CommitFetchAnswer, bool]:
+        stand = _Stand()
+        fresh = _Mirror(stand.events, fetched_at=_now())
+        stand.session = MirrorSession(
+            fresh, stand.coordinator, pull_requests=stand.pulls, fetch_on_miss=True
+        )
+        await stand.session.observe()
+        await _fill_the_queue(stand)
+        answered = stand.session.request_commit_fetch(retry=True)
+        await _spin()
+        refreshing = stand.session.pull_refreshing(20)
+        await stand.finish()
+        return answered, refreshing
+
+    answered, refreshing = asyncio.run(scenario())
+    assert (answered.refresh, answered.pull_refresh) == ("started", "too_many")
+    assert refreshing is False
+
+
 def test_a_pending_miss_whose_pull_request_job_was_refused_waits_for_room() -> None:
     """A full queue refused the attended pull request's job, so it has not run, and the commit
     may be one only it brings: the miss stays pending, and a later ask that finds room starts
-    the job and then waits for it."""
+    the job and then waits for it. A fetch of the mirror that ran since the miss is not asked
+    for again on every ask meanwhile: only that job can bring more."""
 
     async def scenario() -> None:
         stand = _Stand()
@@ -767,16 +856,19 @@ def test_a_pending_miss_whose_pull_request_job_was_refused_waits_for_room() -> N
             await ask()
         await stand.end_mirror()
         assert stand.events[-1] == "pull 8"
-        # The mirror's fetch ended, and the queue is still full: still pending, not "not found".
-        with pytest.raises(SelectionPendingError):
+        # The mirror's fetch ended, and the queue is still full: still pending, not "not found",
+        # and the mirror is not fetched again.
+        with pytest.raises(SelectionPendingError) as waiting:
             await ask()
-        assert not session.pull_refreshing(20)
+        assert waiting.value.refresh == "joined"
+        assert not session.pull_refreshing(20) and not session.refreshing()
         await stand.end(8)
-        await stand.end_mirror()
+        assert stand.events.count("mirror") == 1, stand.events
         # Now there is room, so this ask starts 20's job, and the miss waits for it.
-        with pytest.raises(SelectionPendingError):
+        with pytest.raises(SelectionPendingError) as waiting:
             await ask()
-        assert session.pull_refreshing(20)
+        assert waiting.value.refresh == "started"
+        assert session.pull_refreshing(20) and not session.refreshing()
         while session.refreshing() or any(
             session.pull_refreshing(number) for number in (*range(9, 16), 7, 20)
         ):

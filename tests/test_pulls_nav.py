@@ -205,30 +205,13 @@ def test_a_mirror_of_anything_else_draws_no_tab(
         reset_source_session()
 
 
-def test_a_panel_that_leaves_keeps_its_place_and_is_told() -> None:
-    """The panels share one scroller, and only a rendered page has its offset.
-
-    The session owns what the host does when it is told; this is that it is told, by the
-    shell's one function, with the offsets on either side of the panels' change.
-    """
-
-    app = (REPO_ROOT / "src/metabrowser/static/app.js").read_text(encoding="utf-8")
-    activate = app[app.index("function activateNavPanel(") : app.index("function initNavTabs(")]
-    saved = activate.index("navPanelScroll.set(leaving, scroller.scrollTop)")
-    swapped = activate.index(
-        'panel.style.display = panel.dataset.tabContent === panelId ? "" : "none"'
-    )
-    restored = activate.index("scroller.scrollTop = navPanelScroll.get(panelId) ?? 0")
-    assert saved < swapped < restored
-    assert "candidate.id === leaving)?.onHide?.()" in activate
-
-
 def test_a_rows_text_is_only_ever_text() -> None:
     """The one markup the panel parses is the shell's own chip group.
 
-    A row's text reaches the page through `h`, whose children are text nodes. The session
-    shows a hostile row stays a string; only this says nothing parses it. Mutation check:
-    assign a row's title to `innerHTML` and this fails.
+    The panel session's `paint` is the evidence: it builds the rows and reads a title written
+    as markup back as one text node. This is the second line, for code the session's rows do
+    not reach: nothing else in the module parses markup at all. Mutation check: assign a row's
+    title to `innerHTML` and both fail.
     """
 
     source = PANEL.read_text(encoding="utf-8")

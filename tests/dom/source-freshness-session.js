@@ -556,6 +556,33 @@ async function run() {
     controller.dispose();
   }
 
+  // A full queue refused the attended pull request's refresh, the only one that brings a
+  // newer head of it, while the mirror was fetched. The fetch ran and did not bring the
+  // commit, and the view says the pull request's refresh did not run rather than that the
+  // origin lacks the commit.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.queue_full_page);
+    answerRefresh(page, recorded.queue_full_refresh);
+    await controller.start();
+    page.observe("opened");
+    answerRefresh(page, recorded.commit_unqueued_started);
+    page.answerCommit(recorded.commit_unqueued_after);
+    const opening = freshness.openMissingCommit(
+      controller,
+      page.commitView(recorded.commit_unqueued_after.oid),
+      { retry: true },
+    );
+    await settle();
+    page.observe("waiting");
+    page.setStatus(recorded.commit_unqueued_fetched);
+    await page.fireTimer();
+    outcomes.push(await opening);
+    steps.push(page.observe("the queue had no room for the pull request's refresh"));
+    controller.dispose();
+  }
+
   // The server stops answering while the fetch runs: the view gives up at the first
   // poll that fails, and the page falls back to its slow poll.
   {
@@ -589,6 +616,7 @@ async function run() {
         "fetch_failed",
         "superseded",
         "found",
+        "fetch_failed",
         "fetch_failed",
       ]),
     `a missing commit ended as ${JSON.stringify(outcomes)}`,
@@ -648,6 +676,41 @@ async function run() {
     controller.onVisibilityChange();
     await settle();
     steps.push(page.observe("shown again, a stale page asks again"));
+    controller.dispose();
+  }
+
+  // A page of code on the attended pull request, whose record is stale while the queue of
+  // pull requests a reader asked for is full: the server refuses the page's own refresh.
+  // The reader did not ask, so the row says nothing of it, as the pull request's page does;
+  // a press is the reader's own, and the row says why in the server's words.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.queue_full_page);
+    answerRefresh(page, recorded.queue_full_refresh);
+    await controller.start();
+    steps.push(page.observe("a page's own refresh with no room in the queue says nothing"));
+    answerRefresh(page, recorded.queue_full_refresh);
+    await controller.requestRefresh();
+    steps.push(page.observe("a press with no room in the queue says why"));
+    controller.dispose();
+  }
+
+  // A page left open while the server restarted on a folder: a folder is not refreshable,
+  // so not even a press asks for a refresh, and the queue's refusal cannot reach it.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.folder);
+    await controller.start();
+    const asked = await controller.requestRefresh();
+    const folder = page.observe("a folder asks for no refresh");
+    assert(asked === null, "a folder's press must ask for nothing");
+    assert(
+      JSON.stringify(folder.requests) === JSON.stringify(["GET /api/source/status"]),
+      `a folder must post nothing: ${JSON.stringify(folder.requests)}`,
+    );
+    assert(folder.paint === null, "a folder has no row to paint");
     controller.dispose();
   }
 

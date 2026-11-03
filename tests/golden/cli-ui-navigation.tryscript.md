@@ -696,6 +696,7 @@ $ node tests/dom/navigation-route-behavior.js
     "the list's address holds the pane": "list",
     "the list's address, then two rows": ["claim 1 (pull-request)","mount the list's address","#list writes its place","push /pull/7","#list disposed","claim 2 (pull-request)","mount /pull/7","#7 writes its place","push /pull/8","#7 disposed","claim 3 (pull-request)","mount /pull/8"],
     "back onto the list's address": [{"action":"list"},"list"],
+    "two keys' opens replace the entry, and a click's pushes": ["claim 1 (pull-request)","mount /pull/7","#7 writes its place","replace /pull/8","#7 disposed","claim 2 (pull-request)","mount /pull/8","#8 writes its place","replace /pull/9","#8 disposed","claim 3 (pull-request)","mount /pull/9","#9 writes its place","push /pull/10","#9 disposed","claim 4 (pull-request)","mount /pull/10"],
     "the served pull request's page opens": {"status":"opened"},
     "the served pull request's page replaces the other": ["claim 1 (pull-request)","mount /pull/8/files","#8 writes its place","push /pull/7/files","#8 disposed","claim 2 (pull-request)","mount /pull/7/files"],
     "the served pull request is shown": 7,

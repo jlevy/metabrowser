@@ -20,14 +20,47 @@ front, `null` being none: a pull request’s address shows Pulls, a file’s add
 Pulls off the front, and a commit’s is the Git panel’s. `stories` is what the host asked
 of each, in order: a page elsewhere on a mirror, which reads the view ahead when the
 shell is idle; the first page of a pull request’s address, which the server drew with
-the tab in front; a load that fails, which says so only to a reader looking and tries
-again on the next show; and a page that goes while the view loads, whose late mount is
-disposed. `keys` is each key through the real registry and what it told the view, and
-`help` is what Help reads for the group.
+the tab in front; Back between the list’s filters, each a place of its own, which shows
+the list though Files was chosen by hand; a load that fails, which says so only to a
+reader looking and tries again on the next show; and a page that goes while the view
+loads, whose late mount is disposed.
+`keys` is each key through the real registry and what it told the view, and `help` is
+what Help reads for the group.
+`the page’s host` is the module’s own `init` and `dispose` on a page it is played: the
+listeners it adds, that only a walking key’s release ends a walk, and that an `init`
+after a `dispose` listens again.
 
 ```console
 $ node tests/dom/pulls-nav-session.js
 {
+  "the page's host": {
+    "init listens": [
+      "the tab: focusin",
+      "the tab: focusout",
+      "the tab: keyup",
+      "the window: popstate"
+    ],
+    "a modifier's release ends no walk": [],
+    "J's release ends it": [
+      "released"
+    ],
+    "dispose ends them all": {
+      "listening": [],
+      "told": [
+        "view disposed",
+        "tab removed"
+      ]
+    },
+    "init again listens again": [
+      "the tab: focusin",
+      "the tab: focusout",
+      "the tab: keyup",
+      "the window: popstate"
+    ],
+    "and J's release ends a walk again": [
+      "released"
+    ]
+  },
   "addresses": {
     "/pulls": {
       "names": {
@@ -202,6 +235,30 @@ $ node tests/dom/pulls-nav-session.js
           "activated pulls",
           "view told: shown",
           "view told: current 7"
+        ]
+      }
+    ],
+    "Back between the list's filters": [
+      {
+        "Files chosen by hand at Open: the same place keeps it": [
+          "view told: current null",
+          "view told: filter open"
+        ]
+      },
+      {
+        "Back to All: the list is in front": [
+          "activated pulls",
+          "view told: shown",
+          "view told: current null",
+          "view told: filter all"
+        ]
+      },
+      {
+        "Back from a filter the panel chose: the list again": [
+          "activated pulls",
+          "view told: shown",
+          "view told: current null",
+          "view told: filter all"
         ]
       }
     ],

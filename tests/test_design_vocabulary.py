@@ -402,6 +402,21 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     el("content-body metabrowser-diff-host", el("diff-file", bar))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-toggle", toggle))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-bar", bar))
+    # Pull request row: buildRow in the GitHub plugin's pulls-panel.js. The muted line under
+    # the title is alone on its line, so it neither shares a baseline nor is a box.
+    rows.append(
+        (
+            "Pull request row",
+            ".github-pulls-row",
+            el(
+                "github-pulls-row",
+                box("github-pull-state-icon"),
+                text("github-pulls-title"),
+                text("github-pulls-age age-min"),
+                el("github-pulls-meta"),
+            ),
+        )
+    )
     return rows
 
 
@@ -415,13 +430,20 @@ def test_row_text_shares_one_baseline() -> None:
     """
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     diff_css = (REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css").read_text(encoding="utf-8")
+    github_css = (REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css").read_text(encoding="utf-8")
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "### Row Text Shares a Baseline" in doc, "the row baseline rule lost its documentation"
     section = doc.split("### Row Text Shares a Baseline", 1)[1].split("\n### ", 1)[0]
     rules = _baseline_rules()
     for label, row_rule, row in _baseline_rows():
         assert f"| {label}" in section, f"{label} is missing from the design-system table"
-        css = diff_css if row_rule.startswith(".metabrowser-diff-host") else styles
+        css = (
+            diff_css
+            if row_rule.startswith(".metabrowser-diff-host")
+            else github_css
+            if row_rule.startswith(".github-")
+            else styles
+        )
         # The row centers its children, so a box needs no rule of its own.
         assert "align-items: center;" in _rule(css, row_rule), f"{row_rule} stopped centering"
         for child in row.children:
@@ -1274,16 +1296,17 @@ def test_pull_state_colors_keep_their_hue_and_read_on_both_grounds() -> None:
     page's header sits on and on the panel's.
     """
 
-    github = (REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css").read_text(encoding="utf-8")
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     light_block, dark_block = _theme_blocks()
-    plugin_light = github[github.index(":root {") :].split("}", 1)[0]
-    plugin_dark = github[github.index('[data-theme="dark"] {') :].split("}", 1)[0]
+    # The plugin's own theme rules, parsed: a comment or another rule's brace cannot move them.
+    rules = _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+    plugin_light = next(body for selector, body in rules if selector == ":root")
+    plugin_dark = next(body for selector, body in rules if selector == '[data-theme="dark"]')
     assert "--sidebar-bg" in styles
     for name in ("open", "draft", "merged", "closed"):
         token = f"--github-pull-{name}"
-        light = _declared(plugin_light, token)
-        dark = _declared(plugin_dark, token)
+        light = plugin_light[token]
+        dark = plugin_dark[token]
         assert _oklch_channels(light)[2] == _oklch_channels(dark)[2], f"{token} changes hue"
         for theme, block, color in (("light", light_block, light), ("dark", dark_block, dark)):
             for ground in ("--bg", "--sidebar-bg"):
@@ -1318,7 +1341,9 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert github[".github-pulls-row.selected"]["background"] == "var(--highlight-bg)"
     assert github[".github-pulls-row:focus-visible"]["outline"] == "2px solid var(--link)"
     assert "transition" not in row, "a row crossed by a held key answers with no easing"
-    # Icons: the app's glyph, in the state's color and never its own.
+    # Icons: the app's glyph, in the state's color and never its own. The four shapes are the
+    # plugin's, Lucide's, and drawn only on a GitHub repository's page, so no folder's startup
+    # scripts carry them.
     assert github[".github-pull-state-icon svg"]["width"] == "var(--icon-glyph)"
     for name, lucide in (
         ("gitPullRequest", "git-pull-request"),
@@ -1326,8 +1351,10 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
         ("gitMerge", "git-merge"),
         ("gitPullRequestClosed", "git-pull-request-closed"),
     ):
-        assert f"{name}: // Lucide `{lucide}`" in icons
+        assert f"{name}: // Lucide `{lucide}`" in state
         assert f'"{name}"' in state
+        assert name not in icons, f"{name} is back in the shell's eager icon registry"
+    assert 'fill="none" stroke="currentColor"' in state, "a state's glyph takes its color"
     # A row and its page match: one state's icon, from one module.
     assert "pullStateIcon(" in panel and "pullStateIcon(" in page
     assert 'aria-label", PULL_STATES[state].label' in state
@@ -1367,6 +1394,11 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert "github-pull-browse" not in page and '"Browse code"' in page
     assert page.count('class: "github-pull-text-action"') == 1
     assert '"github-pull-file github-pull-text-action"' in page
+    # A <button> is an atomic inline box whatever its display, so the link and the plain
+    # path are one too: a wrapped path then puts the badge after it on the next line in every
+    # form, where the link alone let it follow the text. Measured in Chrome on a 685 px card
+    # head: before, the link's head was 45 px and the button's 63 px; after, both 63 px.
+    assert github[".github-pull-file"]["display"] == "inline-block"
     # A hunk is the user's code, at the chrome-context mono size, in the app's mono face.
     assert github[".github-pull-hunk"]["font-family"] == "var(--font-mono)"
     assert github[".github-pull-hunk"]["font-size"] == "var(--mono-block-font-size)"

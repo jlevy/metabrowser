@@ -463,6 +463,10 @@ function createShell(pathname, network, options = {}) {
     ["preview-pane", preview],
     ["nav-filter-bar", fakeElement()],
   ]);
+  if (options.scroller) {
+    // The one scroller the navigation panels share.
+    elements.set("tree-content", options.scroller);
+  }
   const navBar = fakeElement();
   const tabButtons = ["files", "git"].map((tab) => fakeElement({ dataset: { tab } }));
   const tabPanels = ["files", "git"].map((tab) => fakeElement({ dataset: { tabContent: tab } }));
@@ -725,6 +729,30 @@ async function tabSwitchDuringLoad() {
     onGitTab,
     panelShows: shell.panelShows,
   };
+}
+
+function navPanelsKeepTheirPlace() {
+  // The navigation panels share one scroller. A switch keeps the offset of the panel it
+  // leaves and puts back the offset of the one it shows, the top for a panel never shown,
+  // and tells the panel that leaves, so one that polls can stop; choosing the panel already
+  // in front moves nothing and tells nobody. Before this, Files' offset carried into Git.
+  const scroller = fakeElement({ scrollTop: 0 });
+  const shell = createShell("/view/", refusedFetch, { scroller });
+  const told = [];
+  shell.sandbox.navPanels[0].onHide = () => told.push("files hidden");
+  shell.sandbox.navPanels[1].onHide = () => told.push("git hidden");
+  const switches = [];
+  for (const [scrolled, panel] of [
+    [400, "git"],
+    [250, "files"],
+    [400, "git"],
+    [250, "git"],
+  ]) {
+    scroller.scrollTop = scrolled;
+    shell.sandbox.activateNavPanel(panel);
+    switches.push(`scrolled to ${scrolled}, ${panel} chosen: shows ${scroller.scrollTop}`);
+  }
+  return { switches, told };
 }
 
 async function reselectAfterFailure() {
@@ -1133,6 +1161,7 @@ async function shell() {
       shipped.sandbox.previewPane.placeholder(0),
     ),
     tabSwitchDuringLoad: await tabSwitchDuringLoad(),
+    navPanelsKeepTheirPlace: navPanelsKeepTheirPlace(),
     reselectAfterFailure: await reselectAfterFailure(),
     bodyReadFailure: await bodyReadFailure(),
     reconnectRetry: await reconnectRetry(),

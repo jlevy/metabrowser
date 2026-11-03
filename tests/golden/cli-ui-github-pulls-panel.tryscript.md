@@ -14,11 +14,17 @@ and a panel with nothing yet waits in the shape of rows, saying why only when th
 is long. Each filter is its own list, read when it is first chosen and kept.
 Reaching the end of what is held reads the next window, and past that the next GitHub
 page. A failed refresh leaves the rows and says what to do.
+A poll reads the top window with its tag, however many rows are held, so an unchanged
+list is a `304`; only an answer from another list file has the whole range held read
+again, once, and a window that lands while a poll is out is kept.
 
 The rows walk by key: each press moves two marks, and a key held down reads nothing and
 opens nothing until it stops, so a walk of forty rows costs one read.
-The newest opening wins and an older read is let go.
-A row following the address is not a selection, and fetches nothing.
+A key’s open replaces the history entry, and a click’s pushes one.
+The newest opening wins and an older read is let go, and Back while a row still waits
+for its record keeps that row from opening.
+A row following the address is not a selection, and fetches nothing; further windows are
+read to reach it only in All, since Open or Closed may not hold it.
 
 This browserless session loads the production `builtin_plugins/github/pulls-panel.js`
 and plays the server’s side from `tests/fixtures/github-pulls-panel-responses.json`:
@@ -33,9 +39,14 @@ what it opened, how many times it painted, and, where the step is about it, what
 would paint. `failures` is what the panel says for each way a refresh can end, and `cap`
 at the most rows a list may hold.
 `hostile` is a row whose text is markup: it stays a string, and paint writes it as text.
+`landing` is what the list’s own address says, and why when there is nothing to select.
 `reader` is the page a selection opens, on what a server answers of a record: only a
 page a reader chose fetches, a key stopping on a row waits a moment so that tapping past
-spends nothing, and past the bound on jobs it says why and offers **Fetch**.
+spends nothing, a key still held keeps the page it opened waiting however long, and past
+the bound on jobs it says why and offers **Fetch**. `paint` is the list built in a
+stand-in for the DOM: a tree of one level whose rows are its items, a title written as
+markup painted as one text node, an append that builds, ages, and keys only the rows it
+adds, and ages told again in place as time passes.
 
 ```console
 $ node tests/dom/github-pulls-panel-session.js
@@ -115,7 +126,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "listName": "Pull requests of octo/demo",
         "notice": {
           "severity": null,
-          "text": "Still waiting for the list. Pull requests being fetched go first.",
+          "text": "Still waiting for the list… Pull requests being fetched go first.",
           "retry": false
         },
         "live": "Waiting for the list of pull requests…"
@@ -251,6 +262,14 @@ $ node tests/dom/github-pulls-panel-session.js
       "painted": 0
     },
     {
+      "step": "the next poll reads the top window, and it is unchanged",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-5\""
+      ],
+      "timer": "slow",
+      "painted": 0
+    },
+    {
       "step": "Open is chosen",
       "requests": [
         "GET /api/plugin/github/pulls?state=open&limit=100"
@@ -289,7 +308,7 @@ $ node tests/dom/github-pulls-panel-session.js
     {
       "step": "All again paints what it held at once",
       "requests": [
-        "GET /api/plugin/github/pulls?state=all&limit=102"
+        "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-5\""
       ],
       "timer": "slow",
       "painted": 1,
@@ -311,7 +330,7 @@ $ node tests/dom/github-pulls-panel-session.js
       }
     },
     {
-      "step": "and its read changes no row",
+      "step": "and its read is a 304",
       "requests": [],
       "timer": "slow",
       "painted": 0
@@ -321,7 +340,7 @@ $ node tests/dom/github-pulls-panel-session.js
       "requests": [
         "GET /api/plugin/github/pulls?state=closed&limit=100",
         "aborted GET /api/plugin/github/pulls?state=closed&limit=100",
-        "GET /api/plugin/github/pulls?state=all&limit=102 if-none-match \"pulls-7\""
+        "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-5\""
       ],
       "timer": "slow",
       "marks": [
@@ -342,7 +361,7 @@ $ node tests/dom/github-pulls-panel-session.js
     {
       "step": "a minute on, the list is stale, and asks",
       "requests": [
-        "GET /api/plugin/github/pulls?state=all&limit=102 if-none-match \"pulls-7\"",
+        "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-5\"",
         "POST /api/plugin/github/pulls-refresh {\"state\":\"all\"}"
       ],
       "timer": "slow",
@@ -367,7 +386,7 @@ $ node tests/dom/github-pulls-panel-session.js
     {
       "step": "it refreshes with its rows in place",
       "requests": [
-        "GET /api/plugin/github/pulls?state=all&limit=102"
+        "GET /api/plugin/github/pulls?state=all&limit=100"
       ],
       "timer": "fast",
       "painted": 1,
@@ -389,9 +408,10 @@ $ node tests/dom/github-pulls-panel-session.js
       }
     },
     {
-      "step": "refreshed, and no row repainted",
+      "step": "refreshed: the whole range is read once, and no row repainted",
       "requests": [
-        "GET /api/plugin/github/pulls?state=all&limit=102 if-none-match \"pulls-13\""
+        "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-12\"",
+        "GET /api/plugin/github/pulls?state=all&limit=102"
       ],
       "timer": "slow",
       "painted": 1,
@@ -561,6 +581,7 @@ $ node tests/dom/github-pulls-panel-session.js
         {
           "number": 105,
           "tab": "",
+          "history": "replace",
           "fetchAfterMs": 500,
           "initial": "the record read for it"
         }
@@ -590,6 +611,7 @@ $ node tests/dom/github-pulls-panel-session.js
         {
           "number": 65,
           "tab": "",
+          "history": "replace",
           "fetchAfterMs": 500,
           "initial": "the record read for it"
         }
@@ -635,9 +657,27 @@ $ node tests/dom/github-pulls-panel-session.js
         {
           "number": 61,
           "tab": "",
+          "history": "replace",
           "fetchAfterMs": 500,
           "initial": "the record read for it"
         }
+      ],
+      "painted": 0
+    },
+    {
+      "step": "Back while a row waits for its record: that row does not open",
+      "requests": [
+        "GET /api/plugin/github/pull?number=60"
+      ],
+      "timer": "slow",
+      "marks": [
+        "anchor 61 -> 60 focus",
+        "current 61 -> 60",
+        "current 60 -> 70",
+        "anchor 60 -> 70"
+      ],
+      "reveals": [
+        70
       ],
       "painted": 0
     },
@@ -646,8 +686,8 @@ $ node tests/dom/github-pulls-panel-session.js
       "requests": [],
       "timer": "slow",
       "marks": [
-        "current 61 -> 90",
-        "anchor 61 -> 90"
+        "current 70 -> 90",
+        "anchor 70 -> 90"
       ],
       "reveals": [
         90
@@ -689,6 +729,7 @@ $ node tests/dom/github-pulls-panel-session.js
         {
           "number": 80,
           "tab": "",
+          "history": "push",
           "fetchAfterMs": 0,
           "initial": "the record read for it"
         }
@@ -718,6 +759,39 @@ $ node tests/dom/github-pulls-panel-session.js
         5
       ],
       "painted": 1
+    },
+    {
+      "step": "in Closed, a row past the first window is not chased",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=closed&limit=100"
+      ],
+      "timer": "slow",
+      "marks": [
+        "anchor null -> 1000"
+      ],
+      "painted": 2
+    },
+    {
+      "step": "a window and a poll are both asked for",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=all&limit=100&after=7",
+        "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-5\""
+      ],
+      "painted": 0
+    },
+    {
+      "step": "the window lands first, and the poll reads the whole range",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=all&limit=102"
+      ],
+      "painted": 1
+    },
+    {
+      "step": "so no row the window added is dropped",
+      "requests": [],
+      "timer": "slow",
+      "painted": 0,
+      "rowsHeld": 102
     },
     {
       "step": "dispose lets the read go",
@@ -837,7 +911,8 @@ $ node tests/dom/github-pulls-panel-session.js
   "spelled": "main ← topic",
   "landing": {
     "a server with no repository": "This server serves no GitHub repository.",
-    "a mirror": "Select a pull request."
+    "a mirror": "Select a pull request.",
+    "a list with no rows, and no gh": "Install GitHub CLI and sign in to read this repository's pull requests."
   },
   "reader": [
     {
@@ -896,6 +971,30 @@ $ node tests/dom/github-pulls-panel-session.js
       }
     },
     {
+      "name": "a key still held waits out the page it opened, however long: it fetches nothing",
+      "asked": [
+        "GET /api/plugin/github/pull?number=7"
+      ],
+      "waits": [
+        30000,
+        500
+      ],
+      "before": {
+        "message": "Fetching the pull request…",
+        "canRefresh": false
+      },
+      "after": {
+        "message": "Fetching the pull request…",
+        "canRefresh": false
+      },
+      "once let go": {
+        "asked": [
+          "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true}"
+        ],
+        "message": "Fetching the pull request…"
+      }
+    },
+    {
       "name": "past the bound on jobs it says why, and offers Fetch",
       "asked": [
         "GET /api/plugin/github/pull?number=7",
@@ -931,7 +1030,38 @@ $ node tests/dom/github-pulls-panel-session.js
         "canRefresh": false
       }
     }
-  ]
+  ],
+  "paint": {
+    "the list": "ul .github-pulls-list role=\"tree\" aria-label=\"Pull requests of octo/demo: 102 pull requests\"",
+    "a row": [
+      "li .github-pulls-item role=\"none\"",
+      "a .github-pulls-row href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" tabindex=\"-1\""
+    ],
+    "the row whose page is shown": "a .github-pulls-row.selected href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\"",
+    "its parts": [
+      "span .github-pull-state-icon role=\"img\" aria-label=\"Open\"",
+      "span .github-pulls-title",
+      "span .github-pulls-age.age-hour",
+      "span .github-pulls-meta"
+    ],
+    "a title written as markup is one text node": [
+      {
+        "node": "#text",
+        "data": "<img src=x onerror=\"alert(1)\"> & <b>bold</b>"
+      }
+    ],
+    "rows built for the first window": 100,
+    "a window of 2 appended to 100: rows built, aged, keyed": [
+      2,
+      2,
+      2
+    ],
+    "rows held": 102,
+    "an age, before": "2h",
+    "an age, two hours on": "4h",
+    "rows built to tell it": 0,
+    "disposed: what is left in the tab": 0
+  }
 }
 ? 0
 ```

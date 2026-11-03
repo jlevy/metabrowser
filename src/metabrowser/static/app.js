@@ -7817,8 +7817,9 @@ async function loadPullPageHost() {
  * The pane when the pull-request page's code could not be loaded.
  *
  * @param {number} [claim] The page's claim when it already holds the pane.
+ * @param {string} [what] What could not load: the page, or the list at /pulls.
  */
-function showPullPageLoadFailure(claim) {
+function showPullPageLoadFailure(claim, what = "the pull-request page") {
   var held = claim;
   if (held === undefined) {
     closeLiveStream();
@@ -7828,7 +7829,7 @@ function showPullPageLoadFailure(claim) {
     stopFolderHeaderSubscription();
   }
   renderPreviewHtml(
-    previewErrorHtml("Could not load the pull-request page.", "Refresh the page to try again."),
+    previewErrorHtml(`Could not load ${what}.`, "Refresh the page to try again."),
     held,
   );
 }
@@ -7839,7 +7840,7 @@ function pullPageHostDeps(routes) {
     isCurrent: (claim) => isPreviewClaimCurrent(claim),
     renderHtml: (html, claim) => renderPreviewHtml(html, claim),
     renderNode: (node, claim) => renderPreviewNode(node, claim),
-    showLoadFailure: (claim) => showPullPageLoadFailure(claim),
+    showLoadFailure: (claim, what) => showPullPageLoadFailure(claim, what),
   });
   return {
     claim: () => {
@@ -7862,6 +7863,11 @@ function pullPageHostDeps(routes) {
     pathname: () => window.location.pathname,
     pushHref: (href) => {
       window.history.pushState(null, "", href);
+      window.MetabrowserPullsNav?.routeChanged();
+    },
+    // A key's skim replaces, as openTreeRow does.
+    replaceHref: (href) => {
+      window.history.replaceState(null, "", href);
       window.MetabrowserPullsNav?.routeChanged();
     },
   };
@@ -8056,7 +8062,8 @@ async function navigateToPath(path, preferredViewId, routeOptions) {
 
 // Compose application keyboard infrastructure at the shell boundary.
 function resolveApplicationFocusFallback(previous) {
-  if (treeKeyboard && previous?.closest?.('[role="treeitem"]')) {
+  // A file tree row: a Pulls row is a tree's item too, with no tree id.
+  if (treeKeyboard && previous?.closest?.('[role="treeitem"][data-tree-id]')) {
     var focusedTreeRow = treeKeyboard.focusedRow();
     if (focusedTreeRow?.isConnected) {
       return focusedTreeRow;
@@ -8097,7 +8104,8 @@ function initKeyboardInfrastructure() {
   });
   treeKeyboard = window.MetabrowserTreeKeyboardNavigation.create({
     activate: activateTreeRowFromKeyboard,
-    container: treePane,
+    // The Files tab's: the Pulls tab's list is a tree too, with keys of its own.
+    container: /** @type {HTMLElement} */ (document.getElementById("tab-files")),
     document: document,
     navigate: openTreeRow,
     setFolderExpanded: setRowExpanded,

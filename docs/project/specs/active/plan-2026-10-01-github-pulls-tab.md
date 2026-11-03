@@ -453,8 +453,12 @@ cost step 2 measures on a mirror with many fetched heads.
 
 **Back and Forward.**
 
-- Selecting rows mounts pages through the page host, which pushes `/pull/<n>`. Back and
-  Forward between them use the existing `pullHistoryAction`. No pin moves.
+- Selecting a row mounts its page through the page host.
+  A pointer click or Enter pushes `/pull/<n>`, and a key’s move replaces the history
+  entry instead. That is the skim rule of all three Navigational Row Collections: the
+  file tree’s arrow keys and Git’s K and J replace too, so a reader who passed ten rows
+  leaves them with one Back.
+  Back and Forward between pages use the existing `pullHistoryAction`. No pin moves.
 - **Browse code** from a pull request’s page switches the pin and loads a new document.
   Back then lands on a page rendered for the earlier pin.
   The history guard in `static/source-pin-guard.js` asks the status route once and
@@ -540,8 +544,9 @@ browser’s own.
 
 **State icons.** The four states are Lucide icons, `git-pull-request` (open),
 `git-pull-request-draft` (draft), `git-merge` (merged), and `git-pull-request-closed`
-(closed), added to the shared registry in `static/icons.js`. They have the shapes GitHub
-uses for the same states.
+(closed), held in the plugin’s `pull-state.js` and not in `static/icons.js`, whose
+startup bytes every folder pays.
+They have the shapes GitHub uses for the same states.
 
 - New tokens carry the colors, in GitHub’s hues: green, gray, purple, and red, each
   legible in both themes.
@@ -627,6 +632,11 @@ that expand and collapse exactly as they do in the Files tab.
 - Rows use the tree’s own contract: `.tree-item`, the 16 px chevron box, one adjacent
   `.tree-children[role="group"]`, the indent, and the row height
   ([Container Rows](../../../design-system.md#container-rows)).
+- The list’s roles are already a tree’s, from step 3: the list is `role="tree"`, each
+  pull request’s anchor is a `treeitem` at `aria-level="1"` in a list item of role
+  `none`, and the Files tree’s keyboard handler is scoped to the Files tab, so it never
+  claims these rows. So this step adds only children: a `.tree-children[role="group"]`
+  after a row’s anchor, the chevron box, and `aria-expanded` on a row that has files.
 - A file row carries the one-letter change badge a patch’s children carry (A, M, D, R)
   in place of the file icon, and
   [inline change stats](../../../design-system.md#inline-change-stats).
@@ -870,8 +880,10 @@ profile by default, and a pull request’s text is written by anyone.
   - On a checkout: nothing until the Pulls tab is opened.
     Then `gh` asks api.github.com for the list of the repository named by `origin`, and
     for each pull request the reader opens.
-  - On a mirror: the same, plus the Git fetch of `refs/pull/<n>/head` for a pull request
-    the reader opens.
+  - On a mirror: `gh` asks api.github.com for the list of the mirrored repository as the
+    page opens, once the first tree has settled, whether or not the Pulls tab is opened,
+    and at most once per freshness window ([What is prefetched](#the-tab)); then for
+    each pull request the reader opens, with the Git fetch of `refs/pull/<n>/head`.
   - The requests name the repository and the pull request, and carry `gh`’s own
     authentication. Nothing about local files, paths, or branches is sent.
 - **Route safety.** Every route that starts network work is a `POST` with a JSON body

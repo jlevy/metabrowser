@@ -46,6 +46,7 @@ function loadModules() {
     vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
   }
   return {
+    context,
     routes: context.MetabrowserPullRoute,
     shortcuts: context.MetabrowserKeyboardShortcuts,
     nav: context.MetabrowserPullsNav,
@@ -247,6 +248,29 @@ async function run() {
   log.push({ "history lands on a pull request from Files": page.take() });
   host.dispose();
 
+  // The list's filters are places of their own: Back from one to another shows the list, though
+  // Files was chosen by hand at the first, and so does Back from a filter the panel chose.
+  page = createShell("/pulls?state=open", { active: "pulls" });
+  host = nav.createPullsNav(page.deps);
+  log = story("Back between the list's filters");
+  host.start();
+  await settle();
+  page.take();
+  page.deps.activate("files");
+  page.take();
+  host.routeChanged();
+  log.push({ "Files chosen by hand at Open: the same place keeps it": page.take() });
+  page.shell.address = new URL("/pulls", "http://x");
+  host.routeChanged();
+  log.push({ "Back to All: the list is in front": page.take() });
+  page.shell.host.filterChanged("closed");
+  page.deps.activate("files");
+  page.take();
+  page.shell.address = new URL("/pulls", "http://x");
+  host.routeChanged();
+  log.push({ "Back from a filter the panel chose: the list again": page.take() });
+  host.dispose();
+
   // Lazy mounting: a load that fails says so to a reader who is looking, and the next show retries.
   page = createShell("/view/README.md", { failLoads: 1 });
   host = nav.createPullsNav(page.deps);
@@ -319,6 +343,7 @@ async function run() {
   host.dispose();
 
   return {
+    "the page's host": await pageHostStory(),
     addresses,
     stories,
     keys,
@@ -334,6 +359,92 @@ async function run() {
     "keys when no row has focus": outsideRows,
     "groups once unregistered": rebuilt,
   };
+}
+
+/**
+ * The module's own `init` and `dispose`, on a page the session plays: the listeners it puts on
+ * the tab and the window, which a key's release ends a walk through, and a second `init` after
+ * a `dispose`, as a page rebuilt after a real teardown takes.
+ */
+async function pageHostStory() {
+  const { context, nav } = modules;
+  /** Each listener the host added, live until its signal aborts, as the DOM keeps them. */
+  const listeners = [];
+  const target = (name) => ({
+    addEventListener(type, listener, options) {
+      if (options?.signal?.aborted) {
+        return;
+      }
+      const entry = { name, type, listener, live: true };
+      listeners.push(entry);
+      options?.signal?.addEventListener("abort", () => {
+        entry.live = false;
+      });
+    },
+  });
+  const told = [];
+  const view = {
+    render: () => ({
+      setShown() {},
+      setCurrent() {},
+      setFilter() {},
+      move: () => true,
+      released: () => told.push("released"),
+      activateAnchor: () => true,
+      dispose: () => told.push("view disposed"),
+    }),
+  };
+  let panel = null;
+  const tab = target("the tab");
+  Object.assign(context, {
+    MetabrowserAssets: { ensureAsset: async () => {} },
+    MetabrowserShell: {
+      registerNavPanel(registered) {
+        panel = registered;
+      },
+      activateNavPanel(id) {
+        if (id === "pulls") {
+          panel?.onShow();
+        }
+      },
+      openPullRequest: async () => ({ status: "opened" }),
+      shortcuts: () => null,
+      removeNavPanel: () => told.push("tab removed"),
+    },
+    metabrowser: { ensureKindAssets: async () => {}, getRegisteredView: () => view },
+    location: { pathname: "/pull/7", search: "" },
+    history: { pushState() {} },
+    requestIdleCallback: () => 1,
+    cancelIdleCallback() {},
+    addEventListener: target("the window").addEventListener,
+  });
+  context.document.getElementById = (id) => (id === "tab-pulls" ? tab : null);
+  context.document.querySelector = () => null;
+  const live = () => listeners.filter((entry) => entry.live).map((e) => `${e.name}: ${e.type}`);
+  const keyUp = (key) => {
+    for (const entry of listeners) {
+      if (entry.live && entry.type === "keyup") {
+        entry.listener({ key });
+      }
+    }
+    return told.splice(0);
+  };
+  const story = {};
+  await nav.init();
+  await settle();
+  told.splice(0);
+  story["init listens"] = live();
+  story["a modifier's release ends no walk"] = keyUp("Shift");
+  story["J's release ends it"] = keyUp("j");
+  nav.dispose();
+  story["dispose ends them all"] = { listening: live(), told: told.splice(0) };
+  await nav.init();
+  await settle();
+  story["init again listens again"] = live();
+  story["and J's release ends a walk again"] = keyUp("j");
+  nav.dispose();
+  told.splice(0);
+  return story;
 }
 
 // A step that awaits an answer nobody gives ends the process quietly, with nothing printed.

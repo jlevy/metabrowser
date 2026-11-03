@@ -394,6 +394,7 @@ Every button belongs to one role-specific primitive:
 | Menu row or segmented menu choice | `.menu-item` or `.menu-seg` |
 | Tab | `.tab-btn` |
 | Collapsible section title | `.section-disclosure-trigger` |
+| Action among links: a text action, below | The context’s text-action class, on `<a>` and `<button>` alike |
 
 These primitives share the type scale, radii, semantic colors, focus treatment, and
 motion tokens, while their shapes communicate different interaction roles.
@@ -413,7 +414,9 @@ commit opens and whether the pin switches, and keyboard and screen-reader users 
 get the element they expect.
 The diff file bar’s [View file](#diff-file-bar), and
 [Browse code and a review comment’s file](#chrome) on a pull request’s page, are text
-actions. Each context sets one look for the `<a>` and the `<button>`.
+actions. Each context sets one look for the `<a>` and the `<button>`, box included: a
+`<button>` is always an atomic inline box, so where a label can wrap, the `<a>` is one
+too, and what follows a wrapped label starts on the next line in both forms.
 
 ### Choosing Among Values
 
@@ -1044,6 +1047,8 @@ one difference from what the file tree does.
 Moving is immediate and opening waits for a key to stop, because a pull request’s page
 can cost a fetch where a file cannot: each move changes two rows, a press opens at once,
 and a key held down opens only the row it stops on.
+History follows the collections’ one rule: a key’s open replaces the entry, as the file
+tree’s arrow keys and Git’s K and J do, and a click or Enter pushes one.
 Help reads the `pull-requests` group of the shortcut registry, and no surface here names
 a key.
 
@@ -1086,6 +1091,9 @@ Movement clamps at the first and last row, prevents page scrolling, and does not
 the row at a clamped edge.
 Activation updates the roving anchor without stealing focus.
 Enter, Space, and pointer activation retain the control’s ordinary behavior.
+A key’s move replaces the history entry and a pointer click or Enter pushes one, so a
+skim through the file tree, Git history, or the Pulls tab leaves its rows with one Back
+however many rows it passed.
 
 Interaction work is proportional to the change, not the collection size.
 Moving or selecting mutates only the prior and next anchor or selected row; a mounted
@@ -1175,6 +1183,10 @@ prerequisite for opening it.
 
 Icons come from one Lucide-derived set in `static/icons.js`, rendered as inline SVG that
 inherits `currentColor`. An icon never carries its own color.
+A plugin’s own domain marks, which no other surface draws, are Lucide-derived the same
+way and live with the plugin’s code, so a page that never shows them does not load them:
+the GitHub plugin’s four pull-request states are in
+`builtin_plugins/github/pull-state.js`.
 
 ### One Glyph Size
 
