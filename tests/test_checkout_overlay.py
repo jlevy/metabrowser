@@ -1715,6 +1715,56 @@ def test_a_repair_that_stopped_before_its_record_is_finished_by_the_same_command
     assert ok([PULL, "--api", STATUS]).payload()["borrows"] == str(target.resolve())
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes everything")
+@pytest.mark.parametrize(
+    ("read_only", "said", "half_written"),
+    [
+        (
+            ("repository.git", "objects", "info"),
+            "the mirror could not be repaired: Permission denied",
+            False,
+        ),
+        ((), "cannot be verified as private to the current user", True),
+    ],
+    ids=["alternates-directory", "record-directory"],
+)
+def test_a_repair_the_disk_refuses_is_an_error_and_the_same_command_finishes_it(
+    moved: tuple[_Stand, Path, Path], read_only: tuple[str, ...], said: str, half_written: bool
+) -> None:
+    """Review D3: a permission error during a repair printed a traceback.
+
+    Refused at the alternates file, nothing changed and the old refusal stands. Refused at
+    the record, after the alternates file and the boundary, the cache's own refusal names
+    the storage, and the store is half written and refused as damaged, never read. The
+    same command repairs either once the disk allows.
+    """
+
+    stand, _checkout, target = moved
+    directory = stand.store.parent.joinpath(*read_only)
+    alternates = stand.store / "objects" / "info" / "alternates"
+    record = stand.store.parent / "store.yml"
+    before = (alternates.read_text(encoding="utf-8"), record.read_bytes())
+    # Private, as the cache requires of its directories, and not writable.
+    directory.chmod(0o500)
+    try:
+        stopped = refused([PULL, "--checkout", str(target), "--api", STATUS])
+        assert said in stopped.error
+        assert "Traceback" not in stopped.stderr
+        assert str(stand.home) not in stopped.error
+        assert record.read_bytes() == before[1]
+        if half_written:
+            assert alternates.read_text(encoding="utf-8").startswith(str(target.resolve()))
+            assert "(damaged)" in refused([PULL, "--api", STATUS]).error
+        else:
+            assert alternates.read_text(encoding="utf-8") == before[0]
+            _lender_missing(refused([PULL, "--api", STATUS]), "is gone")
+    finally:
+        directory.chmod(0o700)
+    repaired = ok([PULL, "--checkout", str(target), "--api", STATUS])
+    assert repaired.payload()["borrows"] == str(target.resolve())
+    assert ok([PULL, "--api", STATUS]).payload()["borrows"] == str(target.resolve())
+
+
 def test_a_repair_waits_for_no_fetch_and_is_refused_while_one_holds_the_store(
     moved: tuple[_Stand, Path, Path],
 ) -> None:

@@ -143,6 +143,8 @@ Reviewing beside a checkout:
   A repair that stopped before its record was written is finished by the same
   `--checkout` command, and a repair takes the store’s fetch lock, so it never changes
   what a fetch in flight reads.
+  A repair the disk refuses is an `Error:` line naming the reason, never a traceback,
+  and the same command finishes it once the cache can be written.
 
 - A refresh of a mirror that borrows offers the mirror’s own refs to the origin as well
   as the checkout’s, so it fetches only what the mirror lacks: on a replica, a branch of

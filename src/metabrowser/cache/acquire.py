@@ -1143,6 +1143,11 @@ def _rebind(found: PublishedSource, lender: StoreLender) -> PublishedSource:
     a refresh or a deepening round in flight reads the alternates file and writes the
     boundary, and neither may change under it. A fetch that holds the lock now is
     refused rather than waited on, which the caller reports as a refresh elsewhere.
+
+    A write the disk refuses stops the repair with :class:`AcquisitionError`, whose text
+    names the reason and no path. The record is written last, so it still names the old
+    checkout: either nothing changed, or the alternates file names the new one and the
+    store is refused as damaged until the same command finishes the repair.
     """
 
     relative = store_record(found.store_key, "store.yml")
@@ -1150,13 +1155,20 @@ def _rebind(found: PublishedSource, lender: StoreLender) -> PublishedSource:
     try:
         with repository_store_lock(found.home, found.store_key):
             store = _require_same_store(found.home, found.store_key, found.store_id)
-            rebind_lender(found.git_dir, lender)
-            write_record_atomic(
-                found.home,
-                relative,
-                store.model_copy(update={"lender": lender}),
-                REPOSITORY_STORE_CONTRACT_ID,
-            )
+            try:
+                rebind_lender(found.git_dir, lender)
+                write_record_atomic(
+                    found.home,
+                    relative,
+                    store.model_copy(update={"lender": lender}),
+                    REPOSITORY_STORE_CONTRACT_ID,
+                )
+            except OSError as exc:
+                reason = exc.strerror or type(exc).__name__
+                raise AcquisitionError(
+                    f"the mirror could not be repaired: {reason}; the same command finishes "
+                    "the repair once its cache can be written"
+                ) from exc
     finally:
         fetch_lock.release()
     return dataclasses.replace(found, lender=lender)
