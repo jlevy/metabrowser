@@ -2325,3 +2325,66 @@ def test_a_complete_pack_index_does_not_claim_a_collected_object(
         objects=str(checkout / ".git" / "objects"), checkout=str(checkout), remote="origin"
     )
     assert collection_doubt(lender, ["f" * 40]) is None
+
+
+@pytest.mark.parametrize("damage", ["partial", "alternates", "format", "changed"])
+def test_borrowing_only_acquisition_never_falls_back_to_a_clone(
+    linear: _Stand, damage: str
+) -> None:
+    from metabrowser.cache import acquire
+
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "strict-checkout")
+
+    def spoil() -> None:
+        if damage in {"partial", "changed"}:
+            pinned_git(checkout, "config", "remote.origin.promisor", "true")
+        elif damage == "alternates":
+            (checkout / ".git/objects/info/alternates").write_text("/unavailable\n")
+        else:
+            pinned_git(checkout, "config", "extensions.objectFormat", "sha256")
+
+    if damage != "changed":
+        spoil()
+    else:
+        original = acquire.remote_url_for
+
+        def changed(source: GitSource) -> str:
+            spoil()
+            return original(source)
+
+        linear.monkeypatch.setattr(acquire, "remote_url_for", changed)
+    before = fingerprint(checkout)
+    phases: list[str] = []
+    with pytest.raises(CheckoutRefusedError):
+        asyncio.run(
+            acquire_source(
+                SOURCE,
+                home=linear.home,
+                checkout=checkout,
+                allow_clone_fallback=False,
+                on_phase=phases.append,
+            )
+        )
+    assert not any(phase.startswith("fetching") for phase in phases), phases
+    assert not linear.store.exists()
+    if damage != "changed":
+        assert fingerprint(checkout) == before
+
+
+def test_borrowing_only_acquisition_reuses_an_existing_full_store(linear: _Stand) -> None:
+    from metabrowser.cache import acquire
+
+    full = asyncio.run(acquire_source(SOURCE, home=linear.home))
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "strict-checkout")
+    pinned_git(checkout, "config", "remote.origin.promisor", "true")
+    before = fingerprint(checkout)
+
+    async def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("a healthy full store must not acquire again")
+
+    linear.monkeypatch.setattr(acquire, "acquire_into_staging", forbidden)
+    reused = asyncio.run(
+        acquire_source(SOURCE, home=linear.home, checkout=checkout, allow_clone_fallback=False)
+    )
+    assert reused.git_dir == full.git_dir and reused.lender is None
+    assert fingerprint(checkout) == before
