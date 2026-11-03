@@ -225,7 +225,7 @@ def test_the_whole_flow_writes_nothing_to_the_checkout_and_runs_no_git(
     flow: list[tuple[str, str, dict[str, Any] | None]] = [
         ("list", "/api/plugin/github/pulls?limit=1", None),
         ("refresh the list", "/api/plugin/github/pulls-refresh", {}),
-        ("the next page", "/api/plugin/github/pulls-refresh", {"more": True}),
+        ("a larger display window", "/api/plugin/github/pulls-refresh", {"target": 1000}),
         ("a record", "/api/plugin/github/pull-refresh", {"number": 10, "retry": True}),
         ("one it lacks", "/api/plugin/github/pull-refresh", {"number": 7, "retry": True}),
         ("its text", "/api/plugin/github/pull-markdown?number=7&part=body", None),
