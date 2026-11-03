@@ -284,7 +284,9 @@ def _git_failure(exc: GitError, path: str) -> JSONResponse:
 async def comparison_handler(request: Request) -> Response:
     """The active subject's Git comparison, through the shared comparison service."""
 
-    return await comparison_at(request, session_git_location())
+    return await comparison_at(
+        request, session_git_location(), max_initial_files=MAX_HYDRATED_FILES
+    )
 
 
 async def comparison_at(
