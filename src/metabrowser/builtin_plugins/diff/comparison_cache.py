@@ -128,9 +128,9 @@ class ComparisonCache:
     ) -> ResolvedManifest:
         """The comparison's manifest, computing it once however many ask together.
 
-        The computation is a task of its own and each request waits through a shield, as
-        the rollup's build does: a reader who goes back while a large comparison is being
-        listed cancels their own wait, and the next request finds the work done.
+        The computation is a task of its own and each request waits without cancelling it:
+        a reader who goes back while a large comparison is being listed cancels their own
+        wait, and the next request finds the work done.
         """
         kept = self._manifests.get(key)
         if kept is not None:
@@ -141,15 +141,20 @@ class ComparisonCache:
             shared = asyncio.ensure_future(compute())
             self._computing[key] = shared
             shared.add_done_callback(functools.partial(self._finished, key))
-        return await asyncio.shield(shared)
+        # wait() leaves shared work running when this reader leaves. Unlike shield()
+        # on Python 3.14, it does not install an unconditional exception logger on a
+        # cancelled waiter: _finished owns retrieval even after cache invalidation.
+        await asyncio.wait((shared,))
+        return shared.result()
 
     def _finished(self, key: tuple[str, ...], task: asyncio.Task[ResolvedManifest]) -> None:
-        if self._computing.get(key) is task:
+        current = self._computing.get(key) is task
+        if current:
             del self._computing[key]
         if task.cancelled():
             return
         # Every waiter raises on its own, so this only marks a failure as retrieved.
-        if task.exception() is not None:
+        if task.exception() is not None or not current:
             return
         self._manifests[key] = task.result()
         while len(self._manifests) > self._max_manifests:
@@ -177,6 +182,14 @@ class ComparisonCache:
         while self._body_bytes > self._max_body_bytes:
             _, oldest = self._bodies.popitem(last=False)
             self._body_bytes -= len(oldest)
+
+    def invalidate(self, key: tuple[str, ...]) -> None:
+        """Drop answers after an observed corrupt object; in-flight results stay uncached."""
+        self._manifests.pop(key, None)
+        self._computing.pop(key, None)
+        for body_key in tuple(self._bodies):
+            if body_key[: len(key)] == key:
+                self._body_bytes -= len(self._bodies.pop(body_key))
 
     def sizes(self) -> dict[str, int]:
         """What it holds, for a test and a measurement."""
