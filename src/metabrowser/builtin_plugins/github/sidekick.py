@@ -37,6 +37,11 @@ _NO_STORE: Final = {"cache-control": "no-store"}
 # A refresh request carries no parameters; a JSON object of any size worth reading fits.
 MAX_REFRESH_REQUEST_BYTES: Final = 1024
 PULL_ROUTE: Final = "/api/plugin/github/pull"
+# Eight ready files covered the visible viewport in three paired browser runs on
+# public Ruff PRs of 1,031 and 1,627 files (2026-11-03, Chrome 152, 1400x900). One
+# left visible reserved space at 1,031. Hydrating fifty cost 112–181 ms in the
+# route; eight cost 21 ms. Later files use the existing on-approach loader.
+INITIAL_PULL_FILES: Final = 8
 
 
 async def pull_handler(request: Request) -> Response:
@@ -106,7 +111,10 @@ async def pull_comparison_handler(request: Request) -> Response:
         RepositoryStoreTarget(published.git_dir, published.object_format), view.pin
     )
     return await comparison_at(
-        request, location, manifest_loader=partial(load_pull_manifest, published)
+        request,
+        location,
+        max_initial_files=INITIAL_PULL_FILES,
+        manifest_loader=partial(load_pull_manifest, published),
     )
 
 
