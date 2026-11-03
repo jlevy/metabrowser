@@ -5,7 +5,7 @@ title: "Spec: GitHub Pulls tab for mirrors and local checkouts"
 kind: epic
 status: in_progress
 priority: 1
-version: 16
+version: 18
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies: []
@@ -19,8 +19,10 @@ child_order_hints:
   - is-01m6fk7mz18kwadmnr0w05da09
   - is-01m6fvyjc2bffw1nzzywz9z1y6
   - is-01m6hkbt0t0qhvrhxhktgefe38
+  - is-01m6hknzgxphza4kbk01qdxjka
+  - is-01m6hp3w66pyvqttk9w3hbmj70
 created_at: 2026-11-02T21:40:30.142Z
-updated_at: 2026-11-03T20:59:41.464Z
+updated_at: 2026-11-03T21:47:47.269Z
 ---
 Every pull request of a GitHub repository in a Pulls tab beside Files and Git, newest first, with GitHub-style state icons. Each row expands in place to its changed files as a tree, like a folder. The pane shows this tab at a pull request's address. Works on a mirror and on an existing checkout, with nothing written to the user's repository. Delivered as a native stack above the v0.12 stack. See the plan's Delivery.
 
