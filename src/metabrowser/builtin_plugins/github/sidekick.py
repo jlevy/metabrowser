@@ -177,7 +177,13 @@ async def pull_comparison_handler(request: Request) -> Response:
         return _invalid_request("a pull comparison requires two full commit IDs")
     await _resolve(request)
     host = pull_host(request.app)
-    if host is None or host.pulls.git_dir is None:
+    if host is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+            headers=_NO_STORE,
+        )
+    if host.pulls.git_dir is None:
         return JSONResponse(
             {"error": "this comparison has no available repository store", "code": "no_store"},
             status_code=409,
