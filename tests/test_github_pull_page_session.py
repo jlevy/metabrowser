@@ -507,9 +507,15 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
         "no_merge_base",
         "base_uncertain",
         "commits_unavailable",
+        "no_store",
     }
     for state, said in unavailable.items():
         assert said["files"].startswith("Files changed is "), state
     assert "does not guess" in unavailable["base_uncertain"]["files"]
     assert "not readable here" in unavailable["commits_unavailable"]["files"]
+    # A checkout's page offers nothing that serves or switches code: it has no pin.
+    for when, page in transcript["checkout"].items():
+        if when.startswith("a mirror"):
+            continue
+        assert (page["browse"], page["headOffer"], page["comparison"]) == (None, None, None)
     assert transcript["hunks"] and transcript["place"]

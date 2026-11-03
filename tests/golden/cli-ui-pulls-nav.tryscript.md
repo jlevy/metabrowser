@@ -19,11 +19,12 @@ view. `addresses` is what each address names and which tab it asks for from each
 front, `null` being none: a pull request’s address shows Pulls, a file’s address moves
 Pulls off the front, and a commit’s is the Git panel’s. `stories` is what the host asked
 of each, in order: a page elsewhere on a mirror, which reads the view ahead when the
-shell is idle; the first page of a pull request’s address, which the server drew with
-the tab in front; Back between the list’s filters, each a place of its own, which shows
-the list though Files was chosen by hand; a load that fails, which says so only to a
-reader looking and tries again on the next show; and a page that goes while the view
-loads, whose late mount is disposed.
+shell is idle; a page elsewhere on a checkout, which reads nothing until the tab is
+shown and then hands the view no read ahead; the first page of a pull request’s address,
+which the server drew with the tab in front; Back between the list’s filters, each a
+place of its own, which shows the list though Files was chosen by hand; a load that
+fails, which says so only to a reader looking and tries again on the next show; and a
+page that goes while the view loads, whose late mount is disposed.
 `keys` is each key through the real registry and what it told the view, and `help` is
 what Help reads for the group.
 `the page’s host` is the module’s own `init` and `dispose` on a page it is played: the
@@ -170,6 +171,41 @@ $ node tests/dom/pulls-nav-session.js
           "shown": false,
           "disposed": true
         }
+      }
+    ],
+    "a checkout's page at a file": [
+      {
+        "the shell starts it: no read ahead": [
+          "registered pulls \"Pulls\""
+        ],
+        "snapshot": {
+          "mounted": false,
+          "mounting": false,
+          "shown": false,
+          "disposed": false
+        }
+      },
+      {
+        "so nothing mounts while the tab is not shown": []
+      },
+      {
+        "the tab opens: the view mounts, shown": [
+          "activated pulls",
+          "load view of pull-request-list",
+          "view rendered: filter all, current null, shown true, kind pull-request-list",
+          "view told: shown",
+          "view told: current null"
+        ],
+        "what it is handed": {
+          "refreshAhead": false,
+          "checkout": true
+        }
+      },
+      {
+        "Files: it is told, and stops": [
+          "activated files",
+          "view told: hidden"
+        ]
       }
     ],
     "the first page of a pull request's address": [

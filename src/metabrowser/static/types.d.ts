@@ -33,6 +33,8 @@ type MetabrowserPullsNavHost = Readonly<{
   current: number | null;
   shown: boolean;
   refreshAhead: boolean;
+  /** A checkout served as a folder: its list is of its `origin`, read only once shown. */
+  checkout: boolean;
   scrollRoot: HTMLElement | null;
   open(route: MetabrowserPullRoute): unknown;
   filterChanged(state: string): void;

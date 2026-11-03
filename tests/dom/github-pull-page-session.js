@@ -1061,14 +1061,63 @@ async function main() {
   // What Files changed says instead, for a record whose comparison could not be made and
   // for one whose merge base the store's shallow history cannot settle.
   const filesUnavailable = Object.fromEntries(
-    ["fetch_failed", "no_merge_base", "base_uncertain", "commits_unavailable"].map((why) => {
-      const answer = structuredClone(recorded.current.body);
-      answer.record.comparison = null;
-      answer.record.unavailable = { comparison: why };
-      const model = runtime.describePull(answer, { number: 7, tab: "", nowMs: page.clock.now });
-      return [why, { files: model.filesUnavailable, notes: model.notes }];
+    ["fetch_failed", "no_merge_base", "base_uncertain", "commits_unavailable", "no_store"].map(
+      (why) => {
+        const answer = structuredClone(recorded.current.body);
+        answer.record.comparison = null;
+        answer.record.unavailable = { comparison: why };
+        const model = runtime.describePull(answer, { number: 7, tab: "", nowMs: page.clock.now });
+        return [why, { files: model.filesUnavailable, notes: model.notes }];
+      },
+    ),
+  );
+
+  // A checkout's page: the server has no pin and no store, so the record has no comparison,
+  // there is no Browse code, and the page says only when the checkout's HEAD is the pull
+  // request's head. Its review comments name their files as text, since nothing is served
+  // at the pull request's commits.
+  const onCheckout = structuredClone(recorded.current.body);
+  onCheckout.pin = null;
+  onCheckout.pin_ref = null;
+  onCheckout.comparison_route = null;
+  onCheckout.record.comparison = null;
+  onCheckout.record.unavailable = { comparison: "no_store" };
+  const head = onCheckout.record.pull.head.sha;
+  const checkout = Object.fromEntries(
+    [
+      ["HEAD is the pull request's head", head],
+      ["HEAD is elsewhere", "0".repeat(40)],
+      ["no repository context", null],
+    ].map(([when, checkoutHead]) => {
+      const model = runtime.describePull(onCheckout, {
+        number: 7,
+        tab: "",
+        nowMs: page.clock.now,
+        checkoutHead,
+      });
+      return [
+        when,
+        {
+          browse: browseCode(model),
+          headOffer: model.headOffer,
+          checkoutAtHead: model.checkoutAtHead,
+          comparison: model.comparison,
+          files: model.filesUnavailable,
+        },
+      ];
     }),
   );
+  // On a mirror the same HEAD says nothing: the page has a pin, and Browse code.
+  const onMirror = runtime.describePull(recorded.current.body, {
+    number: 7,
+    tab: "",
+    nowMs: page.clock.now,
+    checkoutHead: recorded.current.body.record.pull.head.sha,
+  });
+  checkout["a mirror's page, whatever it is handed"] = {
+    browse: browseCode(onMirror),
+    checkoutAtHead: onMirror.checkoutAtHead,
+  };
 
   // What a review comment shows of its hunk: the recorded pull request with one comment,
   // whose fields are the case's, through describePull. The stand-in's hunks are short, as
@@ -1127,7 +1176,7 @@ async function main() {
     pageDefense: inert,
     filesChanged: files,
   };
-  const second = { filesUnavailable, hunks, place: placeStory(runtime) };
+  const second = { filesUnavailable, checkout, hunks, place: placeStory(runtime) };
   const part = process.argv.indexOf("--part");
   const wanted = part === -1 ? "1" : process.argv[part + 1];
   const chosen = wanted === "all" ? { ...first, ...second } : wanted === "2" ? second : first;

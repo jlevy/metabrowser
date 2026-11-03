@@ -243,6 +243,7 @@ const TRUNCATED = Object.freeze({
  *   browse: BrowseCode | null,
  *   filesUnavailable: string,
  *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
+ *   checkoutAtHead: string | null,
  * }} PullModel
  */
 
@@ -632,6 +633,9 @@ export function filesUnavailableText(why) {
   if (why === "base_uncertain") {
     return "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
   }
+  if (why === "no_store") {
+    return "Files changed is not shown here: a checkout's server keeps no copy of the pull request's commits, and Metabrowser does not compare them in your checkout. Open the pull request's GitHub address with metab to read it from a mirror.";
+  }
   if (why === "commits_unavailable") {
     return "Files changed is unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
   }
@@ -642,7 +646,9 @@ export function filesUnavailableText(why) {
  * What the page shows for one answer of the pull route. Pure.
  *
  * @param {PullEnvelope | null} envelope
- * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean}} page
+ * *checkoutHead* is the served checkout's `HEAD`, on a folder, which has no pin.
+ *
+ * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, checkoutHead?: string | null}} page
  * @returns {PullModel}
  */
 export function describePull(envelope, page) {
@@ -666,6 +672,7 @@ export function describePull(envelope, page) {
     browse: null,
     filesUnavailable: filesUnavailableText(null),
     headOffer: null,
+    checkoutAtHead: null,
   };
   if (envelope === null) {
     // Nothing read yet: the page shows a spinner, and an error once a read failed.
@@ -759,6 +766,11 @@ export function describePull(envelope, page) {
       model.browse = { kind: "switch", ref: headRef, at: head.slice(0, 12) };
     }
   }
+  if (envelope.pin === null && head !== "" && page.checkoutHead === head) {
+    // A checkout has no pin, so no Browse code: its working tree is not the pull request's
+    // code. When its HEAD is this pull request's head, that much is so, and the page says it.
+    model.checkoutAtHead = "This checkout's HEAD is this pull request's head.";
+  }
   model.filesUnavailable = filesUnavailableText(record.unavailable?.comparison ?? null);
   const comparison = record.comparison;
   if (comparison && typeof comparison.base === "string" && typeof comparison.head === "string") {
@@ -818,6 +830,7 @@ function isEnvelope(value) {
  *     initial: {etag: string | null, body: unknown} | null,
  *     walking?: () => boolean,
  *   } | null,
+ *   checkoutHead?: string | null,
  * }} options
  */
 export function createPullController(deps, options) {
@@ -861,6 +874,7 @@ export function createPullController(deps, options) {
       nowMs: deps.now(),
       error,
       fetching,
+      checkoutHead: options.checkoutHead ?? null,
     });
   }
 
@@ -1977,6 +1991,10 @@ export function mountPullPage(container, ctx, mb) {
       button.addEventListener("click", () => void controller.switchToHead());
       status.append(h("span", { class: "github-pull-offer" }, [model.headOffer.text, " ", button]));
     }
+    if (model.checkoutAtHead !== null) {
+      const root = h("a", { href: mb.navigation.href({ path: "" }) }, ["Browse the checkout"]);
+      status.append(h("span", { class: "github-pull-offer" }, [model.checkoutAtHead, " ", root]));
+    }
     children.push(status);
     header.replaceChildren(...children.filter((child) => child !== null));
     if (model.pull === null) {
@@ -2319,7 +2337,12 @@ export function mountPullPage(container, ctx, mb) {
       navigate: (href) => window.location.assign(href),
       renderMarkdown,
     },
-    { number, tab: typeof ctx.tab === "string" ? ctx.tab : "", reader: ctx.reader ?? null },
+    {
+      number,
+      tab: typeof ctx.tab === "string" ? ctx.tab : "",
+      reader: ctx.reader ?? null,
+      checkoutHead: mb.sourceKind() === "filesystem" ? (mb.repository?.revision ?? null) : null,
+    },
   );
   document.addEventListener(
     "visibilitychange",

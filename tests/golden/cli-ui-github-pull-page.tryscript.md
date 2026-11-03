@@ -997,8 +997,10 @@ The session is printed in two parts, by `github-pull-page-session.js` and by
 `github-pull-page-second-session.js`, which runs the same session whole, because
 tryscript matches a command’s expected output as one regular expression, and the
 transcript in one block is larger than V8 compiles.
-The second part is what Files changed says when the comparison is unavailable, the
-review comments’ hunks, and the reader’s place.
+The second part is what Files changed says when the comparison is unavailable, a server
+with no store among them, the page on a checkout, the review comments’ hunks, and the
+reader’s place. A checkout’s page has no pin, so no Browse code and no switch, and it
+says only when the checkout’s is the pull request’s head.
 
 ```console
 $ node tests/dom/github-pull-page-second-session.js
@@ -1027,6 +1029,39 @@ $ node tests/dom/github-pull-page-second-session.js
       "notes": [
         "Files changed could not be read (commits unavailable)."
       ]
+    },
+    "no_store": {
+      "files": "Files changed is not shown here: a checkout's server keeps no copy of the pull request's commits, and Metabrowser does not compare them in your checkout. Open the pull request's GitHub address with metab to read it from a mirror.",
+      "notes": [
+        "Files changed could not be read (no store)."
+      ]
+    }
+  },
+  "checkout": {
+    "HEAD is the pull request's head": {
+      "browse": null,
+      "headOffer": null,
+      "checkoutAtHead": "This checkout's HEAD is this pull request's head.",
+      "comparison": null,
+      "files": "Files changed is not shown here: a checkout's server keeps no copy of the pull request's commits, and Metabrowser does not compare them in your checkout. Open the pull request's GitHub address with metab to read it from a mirror."
+    },
+    "HEAD is elsewhere": {
+      "browse": null,
+      "headOffer": null,
+      "checkoutAtHead": null,
+      "comparison": null,
+      "files": "Files changed is not shown here: a checkout's server keeps no copy of the pull request's commits, and Metabrowser does not compare them in your checkout. Open the pull request's GitHub address with metab to read it from a mirror."
+    },
+    "no repository context": {
+      "browse": null,
+      "headOffer": null,
+      "checkoutAtHead": null,
+      "comparison": null,
+      "files": "Files changed is not shown here: a checkout's server keeps no copy of the pull request's commits, and Metabrowser does not compare them in your checkout. Open the pull request's GitHub address with metab to read it from a mirror."
+    },
+    "a mirror's page, whatever it is handed": {
+      "browse": "switches to refs/pull/7/head",
+      "checkoutAtHead": null
     }
   },
   "hunks": {

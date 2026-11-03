@@ -9,9 +9,12 @@ env:
 The Pulls tab lists the repository’s pull requests, newest first, from the cache at
 once, and refreshes in the background only while it is shown.
 A mirror reads the list ahead of the tab, once and with nothing fetched.
-Opening the tab asks for the refresh, which the server holds to one attempt a window,
-and a panel with nothing yet waits in the shape of rows, saying why only when the wait
-is long. Each filter is its own list, read when it is first chosen and kept.
+A checkout reads nothing until the tab is shown, and its list names the repository it
+lists, the checkout’s origin, which on a fork is the fork; an origin the plugin cannot
+list says so.
+Opening the tab asks for the refresh, which the server holds to one attempt
+a window, and a panel with nothing yet waits in the shape of rows, saying why only when
+the wait is long. Each filter is its own list, read when it is first chosen and kept.
 Reaching the end of what is held reads the next window, and past that the next GitHub
 page. A failed refresh leaves the rows and says what to do.
 A poll reads the top window with its tag, however many rows are held, so an unchanged
@@ -528,6 +531,51 @@ $ node tests/dom/github-pulls-panel-session.js
       }
     },
     {
+      "step": "a checkout's list names its origin",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=all&limit=100",
+        "POST /api/plugin/github/pulls-refresh {\"state\":\"all\"}"
+      ],
+      "timer": "slow",
+      "marks": [
+        "anchor null -> 106"
+      ],
+      "painted": 2,
+      "paint": {
+        "filter": "all",
+        "status": "stale",
+        "listName": "Pull requests of octo/demo: 102 pull requests",
+        "origin": "Pull requests of octo/demo, this checkout's origin",
+        "count": "102 pull requests",
+        "freshness": "Fetched just now by octo-reader · may be out of date",
+        "loadMore": "ready",
+        "live": "Pull requests of octo/demo: 102 pull requests",
+        "rowsHeld": 100,
+        "rows": [
+          "[Open] Work item 106 | #106 · contributor · topic ← work-106 | /pull/106",
+          "[Open] Work item 105 | #105 · contributor · topic ← work-105 | /pull/105",
+          "…",
+          "[Merged] Say more in the guide | #8 · maintainer · topic ← guide-more | /pull/8",
+          "[Open] Count to two in the app | #7 · forker · topic ← forker:count-to-two | /pull/7"
+        ]
+      }
+    },
+    {
+      "step": "a checkout whose origin cannot be listed",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=all&limit=100"
+      ],
+      "timer": "slow",
+      "painted": 2,
+      "paint": {
+        "filter": "all",
+        "status": "absent",
+        "listName": "Pull requests",
+        "empty": "This checkout's origin is not a GitHub repository Metabrowser can list.",
+        "live": "This checkout's origin is not a GitHub repository Metabrowser can list."
+      }
+    },
+    {
       "step": "a mirror's read ahead: a stale list asks",
       "requests": [
         "GET /api/plugin/github/pulls?state=all&limit=100",
@@ -911,6 +959,7 @@ $ node tests/dom/github-pulls-panel-session.js
   "spelled": "main ← topic",
   "landing": {
     "a server with no repository": "This server serves no GitHub repository.",
+    "a checkout whose origin cannot be listed": "This checkout's origin is not a GitHub repository Metabrowser can list.",
     "a mirror": "Select a pull request.",
     "a list with no rows, and no gh": "Install GitHub CLI and sign in to read this repository's pull requests."
   },

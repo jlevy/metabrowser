@@ -61,6 +61,7 @@ function summarize(model) {
     status: model.status,
     skeleton: model.skeleton || null,
     listName: model.listName,
+    origin: model.origin,
     count: model.count,
     freshness: model.freshness,
     empty: model.empty,
@@ -415,6 +416,32 @@ async function run() {
   steps.push(page.observe("a server with no GitHub repository", controller));
   controller.dispose();
 
+  // A checkout's list names the repository it lists, its origin, which on a fork is the fork.
+  page = createPage();
+  controller = panel.createPullsController(page.deps, {
+    filter: "all",
+    current: null,
+    checkout: true,
+  });
+  void controller.start({ shown: true });
+  await settle();
+  await page.answer(recorded.stale);
+  steps.push(page.observe("a checkout's list names its origin", controller));
+  controller.dispose();
+
+  // And a checkout's origin the plugin's grammar refuses, which the route answers as not_github.
+  page = createPage();
+  controller = panel.createPullsController(page.deps, {
+    filter: "all",
+    current: null,
+    checkout: true,
+  });
+  void controller.start({ shown: true });
+  await settle();
+  await page.answer(recorded.not_github);
+  steps.push(page.observe("a checkout whose origin cannot be listed", controller));
+  controller.dispose();
+
   // A mirror reads the list ahead of the tab, and starts its refresh, once and by itself.
   page = createPage();
   controller = panel.createPullsController(page.deps, { filter: "all", current: null });
@@ -643,6 +670,11 @@ async function run() {
   const formatTime = (iso) => new Date(iso).toISOString();
   const landing = {
     "a server with no repository": panel.describeLanding(recorded.not_github.body, formatTime),
+    "a checkout whose origin cannot be listed": panel.describeLanding(
+      recorded.not_github.body,
+      formatTime,
+      true,
+    ),
     "a mirror": panel.describeLanding(recorded.current.body, formatTime),
     "a list with no rows, and no gh": panel.describeLanding(
       recorded.open_gh_missing.body,
