@@ -1346,7 +1346,7 @@ Fixes:
 
 - Switching between the Files and Git tabs no longer carries one list’s scroll offset
   into the other: the two share one scroller, and each now keeps its own place in it,
-  where 0.11.0 opened Git at however far Files was scrolled.
+  where 0.11.0 carried the offset of the list last shown into the other.
 
 ## 0.11.0
 

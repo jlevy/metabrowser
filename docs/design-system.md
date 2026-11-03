@@ -1079,8 +1079,11 @@ one difference from what the file tree does.
 Moving is immediate and opening waits for a key to stop, because a pull request’s page
 can cost a fetch where a file cannot: each move changes two rows, a press opens at once,
 and a key held down opens only the row it stops on.
-History follows the collections’ one rule: a key’s open replaces the entry, as the file
-tree’s arrow keys and Git’s K and J do, and a click or Enter pushes one.
+History follows the rule all three collections share: a key’s open replaces the entry,
+as the file tree’s arrow keys and Git’s K and J do.
+A click, Enter, or Space on a row that is not the one open pushes one, as a click in the
+file tree does; what each collection does with a click and Enter is in
+[Navigational Row Collections](#navigational-row-collections).
 Help reads the `pull-requests` group of the shortcut registry, and no surface here names
 a key.
 
@@ -1123,9 +1126,23 @@ Movement clamps at the first and last row, prevents page scrolling, and does not
 the row at a clamped edge.
 Activation updates the roving anchor without stealing focus.
 Enter, Space, and pointer activation retain the control’s ordinary behavior.
-A key’s move replaces the history entry and a pointer click or Enter pushes one, so a
-skim through the file tree, Git history, or the Pulls tab leaves its rows with one Back
-however many rows it passed.
+A key’s move replaces the history entry in all three collections, so a skim through the
+file tree, Git history, or the Pulls tab leaves its rows with one Back however many rows
+it passed. The collections differ in the rest:
+
+- **A pointer click** pushes an entry in the file tree, and in the Pulls tab for a row
+  that is not the one open.
+  In Git it replaces the entry, as every selection there does that does not come from
+  the address: a commit is a selection that holds the address while it is shown
+  (`static/git-panel.js`, `selectCommit`).
+- **Enter and Space** open only in the Pulls tab, and push an entry only for a row that
+  is not the one open.
+  On a file tree row they are action keys, which toggle a folder or a container file or
+  show the next page, and leave history alone.
+  On a commit they select it again, replacing the entry.
+
+The file tree and Git do here what they did in `v0.11.0`, so a change that makes one
+conform to another changes a plain folder’s Back.
 
 Interaction work is proportional to the change, not the collection size.
 Moving or selecting mutates only the prior and next anchor or selected row; a mounted

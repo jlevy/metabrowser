@@ -54,6 +54,7 @@ from metabrowser.git import repo as git_repo
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.server import app
 from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source_routes import PIN_HEADER
 from tests.github_pull_fixture import (
     ANOTHER_READER,
     CANONICAL,
@@ -96,14 +97,23 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
     return recorded
 
 
+# A whole range read again, and the windows it is made of, in order.
+_WHOLE_RANGES = {
+    "refreshed_whole": ("more_done", "more_window"),
+    "at_cap_moved_whole": ("at_cap_moved", "at_cap_moved_after_902"),
+}
+
+
 def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
     """*recorded* with each distinct window of rows written once; see the module docstring."""
 
-    whole = recorded["refreshed_whole"]["body"]
-    window = recorded["more_done"]["body"]["rows"] + recorded["more_window"]["body"]["rows"]
-    assert whole["rows"] == window, "the whole list is not its two windows"
-    holder: dict[str, str] = {json.dumps(whole["rows"]): "refreshed_whole"}
-    whole["rows"] = {"same_as": ["more_done", "more_window"]}
+    holder: dict[str, str] = {}
+    for name, windows in _WHOLE_RANGES.items():
+        whole = recorded[name]["body"]
+        window = [row for part in windows for row in recorded[part]["body"]["rows"]]
+        assert whole["rows"] == window, f"{name} is not its windows"
+        holder[json.dumps(whole["rows"])] = name
+        whole["rows"] = {"same_as": list(windows)}
     for name, answer in recorded.items():
         body = answer["body"]
         if not isinstance(body, dict) or not isinstance(body.get("rows"), list) or not body["rows"]:
@@ -115,6 +125,45 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
             holder[key] = name
             body["rows"] = [json.dumps(row, ensure_ascii=False) for row in body["rows"]]
     return recorded
+
+
+def _capped(numbers: range, fetched_at: str) -> PullList:
+    """A closed list at the most pages one may hold, as a refresh would write it."""
+
+    return PullList(
+        schema_version=pull_list.PULL_LIST_SCHEMA,
+        source=CANONICAL,
+        list="closed",
+        fetched_at=fetched_at,
+        reader="gh:octo-reader",
+        pages=MAX_LIST_PAGES,
+        complete=False,
+        truncated=True,
+        etags=tuple(
+            ListPageMark(
+                etag=None, numbers=tuple(numbers[start : start + 100]), truncated=start == 0
+            )
+            for start in range(0, pull_list.MAX_LIST_ROWS, 100)
+        ),
+        rows=tuple(
+            PullListRow(
+                number=number,
+                title=f"Work item {number}",
+                state="closed",
+                draft=False,
+                merged_at=None,
+                author="contributor",
+                created_at="2026-09-17T08:00:00Z",
+                updated_at="2026-09-17T08:00:00Z",
+                closed_at="2026-09-17T08:00:00Z",
+                base_ref="main",
+                head_ref=f"work-{number}",
+                head_repository="octo/demo",
+                labels=(),
+            )
+            for number in numbers
+        ),
+    )
 
 
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> dict[str, Any]:
@@ -161,6 +210,9 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
     )
     git_repo.clear_repo_cache()
     recorded: dict[str, Any] = {}
+    # Answers recorded since the session first had its tags, kept after the others so that
+    # each earlier answer keeps its tag.
+    later: dict[str, Any] = {}
     gate = threading.Event()
     gate.set()
     original: Callable[..., Awaitable[Any]] = pull_list_refresh.refresh_pull_list
@@ -196,11 +248,14 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 settled()
                 recorded[f"failed {name}"] = read()
 
-            # Nothing cached, a refresh that waits, and a read while it does.
+            # Nothing cached, a refresh that waits, and a read while it does. The list's own
+            # address reads it too, with no rows, on a first visit.
             recorded["absent"] = read()
+            later["landing_absent"] = read(limit="0")
             gate.clear()
             recorded["refresh_started"] = ask(state="all")
             recorded["pending"] = read()
+            later["landing_pending"] = read(limit="0")
             gate.set()
             settled()
             recorded["current"] = read()
@@ -236,6 +291,11 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             settled()
             recorded["refreshed"] = read()
             recorded["refreshed_whole"] = read(limit="102")
+            # A page whose pin the server no longer serves, as Back from the back/forward
+            # cache polls before the pin guard reloads it.
+            later["pin_changed"] = _answer(
+                client.get(_PULLS, params=params, headers={PIN_HEADER: "0" * 40})
+            )
             # Tried a moment ago: an automatic request starts nothing.
             recorded["not_due"] = ask(state="all")
 
@@ -332,47 +392,32 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
 
             # A list at the most pages one may hold, read directly from what it would write:
             # the bound is what is pinned here, and a thousand rows of fetches pin nothing more.
-            numbers = range(pull_list.MAX_LIST_ROWS, 0, -1)
-            at_cap = PullList(
-                schema_version=pull_list.PULL_LIST_SCHEMA,
-                source=CANONICAL,
-                list="closed",
-                fetched_at=utc_stamp(clock[0]),
-                reader="gh:octo-reader",
-                pages=MAX_LIST_PAGES,
-                complete=False,
-                truncated=True,
-                etags=tuple(
-                    ListPageMark(
-                        etag=None,
-                        numbers=tuple(numbers[start : start + 100]),
-                        truncated=start == 0,
-                    )
-                    for start in range(0, pull_list.MAX_LIST_ROWS, 100)
-                ),
-                rows=tuple(
-                    PullListRow(
-                        number=number,
-                        title=f"Work item {number}",
-                        state="closed",
-                        draft=False,
-                        merged_at=None,
-                        author="contributor",
-                        created_at="2026-09-17T08:00:00Z",
-                        updated_at="2026-09-17T08:00:00Z",
-                        closed_at="2026-09-17T08:00:00Z",
-                        base_ref="main",
-                        head_ref=f"work-{number}",
-                        head_repository="octo/demo",
-                        labels=(),
-                    )
-                    for number in numbers
-                ),
+            write_pull_list(
+                home, slug, _capped(range(pull_list.MAX_LIST_ROWS, 0, -1), utc_stamp(clock[0]))
             )
-            write_pull_list(home, slug, at_cap)
             recorded["at_cap"] = read(state="closed", limit="0")
             # Its first window, with ten more after it: what a filtered list's chase would read.
             recorded["at_cap_window"] = read(state="closed")
+            later["at_cap_window_2"] = read(state="closed", after="901")
+            # A refresh found pull request 1001 opened, so every window of the list moves by
+            # a row: what a window read for the earlier list, and a range read again, cross.
+            moved = _capped(
+                range(pull_list.MAX_LIST_ROWS + 1, 1, -1),
+                utc_stamp(clock[0] + timedelta(minutes=1)),
+            )
+            write_pull_list(home, slug, moved)
+            later["at_cap_moved"] = read(state="closed")
+            later["at_cap_moved_after_902"] = read(state="closed", after="902")
+            later["at_cap_moved_after_801"] = read(state="closed", after="801")
+            later["at_cap_moved_whole"] = read(state="closed", limit="200")
+
+            # The list's address on a first visit whose refresh fails: no rows, and why.
+            (directory / "list-all.json").unlink()
+            with monkeypatch.context() as patched:
+                patched.setattr(gh, "gh_executable", lambda: None)
+                ask(state="all", retry=True)
+                settled()
+            later["landing_gh_missing"] = read(limit="0")
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
@@ -383,7 +428,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
         recorded["not_github_refresh"] = _answer(
             client.post(_REFRESH, json={"state": "all"}, headers=JSON_BODY)
         )
-    return _session_tags(recorded)
+    return _session_tags({**recorded, **later})
 
 
 def test_recording_is_what_a_served_mirror_answers(
@@ -431,6 +476,16 @@ def test_recording_is_what_a_served_mirror_answers(
     assert (at_cap["at_cap"], at_cap["complete"], at_cap["fetched"]) == (True, False, 1000)
     assert recorded["not_github"]["body"]["reason"] == "not_github"
     assert recorded["not_github_refresh"]["status"] == 409
+    refused = recorded["pin_changed"]
+    assert (refused["status"], refused["body"]["code"]) == (409, "pin_changed")
+    assert [row["number"] for row in recorded["at_cap_moved"]["body"]["rows"][:2]] == [1001, 1000]
+    assert recorded["at_cap_moved"]["body"]["next_after"] == 902
+    assert recorded["at_cap_moved_after_801"]["body"]["rows"][0]["number"] == 800
+    for name in ("landing_absent", "landing_pending", "landing_gh_missing"):
+        assert recorded[name]["body"]["fetched"] == 0, name
+    assert recorded["landing_absent"]["body"]["last_refresh"] is None
+    assert recorded["landing_pending"]["body"]["refreshing"] is True
+    assert recorded["landing_gh_missing"]["body"]["last_refresh"]["outcome"] == "gh_missing"
     check_recording(RECORDING, _stored_once(recorded), transcript=TRANSCRIPT, indent=1)
 
 

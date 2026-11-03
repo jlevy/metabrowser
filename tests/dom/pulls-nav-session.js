@@ -344,6 +344,7 @@ async function run() {
 
   return {
     "the page's host": await pageHostStory(),
+    "the two trees": await twoTreesStory(),
     addresses,
     stories,
     keys,
@@ -444,6 +445,502 @@ async function pageHostStory() {
   story["and J's release ends a walk again"] = keyUp("j");
   nav.dispose();
   told.splice(0);
+  return story;
+}
+
+// ── The two trees ───────────────────────────────────────────────
+//
+// The Files tab and the Pulls tab are both trees of `treeitem` rows in one navigation pane, and
+// the Files tree's keyboard handler claims every `treeitem` in its container. What keeps them
+// apart is app.js's: the handler is made on `#tab-files`, not on the pane, and the overlay's
+// focus fallback hands back a Files row only for a row with a tree id. So this story runs the
+// production `initKeyboardInfrastructure` and `resolveApplicationFocusFallback`, extracted from
+// app.js verbatim, with the real keyboard-shortcuts.js, tree-keyboard-navigation.js, and this
+// host, in a stand-in for the DOM whose focus events bubble as a browser's do. The Files tree's
+// opening, the overlay, Help, and the Pulls view are played: the view only moves focus and asks
+// the shell to open the row, which the panel session covers.
+
+/** One app.js declaration, bounded by its closing line at column zero. */
+function appDeclaration(source, pattern, label) {
+  const match = source.match(pattern);
+  if (!match) {
+    throw new Error(`app.js ${label} is not extractable`);
+  }
+  return match[0];
+}
+
+/** Whether *element* matches one compound selector: a tag, classes, ids, and attributes. */
+function matchesCompound(element, selector) {
+  const parts = selector.match(/^[a-z]+|\.[\w-]+|#[\w-]+|\[[\w-]+(?:="[^"]*")?\]/g) ?? [];
+  if (parts.join("") !== selector) {
+    throw new Error(`the stand-in DOM does not read the selector ${selector}`);
+  }
+  return parts.every((part) => {
+    if (part.startsWith(".")) {
+      return element.classList.contains(part.slice(1));
+    }
+    if (part.startsWith("#")) {
+      return element.id === part.slice(1);
+    }
+    if (part.startsWith("[")) {
+      const [, name, value] = /^\[([\w-]+)(?:="([^"]*)")?\]$/.exec(part);
+      return value === undefined
+        ? element.hasAttribute(name)
+        : element.getAttribute(name) === value;
+    }
+    return element.localName === part;
+  });
+}
+
+function twoTreesPage() {
+  const log = [];
+  class FakeElement {
+    constructor(tag, document) {
+      this.localName = tag;
+      this.tagName = tag.toUpperCase();
+      this.ownerDocument = document;
+      this.parentElement = null;
+      this.children = [];
+      this.attributes = new Map();
+      this.listeners = [];
+      this.dataset = {};
+      this.hidden = false;
+      this.isContentEditable = false;
+      this.style = { display: "" };
+      const classes = new Set();
+      this.classList = {
+        add(...names) {
+          for (const name of names) {
+            classes.add(name);
+          }
+        },
+        remove(...names) {
+          for (const name of names) {
+            classes.delete(name);
+          }
+        },
+        contains: (name) => classes.has(name),
+        toggle(name, on) {
+          const wanted = on ?? !classes.has(name);
+          if (wanted) {
+            classes.add(name);
+          } else {
+            classes.delete(name);
+          }
+          return wanted;
+        },
+      };
+    }
+    get id() {
+      return this.getAttribute("id") ?? "";
+    }
+    get isConnected() {
+      return this.ownerDocument.body.contains(this);
+    }
+    get nextElementSibling() {
+      const siblings = this.parentElement?.children ?? [];
+      return siblings[siblings.indexOf(this) + 1] ?? null;
+    }
+    get previousElementSibling() {
+      const siblings = this.parentElement?.children ?? [];
+      return siblings[siblings.indexOf(this) - 1] ?? null;
+    }
+    append(...children) {
+      for (const child of children) {
+        child.parentElement = this;
+        this.children.push(child);
+      }
+    }
+    contains(node) {
+      for (let at = node; at; at = at.parentElement) {
+        if (at === this) {
+          return true;
+        }
+      }
+      return false;
+    }
+    matches(selector) {
+      return matchesCompound(this, selector);
+    }
+    closest(selector) {
+      for (let at = this; at; at = at.parentElement) {
+        if (at.matches(selector)) {
+          return at;
+        }
+      }
+      return null;
+    }
+    querySelectorAll(selector) {
+      const found = [];
+      const visit = (node) => {
+        for (const child of node.children) {
+          if (child.matches(selector)) {
+            found.push(child);
+          }
+          visit(child);
+        }
+      };
+      visit(this);
+      return found;
+    }
+    querySelector(selector) {
+      return this.querySelectorAll(selector)[0] ?? null;
+    }
+    setAttribute(name, value) {
+      this.attributes.set(name, String(value));
+      if (name.startsWith("data-")) {
+        this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] =
+          String(value);
+      }
+    }
+    getAttribute(name) {
+      return this.attributes.get(name) ?? null;
+    }
+    hasAttribute(name) {
+      return this.attributes.has(name);
+    }
+    removeAttribute(name) {
+      this.attributes.delete(name);
+    }
+    addEventListener(type, listener, options) {
+      const entry = { type, listener };
+      this.listeners.push(entry);
+      options?.signal?.addEventListener("abort", () => {
+        this.listeners.splice(this.listeners.indexOf(entry), 1);
+      });
+    }
+    removeEventListener(type, listener) {
+      this.listeners = this.listeners.filter(
+        (entry) => entry.type !== type || entry.listener !== listener,
+      );
+    }
+    focus() {
+      const previous = document.activeElement;
+      if (previous === this) {
+        return;
+      }
+      document.activeElement = this;
+      if (previous !== document.body) {
+        dispatch(previous, "focusout", { relatedTarget: this });
+      }
+      dispatch(this, "focusin", { relatedTarget: previous });
+    }
+  }
+
+  const documentListeners = [];
+  const document = {
+    activeElement: null,
+    addEventListener(type, listener, capture) {
+      documentListeners.push({ type, listener, capture });
+    },
+    removeEventListener(type, listener) {
+      const at = documentListeners.findIndex(
+        (entry) => entry.type === type && entry.listener === listener,
+      );
+      if (at >= 0) {
+        documentListeners.splice(at, 1);
+      }
+    },
+    createElement: (tag) => new FakeElement(tag, document),
+    getElementById: (id) => document.body.querySelector(`#${id}`),
+    // The tab bar the host reads which tab is in front from.
+    querySelector: (selector) => {
+      if (selector !== ".nav-tab-bar .tab-btn.active") {
+        throw new Error(`the stand-in DOM does not read the selector ${selector}`);
+      }
+      return { getAttribute: () => shell.active };
+    },
+  };
+  document.body = new FakeElement("body", document);
+  document.activeElement = document.body;
+
+  /** An event from *target* up through its ancestors to the document, as focus events go. */
+  function dispatch(target, type, fields = {}) {
+    const event = {
+      type,
+      target,
+      defaultPrevented: false,
+      isComposing: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+      ...fields,
+    };
+    // The registry listens on the document in the capture phase, before the target.
+    for (const entry of documentListeners.filter((e) => e.type === type && e.capture)) {
+      entry.listener(event);
+    }
+    for (let at = target; at; at = at.parentElement) {
+      for (const entry of at.listeners.filter((e) => e.type === type)) {
+        entry.listener({ ...event, currentTarget: at });
+      }
+    }
+    for (const entry of documentListeners.filter((e) => e.type === type && !e.capture)) {
+      entry.listener(event);
+    }
+    return event;
+  }
+
+  const make = (tag, attributes = {}, children = []) => {
+    const element = new FakeElement(tag, document);
+    for (const [name, value] of Object.entries(attributes)) {
+      if (name === "class") {
+        element.classList.add(...value.split(" "));
+      } else {
+        element.setAttribute(name, value);
+      }
+    }
+    element.append(...children);
+    return element;
+  };
+  // A mirror's Files tree, as the shell renders it, with README.md open.
+  const fileRow = (path, selected) => {
+    const row = make("div", {
+      class: `tree-item tree-file${selected ? " selected" : ""}`,
+      role: "treeitem",
+      "data-tree-kind": "file",
+      "data-tree-id": `file:${path}`,
+      "data-path": path,
+      "data-action": "select",
+    });
+    return row;
+  };
+  const files = [fileRow("README.md", true), fileRow("setup.py", false)];
+  const filesTab = make("div", { id: "tab-files", "data-tab-content": "files" }, [
+    make("div", { role: "tree", "aria-label": "Files" }, files),
+  ]);
+  // The Pulls tab's list, as the panel paints it: a tree of anchors in items of no role.
+  const pullRow = (number) =>
+    make("a", {
+      class: "github-pulls-row",
+      href: `/pull/${number}`,
+      role: "treeitem",
+      "aria-level": "1",
+      tabindex: number === 3900 ? "0" : "-1",
+      "data-number": String(number),
+    });
+  const pulls = [3900, 3899, 3898].map(pullRow);
+  const pullsTab = make("div", { id: "tab-pulls", "data-tab-content": "pulls" }, [
+    make(
+      "ul",
+      { class: "github-pulls-list", role: "tree" },
+      pulls.map((row) => make("li", { role: "none" }, [row])),
+    ),
+  ]);
+  document.body.append(
+    make("div", { id: "tree-pane" }, [make("div", { id: "tree-content" }, [filesTab, pullsTab])]),
+    make("div", { id: "preview-pane" }),
+    make("div", { id: "nav-shortcut-hints" }),
+  );
+
+  const shell = { active: "files", panel: null, address: "/view/" };
+  const tabs = { files: filesTab, pulls: pullsTab };
+  const context = {
+    console: { error() {}, warn: (message) => log.push(`warned: ${message}`) },
+    JSON,
+    Object,
+    Promise,
+    Set,
+    Map,
+    Symbol,
+    Array,
+    String,
+    Number,
+    TypeError,
+    URLSearchParams,
+    Error,
+    AbortController,
+    queueMicrotask,
+    Element: FakeElement,
+    HTMLElement: FakeElement,
+    document,
+    location: { pathname: "/view/", search: "" },
+    history: { pushState() {} },
+    requestIdleCallback: () => 1,
+    cancelIdleCallback() {},
+    addEventListener() {},
+    // The shell's services that are not what this story is about.
+    MetabrowserOverlay: {},
+    MetabrowserKeyboardHelp: { create: () => ({ dispose() {} }) },
+    MetabrowserAssets: { ensureAsset: async () => {} },
+    MetabrowserShell: {
+      registerNavPanel(panel) {
+        shell.panel = panel;
+      },
+      activateNavPanel(id) {
+        const leaving = shell.active;
+        shell.active = id;
+        for (const [name, tab] of Object.entries(tabs)) {
+          tab.style.display = name === id ? "" : "none";
+        }
+        if (leaving === "pulls" && id !== "pulls") {
+          shell.panel?.onHide();
+        }
+        if (id === "pulls") {
+          shell.panel?.onShow();
+        }
+      },
+      openPullRequest(route) {
+        shell.address = `/pull/${route.number}`;
+        log.push(`the shell opened ${shell.address}, ${route.replace ? "replacing" : "pushing"}`);
+        return Promise.resolve({ status: "opened" });
+      },
+      shortcuts: () => context.shortcutRegistry,
+      removeNavPanel() {},
+    },
+    metabrowser: {
+      ensureKindAssets: async () => {},
+      getRegisteredView: () => ({
+        // The Pulls view, played: a key moves focus to the next row and opens it.
+        render(container, ctx) {
+          const rows = () => container.querySelectorAll("a.github-pulls-row");
+          return {
+            setShown() {},
+            setCurrent() {},
+            setFilter() {},
+            released() {},
+            move(delta) {
+              const all = rows();
+              const at = all.indexOf(document.activeElement);
+              const next = all[Math.max(0, Math.min(all.length - 1, at + delta))];
+              for (const row of all) {
+                row.setAttribute("tabindex", row === next ? "0" : "-1");
+              }
+              next.focus();
+              void ctx.pullsNav.open({
+                number: Number(next.dataset.number),
+                tab: "",
+                replace: true,
+              });
+              return true;
+            },
+            activateAnchor() {
+              const row = document.activeElement;
+              void ctx.pullsNav.open({
+                number: Number(row.dataset.number),
+                tab: "",
+                replace: false,
+              });
+              return true;
+            },
+            dispose() {},
+          };
+        },
+      }),
+    },
+    // The Files tree's opening, played: what app.js would open for the row.
+    openTreeRow(row) {
+      if (!row.dataset.path) {
+        log.push(`the Files tree took the key, and opens nothing for ${row.getAttribute("href")}`);
+        return;
+      }
+      shell.address = `/view/${row.dataset.path}`;
+      log.push(`the Files tree opened ${shell.address}`);
+    },
+    activateTreeRowFromKeyboard: (row) => row,
+    setRowExpanded() {},
+  };
+  context.window = context;
+  vm.createContext(context);
+  for (const name of [
+    "keyboard-shortcuts.js",
+    "tree-keyboard-navigation.js",
+    "pull-route.js",
+    "pulls-nav.js",
+  ]) {
+    const file = path.join(staticDir, name);
+    vm.runInContext(fs.readFileSync(file, "utf8"), context, { filename: file });
+  }
+  const appPath = path.join(staticDir, "app.js");
+  const appSource = fs.readFileSync(appPath, "utf8");
+  const shellSource = [
+    ...[
+      "shortcutRegistry",
+      "keyboardHelp",
+      "treeKeyboard",
+      "applicationFocusRegion",
+      "applicationFocusListener",
+    ].map((name) => appDeclaration(appSource, new RegExp(`^var ${name} = null;$`, "m"), name)),
+    ...["resolveApplicationFocusFallback", "initKeyboardInfrastructure"].map((name) =>
+      appDeclaration(
+        appSource,
+        new RegExp(`^function ${name}\\([^)]*\\) \\{[\\s\\S]*?^\\}`, "m"),
+        name,
+      ),
+    ),
+  ].join("\n\n");
+  // app.js's own handle on the pane, which the shell's other listeners hang off.
+  context.treePane = document.getElementById("tree-pane");
+  vm.runInContext(shellSource, context, { filename: "app.js (keyboard infrastructure)" });
+
+  const named = (element) =>
+    element === null
+      ? null
+      : element === document.body
+        ? "the page"
+        : (element.dataset.treeId ?? `${element.getAttribute("href")}`);
+  return {
+    context,
+    files,
+    pulls,
+    shell,
+    take: () => log.splice(0),
+    /** A key pressed where focus is, and its release. */
+    press(key) {
+      const target = document.activeElement;
+      const event = dispatch(target, "keydown", {
+        key,
+        repeat: false,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+      });
+      dispatch(target, "keyup", { key });
+      return {
+        handled: event.defaultPrevented,
+        did: log.splice(0),
+        "focus on": named(document.activeElement),
+        address: shell.address,
+      };
+    },
+    /** Who holds each tree's one Tab stop. */
+    tabStops: () => ({
+      Files: files.filter((row) => row.getAttribute("tabindex") === "0").map(named),
+      Pulls: pulls.filter((row) => row.getAttribute("tabindex") === "0").map(named),
+    }),
+    named,
+  };
+}
+
+async function twoTreesStory() {
+  const page = twoTreesPage();
+  const { context } = page;
+  const story = {};
+  context.initKeyboardInfrastructure();
+  await context.MetabrowserPullsNav.init();
+  await settle();
+  page.take();
+  story["the shell starts at a file"] = page.tabStops();
+  // Pulls chosen by hand, at a file's address.
+  context.MetabrowserShell.activateNavPanel("pulls");
+  await settle();
+  page.pulls[0].focus();
+  story["a Pulls row takes focus: each tree keeps its own Tab stop"] = page.tabStops();
+  story["J on it is the list's"] = page.press("j");
+  story["ArrowDown too"] = page.press("ArrowDown");
+  story["Enter opens the row"] = page.press("Enter");
+  story["the overlay closes over a Pulls row: no Files row is handed back"] = page.named(
+    context.resolveApplicationFocusFallback(context.document.activeElement),
+  );
+  context.MetabrowserShell.activateNavPanel("files");
+  page.files[0].focus();
+  story["back in Files: J walks the file tree"] = page.press("j");
+  story["and the Pulls list keeps its Tab stop"] = page.tabStops();
+  story["the overlay closes over a Files row: the Files tree's row is handed back"] = page.named(
+    context.resolveApplicationFocusFallback(context.document.activeElement),
+  );
+  context.MetabrowserPullsNav.dispose();
   return story;
 }
 
