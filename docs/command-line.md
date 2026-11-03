@@ -371,6 +371,15 @@ A first clone reports where it goes and how far it has got; see
 This is the reference for the commands; for the workflow in a browser, see
 [Reviewing pull requests](reviewing-pull-requests.md).
 
+`metab https://github.com/owner/repo` and `metab ~/src/repo` both offer Pulls.
+A local checkout is identified by its github.com `origin` and readable `HEAD`; linked
+worktrees and served subdirectories work too.
+The local path keeps serving the working folder.
+Its **Fetch changes** action acquires a comparison store only when requested, without
+writing to the checkout or falling back to a full clone if borrowing is refused.
+The URL-based [`--checkout` option](#beside-a-checkout) instead serves a managed pin and
+retains the fallback cases documented below.
+
 A pull-request URL pins the pull request’s head commit and reads its data:
 
 ```shell
