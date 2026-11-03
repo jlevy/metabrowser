@@ -5,7 +5,8 @@
 // while a refresh runs, slowly otherwise, and with If-None-Match so an unchanged
 // answer is a 304. When the mirror is older than the server's freshness window and
 // nothing is refreshing, opening or revealing the page asks for one background
-// refresh; the page never waits for it. When a refresh moves the pinned ref, the
+// refresh; the page never waits for it, and a refusal of that ask, which the reader did
+// not make, says nothing. When a refresh moves the pinned ref, the
 // label offers the newer commit, and accepting switches the pin and reloads the view.
 // When the server serves another pin than the one the page was rendered for -- another
 // tab switched it, or a data request came back `pin_changed` -- it offers a reload.
@@ -510,7 +511,7 @@
         return;
       }
       if (status?.stale && !status.refreshing && !refreshAskedWhileVisible) {
-        await requestRefresh();
+        await ask({}, { own: true });
         return;
       }
       render();
@@ -521,22 +522,40 @@
     /**
      * Ask for a refresh and take the status the server answers with. Answers what the
      * server did -- `"started"`, `"joined"`, or `"fresh"` -- or `null` when the request
-     * was refused or failed.
+     * was refused or failed. A refusal says why in the server's words when it gives them,
+     * as when the queue of pull requests has no room for the attended one's refresh.
      *
      * @param {Record<string, unknown>} [body]
      * @returns {Promise<string | null>}
      */
     async function requestRefresh(body = {}) {
+      return (await ask(body, { own: false }))?.refresh ?? null;
+    }
+
+    /**
+     * {@link requestRefresh}, answering the whole answer. *own* is the ask a stale page makes
+     * by itself when it is opened or shown: as on a pull request's page, a refusal or a
+     * failure of it says nothing, since the reader did not ask, and the row still offers a
+     * refresh to press.
+     *
+     * @param {Record<string, unknown>} body
+     * @param {{own: boolean}} options
+     * @returns {Promise<{refresh: string} | null>}
+     */
+    async function ask(body, options) {
       if (disposed || status === null || !status.refreshable) {
         notifyChange();
         return null;
       }
       refreshAskedWhileVisible = true;
-      /** @type {string | null} */
+      /** @type {{refresh: string} | null} */
       let answered = null;
       try {
         const response = await deps.request("POST", REFRESH_ROUTE, { body });
-        const answer = /** @type {{refresh?: unknown, status?: unknown} | null} */ (response.body);
+        const answer =
+          /** @type {{refresh?: unknown, status?: unknown, error?: unknown} | null} */ (
+            response.body
+          );
         if (
           (response.status === 202 || response.status === 200) &&
           answer !== null &&
@@ -546,12 +565,18 @@
           // The envelope changed; the next poll must not be answered by a 304.
           etag = null;
           error = null;
-          answered = typeof answer.refresh === "string" ? answer.refresh : "started";
-        } else {
-          error = `Refresh refused (HTTP ${response.status})`;
+          answered = { refresh: typeof answer.refresh === "string" ? answer.refresh : "started" };
+        } else if (!options.own) {
+          const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
+          error =
+            said === null
+              ? `Refresh refused (HTTP ${response.status})`
+              : `Refresh refused: ${said}`;
         }
       } catch {
-        error = "The refresh request failed";
+        if (!options.own) {
+          error = "The refresh request failed";
+        }
       }
       if (!disposed) {
         render();

@@ -651,6 +651,41 @@ async function run() {
     controller.dispose();
   }
 
+  // A page of code on the attended pull request, whose record is stale while the queue of
+  // pull requests a reader asked for is full: the server refuses the page's own refresh.
+  // The reader did not ask, so the row says nothing of it, as the pull request's page does;
+  // a press is the reader's own, and the row says why in the server's words.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.queue_full_page);
+    answerRefresh(page, recorded.queue_full_refresh);
+    await controller.start();
+    steps.push(page.observe("a page's own refresh with no room in the queue says nothing"));
+    answerRefresh(page, recorded.queue_full_refresh);
+    await controller.requestRefresh();
+    steps.push(page.observe("a press with no room in the queue says why"));
+    controller.dispose();
+  }
+
+  // A page left open while the server restarted on a folder: a folder is not refreshable,
+  // so not even a press asks for a refresh, and the queue's refusal cannot reach it.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.folder);
+    await controller.start();
+    const asked = await controller.requestRefresh();
+    const folder = page.observe("a folder asks for no refresh");
+    assert(asked === null, "a folder's press must ask for nothing");
+    assert(
+      JSON.stringify(folder.requests) === JSON.stringify(["GET /api/source/status"]),
+      `a folder must post nothing: ${JSON.stringify(folder.requests)}`,
+    );
+    assert(folder.paint === null, "a folder has no row to paint");
+    controller.dispose();
+  }
+
   // What a page's data requests say about the pin it shows, and a refusal for a pin the
   // server no longer serves, as the server answered it after the switch.
   const sent = [];

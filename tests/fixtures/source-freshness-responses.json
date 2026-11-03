@@ -713,6 +713,62 @@
       "code": "commit_not_found"
     }
   },
+  "queue_full_page": {
+    "subject": "git_revision",
+    "generation": 8,
+    "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+    "ref": "refs/remotes/origin/topic",
+    "ref_name": "topic",
+    "name": "origin",
+    "origin": "file:///sandbox/origin.git",
+    "location": "/sandbox/application-home/repository-stores/store-key-1/repository.git",
+    "refreshable": true,
+    "latest": "92b31b0785485bd9eaa9619d198a779c2699295d",
+    "ref_on_origin": true,
+    "last_fetch_at": "2026-09-23T12:00:00Z",
+    "last_outcome": {
+      "operation": "refresh",
+      "outcome": "succeeded",
+      "at": "2026-09-23T12:00:00Z"
+    },
+    "refreshing": false,
+    "stale": true,
+    "pull_request": 20,
+    "selection_state": null,
+    "selection_href": null
+  },
+  "queue_full_refresh": {
+    "status": 429,
+    "body": {
+      "refresh": "too_many",
+      "status": {
+        "subject": "git_revision",
+        "generation": 8,
+        "pin": "42382ea2303b733e1e21b4bd6ddb974ca4e775eb",
+        "ref": "refs/remotes/origin/topic",
+        "ref_name": "topic",
+        "name": "origin",
+        "origin": "file:///sandbox/origin.git",
+        "location": "/sandbox/application-home/repository-stores/store-key-1/repository.git",
+        "refreshable": true,
+        "latest": "92b31b0785485bd9eaa9619d198a779c2699295d",
+        "ref_on_origin": true,
+        "last_fetch_at": "2026-09-23T12:00:00Z",
+        "last_outcome": {
+          "operation": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-23T12:00:00Z"
+        },
+        "refreshing": false,
+        "stale": true,
+        "pull_request": 20,
+        "selection_state": null,
+        "selection_href": null
+      },
+      "error": "too many pull requests are being fetched; try again when one has finished",
+      "code": "too_many"
+    }
+  },
   "origin_not_shown": {
     "subject": "git_revision",
     "generation": 9,
