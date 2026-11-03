@@ -741,7 +741,7 @@ container’s address the way `/commit/<rev>/<path>` does
   Fragments keep meaning a place in the document.
 - A pull request with no record starts its fetch, since opening a file is a reader’s
   action, and shows its usual pending state.
-- On a checkout, the case of missing commits is step 6’s wording.
+- On a checkout, the diff comes from step 6’s overlay.
 - `--show /pull/<n>/files/<path>` reports it, as `--show /pull/<n>/files` does.
 
 **Untrusted names.** A path is text written by whoever opened the pull request.
@@ -799,46 +799,32 @@ Jobs run on the server’s `RefreshCoordinator`, keyed by the slug.
 - When the checkout’s `HEAD` is the pull request’s head, the page says so and links the
   root.
 
-**Files changed.** Step 6 has two cases.
-Both are decided differently by
+**Files changed.** Decided by
 [Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
-(2026-11-02): Files changed on a folder server reads an overlay store that borrows the
-served checkout’s objects, never the checkout directly, because the diff commands honor
-a checkout’s `diff.external` and textconv drivers and a direct read cannot bring missing
-commits. The text below stands until that plan’s step 4 rewrites it.
+(2026-11-02), and built in step 6: Files changed on a folder server reads an overlay
+store that borrows the served checkout’s objects, never the checkout directly.
 
-- **The commits are in the checkout.** The page checks for the base and head commits
-  with a read-only Git command and shows the diff through the existing comparison route,
-  from the merge base of the API’s `base.sha` and the head.
-  That is the rule a mirror uses for closed and merged pull requests; for an open one it
-  can differ from GitHub’s when the base branch has moved, and the page names the base
-  it used. The comparison route requires the served folder to be the working tree’s root,
-  and the page says so otherwise.
-- **The commits are missing.** The page says so and writes nothing.
-  It gives the command that opens the pull request from a mirror,
-  `metab https://github.com/<owner>/<repo>/pull/<n>/files`, and the command that brings
-  the commits into the user’s own repository, `git fetch origin pull/<n>/head`, for the
-  user to run if they choose.
-- **An in-page fetch into Metabrowser’s mirror** is the fuller form of that offer: a
-  button that acquires the repository into the cache, fetches the head, and serves the
-  diff from the mirror’s store.
-  It needs two things nothing has today: acquisition inside a running folder server, and
-  a diff served from a store that is not the served subject.
-  It is a full clone, so it is always the user’s explicit choice, with the size shown
-  first as `check_first_clone` reads it.
-  [Decisions](#decisions-and-their-alternatives) item 4 decides whether it is built.
+- A direct read is withdrawn, because the diff commands honor a checkout’s
+  `diff.external` and textconv drivers and a direct read could not bring missing
+  commits. The full clone is withdrawn, because it is no longer needed.
+- Opening a pull request’s Files changed is the reader’s action that creates the
+  overlay, the first time, through the acquisition `--checkout` uses, inside the running
+  folder server. When the commits are already in the checkout the fetch brings nothing;
+  when they are missing it brings kilobytes.
+- The checkout the reader is serving is the one named, as the Served row of that plan’s
+  [Finding the Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#finding-the-checkout)
+  says, and the store remembers it from then on.
+- Nothing is written to the checkout, and no Git process runs with the checkout as its
+  repository: the overlay’s fetch runs in the cache’s store.
+- The page names the base it used, and that plan’s typed states reach the page as they
+  do on a mirror: `base_uncertain`, `commits_unavailable`, `parent_unavailable`, and
+  `lender_missing`.
+- The served checkout stays trusted, and the diff is text, as on a mirror.
 
-**The alternates option.** A cache-side store could borrow the checkout’s objects
-through `objects/info/alternates` and fetch only what is missing.
-It was left out at first: a `gc`, a repack, or a move of the user’s repository can
-remove objects the borrowing store depends on, which breaks the rule that no object
-Metabrowser showed is ever lost.
-That decision is revised by
-[Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md)
-(2026-11-02), which measured each of those failures and proposes an overlay store with a
-typed state and a healing fetch; its
-[Open Decisions](plan-2026-11-02-pr-review-mirror-and-checkout.md#open-decisions-for-the-user)
-item 1 is the user’s call on the rule.
+**The alternates option** is that overlay store, decided on 2026-11-02. The rule that no
+object Metabrowser showed is ever lost is relaxed for an overlay, with typed states and
+a healing fetch, in that plan’s
+[Failure and Recovery](plan-2026-11-02-pr-review-mirror-and-checkout.md#failure-and-recovery).
 
 **Network only when the user opens the tab.** Opening a folder makes no request today,
 and that stays true.
@@ -989,15 +975,16 @@ the v0.12 stack, implemented and reviewed by separate agents, with green CI. Not
 merges by itself: the stack lands when the user says so, after the stack below it
 (`tbd shortcut stacked-prs`).
 
-Two steps wait on other work.
-Step 4’s jump to a file calls the large-pull-request work’s `scrollToFile`, so that part
-merges after that work’s reviewed head does; the list, the tree, and its keyboard do not
-wait. Steps 5 and 6 follow the owner’s decision on the overlay store, in
+This stack sits on the stack below’s top, which holds the large-pull-request work and
+the first step of
 [PR Review on a Mirror and a Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md),
-which revises this plan’s alternates rejection and in-page fetch; they start after that
-plan’s first step has been reviewed.
-Each updates [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
-and `CHANGELOG.md` in the same change.
+both reviewed and addressed.
+Step 4’s jump to a file calls the large-pull-request work’s `scrollToFile`. Steps 5 and
+6 follow the owner’s decision on the overlay store in that plan, which revises this
+plan’s alternates rejection and in-page fetch, and step 6 builds on its overlay
+acquisition. Each updates
+[Views, Models, and Routes](../../architecture/arch-views-models-routes.md) and
+`CHANGELOG.md` in the same change.
 
 | Step | Scope | Checkpoint a person can see | Ships alone |
 | --- | --- | --- | --- |
@@ -1006,7 +993,7 @@ and `CHANGELOG.md` in the same change.
 | 3. The tab on a mirror | The panel host, which tab an address shows, the view and its `/pulls` address, state icons, filters, states, keyboard, prefetch, and the sessions | Paste a repository URL, see Pulls beside Files and Git with every pull request and its icon, select one, and read it | Needs 1 and 2 |
 | 4. Changed files in a row | The file-list job, model, and routes, the tree, the gesture, `/pull/<n>/files/<path>`, and its session | Expand a pull request in the list, expand a folder, and open a file | Needs 3 |
 | 5. The tab and pages on a checkout | Identity, the source without a store, records without a comparison, network on use, and both profiles | Open a checkout, open Pulls, expand a pull request, and read a conversation, with nothing written to the repository | Needs 4 |
-| 6. Files changed on a checkout | The local comparison and what the page says when commits are missing | Files changed for a pull request whose commits are local | Needs 5 |
+| 6. Files changed on a checkout | An overlay of the served checkout, acquired from a running folder server when Files changed opens, the comparison from its store, and the typed states on the page | Open a checkout, open a pull request whose commits are not local, and read Files changed from the overlay | Needs 5 |
 
 **Step 1: list data.**
 
@@ -1050,10 +1037,12 @@ and `CHANGELOG.md` in the same change.
 
 **Step 6: Files changed on a checkout.**
 
-- *Reviewed:* that only reads run in the user’s repository; the base the page names; the
-  wording when commits are missing.
-- *Leaves out:* the in-page fetch into a mirror, unless the user chooses it (item 4
-  below), which would be a seventh step with its own design review.
+- *Reviewed:* that nothing is written to the checkout and no Git runs in it, byte for
+  byte with the directory read-only; that the overlay is created only by opening Files
+  changed; the base the page names; each typed state; and that the hostile-configuration
+  replica leaves no marker.
+- *Leaves out:* healing, blob verification, conversions, and deepening, which are steps
+  2, 3, and 5 of the review-mirror plan.
 
 ## Risks
 
@@ -1139,10 +1128,12 @@ They are kept because each is cheap to change later.
      head, which a checkout’s server cannot show.
    - *Alternative:* the in-page fetch into Metabrowser’s mirror, as a sixth step.
    - *Affects:* whether a folder’s server ever clones, and one more step.
-   - *Revised 2026-11-02:* the in-page fetch no longer means a clone.
+   - *Decided 2026-11-02:* the in-page fetch no longer means a clone.
      [Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
      makes it an overlay store that borrows the served checkout’s objects, measured at
-     seconds and kilobytes; step 6 here is rewritten when that plan’s step 4 starts.
+     seconds and kilobytes, created when the reader opens Files changed; the owner
+     decided that plan’s open decisions as recommended.
+     Step 6 builds it.
 
 5. **Whether closed pull requests are listed by default.**
    - *Decided by the user:* yes.
