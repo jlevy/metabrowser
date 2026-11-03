@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from metabrowser.git import process as git_process
 from metabrowser.git.process import (
     STORE_READ_POLICY,
     GitCommandError,
@@ -142,7 +143,9 @@ async def merge_base_answer(
     a merge-base walk that meets one with the answer it gives for no common history, where
     later Git fails. So a store with no boundary believes its answer only after a
     ``rev-list`` over the same walk, which fails on any commit it cannot read whatever the
-    Git; that failure is raised.
+    Git; that failure is raised. Before Git 2.45 a successful candidate reduction can also
+    stop early, so those versions verify the whole visible graph without pruning the
+    candidate. Multiple best merge bases remain valid, as in a criss-cross history.
     """
 
     boundary = await asyncio.to_thread(read_boundary, target.git_dir)
@@ -153,7 +156,7 @@ async def merge_base_answer(
             if exc.returncode != 1:
                 raise
             await _walk_readable(target, [left, right])
-            return MergeBaseAnswer(None, certain=True)
+            return MergeBaseAnswer(None, certain=await _boundary_still(target, boundary))
         return MergeBaseAnswer(None, certain=False)
     merge_base = out.decode("ascii", errors="replace").strip()
     if not is_full_revision(merge_base):
@@ -162,12 +165,20 @@ async def merge_base_answer(
         )
     if merge_base in {left, right}:
         return MergeBaseAnswer(merge_base, certain=await _boundary_still(target, boundary))
+    version, _raw = await asyncio.to_thread(git_process.detect_git_version)
+    old_git = version is None or version < (2, 45, 0)
     if boundary == frozenset():
-        await _walk_readable(target, [left, right, f"^{merge_base}"])
+        # Older candidate reduction can succeed after an unreadable ancestor. Do not
+        # prune the returned candidate: the missing commit may be below it. Modern
+        # Git propagates that error, so its verification keeps the short walk.
+        revisions = [left, right] if old_git else [left, right, f"^{merge_base}"]
+        await _walk_readable(target, revisions)
         return MergeBaseAnswer(merge_base, certain=await _boundary_still(target, boundary))
     if boundary is None:
         return MergeBaseAnswer(merge_base, certain=False)
     try:
+        if old_git:
+            await _walk_readable(target, [left, right])
         reached = await run_git(
             ["rev-list", left, right, f"^{merge_base}"], target=target, policy=STORE_READ_POLICY
         )

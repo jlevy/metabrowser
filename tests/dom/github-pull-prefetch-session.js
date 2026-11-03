@@ -194,6 +194,19 @@ async function main() {
   assert((await pending) === undefined, "a mount waiting through a dispose was not released");
   assert(leavingWaited.requests[0].signal.aborted, "a dispose left a taken request running");
 
+  const scoped = page();
+  const oldRoute = { ...first, route: "/api/plugin/github/pull-comparison?store=old" };
+  const newRoute = { ...first, route: "/api/plugin/github/pull-comparison?store=new" };
+  scoped.prefetch.want(oldRoute);
+  scoped.idle();
+  scoped.prefetch.want(newRoute);
+  scoped.idle();
+  assert(scoped.requests[0].signal.aborted, "a changed comparison route reused the old answer");
+  assert(scoped.requests.length === 2, "a changed store did not fetch its own comparison");
+  say("the same endpoints at a changed route fetch again", scoped);
+  scoped.prefetch.dispose();
+  await tick();
+
   console.log(JSON.stringify({ steps }, null, 2));
 }
 

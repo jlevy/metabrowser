@@ -508,7 +508,14 @@ async def acquire_into_staging(
         await _run(["config", "remote.origin.url", remote_url], git_dir=git_dir)
         negotiation: tuple[str, ...] = ()
         borrowed = lender.record if lender is not None else None
-        if borrowed is not None:
+        if lender is not None and borrowed is not None:
+            # Admission can change while the origin is probed or staging is opened.
+            # Recheck before any Git process can read through the lender's objects.
+            checked = await asyncio.to_thread(check_lender, lender.root, source)
+            if isinstance(checked, LenderRefusal):
+                raise CheckoutRefusedError(checked.message)
+            if checked.record != borrowed or checked.object_format != lender.object_format:
+                raise CheckoutRefusedError("the checkout changed while preparing its store")
             for key, value in _OVERLAY_CONFIG:
                 await _run(["config", key, value], git_dir=git_dir)
             await asyncio.to_thread(attach_lender, git_dir, borrowed)
@@ -947,6 +954,7 @@ async def acquire_source(
     checkout: Path | None = None,
     on_note: NoteReporter | None = None,
     inspecting: bool = False,
+    allow_clone_fallback: bool = True,
 ) -> PublishedSource:
     """Return a published ``file://`` or ``https://`` source, fetching only on a miss.
 
@@ -968,6 +976,9 @@ async def acquire_source(
     its working directory is a checkout of the source, which is never borrowed from
     unnamed. An overlay whose checkout has gone is refused unless *inspecting*, which is
     the cache routes: they read records and no object.
+    With *allow_clone_fallback* false, an unavailable lender or mismatched object format
+    raises ``CheckoutRefusedError`` instead of creating a full clone. A healthy published
+    store is still reused, including a full store.
     """
 
     if source.transport not in _ACQUIRED_TRANSPORTS:
@@ -981,7 +992,9 @@ async def acquire_source(
     )
     if found is not None:
         return await _settled_hit(found, checkout, on_note, inspecting=inspecting)
-    lender = await _lender_for_miss(source, checkout, on_note)
+    lender = await _lender_for_miss(
+        source, checkout, on_note, allow_clone_fallback=allow_clone_fallback
+    )
     if lender is None:
         await check_first_clone(source)
     found, home = await run_lock_section(functools.partial(_find_or_open_cache, source, home))
@@ -997,6 +1010,8 @@ async def acquire_source(
             on_note=on_note,
         )
     except _ObjectFormatRefusedError as exc:
+        if not allow_clone_fallback:
+            raise CheckoutRefusedError(str(exc)) from exc
         # The origin's format is known only after the phase line was printed, so this
         # note comes after "cloning ... into": it says the clone is instead of borrowing.
         _note(on_note, f"{exc}; cloning instead")
@@ -1011,16 +1026,24 @@ async def acquire_source(
 
 
 async def _lender_for_miss(
-    source: GitSource, checkout: Path | None, on_note: NoteReporter | None
+    source: GitSource,
+    checkout: Path | None,
+    on_note: NoteReporter | None,
+    *,
+    allow_clone_fallback: bool = True,
 ) -> Lender | None:
     """The checkout to borrow from when *source* has no store yet, saying what is decided."""
 
     if checkout is None:
+        if not allow_clone_fallback:
+            raise CheckoutRefusedError("a checkout is required to borrow objects")
         if on_note is not None:
             await asyncio.to_thread(_suggest_checkout, source, on_note)
         return None
     checked = await asyncio.to_thread(check_lender, checkout, source)
     if isinstance(checked, LenderRefusal):
+        if not allow_clone_fallback:
+            raise CheckoutRefusedError(checked.message)
         _note(on_note, f"{checked.message}; cloning")
         return None
     return checked

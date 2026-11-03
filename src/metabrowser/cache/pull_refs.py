@@ -72,6 +72,7 @@ from metabrowser.git.process import (
     STORE_READ_POLICY,
     GitCommandError,
     GitError,
+    GitOutputTooLargeError,
     GitTimeoutError,
     RepositoryStoreTarget,
     repository_store_target,
@@ -112,6 +113,8 @@ type PullFetchFailure = Literal[
     # A commit the comparison needs is not readable here: on an overlay, the checkout
     # has collected an ancestor the store never held. Healing is a later step.
     "commits_unavailable",
+    "comparison_timeout",
+    "comparison_too_large",
 ]
 
 
@@ -482,6 +485,14 @@ async def _endpoints_from(
 
     try:
         answer = await merge_base_answer(_target(published), base_commit, head)
+    except GitTimeoutError as exc:
+        raise PullRefError(
+            "comparison_timeout", "Git did not finish checking this comparison in time"
+        ) from exc
+    except GitOutputTooLargeError as exc:
+        raise PullRefError(
+            "comparison_too_large", "the comparison history exceeded the read limit"
+        ) from exc
     except GitCommandError as exc:
         log.debug("merge-base of %s and %s failed: %s", base_commit, head, exc.stderr_summary)
         raise PullRefError(

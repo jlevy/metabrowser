@@ -55,7 +55,7 @@ from metabrowser.builtin_plugins.github.served_pull import (
 )
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_record
 from metabrowser.git.tree_source import GitRevisionSubject
-from metabrowser.http_caching import build_scoped_etag
+from metabrowser.http_caching import BUILD_TAG, build_scoped_etag, store_tag
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
     PullJobStart,
@@ -109,15 +109,16 @@ def pull_state(
     return ("current" if age <= timedelta(seconds=FRESHNESS_WINDOW_S) else "stale"), None
 
 
-def comparison_route(record: PullRecord) -> str | None:
+def comparison_route(record: PullRecord, *, store: str) -> str | None:
     """The diff plugin's comparison of the record's pinned endpoints, or ``None``."""
 
     comparison = record.comparison
     if comparison is None:
         return None
     return (
-        f"/api/plugin/diff/comparison?left={comparison.base}&right={comparison.head}"
-        "&base_policy=merge_base"
+        f"/api/plugin/github/pull-comparison?number={record.number}"
+        f"&left={comparison.base}&right={comparison.head}&base_policy=merge_base"
+        f"&build={BUILD_TAG}&store={store}"
     )
 
 
@@ -257,7 +258,11 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         fresh_for_s=FRESHNESS_WINDOW_S,
         refreshing=view.refreshing,
         last_refresh=view.kept.last if view.kept is not None else served.last_refresh(view.number),
-        comparison_route=comparison_route(record) if isinstance(record, PullRecord) else None,
+        comparison_route=(
+            comparison_route(record, store=store_tag(served.published.git_dir))
+            if isinstance(record, PullRecord)
+            else None
+        ),
         record=dumped if isinstance(record, PullRecord) else None,
     )
 
