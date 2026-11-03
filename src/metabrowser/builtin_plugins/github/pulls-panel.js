@@ -1830,13 +1830,16 @@ export function mountPullsPanel(container, ctx, mb) {
  * @param {PullsEnvelope | null} envelope
  */
 function landingWaits(envelope) {
+  if (envelope === null) {
+    return true;
+  }
   return (
-    envelope !== null &&
     envelope.reason !== "not_github" &&
     envelope.fetched === 0 &&
-    !envelope.complete &&
-    (envelope.state === "absent" || envelope.state === "pending") &&
-    (envelope.last_refresh === null || envelope.refreshing)
+    (envelope.refreshing ||
+      (!envelope.complete &&
+        (envelope.state === "absent" || envelope.state === "pending") &&
+        envelope.last_refresh === null))
   );
 }
 
@@ -1876,7 +1879,12 @@ export function followLanding(deps) {
       const response = await deps.request("GET", `${PULLS_ROUTE}?limit=0`, {
         signal: listening.signal,
       });
-      envelope = isEnvelope(response.body) ? response.body : null;
+      // The pin guard owns this refusal and will reload the page. Say nothing over it.
+      if (pinChanged(response)) {
+        settled = true;
+        return;
+      }
+      envelope = response.status === 200 && isEnvelope(response.body) ? response.body : null;
     } catch {
       envelope = null;
     } finally {
@@ -1885,7 +1893,11 @@ export function followLanding(deps) {
     if (listening.signal.aborted) {
       return;
     }
-    deps.say(describeLanding(envelope, deps.formatTime));
+    deps.say(
+      envelope === null
+        ? "Could not read pull requests. Trying again."
+        : describeLanding(envelope, deps.formatTime),
+    );
     settled = !landingWaits(envelope);
     if (!settled && deps.isVisible()) {
       const running = envelope?.refreshing === true || envelope?.state === "pending";
@@ -1894,7 +1906,7 @@ export function followLanding(deps) {
           timer = null;
           void read();
         },
-        reads === 1 || running ? FAST_POLL_MS : SLOW_POLL_MS,
+        envelope !== null && (reads === 1 || running) ? FAST_POLL_MS : SLOW_POLL_MS,
       );
     }
   }

@@ -1103,6 +1103,85 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "timers": []
     }
   ],
+  "the list's address recovers": [
+    {
+      "step": "connection",
+      "before": {
+        "said": [
+          "Could not read pull requests. Trying again."
+        ],
+        "timers": [
+          30000
+        ]
+      },
+      "after": {
+        "said": [
+          "Install GitHub CLI and sign in to read this repository's pull requests."
+        ],
+        "timers": []
+      },
+      "requests": [
+        "GET /api/plugin/github/pulls?limit=0",
+        "GET /api/plugin/github/pulls?limit=0"
+      ]
+    },
+    {
+      "step": "non-envelope",
+      "before": {
+        "said": [
+          "Could not read pull requests. Trying again."
+        ],
+        "timers": [
+          30000
+        ]
+      },
+      "after": {
+        "said": [
+          "Install GitHub CLI and sign in to read this repository's pull requests."
+        ],
+        "timers": []
+      },
+      "requests": [
+        "GET /api/plugin/github/pulls?limit=0",
+        "GET /api/plugin/github/pulls?limit=0"
+      ]
+    },
+    {
+      "step": "pin changed",
+      "before": {
+        "said": [],
+        "timers": []
+      },
+      "after": {
+        "said": [],
+        "timers": []
+      },
+      "requests": [
+        "GET /api/plugin/github/pulls?limit=0"
+      ]
+    },
+    {
+      "step": "empty refreshing",
+      "before": {
+        "said": [
+          "No pull requests."
+        ],
+        "timers": [
+          1000
+        ]
+      },
+      "after": {
+        "said": [
+          "Select a pull request."
+        ],
+        "timers": []
+      },
+      "requests": [
+        "GET /api/plugin/github/pulls?limit=0",
+        "GET /api/plugin/github/pulls?limit=0"
+      ]
+    }
+  ],
   "reader": [
     {
       "name": "an address alone fetches nothing",

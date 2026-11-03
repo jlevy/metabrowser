@@ -108,7 +108,7 @@ function createPage() {
       const line = `${method} ${route}${body}${etag}`;
       log.push(line);
       return new Promise((resolve, reject) => {
-        const request = { route, method, etag: options.etag, resolve };
+        const request = { route, method, etag: options.etag, resolve, reject };
         waiting.push(request);
         // As fetch does: an aborted request settles at once with an AbortError.
         options.signal?.addEventListener("abort", () => {
@@ -172,6 +172,12 @@ function createPage() {
       assert(waiting.length > index, "no request is waiting for an answer");
       const [request] = waiting.splice(index, 1);
       request.resolve({ status: recording.status, etag: recording.etag, body: recording.body });
+      await settle();
+    },
+    /** Reject the oldest read as fetch does when the connection fails. */
+    async reject() {
+      assert(waiting.length > 0, "no request is waiting for rejection");
+      waiting.shift().reject(new Error("connection failed"));
       await settle();
     },
     /**
@@ -827,6 +833,44 @@ async function run() {
   look("the refresh failed: it says why, and reads no more");
   following.dispose();
 
+  const landingRecovery = [];
+  for (const failure of ["connection", "non-envelope", "pin changed", "empty refreshing"]) {
+    page = createPage();
+    const recoverySaid = [];
+    const recovery = panel.followLanding({
+      request: page.deps.request,
+      schedule: page.deps.schedule,
+      cancel: page.deps.cancel,
+      isVisible: page.deps.isVisible,
+      formatTime,
+      say: (line) => recoverySaid.push(line),
+    });
+    await settle();
+    if (failure === "connection") {
+      await page.reject();
+    } else if (failure === "non-envelope") {
+      await page.answer({ status: 503, etag: null, body: { error: "unavailable" } });
+    } else {
+      await page.answer(
+        failure === "pin changed" ? recorded.pin_changed : recorded.landing_empty_refreshing,
+      );
+    }
+    const before = { said: recoverySaid.splice(0), timers: page.timerDelays() };
+    if (failure !== "pin changed") {
+      await page.fire();
+      await page.answer(
+        failure === "empty refreshing" ? recorded.landing_found_rows : recorded.landing_gh_missing,
+      );
+    }
+    landingRecovery.push({
+      step: failure,
+      before,
+      after: { said: recoverySaid.splice(0), timers: page.timerDelays() },
+      requests: page.requests(),
+    });
+    recovery.dispose();
+  }
+
   return {
     steps,
     failures,
@@ -835,6 +879,7 @@ async function run() {
     spelled,
     landing,
     "the list's address, on a first visit": firstVisit,
+    "the list's address recovers": landingRecovery,
     reader: await readerStory(),
     paint: await paintStory(panel),
   };
