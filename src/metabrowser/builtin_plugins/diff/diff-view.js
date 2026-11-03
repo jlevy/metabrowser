@@ -70,7 +70,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {HTMLElement[]} sections In the comparison's order.
  * @property {HTMLElement | null} spacer Room past the last file, for a jump near the end.
  * @property {Set<number>} timers
- * @property {ReturnType<typeof import("./diff-view-file.js").createViewFileOpener> | null} viewFile
+ * @property {import("./diff-view-file.js").ViewFileOpener | null} viewFile
  * @property {HTMLElement | null} viewFileBusy The control whose switch is on its way.
  * @property {Set<{timer: number, resolve: (active: boolean) => void}>} yielders
  */
@@ -819,7 +819,7 @@ function scheduleFileEnhancement(view, state) {
 function renderFoldControl(group, hiddenRows, renderRow, state, key) {
   let expanded = state.expandedFolds.has(key);
   const hidden = hiddenRows.length;
-  const control = el("button", "diff-fold-control");
+  const control = el("button", "fold-expander diff-fold-control");
   control.setAttribute("type", "button");
   control.setAttribute("aria-expanded", String(expanded));
   control.setAttribute("aria-controls", group.getAttribute("id") || "");
@@ -1032,7 +1032,6 @@ function renderFileBar(change, toggleId, bodyId, view) {
     copy.setAttribute("data-mb-copy-label", "Copy path");
     api?.ownDelegate?.(copy);
     copy.setAttribute("data-tip-text", "Copy path");
-    copy.setAttribute("title", "Copy path");
     copy.setAttribute("aria-label", "Copy path");
     const svg = shellIcon("copy");
     if (svg) {
@@ -2098,7 +2097,7 @@ function renderFileSection(change, patch, context, view) {
  * @param {HTMLElement} container
  * @param {Record<string, unknown>} document_
  * @param {DiffViewApi} [api]
- * @param {{showSummary?: boolean, viewFile?: ((options: {released: () => void}) => ReturnType<typeof import("./diff-view-file.js").createViewFileOpener>) | null}} [options]
+ * @param {{showSummary?: boolean, viewFile?: import("./diff-view-file.js").ViewFileOpenerFactory | null}} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
  *   page alone, so this module names it only in types.

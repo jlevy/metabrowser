@@ -72,7 +72,7 @@ export function createFolderRollupControls(mb) {
               key: "folder-rollup-ignored",
               label: "Show ignored",
               checked: state.includeIgnored,
-              title: "Include gitignored files",
+              tip: "Include gitignored files",
             })
           : ""
       }`;

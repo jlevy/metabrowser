@@ -50,6 +50,10 @@ links to the document that covers each in depth.
   — planned, not started: a list of a repository’s pull requests beside Files and Git,
   opening any of them, for a repository opened from a GitHub URL and for an existing
   checkout; starts after 0.12.0 is tagged
+- [Pull-request review from a mirror or an existing checkout](specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md)
+  — designed and measured, not started: an overlay store that borrows an existing
+  checkout’s objects instead of cloning them again, how a checkout is found, what breaks
+  when the checkout changes, and the decisions the user makes first
 - [Opt-in trusted-local file editing](specs/active/plan-2026-07-16-trusted-local-file-editing.md)
 - [Scanning state and recent directories](specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
 - [Quick file finder and search providers](specs/active/plan-2026-07-17-scalable-file-search.md)

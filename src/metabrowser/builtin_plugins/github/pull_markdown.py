@@ -7,9 +7,11 @@ sanitized trust mode: raw HTML in the text is cleaned, never trusted, and GitHub
 :func:`~metabrowser.inert_html.harden` then reduces the HTML to a small allowlist of plain markup. A
 part is ``body``, the description, or ``issue_comment/<id>``, ``review/<id>``, or
 ``review_comment/<id>``. The answer is that HTML with the record's ``fetched_at`` and the
-``part``, so a page drops a render of a record it no longer shows. None of KPress's
-render envelope reaches the page: its asset list names scripts KPress adds for what a
-text contains, and a comment must not choose what the page loads.
+``part``, so a page drops a render of a record it no longer shows, and the manifest of
+KPress's stylesheets, which set the text as they set a Markdown file. That manifest is the
+same for every text, and it is the only part of KPress's render envelope that reaches
+the page: the render's own asset list names scripts KPress adds for what a text contains,
+and a comment must not choose what the page loads.
 
 It reads the record the pull route reads and never runs gh or Git. One part is one
 render of at most one body, which the record bounds, so a page with many comments asks
@@ -78,7 +80,13 @@ def render_part(view: ServedPullView | None, part: str) -> tuple[int, dict[str, 
         return 422, {"error": f"the text could not be rendered: {exc}", "code": "render_failed"}
     # KPress's sanitized mode keeps what a document may load; in the page it must not.
     html = harden(str(rendered["html"]), record.pull.html_url)
-    return 200, {"number": number, "fetched_at": record.fetched_at, "part": part, "html": html}
+    return 200, {
+        "number": number,
+        "fetched_at": record.fetched_at,
+        "part": part,
+        "html": html,
+        "assets": kpress_adapter.document_stylesheets(),
+    }
 
 
 __all__ = ["PART_PATTERN", "part_text", "render_part"]

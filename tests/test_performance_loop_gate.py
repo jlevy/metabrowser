@@ -142,6 +142,8 @@ def test_report_marks_the_bytecode_state_of_a_round_that_records_one(tmp_path: P
         (1, "    bytecode: uncached\n", 7400.8, 7689.4),
         (2, "    bytecode: cached\n", 2445.0, 2400.0),
         (3, "", 900.0, 800.0),
+        (4, '    bytecode: "uncached"\n', 700.0, 600.0),
+        (5, "    bytecode: 'cached'\n", 500.0, 400.0),
     ):
         (tmp_path / f"exp-00{number}-round.md").write_text(
             artifact(number, method, before, after), encoding="utf-8"
@@ -155,6 +157,9 @@ def test_report_marks_the_bytecode_state_of_a_round_that_records_one(tmp_path: P
     ) in report
     assert "| 2,445 | **2,400** (measured with compiled bytecode) | exp-002 |" in report
     assert "| 900 | **800** | exp-003 |" in report
+    # The schema admits either YAML quoting, and a value it admits keeps its mark.
+    assert "| 700 | **600** (measured without compiled bytecode) | exp-004 |" in report
+    assert "| 500 | **400** (measured with compiled bytecode) | exp-005 |" in report
 
 
 def _compare(module: Any, runs: list[dict[str, Any]]) -> int:
@@ -1561,29 +1566,31 @@ def test_compare_requires_a_nonce_for_current_harness_evidence() -> None:
 
 
 # The stress file's header lists each divergence as `#   metric  release -> stress`.
-_DECLARED_DIVERGENCE = re.compile(r"^#   (\w+)  (\d+) -> (\d+)$", re.MULTILINE)
+# A value is whole or fractional, as the budgets are: `metrics.cls` has a maximum of 0.1.
+_BUDGET_VALUE = r"([0-9]+(?:\.[0-9]+)?)"
+_DECLARED_DIVERGENCE = re.compile(rf"^#   (\w+)  {_BUDGET_VALUE} -> {_BUDGET_VALUE}$", re.MULTILINE)
 
 
 def _budget_divergences(release_text: str, stress_text: str) -> list[str]:
-    """Name everything that differs between the two files beyond the header's declarations."""
+    """Name everything that differs between the two files beyond the header's declarations.
+
+    A declared value is compared by number, which is how a TOML ``450`` and a ``450.0``
+    compare too.
+    """
     release = tomllib.loads(release_text)
     stress = tomllib.loads(stress_text)
     release_metrics = release.pop("metrics")
     stress_metrics = stress.pop("metrics")
-    declared = {
-        name: (int(before), int(after))
-        for name, before, after in _DECLARED_DIVERGENCE.findall(stress_text)
-    }
     expected = dict(release_metrics)
     found = [
         f"[{table}]"
         for table in release.keys() | stress.keys()
         if release.get(table) != stress.get(table)
     ]
-    for name, (before, after) in declared.items():
-        if release_metrics.get(name, {}).get("maximum") != before:
+    for name, before, after in _DECLARED_DIVERGENCE.findall(stress_text):
+        if release_metrics.get(name, {}).get("maximum") != float(before):
             found.append(f"{name}: declared release value {before} is not the release gate's")
-        expected[name] = {**release_metrics.get(name, {}), "maximum": after}
+        expected[name] = {**release_metrics.get(name, {}), "maximum": float(after)}
     found += [
         f"metrics.{name}"
         for name in expected.keys() | stress_metrics.keys()
@@ -1630,3 +1637,29 @@ def test_flat_stress_budget_check_names_an_undeclared_divergence_in_either_file(
         release = release.replace(old, new)
 
     assert any(named in divergence for divergence in _budget_divergences(release, stress))
+
+
+@pytest.mark.parametrize(
+    ("declaration", "maximum", "divergences"),
+    [
+        ("0.1 -> 0.2", "0.2", []),
+        # A whole number and a fraction are the same kind of value to a TOML reader.
+        ("0.1 -> 1", "1", []),
+        ("0.1 -> 0.2", "0.3", ["metrics.cls"]),
+        ("0.5 -> 0.2", "0.2", ["cls: declared release value 0.5 is not the release gate's"]),
+    ],
+    ids=["declared", "to-a-whole-number", "file-differs", "stale-release-value"],
+)
+def test_flat_stress_budget_check_reads_a_declared_fractional_maximum(
+    declaration: str, maximum: str, divergences: list[str]
+) -> None:
+    """``metrics.cls`` is 0.1 in both files, and the header's rule has to be able to name it."""
+    release = BUDGETS.read_text()
+    stress = FLAT_STRESS_BUDGETS.read_text()
+    assert "[metrics.cls]" in release and stress.count("maximum = 0.1\n") == 1
+    stress = stress.replace("maximum = 0.1\n", f"maximum = {maximum}\n").replace(
+        "#   first_row_ms  350 -> 450\n",
+        f"#   cls  {declaration}\n#   first_row_ms  350 -> 450\n",
+    )
+
+    assert _budget_divergences(release, stress) == divergences

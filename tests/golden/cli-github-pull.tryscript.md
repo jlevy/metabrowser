@@ -619,6 +619,7 @@ status: 200
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/10/files --show docs/draft.md
 selection: pull_request
 pin: 7a7d6596e515735d244dc1d942463c95851e139c (pull request 10 head)
+tab: files
 pull_request: 10 (draft; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 show: docs/draft.md
 route: /view/g1-ZG9jcw/g1-ZHJhZnQubWQ
@@ -801,6 +802,38 @@ status: 200
 ? 0
 ```
 
+With `--format json`, stdout is that envelope alone, for a tool to parse; the lines
+above report the selection on stderr.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/source/status --format json 2>/dev/null
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "ref": "refs/pull/7/head",
+  "ref_name": "refs/pull/7/head",
+  "name": "demo",
+  "origin": "https://github.com/octo/demo",
+  "location": "[APP_HOME]/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "refreshable": true,
+  "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "ref_on_origin": true,
+  "last_fetch_at": "[TIMESTAMP]",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "[TIMESTAMP]"
+  },
+  "refreshing": false,
+  "stale": true,
+  "pull_request": 7,
+  "selection_state": null,
+  "selection_href": null
+}
+? 0
+```
+
 ## Test: a refresh of the served pull request returns at once
 
 `pull-refresh` starts the pull request’s refresh in the refresh coordinator and answers
@@ -948,7 +981,8 @@ Error: /pull/7: this source serves no pull request
 
 `pull-markdown` renders one text of the record through KPress in its sanitized mode: the
 description (`body`), or one comment, review, or review comment by ID. The answer is the
-record’s fetch time, the part, and its rendered HTML.
+record’s fetch time, the part, its rendered HTML, and the manifest of KPress’s
+stylesheets, the same for every text.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=body'
@@ -961,7 +995,10 @@ status: 200
   "number": 7,
   "fetched_at": "2026-09-17T12:00:00Z",
   "part": "body",
-  "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
+  "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>",
+  "assets": {
+...
+  }
 }
 ? 0
 ```

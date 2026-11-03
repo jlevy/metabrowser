@@ -110,6 +110,73 @@ def test_dotenv_contributes_nothing_outside_the_allowlist(
     assert os.environ.get("METABROWSER_LOG_LEVEL") == "DEBUG"
 
 
+def test_a_refused_name_cannot_act_on_the_terminal_it_is_reported_to(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The names and the directory are the browsed repository's, and a log goes to a terminal.
+
+    Raw, the escape sequences colour or erase the one line that reports the names were
+    ignored, a bidirectional override reorders it, and a quoted key's line break prints a
+    line of the file's choosing. The warning shows each as a visible escape.
+    """
+
+    root = tmp_path / "repo\x1b[2J"
+    root.mkdir()
+    (root / ".env").write_text(
+        "METABROWSER_\x1b[31mRED\x1b[0m=1\n"
+        "'METABROWSER_A\nFORGED: a line of its own'=1\n"
+        "METABROWSER_B\x08ERASED=1\n"
+        "METABROWSER_\u202eBIDI=1\n"
+        "METABROWSER_雪=1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(root)
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.dotenv"):
+        load_dotenv_chain()
+
+    message = next(
+        record.getMessage() for record in caplog.records if "ignored" in record.getMessage()
+    )
+    assert not {"\x1b", "\n", "\x08", "\u202e"} & set(message)
+    assert "repo\\x1b[2J/.env: ignored " in message
+    assert "METABROWSER_\\x1b[31mRED\\x1b[0m" in message
+    assert "METABROWSER_A\\nFORGED: a line of its own" in message
+    assert "METABROWSER_B\\x08ERASED" in message
+    assert "METABROWSER_\\u202eBIDI" in message
+    # A name a terminal only prints is left readable.
+    assert "METABROWSER_雪" in message
+
+
+def test_a_file_that_is_not_text_does_not_stop_the_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A browsed repository could otherwise keep the browser from opening it at all."""
+
+    root = tmp_path / "repo\x1b[2J"
+    root.mkdir()
+    env = root / ".env"
+    env.write_bytes(b"METABROWSER_LOG_LEVEL=DEBUG\n\xff\xfe\n")
+    (root / ".env.local").write_text("METABROWSER_REQUEST_LOG=1\n", encoding="utf-8")
+    monkeypatch.chdir(root)
+    monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
+    monkeypatch.delenv("METABROWSER_REQUEST_LOG", raising=False)
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.dotenv"):
+        parsed = load_dotenv_chain()
+
+    # The other file still loads, and the bad one is not claimed as parsed.
+    assert parsed == [root / ".env.local"]
+    assert os.environ.get("METABROWSER_REQUEST_LOG") == "1"
+    assert "METABROWSER_LOG_LEVEL" not in os.environ
+    message = next(
+        record.getMessage() for record in caplog.records if "skipped" in record.getMessage()
+    )
+    assert "\x1b" not in message
+    assert "repo\\x1b[2J/.env: skipped" in message
+    assert "UnicodeDecodeError" in message
+
+
 def test_every_allowlisted_key_is_one_the_package_reads() -> None:
     """The allowlist does not drift into names nothing consults.
 

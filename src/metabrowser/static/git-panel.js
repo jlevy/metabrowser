@@ -110,15 +110,6 @@
   let state = emptyState();
   /** @type {{cancelPending?: () => void, dispose?: () => void} | null} The mounted commit diff. */
   let commitDiffHandle = null;
-  /**
-   * The commit named by the URL this page was opened with, if any. Read
-   * once: later selections rewrite the URL, so re-reading it would make
-   * the restore chase its own writes.
-   *
-   * @type {{revision: string, file: string} | null}
-   */
-  const routeSelection =
-    window.MetabrowserNavigationRoute?.parseCommit?.(window.location?.pathname ?? "") ?? null;
   /** @type {Map<string, string>} */
   let refColors = new Map();
   /** @type {Map<string, MetabrowserGitCommitDetail>} */
@@ -1838,9 +1829,7 @@
         {
           state: "not_full",
           title: "Full commit ID needed",
-          detail:
-            `A commit’s address uses its full 40- or 64-character ID, not “${revision}”. ` +
-            "Open the commit from the Git tab to get it.",
+          detail: `A commit’s address uses its full 40- or 64-character lowercase ID, not “${revision}”.`,
           retry: false,
         },
         null,
@@ -2399,6 +2388,8 @@
     state = emptyState();
     detailCache.clear();
     missingRevisions.clear();
+    refusedRevision = null;
+    lastSelection = null;
     refColors = new Map();
     started = false;
     window.removeEventListener("popstate", restoreCommitLanding);
@@ -2406,11 +2397,13 @@
   }
 
   /**
-   * Back or Forward landed on a commit's entry. The navigation controller holds no target
-   * for a /commit/ address and leaves the pane to this panel, so without this the file an
-   * in-page open put over the commit would stay on screen under the commit's address. It
-   * restores the commit as opening that address does. A step between entries of the commit
-   * already shown, such as a fragment, changes nothing.
+   * The address names a commit: the page opened on one, or Back or Forward landed on one's
+   * entry. The navigation controller holds no target for a /commit/ address and leaves the
+   * pane to this panel, so without this the file an in-page open put over the commit would
+   * stay on screen under the commit's address. It shows the Git panel and the commit, without
+   * rewriting the route it came from. A step between entries of the commit already shown,
+   * such as a fragment, changes nothing. A failure is reported here rather than rejected, so
+   * a bad revision in a shared link degrades to an ordinary empty panel.
    *
    * @returns {Promise<void>}
    */
@@ -2427,13 +2420,13 @@
     try {
       bridge.activateNavPanel("git");
       await ensureHistory();
-      // The reader may have stepped on while the panel caught up.
-      if (routes.parseCommit(window.location.pathname)?.revision === wanted) {
+      // The panel may have gone, or the reader stepped on, while it caught up.
+      if (started && routes.parseCommit(window.location.pathname)?.revision === wanted) {
         await selectCommit(wanted, { fromRoute: true });
       }
     } catch (error) {
       console.error(
-        "metabrowser git panel: restoring a commit from history failed",
+        "metabrowser git panel: restoring a commit from its address failed",
         { revision: wanted },
         error,
       );
@@ -2477,25 +2470,9 @@
     scrollOwner?.addEventListener("scroll", onTreeScroll, { passive: true });
     window.addEventListener("popstate", restoreCommitLanding);
 
-    if (routeSelection) {
-      // The URL named a commit: show the Git panel and that commit,
-      // without rewriting the route it came from. Its own failure is
-      // reported here rather than rejecting init, so a bad revision in
-      // a shared link degrades to an ordinary empty panel.
-      const wanted = routeSelection.revision;
-      const startedAt = Date.now();
-      try {
-        bridge.activateNavPanel("git");
-        await ensureHistory();
-        await selectCommit(wanted, { fromRoute: true });
-      } catch (error) {
-        console.error(
-          "metabrowser git panel: restoring the commit route failed",
-          { revision: wanted, url: location.pathname, elapsedMs: Date.now() - startedAt },
-          error,
-        );
-      }
-    }
+    // Where the reader is now, not where the page opened: no listener heard a step taken
+    // while the gate above was answering.
+    await restoreCommitLanding();
   }
 
   window.MetabrowserGitPanel = Object.freeze({

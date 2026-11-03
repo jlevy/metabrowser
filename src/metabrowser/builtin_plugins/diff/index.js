@@ -119,14 +119,16 @@ function viewFileHost() {
  * What makes this page's View file opener, or null on a page with no pin.
  *
  * diff-view-file.js loads here, for a pinned page's first diff, and not with the plugin's
- * module tree: a served folder has no controls and never calls it. Measured 2026-11-01
- * in Chrome 152 on a served folder's first diff view: as a static import it was a seventh
- * module, 4,042 bytes transferred and 10,842 decoded, that the plugin could not evaluate
- * without. Without it the view requests the six modules v0.11.0 did. A pin pays one
- * local request before its first diff mounts, and its controls still arrive with that
- * mount. A failed import rejects the render, and the caller says the diff did not load.
+ * module tree: a served folder has no controls and never calls it. As a static import it
+ * was a seventh module on a served folder's first diff view, which the plugin could not
+ * evaluate without. Without it the view requests the six modules v0.11.0 did. Measured
+ * 2026-11-02 in Chrome 152 on a pinned page's first diff: 4,135 bytes transferred and
+ * 11,161 decoded. A pin pays that one local request, which render starts beside the diff's
+ * own, and in that measurement it finished before the comparison did. Its controls still
+ * arrive with the mount. A failed import is the view's to report: render says the diff did
+ * not load, and logs which request failed.
  *
- * @returns {Promise<((options: {released: () => void}) => ReturnType<typeof import("./diff-view-file.js").createViewFileOpener>) | null>}
+ * @returns {Promise<import("./diff-view-file.js").ViewFileOpenerFactory | null>}
  */
 async function viewFileOpener() {
   const host = viewFileHost();
@@ -156,6 +158,11 @@ mb.registerView("diff", "diff", {
     // A revision is a commit against its first parent; a comparison names both ends.
     const revision = ctx.comparison ? comparisonKey(ctx.comparison) : ctx.revision || "";
     const startedAt = Date.now();
+    // Asked for now, so its request overlaps the diff's own instead of following it. Its
+    // failure waits for the mount below, and may never reach it: a diff that fails first
+    // answers for itself, and the rejection still needs a handler.
+    const opener = viewFileOpener();
+    void opener.catch(() => {});
     let payload;
     try {
       payload = revision
@@ -199,12 +206,28 @@ mb.registerView("diff", "diff", {
     if (!result.ok) {
       return renderFailure(container, `This diff document is not valid: ${result.error}`);
     }
+    let viewFile;
+    try {
+      viewFile = await opener;
+    } catch (error) {
+      console.error(
+        "metabrowser diff: view load failed",
+        {
+          hook: "diff/view-file",
+          revision: revision || undefined,
+          path: ctx.path || undefined,
+          elapsedMs: Date.now() - startedAt,
+        },
+        error,
+      );
+      return renderFailure(container, "Could not load this diff. Refresh the page to try again.");
+    }
     // A commit comparison already carries these totals beside its revision,
     // author, and age. Direct diff documents and two-endpoint comparisons own
     // their aggregate summary.
     return mountDiffView(container, result.document, mb, {
       showSummary: !ctx.revision,
-      viewFile: await viewFileOpener(),
+      viewFile,
     });
   },
 });
