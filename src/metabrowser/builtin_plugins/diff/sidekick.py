@@ -35,6 +35,7 @@ import gzip
 import hashlib
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
 from starlette.responses import JSONResponse, Response
@@ -225,7 +226,9 @@ async def document_handler(request: Request) -> JSONResponse:
     return JSONResponse(dump_document(document))
 
 
-def _kept_key(location: GitLocation, intent: dict[str, Any], store: str) -> tuple[str, ...] | None:
+def comparison_cache_key(
+    location: GitLocation, intent: dict[str, Any], store: str
+) -> tuple[str, ...] | None:
     """The comparison's key in memory, or None for one whose answer can change.
 
     A store, named by its Git directory and its token *store*, and a request whose every
@@ -284,7 +287,15 @@ async def comparison_handler(request: Request) -> Response:
     return await comparison_at(request, session_git_location())
 
 
-async def comparison_at(request: Request, location: GitLocation) -> Response:
+async def comparison_at(
+    request: Request,
+    location: GitLocation,
+    *,
+    manifest_loader: Callable[
+        [GitDiffSource, dict[str, Any], tuple[str, ...]], Awaitable[ResolvedManifest]
+    ]
+    | None = None,
+) -> Response:
     """A Git comparison at the active subject's location, as a ChangeSetDocument.
 
     ``?revision=<rev>`` compares a commit against its first parent — the
@@ -335,7 +346,7 @@ async def comparison_at(request: Request, location: GitLocation) -> Response:
         if isinstance(location.target, RepositoryStoreTarget)
         else ""
     )
-    kept_key = _kept_key(location, intent, store)
+    kept_key = comparison_cache_key(location, intent, store)
     headers: dict[str, str] = {}
     # A validator this process did not issue is honored only once the store has answered
     # for the commits, so a store holding neither answers its plain refusal.
@@ -378,6 +389,8 @@ async def comparison_at(request: Request, location: GitLocation) -> Response:
     source = GitDiffSource(context.command_location())
 
     async def listed() -> ResolvedManifest:
+        if manifest_loader is not None and kept_key is not None:
+            return await manifest_loader(source, intent, kept_key)
         resolved = await source.resolve(intent)
         return ResolvedManifest(resolved, await source.manifest(resolved))
 

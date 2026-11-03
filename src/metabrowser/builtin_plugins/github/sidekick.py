@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
+from functools import partial
 from typing import TYPE_CHECKING, Final
 
 from starlette.responses import JSONResponse, Response
@@ -63,6 +65,49 @@ async def pull_handler(request: Request) -> Response:
     if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=headers)
     return JSONResponse(dict(envelope), headers=headers)
+
+
+async def pull_comparison_handler(request: Request) -> Response:
+    """The selected PR's comparison, from its trusted store and no network."""
+    from metabrowser.builtin_plugins.diff.sidekick import comparison_at
+    from metabrowser.builtin_plugins.github.pull_manifest import load_pull_manifest
+    from metabrowser.builtin_plugins.github.pull_route import served_pull_view
+    from metabrowser.git.process import GitLocation, RepositoryStoreTarget
+
+    view = served_pull_view(mirror_session(request.app), get_source_session().subject)
+    if view is None or view.pin is None:
+        return JSONResponse(
+            {"error": "this server serves no pull request", "code": "no_pull_request"},
+            status_code=409,
+            headers=_NO_STORE,
+        )
+    if request.query_params.get("number", "") != str(view.served.number):
+        return JSONResponse(
+            {"error": "this pull request is not served here", "code": "no_pull_request"},
+            status_code=404,
+            headers=_NO_STORE,
+        )
+    query = request.query_params
+    if (
+        query.get("base_policy") != "merge_base"
+        or query.get("revision")
+        or any(
+            re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", query.get(name, "")) is None
+            for name in ("left", "right")
+        )
+    ):
+        return JSONResponse(
+            {"error": "name two full commit IDs and merge_base", "code": "invalid_comparison"},
+            status_code=400,
+            headers=_NO_STORE,
+        )
+    published = view.served.published
+    location = GitLocation.revision(
+        RepositoryStoreTarget(published.git_dir, published.object_format), view.pin
+    )
+    return await comparison_at(
+        request, location, manifest_loader=partial(load_pull_manifest, published)
+    )
 
 
 async def pull_markdown_handler(request: Request) -> JSONResponse:
@@ -144,5 +189,6 @@ __all__ = [
     "PULL_ROUTE",
     "pull_handler",
     "pull_markdown_handler",
+    "pull_comparison_handler",
     "pull_refresh_handler",
 ]

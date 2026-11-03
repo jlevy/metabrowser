@@ -165,6 +165,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_source_refs.py \
 	tests/test_mirror_heading_session.py \
 	tests/test_diff_comparison_cache.py \
+	tests/test_github_pull_manifests.py \
 	tests/test_admitted_git_gate.py
 
 test-admitted-git:

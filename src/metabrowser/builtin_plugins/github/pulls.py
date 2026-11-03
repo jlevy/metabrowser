@@ -49,6 +49,7 @@ from metabrowser.builtin_plugins.github.gh import (
     gh_account,
     gh_api,
 )
+from metabrowser.builtin_plugins.github.pull_manifest import prepare_pull_manifest
 from metabrowser.builtin_plugins.github.pull_record import (
     API_PAGE_SIZE,
     MAX_BODY_BYTES,
@@ -790,6 +791,7 @@ async def _comparison(
 async def _write(published: PublishedSource, record: PullRecord) -> PullRecord:
     try:
         final = fit_record(record)
+        await prepare_pull_manifest(published, final)
         await asyncio.to_thread(write_pull_record, published.home, published.slug, final)
     except RecordTooLargeError as exc:
         raise PullDataError("record_too_large", str(exc)) from exc

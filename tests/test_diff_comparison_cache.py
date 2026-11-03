@@ -289,7 +289,7 @@ def test_a_kept_answer_is_the_bytes_of_a_computed_one(
             zipped = await client.get(_route(*two), headers={"accept-encoding": "gzip"})
             assert zipped.headers["content-encoding"] == "gzip"
             assert zipped.content == plain.content, "httpx decodes it; the JSON must be the same"
-            monkeypatch.setattr(sidekick, "_kept_key", lambda *_args: None)
+            monkeypatch.setattr(sidekick, "comparison_cache_key", lambda *_args: None)
             computed = await client.get(_route(*two), headers={"accept-encoding": "identity"})
             assert "etag" not in computed.headers
             assert computed.content == plain.content

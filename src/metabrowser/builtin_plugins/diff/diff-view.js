@@ -2621,6 +2621,7 @@ export function mountDiffView(container, document_, api, options = {}) {
       ? new ResizeObserver((entries) => {
           // Before this frame paints: a height that changed does not show a place that moved.
           holdPlace(view);
+          view.notifyCurrentFile();
           const width = entries.at(-1)?.contentRect.width ?? 0;
           if (width === observedWidth) {
             return;

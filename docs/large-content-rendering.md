@@ -250,6 +250,15 @@ artificially small file-size category.
 The fixture and retained-heap evidence live in the
 [diff intraline bound benchmark](../explorations/diff-intraline/).
 
+**PR manifests are prepared at fetch.** A PR refresh retains its immutable comparison
+manifest in the GitHub plugin’s bounded bank beside its repository store.
+A fresh server adopts a validated matching entry after resolving its commits, then uses
+the same in-memory comparison cache for the page and deferred files.
+Missing, stale, or corrupt entries are recomputed and healed; a cache admission bound
+never truncates the answer served.
+[Pull-request records](project/architecture/arch-repository-sources-and-provider-mirrors.md#pull-request-records)
+holds the storage and identity contract.
+
 **A large comparison hydrates what the reader is on.** A file past a comparison’s first
 page is a bar until it is reached.
 `createHydrationScheduler` in `builtin_plugins/diff/diff-view.js` asks for one file at a
