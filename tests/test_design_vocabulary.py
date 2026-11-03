@@ -1394,6 +1394,11 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert "github-pull-browse" not in page and '"Browse code"' in page
     assert page.count('class: "github-pull-text-action"') == 1
     assert '"github-pull-file github-pull-text-action"' in page
+    # A <button> is an atomic inline box whatever its display, so the link and the plain
+    # path are one too: a wrapped path then puts the badge after it on the next line in every
+    # form, where the link alone let it follow the text. Measured in Chrome on a 685 px card
+    # head: before, the link's head was 45 px and the button's 63 px; after, both 63 px.
+    assert github[".github-pull-file"]["display"] == "inline-block"
     # A hunk is the user's code, at the chrome-context mono size, in the app's mono face.
     assert github[".github-pull-hunk"]["font-family"] == "var(--font-mono)"
     assert github[".github-pull-hunk"]["font-size"] == "var(--mono-block-font-size)"

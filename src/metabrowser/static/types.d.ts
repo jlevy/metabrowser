@@ -2356,14 +2356,16 @@ declare global {
 
   /**
    * How asking for a missing commit's fetch ended: the status then, why it could not be
-   * asked for or followed, whether a fetch of the mirror's branches and tags ran, and
-   * whether anything ran that could have brought the commit.
+   * asked for or followed, whether a fetch of the mirror's branches and tags ran,
+   * whether anything ran that could have brought the commit, and whether a full queue
+   * refused the attended pull request's refresh, which alone brings a newer head of it.
    */
   type MetabrowserSourceFetchEnd = {
     status: MetabrowserSourceStatus | null;
     error: string | null;
     fetched: boolean;
     waited: boolean;
+    pullRefused: boolean;
   };
 
   /** The commit view's side of opening a commit the mirror lacks. */
@@ -2434,6 +2436,7 @@ declare global {
         nowMs: number;
         error?: string | null;
         fetched?: boolean;
+        pullRefused?: boolean;
       },
     ): MetabrowserMissingCommitModel;
     mount(element: HTMLElement): MetabrowserSourceFreshnessController;

@@ -115,6 +115,20 @@ type RefreshStart = Literal["started", "joined", "too_many"]
 type CommitFetch = Literal["started", "joined", "fresh"]
 
 
+@dataclass(frozen=True, slots=True)
+class CommitFetchAnswer:
+    """How a request for the fetch a missing commit waits for was answered.
+
+    ``refresh`` is the mirror's fetch. ``pull_refresh`` is the attended pull request's
+    refresh, the only one that brings a newer head of it, as
+    :meth:`MirrorSession.request_pull_refresh` answered it, or ``None`` when none was asked
+    for: no pull request is attended, or its record was fresh and the request was no retry.
+    """
+
+    refresh: CommitFetch
+    pull_refresh: PullJobStart | None
+
+
 class SelectionError(Exception):
     """A pin selection could not be served. ``str()`` names no path."""
 
@@ -493,7 +507,8 @@ class StoreTurn:
     first. *goes_first* is asked each time a turn is given, not when a job queues, because
     the attended pull request can change while its job waits. Those that go first wait in
     the order they asked, so neither starves the other, and after
-    :data:`MAX_FIRST_IN_A_ROW` of them the oldest other job goes, so they starve nothing.
+    :data:`MAX_FIRST_IN_A_ROW` of them in a row ahead of a waiting job, the oldest other job
+    goes, so they starve nothing. One that went when nothing else waited is not counted.
     """
 
     def __init__(self) -> None:
@@ -536,7 +551,10 @@ class StoreTurn:
         chosen = first if first is not None and first_is_due else other
         if chosen is None:
             return
-        self._first_in_a_row = self._first_in_a_row + 1 if chosen is first else 0
+        # Only a first that went ahead of a waiting job counts. One that went ahead of nothing
+        # kept nobody waiting, and counting it would give the next contention to the other.
+        went_ahead = chosen is first and other is not None
+        self._first_in_a_row = self._first_in_a_row + 1 if went_ahead else 0
         self._waiting.remove(chosen)
         self._taken = True
         chosen.turn.set_result(None)
@@ -822,7 +840,7 @@ class MirrorSession:
             self.request_companion_refresh()
         return started
 
-    def request_commit_fetch(self, *, retry: bool) -> CommitFetch:
+    def request_commit_fetch(self, *, retry: bool) -> CommitFetchAnswer:
         """Ask for the fetch a commit the mirror lacks waits for.
 
         It is the fetch a pin by commit ID waits for: the mirror's own, of branches and
@@ -834,15 +852,17 @@ class MirrorSession:
         served content can send a reader to any address, so that request fetches only
         what is older than :data:`FRESHNESS_WINDOW_S`: ``"fresh"`` says the mirror was
         fetched inside the window and no fetch of it was started. *retry* is a reader's
-        own click, and always fetches.
+        own click, and always fetches. The answer says how the pull request's refresh was
+        answered too, since a full queue can refuse it while the mirror is fetched.
         """
 
         now = _now_utc()
+        pull_refresh: PullJobStart | None = None
         if retry or self._companion_stale(now):
-            self.request_companion_refresh()
+            pull_refresh = self.request_companion_refresh()
         if retry or self._mirror_stale(now) or self._coordinator.running(self.mirror.key):
-            return self._refresh_mirror(companion_stale=False)
-        return "fresh"
+            return CommitFetchAnswer(self._refresh_mirror(companion_stale=False), pull_refresh)
+        return CommitFetchAnswer("fresh", pull_refresh)
 
     def request_companion_refresh(self) -> PullJobStart | None:
         """Start or join the attended pull request's refresh, if there is one."""
@@ -1111,7 +1131,10 @@ class MirrorSession:
             if len(self._misses) >= MAX_REMEMBERED_MISSES:
                 self._misses.pop(next(iter(self._misses)))
             seen = self._misses[key] = _Miss(self._refreshes_ended, self._fetches_ran)
-        started = self._refresh_mirror(companion_stale=False)
+        # While the pull request's job is refused, a fetch of the mirror that ran since the
+        # miss has brought all a fetch of it can, so only that job is asked for again.
+        mirror_done = seen.pull_job_refused and seen.fetches_ran < self._fetches_ran
+        started = "joined" if mirror_done else self._refresh_mirror(companion_stale=False)
         # A commit the mirror lacks may be a newer one of the attended pull request, which
         # only that refresh fetches; a branch or tag never is. Another number may be attended
         # by the time its job ends, so the miss remembers the job. One a full queue refused
@@ -1121,6 +1144,8 @@ class MirrorSession:
             seen.pull_job_refused = asked == "too_many"
             if not seen.pull_job_refused:
                 seen.pull_jobs.add(self.companion.key)
+            if mirror_done and asked == "started":
+                started = "started"
         return SelectionPendingError(started)
 
 
@@ -1252,6 +1277,7 @@ __all__ = [
     "UNSERVED_FRESHNESS",
     "AmbiguousSelectionError",
     "CommitFetch",
+    "CommitFetchAnswer",
     "CompanionRefresh",
     "FreshnessFields",
     "InvalidSelectionError",

@@ -184,7 +184,11 @@
 .github-pull-text .kpress-prose > :last-child {
   margin-block-end: 0;
 }
+/* An atomic box in every form. Its button form, which moves the pin, is one whatever its
+   display, so a path that wraps puts what follows it on the next line; the link and the
+   plain path do the same, and the card head reads alike in all three. */
 .github-pull-file {
+  display: inline-block;
   font-size: var(--nav-font-size);
   font-weight: var(--weight-bold);
   overflow-wrap: anywhere;
