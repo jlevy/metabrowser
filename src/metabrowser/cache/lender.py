@@ -733,8 +733,50 @@ class Sweep:
     held: tuple[str, ...]
 
 
-async def sweep_dangling_refs(target: RepositoryStoreTarget, lock_fd: int) -> Sweep:
-    """Delete every ref whose object the store cannot read.
+_UNLENT: Final = "the objects of the checkout this mirror borrows from could not be read"
+
+
+def collection_doubt(lender: StoreLender, oids: list[str]) -> str | None:
+    """Why the lender may still hold *oids*, which the store cannot read; ``None`` when not.
+
+    Git answers ``missing`` alike for an object the checkout collected and for one it holds
+    and cannot lend now: a loose file whose mode a permission blip changed, or a pack that
+    cannot be read, which a lender with no ref files (reftable) gives no tip to reveal. A
+    ref is deleted only for the first. So an object counts as gone only when no loose file
+    of it is there, whatever its mode, and every file in the lender's pack directory can be
+    read, since Git then read every index and found none naming it. Anything else, a loose
+    directory that cannot be searched or more pack entries than :data:`_MAX_PACK_ENTRIES`
+    among them, is doubt. One ``lstat`` per object and one scan of the pack directory, run
+    only when a sweep found something to delete. Blocking.
+    """
+
+    objects = Path(lender.objects)
+    for oid in oids:
+        try:
+            os.lstat(objects / oid[:2] / oid[2:])
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return f"{_UNLENT}: a directory of its loose objects cannot be searched"
+        return f"{_UNLENT}: it holds an object a ref of the mirror names, and cannot lend it"
+    try:
+        with os.scandir(objects / "pack") as entries:
+            for count, entry in enumerate(entries):
+                if count >= _MAX_PACK_ENTRIES:
+                    return f"{_UNLENT}: its pack directory has too many entries to check"
+                if not os.access(entry.path, os.R_OK):
+                    return f"{_UNLENT}: a pack of it cannot be read"
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return f"{_UNLENT}: its pack directory cannot be read"
+    return None
+
+
+async def sweep_dangling_refs(
+    target: RepositoryStoreTarget, lock_fd: int, lender: StoreLender
+) -> Sweep:
+    """Delete every ref whose object the store cannot read and the lender has shown gone.
 
     Git's connectivity check walks every ref and dies on ``bad object``, so one dangling ref
     wedges a fetch that neither brings it nor prunes it: a pull request's fetch on any such
@@ -742,6 +784,10 @@ async def sweep_dangling_refs(target: RepositoryStoreTarget, lock_fd: int) -> Sw
     makes one by collecting objects it no longer refers to, so an overlay is swept before each
     fetch, holding the fetch lock (*lock_fd*). A ref the origin still has comes back with the
     next fetch of it. Measured 2026-11-02: 0.12 s on a replica, 0.25 s at 1,632 refs.
+
+    A ref is deleted only when :func:`collection_doubt` finds no sign that *lender* still
+    holds its object; otherwise nothing is deleted and :class:`LenderGoneError` is raised,
+    since a fetch would fail on the same unreadable objects.
 
     The commits the surviving refs name are what the store already has from the origin,
     and the fetch offers them too (:func:`negotiation_tip_args`).
@@ -762,6 +808,10 @@ async def sweep_dangling_refs(target: RepositoryStoreTarget, lock_fd: int) -> Sw
     kinds = dict(await _object_kinds(target, sorted({oid for oid, _ref in rows})))
     dangling = sorted(ref for oid, ref in rows if kinds.get(oid, "missing") == "missing")
     if dangling:
+        gone = sorted({oid for oid, _ref in rows if kinds.get(oid, "missing") == "missing"})
+        doubt = await asyncio.to_thread(collection_doubt, lender, gone)
+        if doubt is not None:
+            raise LenderGoneError(doubt)
         await run_git(
             ["update-ref", "--no-deref", "--stdin"],
             target=target,
@@ -840,9 +890,11 @@ async def prepare_overlay_fetch(
     present but unreadable answers ``missing`` for all of them. So the lender's own
     remote-tracking tips are read through the store first, and when it names some and
     the store can read none, the lender is refused the same way and the refs are left.
-    Then a boundary the checkout no longer has is dropped, the store is swept, and the
-    arguments that keep the fetch to what the store lacks are returned. Raises
-    :class:`LenderGoneError`, or a ``GitError`` when the store cannot be read.
+    Then a boundary the checkout no longer has is dropped, the store is swept, which
+    refuses the same way when the lender may still hold what a dangling ref names
+    (:func:`collection_doubt`), and the arguments that keep the fetch to what the store
+    lacks are returned. Raises :class:`LenderGoneError`, or a ``GitError`` when the store
+    cannot be read.
     """
 
     problem = await asyncio.to_thread(lender_problem, lender)
@@ -855,13 +907,12 @@ async def prepare_overlay_fetch(
         lent = [oid for oid in tips if kinds.get(oid) == "commit"]
         if not lent:
             raise LenderGoneError(
-                "the objects of the checkout this mirror borrows from could not be read: "
-                "none of the commits its own remote-tracking refs name can be read through "
-                "the store"
+                f"{_UNLENT}: none of the commits its own remote-tracking refs name can be "
+                "read through the store"
             )
     if await asyncio.to_thread(drop_stale_boundary, target.git_dir, lender):
         log.debug("dropped the store's shallow boundary: the checkout no longer has one")
-    swept = await sweep_dangling_refs(target, lock_fd)
+    swept = await sweep_dangling_refs(target, lock_fd, lender)
     if swept.dangling:
         log.debug("swept refs whose objects the checkout no longer has: %s", swept.dangling[:8])
     return OverlayFetch(_tip_args(lent, swept.held), swept.dangling)
@@ -896,6 +947,7 @@ __all__ = [
     "LenderGoneError",
     "OverlayFetch",
     "Sweep",
+    "collection_doubt",
     "drop_stale_boundary",
     "lender_present",
     "lender_problem",

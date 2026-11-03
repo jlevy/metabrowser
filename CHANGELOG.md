@@ -151,9 +151,13 @@ Reviewing beside a checkout:
 
 - A mirror whose checkout cannot be read does not sweep its refs: a present but
   unreadable checkout answers `lender_missing` and the refs stay.
-  A served `refs/pull/<n>/head` the sweep removed, because the checkout collected its
-  commits, is unobserved in `/api/source/status` (`ref_on_origin: null`) rather than
-  reported as removed by the origin, which keeps every pull-request head.
+  A ref is swept only when the checkout shows its commit gone, so one loose object or
+  one pack it cannot read now, or a checkout whose refs no file holds, as reftable keeps
+  them, leaves every ref in place rather than deleting a live `refs/pull/<n>/head` or
+  the default branch. A served `refs/pull/<n>/head` the sweep removed, because the
+  checkout collected its commits, is unobserved in `/api/source/status`
+  (`ref_on_origin: null`) rather than reported as removed by the origin, which keeps
+  every pull-request head.
   A boundary the mirror owns is dropped once the checkout has no shallow file, so
   `shallow` turns `false` when the checkout is deepened or unshallowed.
 

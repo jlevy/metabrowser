@@ -436,6 +436,12 @@ The design and its experiments are in
    So before each fetch into an overlay, under the fetch lock, `for-each-ref` and one
    `cat-file --batch-check` find such refs and `update-ref` deletes them.
    A ref the origin still has comes back with the fetch.
+   Git answers `missing` alike for an object the lender collected and one it holds and
+   cannot lend now, so a ref is deleted only when the lender shows its object gone: no
+   loose file of it, whatever its mode, and every file of its pack directory readable
+   (`collection_doubt`). Otherwise nothing is deleted and the fetch is refused as
+   `lender_missing`, which also covers a lender whose refs no file holds, as reftable
+   keeps them, so that the probe of its tips through the store has nothing to read.
 7. **The record and the file agree.** `store.yml`’s optional `lender` names the objects
    directory, the checkout, and the remote.
    Absent means `full`. A record and an alternates file that disagree is `damaged`,

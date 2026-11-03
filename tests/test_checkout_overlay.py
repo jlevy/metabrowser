@@ -1577,6 +1577,91 @@ def test_an_unreadable_lender_keeps_its_refs_rather_than_being_swept(linear: _St
     assert linear.store_refs() == before
 
 
+def _loose_object(checkout: Path, oid: str) -> Path:
+    return checkout / ".git" / "objects" / oid[:2] / oid[2:]
+
+
+def _one_loose_object_unreadable(stand: _Stand) -> tuple[Path, list[Path]]:
+    """The checkout fetched the pull request itself, and that one loose commit is unreadable.
+
+    Its other tips still read, so the probe of them through the store passes, and only the
+    pull request's head, whose commit the store borrows, reads as missing.
+    """
+
+    replica = stand.replica
+    checkout = clone_checkout(replica, stand.tmp_path / "checkout")
+    pinned_git(checkout, "remote", "set-url", "origin", replica.url)
+    pinned_git(checkout, "fetch", "-q", "origin", "+refs/pull/1/head:refs/remotes/origin/seen")
+    pinned_git(checkout, "remote", "set-url", "origin", REMOTE_SPELLING)
+    stand.pull("--checkout", str(checkout))
+    assert stand.store_git("count-objects") == "0 objects, 0 kilobytes"
+    head = _loose_object(checkout, replica["H1"])
+    assert head.is_file()
+    return checkout, [head]
+
+
+def _no_file_tips_and_unreadable_packs(stand: _Stand) -> tuple[Path, list[Path]]:
+    """A lender whose refs no file holds, as reftable keeps them, and whose packs cannot be read.
+
+    ``negotiation_tips`` then has nothing to probe the lender with.
+    """
+
+    checkout = clone_checkout(stand.replica, stand.tmp_path / "checkout")
+    stand.pull("--checkout", str(checkout))
+    git_dir = checkout / ".git"
+    (git_dir / "packed-refs").unlink(missing_ok=True)
+    shutil.rmtree(git_dir / "refs" / "remotes", ignore_errors=True)
+    lender = StoreLender(objects=str(git_dir / "objects"), checkout=str(checkout), remote="origin")
+    assert negotiation_tips(lender) == ()
+    return checkout, sorted((git_dir / "objects" / "pack").iterdir())
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads everything")
+@pytest.mark.parametrize(
+    "unreadable",
+    [_one_loose_object_unreadable, _no_file_tips_and_unreadable_packs],
+    ids=["one-loose-object", "no-file-tips"],
+)
+def test_a_ref_is_swept_only_when_its_object_is_shown_to_be_gone(
+    linear: _Stand, unreadable: Callable[[_Stand], tuple[Path, list[Path]]]
+) -> None:
+    """Review D2: an object the lender holds but cannot lend now is no collected object.
+
+    A permission blip on one loose object, or a lender whose tips no file names, passed the
+    probe of the lender's tips, and the sweep deleted a live ref: GitHub keeps every
+    ``refs/pull/<n>/head``, and nothing but the next fetch of it brought it back. A ref is
+    swept only when its object is in no loose file and every pack of the lender reads.
+    """
+
+    checkout, files = unreadable(linear)
+    before = linear.store_refs()
+    assert "refs/pull/1/head" in before and "refs/remotes/origin/trunk" in before
+    try:
+        for path in files:
+            path.chmod(0)
+        update = asyncio.run(
+            update_store(linear.home, linear.store.parent.name, remote_url=linear.replica.url)
+        )
+        assert update.outcome is RefreshOutcome.lender_missing, update
+        assert update.swept == ()
+        assert linear.store_refs() == before
+        published = asyncio.run(_inspect(linear))
+        with pytest.raises(pull_refs.PullRefError) as raised:
+            asyncio.run(pull_refs.fetch_pull_head(published, 1))
+        assert raised.value.state == "lender_missing"
+        assert "could not be read" in str(raised.value)
+        assert linear.store_refs() == before
+    finally:
+        for path in files:
+            path.chmod(0o444)
+    update = asyncio.run(
+        update_store(linear.home, linear.store.parent.name, remote_url=linear.replica.url)
+    )
+    assert update.outcome is RefreshOutcome.succeeded, update
+    assert linear.store_refs()["refs/pull/1/head"] == before["refs/pull/1/head"]
+    assert checkout.is_dir()
+
+
 def test_another_repository_at_the_lenders_path_is_refused_and_the_flag_replaces_it(
     linear: _Stand, merge_heavy_replica: Replica
 ) -> None:
