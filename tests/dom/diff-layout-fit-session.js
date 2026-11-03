@@ -103,6 +103,11 @@ class PageElement {
     );
   }
 
+  /** The diff's root fills its container's content box, whatever padding that has. */
+  getBoundingClientRect() {
+    return { width: this.parentNode?.contentWidth ?? 0 };
+  }
+
   closest(selector) {
     for (let node = this; node; node = node.parentNode) {
       if (selector.startsWith(".") && node.classList.contains(selector.slice(1))) {
@@ -151,6 +156,12 @@ class WidthObserver {
     this.target = target;
   }
 
+  unobserve(target) {
+    if (this.target === target) {
+      this.target = null;
+    }
+  }
+
   disconnect() {
     this.target = null;
   }
@@ -190,8 +201,8 @@ async function main() {
   );
   const document_ = corpus.cases.find((entry) => entry.name === "modified-with-heading").document;
 
-  /** A mount in a container this wide, under this preference. */
-  function mount(clientWidth, preference) {
+  /** A mount where the root would be this wide, under this preference, in this padding. */
+  function mount(contentWidth, preference, padding = 0) {
     const writes = [];
     let change = null;
     let spec = null;
@@ -218,7 +229,8 @@ async function main() {
       },
     };
     const host = new PageElement("div");
-    host.clientWidth = clientWidth;
+    host.contentWidth = contentWidth;
+    host.clientWidth = contentWidth + padding;
     const built = splitRowsBuilt;
     const handle = view.mountDiffView(host, document_, api);
     const observer = WidthObserver.all.at(-1);
@@ -302,10 +314,63 @@ async function main() {
   await unified.width(1049);
   say("wide again: nothing done", unified);
 
+  // A browser's first measure is wider than the root will rest at when the draw brings the
+  // pane's scrollbar, or the container has padding. Each of these has one layout from the start.
+  const scrollbar = mount(628);
+  say(
+    "opened 11 px from the limit, the scrollbar yet to come: Unified from the first draw",
+    scrollbar,
+  );
+  await scrollbar.width(617);
+  say("the draw brought the scrollbar: nothing to change, and no Split built", scrollbar);
+
+  const short = mount(630);
+  say("opened within a scrollbar of the limit: Unified", short);
+  await short.width(630);
+  say("no scrollbar came: it stays, as a pane that narrowed to this width does", short);
+
+  const padded = mount(600, undefined, 48);
+  say("a host's padding is not the diff's width: Unified from the first draw", padded);
+  await padded.width(600);
+  say("its first report agrees", padded);
+
+  const justEnough = mount(638);
+  say("638 px opens on Split, with room for a scrollbar", justEnough);
+  await justEnough.width(627);
+  say("the scrollbar takes 11 px: Split still fits, and nothing changes", justEnough);
+
+  // Mounted before it is placed, as a commit's stage is: nothing is known until a report.
+  // The mounts above finish their work first, or their Split rows would count as this one's.
+  await settle();
   const unlaid = mount(0);
-  say("a container not laid out yet: Split", unlaid);
-  await unlaid.width(440);
-  say("its first report is narrow: Unified", unlaid);
+  say("a container not laid out yet draws nothing", unlaid);
+  unlaid.observer.report(0);
+  say("a report with no width decides nothing", unlaid);
+  await settle();
+  say("work that finishes while it waits draws nothing either", unlaid);
+  unlaid.observer.report(600);
+  say("its first width draws in the report, before a paint: Unified, and no Split", unlaid);
+  assert(unlaid.observer.target === null, "the draw's own height would be a loop error");
+  await nextTask();
+  assert(unlaid.observer.target !== null, "the root was not watched again");
+  await unlaid.width(600);
+  say("watched again, the same width changes nothing", unlaid);
+  await unlaid.width(900);
+  say("a later width is a fit like any other", unlaid);
+
+  const unlaidWide = mount(0);
+  unlaidWide.observer.report(1049);
+  say("not laid out, then wide: Split, drawn once", unlaidWide);
+
+  const unlaidTight = mount(0);
+  unlaidTight.observer.report(628);
+  say("not laid out, then within a scrollbar of the limit: Unified", unlaidTight);
+
+  const unlaidGone = mount(0);
+  unlaidGone.observer.report(900);
+  unlaidGone.handle.dispose();
+  await nextTask();
+  assert(unlaidGone.observer.target === null, "dispose left the root to be watched again");
 
   // Height changes report too, and draw nothing: only a new width is looked at.
   const tall = mount(900);
@@ -328,6 +393,8 @@ async function main() {
   globalThis.getComputedStyle = () => ({ fontSize: "14px" });
   const built_ = (page) => JSON.stringify(page.host.tree()).replace(/diff-file-\w+-\d+/g, "id");
   assert(built_(measured) === built_(bare), "a wide pane drew something a bare mount does not");
+  await settle();
+  assert(built_(unlaidWide) === built_(bare), "drawn at its first width, a wide pane differs");
 
   // Disposal: the observer lets go, and a fit still waiting does nothing.
   const leaving = mount(900);
@@ -351,6 +418,10 @@ async function main() {
     ([width, was]) =>
       `${width} px, ${was ? "was narrow" : "had room"}: ${view.tooNarrowForSplit(width, 14, was) ? "too narrow" : "fits"}`,
   );
+  const opening = [0, 617, 618, 637, 638].map(
+    (width) =>
+      `opened at ${width} px: ${view.opensTooNarrowForSplit(width, 14) ? "too narrow" : "fits"}`,
+  );
   const scale = [12, 14, 16, 20].map((font) => {
     let width = 1;
     while (view.tooNarrowForSplit(width, font, false)) {
@@ -364,6 +435,7 @@ async function main() {
       {
         steps,
         limit: pure,
+        opening,
         byTextSize: scale,
         drawn: [
           ["split", false, false],

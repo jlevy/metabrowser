@@ -137,6 +137,13 @@ def test_the_session_plays_the_recorded_inert_render() -> None:
         "text": "Install",
     }
     assert transcript["scrolled"]["active"] == "#user-content-constructor"
+    # The app's tooltip ignores everything inside a rendered document's host, so a data-tip-text
+    # here would show nothing.
+    assert transcript["toggleNamed"] == {
+        "accessible": "Table of contents",
+        "tooltip": "Table of contents",
+        "appTooltip": None,
+    }
     assert transcript["enhancerRoot"] == [
         {"className": "kpress-prose kpress-long-text", "tocLinks": 0, "links": 3}
     ]

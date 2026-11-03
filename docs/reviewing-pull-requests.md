@@ -71,7 +71,7 @@ other users can read.
 A clone that fails stops the command with an `Error:` line and exit status 1. A pull
 request that cannot be read does not: `metab` serves the default branch, exits 0 in the
 one-shot modes, and says why on the `Pull request:` line.
-The page says `No data for this pull request is cached yet.`, gives the reason, and
+The page says `This pull request has not been fetched yet.`, gives the reason, and
 offers **Fetch**. Once the cause is fixed, run the command again.
 
 | Name | What it means | What to do |
@@ -130,7 +130,7 @@ repository above and about 7 s on `pallets/click`, and one already cached about 
 ## Staying Current
 
 The page shows how old the record is and which account read it
-(`Fetched 3 min ago by gh:your-login`). A record is current for a minute and then stale,
+(`Fetched 3 min ago by your-login`). A record is current for a minute and then stale,
 when the page adds `may be out of date`. A stale record refreshes when the server starts
 and when a stale page becomes visible, and a stale page offers **Refresh**. The row at
 the foot of the navigation pane says when the mirror was last fetched; click it to

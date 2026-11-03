@@ -48,6 +48,9 @@ Back onto an entry waits for its page and puts the pane at that block, and back 
 each time the page changes height, until the reader moves it or the page has been still.
 A reader who moved first keeps the pane where they took it, and an address with a
 fragment is left alone.
+It asserts, and so prints nothing for, that no pace of moves writes a place more often
+than Safari’s limit on `history.replaceState`, and that only a key that can move the
+pane ends a hold.
 
 ```console
 $ node tests/dom/github-pull-page-session.js
