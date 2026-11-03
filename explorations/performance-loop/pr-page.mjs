@@ -2,6 +2,7 @@
 //
 // PR_PERF_ROOT=... node pr-page.mjs --build new|old|github --pr URL --number N --files N --scenario load|back|click|jumps
 //   [--port P] [--label L] [--out file.jsonl] [--keep-server]
+// --keep-server retains the owned server even on failure; its log is ROOT/server-<recorder pid>.log.
 //
 // Fresh server (metab) and fresh Chrome profile per run. Stamps are performance.now() from the
 // navigation start; "painted" is the second animation frame after the element first appeared.
@@ -59,31 +60,49 @@ async function startServer() {
   fs.mkdirSync(cache, { recursive: true, mode: 0o700 });
   const t0 = Date.now();
   const target = args.folder ?? args.pr;
-  server = spawn(
-    R + (build === "new" ? "/candidate-venv/bin/metab" : "/baseline-venv/bin/metab"),
-    [target, "--no-open", "--port", String(port), "--cache-dir", cache, "--config-dir", cfg],
-    {
-      cwd: R,
-      detached: true,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, METABROWSER_CACHE_DIR: cache, METABROWSER_CONFIG_DIR: cfg },
-    },
-  );
+  // A retained server must own its log descriptor: pipes close when this recorder exits.
+  const logPath = path.join(R, `server-${process.pid}.log`);
+  const logFd = args["keep-server"] ? fs.openSync(logPath, "w", 0o600) : null;
+  try {
+    server = spawn(
+      R + (build === "new" ? "/candidate-venv/bin/metab" : "/baseline-venv/bin/metab"),
+      [target, "--no-open", "--port", String(port), "--cache-dir", cache, "--config-dir", cfg],
+      {
+        cwd: R,
+        detached: true,
+        stdio: ["ignore", logFd ?? "pipe", logFd ?? "pipe"],
+        env: { ...process.env, METABROWSER_CACHE_DIR: cache, METABROWSER_CONFIG_DIR: cfg },
+      },
+    );
+  } finally {
+    if (logFd !== null) {
+      fs.closeSync(logFd);
+    }
+  }
   let log = "";
-  server.stdout.on("data", (d) => (log += d));
-  server.stderr.on("data", (d) => (log += d));
-  result.serverLog = () => log;
+  server.stdout?.on("data", (d) => (log += d));
+  server.stderr?.on("data", (d) => (log += d));
+  const serverLog = () => (logFd === null ? log : fs.readFileSync(logPath, "utf8"));
+  result.serverLog = serverLog;
+  if (logFd !== null) {
+    result.retained_server = { pid: server.pid, log: path.basename(logPath) };
+  }
+  let ready = false;
   for (let i = 0; i < 600; i++) {
     try {
       const r = await fetch(`http://127.0.0.1:${port}/api/tree?depth=1`);
       if (r.ok) {
+        ready = true;
         break;
       }
     } catch {}
     if (server.exitCode !== null) {
-      throw new Error(`server exited: ${log.slice(-2000)}`);
+      throw new Error(`server exited: ${serverLog().slice(-2000)}`);
     }
     await sleep(100);
+  }
+  if (!ready) {
+    throw new Error(`server did not become ready: ${serverLog().slice(-2000)}`);
   }
   result.server_ready_ms = Date.now() - t0;
   // E1: --warm QUERY asks the comparison route for one file first, which computes and keeps the
@@ -140,6 +159,7 @@ const FLAGS = [
   "--disable-features=Translate,OptimizationHints,MediaRouter,InterestFeedContentSuggestions",
 ];
 let chrome = null;
+let chromeConnection = null;
 const profile = `${R}/prof-${process.pid}`;
 async function launchChrome() {
   fs.rmSync(profile, { recursive: true, force: true });
@@ -165,21 +185,28 @@ async function launchChrome() {
       await sleep(100);
     }
   }
-  const conn = new Connection(ws);
-  await conn.open();
-  execFileSync("osascript", ["-e", 'tell application "Google Chrome" to activate']);
-  return conn;
-}
-async function closeChrome(conn) {
-  try {
-    await Promise.race([conn.send("Browser.close"), sleep(3000)]);
-  } catch {}
-  conn.close();
-  for (let i = 0; i < 50 && chrome.exitCode === null && chrome.signalCode === null; i++) {
-    await sleep(100);
+  if (ws === null) {
+    throw new Error("Chrome did not expose a DevTools endpoint");
   }
-  if (chrome.exitCode === null && chrome.signalCode === null) {
-    chrome.kill("SIGKILL");
+  chromeConnection = new Connection(ws);
+  await chromeConnection.open();
+  execFileSync("osascript", ["-e", 'tell application "Google Chrome" to activate']);
+  return chromeConnection;
+}
+async function closeChrome() {
+  try {
+    if (chromeConnection !== null) {
+      await Promise.race([chromeConnection.send("Browser.close"), sleep(3000)]);
+    }
+  } catch {}
+  chromeConnection?.close();
+  if (chrome !== null) {
+    for (let i = 0; i < 50 && chrome.exitCode === null && chrome.signalCode === null; i++) {
+      await sleep(100);
+    }
+    if (chrome.exitCode === null && chrome.signalCode === null) {
+      chrome.kill("SIGKILL");
+    }
   }
   try {
     const out = execFileSync("ps", ["-axo", "pid=,command="]).toString();
@@ -290,11 +317,33 @@ async function evaluate(page, expr, awaitPromise = true) {
 }
 
 async function main() {
-  const isGithub = build === "github";
-  if (!isGithub) {
-    await startServer();
+  try {
+    if (build !== "github") {
+      await startServer();
+    }
+    const conn = await launchChrome();
+    await measure(conn);
+  } finally {
+    try {
+      await closeChrome();
+    } finally {
+      if (args["keep-server"]) {
+        server?.unref();
+      } else {
+        stopServer();
+      }
+    }
   }
-  const conn = await launchChrome();
+  delete result.serverLog;
+  const line = JSON.stringify(result);
+  if (args.out) {
+    fs.appendFileSync(args.out, `${line}\n`);
+  }
+  console.log(line);
+}
+
+async function measure(conn) {
+  const isGithub = build === "github";
   const targets = await conn.send("Target.getTargets");
   const t = targets.targetInfos.find((x) => x.type === "page");
   const { sessionId } = await conn.send("Target.attachToTarget", {
@@ -568,14 +617,6 @@ async function main() {
     result.rss = serverRss();
   }
   result.load_end = loadavg();
-  await closeChrome(conn);
-  stopServer();
-  delete result.serverLog;
-  const line = JSON.stringify(result);
-  if (args.out) {
-    fs.appendFileSync(args.out, `${line}\n`);
-  }
-  console.log(line);
 }
 
 async function click(page, xy) {
@@ -765,6 +806,5 @@ async function runJumps(page, reqs) {
 
 main().catch((e) => {
   console.error(e);
-  stopServer();
-  process.exit(1);
+  process.exitCode = 1;
 });
