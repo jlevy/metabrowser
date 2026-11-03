@@ -194,7 +194,7 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
         CANONICAL, "--api", f"{ROUTE}-refresh", "--data", _body(tmp_path, number=10)
     )
     assert automatic.exit_code == 0, automatic.stderr
-    assert '"refresh": "not_cached"' in automatic.stdout
+    assert automatic.payload()["refresh"] == "not_cached"
     assert logged_gh_calls(tmp_path) == []
     fetched = session.run(
         CANONICAL, "--api", f"{ROUTE}-refresh", "--data", _body(tmp_path, number=10, retry=True)
@@ -205,7 +205,7 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
         CANONICAL, "--api", f"{ROUTE}-refresh", "--data", _body(tmp_path, number=10)
     )
     assert not_due.exit_code == 0, not_due.stderr
-    assert '"refresh": "not_due"' in not_due.stdout
+    assert not_due.payload()["refresh"] == "not_due"
     assert logged_gh_calls(tmp_path) == []
     # The pin is still the default branch, and status names no pull request.
     status = session.run(CANONICAL, "--api", "/api/source/status").payload()
