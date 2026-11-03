@@ -5,7 +5,7 @@ title: "Keyboard: walking changed files jumps the diff to that file"
 kind: task
 status: in_progress
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -14,12 +14,14 @@ parent_id: is-01m6f39zpnk9rc3kjy552b88qj
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:42:34.377Z
-updated_at: 2026-11-03T07:26:16.278Z
+updated_at: 2026-11-03T07:36:49.231Z
 started_at: 2026-11-03T06:46:33.001Z
 ---
 The user, 2026-11-02: easy to scroll through files within a PR, and it may require rapid scrolling of the diff view to the relevant file when we navigate between files. Acceptance: changed-file rows are a Navigational Row Collection with the same contract as PR rows. Moving between files scrolls the diff straight to that file's bar, an immediate jump and not smooth scrolling, and focus stays in the nav. The file arrives hydrated even past MAX_HYDRATED_FILES, since builtin_plugins/diff/sidekick.py has a wanted_file path. Holding a key queues no request per row: latest wins, older ones cancelled. The position holds: neighbours hydrating above the target must not move it, and Back's history.state.pullPlace restore is kept. The selection follows a reader who scrolls the diff by hand, without stealing focus. It holds on the stress case, a real pull request of 1,183 files and +281,131 lines, so the tree stays bounded or virtualized; budgets come from the performance study. Pin in a browserless session with a golden, plus real-Chrome evidence for the scrolling.
 
 ## Notes
+
+2026-11-03: from the diff view's owner, in the stack below at b29dc787 (#284 9b624b3a, review E1's mount fix): a ready file past the first screen is now drawn one or two frames after a jump, so scrollToFile's lines promise settles a little later and can come back superseded. Types unchanged; documented in docs/large-content-rendering.md. The walk must treat superseded as normal under a held key.
 
 2026-11-03: step 4's scroll-follow ('the selection follows a reader who scrolls the diff by hand') depends on mb-6453 (under mb-2iok): the diff view reports the file whose bar or reserved block is at the top of the pane, drawn or not, without forcing a draw. mb-6453 waits for #284's mount change (mb-ivvw).
 
