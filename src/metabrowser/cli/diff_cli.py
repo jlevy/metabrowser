@@ -137,6 +137,9 @@ def _print_text(document: ChangeSetDocument) -> None:
     plus = "?" if totals.additions is None else str(totals.additions)
     minus = "?" if totals.deletions is None else str(totals.deletions)
     typer.echo(f"files {totals.files}  +{plus} -{minus}  ({exactness})")
+    # What the source could not model is said above the files, as the page says it.
+    for warning in resolved.warnings:
+        typer.echo(f"warning: {warning}")
     for change in document.manifest.files:
         typer.echo(_describe(change))
     if document.manifest.truncated:

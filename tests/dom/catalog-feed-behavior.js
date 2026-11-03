@@ -172,6 +172,53 @@ async function main() {
     );
   }
 
+  // ── Held: a page with no use for the catalog fetches none until it has one ──
+  {
+    const catalog = makeCatalog();
+    const { impl, pending } = makeFetch();
+    const feed = sandbox.MetabrowserCatalogFeed.create({ catalog, fetchImpl: impl });
+
+    feed.hold();
+    feed.start();
+    await tick();
+    check("a held feed fetches nothing on start", pending.length === 0);
+    // A watcher busy while the reader stays on the page: nothing is journaled, since the
+    // fetch that release starts says what is there.
+    for (let count = 0; count < 3; count += 1) {
+      feed.onCatalogChange({ upserts: [{ p: `while-held-${count}.txt`, e: ".txt" }], removes: [] });
+      feed.onEventChange([{ op: "remove", path: `held-dir-${count}` }]);
+    }
+    feed.release();
+    await tick();
+    check("release runs the start it held", pending.length === 1);
+    feed.release();
+    await tick();
+    check("a second release fetches nothing more", pending.length === 1);
+    pending[0].resolve(jsonResponse({ complete: true, files: [{ p: "bulk.txt", e: ".txt" }] }));
+    await tick();
+    await tick();
+    check("what a held feed fetches applies as ever", catalog.calls[0]?.kind === "bulk");
+    check(
+      "changes that arrived while held are not replayed over it",
+      catalog.calls[0]?.buffered.length === 0 &&
+        !catalog.calls.some((call) => call.kind === "change" || call.kind === "event-change"),
+    );
+
+    const idleCatalog = makeCatalog();
+    const neverStarted = makeFetch();
+    const idle = sandbox.MetabrowserCatalogFeed.create({
+      catalog: idleCatalog,
+      fetchImpl: neverStarted.impl,
+    });
+    idle.hold();
+    idle.release();
+    await tick();
+    check("release with no start waiting fetches nothing", neverStarted.pending.length === 0);
+    idle.start();
+    await tick();
+    check("a start after release is an ordinary start", neverStarted.pending.length === 1);
+  }
+
   // ── Sentinel snapshots: first is not a continuity break ───────
   {
     const catalog = makeCatalog();

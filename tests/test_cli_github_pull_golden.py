@@ -68,6 +68,26 @@ PULL = f"{CANONICAL}/pull"
 _RECORD = re.compile(r'^( *)"record": (\{\n.*?\n\1\})', re.MULTILINE | re.DOTALL)
 
 
+def _in_a_stable_order(calls: list[str]) -> list[str]:
+    """The log's calls, with those that run together in one order.
+
+    A refresh reads the pull first, for its head, and then its other parts in flight
+    together, which reach the log in whatever order the processes did.
+    """
+
+    ordered: list[str] = []
+    together: list[str] = []
+    for call in calls:
+        if call.startswith("gh api ") and ordered and ordered[-1].startswith("gh api "):
+            together.append(call)
+            continue
+        ordered.extend(sorted(together))
+        together = []
+        ordered.append(call)
+    ordered.extend(sorted(together))
+    return ordered
+
+
 class _Session:
     """The stand-in origin, the fake gh, and a transcript of what each command did."""
 
@@ -112,7 +132,7 @@ class _Session:
             conditional = any(arg.startswith("If-None-Match: ") for arg in args)
             calls.append(f"gh api {path}" + (" (If-None-Match)" if conditional else ""))
         log.unlink()
-        return calls
+        return _in_a_stable_order(calls)
 
     def _once(self, found: re.Match[str]) -> str:
         record = json.loads(found.group(2))

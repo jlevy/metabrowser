@@ -15,6 +15,7 @@ file a user just clicked.
 from __future__ import annotations
 
 from base64 import b64encode
+from collections.abc import Sequence
 from hashlib import sha256
 
 from metabrowser.diff.format import (
@@ -50,6 +51,25 @@ it as `truncated` rather than stalling."""
 
 MAX_FILE_SECTIONS = 2000
 """Manifest cap mirroring the route-level manifest bound."""
+
+MAX_NAMED_SECTIONS = 5
+"""How many left-out sections a warning names. It reads as one line, and every section
+left out keeps its own row, so a longer list would say nothing more."""
+
+MAX_NAMED_PATH_CHARS = 200
+"""Where a path in a warning is cut. A tree entry's name has no length of its own, and the
+warning is a line above the files, not the place to read a name from."""
+
+
+def name_paths(paths: Sequence[str]) -> str:
+    """Up to `MAX_NAMED_SECTIONS` of *paths* for a warning, each cut, and how many more."""
+    named = ", ".join(
+        path if len(path) <= MAX_NAMED_PATH_CHARS else f"{path[: MAX_NAMED_PATH_CHARS - 1]}…"
+        for path in paths[:MAX_NAMED_SECTIONS]
+    )
+    more = len(paths) - MAX_NAMED_SECTIONS
+    return f"{named}, and {more} more" if more > 0 else named
+
 
 _HUNK_RE_PREFIX = b"@@ -"
 
@@ -98,9 +118,24 @@ def _unquote_c_style(raw: bytes) -> bytes:
             out.append(value)
             i += 3
         else:
-            out.append({b"n": 10, b"t": 9, b'"': 34, b"\\": 92}.get(escape, escape[0]))
+            out.append(_C_ESCAPES.get(escape, escape[0]))
             i += 1
     return bytes(out)
+
+
+# Every letter Git's `quote_c_style` writes after a backslash (quote.c, `cq_lookup`): the
+# seven C escapes, the quote and the backslash. Anything else is octal, above.
+_C_ESCAPES = {
+    b"a": 7,
+    b"b": 8,
+    b"t": 9,
+    b"n": 10,
+    b"v": 11,
+    b"f": 12,
+    b"r": 13,
+    b'"': 34,
+    b"\\": 92,
+}
 
 
 def _strip_prefix(raw: bytes) -> bytes:
@@ -110,6 +145,51 @@ def _strip_prefix(raw: bytes) -> bytes:
     if len(raw) > 2 and raw[1:2] == b"/" and raw[0:1] in (b"a", b"b"):
         return raw[2:]
     return raw
+
+
+def _closing_quote(raw: bytes) -> int | None:
+    """Where the C-quoted name opening *raw* ends: its closing quote's index."""
+    index = 1
+    while index < len(raw):
+        if raw[index] == 0x5C:  # a backslash escapes what follows, a quote included
+            index += 2
+            continue
+        if raw[index] == 0x22:
+            return index
+        index += 1
+    return None
+
+
+def _git_header_paths(rest: bytes) -> tuple[bytes, bytes] | None:
+    """The two paths of a ``diff --git`` line, or None when they cannot be told apart.
+
+    For a section with hunks this is only a guess the ``---`` and ``+++`` lines correct. A
+    section with none has nothing else: a deleted or added empty file, a deleted binary
+    file, a mode change. Git quotes each side on its own, so either may be quoted. Unquoted,
+    a section with no rename or copy names one path twice, which the middle of the line
+    finds even when the path holds `` b/``. Only a rename reaches the first `` b/``, and its
+    ``rename from`` and ``rename to`` lines say what is true.
+    """
+    if rest.startswith(b'"'):
+        end = _closing_quote(rest)
+        if end is None or rest[end + 1 : end + 2] != b" ":
+            return None
+        old, new = rest[: end + 1], rest[end + 2 :]
+    elif rest.endswith(b'"'):
+        start = rest.rfind(b' "')
+        if start < 0:
+            return None
+        old, new = rest[:start], rest[start + 1 :]
+    else:
+        middle = (len(rest) - 1) // 2
+        if rest[middle : middle + 3] == b" b/" and rest[2:middle] == rest[middle + 3 :]:
+            old, new = rest[:middle], rest[middle + 1 :]
+        else:
+            halves = rest.split(b" b/", 1)
+            if len(halves) != 2:
+                return None
+            old, new = halves[0], b"b/" + halves[1]
+    return _strip_prefix(_unquote_c_style(old)), _strip_prefix(_unquote_c_style(new))
 
 
 class _Section:
@@ -188,11 +268,9 @@ def _split_sections(data: bytes) -> list[_Section]:
             current = _Section()
             sections.append(current)
             in_hunks = False
-            rest = raw_line[len(b"diff --git ") :]
-            halves = rest.split(b" b/", 1)
-            if len(halves) == 2 and not rest.startswith(b'"'):
-                current.old_path = _strip_prefix(halves[0])
-                current.new_path = halves[1]
+            guessed = _git_header_paths(raw_line[len(b"diff --git ") :])
+            if guessed is not None:
+                current.old_path, current.new_path = guessed
                 current.old_guessed = True
                 current.new_guessed = True
             continue
@@ -432,6 +510,87 @@ def _degraded_document(
     )
 
 
+def _section_is_modeled(document: ChangeSetDocument, change: FileChange) -> bool:
+    """Whether one section is valid as a document of its own."""
+    from pydantic import ValidationError
+
+    from metabrowser.diff.format import dump_document, validate_document
+
+    patch = document.patches.get(change.id)
+    alone = document.model_copy(
+        update={
+            "manifest": document.manifest.model_copy(
+                update={
+                    "files": (change,),
+                    "totals": Totals.model_construct(
+                        files=1, additions=None, deletions=None, exact=False
+                    ),
+                }
+            ),
+            "patches": {} if patch is None else {change.id: patch},
+        }
+    )
+    try:
+        validate_document(dump_document(alone))
+    except (ValidationError, ValueError):
+        return False
+    return True
+
+
+def _without_unmodeled_sections(document: ChangeSetDocument) -> ChangeSetDocument:
+    """The document with each section that fails shown as unsupported, and named.
+
+    Reaching here is a parser bug or an input no probe found, so it costs a validation per
+    section. A failed section keeps its row, as a malformed one does: the reader should see
+    that the file changed and that its diff is not here.
+    """
+    files: list[FileChange] = []
+    patches: dict[str, FilePatch] = {}
+    left_out: list[str] = []
+    for change in document.manifest.files:
+        if _section_is_modeled(document, change):
+            files.append(change)
+            if change.id in document.patches:
+                patches[change.id] = document.patches[change.id]
+            continue
+        side = change.new if change.new is not None else change.old
+        if side is None:
+            continue
+        left_out.append(side.path)
+        files.append(
+            FileChange.model_construct(
+                id=change.id,
+                kind=ChangeKind.modified,
+                old=side,
+                new=side,
+                similarity=None,
+                binary=False,
+                availability=Availability.unsupported,
+                additions=None,
+                deletions=None,
+            )
+        )
+    warning = (
+        f"{len(left_out)} section(s) could not be modeled and are left out: {name_paths(left_out)}"
+    )
+    return document.model_copy(
+        update={
+            "resolved": document.resolved.model_copy(
+                update={"warnings": (*document.resolved.warnings, warning)}
+            ),
+            "manifest": document.manifest.model_copy(
+                update={
+                    "files": tuple(files),
+                    "totals": Totals.model_construct(
+                        files=len(files), additions=None, deletions=None, exact=False
+                    ),
+                }
+            ),
+            "patches": patches,
+        }
+    )
+
+
 def parse_unified_patch(data: bytes) -> ChangeSetDocument:
     """Whole-document parse; bounded, and total on malformed input."""
     truncated_input = len(data) > MAX_PATCH_BYTES
@@ -482,6 +641,10 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
             # `new file mode` beats the header guess: an added file has no
             # old side, whatever `diff --git a/x b/x` implied.
             old_path = None
+        if kind is ChangeKind.deleted and new_path is not None:
+            # The same for a deleted file with no hunks, whose section has no `+++ /dev/null`
+            # to say so: an empty file, or a binary one.
+            new_path = None
         if kind is not ChangeKind.added and old_path is None:
             malformed = malformed or "missing old path"
         if kind is not ChangeKind.deleted and new_path is None:
@@ -581,9 +744,9 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
     # model_construct skipped validation for speed while assembling; the
     # emitted document must still be format-valid, so validate once here.
     # Totality is structural, not per-probe: an input this parser mapped
-    # to an invalid document is by definition malformed input, so it
-    # degrades to a warning-bearing empty document instead of raising on
-    # the file-open path.
+    # to an invalid document is by definition malformed input. One section
+    # is not the whole input, so what fails is named and the rest is kept,
+    # and only a document that fails as a whole degrades to an empty one.
     from pydantic import ValidationError
 
     from metabrowser.diff.format import dump_document, validate_document
@@ -591,8 +754,12 @@ def parse_unified_patch(data: bytes) -> ChangeSetDocument:
     try:
         return validate_document(dump_document(document))
     except (ValidationError, ValueError) as exc:
-        reason = str(exc).splitlines()[0][:200]
-        document = _degraded_document(
-            digest, truncated, (*warnings, f"input could not be modeled: {reason}")
-        )
-        return validate_document(dump_document(document))
+        kept = _without_unmodeled_sections(document)
+        try:
+            return validate_document(dump_document(kept))
+        except (ValidationError, ValueError):
+            reason = str(exc).splitlines()[0][:200]
+            document = _degraded_document(
+                digest, truncated, (*warnings, f"input could not be modeled: {reason}")
+            )
+            return validate_document(dump_document(document))

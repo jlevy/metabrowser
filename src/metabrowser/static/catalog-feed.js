@@ -98,6 +98,8 @@
     let retryHandle = null;
     let disposed = false;
     let started = false;
+    let held = false;
+    let startWanted = false;
     let refetchWanted = false;
     let suppressNextSentinelRefetch = false;
     let authoritativeRefetchPending = false;
@@ -394,6 +396,10 @@
       if (disposed) {
         return;
       }
+      if (held) {
+        startWanted = true;
+        return;
+      }
       suppressNextSentinelRefetch = true;
       if (started) {
         requestContinuityRefetch();
@@ -404,13 +410,35 @@
     }
 
     /**
+     * Keep the bulk fetch from starting until `release`, on a page that has no use for it
+     * yet. A pull request's page has none until its search palette opens or the reader
+     * leaves for a file: a repository's catalog was 1.9 MB decoded and parsed on the main
+     * thread of a page about one pull request, measured 2026-11-02.
+     */
+    function hold() {
+      held = !started;
+    }
+
+    /** Whatever `start` waited for runs now. */
+    function release() {
+      held = false;
+      if (startWanted) {
+        startWanted = false;
+        start();
+      }
+    }
+
+    /**
      * A `catalog.change` event arrived on the stream. Applied
      * directly once the bulk payload has landed; buffered before
      * that so replay order preserves convergence.
      * @param {CatalogChangePayload} payload
      */
     function onCatalogChange(payload) {
-      if (disposed || !payload) {
+      if (disposed || !payload || held) {
+        // Held, nothing is journaled: the fetch `release` starts is authoritative, as a
+        // continuity refetch is, and a watcher busy for as long as a reader stays on one
+        // page would otherwise fill the journal with payloads replayed at the first open.
         return;
       }
       const change = { kind: /** @type {const} */ ("catalog"), payload };
@@ -426,7 +454,7 @@
      * @param {EventChangeOperation[]} ops
      */
     function onEventChange(ops) {
-      if (disposed || !Array.isArray(ops) || ops.length === 0) {
+      if (disposed || !Array.isArray(ops) || ops.length === 0 || held) {
         return;
       }
       const change = { kind: /** @type {const} */ ("event"), ops };
@@ -509,11 +537,13 @@
 
     return Object.freeze({
       dispose,
+      hold,
       onCatalogChange,
       onEventChange,
       onIndexComplete,
       onResync,
       onSentinelSnapshot,
+      release,
       start,
     });
   }

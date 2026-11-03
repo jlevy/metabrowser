@@ -245,7 +245,7 @@ def test_catalog_feed_is_wired_into_every_stream_signal() -> None:
     assert "quickFileCatalogFeed?.start()" in degraded_block
 
     init_start = js.index("function initQuickFileFinder()")
-    init_block = js[init_start : init_start + 1200]
+    init_block = js[init_start : init_start + 1500]
     assert "window.MetabrowserCatalogFeed.create" in init_block
     assert "if (catalogFeedCanStart)" in init_block
     assert "quickFileCatalogFeed.start()" in init_block

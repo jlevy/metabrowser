@@ -94,6 +94,7 @@
    *   getFileIcon?: (path: string) => {cls?: string, svg?: string},
    *   maxRows?: number,
    *   onNotFound?: (path: string) => void | Promise<void>,
+   *   onOpen?: () => void,
    *   openFile: (path: string) => OpenOutcome | Promise<OpenOutcome>,
    *   overlay: Window["MetabrowserOverlay"],
    *   resolveFocusFallback?: (previous: HTMLElement | null) => HTMLElement | null,
@@ -603,6 +604,7 @@
     }
 
     function resetForOpen() {
+      options.onOpen?.();
       input.setAttribute("aria-expanded", "true");
       input.value = "";
       searchState = null;
