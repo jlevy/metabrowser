@@ -303,6 +303,9 @@ export function mountFileTree(host) {
 
   /** @param {FileTreeModel} next */
   function paint(next) {
+    const focused =
+      [...drawn.values()].find((entry) => entry.element === document.activeElement)?.element ??
+      null;
     const changedRows = model === null || model.rowsVersion !== next.rowsVersion;
     model = next;
     if (changedRows) {
@@ -342,6 +345,18 @@ export function mountFileTree(host) {
       live.textContent = next.live;
     }
     paintWindow();
+    // The old focused row was still connected during restate's anchor callback. Only
+    // replacement paint can tell whether it survived, and the settled anchor is drawn now.
+    if (focused !== null && !focused.isConnected) {
+      const anchor = controller.anchor();
+      const arriving = anchor === null ? null : drawnElement(anchor);
+      if (arriving === null) {
+        host.leave();
+      } else {
+        arriving.focus({ preventScroll: true });
+        arriving.scrollIntoView({ block: "nearest" });
+      }
+    }
   }
 
   /** @param {string} rowId */
@@ -358,8 +373,6 @@ export function mountFileTree(host) {
       render: paint,
       markAnchor(previous, next, focus) {
         const leaving = previous === null ? null : drawnElement(previous);
-        // A row a toggle took away had focus: it goes to the row that holds it now.
-        const hadFocus = leaving !== null && leaving === document.activeElement;
         leaving?.setAttribute("tabindex", "-1");
         if (next === null) {
           return;
@@ -367,7 +380,7 @@ export function mountFileTree(host) {
         paintWindow();
         const arriving = drawnElement(next);
         arriving?.setAttribute("tabindex", "0");
-        if (arriving !== null && (focus || (hadFocus && !leaving.isConnected))) {
+        if (arriving !== null && focus) {
           arriving.focus({ preventScroll: true });
           arriving.scrollIntoView({ block: "nearest" });
         }
