@@ -197,7 +197,7 @@
    * `pageFor` hands it to what sits beside the pane, the Pulls tab, which walks a pull
    * request's files without moving the address on every key.
    *
-   * @template {{setTab?: (tab: string) => void, showFile?: (path: string) => unknown, flush?: () => void, dispose?: () => void}} Handle
+   * @template {{land?: (route: {tab: string, file?: string}) => void, setTab?: (tab: string) => void, showFile?: (path: string) => unknown, flush?: () => void, dispose?: () => void}} Handle
    * @param {{
    *   claim: () => number,
    *   isCurrent: (claim: number) => boolean,
@@ -238,9 +238,12 @@
      *
      * @param {Handle | null} handle
      * @param {Readonly<{tab: string, file?: string}>} route
+     * @param {boolean} restore Whether the current history entry owns a saved place.
      */
-    function land(handle, route) {
-      if (route.file && typeof handle?.showFile === "function") {
+    function land(handle, route, restore) {
+      if (restore) {
+        handle?.land?.(route);
+      } else if (route.file && typeof handle?.showFile === "function") {
         handle.showFile(route.file);
       } else {
         handle?.setTab?.(route.tab);
@@ -253,9 +256,10 @@
      * @param {number | "list"} number
      * @param {(claim: number) => Promise<Handle | null | undefined>} mount
      * @param {string} [file] The changed file the route names, which the page lands on.
+     * @param {boolean} [restore] A route landing, rather than a reader's new selection.
      * @returns {Promise<{status: "opened" | "cancelled"}>}
      */
-    async function take(number, mount, file = "") {
+    async function take(number, mount, file = "", restore = true) {
       const claim = deps.claim();
       /** @type {NonNullable<typeof page>} */
       const mine = { number, claim, handle: null };
@@ -275,7 +279,7 @@
       mine.handle = handle;
       notifyPage();
       if (file) {
-        land(handle, { tab: "files", file });
+        land(handle, { tab: "files", file }, restore);
       }
       return { status: "opened" };
     }
@@ -285,18 +289,24 @@
      * shown.
      *
      * @param {Readonly<{number: number, tab: string, file?: string, jumped?: boolean, reader?: unknown}>} route
+     * @param {{restore?: boolean}} [how]
      * @returns {Promise<{status: "opened" | "cancelled"}>}
      */
-    async function show(route) {
+    async function show(route, how = {}) {
       const current = shown();
       if (current !== null && current.number === route.number) {
         // A walk of the Pulls tab's files jumped the page there itself, key by key.
         if (route.jumped !== true) {
-          land(current.handle, route);
+          land(current.handle, route, how.restore !== false);
         }
         return { status: "opened" };
       }
-      return take(route.number, (claim) => deps.mount(claim, route, open), route.file ?? "");
+      return take(
+        route.number,
+        (claim) => deps.mount(claim, route, open),
+        route.file ?? "",
+        how.restore !== false,
+      );
     }
 
     /** Show the list's address in the pane, unless it already holds the pane. */
@@ -347,6 +357,7 @@
           ...(route.jumped === true ? { jumped: true } : {}),
           ...(route.reader === undefined ? {} : { reader: route.reader }),
         }),
+        { restore: false },
       );
     }
 
@@ -360,7 +371,7 @@
       const current = shown();
       const landing = pullHistoryAction(pathname, current ? current.number : null, heldTarget);
       if (landing?.action === "tab") {
-        land(current?.handle ?? null, landing);
+        land(current?.handle ?? null, landing, true);
       } else if (landing?.action === "mount") {
         void show(
           Object.freeze({

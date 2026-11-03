@@ -2471,6 +2471,17 @@ export function mountPullPage(container, ctx, mb) {
         place?.keeper.land();
       }
     },
+    /**
+     * History arrived at this route. Its saved position takes priority over a file start,
+     * and stays held while a newly mounted diff changes height.
+     * @param {{tab: string, file?: string}} route
+     */
+    land(route) {
+      controller.setTab(route.tab);
+      place?.keeper.land();
+      wantedFile = place?.keeper.snapshot().holding ? null : (route.file ?? null);
+      landFile();
+    },
     /** History is about to leave this entry: write its place now. */
     flush() {
       place?.keeper.flush();
@@ -2487,8 +2498,8 @@ export function mountPullPage(container, ctx, mb) {
      * Show one changed file, as its address `/pull/<n>/files/<path>` names it: Files changed,
      * with the diff at that file. Whoever calls moves the address, the page host before it or
      * a walk of the Pulls tab's files once it stops, so this moves none. Until the diff has
-     * mounted the file waits, and the newest asked for is the one shown. A place the entry
-     * saved, which a landing restores, wins over the file's own.
+     * mounted the file waits, and the newest asked for is the one shown. A reader's new
+     * selection ends any earlier history landing's hold.
      *
      * The answer is the jump's, or `no_diff` for a file that waits for the diff.
      *
@@ -2496,13 +2507,9 @@ export function mountPullPage(container, ctx, mb) {
      * @returns {import("../diff/diff-view.js").FileJump | {kind: "no_diff", path: string}}
      */
     showFile(path) {
+      place?.keeper.readerMoved();
       if (controller.snapshot().tab !== "files") {
-        // In place, with no landing: this entry's saved place is another tab's.
         controller.setTab("files");
-        place?.keeper.readerMoved();
-      } else if (place?.keeper.snapshot().holding) {
-        wantedFile = null;
-        return { kind: "no_diff", path };
       }
       wantedFile = path;
       return landFile() ?? { kind: "no_diff", path };

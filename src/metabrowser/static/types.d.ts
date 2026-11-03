@@ -509,6 +509,7 @@ type MetabrowserSourceLineAnchorState = Readonly<{
 type MetabrowserPullRouteRuntime = Readonly<{
   createPullPageHost<
     Handle extends {
+      land?(route: { tab: string; file?: string }): void;
       setTab?(tab: string): void;
       showFile?(path: string): unknown;
       flush?(): void;

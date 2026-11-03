@@ -461,6 +461,12 @@ function makePullShell(pathname) {
     },
   });
   const page = (number) => ({
+    land: (route) =>
+      log.push(
+        route.file
+          ? `#${number} restores the file ${route.file}`
+          : `#${number} restores tab "${route.tab}"`,
+      ),
     setTab: (tab) => log.push(`#${number} tab "${tab}"`),
     showFile: (path) => log.push(`#${number} shows the file ${path}`),
     flush: () => log.push(`#${number} writes its place`),

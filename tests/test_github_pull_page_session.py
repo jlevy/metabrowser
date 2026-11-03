@@ -524,3 +524,13 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "failedRenderRecovers": True,
         "staleRetryIsInert": True,
     }
+
+
+def test_file_history_restores_place_and_fresh_selection_wins() -> None:
+    """The real route and page distinguish a history landing from a live file jump."""
+
+    assert run_session("github-pull-file-history-behavior.js") == {
+        "sameTabBack": 350,
+        "conversationBack": 350,
+        "freshSelection": 700,
+    }

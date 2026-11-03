@@ -204,9 +204,12 @@ async function run() {
   }
   return { failedAssetsRecover: true, failedRenderRecovers: true, staleRetryIsInert: true };
 }
-run()
-  .then((result) => process.stdout.write(`${JSON.stringify(result)}\n`))
-  .catch((error) => {
-    process.stderr.write(`${error.stack}\n`);
-    process.exitCode = 1;
-  });
+module.exports = { Element, recorded, root, settle };
+if (require.main === module) {
+  run()
+    .then((result) => process.stdout.write(`${JSON.stringify(result)}\n`))
+    .catch((error) => {
+      process.stderr.write(`${error.stack}\n`);
+      process.exitCode = 1;
+    });
+}
