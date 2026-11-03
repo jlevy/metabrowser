@@ -682,18 +682,29 @@ status: 200
 ? 0
 ```
 
-The number is required, and only a pull-request number will do.
+An omitted number selects an already attended pull request.
+This repository URL attends none, so the legacy response is absent.
+An explicitly supplied number must still be a valid pull-request number.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api /api/plugin/github/pull
 api: /api/plugin/github/pull
-status: 400
+status: 200
 {
-  "error": "\"number\" is a pull-request number",
-  "code": "invalid_request"
+  "state": "absent",
+  "reason": "no_pull_request",
+  "source": null,
+  "number": null,
+  "pin": null,
+  "pin_ref": null,
+  "fetched_at": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "comparison_route": null,
+  "record": null
 }
-Error: /api/plugin/github/pull returned HTTP 400
-? 1
+? 0
 ```
 
 ```console
@@ -1093,17 +1104,19 @@ status: 200
 ? 0
 ```
 
-The number is required here too, and a GET cannot start a refresh.
+A refresh without a number uses the attended pull request.
+With none attended, it is refused.
+A GET cannot start a refresh.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data no-number.json
 api: /api/plugin/github/pull-refresh
-status: 400
+status: 409
 {
-  "error": "\"number\" is a pull-request number",
-  "code": "invalid_request"
+  "error": "this server serves no pull request",
+  "code": "no_pull_request"
 }
-Error: /api/plugin/github/pull-refresh returned HTTP 400
+Error: /api/plugin/github/pull-refresh returned HTTP 409
 ? 1
 ```
 
