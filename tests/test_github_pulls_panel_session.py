@@ -418,6 +418,27 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 ask(state="all", retry=True)
                 settled()
             later["landing_gh_missing"] = read(limit="0")
+
+            # An empty cached list is still read while its refresh looks for new rows.
+            empty = PullList(
+                schema_version=pull_list.PULL_LIST_SCHEMA,
+                source=CANONICAL,
+                list="all",
+                fetched_at=utc_stamp(FETCHED_AT),
+                reader="gh:octo-reader",
+                pages=1,
+                complete=True,
+                truncated=False,
+                etags=(ListPageMark(etag=None, numbers=(), truncated=False),),
+                rows=(),
+            )
+            write_pull_list(home, slug, empty)
+            gate.clear()
+            ask(state="all", retry=True)
+            later["landing_empty_refreshing"] = read(limit="0")
+            gate.set()
+            settled()
+            later["landing_found_rows"] = read(limit="0")
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
@@ -486,6 +507,9 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["landing_absent"]["body"]["last_refresh"] is None
     assert recorded["landing_pending"]["body"]["refreshing"] is True
     assert recorded["landing_gh_missing"]["body"]["last_refresh"]["outcome"] == "gh_missing"
+    empty = recorded["landing_empty_refreshing"]["body"]
+    assert (empty["fetched"], empty["complete"], empty["refreshing"]) == (0, True, True)
+    assert recorded["landing_found_rows"]["body"]["fetched"] > 0
     check_recording(RECORDING, _stored_once(recorded), transcript=TRANSCRIPT, indent=1)
 
 
