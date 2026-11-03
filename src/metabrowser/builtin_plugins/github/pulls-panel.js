@@ -52,9 +52,9 @@ const FILTER_GROUP = "github-pulls-filter";
 //   and 14 to 23 ms with `content-visibility: auto` on each item (forced layout 66 ms and 2.9 ms).
 //   At one window of 100 rows, 10 to 15 ms, and a first show after the read ahead is the same.
 // - A window appended: 7 to 8 ms of main-thread tasks, the same at the 100th row as the 1,000th.
-// - A step of a held key, at 30 steps a second: one row's class, tab stop, focus, and bringing it
-//   into view, 0.4 ms in place, and each event to its next paint no slower at 1,000 rows than at
-//   100 (24 and 32 ms at the slowest, whose frame it was).
+// - A step of a held key, at 30 steps a second, 200 steps: its handler took 0.3 to 0.6 ms, and
+//   each event 24 ms at the slowest to its next paint, the same at 100 rows and 1,000. One row's
+//   class, tab stop, focus, and bringing it into view took 0.4 ms in place.
 //
 // So plain rows carry the cap, MAX_LIST_ROWS in pull_list.py, with no windowing module: what is
 // mounted costs what is on screen. The Git tab windows because its history has no such cap.
@@ -1247,11 +1247,8 @@ export function mountPullsPanel(container, ctx, mb) {
   const notice = h("div", { class: "github-pulls-notice-host" });
   const list = h("ul", { class: "github-pulls-list" });
   const empty = h("p", { class: "github-pulls-empty" });
-  const skeleton = h("div", {
-    class: "recent-loading mb-delayed-loading",
-    role: "status",
-    "aria-label": "Loading pull requests",
-  });
+  const skeleton = h("div", { class: "recent-loading mb-delayed-loading", role: "status" });
+  skeleton.setAttribute("aria-label", "Loading pull requests");
   const foot = h("div", { class: "github-pulls-foot" });
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   container.classList.add("github-pulls");
@@ -1415,11 +1412,10 @@ export function mountPullsPanel(container, ctx, mb) {
     const footChildren = [];
     if (model.loadMore !== null) {
       const more = /** @type {HTMLButtonElement} */ (
-        h("button", { type: "button", class: "btn github-pulls-more" }, [
-          model.loadMore === "loading" ? "Loading more…" : "Load more",
-        ])
+        h("button", { type: "button", class: "btn github-pulls-more" }, ["Load more"])
       );
       more.disabled = model.loadMore === "loading";
+      more.setAttribute("aria-busy", String(more.disabled));
       more.addEventListener("click", () => void controller.loadMore());
       footChildren.push(more);
     }
