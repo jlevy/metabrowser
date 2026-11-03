@@ -250,6 +250,19 @@ artificially small file-size category.
 The fixture and retained-heap evidence live in the
 [diff intraline bound benchmark](../explorations/diff-intraline/).
 
+**PR manifests are prepared at fetch.** A PR refresh retains its immutable comparison
+manifest in the GitHub plugin’s bounded bank beside its repository store.
+A fresh server adopts a validated matching entry after resolving its commits, then uses
+the same in-memory comparison cache for the page and deferred files.
+Its first answer hydrates eight ready files, enough for the visible viewport measured on
+the large public PR cases; later files load on approach.
+The generic comparison route hydrates up to fifty, and its retained body and entity tag
+include that policy so the two answers cannot be confused.
+Missing, stale, or corrupt entries are recomputed and healed; a cache admission bound
+never truncates the answer served.
+[Pull-request records](project/architecture/arch-repository-sources-and-provider-mirrors.md#pull-request-records)
+holds the storage and identity contract.
+
 **A large comparison hydrates what the reader is on.** A file past a comparison’s first
 page is a bar until it is reached.
 `createHydrationScheduler` in `builtin_plugins/diff/diff-view.js` asks for one file at a
@@ -260,6 +273,32 @@ While it waits, a file reserves an estimate of its height from the manifest’s 
 counts, which keeps a page’s scroll height and a reader’s place close to the truth, and
 the first file at the top of the pane stays where it is as files above or inside it fill
 in. The route’s 8 MiB bound is per file: see `MAX_FILE_PATCH_BYTES`.
+
+**The mount draws one screen and the next, not every file it was sent.** A comparison’s
+first page can be fifty files of rows: on a 1,031-file pull request that was 114,609
+nodes, and drawing them in the mount was one task of style, layout and commit of about
+1.1 s that every first load, Back and Conversation click waited on.
+`mountDiffView` measures the pane and what a bar and a row take, estimates each file’s
+top from the rows it will draw, and draws rows only for the ready files whose top is
+within the pane and one screen more (`firstScreenBudget`). Every later ready file is a
+bar that reserves its own rows, counted from its patch by `patchRows`, and goes through
+the scheduler above with its answer in hand: it is drawn when it is reached or gone to,
+one file a frame, nearest the top first, and nothing is asked for.
+It counts as loaded in “N of M files loaded”, and what it draws is what the mount would
+have drawn. A diff that fits is drawn whole, as before, and so is one mounted where
+nothing is laid out to measure.
+Measured 2026-11-03 in Chrome 152 on astral-sh/ruff #29817, in adjacent pairs with the
+build before at load 9 to 15: 23,451 nodes against 114,609, a longest task of 136 to 330
+ms against 653 to 1,182, and the first line 1.4x to 2.0x sooner; every drawn file’s
+markup was byte-identical to the build before, and the file at the top did not move.
+
+**Find in page searches what is drawn.** A file’s lines are not in the page until the
+file is reached, so the browser’s find does not see a line in a file nobody has scrolled
+to, whether the file came with the first page or after it.
+GitHub’s Files changed has the same limit, since it loads files as they are scrolled to.
+Every file’s bar is always in the page, so find in page does find a file by its path:
+going to that bar brings the file into the pane, and its lines are drawn as it arrives.
+A list of the comparison’s files reaches one with `scrollToFile`, below.
 
 ### Going to a file
 
@@ -299,6 +338,19 @@ It exists for a list of a comparison’s files, so it takes a path and not a fil
   A jump after a quiet moment asks at once.
   A jump within `JUMP_QUIET_MS` of the last, which is a held key, asks only when the
   burst stops, for the file it rests on.
+  A ready file the mount held back is the same, except that nothing is asked for: its
+  answer is in hand, so its lines are drawn in the frame after the jump, or after the
+  burst stops, and its `lines` can be `"superseded"` like any other.
+
+`currentFile()` returns the first file whose bar or body intersects the pane, including
+held and deferred files, or `null` when none is visible or the view is disposed.
+Its answer has the same fields as `fileForPath`, with the new path for a rename and the
+old path for a deletion.
+`onCurrentFile(listener)` reports that snapshot immediately, then reports only changes
+to the current file; it returns an idempotent unsubscribe function.
+Scroll reports share one animation frame and locate the file by bisection over the
+ordered sections. Disposal removes the scroll listener, cancels a queued report, and
+releases subscribers.
 
 A list calls it on every step of a held key; it is cheap, and it does not need
 debouncing. `tests/dom/diff-file-jump-session.js` pins all of this, and
@@ -344,7 +396,7 @@ window that never existed on disk.
 | `FOLD_MATERIALIZATION_BATCH_ROWS` | 100 rows | Diff fold-expansion main-thread work per task |
 | `MAX_FILE_PATCH_BYTES` | 8 MiB | One file’s parse and rows in a comparison, and what one run hydrates |
 | `JUMP_QUIET_MS` | 50 ms | How long a burst of jumps stops before its last file is asked for |
-| `MAX_CACHED_MANIFESTS` | 16 comparisons | Server memory for manifests kept by commit ID: up to 131 MB at the manifest cap, by the measurement beside the constant |
+| `MAX_CACHED_MANIFESTS` | 16 comparisons | Server memory for manifests kept by commit ID: up to 131 MB at the manifest cap, and about 190 MB of RSS, by the measurements beside the constant |
 | `MAX_CACHED_BODY_BYTES` | 64 MiB | Server memory for encoded comparison answers |
 
 A budget that degrades what the reader sees has a second requirement beyond bounding the

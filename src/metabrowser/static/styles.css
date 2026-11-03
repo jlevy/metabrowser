@@ -310,8 +310,8 @@
      font (docs/design-system.md, "Serif Is for Documents"). */
   --sans-char-advance: 0.4039;
   /* The resolved reading width, as a length. THE single source of truth for
-     how wide prose reads anywhere in the app, and with --message-measure below
-     the only place the character count is converted.
+     how wide documents read. PR messages own their face-specific measure on
+     .github-pull, so ordinary document widths stay independent.
 
      A Metabrowser-owned name on purpose. The obvious move is to set
      --kpress-measure here and let everything read that, but KPress declares
@@ -330,14 +330,6 @@
     var(--document-body-font-size) *
     var(--doc-max-chars) *
     var(--doc-char-advance)
-  );
-  /* The same "Max text width" for a message, which is sans whatever the reading
-     font. A surface of messages points --doc-measure at it on its own root, so
-     its column and the KPress bridge follow without a second spelling. */
-  --message-measure: calc(
-    var(--document-body-font-size) *
-    var(--doc-max-chars) *
-    var(--sans-char-advance)
   );
 
   --tree-pane-width: 300px;
