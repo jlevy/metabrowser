@@ -5,7 +5,7 @@ title: "GitHub Pulls tab: list a mirrored repository's pull requests and open an
 kind: feature
 status: in_progress
 priority: 1
-version: 24
+version: 26
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -24,15 +24,18 @@ child_order_hints:
   - is-01m6f3a8hwmhajkj14c5528pc8
   - is-01m6f3a8zq6770byr49by7dwed
   - is-01m6f3djrrnd70jq09ttmspt0j
+  - is-01m6fk7mz18kwadmnr0w05da09
 hold: null
 hold_until: null
 created_at: 2026-09-15T00:30:52.949Z
-updated_at: 2026-11-03T00:48:45.466Z
+updated_at: 2026-11-03T02:19:01.418Z
 started_at: 2026-11-03T00:48:45.465Z
 ---
 Add the Pull Requests repository-scoped nav panel after direct view and the bounded index. Project only the index row fields—no review/check summary—through RepositoryActivity and reuse bounded paging, virtualization, roving selection, query-key restoration, loading/error, root replacement, and disposal through public SDK. Selection opens the direct PR address; expansion exposes comparison files. Counts/grouping/visibility come from the bounded model. Execute exact panel-window, selection, restoration, replacement, and disposal owners in hosted-review-session and cli-ui-hosted-review.
 
 ## Notes
+
+2026-11-03: implemented on claude/pulls-3-tab, PR https://github.com/jlevy/metabrowser/pull/285, head 8c17a951, above claude/pulls-2-open-any. Checkpoint seen in headless Chrome 152 on pallets/click with screenshots. make lint-check passes; make test passed but for one test fixed in the next commit, and every tryscript golden passes. Awaiting review; not closed.
 
 2026-11-02, from the other session and the user, to apply in this step: the design system is followed rigorously. A tab is .tab-btn in a .tab-bar, and .github-pull-tabs is being removed. No literal font-size in plugin stylesheets; a check is being added to tests/test_design_vocabulary.py. Navigation rows follow One Chevron and One Row Contract with --ui-row-height and --hover-bg, Navigational Row Collections for keyboard, Age for dates, and Icons for glyphs: Lucide from static/icons.js, currentColor, --icon-glyph. Read docs/design-system.md in full before styling. It is being reorganized on claude/v012-pr-review-workflows, so merge that forward first.
 
