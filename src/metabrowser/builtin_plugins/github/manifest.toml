@@ -44,6 +44,21 @@ route = "pulls-refresh"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pulls_refresh_handler"
 methods = ["POST"]
 
+# One pull request's changed files, from the local comparison or GitHub's list, with a
+# typed absent, pending, current, or stale state and an honest count while it fills.
+# Answers from the cache alone; only a refresh lists them.
+[[data_hook]]
+route = "pull-files"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_handler"
+methods = ["GET"]
+
+# Start or join that list's refresh in the refresh coordinator. A POST with a JSON object
+# body naming its number, behind the same-origin guard; it returns at once.
+[[data_hook]]
+route = "pull-files-refresh"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_refresh_handler"
+methods = ["POST"]
+
 # A pull request's page at /pull/<n>[/files]. No file is ever this kind: the
 # shell selects it for the pull-request route and mounts this view there.
 [[view]]

@@ -358,6 +358,12 @@ GitHub URLs and HTTPS:
   fetches the newest hundred of `all`, `open`, or `closed` with `gh` and no Git, and
   `{"more": true}` one page more, up to ten; `/api/plugin/github/pulls` answers a window
   of the cached rows, offline too, with the count fetched and whether GitHub has more.
+  A pull request’s changed files are new too:
+  `POST /api/plugin/github/pull-files-refresh` with `{"number": n}` lists them from the
+  mirror’s own comparison when the store holds both commits, with no network, and
+  otherwise from GitHub’s list with `gh` and no Git, publishing each page as it arrives;
+  `/api/plugin/github/pull-files?number=<n>` answers what is held, offline too, while it
+  fills, and says when GitHub stopped at 3,000 files.
 
 - Pulls tab: a GitHub repository opened from its URL has a **Pulls** tab beside Files
   and Git, listing every pull request newest first, with GitHub’s icon for open, draft,

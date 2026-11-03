@@ -668,6 +668,124 @@ def list_entries(origin: Origin) -> dict[str, Any]:
     return {path: ok(path, body, headers) for path, body, headers in pages}
 
 
+# ── Changed files ───────────────────────────────────────────────
+
+# Pull request 106's files: a chain of single-child folders, ``src/metabrowser``, that
+# splits below; a rename inside a folder and one across folders; a deleted file; a binary
+# file, which GitHub counts as no lines; a name with a control character and one with a
+# zero-width space, which the display rule replaces; and enough of one folder's files to
+# fill three pages, the last of them short.
+_TREE_FILES: Final[tuple[tuple[str, str, str | None, int, int], ...]] = (
+    ("README.md", "modified", None, 2, 1),
+    ("assets/logo.png", "modified", None, 0, 0),
+    ("docs/guide.md", "renamed", "docs/old-guide.md", 3, 0),
+    ("docs/removed.md", "removed", None, 0, 12),
+    *(
+        (f"src/metabrowser/builtin_plugins/github/mod_{index:03d}.py", "modified", None, 4, 2)
+        for index in range(239)
+    ),
+    ("src/metabrowser/builtin_plugins/github/pull_files.py", "added", None, 120, 0),
+    ("src/metabrowser/cli/one.py", "modified", None, 1, 1),
+    ("src/metabrowser/cli/two.py", "added", None, 9, 0),
+    ("tools/new/script.sh", "renamed", "scripts/script.sh", 0, 0),
+    ("weird/bell\u0007name.txt", "added", None, 1, 0),
+    ("weird/zero\u200bwidth.md", "modified", None, 1, 1),
+)
+# The pull request GitHub stops listing at its limit: 3,000 files on 30 full pages.
+CAPPED_PULL: Final = 105
+TREE_PULL: Final = 106
+
+
+def files_page(number: int, page_number: int = 1) -> str:
+    """The ``gh api`` path of one full-size page of a pull request's changed files."""
+
+    return f"repos/octo/demo/pulls/{number}/files?per_page=100&page={page_number}"
+
+
+def files_link(number: int, page_number: int, last: int) -> dict[str, str]:
+    """The ``Link`` header of a page of changed files that has another after it."""
+
+    base = f"https://api.github.com/repositories/1/pulls/{number}/files?per_page=100"
+    return {
+        "Link": f'<{base}&page={page_number + 1}>; rel="next", <{base}&page={last}>; rel="last"'
+    }
+
+
+@functools.cache
+def _recorded_file_item() -> dict[str, Any]:
+    return recorded_responses()["file_item"]
+
+
+def file_item(
+    path: str,
+    status: str = "modified",
+    previous: str | None = None,
+    additions: int = 1,
+    deletions: int = 0,
+) -> dict[str, Any]:
+    """*path* as GitHub's list of changed files carries it: every key of the real item."""
+
+    item = {
+        key: value for key, value in _recorded_file_item().items() if key != "previous_filename"
+    }
+    links = {
+        key: item[key].replace("docs/guide.md", path)
+        for key in ("blob_url", "raw_url", "contents_url")
+    }
+    fields = {"filename": path, "status": status, "additions": additions, "deletions": deletions}
+    renamed = {"previous_filename": previous} if previous is not None else {}
+    return {**item, **links, **fields, "changes": additions + deletions, **renamed}
+
+
+def tree_files() -> list[dict[str, Any]]:
+    """Pull request 106's changed files, in GitHub's order, which is by path."""
+
+    rows = sorted(_TREE_FILES, key=lambda row: row[0])
+    return [
+        file_item(path, status, previous, adds, dels) for path, status, previous, adds, dels in rows
+    ]
+
+
+def file_pages(number: int, items: list[dict[str, Any]]) -> dict[str, Any]:
+    """*items* as GitHub's full-size pages, each with its ``Link``, keyed by ``gh api`` path.
+
+    The last page names no next page, which at 3,000 files is GitHub's own end: the
+    thirtieth page is full and names none, as nodejs/node#65161's did.
+    """
+
+    chunks = [items[start : start + 100] for start in range(0, len(items), 100)] or [[]]
+    last = len(chunks)
+    entries: dict[str, Any] = {}
+    for index, chunk in enumerate(chunks, start=1):
+        path = files_page(number, index)
+        entries[path] = ok(path, chunk, files_link(number, index, last) if index < last else None)
+    return entries
+
+
+def file_entries() -> dict[str, Any]:
+    """Every ``gh api`` path of changed files the stand-in answers."""
+
+    capped = [file_item(f"gen/part{index // 100:02d}/file{index:04d}.txt") for index in range(3000)]
+    return {
+        **file_pages(
+            7,
+            [
+                file_item("docs/new.md", "added", None, 1, 0),
+                file_item("src/app.txt", "modified", None, 1, 0),
+            ],
+        ),
+        **file_pages(TREE_PULL, tree_files()),
+        **file_pages(CAPPED_PULL, capped),
+    }
+
+
+def files_scenario(origin: Origin) -> dict[str, Any]:
+    """:func:`scenario`, answering the changed files too, which only their tests read."""
+
+    answers = scenario(origin)
+    return {**answers, "api": {**answers["api"], **file_entries()}}
+
+
 def account(login: str = READER, *, state: str = "success") -> dict[str, Any]:
     """A ``gh auth status --json hosts`` answer for one active github.com account."""
 
@@ -720,8 +838,10 @@ def _patched(target: object, name: str, value: object) -> Generator[None]:
         setattr(target, name, original)
 
 
-def build_home(directory: Path) -> None:
+def build_home(directory: Path, *, files: bool = False) -> None:
     """Cache the mirror and pull requests 7 to 10 through the production CLI path.
+
+    With *files*, :func:`build_file_lists` adds lists of changed files.
 
     The seams are the in-process goldens' own: the origin URL, the Git floor (the
     machine's Git may be below it), the clock, and a fake ``gh`` first on ``PATH``.
@@ -760,6 +880,8 @@ def build_home(directory: Path) -> None:
                 if exc.code not in (0, None):
                     raise
         build_lists(directory, answers)
+        if files:
+            build_file_lists(directory, answers)
     write_damaged_records(directory / "home")
     (directory / "root").mkdir(exist_ok=True)
 
@@ -785,6 +907,61 @@ def build_lists(directory: Path, answers: Mapping[str, Any]) -> None:
     )
     asyncio.run(refresh_pull_list(repository, "open"))
     os.environ.update(install_fake_gh(directory, answers))
+
+
+def build_file_lists(directory: Path, answers: Mapping[str, Any]) -> None:
+    """Lists of changed files, each through ``POST pull-files-refresh`` in a one-shot command.
+
+    7 from the local comparison of its record; 106 and the capped 105 from GitHub's pages;
+    104 stopped at its third page by GitHub's rate limit; 103 read by another account, and
+    then refreshed, and failed, as this one. 12 and 13 are lists the route cannot use.
+    """
+
+    from metabrowser.cache.paths import source_pull_files
+    from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
+    from metabrowser.home import write_private_file_atomic
+
+    halted = CAPPED_PULL - 1
+    limited = {
+        "status": 403,
+        "headers": {"X-Ratelimit-Remaining": "0", "X-Ratelimit-Reset": "1790181960"},
+        "body": {"message": "API rate limit exceeded"},
+    }
+    with_files = {**answers, "api": {**answers["api"], **file_entries()}}
+    pages = {
+        **file_pages(halted, tree_files()),
+        files_page(halted, 3): limited,
+        **file_pages(halted - 1, tree_files()[:2]),
+    }
+    offline = {"stderr": "error connecting to api.github.com\n", "exit": 1}
+    others = {**with_files, "api": {**with_files["api"], **pages}}
+    # Each run, and whether it succeeds. 103's last refresh ran as this reader and failed,
+    # after another account read the list.
+    runs: list[tuple[int, Mapping[str, Any], bool]] = [
+        (7, with_files, True),
+        (TREE_PULL, with_files, True),
+        (CAPPED_PULL, with_files, True),
+        (halted, others, False),
+        (halted - 1, {**others, "auth": account(ANOTHER_READER)}, True),
+        (halted - 1, {**others, "api_failure": offline}, False),
+    ]
+    request = directory / "files-request.json"
+    refresh = "/api/plugin/github/pull-files-refresh"
+    for number, scenario_answers, succeeds in runs:
+        os.environ.update(install_fake_gh(directory, scenario_answers))
+        request.write_text(json.dumps({"number": number, "retry": True}) + "\n", encoding="utf-8")
+        try:
+            _run_cli([CANONICAL, "--api", refresh, "--data", str(request)])
+        except SystemExit as exc:
+            if (exc.code in (0, None)) != succeeds:
+                raise
+    os.environ.update(install_fake_gh(directory, answers))
+    request.unlink()
+    home, slug = directory / "home", _source_slug()
+    write_private_file_atomic(
+        home, source_pull_files(slug, 12), json.dumps({"schema_version": 0}).encode()
+    )
+    write_private_file_atomic(home, source_pull_files(slug, 13), b"{not json")
 
 
 def write_damaged_records(home: Path) -> None:
@@ -832,7 +1009,11 @@ def serve_stand_in(directory: Path, number: int, port: int) -> None:
 if __name__ == "__main__":
     if len(sys.argv) == 5 and sys.argv[2] == "--serve":
         serve_stand_in(Path(sys.argv[1]).resolve(), int(sys.argv[3]), int(sys.argv[4]))
+    elif len(sys.argv) == 3 and sys.argv[2] == "--files":
+        build_home(Path(sys.argv[1]).resolve(), files=True)
     elif len(sys.argv) == 2:
         build_home(Path(sys.argv[1]).resolve())
     else:
-        raise SystemExit("usage: github_pull_fixture.py <directory> [--serve <number> <port>]")
+        raise SystemExit(
+            "usage: github_pull_fixture.py <directory> [--files | --serve <number> <port>]"
+        )

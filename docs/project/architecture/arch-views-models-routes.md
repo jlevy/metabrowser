@@ -165,13 +165,14 @@ reservation and its invariants, is in
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
-`github/pull-refresh`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`.
-On a `GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
-`GitDiffSource.content` reads blobs through the shared cat-file pool; patch
-`document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
-`GitPath` and follow in-tree relative symlink blobs.
-`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
-and reports it in the document.
+`github/pull-refresh`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`,
+`github/pull-files`, `github/pull-files-refresh`. On a `GitRevisionSubject`,
+`diff/comparison` honors the pin through `GitLocation` and `GitDiffSource.content` reads
+blobs through the shared cat-file pool; patch `document`/`children`, `binary/chunk`,
+`structured/parsed`, and `agent-log/charts` honor `GitPath` and follow in-tree relative
+symlink blobs.
+`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or
+`merge_base`, and reports it in the document.
 
 On a page that shows a pinned revision, the diff view’s file bars offer **View file** at
 each side of a change that exists, for a commit’s diff and a pull request’s Files
@@ -279,6 +280,32 @@ other key or value is `invalid_request` (400), and a server with no GitHub repos
 answers `not_github` (409). See
 [Lists of pull requests](arch-repository-sources-and-provider-mirrors.md#lists-of-pull-requests).
 
+`GET github/pull-files?number=<n>&offset=&limit=` answers one pull request’s changed
+files from the cache alone, with the same `state` values.
+A list is from the local comparison (`listed_from: "comparison"`, current while the
+record’s head is its `head`) when the store holds both of the record’s comparison
+commits, and otherwise from GitHub’s list (`"github"`, current while the pull request’s
+`updated_at`, from its record or a cached list row, is no newer than `fetched_at`, or
+within the window when neither knows).
+`fetched` is the rows held; `complete` is false while GitHub’s list fills or after it
+stopped part-way, `last_page` is the page count GitHub’s `Link` gave, `capped` says
+GitHub stopped at its 3,000 files, and `truncated` that an item was left out.
+A row keeps `path`, its identity, `previous_path`, GitHub’s `status`, and the line
+counts, with `display` and `previous_display` through the pinned tree’s display rule;
+`rows` is the window from `offset`, all by default and none with `limit=0`. It sends an
+entity tag over everything but the rows.
+`POST github/pull-files-refresh` with `{"number": n, "retry": false}` starts or joins
+that list’s refresh and answers `202`, naming `github/pull-files` with `limit=0` as its
+`status_route`. GitHub’s pages are published one by one as they arrive while the file
+holds no whole list, and a whole one is reread conditionally and replaced at the end.
+`"retry": true` is a reader’s own action; any other request starts a list that is not
+held, not complete, or stale, and not tried within the window.
+Past `rate_limited` nothing reads GitHub until `reset_at`, though the local comparison
+may still list. A request held answers `not_due` with `200`. A file-list job takes no
+turn at the store and holds a network slot for each `gh` request alone; past
+`MAX_PULL_JOBS` of them queued or running, a request is refused 429 `too_many`. See
+[Changed files of a pull request](arch-repository-sources-and-provider-mirrors.md#changed-files-of-a-pull-request).
+
 ### Planned plugin registration surfaces
 
 Browser and route declarations are additive installed-plugin capabilities only if
@@ -353,6 +380,8 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt` |
 | `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
+| `/api/plugin/github/pull-files` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt` |
+| `/api/plugin/github/pull-files-refresh` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt`, `cli-github-pull-files-failures.txt` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
@@ -416,6 +445,10 @@ refresh that completes.
 `/api/plugin/github/pulls-refresh` is the same: `cli-github-pulls-refresh.txt` records
 refreshes that complete with the `gh` calls each made, `cli-github-pulls-failures.txt`
 each typed failure, and `cli-github-pulls.tryscript.md` the same route with no `gh`.
+`/api/plugin/github/pull-files-refresh` is too: `cli-github-pull-files-refresh.txt`
+records lists that complete, from GitHub’s pages and from the local comparison, and a
+force-push; `cli-github-pull-files-failures.txt` each typed failure and a list that
+stopped part-way; and `cli-github-pull-files.tryscript.md` the route with no `gh`.
 
 The exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request

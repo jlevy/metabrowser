@@ -645,6 +645,41 @@ The paging loop, `read_list`, is shared with the record (`gh_lists.py`).
 The server reaches the repository through its `StoreMirror`, the one served source that
 names a GitHub repository today; a folder’s server answers `not_github`.
 
+### Changed files of a pull request
+
+A pull request’s changed files are one more file beside its record:
+`sources/<slug>/pulls/<n>.files.json`, with `<n>.files.refresh.json` for how its last
+refresh ended (`cache/paths.py: source_pull_files`). `PullFileList` in `pull_list.py`
+holds the model and its bounds with their measurements, written and read as a list of
+pull requests is. A row keeps `path`, `previous_path`, GitHub’s `status`, and the line
+counts; GitHub’s embedded patch is dropped before anything is kept.
+The path is the row’s identity, a rename’s new path, since the diff view jumps to a file
+by its path.
+
+`refresh_pull_files` (`pull_files_refresh.py`) has two sources for one list.
+When the record’s comparison names two commits and the server has a store, it lists that
+comparison’s manifest with `GitDiffSource` (`--raw` and `--numstat`, no patch) and no
+network, as `listed_from: "comparison"` with the `head` it belongs to.
+A manifest cut at `MAX_MANIFEST_FILES`, or one Git cannot list, falls through to
+GitHub’s list, which runs no Git: the account, then
+`repos/<owner>/<repo>/pulls/<n>/files`, one page of a hundred at a time up to GitHub’s
+3,000 files, then the account again.
+`tests/test_github_pull_files.py` lists a source directory that has no store, with a
+`git` first on `PATH` that fails and logs.
+
+GitHub’s list is published after every page while the file holds no whole list, as
+`complete: false` with the page count GitHub’s `Link` gave, so a reader sees what has
+arrived; a whole list by the same reader is reread with each page’s `If-None-Match`, its
+last page whole when it is full, and replaced at the end.
+A failure leaves the file as last published, and its stamp says why.
+
+The job runs on the refresh coordinator under `<slug>:pull/<n>/files`, started outside
+the network slots, and holds a slot for each `gh` request alone, so a long list never
+holds one between pages and the mirror’s fetch waits at most for a page.
+It takes no turn at the store.
+At most `MAX_PULL_JOBS` file lists may be queued or running, since the numbers are
+request text; past it a request is refused `too_many`.
+
 ### Git path and blob semantics
 
 `GitPath` is an immutable tuple of raw non-NUL byte segments with bytewise equality and

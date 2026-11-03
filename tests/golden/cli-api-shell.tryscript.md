@@ -477,6 +477,21 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-files",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/pull-files-refresh",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-markdown",
       "methods": [
         "GET",
@@ -678,7 +693,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 51
+  "count": 53
 }
 ? 0
 ```

@@ -164,13 +164,15 @@ class ListRead:
 
     ``left_out`` says an item too large to read, or the request cap, cost it items.
     ``more`` says GitHub has more past what was read; it says nothing about a ``304``,
-    whose caller knows from the read that ETag came from.
+    whose caller knows from the read that ETag came from. ``last_page`` is the full-size
+    page the first page's ``Link`` named last, when it was read whole and was not the last.
     """
 
     items: list[object] | None
     left_out: bool
     more: bool
     etag: str | None
+    last_page: int | None = None
 
     @property
     def incomplete(self) -> bool:
@@ -202,6 +204,7 @@ async def read_list(
     prefix = f"{path}?{query}&" if query else f"{path}?"
     items: list[object] = []
     first_etag: str | None = None
+    last_page: int | None = None
     left_out = False
     start = (first_page - 1) * API_PAGE_SIZE
     end = start + cap
@@ -225,7 +228,7 @@ async def read_list(
                 left_out = True
                 if offset >= end:
                     # No answer said whether anything follows, so it may.
-                    return ListRead(items[:cap], True, True, first_etag)
+                    return ListRead(items[:cap], True, True, first_etag, last_page)
             continue
         if response.status == 304:
             if conditional is not None:
@@ -233,15 +236,16 @@ async def read_list(
             raise unconditional_304()
         if whole_first_page:
             first_etag = response.etag
+            last_page = response.last_page
         batch = _page_items(response, key)
         items.extend(batch)
         offset += len(batch)
         if not batch or not response.has_next_page:
-            return ListRead(items[:cap], left_out, len(items) > cap, first_etag)
+            return ListRead(items[:cap], left_out, len(items) > cap, first_etag, last_page)
         if offset >= end:
-            return ListRead(items[:cap], left_out, True, first_etag)
+            return ListRead(items[:cap], left_out, True, first_etag, last_page)
         size = max(candidate for candidate in _PAGE_SIZES if offset % candidate == 0)
-    return ListRead(items[:cap], True, True, first_etag)
+    return ListRead(items[:cap], True, True, first_etag, last_page)
 
 
 __all__ = [

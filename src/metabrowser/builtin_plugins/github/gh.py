@@ -72,6 +72,8 @@ _API_PATH = re.compile(r"^repos/[A-Za-z0-9._/-]+(?:\?[A-Za-z0-9_=&.-]*)?$")
 _ETAG = re.compile(r'^(?:W/)?"[\x21\x23-\x7e]{1,256}"$')
 _LOGIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
 _STATUS_LINE = re.compile(rb"^HTTP/[0-9.]+ ([0-9]{3})(?: [^\r\n]*)?$")
+# The page ``rel="last"`` names: ``<https://api.github.com/...&page=12>; rel="last"``.
+_LAST_PAGE = re.compile(r'[?&]page=([1-9][0-9]{0,5})(?:&[^>]*)?>; rel="last"')
 
 type GhFailureState = Literal[
     "gh_missing",
@@ -146,6 +148,16 @@ class GhResponse:
     @property
     def has_next_page(self) -> bool:
         return 'rel="next"' in self.headers.get("link", "")
+
+    @property
+    def last_page(self) -> int | None:
+        """The page number ``rel="last"`` names in the ``Link`` header, or ``None``.
+
+        GitHub sends it on every page but the last, so it counts pages and not items.
+        """
+
+        found = _LAST_PAGE.search(self.headers.get("link", ""))
+        return int(found.group(1)) if found is not None else None
 
     def json(self) -> object:
         try:

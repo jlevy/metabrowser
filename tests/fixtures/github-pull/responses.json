@@ -39,6 +39,20 @@
     "auto_merge": null,
     "draft": false
   },
+  "file_item_provenance": "Scrubbed from the first item of gh api repos/pallets/click/pulls/2800/files?per_page=100&page=1 on 2026-11-03: every key GitHub's item for a changed file has, with GitHub's names, shapes, and value formats. Its commit IDs, URLs, and path are replaced, its patch is cut to a few lines, and previous_filename is added as a renamed file's item carries it, as nodejs/node#65161's 93 renamed items do. Each fixture row takes this item's shape and its own values.",
+  "file_item": {
+    "sha": "01e8d8b15a68fc0405299ed9de65e4bdf0c1350a",
+    "filename": "docs/guide.md",
+    "status": "renamed",
+    "additions": 3,
+    "deletions": 0,
+    "changes": 3,
+    "blob_url": "https://github.com/octo/demo/blob/@HEAD@/docs/guide.md",
+    "raw_url": "https://github.com/octo/demo/raw/@HEAD@/docs/guide.md",
+    "contents_url": "https://api.github.com/repos/octo/demo/contents/docs/guide.md?ref=@HEAD@",
+    "patch": "@@ -59,6 +59,9 @@ Unreleased\n -   If help is shown because the arguments are missing,\n     the exit code is 2 instead of 0.\n+-   Say more in the guide.\n+    A second line.\n+    A third line.\n",
+    "previous_filename": "docs/old-guide.md"
+  },
   "pull": {
     "number": 7,
     "state": "open",

@@ -77,6 +77,18 @@ def source_pull_list_refresh(slug: str, name: PullListName) -> str:
     return source_pull_list(slug, name).removesuffix(".json") + ".refresh.json"
 
 
+def source_pull_files(slug: str, number: int) -> str:
+    """Return ``sources/<slug>/pulls/<n>.files.json``: the pull request's changed files."""
+
+    return source_pull_record(slug, number).removesuffix(".json") + ".files.json"
+
+
+def source_pull_files_refresh(slug: str, number: int) -> str:
+    """Return ``sources/<slug>/pulls/<n>.files.refresh.json``: how that list's refresh ended."""
+
+    return source_pull_record(slug, number).removesuffix(".json") + ".files.refresh.json"
+
+
 def store_directory(store_key: str) -> str:
     """Return ``repository-stores/<store-key>``."""
 
@@ -111,6 +123,8 @@ __all__ = [
     "STAGING",
     "STAGING_LOCKS",
     "source_directory",
+    "source_pull_files",
+    "source_pull_files_refresh",
     "source_pull_list",
     "source_pull_list_refresh",
     "source_pull_record",

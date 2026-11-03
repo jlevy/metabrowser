@@ -7,6 +7,10 @@ listing, so ``complete`` has one meaning: GitHub has nothing past the last page 
 Pydantic validates a list on write and parses it on read; one whose ``schema_version`` is
 not :data:`PULL_LIST_SCHEMA` is refetched, never migrated.
 
+A pull request's changed files are a list of their own, :class:`PullFileList`, at
+``sources/<slug>/pulls/<n>.files.json``, written and bounded as a list of pull requests
+is: see the section below.
+
 A row keeps only what a list shows. The description, the repository objects GitHub embeds
 in every item, and every URL are dropped, and a list's item has no ``merged`` flag, so
 "merged" is read from ``merged_at``.
@@ -48,6 +52,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     Reader,
     RecordAbsence,
     RecordTooLargeError,
+    Sha,
     Timestamp,
     Url,
     read_refresh_stamp,
@@ -57,6 +62,8 @@ from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.paths import (
     MAX_PULL_REQUEST_NUMBER,
     PullListName,
+    source_pull_files,
+    source_pull_files_refresh,
     source_pull_list,
     source_pull_list_refresh,
     source_pulls_directory,
@@ -125,6 +132,8 @@ type _LabelName = Annotated[str, StringConstraints(max_length=MAX_ROW_LABEL_BYTE
 
 
 _UNWRITTEN_STAMPS: dict[str, PullRefreshStamp] = {}
+# Three lists and as many file lists as a server's job bound lets fail at once, with room.
+_MAX_UNWRITTEN_STAMPS: Final = 64
 
 
 def utc_now() -> datetime:
@@ -232,6 +241,18 @@ class ListedRepository:
         return f"https://github.com/{self.owner}/{self.repo}"
 
 
+@dataclass(frozen=True, slots=True)
+class LocalComparison:
+    """A store that holds both of a record's comparison commits, and those commits.
+
+    ``base`` is the comparison's merge base, so the two name the page's Files changed.
+    """
+
+    git_dir: Path
+    base: str
+    head: str
+
+
 def serialize_pull_list(listed: PullList) -> bytes:
     """Validate *listed* again and serialize it, refusing one past the read bound."""
 
@@ -300,7 +321,7 @@ def write_list_refresh(home: Path, slug: str, name: PullListName, stamp: PullRef
         write_refresh_stamp(home, slug, relative, stamp)
     except (PrivateStorageError, OSError) as exc:
         log.debug("could not keep how the list's refresh ended: %s", exc)
-        _UNWRITTEN_STAMPS[str(home / relative)] = stamp
+        _remember_unwritten(str(home / relative), stamp)
     else:
         _UNWRITTEN_STAMPS.pop(str(home / relative), None)
 
@@ -344,27 +365,260 @@ def can_extend(listed: PullList) -> bool:
     return not listed.complete and listed.pages < MAX_LIST_PAGES
 
 
+# ── A pull request's changed files ──────────────────────────────
+#
+# Two sources list the same comparison. When the store has both of the pull request's
+# commits, the local comparison's manifest, which needs no network: ``listed_from`` is
+# ``comparison`` and ``head`` the commit it belongs to. Otherwise GitHub's list, one ``gh
+# api repos/<owner>/<repo>/pulls/<n>/files`` request per hundred files, read by the account
+# ``reader`` names, with one mark per page held. A row keeps the path, the path before a
+# rename or copy, the status, and the line counts; GitHub's embedded patch is dropped before
+# anything is kept. The path is the row's identity, a rename's new path, since the diff view
+# jumps to a file by its path. It is text a pull request's author wrote: it reaches no
+# filesystem call and no markup.
+#
+# Measured 2026-11-03 with gh 2.98.0, at a load average of 4 to 7, first each page by ``gh
+# api --include`` and then the whole job, ``refresh_pull_files``, on a source with no store:
+#
+# - nodejs/node#65161, which GitHub counts 8,161 files: 30 full pages, and page 30 names no
+#   next page, so GitHub's limit is where the list ends. A page was 0.86 to 2.01 s and at most
+#   985 KB with its patches, of which 15 KB is kept; the job took 27.0 s, each page 0.72 to 1.20
+#   s and each account read about 0.5 s. django/django#15387, 2,003 files: 21 pages of at most
+#   973 KB, 0.84 to 1.69 s each by hand, and 17.2 s for the job. pallets/click#2800, 4 files: one
+#   page, and 1.3 s for the job. A 304 to a conditional page took 0.51 to 0.83 s. So a page is
+#   about a second, a long list is published as each arrives, and no page came within a factor
+#   of 8 of ``GH_API_MAX_BYTES``.
+# - The local manifest of django/django#15387, ``GitDiffSource.manifest`` on a mirror (``git
+#   diff --raw`` and ``--numstat``, copies detected, no patch), took 0.26 s, five runs. It is cut
+#   at ``MAX_MANIFEST_FILES``, 2,000, and a cut one is not used, since GitHub's lists 3,000.
+#
+# GitHub lists at most 3,000 files of a pull request; the list holds them all.
+MAX_PULL_FILES: Final = 3000
+MAX_FILE_PAGES: Final = MAX_PULL_FILES // API_PAGE_SIZE
+# A path, in bytes as written, since JSON escaping counts. The longest measured was 105 bytes
+# (django/django#15387; 95 on nodejs/node#65161). A longer one is left out, never cut, since a
+# cut path names another file, and the list then says it is incomplete.
+MAX_FILE_PATH_BYTES: Final = 1024
+# The read bound. nodejs/node#65161's 3,000 rows were written at 378 KB. The worst row these
+# bounds allow is 2,124 bytes, and ``tests/test_github_pull_files.py`` writes 3,000 of them and
+# reads them back: 6.38 MB. So every list written can be read.
+MAX_PULL_FILES_BYTES: Final = 8 * 1024 * 1024
+PULL_FILES_SCHEMA: Final = 1
+
+type FileStatus = Literal[
+    "added", "removed", "modified", "renamed", "copied", "changed", "unchanged"
+]
+type FileListSource = Literal["github", "comparison"]
+type _FilePath = Annotated[str, StringConstraints(min_length=1, max_length=MAX_FILE_PATH_BYTES)]
+type _LineCount = Annotated[int, Field(ge=0)]
+
+
+class PullFileRow(_Model):
+    """One changed file, in GitHub's words: ``status`` is one of GitHub's statuses.
+
+    ``previous_path`` is the path before a rename or a copy. A count is ``None`` where the
+    local comparison has none, for a binary file.
+    """
+
+    path: _FilePath
+    previous_path: _FilePath | None
+    status: FileStatus
+    additions: _LineCount | None
+    deletions: _LineCount | None
+
+
+class FilePageMark(_Model):
+    """What a refresh needs of one page of GitHub's list it holds.
+
+    ``etag`` is ``None`` for a page read in smaller pieces, which is asked again in full;
+    ``rows`` is how many of the list's rows came from it, in order, which a ``304`` reuses.
+    ``places`` is how many items GitHub listed on it, read or not, so a full page is told
+    from a short one, and ``truncated`` whether an item on it could not be read.
+    """
+
+    etag: Annotated[str, StringConstraints(pattern=ETAG_PATTERN)] | None
+    rows: int = Field(ge=0, le=API_PAGE_SIZE)
+    places: int = Field(ge=0, le=API_PAGE_SIZE)
+    truncated: bool
+
+
+class PullFileList(_Model):
+    """The changed files of one pull request, from one of two sources.
+
+    ``complete`` is false while GitHub has pages not yet read, which is the state a list is
+    published in while it fills. ``last_page`` is the page count the first page's ``Link``
+    header gave, which counts pages and not files. ``capped`` says GitHub stopped at the
+    most files it lists, :data:`MAX_PULL_FILES`, so the pull request may have more.
+    ``truncated`` says an item could not be read or had a path past
+    :data:`MAX_FILE_PATH_BYTES`, and was left out.
+    """
+
+    schema_version: int
+    source: Url
+    number: PullNumber
+    listed_from: FileListSource
+    fetched_at: Timestamp
+    reader: Reader | None
+    head: Sha | None
+    pages: int = Field(ge=0, le=MAX_FILE_PAGES)
+    last_page: Annotated[int, Field(ge=1)] | None
+    complete: bool
+    capped: bool
+    truncated: bool
+    marks: tuple[FilePageMark, ...] = Field(max_length=MAX_FILE_PAGES)
+    rows: tuple[PullFileRow, ...] = Field(max_length=MAX_PULL_FILES)
+
+    @field_validator("fetched_at")
+    @classmethod
+    def _a_real_moment(cls, value: str) -> str:
+        parse_stamp(value)
+        return value
+
+    @model_validator(mode="after")
+    def _is_one_list(self) -> Self:
+        if len({row.path for row in self.rows}) != len(self.rows):
+            raise ValueError("a file list names each path once")
+        if self.listed_from == "comparison":
+            if self.reader is not None or self.head is None or self.marks or self.pages:
+                raise ValueError("a comparison's list names its head, and no reader or pages")
+            if not self.complete or self.capped:
+                raise ValueError("a comparison's list is whole")
+            return self
+        if self.reader is None or self.head is not None or self.pages < 1:
+            raise ValueError("GitHub's list names its reader and holds a page")
+        if len(self.marks) != self.pages:
+            raise ValueError("GitHub's list has one mark per page it holds")
+        if sum(mark.rows for mark in self.marks) != len(self.rows):
+            raise ValueError("GitHub's list holds exactly the rows its marks count")
+        return self
+
+    def page_rows(self, number: int) -> tuple[PullFileRow, ...]:
+        """The rows page *number* of GitHub's list gave, in order."""
+
+        start = sum(mark.rows for mark in self.marks[: number - 1])
+        return self.rows[start : start + self.marks[number - 1].rows]
+
+
+def serialize_pull_files(listed: PullFileList) -> bytes:
+    """Validate *listed* again and serialize it, refusing one past the read bound."""
+
+    data = PullFileList.model_validate(listed.model_dump()).model_dump_json().encode("utf-8")
+    if len(data) > MAX_PULL_FILES_BYTES:
+        raise RecordTooLargeError(
+            f"the list of changed files would be {len(data):,} bytes, more than "
+            f"{MAX_PULL_FILES_BYTES:,}"
+        )
+    return data
+
+
+def write_pull_files(home: Path, slug: str, listed: PullFileList) -> None:
+    """Publish *listed* atomically under its source. Blocking; run it off the event loop.
+
+    Raises :class:`RecordTooLargeError`, or the home's ``PrivateStorageError`` or an
+    ``OSError`` when the cache cannot take it.
+    """
+
+    data = serialize_pull_files(listed)
+    ensure_private_directory(home, source_pulls_directory(slug))
+    write_private_file_atomic(home, source_pull_files(slug, listed.number), data)
+
+
+def read_pull_files(
+    home: Path, slug: str, number: int, *, shared: SharedEntryPolicy = "keep"
+) -> PullFileList | RecordAbsence:
+    """The cached list of changed files, or why there is none. Blocking and bounded.
+
+    The absences are a list of pull requests': ``schema_mismatch`` for another schema's, and
+    ``unreadable`` for one too large, malformed, outside the model, or another pull
+    request's; the next refresh replaces it either way.
+    """
+
+    try:
+        data = read_bytes_bounded(
+            home, source_pull_files(slug, number), max_bytes=MAX_PULL_FILES_BYTES, shared=shared
+        )
+    except FileNotFoundError:
+        return "not_cached"
+    except (RecordError, PrivateStorageError, OSError):
+        return "unreadable"
+    try:
+        payload = json.loads(data)
+    except ValueError:
+        return "unreadable"
+    if not isinstance(payload, dict) or payload.get("schema_version") != PULL_FILES_SCHEMA:
+        return "schema_mismatch"
+    try:
+        listed = PullFileList.model_validate(payload)
+    except ValidationError:
+        return "unreadable"
+    return listed if listed.number == number else "unreadable"
+
+
+def write_files_refresh(home: Path, slug: str, number: int, stamp: PullRefreshStamp) -> None:
+    """Keep how the file list's refresh ended beside it, as :func:`write_list_refresh` does."""
+
+    relative = source_pull_files_refresh(slug, number)
+    try:
+        write_refresh_stamp(home, slug, relative, stamp)
+    except (PrivateStorageError, OSError) as exc:
+        log.debug("could not keep how the file list's refresh ended: %s", exc)
+        _remember_unwritten(str(home / relative), stamp)
+    else:
+        _UNWRITTEN_STAMPS.pop(str(home / relative), None)
+
+
+def read_files_refresh(home: Path, slug: str, number: int) -> PullRefreshStamp | None:
+    """How the file list's last refresh ended, in any process, or ``None``. Blocking."""
+
+    relative = source_pull_files_refresh(slug, number)
+    return _UNWRITTEN_STAMPS.get(str(home / relative)) or read_refresh_stamp(home, relative)
+
+
+def _remember_unwritten(key: str, stamp: PullRefreshStamp) -> None:
+    # File lists are per pull request, and numbers are request text, so this is bounded:
+    # the oldest is forgotten first, and its list's next automatic attempt is not held.
+    if key not in _UNWRITTEN_STAMPS and len(_UNWRITTEN_STAMPS) >= _MAX_UNWRITTEN_STAMPS:
+        _UNWRITTEN_STAMPS.pop(next(iter(_UNWRITTEN_STAMPS)))
+    _UNWRITTEN_STAMPS[key] = stamp
+
+
 __all__ = [
     "ETAG_PATTERN",
+    "MAX_FILE_PAGES",
+    "MAX_FILE_PATH_BYTES",
     "MAX_LIST_PAGES",
     "MAX_LIST_ROWS",
+    "MAX_PULL_FILES",
+    "MAX_PULL_FILES_BYTES",
     "MAX_PULL_LIST_BYTES",
     "MAX_ROW_LABEL_BYTES",
     "MAX_ROW_REF_BYTES",
     "MAX_ROW_TITLE_BYTES",
+    "PULL_FILES_SCHEMA",
     "PULL_LIST_SCHEMA",
+    "FilePageMark",
+    "FileListSource",
+    "FileStatus",
     "ListPageMark",
     "ListedRepository",
+    "LocalComparison",
+    "PullFileList",
+    "PullFileRow",
     "PullList",
     "PullListRow",
     "can_extend",
     "parse_stamp",
     "rate_limit_holds",
+    "read_files_refresh",
     "read_list_refresh",
+    "read_pull_files",
     "read_pull_list",
     "refresh_is_due",
+    "serialize_pull_files",
     "serialize_pull_list",
     "utc_now",
+    "write_files_refresh",
     "write_list_refresh",
+    "write_pull_files",
     "write_pull_list",
 ]

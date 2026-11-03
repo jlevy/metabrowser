@@ -31,7 +31,7 @@ import os
 import re
 import stat
 import threading
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import timedelta
@@ -46,6 +46,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
     MAX_LIST_ROWS,
     ListedRepository,
     PullList,
+    PullListRow,
     can_extend,
     rate_limit_holds,
     read_list_refresh,
@@ -270,6 +271,26 @@ def _cached_list(
     return listed, rows
 
 
+def cached_list_row(home: Path, slug: str, number: int) -> PullListRow | None:
+    """Pull request *number*'s row in the newest cached list that holds it, or ``None``.
+
+    Blocking and bounded, and each list is parsed once per write, as the route does.
+    """
+
+    found: PullListRow | None = None
+    for name in PULL_LIST_NAMES:
+        listed, _rows = _cached_list(home, slug, name)
+        if not isinstance(listed, PullList):
+            continue
+        # Rows are in descending number order, so negated numbers ascend.
+        at = bisect_left(listed.rows, -number, key=lambda row: -row.number)
+        if at < len(listed.rows) and listed.rows[at].number == number:
+            row = listed.rows[at]
+            if found is None or row.updated_at > found.updated_at:
+                found = row
+    return found
+
+
 def _window(
     rows: list[dict[str, Any]], window: ListWindow
 ) -> tuple[list[dict[str, Any]], int | None]:
@@ -491,6 +512,7 @@ __all__ = [
     "ListWindow",
     "PullListEnvelope",
     "RefreshRequest",
+    "cached_list_row",
     "envelope_etag",
     "list_file_stamp",
     "list_view",

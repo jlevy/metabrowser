@@ -1,8 +1,10 @@
-"""The pull routes: one pull request's, ``pull`` and ``pull-refresh``, and the lists', ``pulls``
-and ``pulls-refresh``, all under ``/api/plugin/github/``.
+"""The pull routes: one pull request's, ``pull`` and ``pull-refresh``, the lists', ``pulls``
+and ``pulls-refresh``, and a pull request's changed files, ``pull-files`` and
+``pull-files-refresh``, all under ``/api/plugin/github/``.
 
-:mod:`metabrowser.builtin_plugins.github.pull_route` and
-:mod:`metabrowser.builtin_plugins.github.pull_list_route` build the answers; this module is
+:mod:`metabrowser.builtin_plugins.github.pull_route`,
+:mod:`metabrowser.builtin_plugins.github.pull_list_route`, and
+:mod:`metabrowser.builtin_plugins.github.pull_files_route` build the answers; this module is
 the data hooks the manifest names. The loader imports it at startup, so like the
 ``/api/cache/`` route table it imports nothing from the cache or the application home
 itself: each handler imports the envelope builder, which reaches both, only when it is
@@ -261,8 +263,90 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     return JSONResponse(answer, status_code=200 if started == "not_due" else 202, headers=_NO_STORE)
 
 
+async def pull_files_handler(request: Request) -> Response:
+    """``GET /api/plugin/github/pull-files?number=<n>&offset=&limit=`` — see :mod:`.pull_files_route`.
+
+    From the cache alone, with an entity tag, so a tree that polls a list while it fills is
+    answered ``304`` until the next page is published.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_files_route import (
+        FilesRequestError,
+        envelope_etag,
+        files_file_stamp,
+        files_view,
+        files_window,
+        pull_files_envelope,
+    )
+
+    try:
+        window = files_window(request.query_params)
+    except FilesRequestError as exc:
+        return _invalid_request(str(exc))
+    view = files_view(request.app, window.number)
+    stamp = await asyncio.to_thread(files_file_stamp, view)
+    envelope = await asyncio.to_thread(pull_files_envelope, view, window)
+    etag = envelope_etag(envelope, stamp)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
+async def pull_files_refresh_handler(request: Request) -> JSONResponse:
+    """``POST /api/plugin/github/pull-files-refresh`` — start or join one file list's refresh.
+
+    The body names ``number``, and may name ``retry``, a reader's own click. ``refresh``
+    says whether this request ``started`` the job or ``joined`` one that was running,
+    answered ``202``; that it is ``not_due``, answered ``200``: the list is whole and
+    current, it was tried within the window, or GitHub's limit holds; or, past the bound on
+    jobs, ``too_many``, answered ``429``, starting nothing. ``files`` is the envelope as of
+    that moment without its rows.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_files_route import (
+        FilesRequestError,
+        FilesWindow,
+        files_refresh_request,
+        files_refresh_wanted,
+        files_view,
+        pull_files_envelope,
+        start_files_refresh,
+        status_route,
+    )
+
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
+    try:
+        ask = files_refresh_request(body)
+    except FilesRequestError as exc:
+        return _invalid_request(str(exc))
+    view = files_view(request.app, ask.number)
+    if view.repository is None or view.coordinator is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+        )
+    wanted, local = await asyncio.to_thread(files_refresh_wanted, view, ask)
+    started = start_files_refresh(view, ask, wanted=wanted, local=local)
+    # Read after the start, on the loop: the job is running, whatever it does next.
+    after = files_view(request.app, ask.number)
+    envelope = await asyncio.to_thread(pull_files_envelope, after, FilesWindow(ask.number, limit=0))
+    answer: dict[str, Any] = {
+        "refresh": started,
+        "files": dict(envelope),
+        "status_route": status_route(ask.number),
+    }
+    if started == "too_many":
+        answer.update(_TOO_MANY)
+    return JSONResponse(answer, status_code=_REFRESH_STATUS[started], headers=_NO_STORE)
+
+
 __all__ = [
     "MAX_REFRESH_REQUEST_BYTES",
+    "pull_files_handler",
+    "pull_files_refresh_handler",
     "pull_handler",
     "pull_markdown_handler",
     "pull_refresh_handler",
