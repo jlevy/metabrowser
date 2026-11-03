@@ -407,6 +407,18 @@ $ node tests/dom/diff-file-jump-session.js
       ]
     },
     {
+      "step": "the current-file subscription follows held and deferred bars, suppresses repeats, and stops",
+      "files": [
+        "r1.py",
+        "r9.py",
+        "d1.py"
+      ]
+    },
+    {
+      "step": "the current-file lookup bisects 2,048 sections",
+      "geometryReads": 13
+    },
+    {
       "step": "a key held over held files: nothing drawn it passed, then the file it rests on",
       "atTop": "r9.py",
       "asked": [],

@@ -329,6 +329,16 @@ It exists for a list of a comparison’s files, so it takes a path and not a fil
   answer is in hand, so its lines are drawn in the frame after the jump, or after the
   burst stops, and its `lines` can be `"superseded"` like any other.
 
+`currentFile()` returns the first file whose bar or body intersects the pane, including
+held and deferred files, or `null` when none is visible or the view is disposed.
+Its answer has the same fields as `fileForPath`, with the new path for a rename and the
+old path for a deletion.
+`onCurrentFile(listener)` reports that snapshot immediately, then reports only changes
+to the current file; it returns an idempotent unsubscribe function.
+Scroll reports share one animation frame and locate the file by bisection over the
+ordered sections. Disposal removes the scroll listener, cancels a queued report, and
+releases subscribers.
+
 A list calls it on every step of a held key; it is cheap, and it does not need
 debouncing. `tests/dom/diff-file-jump-session.js` pins all of this, and
 `explorations/performance-loop/experiments/exp-040-files-changed-recomputes-the-whole-patch-per-request.md`

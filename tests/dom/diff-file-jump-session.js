@@ -33,6 +33,7 @@ const PANE_PX = 400;
 const PANE_WIDTH_PX = 800;
 
 let clock = 1000;
+let geometryReads = 0;
 const timers = [];
 const frames = [];
 
@@ -188,6 +189,7 @@ class LaidOutElement {
   }
 
   getBoundingClientRect() {
+    geometryReads += 1;
     const pane = this.closest("[data-kpress-viewport]");
     if (this === pane) {
       return { top: 0, bottom: PANE_PX, height: PANE_PX, width: PANE_WIDTH_PX };
@@ -272,7 +274,9 @@ class WidthObserver {
     this.target = null;
   }
   report(width) {
-    if (this.target) this.callback([{ contentRect: { width } }]);
+    if (this.target) {
+      this.callback([{ contentRect: { width } }]);
+    }
   }
 }
 
@@ -1055,7 +1059,7 @@ async function main() {
   // hand and the manifest estimate alike.
   const switchingDocument = readyComparison(12, 8, 2);
   switchingDocument.patches.r5.hunks[0].lines.unshift(
-    ...Array.from({ length: 4 }, (_, index) => ({ op: "del", text: "old " + index })),
+    ...Array.from({ length: 4 }, (_, index) => ({ op: "del", text: `old ${index}` })),
   );
   const switching = mount(switchingDocument);
   const reservedHeight = (file) =>
@@ -1108,6 +1112,56 @@ async function main() {
       split: heightAtWidth(),
     },
   );
+
+  const following = mount(readyComparison(12, 8, 2));
+  const currentFiles = [];
+  const unfollow = following.handle.onCurrentFile((file) => currentFiles.push(file?.path ?? null));
+  following.pane.scrollTop = 20;
+  for (let event = 0; event < 5; event += 1) {
+    following.pane.dispatch("scroll");
+  }
+  await following.turn();
+  assert(currentFiles.length === 1, "scrolling inside a file repeated its notification");
+  following.handle.scrollToFile("r9.py");
+  await following.turn();
+  assert(following.handle.currentFile()?.path === "r9.py", "a held bar was not the current file");
+  following.handle.scrollToFile("d1.py");
+  await following.turn();
+  const deferredCurrent = following.handle.currentFile();
+  assert(
+    deferredCurrent?.path === "d1.py" && deferredCurrent.availability === "deferred",
+    "a deferred bar was not the current file",
+  );
+  unfollow();
+  unfollow();
+  following.handle.scrollToFile("r2.py");
+  await following.turn();
+  assert(currentFiles.join(",") === "r1.py,r9.py,d1.py", "unsubscribe kept notifying");
+  let disposalReports = 0;
+  following.handle.onCurrentFile(() => {
+    disposalReports += 1;
+  });
+  following.pane.dispatch("scroll");
+  following.handle.dispose();
+  await following.turn();
+  assert(
+    disposalReports === 1 && following.handle.currentFile() === null,
+    "disposal kept current-file work alive",
+  );
+  steps.push({
+    step: "the current-file subscription follows held and deferred bars, suppresses repeats, and stops",
+    files: currentFiles,
+  });
+
+  const many = mount(readyComparison(2048, 1, 0));
+  many.pane.scrollTop = many.sectionOf("r1700.py").getBoundingClientRect().top;
+  geometryReads = 0;
+  assert(
+    many.handle.currentFile()?.path === "r1700.py",
+    "the current-file bisection picked another file",
+  );
+  assert(geometryReads <= 20, "the current-file lookup measured every section");
+  steps.push({ step: "the current-file lookup bisects 2,048 sections", geometryReads });
 
   // A held key over held files draws nothing until it comes up, then the file it rests on.
   const keyPage = mount(readyComparison(12, 8, 0));
