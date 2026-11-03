@@ -12,6 +12,11 @@
      interface sans whatever the reading font, at that face's width for the same "Max text
      width" (docs/design-system.md, "Serif Is for Documents"). */
   --kpress-host-font-prose: var(--prose-sans-font);
+  --message-measure: calc(
+    var(--document-body-font-size) *
+    var(--doc-max-chars) *
+    var(--message-char-advance, var(--sans-char-advance))
+  );
   --doc-measure: var(--message-measure);
   display: flex;
   flex-direction: column;
