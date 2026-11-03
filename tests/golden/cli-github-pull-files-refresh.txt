@@ -465,11 +465,11 @@ pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/7
-gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
-gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
-gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/85fcb2fa9e77eb5db485ffef445cbbc645d6db4a/status?per_page=100&page=1
+gh api repos/octo/demo/issues/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/7/reviews?per_page=100&page=1
 gh auth status
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
 exit: 0
