@@ -140,11 +140,9 @@ async def merge_base_answer(
 
     A store that borrows can lack a commit its lender collected, and Git before 2.45 ends
     a merge-base walk that meets one with the answer it gives for no common history, where
-    later Git fails; the same early end in its reduction of several candidates can leave
-    one that is not the best. So an answer is believed only after ``rev-list`` walks that
-    fail on any commit they cannot read whatever the Git, and that show no common
-    ancestor outside the answer's history: :func:`_best_common_ancestor`. On a store with
-    no boundary that failure is raised.
+    later Git fails. So a store with no boundary believes its answer only after a
+    ``rev-list`` over the same walk, which fails on any commit it cannot read whatever the
+    Git; that failure is raised.
     """
 
     boundary = await asyncio.to_thread(read_boundary, target.git_dir)
@@ -164,18 +162,11 @@ async def merge_base_answer(
         )
     if merge_base in {left, right}:
         return MergeBaseAnswer(merge_base, certain=await _boundary_still(target, boundary))
+    if boundary == frozenset():
+        await _walk_readable(target, [left, right, f"^{merge_base}"])
+        return MergeBaseAnswer(merge_base, certain=await _boundary_still(target, boundary))
     if boundary is None:
         return MergeBaseAnswer(merge_base, certain=False)
-    try:
-        best = await _best_common_ancestor(target, left, right, merge_base)
-    except GitError:
-        if boundary == frozenset():
-            raise
-        return MergeBaseAnswer(merge_base, certain=False)
-    if not best:
-        return MergeBaseAnswer(merge_base, certain=False)
-    if boundary == frozenset():
-        return MergeBaseAnswer(merge_base, certain=await _boundary_still(target, boundary))
     try:
         reached = await run_git(
             ["rev-list", left, right, f"^{merge_base}"], target=target, policy=STORE_READ_POLICY
@@ -188,32 +179,10 @@ async def merge_base_answer(
     return MergeBaseAnswer(merge_base, certain=not above)
 
 
-async def _walk_readable(target: RepositoryStoreTarget, revisions: list[str]) -> int:
-    """How many commits the walk reaches; raises :class:`GitCommandError` on one it cannot read."""
+async def _walk_readable(target: RepositoryStoreTarget, revisions: list[str]) -> None:
+    """Raise :class:`GitCommandError` unless every commit the walk reaches can be read."""
 
-    out = await run_git(
-        ["rev-list", "--count", *revisions], target=target, policy=STORE_READ_POLICY
-    )
-    return int(out.decode("ascii", errors="replace").strip())
-
-
-async def _best_common_ancestor(
-    target: RepositoryStoreTarget, left: str, right: str, merge_base: str
-) -> bool:
-    """Whether every commit both tips reach is in *merge_base*'s history.
-
-    Counted rather than listed, so the output stays one number however far the tips are
-    from it: the tips share a commit outside that history exactly when what either
-    reaches outside it is fewer than what each reaches added together. Then *merge_base*
-    is not the best common ancestor, whatever Git said.
-    """
-
-    outside = f"^{merge_base}"
-    either = await _walk_readable(target, [left, right, outside])
-    each = await _walk_readable(target, [left, outside]) + await _walk_readable(
-        target, [right, outside]
-    )
-    return either == each
+    await run_git(["rev-list", "--count", *revisions], target=target, policy=STORE_READ_POLICY)
 
 
 async def _boundary_still(target: RepositoryStoreTarget, boundary: frozenset[str] | None) -> bool:
