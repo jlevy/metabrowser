@@ -1480,6 +1480,22 @@ export function mountPullsPanel(container, ctx, mb) {
       }) ?? null;
   }
 
+  /** Drop the longest-closed trees while keeping expanded trees and the shown page's tree. */
+  function trimClosedTrees() {
+    const closed = [...trees.keys()].filter((number) => !expansion.isExpanded(number));
+    let excess = closed.length - MAX_HELD_TREES;
+    for (const number of closed) {
+      if (excess <= 0) {
+        break;
+      }
+      if (number !== currentRow) {
+        trees.get(number)?.dispose();
+        trees.delete(number);
+        excess -= 1;
+      }
+    }
+  }
+
   /**
    * A pull request's tree, made the first time its row opens.
    *
@@ -1524,12 +1540,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (entry !== undefined) {
         tree.attach(entry.item, entry.row);
       }
-      // Closed trees past the bound go, the longest closed first.
-      const closed = [...trees.keys()].filter((held) => !expansion.isExpanded(held));
-      for (const held of closed.slice(0, Math.max(0, closed.length - MAX_HELD_TREES))) {
-        trees.get(held)?.dispose();
-        trees.delete(held);
-      }
+      trimClosedTrees();
     }
     return tree;
   }
@@ -1545,7 +1556,14 @@ export function mountPullsPanel(container, ctx, mb) {
     if (open) {
       treeFor(number).controller.expand({ reader });
     } else {
-      trees.get(number)?.controller.collapse();
+      const tree = trees.get(number);
+      if (tree !== undefined) {
+        tree.controller.collapse();
+        // Map order records closing time, rather than the first time a tree was opened.
+        trees.delete(number);
+        trees.set(number, tree);
+      }
+      trimClosedTrees();
       if (focusedTree === number) {
         focusedTree = null;
       }

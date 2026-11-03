@@ -1334,6 +1334,10 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "an age, before": "2h",
     "an age, two hours on": "4h",
     "rows built to tell it": 0,
+    "closing twelve expanded trees enforces retention immediately": {
+      "whileExpanded": 10,
+      "afterClosingAll": 9
+    },
     "disposed: what is left in the tab": 0
   }
 }

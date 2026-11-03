@@ -1076,6 +1076,7 @@ class FakeElement extends FakeNode {
     this.attributes = new Map();
     this.dataset = {};
     this.style = {};
+    this.listeners = new Map();
     this.hidden = false;
     this.classes = new Set();
   }
@@ -1129,7 +1130,18 @@ class FakeElement extends FakeNode {
   get firstElementChild() {
     return this.childNodes.find((child) => child instanceof FakeElement) ?? null;
   }
-  addEventListener() {}
+  addEventListener(type, listener) {
+    this.listeners.set(type, listener);
+  }
+  closest(selector) {
+    const [tag, name] = selector.split(".");
+    for (let node = this; node !== null; node = node.parentNode) {
+      if ((!tag || node.localName === tag) && (!name || node.classList?.contains(name))) {
+        return node;
+      }
+    }
+    return null;
+  }
   querySelectorAll() {
     return [];
   }
@@ -1191,6 +1203,7 @@ async function paintStory(panel) {
     },
     HTMLElement: FakeElement,
     Element: FakeElement,
+    MouseEvent: class {},
     DOMParser: class {
       parseFromString() {
         return { body: { firstElementChild: new FakeElement("svg") } };
@@ -1317,6 +1330,45 @@ async function paintStory(panel) {
     await settle();
     story["an age, two hours on"] = age();
     story["rows built to tell it"] = built;
+    // Reader-opened trees can all be expanded together. Closing them must apply the bound
+    // immediately, without waiting for another tree to be created.
+    const many = list.childNodes
+      .filter((item) => Number(row(item).dataset.number) !== current)
+      .slice(0, 12);
+    const click = (item) => list.listeners.get("click")({ target: row(item), preventDefault() {} });
+    const retained = () =>
+      list.childNodes.filter((item) =>
+        item.childNodes.some(
+          (child) => child instanceof FakeElement && child.classList.contains("github-pull-files"),
+        ),
+      ).length;
+    for (const item of many) {
+      click(item);
+    }
+    for (const item of many.slice(0, -1)) {
+      click(item);
+    }
+    const whileExpanded = retained();
+    assert(
+      whileExpanded === panel.MAX_HELD_TREES + 2,
+      "expanded and current trees must survive trimming",
+    );
+    click(many.at(-1));
+    const afterClosingAll = retained();
+    assert(afterClosingAll === panel.MAX_HELD_TREES + 1, "closed trees must be bounded on close");
+    assert(
+      row(many[0]).getAttribute("aria-owns") === null,
+      "the longest-closed tree must go first",
+    );
+    assert(row(shown).getAttribute("aria-owns") !== null, "the shown page's tree must remain");
+    assert(
+      row(many.at(-1)).getAttribute("aria-owns") !== null,
+      "the most recently closed tree must remain",
+    );
+    story["closing twelve expanded trees enforces retention immediately"] = {
+      whileExpanded,
+      afterClosingAll,
+    };
     mounted.dispose();
     story["disposed: what is left in the tab"] = container.childNodes.length;
     return story;
