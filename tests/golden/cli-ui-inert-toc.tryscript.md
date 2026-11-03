@@ -102,6 +102,11 @@ $ node tests/dom/markdown-inert-toc-session.js
     "backdropVisible": false,
     "toggleShown": true
   },
+  "toggleNamed": {
+    "accessible": "Table of contents",
+    "tooltip": "Table of contents",
+    "appTooltip": null
+  },
   "toggleOpened": {
     "scrollTop": 3900,
     "active": "#user-content-constructor",

@@ -54,6 +54,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {number} generation
  * @property {ReturnType<typeof createHydrationScheduler>} hydration
  * @property {IntersectionObserver | null} hydrationObserver
+ * @property {boolean} awaitingWidth Nothing is drawn until the first report of a width.
  * @property {"unified" | "split"} chosenLayout What the reader chose, whatever fits.
  * @property {boolean} insistedOnSplit The reader chose Split where it does not fit.
  * @property {"unified" | "split"} layout What the diff draws.
@@ -670,7 +671,7 @@ function refreshTextHosts(state) {
  * @param {DiffViewApi} api
  * @param {AbortSignal} signal
  * @param {() => boolean} isCurrent
- * @param {() => "unified" | "split"} currentLayout
+ * @param {() => "unified" | "split" | null} currentLayout `null` until a layout is drawn.
  */
 async function enhanceFileIntraline(state, api, signal, isCurrent, currentLayout) {
   try {
@@ -796,7 +797,7 @@ function scheduleFileEnhancement(view, state) {
       api,
       view.controller.signal,
       () => mountIsCurrent(view, generation),
-      () => view.layout,
+      () => (view.awaitingWidth ? null : view.layout),
     );
     await enhanceFileSyntax(state, api, view.controller.signal, () =>
       mountIsCurrent(view, generation),
@@ -1106,6 +1107,20 @@ export function tooNarrowForSplit(width, fontSize, narrow) {
 }
 
 /**
+ * The first decision, with no earlier one to hold it. A width within the return margin of
+ * the limit counts as narrow, because a pane has no scrollbar until what is drawn brings
+ * one: measured 2026-11-02 in Chrome 152, Files changed with its root resting at 617 px
+ * measured 628 at mount, and drew Split to throw it away. An unknown width is not narrow,
+ * which is what a browserless caller gets. Pure.
+ *
+ * @param {number} width
+ * @param {number} fontSize The diff's text, in px.
+ */
+export function opensTooNarrowForSplit(width, fontSize) {
+  return width > 0 && fontSize > 0 && tooNarrowForSplit(width, fontSize, true);
+}
+
+/**
  * What a diff draws: the reader's choice, except Split where it does not fit, unless the
  * reader chose it there. Pure.
  *
@@ -1177,6 +1192,12 @@ export function setLayout(view, value, persist = true) {
 /**
  * The diff's width changed: draw what now fits. The reader's choice is not touched.
  *
+ * The pane keeps its pixel `scrollTop` through the redraw, as it does through the control,
+ * and Unified is taller than Split, so a long diff moves under the reader: measured in
+ * Chrome 152 on 10 files, a reader 3,744 px into a file was 5,029 px into it after narrowing
+ * and stayed there after widening. Accepted: keeping the line would need an anchor both
+ * layouts share, across a projection that runs in batches above 100 files.
+ *
  * @param {MountedDiffState} view
  * @param {number} width
  */
@@ -1203,6 +1224,7 @@ function fitLayout(view, width) {
  * @param {"unified" | "split"} layout
  */
 function drawLayout(view, layout) {
+  view.awaitingWidth = false;
   view.layout = layout;
   view.root.dataset.layout = layout;
   renderLayoutControl(view);
@@ -1715,7 +1737,9 @@ function renderDeferred(file, loaded, view) {
   } else {
     const state = createFileState(only, patch, view.api ?? plainSyntaxApi(), file.body);
     view.files.push(state);
-    renderFileBody(state, view.layout);
+    if (!view.awaitingWidth) {
+      renderFileBody(state, view.layout);
+    }
     scheduleFileEnhancement(view, state);
     outcome = "painted";
   }
@@ -2086,9 +2110,27 @@ function renderFileSection(change, patch, context, view) {
   }
   const state = createFileState(change, patch, view.api ?? plainSyntaxApi(), body);
   view.files.push(state);
-  renderFileBody(state, view.layout);
+  if (!view.awaitingWidth) {
+    renderFileBody(state, view.layout);
+  }
   scheduleFileEnhancement(view, state);
   return section;
+}
+
+/**
+ * The width and text size a diff has in *container*, from the root's own box, which is what
+ * every later report measures: a container's `clientWidth` also holds its padding. The root
+ * is back out before anything can paint.
+ *
+ * @param {HTMLElement} root
+ * @param {HTMLElement} container
+ */
+function measureInContainer(root, container) {
+  container.append(root);
+  const width = root.getBoundingClientRect?.().width ?? 0;
+  const fontSize = fontSizeOf(root);
+  root.remove();
+  return { width, fontSize };
 }
 
 /**
@@ -2107,11 +2149,14 @@ export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
   const chosenLayout = readLayoutPreference(api);
   // Measured before the first draw, so a narrow pane never draws Split to throw it away. A
-  // container that is not laid out yet has no width, and its first report decides.
-  const narrow = tooNarrowForSplit(container.clientWidth, fontSizeOf(container), false);
+  // container that is not laid out yet has no width, as a commit's stage has none until it
+  // is placed, so nothing is drawn until its first report decides.
+  const { width: mountWidth, fontSize } = measureInContainer(root, container);
+  const narrow = opensTooNarrowForSplit(mountWidth, fontSize);
   /** @type {MountedDiffState} */
   const view = {
     api,
+    awaitingWidth: !(mountWidth > 0) && typeof ResizeObserver === "function",
     byNewPath: new Map(),
     byOldPath: new Map(),
     chosenLayout,
@@ -2154,7 +2199,9 @@ export function mountDiffView(container, document_, api, options = {}) {
     });
   }
   const removeSelectionGate = installSplitSelectionGate(root);
-  root.dataset.layout = view.layout;
+  if (!view.awaitingWidth) {
+    root.dataset.layout = view.layout;
+  }
   const manifest =
     /** @type {{files: Record<string, unknown>[], totals: Record<string, unknown>, truncated: unknown, cursor?: unknown}} */ (
       document_.manifest
@@ -2213,6 +2260,12 @@ export function mountDiffView(container, document_, api, options = {}) {
             return;
           }
           observedWidth = width;
+          if (view.awaitingWidth) {
+            if (width > 0) {
+              drawAtFirstWidth(width);
+            }
+            return;
+          }
           if (fitTimer !== null) {
             clearTimeout(fitTimer);
             view.timers.delete(/** @type {number} */ (fitTimer));
@@ -2227,6 +2280,25 @@ export function mountDiffView(container, document_, api, options = {}) {
         })
       : null;
   widths?.observe(root);
+
+  /**
+   * The first report of a container that had no width at mount. Drawn in the report itself,
+   * which the browser makes before it paints, so the diff arrives whole and in one layout.
+   * The root is watched again from the next task: the height this changes would otherwise
+   * be a ResizeObserver loop error.
+   *
+   * @param {number} width
+   */
+  function drawAtFirstWidth(width) {
+    view.narrow = opensTooNarrowForSplit(width, fontSizeOf(root));
+    widths?.unobserve(root);
+    drawLayout(view, drawnLayout(view.chosenLayout, view.narrow, false));
+    const timer = setTimeout(() => {
+      view.timers.delete(timer);
+      widths?.observe(root);
+    }, 0);
+    view.timers.add(timer);
+  }
 
   function cancelPendingWork() {
     view.generation += 1;
