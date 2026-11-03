@@ -21,6 +21,6 @@ mb.registerView("pull-request", "pull-request", {
 mb.registerView("pull-request-list", "pull-request-list", {
   render: (container, ctx) =>
     ctx.pullsNav === undefined
-      ? mountPullsLanding(container, ctx)
+      ? mountPullsLanding(container, ctx, mb)
       : mountPullsPanel(container, ctx, mb),
 });

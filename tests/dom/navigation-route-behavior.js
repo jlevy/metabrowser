@@ -418,6 +418,10 @@ function makePullShell(pathname) {
       location.pathname = href;
       log.push(`push ${href}`);
     },
+    replaceHref(href) {
+      location.pathname = href;
+      log.push(`replace ${href}`);
+    },
   });
   const page = (number) => ({
     setTab: (tab) => log.push(`#${number} tab "${tab}"`),
@@ -473,6 +477,25 @@ function makePullShell(pathname) {
     shell.mounts[3].resolve(shell.page("list"));
     await shell.tick();
     observe("back onto the list's address", [back, shell.host.shown()]);
+  }
+
+  {
+    // A key's skim through the rows replaces the entry, as the file tree's and Git's keys
+    // do, so one Back leaves however many rows were passed; a click or Enter pushes.
+    const shell = makePullShell("/pull/7");
+    const shown = shell.host.show({ number: 7, tab: "" });
+    shell.mounts[0].resolve(shell.page(7));
+    await shown;
+    const skim = shell.host.open({ number: 8, tab: "", replace: true });
+    shell.mounts[1].resolve(shell.page(8));
+    await skim;
+    const again = shell.host.open({ number: 9, tab: "", replace: true });
+    shell.mounts[2].resolve(shell.page(9));
+    await again;
+    const click = shell.host.open({ number: 10, tab: "" });
+    shell.mounts[3].resolve(shell.page(10));
+    await click;
+    observe("two keys' opens replace the entry, and a click's pushes", shell.log);
   }
 
   {

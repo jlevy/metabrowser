@@ -785,7 +785,11 @@ function isEnvelope(value) {
  * @param {{
  *   number: number,
  *   tab: string,
- *   reader?: {fetchAfterMs: number, initial: {etag: string | null, body: unknown} | null} | null,
+ *   reader?: {
+ *     fetchAfterMs: number,
+ *     initial: {etag: string | null, body: unknown} | null,
+ *     walking?: () => boolean,
+ *   } | null,
  * }} options
  */
 export function createPullController(deps, options) {
@@ -853,6 +857,24 @@ export function createPullController(deps, options) {
       deps.cancel(askTimer);
       askTimer = null;
     }
+  }
+
+  /**
+   * Ask after *delayMs*, and not while a key that opened this page is still held: the walk
+   * has left it, and where it stops opens a page of its own, or this one again.
+   *
+   * @param {() => void} ask
+   * @param {number} delayMs
+   */
+  function askAfter(ask, delayMs) {
+    askTimer = deps.schedule(() => {
+      if (!disposed && reader?.walking?.() === true) {
+        askAfter(ask, delayMs);
+        return;
+      }
+      askTimer = null;
+      ask();
+    }, delayMs);
   }
 
   function scheduleNext() {
@@ -944,10 +966,7 @@ export function createPullController(deps, options) {
       !refreshAskedWhileVisible
     ) {
       refreshAskedWhileVisible = true;
-      askTimer = deps.schedule(() => {
-        askTimer = null;
-        void askForRefresh({ number: options.number });
-      }, REFRESH_ASK_MS);
+      askAfter(() => void askForRefresh({ number: options.number }), REFRESH_ASK_MS);
     }
   }
 
@@ -966,8 +985,7 @@ export function createPullController(deps, options) {
     }
     fetching = true;
     render();
-    askTimer = deps.schedule(() => {
-      askTimer = null;
+    askAfter(() => {
       fetching = false;
       void askForRefresh({ number: options.number, retry: true });
     }, reader.fetchAfterMs);
@@ -1805,7 +1823,7 @@ export function mountPullPage(container, ctx, mb) {
   const stateBadge = (state, label) => {
     const shown = badge(state, label);
     shown.prepend(
-      pullStateIcon(/** @type {import("./pull-state.js").PullState} */ (state), mb, {
+      pullStateIcon(/** @type {import("./pull-state.js").PullState} */ (state), {
         named: false,
       }),
     );

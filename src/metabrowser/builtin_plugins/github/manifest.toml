@@ -55,11 +55,11 @@ container_class = "content-body github-pull-host"
 render_runtime = "client"
 
 # The repository's pull requests, in the Pulls tab and at /pulls. No file is ever this kind:
-# the shell mounts it for that tab and that route.
+# the shell mounts it for that tab and that route, in a host of its own, so it names no
+# container class.
 [[view]]
 kind = "pull-request-list"
 id = "pull-request-list"
 label = "Pull requests"
 default = true
-container_class = "content-body github-pulls-host"
 render_runtime = "client"

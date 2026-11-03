@@ -316,41 +316,9 @@
    ]
   }
  },
- "whole": {
-  "status": 200,
-  "etag": "\"pulls-7\"",
-  "body": {
-   "state": "current",
-   "reason": null,
-   "source": "https://github.com/octo/demo",
-   "list": "all",
-   "fetched_at": "2026-09-17T12:00:00Z",
-   "reader": "gh:octo-reader",
-   "fresh_for_s": 60.0,
-   "refreshing": false,
-   "last_refresh": {
-    "outcome": "succeeded",
-    "message": null,
-    "reset_at": null,
-    "at": "2026-09-17T12:00:00Z"
-   },
-   "fetched": 102,
-   "complete": true,
-   "truncated": false,
-   "at_cap": false,
-   "limit": 102,
-   "next_after": null,
-   "rows": {
-    "same_as": [
-     "more_done",
-     "more_window"
-    ]
-   }
-  }
- },
  "open_absent": {
   "status": 200,
-  "etag": "\"pulls-8\"",
+  "etag": "\"pulls-7\"",
   "body": {
    "state": "absent",
    "reason": "not_cached",
@@ -398,7 +366,7 @@
  },
  "open_current": {
   "status": 200,
-  "etag": "\"pulls-9\"",
+  "etag": "\"pulls-8\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -428,7 +396,7 @@
  },
  "closed_absent": {
   "status": 200,
-  "etag": "\"pulls-10\"",
+  "etag": "\"pulls-9\"",
   "body": {
    "state": "absent",
    "reason": "not_cached",
@@ -476,7 +444,7 @@
  },
  "closed_current": {
   "status": 200,
-  "etag": "\"pulls-11\"",
+  "etag": "\"pulls-10\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -506,7 +474,7 @@
  },
  "stale": {
   "status": 200,
-  "etag": "\"pulls-12\"",
+  "etag": "\"pulls-11\"",
   "body": {
    "state": "stale",
    "reason": null,
@@ -526,10 +494,10 @@
    "complete": true,
    "truncated": false,
    "at_cap": false,
-   "limit": 102,
-   "next_after": null,
+   "limit": 100,
+   "next_after": 7,
    "rows": {
-    "same_as": "whole"
+    "same_as": "current"
    }
   }
  },
@@ -566,7 +534,7 @@
  },
  "stale_refreshing": {
   "status": 200,
-  "etag": "\"pulls-13\"",
+  "etag": "\"pulls-12\"",
   "body": {
    "state": "stale",
    "reason": null,
@@ -586,14 +554,43 @@
    "complete": true,
    "truncated": false,
    "at_cap": false,
-   "limit": 102,
-   "next_after": null,
+   "limit": 100,
+   "next_after": 7,
    "rows": {
-    "same_as": "whole"
+    "same_as": "current"
    }
   }
  },
  "refreshed": {
+  "status": 200,
+  "etag": "\"pulls-13\"",
+  "body": {
+   "state": "current",
+   "reason": null,
+   "source": "https://github.com/octo/demo",
+   "list": "all",
+   "fetched_at": "2026-09-17T12:01:01Z",
+   "reader": "gh:octo-reader",
+   "fresh_for_s": 60.0,
+   "refreshing": false,
+   "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:01:01Z"
+   },
+   "fetched": 102,
+   "complete": true,
+   "truncated": false,
+   "at_cap": false,
+   "limit": 100,
+   "next_after": 7,
+   "rows": {
+    "same_as": "current"
+   }
+  }
+ },
+ "refreshed_whole": {
   "status": 200,
   "etag": "\"pulls-14\"",
   "body": {
@@ -618,7 +615,10 @@
    "limit": 102,
    "next_after": null,
    "rows": {
-    "same_as": "whole"
+    "same_as": [
+     "more_done",
+     "more_window"
+    ]
    }
   }
  },
@@ -974,9 +974,36 @@
    }
   }
  },
- "at_cap": {
+ "open_gh_missing": {
   "status": 200,
   "etag": "\"pulls-25\"",
+  "body": {
+   "state": "absent",
+   "reason": "not_cached",
+   "source": "https://github.com/octo/demo",
+   "list": "open",
+   "fetched_at": null,
+   "reader": null,
+   "fresh_for_s": 60.0,
+   "refreshing": false,
+   "last_refresh": {
+    "outcome": "gh_missing",
+    "message": "GitHub CLI (gh) is not on PATH",
+    "reset_at": null,
+    "at": "2026-09-24T12:00:00Z"
+   },
+   "fetched": 0,
+   "complete": false,
+   "truncated": false,
+   "at_cap": false,
+   "limit": 0,
+   "next_after": null,
+   "rows": []
+  }
+ },
+ "at_cap": {
+  "status": 200,
+  "etag": "\"pulls-26\"",
   "body": {
    "state": "current",
    "reason": null,
@@ -1003,7 +1030,7 @@
  },
  "not_github": {
   "status": 200,
-  "etag": "\"pulls-26\"",
+  "etag": "\"pulls-27\"",
   "body": {
    "state": "absent",
    "reason": "not_github",

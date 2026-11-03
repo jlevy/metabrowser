@@ -21,9 +21,12 @@ type MetabrowserRenderContext = {
 type MetabrowserPullReader = {
   fetchAfterMs: number;
   initial: { etag: string | null; body: unknown } | null;
+  /** Whether the key that opened the page is still held, so the page waits to ask. */
+  walking?: () => boolean;
 };
 
-type MetabrowserPullRoute = { number: number; tab: string; reader?: unknown };
+/** *replace* is a key's skim through the Pulls tab: the history entry is replaced, not pushed. */
+type MetabrowserPullRoute = { number: number; tab: string; reader?: unknown; replace?: boolean };
 
 type MetabrowserPullsNavHost = Readonly<{
   filter: string;
@@ -485,6 +488,7 @@ type MetabrowserPullRouteRuntime = Readonly<{
     mountList(claim: number): Promise<Handle | null | undefined>;
     pathname(): string;
     pushHref(href: string): void;
+    replaceHref(href: string): void;
   }): Readonly<{
     dispose(): void;
     onHistory(
@@ -505,7 +509,7 @@ type MetabrowserPullRouteRuntime = Readonly<{
     isCurrent(claim: number): boolean;
     renderHtml(html: string, claim: number): unknown;
     renderNode(node: HTMLElement, claim: number): unknown;
-    showLoadFailure(claim: number): void;
+    showLoadFailure(claim: number, what: string): void;
   }): (
     claim: number,
     kind: string,

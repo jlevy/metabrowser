@@ -150,6 +150,8 @@ function createPage() {
       opened.push({
         number: route.number,
         tab: route.tab,
+        // A key's skim replaces the history entry, and a click or Enter pushes one.
+        history: route.replace ? "replace" : "push",
         fetchAfterMs: route.reader.fetchAfterMs,
         initial: route.reader.initial === null ? null : "the record read for it",
       });
@@ -308,6 +310,15 @@ async function run() {
   await controller.reachedEnd();
   await controller.loadMore();
   steps.push(page.observe("a complete list asks for nothing more", controller, { paint: false }));
+  // A poll asks for the top window with its tag, however many rows are held: a list that did
+  // not change is a 304, and not every held row again.
+  await page.fire();
+  await page.notModified();
+  steps.push(
+    page.observe("the next poll reads the top window, and it is unchanged", controller, {
+      paint: false,
+    }),
+  );
 
   // The filters. Each is its own list, read when it is first chosen and kept.
   controller.setFilter("open");
@@ -317,8 +328,8 @@ async function run() {
   steps.push(page.observe("its own rows: a draft and an open one", controller));
   controller.setFilter("all", { fromAddress: true });
   steps.push(page.observe("All again paints what it held at once", controller));
-  await page.answer(recorded.whole);
-  steps.push(page.observe("and its read changes no row", controller, { paint: false }));
+  await page.notModified();
+  steps.push(page.observe("and its read is a 304", controller, { paint: false }));
   controller.setFilter("closed");
   await settle();
   // A newer answer wins: this request is let go when the filter changes again.
@@ -341,7 +352,11 @@ async function run() {
   steps.push(page.observe("it refreshes with its rows in place", controller));
   await page.fire();
   await page.answer(recorded.refreshed);
-  steps.push(page.observe("refreshed, and no row repainted", controller));
+  // Another list file: the rows held past the top window are read again, once.
+  await page.answer(recorded.refreshed_whole);
+  steps.push(
+    page.observe("refreshed: the whole range is read once, and no row repainted", controller),
+  );
   controller.dispose();
 
   // Each way a refresh can end. A cached list shows under every one.
@@ -475,6 +490,18 @@ async function run() {
   await page.record();
   steps.push(page.observe("and only the newest opens", controller, { paint: false }));
 
+  // Back lands while a press still waits for its row's record: the address wins, and the row
+  // it left does not open over it.
+  controller.move(1);
+  await settle();
+  controller.setCurrent(70);
+  await page.record();
+  steps.push(
+    page.observe("Back while a row waits for its record: that row does not open", controller, {
+      paint: false,
+    }),
+  );
+
   // The address moved: the row follows, and nothing is fetched or opened.
   controller.setCurrent(90);
   steps.push(page.observe("the address names another row", controller, { paint: false }));
@@ -517,6 +544,32 @@ async function run() {
   // The end of the list: a held key stops there and does not ask again.
   const held = controller.snapshot().rows;
   assert(held === 102, "the two windows hold every row");
+  controller.dispose();
+
+  // A window and a poll that cross: the window lands first, and the poll, answered from another
+  // list file, reads the whole range it now holds instead of dropping the rows just added.
+  page = createPage();
+  controller = panel.createPullsController(page.deps, { filter: "all", current: null });
+  void controller.start({ shown: true });
+  await settle();
+  await page.answer(recorded.more_done);
+  page.observe("", controller, { paint: false });
+  void controller.reachedEnd();
+  await page.fire();
+  steps.push(page.observe("a window and a poll are both asked for", controller, { paint: false }));
+  await page.answer(recorded.more_window);
+  await page.answer(recorded.refreshed);
+  steps.push(
+    page.observe("the window lands first, and the poll reads the whole range", controller, {
+      paint: false,
+    }),
+  );
+  await page.answer(recorded.refreshed_whole);
+  const crossed = page.observe("so no row the window added is dropped", controller, {
+    paint: false,
+  });
+  crossed.rowsHeld = controller.snapshot().rows;
+  steps.push(crossed);
   controller.dispose();
 
   // Disposal ends it: an answer after it paints nothing, and no timer is left.
@@ -573,12 +626,26 @@ async function run() {
     "octo/demo",
   ).refs;
 
+  const formatTime = (iso) => new Date(iso).toISOString();
   const landing = {
-    "a server with no repository": panel.describeLanding(recorded.not_github.body),
-    "a mirror": panel.describeLanding(recorded.current.body),
+    "a server with no repository": panel.describeLanding(recorded.not_github.body, formatTime),
+    "a mirror": panel.describeLanding(recorded.current.body, formatTime),
+    "a list with no rows, and no gh": panel.describeLanding(
+      recorded.open_gh_missing.body,
+      formatTime,
+    ),
   };
 
-  return { steps, failures, cap, hostile, spelled, landing, reader: await readerStory() };
+  return {
+    steps,
+    failures,
+    cap,
+    hostile,
+    spelled,
+    landing,
+    reader: await readerStory(),
+    paint: await paintStory(panel),
+  };
 }
 
 /**
@@ -589,7 +656,7 @@ async function readerStory() {
   const page = await import(pathToFileURL(pagePath).href);
   const story = [];
   /** One page, with the answers it gets by the order it asks. */
-  async function opened(name, reader, answers) {
+  async function opened(name, reader, answers, letGo = null) {
     const asked = [];
     let shown = null;
     const timers = new Map();
@@ -630,13 +697,26 @@ async function readerStory() {
       }
     }
     await settle();
-    story.push({
+    const entry = {
       name,
-      asked,
+      asked: asked.splice(0),
       waits,
       before,
       after: { message: shown.message, canRefresh: shown.canRefresh },
-    });
+    };
+    if (letGo !== null) {
+      // The key is let go where it opened this page: its wait runs out once more, and it asks.
+      letGo();
+      for (const [handle, timer] of [...timers.entries()]) {
+        if (timer.delayMs !== page.SLOW_POLL_MS && timer.delayMs !== page.FAST_POLL_MS) {
+          timers.delete(handle);
+          timer.callback();
+        }
+      }
+      await settle();
+      entry["once let go"] = { asked: asked.splice(0), message: shown.message };
+    }
+    story.push(entry);
     controller.dispose();
   }
   const { absent, refresh_started: started, too_many: tooMany, current } = pageRecorded;
@@ -651,6 +731,15 @@ async function readerStory() {
     { fetchAfterMs: page.REFRESH_ASK_MS, initial: null },
     { pull: absent, refresh: started },
   );
+  let holding = true;
+  await opened(
+    "a key still held waits out the page it opened, however long: it fetches nothing",
+    { fetchAfterMs: page.REFRESH_ASK_MS, initial: null, walking: () => holding },
+    { pull: absent, refresh: started },
+    () => {
+      holding = false;
+    },
+  );
   await opened(
     "past the bound on jobs it says why, and offers Fetch",
     { fetchAfterMs: 0, initial: null },
@@ -662,6 +751,328 @@ async function readerStory() {
     { pull: { status: 304, etag: current.etag, body: null } },
   );
   return story;
+}
+
+// ── The paint ──────────────────────────────────────────────────
+//
+// mountPullsPanel builds the list's elements. Here it builds them in a stand-in for the DOM,
+// just enough of one to hold elements, attributes, and text, so what the rows are made of is
+// read back from the production code: the tree's roles, a title that is markup painted as
+// text, an append that builds only the rows it adds, and ages told again as time passes. What
+// only a browser has -- layout, focus rings, scrolling -- stays the paint exemption's.
+
+class FakeNode {
+  constructor(nodeName) {
+    this.nodeName = nodeName;
+    this.childNodes = [];
+    this.parentNode = null;
+  }
+  append(...nodes) {
+    for (const node of nodes) {
+      this.adopt(typeof node === "string" ? new FakeText(node) : node);
+    }
+  }
+  adopt(node) {
+    if (node.nodeName === "#fragment") {
+      for (const child of [...node.childNodes]) {
+        this.adopt(child);
+      }
+      return;
+    }
+    node.parentNode?.drop(node);
+    node.parentNode = this;
+    this.childNodes.push(node);
+  }
+  drop(node) {
+    this.childNodes.splice(this.childNodes.indexOf(node), 1);
+    node.parentNode = null;
+  }
+  replaceChildren(...nodes) {
+    for (const child of [...this.childNodes]) {
+      this.drop(child);
+    }
+    this.append(...nodes);
+  }
+  contains(node) {
+    for (let at = node; at; at = at.parentNode) {
+      if (at === this) {
+        return true;
+      }
+    }
+    return false;
+  }
+  get textContent() {
+    return this.childNodes.map((child) => child.textContent).join("");
+  }
+  set textContent(value) {
+    this.replaceChildren(String(value));
+  }
+}
+
+class FakeText extends FakeNode {
+  constructor(data) {
+    super("#text");
+    this.data = data;
+  }
+  get textContent() {
+    return this.data;
+  }
+  set textContent(value) {
+    this.data = String(value);
+  }
+}
+
+class FakeElement extends FakeNode {
+  constructor(tag) {
+    super(tag.toUpperCase());
+    this.localName = tag;
+    this.attributes = new Map();
+    this.dataset = {};
+    this.style = {};
+    this.hidden = false;
+    this.classes = new Set();
+  }
+  get classList() {
+    const classes = this.classes;
+    return {
+      add(...names) {
+        for (const name of names) {
+          classes.add(name);
+        }
+      },
+      remove(...names) {
+        for (const name of names) {
+          classes.delete(name);
+        }
+      },
+      contains: (name) => classes.has(name),
+      toggle(name, on) {
+        const wanted = on ?? !classes.has(name);
+        if (wanted) {
+          classes.add(name);
+        } else {
+          classes.delete(name);
+        }
+        return wanted;
+      },
+    };
+  }
+  get className() {
+    return [...this.classes].join(" ");
+  }
+  set className(value) {
+    this.classes = new Set(String(value).split(/\s+/).filter(Boolean));
+  }
+  setAttribute(name, value) {
+    if (name === "class") {
+      this.className = value;
+    } else if (name.startsWith("data-")) {
+      this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())] =
+        String(value);
+    } else {
+      this.attributes.set(name, String(value));
+    }
+  }
+  getAttribute(name) {
+    return name === "class" ? this.className : (this.attributes.get(name) ?? null);
+  }
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+  get firstElementChild() {
+    return this.childNodes.find((child) => child instanceof FakeElement) ?? null;
+  }
+  addEventListener() {}
+  querySelectorAll() {
+    return [];
+  }
+  focus() {}
+  scrollIntoView() {}
+  set innerHTML(html) {
+    this.childNodes = [];
+    this.markup = html;
+  }
+}
+
+/** One element as a line: its tag, classes, and attributes. */
+function described(element) {
+  const attributes = [...element.attributes].map(([name, value]) => `${name}="${value}"`);
+  return [
+    element.localName,
+    element.className && `.${[...element.classes].join(".")}`,
+    ...attributes,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+async function paintStory(panel) {
+  const { SLOW_POLL_MS } = await import(pathToFileURL(pagePath).href);
+  const answers = [];
+  const timers = new Map();
+  let nextTimer = 1;
+  let now = Date.parse(recorded.more_done.body.fetched_at) + 30_000;
+  let built = 0;
+  // The work an append could spend on rows already painted: ages told, and rows keyed.
+  let aged = 0;
+  let keyed = 0;
+  const document = {
+    activeElement: null,
+    visibilityState: "visible",
+    addEventListener() {},
+    createElement(tag) {
+      if (tag === "li") {
+        built += 1;
+      }
+      return new FakeElement(tag);
+    },
+    createDocumentFragment: () => new FakeNode("#fragment"),
+    importNode: (node) => new FakeElement(node.localName),
+  };
+  /** @type {((entries: {isIntersecting: boolean}[]) => void) | null} */
+  let reachEnd = null;
+  const saved = {};
+  const globals = {
+    document,
+    window: {
+      setTimeout(callback, delayMs) {
+        timers.set(nextTimer, { callback, delayMs });
+        nextTimer += 1;
+        return nextTimer - 1;
+      },
+      clearTimeout: (handle) => timers.delete(handle),
+    },
+    HTMLElement: FakeElement,
+    Element: FakeElement,
+    DOMParser: class {
+      parseFromString() {
+        return { body: { firstElementChild: new FakeElement("svg") } };
+      }
+    },
+    IntersectionObserver: class {
+      constructor(callback) {
+        reachEnd = callback;
+      }
+      observe() {}
+      disconnect() {}
+    },
+    fetch: (route, init) =>
+      new Promise((resolve) => {
+        answers.push({ route, init, resolve });
+      }),
+  };
+  for (const [name, value] of Object.entries(globals)) {
+    saved[name] = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
+  }
+  const realNow = Date.now;
+  Date.now = () => now;
+  async function answer(recording) {
+    const { resolve } = answers.shift();
+    resolve({
+      status: recording.status,
+      headers: { get: () => recording.etag },
+      json: async () => recording.body,
+    });
+    await settle();
+  }
+  try {
+    const mb = {
+      filterControls: { groupHtml: () => "<div></div>", bind: () => () => {} },
+      formatAge(seconds) {
+        aged += 1;
+        const minutes = Math.round((now / 1000 - seconds) / 60);
+        return minutes < 60
+          ? { label: `${minutes}m`, className: "age-min" }
+          : { label: `${Math.round(minutes / 60)}h`, className: "age-hour" };
+      },
+      formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+    };
+    // What the server answered, but with the first row's title written as markup: what is under
+    // test is how a title is painted, and every title GitHub sends is a user's text.
+    const first = structuredClone(recorded.more_done);
+    first.body.rows[0].title = '<img src=x onerror="alert(1)"> & <b>bold</b>';
+    const container = new FakeElement("div");
+    const opened = [];
+    const current = first.body.rows[1].number;
+    const mounted = panel.mountPullsPanel(
+      container,
+      {
+        kind: "pull-request-list",
+        pullsNav: {
+          filter: "all",
+          current,
+          shown: true,
+          refreshAhead: false,
+          scrollRoot: null,
+          open: (route) => opened.push(route.number),
+          filterChanged() {},
+        },
+      },
+      mb,
+    );
+    await settle();
+    await answer(first);
+    const list = container.childNodes.find((node) => node.localName === "ul");
+    const [hostile, shown] = list.childNodes;
+    const row = (item) => item.firstElementChild;
+    const story = {
+      "the list": described(list),
+      "a row": [described(hostile), described(row(hostile))],
+      "the row whose page is shown": described(row(shown)),
+      "its parts": row(shown).childNodes.map(described),
+      "a title written as markup is one text node": row(hostile).childNodes[1].childNodes.map(
+        (node) => ({ node: node.nodeName, data: node.data }),
+      ),
+      "rows built for the first window": built,
+    };
+    // The end of the list comes into view: the next window is appended, and only its rows are
+    // built, aged, and keyed, and none of the hundred already painted.
+    built = 0;
+    aged = 0;
+    const stringify = JSON.stringify;
+    JSON.stringify = (value, ...rest) => {
+      if (value !== null && typeof value === "object" && "href" in value && "number" in value) {
+        keyed += 1;
+      }
+      return stringify(value, ...rest);
+    };
+    try {
+      reachEnd?.([{ isIntersecting: true }]);
+      await settle();
+      await answer(recorded.more_window);
+    } finally {
+      JSON.stringify = stringify;
+    }
+    story["a window of 2 appended to 100: rows built, aged, keyed"] = [built, aged, keyed];
+    story["rows held"] = list.childNodes.length;
+    // Two hours on, the list unchanged: a poll's answer moves the freshness, and with it each
+    // row's age, in place.
+    const age = () => row(shown).childNodes[2].textContent;
+    story["an age, before"] = age();
+    built = 0;
+    now += 2 * 60 * 60 * 1000;
+    const poll = [...timers.entries()].find(([, timer]) => timer.delayMs === SLOW_POLL_MS);
+    timers.delete(poll[0]);
+    poll[1].callback();
+    await settle();
+    answers.shift().resolve({ status: 304, headers: { get: () => null }, json: async () => null });
+    await settle();
+    story["an age, two hours on"] = age();
+    story["rows built to tell it"] = built;
+    mounted.dispose();
+    story["disposed: what is left in the tab"] = container.childNodes.length;
+    return story;
+  } finally {
+    Date.now = realNow;
+    for (const [name, descriptor] of Object.entries(saved)) {
+      if (descriptor === undefined) {
+        delete globalThis[name];
+      } else {
+        Object.defineProperty(globalThis, name, descriptor);
+      }
+    }
+  }
 }
 
 // A step that awaits an answer nobody gives ends the process quietly, with nothing printed.

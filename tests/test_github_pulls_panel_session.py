@@ -99,10 +99,10 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
 def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
     """*recorded* with each distinct window of rows written once; see the module docstring."""
 
-    whole = recorded["whole"]["body"]
+    whole = recorded["refreshed_whole"]["body"]
     window = recorded["more_done"]["body"]["rows"] + recorded["more_window"]["body"]["rows"]
     assert whole["rows"] == window, "the whole list is not its two windows"
-    holder: dict[str, str] = {json.dumps(whole["rows"]): "whole"}
+    holder: dict[str, str] = {json.dumps(whole["rows"]): "refreshed_whole"}
     whole["rows"] = {"same_as": ["more_done", "more_window"]}
     for name, answer in recorded.items():
         body = answer["body"]
@@ -217,8 +217,6 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             recorded["more_done"] = read()
             after = str(recorded["more_done"]["body"]["next_after"])
             recorded["more_window"] = read(after=after)
-            # What a poll asks for once it holds them all.
-            recorded["whole"] = read(limit="102")
 
             # The other two lists, each its own file, and one with no rows at all.
             for name in ("open", "closed"):
@@ -227,15 +225,17 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 settled(name)
                 recorded[f"{name}_current"] = read(state=name)
 
-            # A minute on, the list is stale. A refresh finds it unchanged.
+            # A minute on, the list is stale. A refresh finds it unchanged. A poll reads the top
+            # window, and the whole range held only once the list file is another.
             clock[0] = FETCHED_AT + timedelta(seconds=61)
-            recorded["stale"] = read(limit="102")
+            recorded["stale"] = read()
             gate.clear()
             recorded["refresh_again"] = ask(state="all")
-            recorded["stale_refreshing"] = read(limit="102")
+            recorded["stale_refreshing"] = read()
             gate.set()
             settled()
-            recorded["refreshed"] = read(limit="102")
+            recorded["refreshed"] = read()
+            recorded["refreshed_whole"] = read(limit="102")
             # Tried a moment ago: an automatic request starts nothing.
             recorded["not_due"] = ask(state="all")
 
@@ -320,6 +320,15 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             settled("open")
             answering(online)
             recorded["another_reader"] = read(state="open")
+
+            # A list with no rows whose refresh failed: the list's address has nothing to
+            # select, and says why, as the tab's notice does.
+            (directory / "list-open.json").unlink()
+            with monkeypatch.context() as patched:
+                patched.setattr(gh, "gh_executable", lambda: None)
+                ask(state="open", retry=True)
+                settled("open")
+            recorded["open_gh_missing"] = read(state="open", limit="0")
 
             # A list at the most pages one may hold, read directly from what it would write:
             # the bound is what is pinned here, and a thousand rows of fetches pin nothing more.
@@ -409,6 +418,13 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["rate_limit_holds"]["body"]["refresh"] == "not_due"
     assert recorded["another_reader"]["body"]["reader"] == f"gh:{ANOTHER_READER}"
     assert recorded["another_reader"]["body"]["state"] == "stale"
+    nothing = recorded["open_gh_missing"]["body"]
+    assert (nothing["state"], nothing["fetched"]) == ("absent", 0)
+    assert nothing["last_refresh"]["outcome"] == "gh_missing"
+    # A poll reads the top window; the whole range only once the list file is another.
+    assert len(recorded["refreshed"]["body"]["rows"]) == 100
+    assert recorded["refreshed"]["body"]["fetched_at"] != recorded["stale"]["body"]["fetched_at"]
+    assert len(recorded["refreshed_whole"]["body"]["rows"]) == 102
     at_cap = recorded["at_cap"]["body"]
     assert (at_cap["at_cap"], at_cap["complete"], at_cap["fetched"]) == (True, False, 1000)
     assert recorded["not_github"]["body"]["reason"] == "not_github"
