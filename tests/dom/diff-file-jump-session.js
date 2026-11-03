@@ -954,6 +954,23 @@ async function main() {
     say("a file the reader scrolled past is no longer asked for", reading);
   }
 
+  const largeFirst = comparison();
+  largeFirst.manifest.files[0].availability = "too_large";
+  delete largeFirst.patches.f1;
+  const pastLarge = mount(largeFirst);
+  await pastLarge.turn();
+  assert(
+    pastLarge.inFlight()[0]?.file === "src/a.py",
+    "a large first file stranded the next visible file",
+  );
+  pastLarge.answer("src/a.py");
+  await pastLarge.turn();
+  assert(
+    pastLarge.sectionOf("src/a.py").find("diff-split-row").length === 3,
+    "the next visible file stayed blank",
+  );
+  say("a first file that is too large does not strand the next visible file", pastLarge);
+
   // ── Ready files past the first screen are held, with their answers ──
   // A comparison's first page can be fifty files of rows, and drawing them all at mount was
   // one task the reader waited on (review of #284, E1). The mount draws the files whose

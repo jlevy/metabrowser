@@ -38,6 +38,11 @@ if TYPE_CHECKING:
 _NO_STORE: Final = {"cache-control": "no-store"}
 # A refresh request carries a few short parameters; a JSON object of any size worth reading fits.
 MAX_REFRESH_REQUEST_BYTES: Final = 1024
+# Eight ready files covered the visible viewport in three paired browser runs on
+# public Ruff PRs of 1,031 and 1,627 files (2026-11-03, Chrome 152, 1400x900). One
+# left visible reserved space at 1,031. Hydrating fifty cost 112–181 ms in the
+# route; eight cost 21 ms. Later files use the existing on-approach loader.
+INITIAL_PULL_FILES: Final = 8
 # A job started or joined is on its way. A request that started none has its answer now,
 # which past the bound on jobs is a refusal.
 _REFRESH_STATUS: Final = {
@@ -187,6 +192,7 @@ async def pull_comparison_handler(request: Request) -> Response:
     return await comparison_at(
         request,
         GitLocation.revision(target, right),
+        max_initial_files=INITIAL_PULL_FILES,
         manifest_loader=partial(load_pull_manifest, published),
     )
 

@@ -254,6 +254,10 @@ The fixture and retained-heap evidence live in the
 manifest in the GitHub plugin’s bounded bank beside its repository store.
 A fresh server adopts a validated matching entry after resolving its commits, then uses
 the same in-memory comparison cache for the page and deferred files.
+Its first answer hydrates eight ready files, enough for the visible viewport measured on
+the large public PR cases; later files load on approach.
+The generic comparison route hydrates up to fifty, and its retained body and entity tag
+include that policy so the two answers cannot be confused.
 Missing, stale, or corrupt entries are recomputed and healed; a cache admission bound
 never truncates the answer served.
 [Pull-request records](project/architecture/arch-repository-sources-and-provider-mirrors.md#pull-request-records)

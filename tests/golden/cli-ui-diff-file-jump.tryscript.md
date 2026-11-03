@@ -290,6 +290,15 @@ $ node tests/dom/diff-file-jump-session.js
       "top": 0
     },
     {
+      "step": "a first file that is too large does not strand the next visible file",
+      "atTop": "first.py",
+      "asked": [
+        "src/a.py",
+        "src/moved.py (waiting)"
+      ],
+      "partial": "3 of 10 files loaded; the rest load as you reach them"
+    },
+    {
       "step": "a first page of ready files: rows for the first screen and one more, the rest held",
       "atTop": "r1.py",
       "asked": [],

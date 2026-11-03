@@ -344,15 +344,15 @@ Characters rather than a length because that is the decision a reader has: 45–
 classic range for a single column, and a browser pane is wide enough to sit above it.
 The default is 102.
 
-Three tokens, all on `:root`:
+Document tokens live on `:root`; the PR page owns its message measure:
 
 | Token | Meaning |
 | --- | --- |
 | `--doc-max-chars` | the reader’s setting; the menu writes it, the pre-paint script seeds it |
 | `--doc-char-advance` | average glyph advance per em for the current reading face |
-| `--sans-char-advance` | the same for the interface sans, which messages read in |
+| `--sans-char-advance` | the calibrated advance of the clean sans |
 | `--doc-measure` | the resolved length: base × chars × advance |
-| `--message-measure` | the same characters for a message, at the sans advance |
+| `--message-measure` | on `.github-pull`, the same characters at the active sans advance |
 
 `--doc-measure` is the single source of truth for how wide prose reads anywhere in the
 app, and it and `--message-measure` beside it are the only places the character count is
@@ -384,7 +384,11 @@ reading mode swaps the ratio and the same character count still holds.
 This is the average advance, not the CSS `ch` unit — `ch` is the advance of “0” and
 overstates a proportional face by roughly 23%. KPress ships no per-face constants
 because a host may swap the face; Metabrowser pins its own faces, so it owns the
-conversion.
+conversion. For PR messages in the system font set, `github/message-measure.js` measures
+the active system sans with Canvas and sets a page-local advance.
+It observes font-setting changes and disposes with the view; clean fonts keep their
+calibration. Size and character-count changes remain CSS inputs.
+Folder startup and document widths do not run this measurement.
 
 Verify a width change by measuring the *text* box with padding excluded, in both the
 single-column and wide bands, and against the same file opened on its own.

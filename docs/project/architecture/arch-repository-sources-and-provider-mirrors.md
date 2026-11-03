@@ -642,7 +642,9 @@ manifest, and a missing, corrupt, or mismatched entry is recomputed once through
 existing shared comparison-cache task and replaced atomically.
 Persistence failure leaves the PR record and computed answer usable.
 `GET /api/plugin/github/pull-comparison` reads only the selected PR’s published store
-and never fetches.
+and never fetches. Its initial answer hydrates eight ready files.
+The shared diff service retains its fifty-file default for other callers; encoded bodies
+and entity tags include the initial-file policy, while the manifest key is shared.
 
 It names its reader, always `gh:<login>`, because `gh api` refuses requests while signed
 out, and the account is read before and after the API reads so a record read across an

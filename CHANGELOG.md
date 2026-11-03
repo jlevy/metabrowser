@@ -1187,6 +1187,10 @@ Fixes:
   drawn, as on GitHub; it still finds every file by its path, and going to the file
   draws its lines.
 
+- Pull request messages follow the active system font when converting the reading-width
+  preference to a text measure.
+  Ordinary document widths are unchanged.
+
 - A `.env` or `.env.local` that cannot be read as text no longer stops `metab` with a
   traceback in every mode.
   It is skipped with a warning naming the file, so a repository whose `.env` is not
