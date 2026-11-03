@@ -149,6 +149,14 @@ itself.
 | **A stale owned boundary** (correctness, Low) | Once the store owned its boundary, a checkout that deepened or unshallowed left the store shallow. **Fixed:** before a fetch, a boundary the store owns is dropped when the checkout has no shallow file; a missing parent then stops a walk with an error, never a cut |
 | **A path-spelled remote** (senior, Medium) | `git clone /x/origin.git` records that spelling, which classified as a local path and never matched a `file://` source. **Fixed:** a path remote is the `file://` source of its resolved path, absolute or relative to the checkout; a lookalike directory and an https source still match nothing |
 
+The follow-up review of the fixes found three more, each fixed in the same pull request:
+
+| Question | Result |
+| --- | --- |
+| **No common history on Git before 2.45** (High) | A merge-base walk that meets a commit it cannot read exits 1 there, Git’s answer for unrelated histories, where 2.45 and later fail, so the admitted 2.43.7 recorded `no_merge_base` for a collected ancestor. **Fixed:** a store with no boundary believes that answer, and a merge base that is neither tip, only after `rev-list --count` over the same walk, which fails on an unreadable commit on every Git |
+| **A partly unreadable lender was swept** (Medium) | The probe of the lender’s tips passed when one loose object or one pack was unreadable and the rest read, and had nothing to probe on a lender whose refs no file holds, as reftable keeps them, so a live `refs/pull/<n>/head` or the default branch was deleted. **Fixed:** a ref is swept only when no loose file of its object exists, whatever its mode, and every file of the lender’s pack directory reads; otherwise `lender_missing` and the refs stay |
+| **A repair the disk refused** (Medium) | A permission error while rewriting the alternates file printed a traceback. **Fixed:** an `Error:` line naming the reason; the record is written last, so the store is unchanged or refused as `damaged`, and the same command finishes it |
+
 The scripts and raw outputs of all three sets are kept outside the repository; the
 coordinator holds the paths.
 
