@@ -13,6 +13,7 @@ import pytest
 
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import (
+    MAX_FIRST_IN_A_ROW,
     MirrorDisplay,
     MirrorRef,
     MirrorSession,
@@ -394,6 +395,26 @@ class _Stand:
         await _spin()
         await self.coordinator.aclose()
 
+    async def warm(self, by: str = "the mirror's") -> None:
+        """Put the stand in a server's usual state: jobs that go first have run with nothing
+        else waiting, as the mirror's does once a window for any served page, or the attended
+        pull request's own, more often than the store's turn lets such jobs go in a row ahead
+        of a waiting one. Then forget them, so a test sees only its own jobs."""
+
+        if by != "the mirror's":
+            await self.session.attend(7)
+        for _ in range(MAX_FIRST_IN_A_ROW + 1):
+            if by == "the mirror's":
+                assert self.session.request_refresh(for_selection=True) == "started"
+                await _spin()
+                await self.end_mirror()
+            else:
+                assert self.session.request_pull_refresh(7) == "started"
+                await _spin()
+                await self.end(7)
+        assert not self.session.refreshing() and not self.session.pull_refreshing(7)
+        self.events.clear()
+
 
 def test_a_job_waiting_its_turn_holds_no_slot_so_a_list_refresh_starts_at_once() -> None:
     """A list's refresh needs no turn at the store, so jobs that are only waiting for one
@@ -628,6 +649,42 @@ def test_a_queued_pull_request_waits_through_at_most_one_job_of_each_that_goes_f
         "pull 10",
         "mirror",
     ]
+
+
+@pytest.mark.parametrize("alone", ["the mirror's", "the attended's"])
+def test_jobs_that_went_first_with_nothing_waiting_do_not_hold_back_the_next_first(
+    alone: str,
+) -> None:
+    """A server open a while has fetched the mirror alone once a window, or refreshed the
+    attended pull request alone. Those went ahead of nothing, so on the first contention after
+    them the attended job still goes ahead of a pull request asked for after it, and that one
+    then waits for one of each that goes first, as from a fresh start."""
+
+    async def scenario() -> list[str]:
+        stand = _Stand()
+        await stand.warm(by=alone)
+        session = stand.session
+        await session.attend(7)
+        assert session.request_refresh(for_selection=True) == "started"
+        await _spin()
+        assert stand.events == ["mirror"]
+        assert session.request_pull_refresh(7) == "started"
+        await _spin()
+        assert session.request_pull_refresh(8) == "started"
+        await _spin()
+        # Each that goes first asks again as soon as it can; 8 still goes after one of each.
+        await stand.end_mirror()
+        session.request_refresh(for_selection=True)
+        await _spin()
+        await stand.end(7)
+        session.request_pull_refresh(7)
+        await _spin()
+        await stand.end_mirror()
+        seen = list(stand.events)
+        await stand.finish()
+        return seen
+
+    assert asyncio.run(scenario()) == ["mirror", "pull 7", "mirror", "pull 8"]
 
 
 @pytest.mark.parametrize("cancelled", ["as the turn passes", "as its turn came"])

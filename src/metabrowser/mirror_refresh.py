@@ -493,7 +493,8 @@ class StoreTurn:
     first. *goes_first* is asked each time a turn is given, not when a job queues, because
     the attended pull request can change while its job waits. Those that go first wait in
     the order they asked, so neither starves the other, and after
-    :data:`MAX_FIRST_IN_A_ROW` of them the oldest other job goes, so they starve nothing.
+    :data:`MAX_FIRST_IN_A_ROW` of them in a row ahead of a waiting job, the oldest other job
+    goes, so they starve nothing. One that went when nothing else waited is not counted.
     """
 
     def __init__(self) -> None:
@@ -536,7 +537,10 @@ class StoreTurn:
         chosen = first if first is not None and first_is_due else other
         if chosen is None:
             return
-        self._first_in_a_row = self._first_in_a_row + 1 if chosen is first else 0
+        # Only a first that went ahead of a waiting job counts. One that went ahead of nothing
+        # kept nobody waiting, and counting it would give the next contention to the other.
+        went_ahead = chosen is first and other is not None
+        self._first_in_a_row = self._first_in_a_row + 1 if went_ahead else 0
         self._waiting.remove(chosen)
         self._taken = True
         chosen.turn.set_result(None)
