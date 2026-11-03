@@ -157,6 +157,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_github_pull_golden.py \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cli_github_pull_files_golden.py \
+	tests/test_github_pull_files.py \
 	tests/test_cache_async_locks.py \
 	tests/test_cli_no_serve_surface.py \
 	tests/test_diff_view_file_session.py \

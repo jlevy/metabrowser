@@ -296,8 +296,8 @@ counts, with `display` and `previous_display` through the pinned tree’s displa
 entity tag over everything but the rows.
 `POST github/pull-files-refresh` with `{"number": n, "retry": false}` starts or joins
 that list’s refresh and answers `202`, naming `github/pull-files` with `limit=0` as its
-`status_route`. GitHub’s pages are published one by one as they arrive while the file
-holds no whole list, and a whole one is reread conditionally and replaced at the end.
+`status_route`. GitHub’s pages are published one by one as they arrive, never as fewer
+pages than the file holds, and a held list is reread conditionally.
 `"retry": true` is a reader’s own action; any other request starts a list that is not
 held, not complete, or stale, and not tried within the window.
 Past `rate_limited` nothing reads GitHub until `reset_at`, though the local comparison

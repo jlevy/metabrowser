@@ -667,10 +667,10 @@ GitHub’s list, which runs no Git: the account, then
 `tests/test_github_pull_files.py` lists a source directory that has no store, with a
 `git` first on `PATH` that fails and logs.
 
-GitHub’s list is published after every page while the file holds no whole list, as
-`complete: false` with the page count GitHub’s `Link` gave, so a reader sees what has
-arrived; a whole list by the same reader is reread with each page’s `If-None-Match`, its
-last page whole when it is full, and replaced at the end.
+GitHub’s list is published after every page that leaves it holding more pages than the
+file does, as `complete: false` with the page count GitHub’s `Link` gave, so a reader
+sees a first list arrive and a held one never shrinks while it is reread, each page with
+its `If-None-Match` and a full last page whole; the whole list is published at the end.
 A failure leaves the file as last published, and its stamp says why.
 
 The job runs on the refresh coordinator under `<slug>:pull/<n>/files`, started outside

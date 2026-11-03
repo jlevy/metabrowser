@@ -12,12 +12,12 @@
   *slot*, so a long list never holds a slot between pages and a fetch the page of code waits
   on gets the next one.
 
-GitHub's list is read progressively. A list the file does not hold whole, because there is
-none, it is another reader's, or a refresh stopped part-way, is published after every page
-but the last, as ``complete: false``, so a reader of ``GET pull-files`` sees what has
-arrived. A list the file holds whole is read again with each page's ``If-None-Match`` and
-published once, at the end, so the tree a reader has does not shrink while it is reread. A
-page that fails fails the job, and the file stays as last published.
+GitHub's list is read progressively. After every page but the last, what has been read is
+published as ``complete: false`` whenever it holds more pages than the file does, so a
+reader of ``GET pull-files`` sees a first list arrive page by page, and a list the file
+already holds, whole or stopped part-way, is not replaced by fewer pages while it is read
+again, each page with its ``If-None-Match``; the whole list is published at the end. A page
+that fails fails the job, and the file stays as last published.
 
 The list is assembled over the job's duration. A push between two page reads can show a file
 twice, which the path dedupes, or miss one until the next refresh. A list read while the
@@ -261,8 +261,7 @@ async def _from_github(
         and cached.reader == reader
         else None
     )
-    # A list held whole is reread and replaced at the end; any other is published as it fills.
-    progressive = previous is None or not previous.complete
+    held = cached.pages if isinstance(cached, PullFileList) else 0
     fetched_at = utc_stamp(pull_list.utc_now())
     pages: list[_Page] = []
     last_page: int | None = None
@@ -274,8 +273,8 @@ async def _from_github(
         pages.append(page)
         if not page.has_next:
             break
-        # Never fewer pages than the file holds, so a retry does not shrink what a reader has.
-        if progressive and (previous is None or len(pages) > previous.pages):
+        # Never fewer pages than the file holds, so a reread does not shrink what a reader has.
+        if len(pages) > held:
             partial = _assembled(
                 repository,
                 number,
