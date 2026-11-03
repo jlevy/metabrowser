@@ -114,6 +114,11 @@ async function run() {
   );
   const initial = recorded.current;
   for (const failure of ["assets", "render"]) {
+    globalThis.fetch = async () => ({
+      status: initial.status,
+      headers: { get: () => null },
+      json: async () => initial.body,
+    });
     const container = new Element("main");
     let fail = true;
     let mounted = 0;
