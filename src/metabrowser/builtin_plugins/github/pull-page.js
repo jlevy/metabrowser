@@ -706,7 +706,12 @@ export function describePull(envelope, page) {
   }
   model.recordAt = typeof record.fetched_at === "string" ? record.fetched_at : null;
   model.message = page.error ?? null;
-  model.canRefresh = envelope.state === "stale" && !envelope.refreshing;
+  model.canRefresh =
+    !envelope.refreshing &&
+    (envelope.state === "stale" ||
+      model.failure !== null ||
+      (typeof record.unavailable?.comparison === "string" &&
+        record.unavailable.comparison !== "no_store"));
   const age = relativeAge(record.fetched_at ?? null, page.nowMs);
   // The account the record was read as, without the tool that read it.
   const reader = text(record.reader).replace(/^gh:/, "");
