@@ -248,6 +248,55 @@ async function run() {
     await settle();
     assert.equal(mounted, 3, "a stale Retry cannot remount a disposed page");
   }
+  // A comparison request failure is handled inside the production diff renderer: it
+  // resolves with a disposable error notice, rather than rejecting the mount.
+  let diffView;
+  let failureStatus;
+  const errors = [];
+  window.metabrowser = {
+    registerView: (_kind, _name, view) => {
+      diffView = view;
+    },
+    fetchPluginData: async () => {
+      throw Object.assign(new Error("comparison failed"), { status: failureStatus });
+    },
+  };
+  const logError = console.error;
+  console.error = (...args) => errors.push(args);
+  try {
+    await import(pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/diff/index.js")));
+    for (failureStatus of [404, 409]) {
+      const container = new Element("main");
+      const handle = page.mountPullPage(
+        container,
+        { number: 7, tab: "files", reader: { initial, fetchAfterMs: 0 } },
+        {
+          ensureAsset: async () => {},
+          ensureKindAssets: async () => {},
+          getRegisteredView: () => diffView,
+          formatAge: () => ({ label: "now", className: "age" }),
+          formatTimestamp: () => "now",
+          navigation: { href: () => "/view/" },
+          sourceKind: () => "git_revision",
+          icons: { toggle: "" },
+        },
+      );
+      await settle();
+      await handle.whenFilesReady();
+      assert.match(container.textContent, /Could not load this diff/);
+      const absent = { kind: "no_diff", path: "src/app.txt" };
+      assert.deepEqual(handle.fileForPath(absent.path), absent);
+      assert.deepEqual(handle.scrollToFile(absent.path), absent);
+      handle.dispose();
+      assert.deepEqual(handle.scrollToFile(absent.path), absent);
+    }
+    assert.deepEqual(
+      errors.map((entry) => entry[1].status),
+      [404, 409],
+    );
+  } finally {
+    console.error = logError;
+  }
   delete window.requestAnimationFrame;
   delete window.cancelAnimationFrame;
   document.visibilityState = "hidden";

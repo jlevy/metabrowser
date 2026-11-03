@@ -121,7 +121,7 @@ async def pull_comparison_handler(request: Request) -> Response:
     view = pull_view(pull_host(request.app), get_source_session().subject, number)
     if view.host is None:
         return JSONResponse(
-            {"error": "this server serves no pull request", "code": "no_pull_request"},
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
             status_code=409,
             headers=_NO_STORE,
         )

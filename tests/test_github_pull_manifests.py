@@ -20,6 +20,7 @@ from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.format import ResolvedComparison
 from metabrowser.git.process import GitLocation, RepositoryStoreTarget
 from metabrowser.http_caching import store_tag
+from metabrowser.server import app
 from tests.diff_fixture_repo import git
 from tests.test_github_pulls import _Stand
 from tests.test_github_pulls import pinned_pull as pinned_pull
@@ -28,6 +29,21 @@ from tests.test_github_pulls import stand as stand
 
 def _fresh(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(diff, "_COMPARISONS", ComparisonCache())
+
+
+def test_comparison_without_a_github_repository_is_not_github() -> None:
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/plugin/github/pull-comparison",
+            params={"number": 7, "left": "a" * 40, "right": "b" * 40, "base_policy": "merge_base"},
+        )
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": "this server serves no GitHub repository",
+        "code": "not_github",
+    }
+    assert response.headers["cache-control"] == "no-store"
+    assert "etag" not in response.headers
 
 
 def test_fetch_prepares_a_manifest_that_a_fresh_server_reuses(
