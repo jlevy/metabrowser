@@ -5,14 +5,14 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: open
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-01T17:59:59.369Z
+updated_at: 2026-11-03T07:01:16.083Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
 
@@ -54,3 +54,6 @@ PRACTICAL CONSTRAINT: on 2026-10-26 the data volume was 94 percent full, 403 GiB
 ## Notes
 
 2026-11-01 status: the order of work above still holds. Done since: step 1 (#269); step 2 at 87712198, to re-run on the tagged head (mb-2g6f); step 5's documents in #272, open. make test-live-github 7 of 7 and make test-macos 19 of 19 on c934a0b4. The six open PRs #272-#277 merged together pass install, lint and 4,118 tests locally; merging them in that order conflicts only in #275 and #276, and each PR has a comment with the resolution. Still owed: required reviews of those PRs, exp-039 on a quiet machine (mb-cf6y), the full runbook (mb-m20f), the human matrix (mb-etqi), and the owner's sign-off.
+
+
+2026-11-03, the pull-request layers above 277: PR 280 at 996ea90d and PR 283 at e8b7ff3d are reviewed and green; PR 284 at 9d6e0930 is green with E1 (High, performance) in progress. The Pulls tab is stack 286 on 283. Nothing is merged; merging waits for the owner.

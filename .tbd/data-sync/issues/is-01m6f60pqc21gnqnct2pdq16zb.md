@@ -5,7 +5,7 @@ title: "Required reviews of overlay step 1: senior, security, correctness"
 kind: task
 status: in_progress
 priority: 1
-version: 32
+version: 33
 delegate: claude-code@spud10
 labels:
   - release:v0.12.0
@@ -45,7 +45,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T22:27:57.291Z
-updated_at: 2026-11-03T03:18:25.417Z
+updated_at: 2026-11-03T07:00:59.440Z
 started_at: 2026-11-03T00:14:32.016Z
 ---
 The plan's step 1 touches parsing of a checkout's files, a trust boundary, and merge-base correctness, so it needs all three reviews by agents that did not write it, before it merges or the Pulls tab builds on it.
+
+## Notes
+
+2026-11-03: reviews A, B, C (round 1) and D (round 2) are published and addressed with dispositions. Commits since review D (00c0f48b, f987d033, e8b7ff3d) get a follow-up review; closes after it.
