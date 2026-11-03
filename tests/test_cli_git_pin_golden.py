@@ -493,3 +493,31 @@ def test_golden_pin_refusals(pin: _Pin) -> None:
     ):
         pin.api(route, fails=True)
     pin.check("cli-git-pin-refusals.txt")
+
+
+@posix_only
+def test_golden_pin_corrupt_blob_refusal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import hashlib
+    import zlib
+
+    home = isolate_cli(tmp_path, monkeypatch).home
+    body = b"authentic source text\n"
+    origin, _revision = _origin(tmp_path, "corruption.git", ((b"100644", (b"note.txt",), body),))
+    pin = _Pin(tmp_path)
+    pin.use(origin)
+    route = f"/api/file?path={_wire(b'note.txt')}"
+    pin.api(route)
+    # Acquisition accepted a sound origin. The cached store is then damaged, without
+    # modifying the origin or relying on acquisition to accept a malformed pack.
+    store = next((home / "repository-stores").glob("*/repository.git"))
+    oid = hashlib.sha1(b"blob " + str(len(body)).encode() + b"\0" + body).hexdigest()
+    loose = store / "objects" / oid[:2] / oid[2:]
+    loose.parent.mkdir(exist_ok=True)
+    if loose.exists():
+        loose.unlink()
+    forged = b"forged content with a genuine object name\n"
+    loose.write_bytes(zlib.compress(b"blob " + str(len(forged)).encode() + b"\0" + forged))
+    refused = pin.api(route, fails=True)
+    assert refused.payload()["code"] == "object_corrupt"
+    assert "forged content" not in refused.stdout
+    pin.check("cli-git-pin-corrupt-blob.txt")
