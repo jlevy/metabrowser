@@ -204,6 +204,30 @@ def test_rate_limit_reset_reads_retry_after_then_the_primary_reset() -> None:
     assert rate_limit_reset(GhResponse(429, {}, b"{}"), now=now) == "unknown"
 
 
+@pytest.mark.parametrize(
+    "headers",
+    [
+        # Past what a timedelta holds, past what a date holds, and past what int() reads.
+        {"retry-after": "99999999999999"},
+        {"retry-after": "999999999999"},
+        {"retry-after": "9" * 5000},
+        # A character that isdigit() takes and int() refuses, which a header can carry.
+        {"retry-after": "\u00b2"},
+        {"x-ratelimit-remaining": "0", "x-ratelimit-reset": "99999999999999"},
+        {"x-ratelimit-remaining": "0", "x-ratelimit-reset": "9" * 5000},
+        {"x-ratelimit-remaining": "0", "x-ratelimit-reset": "\u00b2"},
+    ],
+)
+def test_a_rate_limit_time_no_clock_can_hold_says_a_limit_without_a_time(
+    headers: dict[str, str],
+) -> None:
+    """An exception here would end the refresh job with no stamp, and the page would keep
+    the previous outcome; a typed ``rate_limited`` with no ``reset_at`` is what it means."""
+
+    now = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
+    assert rate_limit_reset(GhResponse(403, headers, b"{}"), now=now) == "unknown"
+
+
 def test_gh_api_runs_isolated_with_fixed_arguments(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
