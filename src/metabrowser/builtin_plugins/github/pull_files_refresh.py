@@ -379,7 +379,7 @@ async def refresh_pull_files(
     reader: str | None = None
     try:
         # A checkout's source is published by its first write, which this is.
-        repository = await asyncio.to_thread(claim_source, repository)
+        repository = await claim_source(repository)
         listed = await _from_comparison(repository, number, local) if local else None
         if listed is not None:
             await _write(repository, listed)

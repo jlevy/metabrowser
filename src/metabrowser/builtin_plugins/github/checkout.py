@@ -56,7 +56,7 @@ log = logging.getLogger(__name__)
 class CheckoutRepository(ListedRepository):
     """A served checkout's repository: where its records are, and the source to claim.
 
-    Before a store is attached, its records are written without a comparison.
+    Before a store is attached, its page withholds any shared comparison.
     """
 
     git_source: GitSource
@@ -217,16 +217,39 @@ def checkout_job_key(repository: CheckoutRepository, number: int) -> str:
     return f"checkout:{identity}:pull/{number}"
 
 
-def claim_source(repository: ListedRepository) -> ListedRepository:
-    """*repository*, its source published first when it is a checkout's. Blocking.
+async def claim_source(repository: ListedRepository) -> ListedRepository:
+    """Publish before a job writes, then rebind checkout state on the event loop.
 
-    A job calls it before its first write, so a read never creates a source and the first
-    write claims one. A source published already, with a store or without, is left as it
-    is. Raises :class:`PullDataError` ``cache_unwritable`` when the cache cannot take it.
+    The filesystem operation runs in a worker. A disambiguated slug is adopted by every
+    checkout of this source without replacing held records or an active acquisition.
+    A read never calls this operation. Cache refusals become safe ``cache_unwritable``.
     """
-
     if not isinstance(repository, CheckoutRepository):
         return repository
+    claimed = await asyncio.to_thread(_claim_source, repository)
+    if claimed == repository:
+        return repository
+    with _LOCK:
+        for key, held in _RESOLVED.items():
+            if (
+                held is not None
+                and held.home == repository.home
+                and held.source == repository.source
+            ):
+                _RESOLVED[key] = replace(held, home=claimed.home, slug=claimed.slug)
+        for state in _PULLS.values():
+            published = state.pulls.published
+            if (
+                isinstance(published, ListedRepository)
+                and published.home == repository.home
+                and published.source == repository.source
+            ):
+                state.pulls.bind(replace(published, home=claimed.home, slug=claimed.slug))
+    return claimed
+
+
+def _claim_source(repository: CheckoutRepository) -> CheckoutRepository:
+    """Blocking publication only; held pull state belongs to the caller's event loop."""
     from metabrowser.cache.acquire import AcquisitionError, publish_unattached_source
     from metabrowser.cache.atomic import RecordError
     from metabrowser.cache.identity import SlugCollisionError
@@ -253,12 +276,7 @@ def claim_source(repository: ListedRepository) -> ListedRepository:
         ) from exc
     if (home, slug) == (repository.home, repository.slug):
         return repository
-    claimed = replace(repository, home=home, slug=slug)
-    with _LOCK:
-        for key, held in _RESOLVED.items():
-            if held == repository:
-                _RESOLVED[key] = claimed
-    return claimed
+    return replace(repository, home=home, slug=slug)
 
 
 # Active jobs are bounded independently of the set of remembered records. An explicit
@@ -352,38 +370,44 @@ async def _pull_job(
         # Waiting at the store keeps no network slot, matching mirror refresh jobs.
         async with state.turn(lambda: True), coordinator.slot():
             companion = await state.pulls.companion(number)
-            while True:
-                comparison = key in _COMPARISON_WANTED
-                _COMPARISON_WANTED.discard(key)
-                if comparison and state.pulls.git_dir is None:
-                    try:
-                        published = await _acquire_comparison(repository)
-                    except PullDataError as exc:
-                        at = utc_stamp(pulls.utc_now())
-                        companion.last = PullRefreshOutcome(
-                            outcome=exc.state, message=str(exc), reset_at=exc.reset_at, at=at
-                        )
+            state.pulls.active = companion
+            try:
+                while True:
+                    comparison = key in _COMPARISON_WANTED
+                    _COMPARISON_WANTED.discard(key)
+                    if comparison and state.pulls.git_dir is None:
                         try:
-                            claimed = await asyncio.to_thread(claim_source, repository)
-                            await asyncio.to_thread(
-                                write_pull_refresh,
-                                claimed.home,
-                                claimed.slug,
-                                number,
-                                PullRefreshStamp(
-                                    outcome=exc.state,
-                                    message=str(exc),
-                                    reset_at=exc.reset_at,
-                                    at=at,
-                                ),
+                            published = await _acquire_comparison(repository)
+                        except PullDataError as exc:
+                            at = utc_stamp(pulls.utc_now())
+                            companion.last = PullRefreshOutcome(
+                                outcome=exc.state, message=str(exc), reset_at=exc.reset_at, at=at
                             )
-                        except (PullDataError, PrivateStorageError, OSError):
-                            log.debug("could not record checkout comparison failure", exc_info=True)
+                            try:
+                                claimed = await claim_source(repository)
+                                await asyncio.to_thread(
+                                    write_pull_refresh,
+                                    claimed.home,
+                                    claimed.slug,
+                                    number,
+                                    PullRefreshStamp(
+                                        outcome=exc.state,
+                                        message=str(exc),
+                                        reset_at=exc.reset_at,
+                                        at=at,
+                                    ),
+                                )
+                            except (PullDataError, PrivateStorageError, OSError):
+                                log.debug(
+                                    "could not record checkout comparison failure", exc_info=True
+                                )
+                            return
+                        state.pulls.bind(published)
+                    await companion.refresh()
+                    if key not in _COMPARISON_WANTED or state.pulls.git_dir is not None:
                         return
-                    state.pulls.attach_store(published)
-                await companion.refresh()
-                if key not in _COMPARISON_WANTED or state.pulls.git_dir is not None:
-                    return
+            finally:
+                state.pulls.active = None
     finally:
         _COMPARISON_WANTED.discard(key)
 

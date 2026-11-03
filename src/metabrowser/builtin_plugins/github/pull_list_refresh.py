@@ -314,7 +314,7 @@ async def refresh_pull_list(
     reader: str | None = None
     try:
         # A checkout's source is published by its first write, which this is.
-        repository = await asyncio.to_thread(claim_source, repository)
+        repository = await claim_source(repository)
         login = await active_account()
         reader = f"gh:{login}"
         listed = await _refresh(repository, name, login, more=more)

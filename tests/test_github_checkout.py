@@ -616,7 +616,7 @@ def test_existing_checkout_source_refuses_unknown_cache_before_writing(
     checkout = clone_checkout(pull_origin, tmp_path / "checkout")
     repository = checkout_module._resolve(checkout, isolated.home)  # pyright: ignore[reportPrivateUsage]
     assert repository is not None
-    checkout_module.claim_source(repository)
+    asyncio.run(checkout_module.claim_source(repository))
     layout = isolated.home / "layout.yml"
     config = Path(os.environ["METABROWSER_CONFIG_DIR"]) / "config.yml"
     if damage == "missing":
@@ -653,7 +653,7 @@ def test_existing_checkout_source_refuses_unknown_cache_before_writing(
     config_before = snapshot(config.parent)
     assert before and config_before
     with pytest.raises(PullDataError) as refused:
-        checkout_module.claim_source(repository)
+        asyncio.run(checkout_module.claim_source(repository))
     assert refused.value.state == "cache_unwritable"
     assert str(refused.value) == "the repository could not be recorded in the cache"
     assert snapshot(isolated.home) == before
@@ -722,6 +722,191 @@ def test_other_pull_read_crossing_attachment_uses_store_for_every_refresh(
         finally:
             release.set()
             await reading
+            await coordinator.aclose()
+
+    asyncio.run(run())
+
+
+@pytest.fixture
+def fresh_checkout_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+
+    # Successful pytest temporary directories may be removed and their names reused.
+    monkeypatch.setattr(checkout_module, "_RESOLVED", {})
+    monkeypatch.setattr(checkout_module, "_PULLS", {})
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_publication_rebinds_checkout_records_to_the_claimed_slug(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    from metabrowser.cache import acquire
+    from tests.golden_harness import isolate_cli
+    from tests.test_cli_github_checkout_golden import _after  # pyright: ignore[reportPrivateUsage]
+
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    request = tmp_path / "request.json"
+    route = "/api/plugin/github/pull?number=10"
+    assert _api(checkout, route, None, request).payload()["state"] == "absent"
+    other = clone_checkout(pull_origin, tmp_path / "other-checkout")
+    assert _api(other, route, None, request).payload()["state"] == "absent"
+    choose = acquire.cache_slug
+
+    def longer_slug(transport: Any, address: str, source_id: str, **kwargs: Any) -> str:
+        # Inject the admitted collision chooser; publication and route reads remain real.
+        short = choose(transport, address, source_id, **kwargs)
+        return short.rsplit("--", 1)[0] + "--" + source_id.removeprefix("sha256:")[:16]
+
+    monkeypatch.setattr(acquire, "cache_slug", longer_slug)
+    refreshed = _api(
+        checkout, "/api/plugin/github/pull-refresh", {"number": 10, "retry": True}, request
+    )
+    assert refreshed.exit_code == 0, refreshed.stdout
+    after = _after(refreshed)
+    assert after["record"] is not None, after
+    assert after["record"]["pull"]["number"] == 10
+    assert _api(checkout, route, None, request).payload()["record"] == after["record"]
+    assert _api(other, route, None, request).payload()["record"] == after["record"]
+    written = list(home.glob("sources/*/pulls/10.json"))
+    assert len(written) == 1 and len(written[0].parents[1].name.rsplit("--", 1)[1]) == 16
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_metadata_refresh_preserves_only_the_same_readers_comparison(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.pull_record import (
+        PullRecord,
+        read_pull_record,
+        write_pull_record,
+    )
+    from tests.golden_harness import isolate_cli
+
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, home)  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None and repository.cached is None
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", lambda _source: pull_origin.url)
+
+    async def run() -> None:
+        published = await checkout_module._acquire_comparison(repository)  # pyright: ignore[reportPrivateUsage]
+        original = await pulls.refresh_pull_request(published, 10)
+        assert original.comparison is not None
+        for change in ("none", "head", "base", "branch", "state", "reader", "comparison_head"):
+            cached = original
+            if change == "comparison_head":
+                cached = original.model_copy(
+                    update={"comparison": original.comparison.model_copy(update={"head": "f" * 40})}
+                )
+            write_pull_record(home, published.slug, cached)
+            pull = original.pull
+            if change in ("head", "base"):
+                side = getattr(pull, change).model_copy(update={"sha": "f" * 40})
+                pull = pull.model_copy(update={change: side})
+            elif change == "branch":
+                pull = pull.model_copy(
+                    update={"base": pull.base.model_copy(update={"ref": "other"})}
+                )
+            elif change == "state":
+                pull = pull.model_copy(
+                    update={"state": "closed" if pull.state == "open" else "open"}
+                )
+            reader = "gh:other" if change == "reader" else original.reader
+            incoming = original.model_copy(
+                update={"pull": pull, "reader": reader, "comparison": None}
+            )
+
+            async def account(reader: str = reader) -> str:
+                return reader.removeprefix("gh:")
+
+            async def api(
+                *args: Any, change: str = change, incoming: PullRecord = incoming, **kwargs: Any
+            ) -> PullRecord:
+                assert (kwargs["previous"] is None) == (change == "reader")
+                return incoming
+
+            monkeypatch.setattr(pulls, "active_account", account)
+            monkeypatch.setattr(pulls, "_read_api", api)
+            refreshed = await pulls.refresh_pull_request(repository, 10)
+            assert read_pull_record(home, published.slug, 10) == refreshed
+            assert refreshed.comparison == (original.comparison if change == "none" else None), (
+                change
+            )
+            assert refreshed.unavailable.get("comparison") == (
+                None if change == "none" else "no_store"
+            ), change
+
+    asyncio.run(run())
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("outcome", ["success", "cancel", "failure"])
+def test_acquisition_keeps_its_active_companion_bound_after_eviction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, outcome: str
+) -> None:
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.pull_record import PullRecord, read_pull_record
+    from metabrowser.builtin_plugins.github.served_pull import MAX_KEPT_PULLS
+    from metabrowser.mirror_refresh import RefreshCoordinator
+    from tests.golden_harness import isolate_cli
+
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, home)  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", lambda _source: pull_origin.url)
+    acquire = checkout_module._acquire_comparison  # pyright: ignore[reportPrivateUsage]
+
+    async def run() -> None:
+        coordinator = RefreshCoordinator(limit=1)
+        entered, release = asyncio.Event(), asyncio.Event()
+        state = checkout_module._checkout_state(repository)  # pyright: ignore[reportPrivateUsage]
+
+        async def delayed(repository: checkout_module.CheckoutRepository) -> Any:
+            entered.set()
+            await release.wait()
+            if outcome == "failure":
+                raise pulls.PullDataError("network_error", "the origin is unavailable")
+            return await acquire(repository)
+
+        monkeypatch.setattr(checkout_module, "_acquire_comparison", delayed)
+        try:
+            assert (
+                checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
+                == "started"
+            )
+            await asyncio.wait_for(entered.wait(), 5)
+            active = state.pulls.held(10)
+            assert active is not None
+            for number in range(100, 100 + MAX_KEPT_PULLS):
+                await state.pulls.companion(number)
+            assert state.pulls.held(10) is active
+            if outcome == "cancel":
+                await coordinator.aclose()
+            elif outcome == "failure":
+                release.set()
+                await coordinator.drain(timeout_s=10)
+                assert active.last is not None and active.last["outcome"] == "network_error"
+                assert state.pulls.git_dir is None
+            else:
+                release.set()
+                await coordinator.drain(timeout_s=10)
+                record = read_pull_record(home, repository.slug, 10)
+                assert isinstance(record, PullRecord)
+                assert record.comparison is not None, record.unavailable
+                assert active.published is state.pulls.published
+                assert (await state.pulls.companion(10)).published is state.pulls.published
+            assert state.pulls.active is None
+        finally:
+            release.set()
             await coordinator.aclose()
 
     asyncio.run(run())

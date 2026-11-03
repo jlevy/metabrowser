@@ -20,9 +20,10 @@ window, so a missing ``gh`` is not asked on every poll, nor again by a command s
 just after one that asked, and after ``rate_limited`` it waits for GitHub's ``reset_at``.
 
 A checkout served as a folder has a set too (:mod:`.checkout`). Before a store is
-attached, its records have no comparison, ``no_store``. An explicit comparison Fetch can
-attach a store without changing the served folder. A server that has a store treats a
-record written without one as stale whatever its age.
+attached, its page withholds comparisons as ``no_store``. Its metadata refresh preserves
+an unchanged comparison another session wrote to their shared record. An explicit
+comparison Fetch can attach a store without changing the served folder. A server that
+has a store treats a record explicitly marked no_store as stale whatever its age.
 """
 
 from __future__ import annotations
@@ -268,13 +269,14 @@ class ServedPulls:
     """A repository's pull requests: the state of a bounded number in memory, the rest on disk.
 
     The set is changed only on the event loop. A pull request's state is dropped oldest
-    first, and never the attended one's or one whose refresh is running, which would go
-    on changing a state nothing reads any more.
+    first, but the attended one, active acquisition, and running refreshes stay held so
+    their jobs cannot go on changing a state nothing reads any more.
     """
 
     published: PublishedSource | ListedRepository
     _kept: OrderedDict[int, ServedPull] = field(default_factory=OrderedDict[int, ServedPull])
     _attended: int | None = None
+    active: ServedPull | None = field(default=None, repr=False)
 
     @property
     def home(self) -> Path:
@@ -298,12 +300,14 @@ class ServedPulls:
         published = self.published
         return None if isinstance(published, ListedRepository) else published.git_dir
 
-    def attach_store(self, published: PublishedSource) -> None:
-        """Use the acquired store for later refreshes, retaining each number's state."""
+    def bind(self, published: PublishedSource | ListedRepository) -> None:
+        """Use the published source for later reads and refreshes, retaining each number's state."""
 
         self.published = published
         for held in self._kept.values():
             held.published = published
+        if self.active is not None:
+            self.active.published = published
 
     def key(self, number: int) -> str:
         return f"{_job_prefix(self.published)}:pull/{number}"
@@ -339,7 +343,7 @@ class ServedPulls:
         self._kept[pull.number] = pull
         if len(self._kept) > MAX_KEPT_PULLS:
             for number, held in self._kept.items():
-                if number != self._attended and not held.refreshing:
+                if number != self._attended and held is not self.active and not held.refreshing:
                     del self._kept[number]
                     break
         return pull

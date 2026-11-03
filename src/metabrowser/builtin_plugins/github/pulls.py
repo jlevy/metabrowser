@@ -719,10 +719,29 @@ async def _refresh(published: PublishedSource | ListedRepository, number: int) -
                 "discarded; open it again",
             )
         if isinstance(published, ListedRepository):
-            # A checkout's: no store to fetch the head into, and nothing fetched into the
-            # checkout, so there is no comparison. A server with a store refreshes it.
-            unavailable = {**record.unavailable, "comparison": "no_store"}
-            return await _write(published, record.model_copy(update={"unavailable": unavailable}))
+            # Another session may have computed this shared record's comparison. Keep
+            # it only for the same reader and unchanged comparison inputs. The folder
+            # envelope still withholds it until that server has attached a store.
+            comparison = None
+            if (
+                previous is not None
+                and previous.comparison is not None
+                and previous.pull.head.sha == record.pull.head.sha
+                and previous.comparison.head == record.pull.head.sha
+                and previous.pull.base.sha == record.pull.base.sha
+                and previous.pull.base.ref == record.pull.base.ref
+                and previous.pull.state == record.pull.state
+            ):
+                comparison = previous.comparison
+            unavailable = dict(record.unavailable)
+            if comparison is None:
+                unavailable["comparison"] = "no_store"
+            else:
+                unavailable.pop("comparison", None)
+            return await _write(
+                published,
+                record.model_copy(update={"comparison": comparison, "unavailable": unavailable}),
+            )
         pull = record.pull
         try:
             fetched = await fetch_pull_head(
@@ -798,8 +817,9 @@ async def refresh_pull_request(
     """Read pull request *number* of *published* from GitHub and cache it; see the module.
 
     *published* is a mirror's source, or a checkout's repository, which has no store: its
-    record is written with no comparison, ``no_store``, and its source is published first
-    if it has never been (:func:`~.checkout.claim_source`). Raises only
+    source is published first if it has never been (:func:`~.checkout.claim_source`).
+    A checkout preserves a shared comparison only for the same reader and unchanged
+    comparison inputs; otherwise its record has no comparison, ``no_store``. Raises only
     :class:`PullDataError`. A failure leaves any previous record in place. How it ended is
     kept beside the record either way; see :func:`last_refresh`.
     """
@@ -807,7 +827,7 @@ async def refresh_pull_request(
     try:
         try:
             if isinstance(published, ListedRepository):
-                published = await asyncio.to_thread(claim_source, published)
+                published = await claim_source(published)
             elif recover:
                 await _recover_comparison(published, number, recovery_pair)
             record = await _refresh(published, number)
