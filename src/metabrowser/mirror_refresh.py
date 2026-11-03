@@ -115,6 +115,20 @@ type RefreshStart = Literal["started", "joined", "too_many"]
 type CommitFetch = Literal["started", "joined", "fresh"]
 
 
+@dataclass(frozen=True, slots=True)
+class CommitFetchAnswer:
+    """How a request for the fetch a missing commit waits for was answered.
+
+    ``refresh`` is the mirror's fetch. ``pull_refresh`` is the attended pull request's
+    refresh, the only one that brings a newer head of it, as
+    :meth:`MirrorSession.request_pull_refresh` answered it, or ``None`` when none was asked
+    for: no pull request is attended, or its record was fresh and the request was no retry.
+    """
+
+    refresh: CommitFetch
+    pull_refresh: PullJobStart | None
+
+
 class SelectionError(Exception):
     """A pin selection could not be served. ``str()`` names no path."""
 
@@ -826,7 +840,7 @@ class MirrorSession:
             self.request_companion_refresh()
         return started
 
-    def request_commit_fetch(self, *, retry: bool) -> CommitFetch:
+    def request_commit_fetch(self, *, retry: bool) -> CommitFetchAnswer:
         """Ask for the fetch a commit the mirror lacks waits for.
 
         It is the fetch a pin by commit ID waits for: the mirror's own, of branches and
@@ -838,15 +852,17 @@ class MirrorSession:
         served content can send a reader to any address, so that request fetches only
         what is older than :data:`FRESHNESS_WINDOW_S`: ``"fresh"`` says the mirror was
         fetched inside the window and no fetch of it was started. *retry* is a reader's
-        own click, and always fetches.
+        own click, and always fetches. The answer says how the pull request's refresh was
+        answered too, since a full queue can refuse it while the mirror is fetched.
         """
 
         now = _now_utc()
+        pull_refresh: PullJobStart | None = None
         if retry or self._companion_stale(now):
-            self.request_companion_refresh()
+            pull_refresh = self.request_companion_refresh()
         if retry or self._mirror_stale(now) or self._coordinator.running(self.mirror.key):
-            return self._refresh_mirror(companion_stale=False)
-        return "fresh"
+            return CommitFetchAnswer(self._refresh_mirror(companion_stale=False), pull_refresh)
+        return CommitFetchAnswer("fresh", pull_refresh)
 
     def request_companion_refresh(self) -> PullJobStart | None:
         """Start or join the attended pull request's refresh, if there is one."""
@@ -1256,6 +1272,7 @@ __all__ = [
     "UNSERVED_FRESHNESS",
     "AmbiguousSelectionError",
     "CommitFetch",
+    "CommitFetchAnswer",
     "CompanionRefresh",
     "FreshnessFields",
     "InvalidSelectionError",

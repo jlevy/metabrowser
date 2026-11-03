@@ -195,13 +195,15 @@
 
   // What the commit view says about a commit the mirror lacks. The states are the ones a
   // URL selection passes through, named for a commit instead of the page's address.
-  /** @type {Readonly<Record<"pending" | "not_found" | "fetch_failed" | "no_mirror", string>>} */
+  /** @type {Readonly<Record<"pending" | "not_found" | "fetch_failed" | "no_mirror" | "pull_refused", string>>} */
   const MISSING_COMMIT_DETAIL = Object.freeze({
     pending: "This commit is not in the mirror yet; it opens when the fetch brings it.",
     not_found:
       "This commit is not in the mirror, and the fetch from the origin did not bring it: no branch or tag there reaches it.",
     fetch_failed: "This commit is not in the mirror, and it could not be fetched.",
     no_mirror: "This commit is not in the repository.",
+    pull_refused:
+      "The pull request's refresh, which brings its newer commits, was not queued: too many pull requests are being fetched; try again when one has finished.",
   });
 
   /**
@@ -213,9 +215,12 @@
    * commit. Only then does the view say the origin does not offer it. When none ran --
    * the mirror was fetched inside the freshness window, or only the data beside it was
    * refreshed -- the view says only that the commit is not in the mirror as fetched.
+   * *page.pullRefused* is that a full queue refused the attended pull request's refresh,
+   * the only one that brings a newer head of it: the view then says so, and does not say
+   * the origin lacks the commit.
    *
    * @param {MetabrowserSourceStatus | null} status
-   * @param {{phase: "fetching" | "ended", nowMs: number, error?: string | null, fetched?: boolean}} page
+   * @param {{phase: "fetching" | "ended", nowMs: number, error?: string | null, fetched?: boolean, pullRefused?: boolean}} page
    * @returns {MetabrowserMissingCommitModel}
    */
   function describeMissingCommit(status, page) {
@@ -253,11 +258,12 @@
         retry: true,
       };
     }
+    const refused = page.pullRefused === true ? ` ${MISSING_COMMIT_DETAIL.pull_refused}` : "";
     if (page.fetched !== true) {
       return {
         state: "not_found",
         title: `Commit not found · fetched ${age}`,
-        detail: `This commit is not in the mirror as fetched ${age}.`,
+        detail: `This commit is not in the mirror as fetched ${age}.${refused}`,
         retry: true,
       };
     }
@@ -271,6 +277,16 @@
         state: "fetch_failed",
         title: `Commit not fetched · fetched ${age}`,
         detail: `${MISSING_COMMIT_DETAIL.fetch_failed} ${OUTCOME_DETAIL[outcome.outcome] ?? OUTCOME_DETAIL.failed}`,
+        retry: true,
+      };
+    }
+    if (refused !== "") {
+      // The branches and tags were fetched; the pull request's head, which may be the
+      // commit, was not.
+      return {
+        state: "fetch_failed",
+        title: `Commit not fetched · fetched ${age}`,
+        detail: `${MISSING_COMMIT_DETAIL.fetch_failed}${refused}`,
         retry: true,
       };
     }
@@ -339,6 +355,7 @@
       nowMs: view.now(),
       error: ended.error,
       fetched: ended.fetched,
+      pullRefused: ended.pullRefused,
     });
     view.paint(model);
     return model.state === "not_found" ? "not_found" : "fetch_failed";
@@ -538,9 +555,12 @@
      * failure of it says nothing, since the reader did not ask, and the row still offers a
      * refresh to press.
      *
+     * `pullRefresh` is how a commit's fetch found the attended pull request's refresh,
+     * which only that request's answer carries.
+     *
      * @param {Record<string, unknown>} body
      * @param {{own: boolean}} options
-     * @returns {Promise<{refresh: string} | null>}
+     * @returns {Promise<{refresh: string, pullRefresh: string | null} | null>}
      */
     async function ask(body, options) {
       if (disposed || status === null || !status.refreshable) {
@@ -548,12 +568,12 @@
         return null;
       }
       refreshAskedWhileVisible = true;
-      /** @type {{refresh: string} | null} */
+      /** @type {{refresh: string, pullRefresh: string | null} | null} */
       let answered = null;
       try {
         const response = await deps.request("POST", REFRESH_ROUTE, { body });
         const answer =
-          /** @type {{refresh?: unknown, status?: unknown, error?: unknown} | null} */ (
+          /** @type {{refresh?: unknown, pull_refresh?: unknown, status?: unknown, error?: unknown} | null} */ (
             response.body
           );
         if (
@@ -565,7 +585,10 @@
           // The envelope changed; the next poll must not be answered by a 304.
           etag = null;
           error = null;
-          answered = { refresh: typeof answer.refresh === "string" ? answer.refresh : "started" };
+          answered = {
+            refresh: typeof answer.refresh === "string" ? answer.refresh : "started",
+            pullRefresh: typeof answer.pull_refresh === "string" ? answer.pull_refresh : null,
+          };
         } else if (!options.own) {
           const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
           error =
@@ -589,8 +612,9 @@
     /**
      * Ask for the fetch a commit the mirror lacks waits for, and answer when nothing is
      * refreshing any more: the status then, why the fetch could not be asked for or
-     * followed, whether a fetch of the mirror ran (`fetched`), and whether anything ran
-     * that could have brought the commit (`waited`).
+     * followed, whether a fetch of the mirror ran (`fetched`), whether anything ran
+     * that could have brought the commit (`waited`), and whether a full queue refused
+     * the attended pull request's refresh (`pullRefused`).
      *
      * A page asks by itself only when something is older than the freshness window or
      * already refreshing; the server holds the mirror's fetch to the same floor, so a
@@ -616,18 +640,19 @@
         }
       }
       if (disposed || status === null || !status.refreshable) {
-        return { status, error, fetched: false, waited: false };
+        return { status, error, fetched: false, waited: false, pullRefused: false };
       }
       if (!retry && !status.stale && !status.refreshing) {
-        return { status, error: null, fetched: false, waited: false };
+        return { status, error: null, fetched: false, waited: false, pullRefused: false };
       }
-      const answered = await requestRefresh(
-        retry ? { for: "commit", retry: true } : { for: "commit" },
-      );
+      const answered = await ask(retry ? { for: "commit", retry: true } : { for: "commit" }, {
+        own: false,
+      });
       if (disposed || answered === null || status === null) {
-        return { status, error, fetched: false, waited: false };
+        return { status, error, fetched: false, waited: false, pullRefused: false };
       }
-      const fetched = answered === "started" || answered === "joined";
+      const fetched = answered.refresh === "started" || answered.refresh === "joined";
+      const pullRefused = answered.pullRefresh === "too_many";
       const waited = fetched || status.refreshing;
       if (status.refreshing) {
         options.waiting?.();
@@ -635,7 +660,7 @@
       while (!disposed && status !== null && status.refreshing && error === null) {
         await nextChange();
       }
-      return { status, error, fetched, waited };
+      return { status, error, fetched, waited, pullRefused };
     }
 
     async function acceptOffer() {

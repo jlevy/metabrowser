@@ -176,6 +176,8 @@ once.
 With the body `{"for": "commit"}` it is the fetch a missing commit waits for, which
 starts a fetch of the mirror only outside the freshness window and otherwise answers
 `fresh`; adding `"retry": true` always fetches.
+Its answer’s `pull_refresh` says how the attended pull request’s refresh was answered,
+`too_many` when the queue had no room for it, or null when none was asked for.
 `POST /api/source/pin` switches the served commit to a branch, a tag, or a commit ID in
 the mirror, with a JSON body such as `{"ref": "feature"}` or `{"oid": "3f2a9c1"}`. In a
 server, one the mirror lacks answers `202` with `selection_pending` and fetches once;

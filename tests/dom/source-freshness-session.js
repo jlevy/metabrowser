@@ -556,6 +556,33 @@ async function run() {
     controller.dispose();
   }
 
+  // A full queue refused the attended pull request's refresh, the only one that brings a
+  // newer head of it, while the mirror was fetched. The fetch ran and did not bring the
+  // commit, and the view says the pull request's refresh did not run rather than that the
+  // origin lacks the commit.
+  {
+    const page = createPage();
+    const controller = freshness.createController(page.deps);
+    page.setStatus(recorded.queue_full_page);
+    answerRefresh(page, recorded.queue_full_refresh);
+    await controller.start();
+    page.observe("opened");
+    answerRefresh(page, recorded.commit_unqueued_started);
+    page.answerCommit(recorded.commit_unqueued_after);
+    const opening = freshness.openMissingCommit(
+      controller,
+      page.commitView(recorded.commit_unqueued_after.oid),
+      { retry: true },
+    );
+    await settle();
+    page.observe("waiting");
+    page.setStatus(recorded.commit_unqueued_fetched);
+    await page.fireTimer();
+    outcomes.push(await opening);
+    steps.push(page.observe("the queue had no room for the pull request's refresh"));
+    controller.dispose();
+  }
+
   // The server stops answering while the fetch runs: the view gives up at the first
   // poll that fails, and the page falls back to its slow poll.
   {
@@ -589,6 +616,7 @@ async function run() {
         "fetch_failed",
         "superseded",
         "found",
+        "fetch_failed",
         "fetch_failed",
       ]),
     `a missing commit ended as ${JSON.stringify(outcomes)}`,

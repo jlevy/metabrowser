@@ -410,13 +410,20 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             recorded["queue_full_refresh"] = answer(
                 client.post("/api/source/refresh", json={}, headers=JSON_BODY)
             )
+            # A reader's retry for a commit fetches the mirror, which waits its turn behind
+            # the queue, and says the pull request's refresh, which alone brings a newer
+            # head of it, was refused.
+            recorded["commit_unqueued_started"] = answer(_commit_fetch(client, retry=True))
             beside.release()
             pulls.release()
+            recorded["commit_unqueued_fetched"] = _settle(client)
             deadline = time.monotonic() + 30
             queued = (*range(100, 100 + MAX_PULL_JOBS), 7)
             while any(session.pull_refreshing(number) for number in queued):
                 assert time.monotonic() < deadline, "the queue did not drain"
                 time.sleep(0.02)
+            still = client.get(f"/api/git/commit/{_ABSENT_COMMIT}")
+            recorded["commit_unqueued_after"] = {"oid": _ABSENT_COMMIT, **answer(still)}
         # A mirror whose last refresh found the repository gone or private, inside the
         # window: the row says so in the words the command line uses.
         _write_state(
@@ -498,6 +505,20 @@ def test_recording_is_what_a_served_mirror_answers(
     refused = recorded["queue_full_refresh"]
     assert (refused["status"], refused["body"]["code"]) == (429, "too_many")
     assert refused["body"]["status"] == full, "a refused refresh starts nothing"
+    # A commit's fetch then fetches the mirror and says the pull request's was refused.
+    unqueued = recorded["commit_unqueued_started"]
+    assert unqueued["status"] == 202
+    assert (unqueued["body"]["refresh"], unqueued["body"]["pull_refresh"]) == (
+        "started",
+        "too_many",
+    )
+    assert unqueued["body"]["status"]["refreshing"] is True
+    fetched = recorded["commit_unqueued_fetched"]
+    assert (fetched["refreshing"], fetched["last_outcome"]["outcome"]) == (False, "succeeded")
+    assert recorded["commit_unqueued_after"]["body"]["code"] == "commit_not_found"
+    # The other answers of a commit's fetch say how the pull request's refresh was asked.
+    assert recorded["commit_retry_started"]["body"]["pull_refresh"] == "joined"
+    assert recorded["commit_fresh"]["body"]["pull_refresh"] is None
     assert recorded["folder"]["pin"] is None
     check_recording(RECORDING, recorded, transcript=TRANSCRIPT)
 
@@ -573,6 +594,12 @@ def test_the_session_runs_on_the_recording() -> None:
     stopped = by_name["the server stopped answering while the fetch ran"]
     assert stopped["timer"] == "slow" and stopped["commit"]["state"] == "fetch_failed"
     assert "The server did not answer." in stopped["commit"]["detail"]
+    # A fetch that ran while a full queue refused the pull request's refresh does not let
+    # the view say the origin lacks the commit.
+    unqueued = by_name["the queue had no room for the pull request's refresh"]["commit"]
+    assert unqueued["state"] == "fetch_failed" and unqueued["offer"] == "[Retry]"
+    assert "was not queued" in unqueued["detail"]
+    assert "no branch or tag there reaches it" not in unqueued["detail"]
     # A refusal of the page's own refresh says nothing; the reader's press says why.
     own = by_name["a page's own refresh with no room in the queue says nothing"]
     assert own["requests"] == ["GET /api/source/status", "POST /api/source/refresh {}"]

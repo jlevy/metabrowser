@@ -14,6 +14,7 @@ import pytest
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import (
     MAX_FIRST_IN_A_ROW,
+    CommitFetchAnswer,
     MirrorDisplay,
     MirrorRef,
     MirrorSession,
@@ -242,23 +243,27 @@ def test_a_refresh_fetches_only_what_is_stale_and_a_pin_miss_only_the_mirror(
     ("mirror_fresh", "pull_stale", "retry", "answer", "expected"),
     [
         # Inside the freshness window a page's own request fetches nothing at all,
-        (True, False, False, "fresh", []),
+        (True, False, False, ("fresh", None), []),
         # or only the stale pull request, and still says the mirror was not fetched.
-        (True, True, False, "fresh", ["pull start", "pull end"]),
+        (True, True, False, ("fresh", "started"), ["pull start", "pull end"]),
         # Outside the window it fetches the mirror, and the pull request when stale.
-        (False, False, False, "started", ["mirror"]),
-        (False, True, False, "started", ["mirror", "pull start", "pull end"]),
+        (False, False, False, ("started", None), ["mirror"]),
+        (False, True, False, ("started", "started"), ["mirror", "pull start", "pull end"]),
         # A reader's retry fetches both, however fresh they are.
-        (True, False, True, "started", ["mirror", "pull start", "pull end"]),
+        (True, False, True, ("started", "started"), ["mirror", "pull start", "pull end"]),
     ],
 )
 def test_a_commit_fetch_has_a_floor_that_only_a_retry_lifts(
-    mirror_fresh: bool, pull_stale: bool, retry: bool, answer: str, expected: list[str]
+    mirror_fresh: bool,
+    pull_stale: bool,
+    retry: bool,
+    answer: tuple[str, str | None],
+    expected: list[str],
 ) -> None:
     """A link in served content can send a reader to any commit's address, so the fetch a
     page asks for by itself runs only for what is older than the freshness window."""
 
-    async def scenario() -> tuple[str, list[str]]:
+    async def scenario() -> tuple[tuple[str, str | None], list[str]]:
         events: list[str] = []
         coordinator = RefreshCoordinator()
         mirror = _Mirror(events, fetched_at=_now() if mirror_fresh else _OLD)
@@ -268,7 +273,7 @@ def test_a_commit_fetch_has_a_floor_that_only_a_retry_lifts(
         await session.observe()
         answered = session.request_commit_fetch(retry=retry)
         await _settle(coordinator)
-        return answered, events
+        return (answered.refresh, answered.pull_refresh), events
 
     answered, events = asyncio.run(scenario())
     assert answered == answer
@@ -290,10 +295,10 @@ def test_a_commit_fetch_joins_the_mirror_fetch_but_not_the_pull_requests() -> No
         await session.observe()
         session.request_companion_refresh()
         await companion.started.wait()
-        beside = session.request_commit_fetch(retry=False)
+        beside = session.request_commit_fetch(retry=False).refresh
         assert session.refreshing() is False and session.companion_refreshing() is True
         session.request_refresh(for_selection=True)
-        joined = session.request_commit_fetch(retry=False)
+        joined = session.request_commit_fetch(retry=False).refresh
         companion.gate.set()
         await _settle(coordinator)
         return beside, joined, events
@@ -804,6 +809,29 @@ def test_a_source_refresh_the_queue_has_no_room_for_says_so_and_starts_nothing()
     answered, seen = asyncio.run(scenario())
     assert answered == "too_many"
     assert seen == ["pull 8"], "nothing else started"
+
+
+def test_a_commit_fetch_the_queue_has_no_room_for_says_so_beside_the_mirrors() -> None:
+    """The mirror is fetched, and the answer says the pull request's refresh was refused, so
+    a commit page does not say the origin lacks a commit only that refresh would bring."""
+
+    async def scenario() -> tuple[CommitFetchAnswer, bool]:
+        stand = _Stand()
+        fresh = _Mirror(stand.events, fetched_at=_now())
+        stand.session = MirrorSession(
+            fresh, stand.coordinator, pull_requests=stand.pulls, fetch_on_miss=True
+        )
+        await stand.session.observe()
+        await _fill_the_queue(stand)
+        answered = stand.session.request_commit_fetch(retry=True)
+        await _spin()
+        refreshing = stand.session.pull_refreshing(20)
+        await stand.finish()
+        return answered, refreshing
+
+    answered, refreshing = asyncio.run(scenario())
+    assert (answered.refresh, answered.pull_refresh) == ("started", "too_many")
+    assert refreshing is False
 
 
 def test_a_pending_miss_whose_pull_request_job_was_refused_waits_for_room() -> None:
