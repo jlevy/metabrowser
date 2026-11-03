@@ -3,9 +3,9 @@ type: is
 id: is-01m6g6cagcckfs78k2ddzs1zz9
 title: "PR #280: fix and verify system-font message measure"
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m6g59qm4ewjgek4vjmndcxrj
 hold: null
 hold_until: null
 created_at: 2026-11-03T07:53:32.427Z
-updated_at: 2026-11-03T09:14:12.354Z
+updated_at: 2026-11-03T09:15:30.033Z
 started_at: 2026-11-03T07:55:00.843Z
+closed_at: 2026-11-03T09:15:30.032Z
+close_reason: "Fixed and pushed at 64fa6b1f on PR #280; independent Review E is clean, full verification and normal pre-push gate passed, and all nine CI checks are green."
+resolution: null
+duplicate_of: null
 ---
 Follow-up of996ea90d: confirmed all messages remain sans in Chrome across themes/reading fonts, but system-ui glyph advance differs from Source Sans while message width stays fixed. Resolve Qodo inline4451002801 with page-scoped dynamic measurement and regression evidence.
 

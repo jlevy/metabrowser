@@ -5,7 +5,7 @@ title: "PR checkout design: review overlays and complete safe local-worktree pat
 kind: task
 status: in_progress
 priority: 1
-version: 6
+version: 8
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -14,10 +14,12 @@ child_order_hints:
   - is-01m6g9jsp8gs0esdtpf4g7j2nw
   - is-01m6g9kpk69mz7175s26ngjp9y
   - is-01m6g9p42kam0bbtyv1svw9jhc
+  - is-01m6gft617bv7et4xz31y4qgbn
+  - is-01m6gft6cfr7b50arr0rpdk1by
 hold: null
 hold_until: null
 created_at: 2026-11-03T07:37:22.617Z
-updated_at: 2026-11-03T08:51:19.250Z
+updated_at: 2026-11-03T10:38:24.142Z
 started_at: 2026-11-03T07:37:52.370Z
 ---
 Checkout agent owns #283 correctness and #288 local-worktree design. Preserve no-write checkout guarantee; valid criss-cross merges; review current revert and integration gaps.

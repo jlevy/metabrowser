@@ -5,7 +5,7 @@ title: Hold every v0.12 surface to the design system
 kind: task
 status: in_progress
 priority: 1
-version: 13
+version: 15
 delegate: claude-code@spud10
 labels:
   - release:v0.12.0
@@ -27,7 +27,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:51.940Z
-updated_at: 2026-11-03T07:24:05.426Z
+updated_at: 2026-11-03T11:44:21.173Z
 started_at: 2026-11-02T21:47:06.817Z
 ---
 Running on the branch. Audit of everything added since v0.11.0, with a finding list surface by surface.
@@ -38,3 +38,5 @@ Running on the branch. Audit of everything added since v0.11.0, with a finding l
 
 
 2026-11-03 pause: a follow-up review of 996ea90d (the sans rule) on PR 280 was started and stopped before it verified anything, so it is still owed: check test_serif_is_only_for_documents, both reading fonts and the system font set in Chrome, and any other message surface still in serif.
+
+2026-11-03 independent-review integration at final tip 58270d69. Owed sans-rule follow-up is completed: Review D at 996ea90d found actual system-font measurement mismatch;64fa6b1f fixes it, Review E independently rechecks clean, and nine remote CI jobs are green. Eight Chrome font/theme cases preserve ordinary document width and use the actual system message measure. Keep this bead open per its owner instruction: closes when the stack merges. Final full verification, publication and remote CI are coordinator gates still pending; no PR merged.

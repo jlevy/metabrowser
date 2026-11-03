@@ -5,7 +5,7 @@ title: "PR #284 E3: a cold comparison grows with the pull request, 0.46 s at 1,0
 kind: bug
 status: in_progress
 priority: 2
-version: 3
+version: 5
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,7 +13,7 @@ parent_id: is-01m6g1yw7yj073zja4jqvz0g8b
 hold: null
 hold_until: null
 created_at: 2026-11-03T06:36:35.020Z
-updated_at: 2026-11-03T08:05:59.067Z
+updated_at: 2026-11-03T11:44:18.989Z
 started_at: 2026-11-03T08:05:59.066Z
 ---
 Medium, from review E of https://github.com/jlevy/metabrowser/pull/284 (https://github.com/jlevy/metabrowser/pull/284#pullrequestreview-5747841588), deferred out of that PR.
@@ -25,3 +25,7 @@ Design: compute the manifest at fetch time, beside the record. When `metab` fetc
 The cheaper alternative review E offers: start `listed()` for the served pull request's comparison when serve mode starts or when the record arrives, on the cache's own shared task, so the first page request finds the manifest computed. It is one bounded task, but it only helps a server that has been up for about a second before the request, and it computes again on every server start.
 
 Waits on: a decision on persisting manifests in the store's cache (format, invalidation, the cache-directory layout), and the quiet re-run (mb-jwfx) to restate the figures.
+
+## Notes
+
+2026-11-03 independent-review integration at final tip 58270d69. Implemented prepared private manifest persistence in f5c27dbc and PR eight-file hydration in 1b7d45c2; strong Review F and independent semantic-corruption/privacy probes pass. Owning #284 a876c64b contains the unchanged measured implementation. exp-041 records three adjacent pairs per public case:1031 first-line median858 to491 ms;1627 median1350 to519 ms. Host load11.32-23.54, not a quiet or fresh github.com comparison; some500 ms goals remain missed. No patches persisted, sixteen bounded direct slots, exact store/build/endpoints/policy identity. Final full verification, publication and remote CI are coordinator gates still pending; no PR merged.

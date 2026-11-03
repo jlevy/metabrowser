@@ -5,7 +5,7 @@ title: "Follow-ups from review E on PR 283: merge-base edge cases and a kept err
 kind: task
 status: in_progress
 priority: 2
-version: 2
+version: 4
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,7 +13,7 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-03T07:23:24.693Z
-updated_at: 2026-11-03T08:05:59.077Z
+updated_at: 2026-11-03T11:44:19.539Z
 started_at: 2026-11-03T08:05:59.077Z
 ---
 From review E (follow-up, round 3) on PR 283 at e8b7ff3d, after f987d033 was reverted at 483e3a83.
@@ -22,3 +22,7 @@ From review E (follow-up, round 3) on PR 283 at e8b7ff3d, after f987d033 was rev
 3. Review E5: a pin_changed poll (e8b7ff3d) leaves an earlier error shown until the guard reloads; clear it or leave it, and say which.
 4. Qodo's unanswered comment on lender.py:768: a pack without its index.
 Not reviewed yet: merge 2a22035b, the page in Chrome under the untrusted profile, and three of review E's eight mutations.
+
+## Notes
+
+2026-11-03 independent-review integration at final tip 58270d69. E follow-ups implemented and independently reviewed in F: a51cc866 old/unknown-Git readable ancestry accepts complete criss-cross history; timeout/output-limit failures remain typed and preserve records;48c03f84 bounds regular pack-index validation and preserves uncertain refs;6ade0868 clears stale pin_changed/304 error. f987d033 stays forward-reverted and 00c0f48b retained. Owning #283 3cb49015 includes original published b29dc787 by an empty-tree forward merge. Final full verification, publication and remote CI are coordinator gates still pending; no PR merged.

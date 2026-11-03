@@ -5,15 +5,18 @@ title: Repair overlay merge-base certainty and lender sweep edge cases
 kind: bug
 status: in_progress
 priority: 1
-version: 4
+version: 6
 delegate: checkout_design
 labels: []
 dependencies: []
 parent_id: is-01m6g59qm4ewjgek4vjmndcxrj
+child_order_hints:
+  - is-01m6ge33e60rmqsf2s955b498c
+  - is-01m6ge33szvtwd0mrs6mwa5aq5
 hold: null
 hold_until: null
 created_at: 2026-11-03T07:37:35.538Z
-updated_at: 2026-11-03T08:26:06.156Z
+updated_at: 2026-11-03T10:08:19.262Z
 started_at: 2026-11-03T07:38:10.112Z
 ---
 Audit PR #283 at 483e3a83 and checkout draft #288. Preserve valid criss-cross merge bases on Git 2.43; reproduce timeout persistence and missing pack index sweep before focused fixes.

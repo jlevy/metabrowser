@@ -3,15 +3,19 @@ type: is
 id: is-01m6f3nm5xr0xc912vqyky74hz
 title: Re-run the folder comparison after this branch merges
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 2
+version: 3
+delegate: claude-code@spud10.local
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
+hold: null
+hold_until: null
 created_at: 2026-11-02T21:46:57.084Z
-updated_at: 2026-11-03T02:31:12.260Z
+updated_at: 2026-11-03T09:32:28.846Z
+started_at: 2026-11-03T09:32:28.834Z
 ---
 This branch changes plain-folder narrow diffs, and possibly toggles. Extends mb-2g6f's re-run on the head to be tagged; the sign-off record must then name this branch's changes too.
 
