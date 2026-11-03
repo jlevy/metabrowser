@@ -2114,7 +2114,10 @@ def test_no_history_is_believed_only_when_the_walk_reads_every_commit(
         asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
 
 
-def test_a_pack_without_its_index_does_not_authorize_sweeping_refs(linear: _Stand) -> None:
+@pytest.mark.parametrize("defect", ["missing", "empty", "invalid", "directory"])
+def test_a_pack_without_its_index_does_not_authorize_sweeping_refs(
+    linear: _Stand, defect: str
+) -> None:
     checkout, files = _no_file_tips_and_unreadable_packs(linear)
     before = linear.store_refs()
     indexes = [path for path in files if path.suffix == ".idx"]
@@ -2122,6 +2125,12 @@ def test_a_pack_without_its_index_does_not_authorize_sweeping_refs(linear: _Stan
     saved = {path: path.read_bytes() for path in indexes}
     for path in indexes:
         path.unlink()
+        if defect == "empty":
+            path.write_bytes(b"")
+        elif defect == "invalid":
+            path.write_bytes(b"invalid index" * 100)
+        elif defect == "directory":
+            path.mkdir()
     update = asyncio.run(
         update_store(linear.home, linear.store.parent.name, remote_url=linear.replica.url)
     )
@@ -2129,6 +2138,8 @@ def test_a_pack_without_its_index_does_not_authorize_sweeping_refs(linear: _Stan
     assert update.swept == ()
     assert linear.store_refs() == before
     for path, data in saved.items():
+        if path.is_dir():
+            path.rmdir()
         path.write_bytes(data)
     update = asyncio.run(
         update_store(linear.home, linear.store.parent.name, remote_url=linear.replica.url)
@@ -2298,3 +2309,19 @@ def test_no_history_is_uncertain_if_the_boundary_moves_during_its_verification(
     monkeypatch.setattr(shallow, "run_git", cutting)
     answer = asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
     assert not answer.certain
+
+
+@pytest.mark.parametrize("index_version", [1, 2])
+def test_a_complete_pack_index_does_not_claim_a_collected_object(
+    linear: _Stand, index_version: int
+) -> None:
+    from metabrowser.cache.lender import collection_doubt
+
+    checkout, files = _no_file_tips_and_unreadable_packs(linear)
+    for path in files:
+        if path.suffix == ".pack":
+            pinned_git(checkout, "index-pack", f"--index-version={index_version}", str(path))
+    lender = StoreLender(
+        objects=str(checkout / ".git" / "objects"), checkout=str(checkout), remote="origin"
+    )
+    assert collection_doubt(lender, ["f" * 40]) is None
