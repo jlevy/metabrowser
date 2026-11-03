@@ -8,6 +8,19 @@ const settle = async () => {
     await new Promise(setImmediate);
   }
 };
+const perfEntries = [];
+const perf = {
+  measure(label, work) {
+    const value = work();
+    perfEntries.push(label);
+    return value;
+  },
+  async measureAsync(label, work) {
+    const value = await work();
+    perfEntries.push(label);
+    return value;
+  },
+};
 let viewHeight = 100;
 const body = new FakeElement("body"),
   scroll = new FakeElement("div"),
@@ -178,6 +191,7 @@ async function paint() {
       },
     },
     {
+      perf,
       filterControls: { groupHtml: () => "", bind: () => () => {} },
       formatAge: () => ({ label: "now", className: "" }),
       formatTimestamp: () => "",
@@ -187,6 +201,15 @@ async function paint() {
   await paint();
   const list = container.childNodes.find((n) => n.classList?.contains("github-pulls-list"));
   const items = () => list.childNodes.filter((n) => n.classList?.contains("github-pulls-item"));
+  for (const label of [
+    "githubPulls:decode",
+    "githubPulls:render",
+    "githubPulls:window",
+    "githubPulls:rowsReady",
+    "githubPulls:catalogReady",
+  ]) {
+    assert(perfEntries.includes(label), `the existing profiler receives ${label}`);
+  }
   const before = items().length;
   viewHeight = 3000;
   let observedRoot = 0;

@@ -2,7 +2,7 @@
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const { Element, recorded, root, settle } = require("./github-pull-page-mount-behavior.js");
+const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
 function deferred() {
   let resolve;
   const promise = new Promise((done) => {
@@ -43,6 +43,7 @@ async function run() {
       new Element("main"),
       { number: 7, tab: "files", reader: { initial, fetchAfterMs: 0 } },
       {
+        perf,
         ensureAsset: async () => {},
         ensureKindAssets: () => assets,
         getRegisteredView: () => ({
@@ -110,6 +111,7 @@ async function run() {
     container,
     { number: 7, tab: "files", reader: { initial: recorded.current, fetchAfterMs: 0 } },
     {
+      perf,
       ensureAsset: async () => {},
       ensureKindAssets: () => oldAssets.promise,
       getRegisteredView: () => ({

@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { pathToFileURL } = require("node:url");
-const { Element, recorded, root, settle } = require("./github-pull-page-mount-behavior.js");
+const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
 
 async function run() {
   const timers = new Map();
@@ -82,6 +82,7 @@ async function run() {
           reader: { initial: recorded.current, fetchAfterMs: 0 },
         },
         {
+          perf,
           ensureAsset: async () => {},
           ensureKindAssets: async () => {},
           getRegisteredView: () => ({

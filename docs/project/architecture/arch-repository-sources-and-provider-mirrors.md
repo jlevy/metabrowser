@@ -786,6 +786,18 @@ A changed account or repository identity atomically replaces the catalog; a reje
 cursor restarts that scan once without discarding already cached rows.
 GraphQL errors, including HTTP 200 with partial data, never advance a checkpoint.
 
+A catalog job checks the active GitHub account once before choosing its checkpoint.
+Every page query returns `viewer.login`; it must match that job’s reader before any rows
+or cursor are published.
+Ownership follows the account that returned the data: changing local account settings
+after a response does not relabel or discard that response.
+A later page from another account is refused, leaving the last committed checkpoint and
+its reader intact. A new job under that account replaces the catalog atomically.
+`gh auth status` performs an HTTP authentication check, so the catalog does not repeat
+it after each page.
+Cached reads retain their recorded reader and do not check the active
+account. Pull-request detail and file-list refreshes keep their own account checks.
+
 A refresh scans descending `UPDATED_AT` pages through the inclusive previous watermark.
 It captures the next watermark at scan start and advances freshness only when that scan
 finishes.

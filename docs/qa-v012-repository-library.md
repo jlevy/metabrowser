@@ -1205,8 +1205,8 @@ through `pull-refresh` runs as one coordinator job that a second request joins, 
 head behind `refs/pull/7/head` is offered as `latest` and taken through
 `/api/source/pin`, and a held fetch lock ends in `refreshing_elsewhere`.
 
-With the network, a signed-in `gh` 2.81.0 or newer, and a Git the floor admits
-(read-only; nothing is written to GitHub):
+With the network, a signed-in current maintained GitHub CLI release, and a Git the floor
+admits (read-only; nothing is written to GitHub):
 
 ```shell
 METABROWSER_LIVE_GITHUB=1 uv --config-file uv.toml run --frozen pytest -rs \
@@ -1593,16 +1593,14 @@ address.
 6. Click **Refresh** while the record is stale.
    The status line reads `Refreshing…` and then `Fetched just now by octo-reader`; the
    conversation does not flicker or jump.
-7. Open `/pull/8/files`. The page says `This server serves pull request #7.` with **Open
-   pull request #7**; click it.
-   The address becomes `/pull/7/files` without a reload and the page shows pull request
-   7’s Files changed; Back returns to `/pull/8/files`. When the pin is not the head the
-   record names, as when the pull request could not be opened at startup and serving
-   fell back to the default branch, the status line says
-   `This page's code is …, not the pull request's head …` with **Switch to the head**,
-   which reloads the page on `refs/pull/7/head`. The stand-in opens the pull request at
-   startup, so this case is played by
-   `tests/golden/cli-ui-github-pull-page.tryscript.md` rather than by hand.
+7. Open `/pull/8/files`. The same server shows pull request 8’s cached comparison;
+   browsing it does not change the served code pin.
+   Confirm the code banner is unchanged.
+   Back returns to pull request 7. **Browse code** on another PR explicitly switches to
+   that PR’s head before opening its code.
+   If a refresh finds a newer head for the served PR, the page retains the displayed
+   head and offers **Switch to the head**. The startup fallback and explicit switch
+   cases are also exercised by `tests/golden/cli-ui-github-pull-page.tryscript.md`.
 8. Stop the server and serve pull request 9 (`--serve 9 8475`): **spam** is **Closed**,
    and the header reads
    `ghost wants to merge 1 commit into octo:topic from spam (deleted fork)`, as
@@ -1641,6 +1639,56 @@ uv --config-file uv.toml run --frozen metab https://github.com/pallets/markupsaf
 **Pass:** the page matches the pull request on github.com: title, **Merged** badge,
 description, conversation, review comments, checks, and the Files changed file list.
 Nothing is written to GitHub.
+
+### 5.7a Pull-request performance and cache session
+
+Use the navigation-time `metabrowser.perf` profile and the existing fixture from
+`tests/github_pull_fixture.py`. Record the commit, wheel hash, corpus, browser version,
+viewport and host load.
+Name the Git store, catalog, PR detail, server-process and browser HTTP cache conditions
+separately. A seeded complete catalog measures rendering and navigation; it does not
+measure metadata ingestion.
+
+1. **Cold metadata.** Acquire the fixture repository without seeding its catalog or PR
+   details. Generate a fixed 5,000-row catalog with distinct, ordered `updatedAt` values.
+   Keep the Git store warm.
+   Open Pulls with Open selected and capture the first observed visible row, the exact
+   repository total and count timestamp, and completion with
+   `catalog_fetched === repository_total`. Metadata continues beyond the initial 500
+   displayed rows. During backfill, use trusted input and open the fixture’s pull request
+   7; its detail job must make progress while catalog pages continue.
+2. **Warm revisit and restart.** Reopen within the freshness window, then restart only
+   the server with the same persisted cache.
+   Record whether the browser cache is retained.
+   Cached metadata GETs make no provider calls, and a fresh complete catalog does not
+   restart backfill. Verify the selected PR and cached conversation, Open/Closed/All, and
+   Fetch more without losing the count or selection.
+3. **One incremental revalidation.** Change one old PR’s timestamp and title in the
+   fixture, then explicitly Retry or wait until due.
+   Observe the UPDATED_AT prefix scan, the changed row, and unchanged unrelated rows.
+   Equal timestamps may require more pages; do not promise a one-page scan without the
+   ordered fixture. Save the final envelope and provider trace.
+
+Export `metabrowser.perf.snapshot()` after each phase.
+Report the first-row DOM/frame observation and catalog completion separately; neither is
+a browser paint timestamp.
+The fixed `githubPulls:*` and `githubPull:*` labels attribute decoding, rendering and
+DOM readiness. Readiness markers use `first_end_ms`; their near-zero durations are not
+load latency. Compare GraphQL, REST and authentication call counts and decoded response
+bytes separately from local API requests and browser transfer bytes.
+Record runtime errors and the profiler’s observer support, visibility, overflow, Long
+Tasks and trusted-input coverage.
+A single session is a diagnostic, not a speed claim or a performance-budget pass; use
+the [performance framework](web-performance-framework.md) for comparisons.
+
+The existing [focused tests](#11-the-focused-selection),
+[PR-data checks](#410-pull-request-data) and
+[checkout checks](#411-a-pull-request-beside-a-checkout) cover account changes, rate
+holds, missing GitHub CLI, cancellation and cache ownership.
+The browser steps above and the [UI test guidance](e2e-testing.md) cover held keys,
+expanded trees, resize and remounts.
+The generic capture’s filesystem inventory completion does not establish catalog
+completion; verify the catalog envelope before exporting the profile.
 
 ### 5.8 A hostile README on a mirror (no network)
 

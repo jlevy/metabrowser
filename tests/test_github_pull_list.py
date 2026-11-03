@@ -666,6 +666,88 @@ def test_provider_account_change_and_malformed_rows_leave_checkpoint(
     assert read_catalog(repository.home, repository.slug) == state
 
 
+def test_catalog_response_keeps_its_reader_after_settings_change(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _provider(monkeypatch, [generated_item(7)])
+    real = pull_list_refresh.gh_graphql
+    configured_reader = READER
+    checks = 0
+
+    async def account_now() -> str:
+        nonlocal checks
+        checks += 1
+        return configured_reader
+
+    async def response_then_switch(*args: Any, **kwargs: Any) -> Any:
+        nonlocal configured_reader
+        answer = await real(*args, **kwargs)
+        configured_reader = "other-reader"
+        return answer
+
+    monkeypatch.setattr(pull_list_refresh, "active_account", account_now)
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", response_then_switch)
+    result = asyncio.run(refresh_pull_list(repository, "all"))
+    assert configured_reader == "other-reader" and checks == 1
+    assert result.reader == f"gh:{READER}" and result.cached["all"] == 1
+    assert catalog_row(repository.home, repository.slug, 7) is not None
+    assert calls == ["graphql:all:start"]
+
+
+def test_catalog_next_viewer_cannot_mix_rows_or_advance_the_checkpoint(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _provider(monkeypatch, [generated_item(n) for n in range(1, 202)])
+    real = pull_list_refresh.gh_graphql
+
+    async def switched_page(*args: Any, **kwargs: Any) -> Any:
+        answer = await real(*args, **kwargs)
+        if len(calls) == 2:
+            answer["viewer"]["login"] = "other-reader"
+        return answer
+
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", switched_page)
+    with pytest.raises(PullDataError) as caught:
+        asyncio.run(refresh_pull_list(repository, "all"))
+    assert caught.value.state == "account_changed"
+    kept = read_catalog(repository.home, repository.slug)
+    assert kept is not None and kept.reader == f"gh:{READER}"
+    assert kept.cached["all"] == 100 and kept.cursors["all"] == "all-100"
+    assert catalog_row(repository.home, repository.slug, 201) is not None
+    assert catalog_row(repository.home, repository.slug, 101) is None
+    assert calls == ["graphql:all:start", "graphql:all:all-100"]
+
+
+def test_catalog_stale_reader_response_cannot_replace_a_new_reader_checkpoint(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed(repository, [generated_item(9)])
+    calls = _provider(monkeypatch, [generated_item(7)])
+    real = pull_list_refresh.gh_graphql
+    replacement: CatalogState | None = None
+
+    async def concurrent_reader(*args: Any, **kwargs: Any) -> Any:
+        nonlocal replacement
+        answer = await real(*args, **kwargs)
+        if len(calls) == 1:
+            replacement = await asyncio.to_thread(
+                _seed, repository, [generated_item(20)], reader="other-reader"
+            )
+        else:
+            answer["viewer"]["login"] = "other-reader"
+        return answer
+
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", concurrent_reader)
+    with pytest.raises(PullDataError) as caught:
+        asyncio.run(refresh_pull_list(repository, "all", retry=True))
+    assert caught.value.state == "account_changed"
+    assert replacement is not None
+    assert read_catalog(repository.home, repository.slug) == replacement
+    assert catalog_row(repository.home, repository.slug, 20) is not None
+    assert catalog_row(repository.home, repository.slug, 7) is None
+    assert calls == ["graphql:updated:start", "graphql:all:start"]
+
+
 def test_network_slot_is_released_between_pages(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -299,7 +299,12 @@ def test_golden_pull_list_failures(
         assert result["last_refresh"]["outcome"] == state
         assert result["fetched"] == baseline["fetched"]
 
-    session.answer(_with(online, auth=[account(), account(ANOTHER_READER)]))
+    # The page itself identifies a different account from the one that started the job.
+    switched_account = {
+        **online,
+        "api": {**online["api"], **catalog_entries([], reader=ANOTHER_READER)},
+    }
+    session.answer(switched_account)
     switched = session.post({"retry": True})
     assert switched.exit_code == 1
     assert _after(switched)["last_refresh"]["outcome"] == "account_changed"

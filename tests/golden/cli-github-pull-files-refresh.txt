@@ -760,7 +760,6 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=all cursor=start
-gh auth status
 # metab https://github.com/octo/demo --api '/api/plugin/github/pull-files?number=106&limit=1'
 exit: 0
 --- stdout ---

@@ -96,27 +96,16 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=open cursor=start
-gh auth status
 gh api graphql catalog state=open cursor=open-100
-gh auth status
 gh api graphql catalog state=open cursor=open-200
-gh auth status
 gh api graphql catalog state=open cursor=open-300
-gh auth status
 gh api graphql catalog state=open cursor=open-400
-gh auth status
 gh api graphql catalog state=all cursor=start
-gh auth status
 gh api graphql catalog state=all cursor=all-100
-gh auth status
 gh api graphql catalog state=all cursor=all-200
-gh auth status
 gh api graphql catalog state=all cursor=all-300
-gh auth status
 gh api graphql catalog state=all cursor=all-400
-gh auth status
 gh api graphql catalog state=all cursor=all-500
-gh auth status
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=2'
 exit: 0
 --- stdout ---
@@ -553,7 +542,6 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=updated cursor=start
-gh auth status
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=2'
 exit: 0
 --- stdout ---
@@ -849,9 +837,7 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=open cursor=start
-gh auth status
 gh api graphql catalog state=all cursor=start
-gh auth status
 # metab root --api /api/cache/source/github-com--octo--demo--46386669dc01
 exit: 0
 --- stdout ---

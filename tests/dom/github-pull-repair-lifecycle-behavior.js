@@ -1,7 +1,7 @@
 // Real pull-page lifecycle: route changes and response order during explicit repair.
 const assert = require("node:assert/strict");
 const { pathToFileURL } = require("node:url");
-const { Element, recorded, root, settle } = require("./github-pull-page-mount-behavior.js");
+const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
 
 async function story({ delaySecondMount = false } = {}) {
   const timers = new Map();
@@ -53,6 +53,7 @@ async function story({ delaySecondMount = false } = {}) {
     container,
     { number: 7, tab: "files", reader: { initial, fetchAfterMs: 0 } },
     {
+      perf,
       ensureAsset: async () => {},
       ensureKindAssets: async () => {},
       getRegisteredView: () => ({

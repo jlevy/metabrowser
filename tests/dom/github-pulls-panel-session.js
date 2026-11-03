@@ -778,6 +778,7 @@ async function paintStory(panel) {
   }
   try {
     const mb = {
+      perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
       filterControls: { groupHtml: () => "<div></div>", bind: () => () => {} },
       formatAge(seconds) {
         aged += 1;

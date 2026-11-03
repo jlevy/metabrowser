@@ -478,6 +478,11 @@ GitHub URLs and HTTPS:
   features need Git or `gh`; local files and cached PR metadata remain readable without
   `gh`.
 
+- Pull-request profiles include JSON decoding, rendering, and DOM-readiness stages
+  through the existing performance recorder.
+  Catalog jobs check the account once and validate the viewer returned with every page,
+  avoiding repeated account-status requests during backfill.
+
 - Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
   way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
   header line (“author wants to merge 2 commits into base from head”, and once merged

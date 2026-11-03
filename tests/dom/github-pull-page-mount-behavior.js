@@ -81,6 +81,23 @@ class Element {
     this.events.set(name, callback);
   }
 }
+const perfEntries = [];
+const perf = {
+  measure(label, work) {
+    try {
+      return work();
+    } finally {
+      perfEntries.push(label);
+    }
+  },
+  async measureAsync(label, work) {
+    try {
+      return await work();
+    } finally {
+      perfEntries.push(label);
+    }
+  },
+};
 async function settle() {
   for (let turn = 0; turn < 10; turn += 1) {
     await new Promise((resolve) => setImmediate(resolve));
@@ -128,6 +145,7 @@ async function run() {
   );
   const initial = recorded.current;
   for (const failure of ["assets", "render"]) {
+    const readyBefore = perfEntries.filter((label) => label === "githubPull:filesReady").length;
     globalThis.fetch = async () => ({
       status: initial.status,
       headers: { get: () => null },
@@ -154,6 +172,7 @@ async function run() {
         reader: { initial, fetchAfterMs: 0 },
       },
       {
+        perf,
         ensureAsset: async () => {},
         ensureKindAssets: async () => {
           if (fail && failure === "assets") {
@@ -193,6 +212,11 @@ async function run() {
     await settle();
     await handle.whenFilesReady();
     assert.match(container.textContent, /Files changed could not load/);
+    assert.equal(
+      perfEntries.filter((label) => label === "githubPull:filesReady").length,
+      readyBefore,
+      "failed assets and renderer rejection are not useful Files readiness",
+    );
     const retry = [...container.descendants()].find(
       (element) => element.tag === "button" && element.textContent === "Retry",
     );
@@ -206,6 +230,11 @@ async function run() {
     await handle.whenFilesReady();
     assert.match(container.textContent, /Mounted comparison/);
     assert.equal(mounted, 1);
+    assert.equal(
+      perfEntries.filter((label) => label === "githubPull:filesReady").length,
+      readyBefore + 1,
+      "the current successful renderer reports useful DOM readiness",
+    );
     assert.equal(handle.currentFile().path, "src/one.py");
     assert.equal(reportFile, null, "readiness settles without subscribing in the mount task");
     const immediate = [];
@@ -272,6 +301,7 @@ async function run() {
         reader: { initial, fetchAfterMs: 0 },
       },
       {
+        perf,
         ensureAsset: async () => {},
         ensureKindAssets: async () => {},
         getRegisteredView: () => ({
@@ -372,6 +402,7 @@ async function run() {
       reader: { initial: checkout.before, fetchAfterMs: 0 },
     },
     {
+      perf,
       ensureAsset: async () => {},
       ensureKindAssets: async () => {},
       getRegisteredView: () => {
@@ -421,11 +452,13 @@ async function run() {
   try {
     await import(pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/diff/index.js")));
     for (failureStatus of [404, 409]) {
+      const readyBefore = perfEntries.filter((label) => label === "githubPull:filesReady").length;
       const container = new Element("main");
       const handle = page.mountPullPage(
         container,
         { number: 7, tab: "files", reader: { initial, fetchAfterMs: 0 } },
         {
+          perf,
           ensureAsset: async () => {},
           ensureKindAssets: async () => {},
           getRegisteredView: () => diffView,
@@ -439,6 +472,11 @@ async function run() {
       await settle();
       await handle.whenFilesReady();
       assert.match(container.textContent, /Could not load this diff/);
+      assert.equal(
+        perfEntries.filter((label) => label === "githubPull:filesReady").length,
+        readyBefore,
+        "a resolved production 404/409 notice is not useful Files readiness",
+      );
       const absent = { kind: "no_diff", path: "src/app.txt" };
       assert.deepEqual(handle.fileForPath(absent.path), absent);
       assert.deepEqual(handle.scrollToFile(absent.path), absent);
@@ -466,6 +504,7 @@ async function run() {
   let hiddenUnsubscriptions = 0;
   const hiddenOptions = { number: 7, tab: "files", reader: { initial, fetchAfterMs: 0 } };
   const hiddenApi = {
+    perf,
     ensureAsset: async () => {},
     ensureKindAssets: async () => {},
     getRegisteredView: () => ({
@@ -516,6 +555,14 @@ async function run() {
     1,
     "reentrant disposal releases the just-created subscription",
   );
+  for (const label of [
+    "githubPull:decode",
+    "githubPull:render",
+    "githubPull:filesRender",
+    "githubPull:conversationReady",
+  ]) {
+    assert(perfEntries.includes(label), `the existing profiler receives ${label}`);
+  }
   return {
     failedAssetsRecover: true,
     failedRenderRecovers: true,
@@ -527,7 +574,7 @@ async function run() {
     hiddenReadiness: true,
   };
 }
-module.exports = { Element, recorded, root, settle };
+module.exports = { Element, recorded, root, settle, perf };
 if (require.main === module) {
   run()
     .then((result) => process.stdout.write(`${JSON.stringify(result)}\n`))

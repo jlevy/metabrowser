@@ -1482,12 +1482,13 @@ export function createPullsController(deps, options = {}) {
 /**
  * The fetch every route here is read through.
  *
+ * @param {MetabrowserPublicSdk["perf"]} perf
  * @param {"GET" | "POST"} method
  * @param {string} route
  * @param {{etag?: string | null, body?: unknown, signal?: AbortSignal}} options
  * @returns {Promise<PullsResponse>}
  */
-async function request(method, route, options) {
+async function request(perf, method, route, options) {
   /** @type {Record<string, string>} */
   const headers = {};
   if (method === "GET" && options.etag) {
@@ -1506,7 +1507,9 @@ async function request(method, route, options) {
   let decoded = null;
   if (response.status !== 304) {
     try {
-      decoded = await response.json();
+      decoded = await perf.measureAsync("githubPulls:decode", () => response.json(), {
+        route: route.split("?")[0],
+      });
     } catch {
       decoded = null;
     }
@@ -1676,7 +1679,7 @@ export function mountPullsPanel(container, ctx, mb) {
         chevron,
         href: (path) => tab.fileHref(number, path),
         request: (method, route, options) =>
-          request(method, route, { ...options, signal: options.signal ?? signal }),
+          request(mb.perf, method, route, { ...options, signal: options.signal ?? signal }),
         formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
         page: () =>
           /** @type {import("./pull-files-tree.js").FilePage | null} */ (tab.pageFor(number)),
@@ -1877,6 +1880,10 @@ export function mountPullsPanel(container, ctx, mb) {
     if (windowDisposed) {
       return;
     }
+    mb.perf.measure("githubPulls:window", paintWindow, { rows: paintedRows.length });
+  }
+
+  function paintWindow() {
     const view = tab.scrollRoot?.getBoundingClientRect();
     const listTop = view === undefined ? 0 : list.getBoundingClientRect().top;
     const focusBefore =
@@ -2144,13 +2151,26 @@ export function mountPullsPanel(container, ctx, mb) {
   const controller = createPullsController(
     {
       request: (method, route, options) =>
-        request(method, route, { ...options, signal: options.signal ?? signal }),
+        request(mb.perf, method, route, { ...options, signal: options.signal ?? signal }),
       schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
       cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
       formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
-      render: paint,
+      render(model) {
+        mb.perf.measure("githubPulls:render", () => paint(model), { rows: model.rows.length });
+        if (windowDisposed) {
+          return;
+        }
+        // Completion markers describe committed DOM, including hidden panels, not paint.
+        // Their first_end_ms is a navigation-relative boundary, not the marker's duration.
+        if (model.rows.length > 0) {
+          mb.perf.measure("githubPulls:rowsReady", () => {}, { rows: model.rows.length });
+        }
+        if (model.countNumber !== null && model.progress === null) {
+          mb.perf.measure("githubPulls:catalogReady", () => {});
+        }
+      },
       markCurrent(previous, next) {
         currentRow = next;
         const leaving = previous === null ? undefined : painted.get(previous)?.row;
@@ -2522,7 +2542,7 @@ export function mountPullsLanding(container, _ctx, mb) {
   const said = h("div", { class: "preview-empty" });
   container.replaceChildren(said);
   const landing = followLanding({
-    request,
+    request: (method, route, options) => request(mb.perf, method, route, options),
     schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
     cancel: (handle) => window.clearTimeout(/** @type {number | undefined} */ (handle)),
     isVisible: () => document.visibilityState === "visible",

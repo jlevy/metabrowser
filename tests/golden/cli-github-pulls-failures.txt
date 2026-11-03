@@ -67,11 +67,8 @@ cloned https://github.com/octo/demo in 0.0 s
 gh api repos/octo/demo --jq .size
 gh auth status
 gh api graphql catalog state=open cursor=start
-gh auth status
 gh api graphql catalog state=all cursor=start
-gh auth status
 gh api graphql catalog state=all cursor=all-100
-gh auth status
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
 exit: 0
 --- stdout ---
@@ -537,7 +534,6 @@ Error: the refresh ended with account_changed
 --- gh ---
 gh auth status
 gh api graphql catalog state=updated cursor=start
-gh auth status
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -883,7 +879,6 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=updated cursor=start
-gh auth status
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 1
 --- stdout ---
@@ -956,7 +951,6 @@ Error: the refresh ended with cache_unwritable
 --- gh ---
 gh auth status
 gh api graphql catalog state=updated cursor=start
-gh auth status
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0
 --- stdout ---
@@ -1028,4 +1022,3 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=updated cursor=start
-gh auth status

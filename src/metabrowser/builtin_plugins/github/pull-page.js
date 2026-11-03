@@ -2446,16 +2446,21 @@ export function mountPullPage(container, ctx, mb) {
       if (diffHost !== host) {
         return;
       }
-      const handle = /** @type {{dispose?: () => void} | null} */ (
-        await view.render(host, {
-          comparison: {
-            left: comparison.left,
-            right: comparison.right,
-            base_policy: "merge_base",
-            ...(comparison.route === undefined ? {} : { route: comparison.route }),
-          },
-          ...(prefetched === undefined ? {} : { raw: prefetched }),
-        })
+      const handle = /** @type {{dispose?: () => void, currentFile?: () => unknown} | null} */ (
+        await mb.perf.measureAsync(
+          "githubPull:filesRender",
+          async () =>
+            view.render(host, {
+              comparison: {
+                left: comparison.left,
+                right: comparison.right,
+                base_policy: "merge_base",
+                ...(comparison.route === undefined ? {} : { route: comparison.route }),
+              },
+              ...(prefetched === undefined ? {} : { raw: prefetched }),
+            }),
+          { number },
+        )
       );
       if (diffHost !== host) {
         handle?.dispose?.();
@@ -2464,6 +2469,11 @@ export function mountPullPage(container, ctx, mb) {
       diffHandle = handle;
       watchCurrentFileAfterPaint(host, handle);
       landFile();
+      // Failed diff loads resolve to a disposable notice without the public file API.
+      // Do not report that surface, or a replaced mount, as useful Files readiness.
+      if (diffHost === host && typeof handle?.currentFile === "function") {
+        mb.perf.measure("githubPull:filesReady", () => {}, { number });
+      }
     } catch {
       if (diffHost !== host) {
         return;
@@ -2659,7 +2669,9 @@ export function mountPullPage(container, ctx, mb) {
         let decoded = null;
         if (response.status !== 304) {
           try {
-            decoded = await response.json();
+            decoded = await mb.perf.measureAsync("githubPull:decode", () => response.json(), {
+              route: route.split("?")[0],
+            });
           } catch {
             decoded = null;
           }
@@ -2670,7 +2682,18 @@ export function mountPullPage(container, ctx, mb) {
       cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
-      render: paint,
+      render(model) {
+        mb.perf.measure("githubPull:render", () => paint(model), { number });
+        if (
+          !listening.signal.aborted &&
+          shown === model &&
+          model.pull !== null &&
+          model.tab !== "files"
+        ) {
+          // Useful conversation DOM is ready before optional Markdown upgrades, not painted.
+          mb.perf.measure("githubPull:conversationReady", () => {}, { number });
+        }
+      },
       reload: () => window.location.reload(),
       navigate: (href) => window.location.assign(href),
       renderMarkdown,

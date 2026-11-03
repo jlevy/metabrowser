@@ -146,11 +146,8 @@ status: 200
 --- gh ---
 gh auth status
 gh api graphql catalog state=open cursor=start
-gh auth status
 gh api graphql catalog state=all cursor=start
-gh auth status
 gh api graphql catalog state=all cursor=all-100
-gh auth status
 # metab checkout --api /api/cache/source/github-com--octo--demo--46386669dc01
 exit: 0
 --- stdout ---

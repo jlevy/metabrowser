@@ -342,10 +342,9 @@ async def refresh_pull_list(
                     page = await _read_page(
                         repository, "all" if updated else scan, cursor, login=login, updated=updated
                     )
-                    if await active_account() != login:
-                        raise PullDataError(
-                            "account_changed", "the active gh account changed during the read"
-                        )
+                    # The query's viewer identifies the reader of these rows. A settings
+                    # switch after that response cannot relabel it; the next page must
+                    # still match this job's reader before it can advance the checkpoint.
             except GhCursorError as exc:
                 if state is None or cursor is None or scan in restarted:
                     raise PullDataError("gh_failed", str(exc)) from exc

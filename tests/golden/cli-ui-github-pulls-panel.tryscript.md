@@ -480,15 +480,12 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "catalog backfill": [
       "gh auth status",
       "gh api graphql catalog state=all cursor=start",
-      "gh auth status",
-      "gh api graphql catalog state=all cursor=all-100",
-      "gh auth status"
+      "gh api graphql catalog state=all cursor=all-100"
     ],
     "cached windows, filters, Fetch more and reopen": [],
     "due metadata refresh": [
       "gh auth status",
-      "gh api graphql catalog state=updated cursor=start",
-      "gh auth status"
+      "gh api graphql catalog state=updated cursor=start"
     ],
     "fresh cached revisit": []
   },
