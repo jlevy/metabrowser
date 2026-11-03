@@ -20,10 +20,20 @@ It also shows ordinary hydration: the file on screen nearest the top is asked fo
 at a time, the file at the top of the pane stays where it is as others fill in, and a
 diff with files still to load says how many.
 
+And it shows a first page of ready files, which the mount does not draw whole: rows for
+the files within the pane and one screen more, and every later ready file held as a bar
+that reserves its own rows, drawn one a frame from the answer in hand when it is reached
+or gone to, never asked for, and counted as loaded.
+A diff that fits is drawn whole at mount, as before, and so is one with nothing laid out
+to measure.
+
 The session asserts, and so prints nothing for, that no step of a held key has two
 requests in flight or a bar off the top, that a neighbour filling in does not move a
 jump’s file, that a wheel hands the place back to the reader, and that disposing cancels
-the request, lets go of its listeners, and answers `disposed`.
+the request, lets go of its listeners, and answers `disposed`. For held files it asserts
+that none is drawn before it is reached, two are never drawn in one frame, the file at
+the top does not move as they fill in, a held key draws nothing it passed, and a view
+replaced while one waits for its frame draws nothing more and stops observing.
 
 ```console
 $ node tests/dom/diff-file-jump-session.js
@@ -278,6 +288,187 @@ $ node tests/dom/diff-file-jump-session.js
       ],
       "partial": "3 of 10 files loaded; the rest load as you reach them",
       "top": 0
+    },
+    {
+      "step": "a first page of ready files: rows for the first screen and one more, the rest held",
+      "atTop": "r1.py",
+      "asked": [],
+      "partial": "12 of 14 files loaded; the rest load as you reach them",
+      "drawn": [
+        "r1.py",
+        "r2.py",
+        "r3.py",
+        "r4.py"
+      ],
+      "reserving": [
+        "r5.py",
+        "r6.py",
+        "r7.py",
+        "r8.py",
+        "r9.py",
+        "r10.py",
+        "r11.py",
+        "r12.py",
+        "d1.py",
+        "d2.py"
+      ],
+      "heldReserves": "calc(9 * 1.5 * var(--code-font-size, 0.85rem))"
+    },
+    {
+      "step": "fileForPath: a held file is a ready file of the comparison",
+      "answers": [
+        {
+          "kind": "file",
+          "path": "r9.py",
+          "fileId": "r9",
+          "changeKind": "modified",
+          "availability": "ready"
+        }
+      ]
+    },
+    {
+      "step": "the reader scrolls to them: one a frame, topmost first, nothing asked for",
+      "atTop": "r6.py",
+      "asked": [],
+      "partial": "12 of 14 files loaded; the rest load as you reach them",
+      "drawnPerFrame": [
+        [
+          "r6.py"
+        ],
+        [
+          "r7.py"
+        ],
+        [
+          "r8.py"
+        ],
+        []
+      ],
+      "top": 0,
+      "rows": 8
+    },
+    {
+      "step": "a jump to a held file: at the top at once, its bar's frame first, then its lines",
+      "answer": {
+        "kind": "jumped",
+        "fileId": "r11",
+        "path": "r11.py",
+        "availability": "ready"
+      },
+      "atTop": "r11.py",
+      "asked": [],
+      "partial": "12 of 14 files loaded; the rest load as you reach them",
+      "targetTop": 0,
+      "rowsInTheBarsFrame": 0,
+      "lines": "painted",
+      "lineRows": 8
+    },
+    {
+      "step": "held and deferred reservations collapse and return on reopen",
+      "atTop": "r1.py",
+      "asked": [],
+      "partial": "12 of 14 files loaded; the rest load as you reach them",
+      "heights": [
+        {
+          "file": "r5.py",
+          "expanded": 180,
+          "collapsed": 0,
+          "reopened": 180
+        },
+        {
+          "file": "d1.py",
+          "expanded": 180,
+          "collapsed": 0,
+          "reopened": 180
+        }
+      ]
+    },
+    {
+      "step": "a layout choice updates held and deferred reservations before their rows are drawn",
+      "atTop": "r1.py",
+      "asked": [],
+      "partial": "12 of 14 files loaded; the rest load as you reach them",
+      "split": [
+        180,
+        180
+      ],
+      "unified": [
+        260,
+        200
+      ]
+    },
+    {
+      "step": "a width-triggered layout change updates held and deferred reservations too",
+      "atTop": "r1.py",
+      "asked": [],
+      "partial": "12 of 14 files loaded; the rest load as you reach them",
+      "split": [
+        180,
+        180
+      ]
+    },
+    {
+      "step": "the current-file subscription follows held and deferred bars, suppresses repeats, and stops",
+      "files": [
+        "r1.py",
+        "r9.py",
+        "d1.py"
+      ]
+    },
+    {
+      "step": "the current-file lookup bisects 2,048 sections",
+      "geometryReads": 13
+    },
+    {
+      "step": "a key held over held files: nothing drawn it passed, then the file it rests on",
+      "atTop": "r9.py",
+      "asked": [],
+      "partial": null,
+      "outcomes": [
+        "superseded",
+        "superseded",
+        "superseded",
+        "superseded",
+        "painted"
+      ],
+      "drawn": [
+        "r1.py",
+        "r2.py",
+        "r3.py",
+        "r4.py",
+        "r9.py"
+      ]
+    },
+    {
+      "step": "held files are loaded: the count is of the files still to come",
+      "atTop": "r1.py",
+      "asked": [],
+      "partial": "6 of 9 files loaded; the rest load as you reach them",
+      "drawn": [
+        "r1.py",
+        "r2.py",
+        "r3.py",
+        "r4.py"
+      ]
+    },
+    {
+      "step": "a diff that fits is drawn whole at mount, as before",
+      "atTop": "r1.py",
+      "asked": [],
+      "partial": null,
+      "drawn": [
+        "r1.py",
+        "r2.py",
+        "r3.py"
+      ],
+      "reserving": 0,
+      "observers": 0
+    },
+    {
+      "step": "nothing laid out to measure: every ready file is drawn at mount, as before",
+      "atTop": null,
+      "asked": [],
+      "partial": null,
+      "drawn": 12
     }
   ],
   "reservations": [
@@ -299,6 +490,19 @@ $ node tests/dom/diff-file-jump-session.js
       "scrollTop": 0,
       "spacer": 370
     }
+  ],
+  "heldRows": [
+    "8 added lines in split: 9 rows",
+    "context, 3 removed and 5 added, context in unified: 11 rows",
+    "context, 3 removed and 5 added, context in split: 8 rows",
+    "a run of 50 added lines, which folds in unified: 22 rows",
+    "two hunks of one line each, truncated in unified: 5 rows"
+  ],
+  "firstScreens": [
+    "a 400 px pane, the diff 0 px down: 800 px",
+    "a 900 px pane, the diff 300 px down: 1500 px",
+    "a 900 px pane, the diff 1200 px down: 900 px",
+    "nothing measured: Infinity px"
   ]
 }
 ? 0

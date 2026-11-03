@@ -45,7 +45,6 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal, TypedDict
-from urllib.parse import urlencode
 
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.checkout import (
@@ -144,15 +143,16 @@ def _without_store(dumped: dict[str, Any]) -> dict[str, Any]:
     return {**dumped, "comparison": None, "unavailable": unavailable}
 
 
-def comparison_route(record: PullRecord) -> str | None:
+def comparison_route(record: PullRecord, *, store: str) -> str | None:
     """The diff plugin's comparison of the record's pinned endpoints, or ``None``."""
 
     comparison = record.comparison
     if comparison is None:
         return None
     return (
-        f"/api/plugin/diff/comparison?left={comparison.base}&right={comparison.head}"
-        "&base_policy=merge_base"
+        f"/api/plugin/github/pull-comparison?number={record.number}"
+        f"&left={comparison.base}&right={comparison.head}&base_policy=merge_base"
+        f"&build={BUILD_TAG}&store={store}"
     )
 
 
@@ -304,19 +304,11 @@ def pull_envelope(view: PullView) -> PullEnvelope:
     if not has_store and isinstance(record, PullRecord) and dumped is not None:
         dumped = _without_store(dumped)
         record = record.model_copy(update={"comparison": None})
-    route = comparison_route(record) if isinstance(record, PullRecord) else None
-    if route is not None and host.start_comparison is not None and served.git_dir is not None:
-        assert isinstance(record, PullRecord) and record.comparison is not None
-        route = "/api/plugin/github/pull-comparison?" + urlencode(
-            {
-                "number": view.number,
-                "left": record.comparison.base,
-                "right": record.comparison.head,
-                "base_policy": "merge_base",
-                "build": BUILD_TAG,
-                "store": store_tag(served.git_dir),
-            }
-        )
+    route = (
+        comparison_route(record, store=store_tag(served.git_dir))
+        if isinstance(record, PullRecord) and served.git_dir is not None
+        else None
+    )
     return PullEnvelope(
         state=state,
         reason=absence,

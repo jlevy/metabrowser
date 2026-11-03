@@ -217,6 +217,7 @@
 .metabrowser-diff-host .diff-file-body {
   interpolate-size: allow-keywords;
   height: auto;
+  min-height: var(--diff-reserved-height, 0px);
   overflow-x: auto;
   overflow-y: hidden;
   transition:
@@ -226,6 +227,7 @@
 
 .metabrowser-diff-host .diff-file-body-collapsed {
   height: 0;
+  min-height: 0;
   visibility: hidden;
 }
 

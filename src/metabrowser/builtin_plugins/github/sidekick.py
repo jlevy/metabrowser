@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 
 from starlette.responses import JSONResponse, Response
@@ -136,22 +137,26 @@ async def pull_comparison_handler(request: Request) -> Response:
     """Read a checkout's pinned PR comparison from its store; never acquire on GET."""
 
     from metabrowser.builtin_plugins.diff.sidekick import comparison_at
+    from metabrowser.builtin_plugins.github.pull_manifest import load_pull_manifest
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
+        cached_pull_record,
         pull_host,
         requested_number,
     )
+    from metabrowser.cache.acquire import PublishedSource
     from metabrowser.git.process import GitLocation, repository_store_target
     from metabrowser.git.wire import is_full_revision
 
     try:
-        requested_number(request.query_params)
+        number = requested_number(request.query_params)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
     left = request.query_params.get("left", "")
     right = request.query_params.get("right", "")
     if (
-        not is_full_revision(left)
+        request.query_params.get("base_policy") != "merge_base"
+        or not is_full_revision(left)
         or not is_full_revision(right)
         or "revision" in request.query_params
     ):
@@ -164,8 +169,26 @@ async def pull_comparison_handler(request: Request) -> Response:
             status_code=409,
             headers=_NO_STORE,
         )
-    target = repository_store_target(git_dir=host.pulls.git_dir)
-    return await comparison_at(request, GitLocation.revision(target, right))
+    published = host.pulls.published
+    if not isinstance(published, PublishedSource):
+        raise AssertionError("a store-backed pull host has no published source")
+    from metabrowser.builtin_plugins.github.pull_record import PullRecord
+
+    record, _dumped = await asyncio.to_thread(
+        cached_pull_record, published.home, published.slug, number
+    )
+    if not isinstance(record, PullRecord):
+        return JSONResponse(
+            {"error": "this pull request has not been fetched", "code": "not_cached"},
+            status_code=404,
+            headers=_NO_STORE,
+        )
+    target = repository_store_target(git_dir=published.git_dir)
+    return await comparison_at(
+        request,
+        GitLocation.revision(target, right),
+        manifest_loader=partial(load_pull_manifest, published),
+    )
 
 
 async def _json_body(request: Request) -> dict[str, Any] | tuple[str, int]:

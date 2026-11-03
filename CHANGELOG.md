@@ -1072,6 +1072,11 @@ Content source:
 
 Large pull requests:
 
+- PR refresh prepares and retains the immutable comparison manifest, so opening Files
+  changed on a fresh server can reuse it.
+  The GitHub comparison route remains scoped to the PR’s published store, and missing or
+  invalid cache entries heal on demand.
+
 - `diff/comparison` no longer recomputes a comparison on every request.
   The patch is limited to the files being hydrated, and the manifest is computed once,
   in one Git run. On a store, a request naming two commit IDs keeps its manifest and
@@ -1093,19 +1098,24 @@ Large pull requests:
   A folder’s comparison keeps honoring its working tree’s `.gitattributes`, its
   `.git/info/attributes`, and the reader’s own attributes files and configuration, as
   `git diff` in that folder does.
+
 - A pull request’s Conversation fetches Files changed when the browser is idle, so the
   tab opens with no request.
   A pull request’s page no longer fetches the repository’s file catalog until its search
   palette opens or the reader leaves for a file.
+
 - A comparison’s 8 MiB bound applies per file, and only to the files a request asked
   for. One file past it says it is too large to show, a file that would take a request
   past it loads when the reader reaches it, and neither costs the rest of the
   comparison. A file past 8 MiB of the whole patch could not be loaded at all before.
+
 - A diff with files still to load says how many, such as “50 of 1,183 files loaded; the
   rest load as you reach them”, in a commit’s diff in a served folder as well.
+
 - A pull request’s record refreshes with its five parts in flight together instead of
   one after another, and serving one with no record says “reading pull request N” after
   half a second, on the cadence of a clone’s progress, instead of saying nothing.
+
 - A deferred file reserves an estimate of its height, the diff asks for one file at a
   time, the one on screen nearest the top, and renders at most one per frame, and what
   is at the top of the pane stays there as files fill in.
@@ -1161,6 +1171,21 @@ Fixes:
   has reached every file; a file too large for one patch is listed as `too_large`, and
   `--diff-check` refuses such a comparison by name.
   Before, it answered `diff error: file 'fN' not found in the produced diff`.
+
+- A diff draws the lines of the files on its first screen, and one screen more, when it
+  opens, and each later file that came with it when the reader reaches it, from what the
+  page already has, so nothing more is asked of the server.
+  Every file’s bar is there at once and holds its own height, a file the reader is
+  looking at stays where it is as others fill in, and a file looks the same once drawn.
+  Before, a diff drew every file it was sent in one task the page waited on, at load, on
+  Back, and on opening Files changed: on a 1,031-file pull request that was 114,609 page
+  nodes and about 1.1 s, and it is now 23,451 nodes and a longest task of 114 to 330 ms,
+  with the first line 1.4x to 2.0x sooner, measured in Chrome under load.
+  A commit’s diff in a served folder and a `.patch` file’s view are the same view and
+  draw the same way; a diff that fits on its first two screens is drawn whole at once,
+  as before. The browser’s find in page now finds a line only in a file that has been
+  drawn, as on GitHub; it still finds every file by its path, and going to the file
+  draws its lines.
 
 - A `.env` or `.env.local` that cannot be read as text no longer stops `metab` with a
   traceback in every mode.

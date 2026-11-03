@@ -75,7 +75,13 @@ from tests.github_pull_fixture import (
     page,
     scenario,
 )
-from tests.golden_harness import JSON_BODY, check_recording, run_session, settle
+from tests.golden_harness import (
+    JSON_BODY,
+    check_recording,
+    normalize_pull_comparison_scopes,
+    run_session,
+    settle,
+)
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -158,7 +164,7 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
     for answer in recorded.values():
         if answer["etag"] is not None:
             answer["etag"] = own.setdefault(answer["etag"], f'"pull-{len(own) + 1}"')
-    return recorded
+    return json.loads(normalize_pull_comparison_scopes(json.dumps(recorded)))
 
 
 def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
@@ -514,8 +520,23 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     assert "does not guess" in unavailable["base_uncertain"]["files"]
     assert "not readable here" in unavailable["commits_unavailable"]["files"]
     # A checkout's page offers nothing that serves or switches code: it has no pin.
-    for when, page in transcript["checkout"].items():
+    for when, checkout_page in transcript["checkout"].items():
         if when.startswith("a mirror"):
             continue
-        assert (page["browse"], page["headOffer"], page["comparison"]) == (None, None, None)
+        assert (
+            checkout_page["browse"],
+            checkout_page["headOffer"],
+            checkout_page["comparison"],
+        ) == (None, None, None)
     assert transcript["hunks"] and transcript["place"]
+
+
+def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
+    """Asset and renderer failures recover without a dangling readiness rejection."""
+
+    result = run_session("github-pull-page-mount-behavior.js")
+    assert result == {
+        "failedAssetsRecover": True,
+        "failedRenderRecovers": True,
+        "staleRetryIsInert": True,
+    }
