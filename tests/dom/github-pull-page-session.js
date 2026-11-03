@@ -885,6 +885,20 @@ async function main() {
   steps.push(
     await page.step("shown again, it polls at once", async () => controller.onVisibilityChange()),
   );
+  // A page Back restores after the pin moved polls before the pin guard reloads it. The
+  // guard's refusal is the guard's to answer, so the page says nothing of its own.
+  server.pull = {
+    status: 409,
+    etag: null,
+    body: { error: "the server now serves another revision", code: "pin_changed", pin: null },
+  };
+  const refused = await page.step("a poll the pin guard refused", async () => page.fire());
+  assert(refused.requests.length === 1, `the refused poll was not sent: ${refused.requests}`);
+  assert(
+    refused.paint === undefined || refused.paint.message === null,
+    `a pin_changed poll painted: ${JSON.stringify(refused.paint)}`,
+  );
+  server.pull = recorded.refreshed;
   steps.push(await page.step("dispose", async () => controller.dispose()));
 
   // A page opened in a background tab, on its Files changed: it reads the record once so
