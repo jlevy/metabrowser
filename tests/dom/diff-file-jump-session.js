@@ -117,9 +117,9 @@ class LaidOutElement {
     );
   }
 
-  dispatch(type) {
+  dispatch(type, fields = {}) {
     for (const handler of this.listeners.get(type) ?? []) {
-      handler({ type, target: this });
+      handler({ type, target: this, ...fields });
     }
   }
 
@@ -354,6 +354,9 @@ async function main() {
     pane.scrollTop = 0;
     pane.clientHeight = PANE_PX;
     pane.getBoundingClientRect = () => ({ top: 0, bottom: PANE_PX, height: PANE_PX });
+    // The window a key press reaches, which the view listens to through the pane's document.
+    const window_ = new LaidOutElement("window");
+    pane.ownerDocument = { defaultView: window_ };
     const requests = [];
     view.setChangeLoader((_revision, file, options) => {
       const request = { file, signal: options?.signal, answered: false };
@@ -379,6 +382,7 @@ async function main() {
         .find((section) => section.find("diff-file-path")[0].textContent.endsWith(file));
     open = {
       pane,
+      window: window_,
       handle,
       requests,
       observer,
@@ -441,7 +445,53 @@ async function main() {
 
   const steps = [];
   const say = (name, page, jump, extra = {}) =>
-    steps.push({ step: name, ...page.line(jump), ...extra });
+    steps.push({ step: name, ...(page ? page.line(jump) : {}), ...extra });
+
+  /**
+   * The scheduler alone, under scripted loads and frames, for the sequences a page cannot
+   * time: a request's late rejection, an answer in hand, a render that throws.
+   */
+  function schedulerUnderScript({ throwOn = null } = {}) {
+    const loads = [];
+    const log = [];
+    const pendingFrames = [];
+    const scheduler = view.createHydrationScheduler({
+      load(id, signal) {
+        const load = { id, signal };
+        load.promise = new Promise((resolve, reject) => {
+          load.resolve = resolve;
+          load.reject = reject;
+        });
+        loads.push(load);
+        return load.promise;
+      },
+      render(id) {
+        if (id === throwOn) {
+          throw new Error(`render of ${id} threw`);
+        }
+        log.push(`render ${id}`);
+        return "painted";
+      },
+      fail: (id) => log.push(`fail ${id}`),
+      abandon: () => {},
+      frame: (callback) => pendingFrames.push(callback) && callback,
+      cancelFrame(handle) {
+        const at = pendingFrames.indexOf(handle);
+        if (at >= 0) {
+          pendingFrames.splice(at, 1);
+        }
+      },
+      after: () => null,
+      cancelAfter: () => {},
+      now: () => clock,
+    });
+    const run = () => {
+      for (const frame of pendingFrames.splice(0)) {
+        frame();
+      }
+    };
+    return { scheduler, loads, log, run };
+  }
 
   // ── A path, in every shape a list can give it ─────────────────
   const paths = mount();
@@ -594,6 +644,90 @@ async function main() {
   say("a binary file has no lines to ask for", failing, binary, { lines: await binary.lines });
   const ready = failing.handle.scrollToFile("first.py");
   say("a file already here", failing, ready, { lines: await ready.lines });
+
+  // ── The key that caused a jump does not release its pin ───────
+  // A list jumps on a key; its handler may run before or after the view's own, which
+  // releases the pin on any key. The event is older than the pin either way.
+  const keyed = mount();
+  await keyed.turn();
+  clock += 1000;
+  const pressedAt = performance.now();
+  keyed.handle.scrollToFile("src/h.py");
+  keyed.window.dispatch("keydown", { key: "ArrowDown", timeStamp: pressedAt });
+  keyed.answer("src/h.py", 3);
+  await nextTask();
+  await keyed.turn();
+  assert(
+    Math.abs(keyed.sectionOf("src/h.py").getBoundingClientRect().top) < 0.5,
+    "the key that caused a jump released its pin",
+  );
+  keyed.window.dispatch("keydown", { key: "ArrowDown", timeStamp: performance.now() });
+  keyed.pane.scrollTop += 50;
+  clock += 1000;
+  await keyed.turn();
+  const nextAsked = keyed.inFlight()[0];
+  assert(nextAsked, "no file was asked for after the reader moved");
+  keyed.answer(nextAsked.file, 40);
+  await nextTask();
+  await keyed.turn();
+  assert(
+    Math.abs(keyed.sectionOf("src/h.py").getBoundingClientRect().top + 50) < 0.5,
+    "a key pressed after the jump did not hand the place back to the reader",
+  );
+  keyed.window.dispatch("keydown", { key: "ArrowDown" });
+  assert(keyed.handle.scrollToFile("src/f.py").kind === "jumped", "a key with no clock jumps");
+
+  // ── The scheduler: a request's answer is the request's, not the file's ──
+  {
+    const scripted = schedulerUnderScript();
+    const { scheduler, loads, log, run } = scripted;
+    scheduler.add("f7", 7);
+    scheduler.setVisible("f7", true); // load #1
+    scheduler.setVisible("f7", false); // abandoned: #1 aborted, f7 pending again
+    scheduler.setVisible("f7", true); // load #2
+    assert(loads.length === 2 && loads[0].signal.aborted, "the first request was not cancelled");
+    loads[0].reject(new DOMException("The user aborted a request.", "AbortError"));
+    await nextTask();
+    assert(
+      !log.some((line) => line.startsWith("fail")),
+      "an abandoned request's rejection failed its file",
+    );
+    loads[1].resolve({ lines: "f7" });
+    await nextTask();
+    run();
+    assert(log.includes("render f7"), "the fresh request's answer was dropped");
+    say("an abandoned request's late rejection is not its file's answer", undefined, undefined, {
+      scheduler: log,
+    });
+  }
+  {
+    // An answer already in hand is rendered when its file leaves the viewport: the frame it
+    // costs is less than asking again.
+    const { scheduler, loads, log, run } = schedulerUnderScript();
+    scheduler.add("f1", 1);
+    scheduler.setVisible("f1", true);
+    loads[0].resolve({ lines: "f1" });
+    await nextTask();
+    scheduler.setVisible("f1", false);
+    run();
+    assert(log.includes("render f1") && loads.length === 1, "an arrived answer was thrown away");
+  }
+  {
+    // One file's render throwing is that file's failure, and the next file is still asked for.
+    const { scheduler, loads, log, run } = schedulerUnderScript({ throwOn: "f1" });
+    scheduler.add("f1", 1);
+    scheduler.add("f2", 2);
+    scheduler.setVisible("f1", true);
+    scheduler.setVisible("f2", true);
+    const lines = scheduler.jump("f1");
+    loads[0].resolve({ lines: "f1" });
+    await nextTask();
+    clock += 1000; // past the jump's quiet moment, so the next file is asked for at once
+    run();
+    assert((await lines) === "failed", "a throwing render did not settle the jump");
+    assert(log.includes("fail f1"), "a throwing render was not reported as the file's failure");
+    assert(loads.length === 2 && loads[1].id === "f2", "a throwing render stopped the scheduler");
+  }
 
   // A collapsed file opens when it is gone to.
   const collapsed = mount();

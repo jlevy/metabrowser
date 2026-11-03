@@ -47,6 +47,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {AbortController} controller
  * @property {Map<string, DeferredFile>} deferred Files asked for when they are reached, by id.
  * @property {number} deferredLeft Files of this comparison not here yet.
+ * @property {number} deferredFailed Files of this comparison that could not be loaded.
  * @property {Map<HTMLElement, string>} deferredBySection
  * @property {boolean} disposed
  * @property {number} fileTotal
@@ -64,6 +65,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {boolean} narrow The diff is too narrow for Split.
  * @property {HTMLElement | null} partialNote
  * @property {HTMLElement | null} pinned The file a jump put at the top, until the reader moves.
+ * @property {number} pinnedAt When the pin was set, on the event clock, so the key that
+ *   caused a jump does not also release it.
  * @property {AbortController | null} pinListeners
  * @property {Record<string, unknown>} resolved
  * @property {HTMLElement} root
@@ -104,6 +107,14 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  *   {kind: "not_in_comparison", path: string, listTruncated: boolean} |
  *   {kind: "disposed", path: string}
  * )} FileJump
+ *
+ * What a comparison holds at a path, for the same list, with nothing moved. `changeKind` is
+ * the change's own kind (`modified`, `renamed`, and so on), apart from the answer's.
+ *
+ * @typedef {(
+ *   {kind: "file", path: string, fileId: string, changeKind: string, availability: string} |
+ *   {kind: "not_in_comparison", path: string, listTruncated: boolean}
+ * )} FileLookup
  */
 
 /**
@@ -144,6 +155,12 @@ const AVAILABILITY_COPY = /** @type {Record<string, string>} */ ({
   stale: "The comparison changed underneath this file. Refresh to reload it.",
   unsupported: "This change cannot be shown as a text diff.",
 });
+
+// A single file's answer owes the file or a reason. `deferred` there is neither, so it is
+// said as what it is and not as a failure of this page; in a document with no source to
+// ask, a deferred file is simply unavailable, which the table above's fallback says.
+const DEFERRED_AGAIN_COPY =
+  "The server did not load this file's changes. Reload the page to ask again.";
 
 // Chrome 151, five runs of explorations/diff-intraline/benchmark.html:
 // ordinary edits completed in <= 1.2 ms, an 8 MiB mostly-equal line in
@@ -1317,19 +1334,24 @@ function renderDiffToolbar(totals, view, showSummary) {
 
 /**
  * What the reader is told while a comparison's files are not all here. A deferred file looks
- * like a collapsed one until it comes near, so a page that does not say so reads as complete.
- * Null once nothing is deferred. Pure.
+ * like a collapsed one until it comes near, so a page that does not say so reads as complete,
+ * and a file that could not be loaded is not counted as loaded. Null once nothing is deferred
+ * and nothing failed. Pure.
  *
  * @param {number} deferred
  * @param {number} total
+ * @param {number} [failed]
  * @returns {string | null}
  */
-export function partialNote(deferred, total) {
-  if (deferred <= 0) {
+export function partialNote(deferred, total, failed = 0) {
+  if (deferred <= 0 && failed <= 0) {
     return null;
   }
-  const loaded = (total - deferred).toLocaleString("en-US");
-  return `${loaded} of ${total.toLocaleString("en-US")} files loaded; the rest load as you reach them`;
+  const count = (/** @type {number} */ n) => n.toLocaleString("en-US");
+  const loaded = `${count(total - deferred - failed)} of ${count(total)} files loaded`;
+  const rest = deferred > 0 ? "; the rest load as you reach them" : "";
+  const lost = failed > 0 ? `; ${count(failed)} could not be loaded` : "";
+  return `${loaded}${lost}${rest}`;
 }
 
 /** @param {MountedDiffState} view */
@@ -1338,7 +1360,7 @@ function renderPartialNote(view) {
   if (note === null) {
     return;
   }
-  const text = partialNote(view.deferredLeft, view.fileTotal);
+  const text = partialNote(view.deferredLeft, view.fileTotal, view.deferredFailed);
   note.textContent = text ?? "";
   note.hidden = text === null;
 }
@@ -1351,8 +1373,11 @@ function renderPartialNote(view) {
 // module of its own because a served folder's first diff requests the modules v0.11.0 did,
 // which tests/test_diff_view_file_session.py holds.
 //
-// - One request at a time. The route answers a file in tens of milliseconds, so a second one
-//   buys nothing, and a viewport that shows several bars would otherwise fan out.
+// - One request at a time. On a store the route answers a file in tens of milliseconds from
+//   its kept manifest, so a second one buys nothing, and a viewport that shows several bars
+//   would otherwise fan out. On a folder nothing is kept, so each file costs the manifest
+//   run again (about 0.7 s at 1,183 files, measured in the adapter), one after the other,
+//   which is still ahead of the two-at-a-time whole-patch runs it replaced.
 // - At most one file rendered per frame: the next request starts only after the frame
 //   that rendered the last, so input is never waiting behind rendering it caused.
 // - The file a reader jumped to is first, ahead of anything else, and latest wins: a jump
@@ -1394,7 +1419,13 @@ export function createHydrationScheduler(deps) {
   const entries = new Map();
   /** The pending entries the viewport shows. @type {Set<HydrationEntry>} */
   const visible = new Set();
-  /** @type {{entry: HydrationEntry, controller: AbortController} | null} */
+  /**
+   * The request in flight. A request, not its file: an abandoned request's rejection
+   * arrives after its file may have been asked for again, and must not answer for the
+   * new request.
+   *
+   * @type {{entry: HydrationEntry, controller: AbortController} | null}
+   */
   let active = null;
   /** A request that answered, waiting for its frame. @type {{entry: HydrationEntry, frame: unknown} | null} */
   let arrived = null;
@@ -1443,11 +1474,12 @@ export function createHydrationScheduler(deps) {
   function begin(entry) {
     const controller = new AbortController();
     entry.state = "loading";
-    active = { entry, controller };
+    const ticket = { entry, controller };
+    active = ticket;
     requests += 1;
     deps.load(entry.id, controller.signal).then(
       (payload) => {
-        if (active?.entry !== entry) {
+        if (active !== ticket) {
           return;
         }
         active = null;
@@ -1457,19 +1489,33 @@ export function createHydrationScheduler(deps) {
             arrived = null;
             entry.state = "done";
             visible.delete(entry);
-            const outcome = deps.render(entry.id, payload);
-            if (target?.entry === entry) {
-              settleTarget(outcome);
+            /** @type {JumpOutcome} */
+            let outcome = "failed";
+            try {
+              outcome = deps.render(entry.id, payload);
+            } catch (error) {
+              // One file's render is one file's: the next is still asked for.
+              deps.fail(entry.id, error);
+            } finally {
+              if (target?.entry === entry) {
+                settleTarget(outcome);
+              }
+              pump();
             }
-            pump();
           }),
         };
       },
       (error) => {
-        if (active?.entry !== entry) {
+        if (active !== ticket) {
           return;
         }
         active = null;
+        if (isAbortError(error)) {
+          // Not an answer: the file is asked for again when it is next needed.
+          entry.state = "pending";
+          pump();
+          return;
+        }
         entry.state = "done";
         visible.delete(entry);
         deps.fail(entry.id, error);
@@ -1538,8 +1584,9 @@ export function createHydrationScheduler(deps) {
         visible.add(entry);
       } else {
         visible.delete(entry);
-        const working = active?.entry ?? arrived?.entry;
-        if (working === entry && target?.entry !== entry) {
+        // A request for a file that left is cancelled; an answer already in hand is
+        // rendered, since fetching it again would cost more than its one frame.
+        if (active?.entry === entry && target?.entry !== entry) {
           abandonWork();
         }
       }
@@ -1600,6 +1647,15 @@ export function createHydrationScheduler(deps) {
       requests,
     }),
   });
+}
+
+/** @param {unknown} error */
+function isAbortError(error) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    /** @type {{name?: unknown}} */ (error).name === "AbortError"
+  );
 }
 
 /**
@@ -1727,11 +1783,14 @@ function renderDeferred(file, loaded, view) {
   const patch = only ? loaded.patches[String(only.id)] : undefined;
   /** @type {JumpOutcome} */
   let outcome = "none";
-  if (only && patch === undefined && AVAILABILITY_COPY[String(only.availability)]) {
+  const availability = only ? String(only.availability) : "";
+  const reason =
+    availability === "deferred" ? DEFERRED_AGAIN_COPY : AVAILABILITY_COPY[availability];
+  if (only && patch === undefined && reason) {
     // The server looked and has a reason: a file past the bound of one patch.
-    file.body.append(el("div", "diff-availability", AVAILABILITY_COPY[String(only.availability)]));
+    file.body.append(el("div", "diff-availability", reason));
   } else if (!only || patch === undefined) {
-    return failDeferred(file, new Error("the comparison returned no hunks for this file"));
+    return failDeferred(file, new Error("the comparison returned no hunks for this file"), view);
   } else if (/** @type {unknown[]} */ (patch.hunks).length === 0) {
     file.body.append(el("div", "diff-availability", "No content changes."));
   } else {
@@ -1750,9 +1809,15 @@ function renderDeferred(file, loaded, view) {
 /**
  * @param {DeferredFile} file
  * @param {unknown} error
+ * @param {MountedDiffState} [view] Counts the failure apart from the loads, when the file
+ *   was settled by `settleDeferred` and not by `renderDeferred`.
  * @returns {JumpOutcome}
  */
-function failDeferred(file, error) {
+function failDeferred(file, error, view) {
+  if (view !== undefined) {
+    view.deferredFailed += 1;
+    renderPartialNote(view);
+  }
   reportLoad(
     "file hydration",
     {
@@ -1825,7 +1890,7 @@ function hydrationHost(view) {
     fail(id, error) {
       const file = fileOf(id);
       settleDeferred(file, view);
-      failDeferred(file, error);
+      failDeferred(file, error, view);
     },
     abandon: (id) => stopLoading(fileOf(id)),
     frame: (callback) =>
@@ -1961,13 +2026,19 @@ function releasePinOnInput(view, pane) {
   const listening = new AbortController();
   view.pinListeners = listening;
   const options = { capture: true, passive: true, signal: listening.signal };
-  const release = () => {
+  /** @param {{timeStamp?: number}} [event] */
+  const release = (event) => {
+    // The key that caused a jump is older than the pin it would release: a list's own
+    // handler may run before or after this one, and the pin holds either way. A key
+    // pressed after the jump releases it.
+    if (typeof event?.timeStamp === "number" && event.timeStamp < view.pinnedAt) {
+      return;
+    }
     view.pinned = null;
   };
   for (const type of ["wheel", "touchstart", "pointerdown"]) {
     pane.addEventListener(type, release, options);
   }
-  // A list that moves by key asks again after this, in the same event.
   pane.ownerDocument?.defaultView?.addEventListener("keydown", release, options);
 }
 
@@ -1980,6 +2051,36 @@ function releasePinOnInput(view, pane) {
  */
 function fileEntryForPath(view, path) {
   return view.byNewPath.get(path) ?? view.byOldPath.get(path) ?? null;
+}
+
+/** The clock an event's `timeStamp` is on, where there is one. */
+function eventClockNow() {
+  return typeof performance === "object" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
+/**
+ * Whether this comparison holds a path, for a list of files from elsewhere, without moving
+ * anything. Typed as `scrollToFile`'s answer is, so a list can tell a file the comparison
+ * lacks from one it holds.
+ *
+ * @param {MountedDiffState} view
+ * @param {string} path
+ * @returns {FileLookup}
+ */
+export function lookupFile(view, path) {
+  const entry = fileEntryForPath(view, path);
+  if (entry === null) {
+    return { kind: "not_in_comparison", path, listTruncated: view.listTruncated };
+  }
+  return {
+    kind: "file",
+    path,
+    fileId: String(entry.change.id),
+    changeKind: String(entry.change.kind),
+    availability: String(entry.change.availability),
+  };
 }
 
 /**
@@ -1999,6 +2100,7 @@ export function jumpToFile(view, path) {
   }
   entry.expand();
   view.pinned = entry.section;
+  view.pinnedAt = eventClockNow();
   placeAtTop(view, entry.section);
   const pane = scrollerOf(view);
   if (pane !== null) {
@@ -2143,7 +2245,7 @@ function measureInContainer(root, container) {
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
  *   page alone, so this module names it only in types.
- * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => {fileId: string, kind: string, availability: string} | null, cancelPending: () => void, dispose: () => void}}
+ * @returns {{scrollToFile: (path: string) => FileJump, fileForPath: (path: string) => FileLookup, cancelPending: () => void, dispose: () => void}}
  */
 export function mountDiffView(container, document_, api, options = {}) {
   const root = el("div", "diff-root");
@@ -2163,6 +2265,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     controller: new AbortController(),
     deferred: new Map(),
     deferredBySection: new Map(),
+    deferredFailed: 0,
     deferredLeft: 0,
     disposed: false,
     fileTotal: 0,
@@ -2179,6 +2282,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     partialNote: null,
     pinListeners: null,
     pinned: null,
+    pinnedAt: Number.NEGATIVE_INFINITY,
     resolved: /** @type {Record<string, unknown>} */ (document_.resolved ?? {}),
     root,
     enhancementTail: Promise.resolve(),
@@ -2333,21 +2437,12 @@ export function mountDiffView(container, document_, api, options = {}) {
      */
     scrollToFile: (path) => jumpToFile(view, path),
     /**
-     * Whether this comparison holds a path, for a list of files from elsewhere.
+     * Whether this comparison holds a path, for a list of files from elsewhere: see
+     * `FileLookup`.
      *
      * @param {string} path
-     * @returns {{fileId: string, kind: string, availability: string} | null}
      */
-    fileForPath(path) {
-      const entry = fileEntryForPath(view, path);
-      return entry === null
-        ? null
-        : {
-            fileId: String(entry.change.id),
-            kind: String(entry.change.kind),
-            availability: String(entry.change.availability),
-          };
-    },
+    fileForPath: (path) => lookupFile(view, path),
     cancelPending() {
       if (!view.disposed) {
         cancelPendingWork();

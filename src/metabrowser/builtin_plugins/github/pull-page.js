@@ -1885,18 +1885,22 @@ export function mountPullPage(container, ctx, mb) {
   }
 
   const prefetch = createComparisonPrefetch({
-    load: (comparison, signal) =>
-      mb.fetchPluginData(
-        "diff",
-        "comparison",
-        {
-          left: comparison.left,
-          right: comparison.right,
-          base_policy: "merge_base",
-          build: window.METABROWSER_SETTINGS?.BUILD_TAG,
-        },
-        { signal },
-      ),
+    // The diff plugin spells the address, so the request `mountDiff` would make is this
+    // one, byte for byte, and the browser's cache answers a Back from it.
+    async load(comparison, signal) {
+      await mb.ensureKindAssets("diff");
+      const view =
+        /** @type {{prefetch?: (comparison: object, signal: AbortSignal) => Promise<unknown>} | null} */ (
+          mb.getRegisteredView("diff", "diff")
+        );
+      if (typeof view?.prefetch !== "function") {
+        throw new Error("the diff view has no prefetch");
+      }
+      return view.prefetch(
+        { left: comparison.left, right: comparison.right, base_policy: "merge_base" },
+        signal,
+      );
+    },
     warm() {
       void mb.ensureKindAssets("diff").catch(() => {});
     },
@@ -1967,7 +1971,10 @@ export function mountPullPage(container, ctx, mb) {
       const offer = h("button", { type: "button", class: "btn github-pull-newer" }, [
         "Show the newer changes",
       ]);
-      offer.addEventListener("click", () => void mountDiff(comparison));
+      offer.addEventListener("click", () => {
+        // What `whenFilesReady` waits for is the diff last asked for, this one included.
+        diffMounted = mountDiff(comparison);
+      });
       body.querySelector(".github-pull-newer-offer")?.remove();
       const said = notice(null, [
         `The pull request now ends at ${comparison.right.slice(0, 12)}. `,
@@ -2062,15 +2069,39 @@ export function mountPullPage(container, ctx, mb) {
     { number, tab: typeof ctx.tab === "string" ? ctx.tab : "" },
   );
   const listening = new AbortController();
-  document.addEventListener("visibilitychange", controller.onVisibilityChange, {
-    signal: listening.signal,
-  });
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      controller.onVisibilityChange();
+      // A page opened behind another tab is not prefetched until it is looked at: the
+      // wish is not recorded while hidden, so it is asked again when shown.
+      if (document.visibilityState === "visible" && shown?.tab !== "files") {
+        const comparison = shown?.comparison ?? null;
+        if (comparison !== null) {
+          prefetch.want(comparison);
+        }
+      }
+    },
+    { signal: listening.signal },
+  );
   void controller.start();
   const place = pane === null ? null : keepPlace(pane, body, () => shown?.tab ?? "", number);
   place?.keeper.land();
   return Object.freeze({
-    /** @param {string} next */
+    /**
+     * Show a tab. A tab owns the address (Browser URL Grammar), so a call from beside the
+     * page goes through the route, which moves the address and calls back here, and Back
+     * then behaves as it does after a click; the route's own calls find the address in
+     * place already.
+     *
+     * @param {string} next
+     */
     setTab(next) {
+      const route = `/pull/${number}${next ? `/${next}` : ""}`;
+      if (TABS.includes(next) && window.location.pathname.replace(/\/$/, "") !== route) {
+        void open({ number, tab: next });
+        return;
+      }
       const changed = controller.snapshot().tab !== next;
       controller.setTab(next);
       if (changed) {
@@ -2095,14 +2126,19 @@ export function mountPullPage(container, ctx, mb) {
       ).scrollToFile(path);
     },
     /**
-     * Whether Files changed holds a path, or null while no diff is mounted.
+     * Whether Files changed holds a path, typed as `scrollToFile` is: `no_diff` while no
+     * diff is mounted, else what the diff says, `file` or `not_in_comparison`.
      *
      * @param {string} path
+     * @returns {import("../diff/diff-view.js").FileLookup | {kind: "no_diff", path: string}}
      */
-    fileForPath: (path) =>
-      /** @type {{fileForPath?: (path: string) => unknown} | null} */ (diffHandle)?.fileForPath?.(
-        path,
-      ) ?? null,
+    fileForPath(path) {
+      const lookup =
+        /** @type {{fileForPath?: (path: string) => import("../diff/diff-view.js").FileLookup} | null} */ (
+          diffHandle
+        )?.fileForPath;
+      return typeof lookup === "function" ? lookup(path) : { kind: "no_diff", path };
+    },
     /** Settles when a diff asked for by `setTab("files")` has mounted. */
     whenFilesReady: () => diffMounted,
     dispose() {

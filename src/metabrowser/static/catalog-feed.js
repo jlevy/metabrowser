@@ -435,7 +435,10 @@
      * @param {CatalogChangePayload} payload
      */
     function onCatalogChange(payload) {
-      if (disposed || !payload) {
+      if (disposed || !payload || held) {
+        // Held, nothing is journaled: the fetch `release` starts is authoritative, as a
+        // continuity refetch is, and a watcher busy for as long as a reader stays on one
+        // page would otherwise fill the journal with payloads replayed at the first open.
         return;
       }
       const change = { kind: /** @type {const} */ ("catalog"), payload };
@@ -451,7 +454,7 @@
      * @param {EventChangeOperation[]} ops
      */
     function onEventChange(ops) {
-      if (disposed || !Array.isArray(ops) || ops.length === 0) {
+      if (disposed || !Array.isArray(ops) || ops.length === 0 || held) {
         return;
       }
       const change = { kind: /** @type {const} */ ("event"), ops };

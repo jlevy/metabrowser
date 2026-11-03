@@ -41,21 +41,31 @@ $ node tests/dom/diff-file-jump-session.js
       "step": "fileForPath: a rename's new path, its old path, a deleted file's, and one it lacks",
       "answers": [
         {
+          "kind": "file",
+          "path": "src/moved.py",
           "fileId": "f4",
-          "kind": "renamed",
+          "changeKind": "renamed",
           "availability": "deferred"
         },
         {
+          "kind": "file",
+          "path": "src/was.py",
           "fileId": "f4",
-          "kind": "renamed",
+          "changeKind": "renamed",
           "availability": "deferred"
         },
         {
+          "kind": "file",
+          "path": "src/gone.py",
           "fileId": "f5",
-          "kind": "deleted",
+          "changeKind": "deleted",
           "availability": "deferred"
         },
-        null
+        {
+          "kind": "not_in_comparison",
+          "path": "only/on/github.py",
+          "listTruncated": false
+        }
       ]
     },
     {
@@ -194,7 +204,7 @@ $ node tests/dom/diff-file-jump-session.js
         "src/a.py (cancelled)",
         "src/f.py"
       ],
-      "partial": "3 of 10 files loaded; the rest load as you reach them",
+      "partial": "2 of 10 files loaded; 1 could not be loaded; the rest load as you reach them",
       "lines": "failed",
       "body": "Could not load this file's changes."
     },
@@ -211,7 +221,7 @@ $ node tests/dom/diff-file-jump-session.js
         "src/a.py (cancelled)",
         "src/f.py"
       ],
-      "partial": "3 of 10 files loaded; the rest load as you reach them",
+      "partial": "2 of 10 files loaded; 1 could not be loaded; the rest load as you reach them",
       "lines": "none"
     },
     {
@@ -227,8 +237,14 @@ $ node tests/dom/diff-file-jump-session.js
         "src/a.py (cancelled)",
         "src/f.py"
       ],
-      "partial": "3 of 10 files loaded; the rest load as you reach them",
+      "partial": "2 of 10 files loaded; 1 could not be loaded; the rest load as you reach them",
       "lines": "painted"
+    },
+    {
+      "step": "an abandoned request's late rejection is not its file's answer",
+      "scheduler": [
+        "render f7"
+      ]
     },
     {
       "step": "the reader scrolls: the topmost file on screen is asked for, not all of them",

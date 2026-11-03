@@ -16,6 +16,14 @@ type MetabrowserRenderContext = {
 type MetabrowserViewSpec = {
   render: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   dispose?: (container: HTMLElement) => void;
+  /**
+   * What `render` would fetch for a comparison, fetched before the view is shown, at the
+   * address `render` asks, so the browser's cache answers the render. The diff view has one.
+   */
+  prefetch?: (
+    comparison: { left: string; right: string; base_policy: "direct" | "merge_base" },
+    signal?: AbortSignal,
+  ) => Promise<unknown>;
 };
 
 type MetabrowserViewDescriptor = {
@@ -2780,6 +2788,8 @@ declare global {
     METABROWSER_SETTINGS?: {
       /** This build's tag, which a request names to be told its answer cannot change. */
       BUILD_TAG?: string;
+      /** The served store's token, named beside the build for the same reason; a folder has none. */
+      STORE_TAG?: string;
       CAPABILITIES?: {
         active_content: boolean;
         mutations: boolean;
