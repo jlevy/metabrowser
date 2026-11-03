@@ -333,14 +333,9 @@ def read_list_refresh(home: Path, slug: str, name: PullListName) -> PullRefreshS
 
 
 def rate_limit_holds(stamp: PullRefreshStamp | None, *, now: datetime) -> bool:
-    """Whether GitHub said when it will answer again, and that time has not come."""
+    """Whether GitHub's reset time still holds, even after a successful local refresh."""
 
-    return (
-        stamp is not None
-        and stamp.outcome == "rate_limited"
-        and stamp.reset_at is not None
-        and now < parse_stamp(stamp.reset_at)
-    )
+    return stamp is not None and stamp.reset_at is not None and now < parse_stamp(stamp.reset_at)
 
 
 def refresh_is_due(stamp: PullRefreshStamp | None, *, now: datetime) -> bool:

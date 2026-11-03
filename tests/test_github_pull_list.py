@@ -730,6 +730,9 @@ def test_a_page_read_in_pieces_has_no_etag_and_is_asked_in_full_again(
         # A reset time holds it past the window, and no longer.
         ({"outcome": "rate_limited", "reset_at": "2026-09-17T13:00:00Z"}, 61, False),
         ({"outcome": "rate_limited", "reset_at": "2026-09-17T13:00:00Z"}, 3600, True),
+        # A local-only success does not lift the independent network hold.
+        ({"outcome": "succeeded", "reset_at": "2026-09-17T13:00:00Z"}, 61, False),
+        ({"outcome": "succeeded", "reset_at": "2026-09-17T13:00:00Z"}, 3600, True),
         # A reset time inside the window does not shorten the window.
         ({"outcome": "rate_limited", "reset_at": "2026-09-17T12:00:10Z"}, 30, False),
     ],

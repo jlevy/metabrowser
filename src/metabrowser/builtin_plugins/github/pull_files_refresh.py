@@ -381,18 +381,16 @@ async def refresh_pull_files(
     # Publish and bind a checkout before using its canonical cache paths.
     repository = await claim_source(repository)
     listed = await _from_comparison(repository, number, local) if local else None
-    if listed is None:
-        # A named comparison can still fail or be truncated. Check at the network
-        # boundary, after trying it, and retain the original hold unchanged.
-        stamp = await asyncio.to_thread(
-            read_files_refresh, repository.home, repository.slug, number
+    stamp = await asyncio.to_thread(read_files_refresh, repository.home, repository.slug, number)
+    held = stamp if rate_limit_holds(stamp, now=pull_list.utc_now()) else None
+    # A named comparison can still fail or be truncated. Check at the network
+    # boundary, after trying it, and retain the original hold unchanged.
+    if listed is None and held is not None:
+        raise PullDataError(
+            "rate_limited",
+            held.message or "GitHub's rate limit holds; retry after the reset time",
+            reset_at=held.reset_at,
         )
-        if stamp is not None and rate_limit_holds(stamp, now=pull_list.utc_now()):
-            raise PullDataError(
-                "rate_limited",
-                stamp.message or "GitHub's rate limit holds; retry after the reset time",
-                reset_at=stamp.reset_at,
-            )
     reader: str | None = None
     try:
         if listed is not None:
@@ -406,7 +404,7 @@ async def refresh_pull_files(
         stamp = PullRefreshStamp(
             outcome=exc.state,
             message=str(exc)[:_MESSAGE_CHARS],
-            reset_at=exc.reset_at,
+            reset_at=exc.reset_at or (held.reset_at if held is not None else None),
             at=utc_stamp(pull_list.utc_now()),
             reader=reader,
         )
@@ -414,7 +412,14 @@ async def refresh_pull_files(
             write_files_refresh, repository.home, repository.slug, number, stamp
         )
         raise
-    succeeded = PullRefreshStamp(outcome="succeeded", at=listed.fetched_at, reader=listed.reader)
+    # Local success changes the latest outcome, but says nothing about when GitHub
+    # will answer a later fallback. Keep that independent network deadline.
+    succeeded = PullRefreshStamp(
+        outcome="succeeded",
+        at=listed.fetched_at,
+        reader=listed.reader,
+        reset_at=held.reset_at if held is not None else None,
+    )
     await asyncio.to_thread(
         write_files_refresh, repository.home, repository.slug, number, succeeded
     )
