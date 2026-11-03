@@ -53,7 +53,7 @@ from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.git import repo as git_repo
 from metabrowser.mirror_refresh import serve_mirror
 from metabrowser.server import app
-from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source import reset_source_session, serve_subject_opener
 from metabrowser.source_routes import PIN_HEADER
 from tests.github_pull_fixture import (
     ANOTHER_READER,
@@ -200,10 +200,10 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             store_identity=published.store_id,
             ref=f"refs/remotes/origin/{DEFAULT_BRANCH}",
         )
-        await subject.aclose()
         return subject
 
-    attach_subject(asyncio.run(_pin()))
+    # The serving lifespan owns the pin and any subjects a pin switch replaces it with.
+    serve_subject_opener(_pin)
     serve_mirror(
         StoreMirror.from_published(replace(published, source=source)),
         pull_requests=ServedPulls(published),

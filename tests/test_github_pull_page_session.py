@@ -61,7 +61,7 @@ from metabrowser.git import repo as git_repo
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import MAX_PULL_JOBS, mirror_session, serve_mirror
 from metabrowser.server import app
-from metabrowser.source import attach_subject, reset_source_session
+from metabrowser.source import reset_source_session, serve_subject_opener
 from tests.github_pull_fixture import (
     CANONICAL,
     DEFAULT_BRANCH,
@@ -229,11 +229,11 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             store_identity=published.store_id,
             ref=f"refs/remotes/origin/{DEFAULT_BRANCH}",
         )
-        await subject.aclose()
         return subject
 
     recorded: dict[str, Any] = {}
-    attach_subject(asyncio.run(_pin()))
+    # The serving lifespan owns the pin and any subjects a pin switch replaces it with.
+    serve_subject_opener(_pin)
     serve_mirror(
         StoreMirror.from_published(replace(published, source=source)),
         pull_request=7,
