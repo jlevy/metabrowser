@@ -134,7 +134,7 @@ async def pull_comparison_handler(request: Request) -> Response:
             return JSONResponse(
                 {
                     "error": "object_corrupt",
-                    "message": "An object does not match its ID, and its cached comparison could not be discarded.",
+                    "message": "An object does not match its ID, and its cached comparison could not be discarded. Clear the affected repository cache before retrying.",
                 },
                 status_code=409,
                 headers=_NO_STORE,
