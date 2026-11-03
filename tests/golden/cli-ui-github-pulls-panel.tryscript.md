@@ -23,7 +23,8 @@ opens nothing until it stops, so a walk of forty rows costs one read.
 A key’s open replaces the history entry, and a click’s pushes one.
 The newest opening wins and an older read is let go, and Back while a row still waits
 for its record keeps that row from opening.
-A row following the address is not a selection, and fetches nothing.
+A row following the address is not a selection, and fetches nothing; further windows are
+read to reach it only in All, since Open or Closed may not hold it.
 
 This browserless session loads the production `builtin_plugins/github/pulls-panel.js`
 and plays the server’s side from `tests/fixtures/github-pulls-panel-responses.json`:
@@ -758,6 +759,17 @@ $ node tests/dom/github-pulls-panel-session.js
         5
       ],
       "painted": 1
+    },
+    {
+      "step": "in Closed, a row past the first window is not chased",
+      "requests": [
+        "GET /api/plugin/github/pulls?state=closed&limit=100"
+      ],
+      "timer": "slow",
+      "marks": [
+        "anchor null -> 1000"
+      ],
+      "painted": 2
     },
     {
       "step": "a window and a poll are both asked for",

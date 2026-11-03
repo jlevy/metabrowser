@@ -546,6 +546,20 @@ async function run() {
   assert(held === 102, "the two windows hold every row");
   controller.dispose();
 
+  // In Closed, an address's row the first window does not hold is not chased: a filtered list
+  // may not hold it at all, and the chase would read every window to the end for nothing.
+  page = createPage();
+  controller = panel.createPullsController(page.deps, { filter: "closed", current: 50 });
+  void controller.start({ shown: true });
+  await settle();
+  await page.answer(recorded.at_cap_window);
+  steps.push(
+    page.observe("in Closed, a row past the first window is not chased", controller, {
+      paint: false,
+    }),
+  );
+  controller.dispose();
+
   // A window and a poll that cross: the window lands first, and the poll, answered from another
   // list file, reads the whole range it now holds instead of dropping the rows just added.
   page = createPage();

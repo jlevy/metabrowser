@@ -371,6 +371,8 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             )
             write_pull_list(home, slug, at_cap)
             recorded["at_cap"] = read(state="closed", limit="0")
+            # Its first window, with ten more after it: what a filtered list's chase would read.
+            recorded["at_cap_window"] = read(state="closed")
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
