@@ -2148,14 +2148,16 @@ export function mountPullPage(container, ctx, mb) {
      * @returns {import("../diff/diff-view.js").FileJump | {kind: "no_diff", path: string}}
      */
     scrollToFile(path) {
-      if (diffHandle === null) {
+      const jump =
+        /** @type {{scrollToFile?: (path: string) => import("../diff/diff-view.js").FileJump} | null} */ (
+          diffHandle
+        )?.scrollToFile;
+      if (typeof jump !== "function") {
         return { kind: "no_diff", path };
       }
       // A jump is the reader's own move, and a list beside the pane is not an input to it.
       place?.keeper.readerMoved();
-      return /** @type {{scrollToFile: (path: string) => import("../diff/diff-view.js").FileJump}} */ (
-        diffHandle
-      ).scrollToFile(path);
+      return jump(path);
     },
     /**
      * Whether Files changed holds a path, typed as `scrollToFile` is: `no_diff` while no
