@@ -464,6 +464,15 @@ def test_what_is_kept_parses_to_what_the_whole_patch_says(
     }
 
 
+def test_the_sections_of_a_patch_add_up_to_it() -> None:
+    """Nothing is stripped: with `diff.suppressBlankEmpty` a blank context line is an empty line."""
+    one = b"diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n-a\n+b\n\n"
+    two = b"diff --git a/y b/y\ndeleted file mode 100644\nindex e69de29..0000000\n"
+    assert adapter._git_sections(one + two) == [one, two]
+    assert adapter._git_sections(two) == [two]
+    assert b"".join(adapter._git_sections(one + two + one)) == one + two + one
+
+
 def test_past_gits_output_cap_one_file_is_too_large_and_many_are_deferred(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

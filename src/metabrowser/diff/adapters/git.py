@@ -139,11 +139,17 @@ def _side(path_raw: bytes, mode_text: str, oid: str) -> EntrySide:
 
 
 def _git_sections(out: bytes) -> list[bytes]:
-    """The sections of Git's patch. A hunk's every line has a marker, so this opens only one."""
-    sections = out.split(b"\ndiff --git ")
+    """The sections of Git's patch, which add up to it byte for byte.
+
+    A hunk's every line has a marker, so only a section can open with this. With
+    ``diff.suppressBlankEmpty`` a blank context line has none, which is why a section keeps
+    exactly the newline the split took and nothing is stripped.
+    """
+    parts = out.split(b"\ndiff --git ")
+    last = len(parts) - 1
     return [
-        section if index == 0 else b"diff --git " + section
-        for index, section in enumerate(sections)
+        (b"diff --git " if index else b"") + part + (b"\n" if index < last else b"")
+        for index, part in enumerate(parts)
     ]
 
 
@@ -167,7 +173,7 @@ def _within_file_bounds(out: bytes) -> tuple[bytes, list[bytes], list[bytes]]:
         elif total + len(section) > MAX_FILE_PATCH_BYTES:
             deferred.append(_section_header(section))
         else:
-            kept.append(section.rstrip(b"\n") + b"\n")
+            kept.append(section)
             total += len(section)
     return b"".join(kept), too_large, deferred
 
