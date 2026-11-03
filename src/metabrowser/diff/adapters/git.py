@@ -660,6 +660,24 @@ class GitDiffSource:
         if missing:
             raise DiffSourceError(f"no file {missing[0]!r} in this comparison")
         changes = [by_id[file_id] for file_id in file_ids]
+        target = self._location.target
+        if (
+            isinstance(target, RepositoryStoreTarget)
+            and (target.git_dir / "objects/info/alternates").exists()
+        ):
+            from metabrowser.git.tree_source import verify_store_blobs
+
+            oids = tuple(
+                dict.fromkeys(
+                    str(side.content.oid)
+                    for change in changes
+                    for side in (change.old, change.new)
+                    if side is not None
+                    and side.entry_type is not EntryType.submodule
+                    and side.content.kind is ContentRefKind.git_object
+                )
+            )
+            await verify_store_blobs(target, oids, max_bytes=MAX_FILE_PATCH_BYTES)
         pathspec = None if len(file_ids) == len(listed.files) else _pathspec(changes)
         diff_filter = (
             _PAIR_FILTER
