@@ -6,9 +6,11 @@ the description, conversation, reviews, checks, and Files changed.
 Records and Git objects are cached locally, so previously fetched data remains readable
 offline while those objects are available.
 
-To read new GitHub data, you need [`gh`](https://cli.github.com/) 2.81.0 or newer,
-signed in with `gh auth login`. Acquiring or refreshing Git objects also needs a recent
-Git; `metab` refuses one below its security floor and names the versions it accepts.
+To fetch new GitHub data, install a current GitHub CLI (`gh`) release and sign in.
+Acquiring or refreshing Git objects also needs Git.
+[Git and GitHub setup](installation.md#git-and-github-setup) gives the installation
+commands and the sign-in check.
+Local file browsing and cached PR metadata do not require `gh`.
 
 ## Open a Repository
 

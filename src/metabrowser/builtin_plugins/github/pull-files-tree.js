@@ -495,8 +495,12 @@ export const FILE_WALK_SETTLE_MS = 120;
 /** What a failed listing says to a reader, in what they can do about it. */
 /** @type {Readonly<Record<string, string>>} */
 const FILE_FAILURES = Object.freeze({
-  gh_missing: "Install GitHub CLI and sign in to list this pull request's files.",
-  not_logged_in: "Run gh auth login to list this pull request's files.",
+  gh_missing:
+    "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
+  gh_too_old:
+    "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
+  not_logged_in:
+    "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
   network_error: "Offline, or GitHub could not be reached. The files are as they were last listed.",
   not_found_or_private:
     "The pull request was not found, or the signed-in account cannot read its files.",
@@ -517,7 +521,7 @@ const FILE_ABSENCE = Object.freeze({
  *
  * @param {FilesEnvelope} envelope
  * @param {(iso: string) => string} formatTime
- * @returns {{text: string, retry: boolean} | null}
+ * @returns {{text: string, retry: boolean, help?: "install" | "update"} | null}
  */
 export function fileListFailure(envelope, formatTime) {
   const last = describeFileList(envelope).failure;
@@ -534,9 +538,24 @@ export function fileListFailure(envelope, formatTime) {
     };
   }
   // What the job recorded is a clause; here it stands as a sentence of its own.
-  const said = FILE_FAILURES[last.outcome] ?? last.message ?? last.outcome.replaceAll("_", " ");
+  const setup = ["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome);
+  const said = setup
+    ? (last.message ?? FILE_FAILURES[last.outcome])
+    : (FILE_FAILURES[last.outcome] ?? last.message ?? last.outcome.replaceAll("_", " "));
   const sentence = `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
-  return { text: sentence.endsWith(".") ? sentence : `${sentence}.`, retry: true };
+  const help =
+    last.outcome === "gh_missing"
+      ? "install"
+      : last.outcome === "gh_too_old"
+        ? "update"
+        : undefined;
+  const message = sentence.endsWith(".") ? sentence : `${sentence}.`;
+  return {
+    text:
+      message + (setup ? " You can still browse local files and any cached pull requests." : ""),
+    retry: true,
+    ...(help === undefined ? {} : { help }),
+  };
 }
 
 /**
@@ -555,7 +574,7 @@ export function fileListFailure(envelope, formatTime) {
  *   rowsVersion: number,
  *   label: string,
  *   line: string | null,
- *   notice: {severity: "warning" | "error" | null, text: string, action: "retry" | "fetch" | null} | null,
+ *   notice: {severity: "warning" | "error" | null, text: string, action: "retry" | "fetch" | null, help?: "install" | "update"} | null,
  *   skeleton: boolean,
  *   live: string,
  * }} FileTreeModel
@@ -608,6 +627,7 @@ export function describeFileTree(envelope, held) {
         severity: "warning",
         text: failure.text,
         action: failure.retry ? "retry" : null,
+        ...(failure.help === undefined ? {} : { help: failure.help }),
       };
     } else if (!waiting && reason !== undefined) {
       model.notice = {
@@ -639,6 +659,7 @@ export function describeFileTree(envelope, held) {
         severity: "warning",
         text: failure.text,
         action: failure.retry ? "retry" : null,
+        ...(failure.help === undefined ? {} : { help: failure.help }),
       };
     } else if (said.truncated && model.notice === null) {
       model.notice = {

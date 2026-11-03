@@ -317,7 +317,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "not_logged_in",
-        "says": "Run gh auth login to read this repository's pull requests."
+        "says": "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry. You can still browse local files and any cached pull requests."
       },
       "gh_too_old": {
         "status": "stale",
@@ -326,7 +326,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "gh_too_old",
-        "says": "This gh is too old to report its account; install gh 2.81.0 or newer."
+        "says": "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com. You can still browse local files and any cached pull requests."
       },
       "not_found_or_private": {
         "status": "stale",
@@ -380,7 +380,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "gh_missing",
-        "says": "Install GitHub CLI and sign in to read this repository's pull requests."
+        "says": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests."
       },
       "cache_unwritable": {
         "status": "stale",

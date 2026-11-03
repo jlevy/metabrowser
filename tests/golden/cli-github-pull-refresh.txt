@@ -758,7 +758,7 @@ store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: gh is not signed in to github.com; run gh auth login (not_logged_in); the pin is the default branch)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry. (not_logged_in); the pin is the default branch)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
@@ -772,7 +772,7 @@ store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
 revision: c691256511d05858850bc7684ae062fea0d41132
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: this gh is too old to report its account; install gh 2.81.0 or newer (gh_too_old); the pin is the default branch)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com. (gh_too_old); the pin is the default branch)
 --- stderr ---
 using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
 --- gh ---
@@ -957,7 +957,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_missing",
-    "message": "GitHub CLI (gh) is not on PATH",
+    "message": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
@@ -967,7 +967,7 @@ status: 200
 --- stderr ---
 selection: pull_request
 pin: c691256511d05858850bc7684ae062fea0d41132 (default branch topic)
-pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: GitHub CLI (gh) is not on PATH (gh_missing); the pin is the default branch)
+pull_request: 11 (not opened: pull request 11 of https://github.com/octo/demo: Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. (gh_missing); the pin is the default branch)
 --- gh ---
 # metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull?number=7'
 exit: 0

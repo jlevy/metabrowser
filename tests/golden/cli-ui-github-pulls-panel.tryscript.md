@@ -472,13 +472,33 @@ cached append behavior, and changed-file tree retention.
 ```console
 $ node tests/dom/github-pulls-panel-second-session.js
 {
+  "provider_calls": {
+    "source acquisition": [
+      "gh api repos/octo/demo --jq .size"
+    ],
+    "cold cache reads": [],
+    "catalog backfill": [
+      "gh auth status",
+      "gh api graphql catalog state=all cursor=start",
+      "gh auth status",
+      "gh api graphql catalog state=all cursor=all-100",
+      "gh auth status"
+    ],
+    "cached windows, filters, Fetch more and reopen": [],
+    "due metadata refresh": [
+      "gh auth status",
+      "gh api graphql catalog state=updated cursor=start",
+      "gh auth status"
+    ],
+    "fresh cached revisit": []
+  },
   "failures": {
     "not_logged_in": {
       "status": "current",
       "freshness": "Fetched just now by octo-reader",
       "notice": {
         "severity": "warning",
-        "text": "Run gh auth login to read this repository's pull requests.",
+        "text": "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry. You can still browse local files and any cached pull requests.",
         "retry": true
       }
     },
@@ -487,8 +507,9 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "freshness": "Fetched just now by octo-reader",
       "notice": {
         "severity": "warning",
-        "text": "The saved catalog refresh failed.",
-        "retry": true
+        "text": "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com. You can still browse local files and any cached pull requests.",
+        "retry": true,
+        "help": "update"
       }
     },
     "not_found_or_private": {
@@ -532,8 +553,9 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "freshness": "Fetched just now by octo-reader",
       "notice": {
         "severity": "warning",
-        "text": "Install GitHub CLI and sign in to read this repository's pull requests.",
-        "retry": true
+        "text": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests.",
+        "retry": true,
+        "help": "install"
       }
     },
     "cache_unwritable": {
@@ -571,7 +593,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "a server with no repository": "This server serves no GitHub repository.",
     "a checkout whose origin cannot be listed": "This checkout's origin is not a GitHub repository Metabrowser can list.",
     "a mirror": "Select a pull request.",
-    "a list with no rows, and no gh": "Install GitHub CLI and sign in to read this repository's pull requests.",
+    "a list with no rows, and no gh": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests.",
     "a polling checkout landing preserves its origin refusal": {
       "said": [
         "This checkout's origin is not a GitHub repository Metabrowser can list."
@@ -619,7 +641,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
         "GET /api/plugin/github/pulls?limit=0"
       ],
       "said": [
-        "Install GitHub CLI and sign in to read this repository's pull requests."
+        "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests."
       ],
       "timers": []
     }
@@ -637,7 +659,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       },
       "after": {
         "said": [
-          "Install GitHub CLI and sign in to read this repository's pull requests."
+          "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests."
         ],
         "timers": []
       },
@@ -658,7 +680,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       },
       "after": {
         "said": [
-          "Install GitHub CLI and sign in to read this repository's pull requests."
+          "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests."
         ],
         "timers": []
       },

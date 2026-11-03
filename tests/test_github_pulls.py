@@ -492,7 +492,7 @@ def test_a_cached_record_is_read_without_gh(stand: _Stand, monkeypatch: pytest.M
     kept = asyncio.run(open_pull_request(stand.published, 7, fetch="always"))
     assert kept.head == pin.head
     assert kept.summary.endswith(
-        "; the refresh failed: GitHub CLI (gh) is not on PATH (gh_missing)"
+        "; the refresh failed: Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. (gh_missing)"
     )
     # With no record to answer from, the failure is raised.
     (stand.published.home / source_pull_record(stand.published.slug, 7)).unlink()

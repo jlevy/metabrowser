@@ -472,6 +472,12 @@ GitHub URLs and HTTPS:
 - The Conversation and Files changed tabs align with the PR reading column on narrow and
   wide screens; the diff itself retains the full pane width.
 
+- GitHub CLI setup messages provide installation and sign-in steps, with official
+  download links when `gh` is missing or needs updating.
+  The [installation guide](docs/installation.md#git-and-github-setup) explains which
+  features need Git or `gh`; local files and cached PR metadata remain readable without
+  `gh`.
+
 - Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
   way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
   header line (“author wants to merge 2 commits into base from head”, and once merged

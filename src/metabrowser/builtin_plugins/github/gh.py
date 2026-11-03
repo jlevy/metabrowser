@@ -47,8 +47,6 @@ GH_MAX_BYTES: Final[int] = 256 * 1024
 # the deadline about fifteen times its slowest read.
 GH_API_TIMEOUT_S: Final[float] = 30.0
 GH_API_MAX_BYTES: Final[int] = 8 * 1024 * 1024
-# The first gh release with ``gh auth status --json`` (release notes, 2025-10-01).
-GH_MIN_VERSION: Final = "2.81.0"
 GH_HOSTNAME: Final = "github.com"
 GITHUB_API_VERSION: Final = "2022-11-28"
 _READ_CHUNK_BYTES: Final[int] = 64 * 1024
@@ -117,7 +115,13 @@ class GhError(Exception):
 class GhUnavailableError(GhError):
     """No ``gh`` executable on ``PATH``."""
 
-    def __init__(self, message: str = "GitHub CLI (gh) is not on PATH") -> None:
+    def __init__(
+        self,
+        message: str = (
+            "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, "
+            "then run gh auth login --hostname github.com."
+        ),
+    ) -> None:
         super().__init__(message, state="gh_missing")
 
 
@@ -278,7 +282,8 @@ def _failure_without_response(completed: _Completed) -> GhError:
     text = completed.stderr.decode("utf-8", errors="replace").lower()
     if completed.returncode == _GH_EXIT_AUTH or any(needle in text for needle in _LOGIN_TEXT):
         return GhError(
-            "gh is not signed in to github.com; run gh auth login", state="not_logged_in"
+            "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
+            state="not_logged_in",
         )
     if any(needle in text for needle in _NETWORK_TEXT):
         return GhError("gh could not reach api.github.com", state="network_error")
@@ -524,12 +529,14 @@ async def gh_account() -> str:
         login = parse_account(completed.stdout)
         if login is None:
             raise GhError(
-                "gh is not signed in to github.com; run gh auth login", state="not_logged_in"
+                "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
+                state="not_logged_in",
             )
         return login
     if b"unknown flag" in completed.stderr:
         raise GhError(
-            f"this gh is too old to report its account; install gh {GH_MIN_VERSION} or newer",
+            "This GitHub CLI cannot report the active account. Update gh from "
+            "https://cli.github.com/, then run gh auth status --hostname github.com.",
             state="gh_too_old",
         )
     raise _failure_without_response(completed)
@@ -539,7 +546,6 @@ __all__ = [
     "GH_API_MAX_BYTES",
     "GH_API_TIMEOUT_S",
     "GH_MAX_BYTES",
-    "GH_MIN_VERSION",
     "GH_TIMEOUT_S",
     "GhError",
     "GhFailureState",

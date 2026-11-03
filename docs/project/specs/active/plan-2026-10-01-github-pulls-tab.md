@@ -542,7 +542,7 @@ request selected, as on GitHub.
 | State | What the tab says |
 | --- | --- |
 | `gh_missing` | Install GitHub CLI and sign in. A cached list still shows |
-| `gh_too_old` | The installed `gh` is older than `GH_MIN_VERSION`; update it |
+| `gh_too_old` | This GitHub CLI cannot report its active account; update it to a current release |
 | `not_logged_in` | Run `gh auth login` |
 | `rate_limited` | GitHub’s limit lifts at `reset_at`; no automatic attempt runs before then |
 | `network_error` | Offline or GitHub unreachable; the list is as fetched at its time |

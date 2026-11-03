@@ -337,6 +337,15 @@ export function mountFileTree(host) {
         },
         [h("span", {}, [next.notice.text])],
       );
+      if (next.notice.help !== undefined) {
+        box.append(
+          h(
+            "a",
+            { href: "https://cli.github.com/", target: "_blank", rel: "noopener noreferrer" },
+            [next.notice.help === "install" ? "Install GitHub CLI" : "Update GitHub CLI"],
+          ),
+        );
+      }
       if (next.notice.action !== null) {
         const press = h("button", { type: "button", class: "btn" }, [
           next.notice.action === "retry" ? "Retry" : "List files",

@@ -87,8 +87,12 @@ export const MAX_HELD_TREES = 8;
 // is the plan's table ("The lazy gh check"), and a cached list shows under any of them.
 /** @type {Readonly<Record<string, string>>} */
 const FAILURES = Object.freeze({
-  gh_missing: "Install GitHub CLI and sign in to read this repository's pull requests.",
-  not_logged_in: "Run gh auth login to read this repository's pull requests.",
+  gh_missing:
+    "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
+  gh_too_old:
+    "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
+  not_logged_in:
+    "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
   network_error: "Offline, or GitHub could not be reached. The list is as it was last fetched.",
   not_found_or_private:
     "The repository was not found, or the signed-in account cannot read its pull requests.",
@@ -164,7 +168,7 @@ const CHECKOUT_NOT_LISTED =
  *   progress: string | null,
  *   freshness: string | null,
  *   empty: string | null,
- *   notice: {severity: "warning" | "error" | null, text: string, retry: boolean} | null,
+ *   notice: {severity: "warning" | "error" | null, text: string, retry: boolean, help?: "install" | "update"} | null,
  *   loadMore: "ready" | "loading" | null,
  *   github: string | null,
  *   live: string,
@@ -244,7 +248,7 @@ function pullsCount(count) {
  *
  * @param {PullsEnvelope} envelope
  * @param {(iso: string) => string} formatTime
- * @returns {{text: string, retry: boolean} | null}
+ * @returns {{text: string, retry: boolean, help?: "install" | "update"} | null}
  */
 export function refreshFailure(envelope, formatTime) {
   const last = envelope.last_refresh;
@@ -262,9 +266,24 @@ export function refreshFailure(envelope, formatTime) {
     };
   }
   // What the job recorded is a clause; here it stands as a status sentence of its own.
-  const said = FAILURES[last.outcome] ?? last.message ?? last.outcome.replaceAll("_", " ");
+  const setup = ["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome);
+  const said = setup
+    ? (last.message ?? FAILURES[last.outcome])
+    : (FAILURES[last.outcome] ?? last.message ?? last.outcome.replaceAll("_", " "));
   const sentence = `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
-  return { text: sentence.endsWith(".") ? sentence : `${sentence}.`, retry: true };
+  const help =
+    last.outcome === "gh_missing"
+      ? "install"
+      : last.outcome === "gh_too_old"
+        ? "update"
+        : undefined;
+  const message = sentence.endsWith(".") ? sentence : `${sentence}.`;
+  return {
+    text:
+      message + (setup ? " You can still browse local files and any cached pull requests." : ""),
+    retry: true,
+    ...(help === undefined ? {} : { help }),
+  };
 }
 
 /**
@@ -382,7 +401,7 @@ export function describePulls(envelope, page) {
     model.listName = name;
   }
   if (failure !== null) {
-    model.notice = { severity: "warning", text: failure.text, retry: failure.retry };
+    model.notice = { severity: "warning", ...failure };
     model.live = failure.text;
   } else if (envelope.truncated && model.notice === null) {
     model.notice = {
@@ -2067,6 +2086,15 @@ export function mountPullsPanel(container, ctx, mb) {
         },
         [h("span", {}, [model.notice.text])],
       );
+      if (model.notice.help !== undefined) {
+        box.append(
+          h(
+            "a",
+            { href: "https://cli.github.com/", target: "_blank", rel: "noopener noreferrer" },
+            [model.notice.help === "install" ? "Install GitHub CLI" : "Update GitHub CLI"],
+          ),
+        );
+      }
       if (model.notice.retry) {
         const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
         retry.addEventListener("click", () => void controller.retry());

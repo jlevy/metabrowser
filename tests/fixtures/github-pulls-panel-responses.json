@@ -690,7 +690,7 @@
    "refreshing": false,
    "last_refresh": {
     "outcome": "not_logged_in",
-    "message": "the saved catalog refresh failed",
+    "message": "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
     "reset_at": null,
     "at": "2026-09-17T12:01:01Z"
    },
@@ -723,7 +723,7 @@
    "refreshing": false,
    "last_refresh": {
     "outcome": "gh_too_old",
-    "message": "the saved catalog refresh failed",
+    "message": "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
     "reset_at": null,
     "at": "2026-09-17T12:01:01Z"
    },
@@ -888,7 +888,7 @@
    "refreshing": false,
    "last_refresh": {
     "outcome": "gh_missing",
-    "message": "the saved catalog refresh failed",
+    "message": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
     "reset_at": null,
     "at": "2026-09-17T12:01:01Z"
    },
@@ -1233,5 +1233,25 @@
    "error": "this server serves no GitHub repository",
    "code": "not_github"
   }
+ },
+ "provider_calls": {
+  "source acquisition": [
+   "gh api repos/octo/demo --jq .size"
+  ],
+  "cold cache reads": [],
+  "catalog backfill": [
+   "gh auth status",
+   "gh api graphql catalog state=all cursor=start",
+   "gh auth status",
+   "gh api graphql catalog state=all cursor=all-100",
+   "gh auth status"
+  ],
+  "cached windows, filters, Fetch more and reopen": [],
+  "due metadata refresh": [
+   "gh auth status",
+   "gh api graphql catalog state=updated cursor=start",
+   "gh auth status"
+  ],
+  "fresh cached revisit": []
  }
 }

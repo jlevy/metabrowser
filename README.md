@@ -26,9 +26,11 @@ and validate plugins on your behalf.
 npx skills add jlevy/metabrowser --skill metabrowser
 ```
 
-**Nothing else to install.** The skill prefers a locally installed `metab` and otherwise
-falls back to `uvx metabrowser@latest`, so it needs no persistent Metabrowser
-installation. It uses `--help` on the CLI as the source of truth.
+The skill prefers a locally installed `metab` and otherwise falls back to
+`uvx metabrowser@latest`, so it needs no persistent Metabrowser installation.
+Install [uv](docs/installation.md) first; Git and GitHub features have
+[separate tool requirements](docs/installation.md#git-and-github-setup).
+The skill uses `--help` on the CLI as the source of truth.
 Release cool-off stays a uv configuration concern rather than a version frozen in the
 skill; see the [installation guide](docs/installation.md).
 

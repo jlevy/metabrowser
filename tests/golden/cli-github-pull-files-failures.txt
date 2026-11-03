@@ -125,7 +125,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "not_logged_in",
-    "message": "gh is not signed in to github.com; run gh auth login",
+    "message": "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
@@ -166,7 +166,7 @@ status: 202
     "refreshing": true,
     "last_refresh": {
       "outcome": "not_logged_in",
-      "message": "gh is not signed in to github.com; run gh auth login",
+      "message": "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
       "reset_at": null,
       "at": "2026-09-17T12:00:00Z"
     },
@@ -198,7 +198,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_too_old",
-    "message": "this gh is too old to report its account; install gh 2.81.0 or newer",
+    "message": "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
@@ -239,7 +239,7 @@ status: 202
     "refreshing": true,
     "last_refresh": {
       "outcome": "gh_too_old",
-      "message": "this gh is too old to report its account; install gh 2.81.0 or newer",
+      "message": "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
       "reset_at": null,
       "at": "2026-09-17T12:00:00Z"
     },
@@ -570,7 +570,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "gh_missing",
-    "message": "GitHub CLI (gh) is not on PATH",
+    "message": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },

@@ -570,6 +570,7 @@ async function run() {
 
   return {
     steps,
+    provider_calls: recorded.provider_calls,
     failures,
     hostile,
     spelled,

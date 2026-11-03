@@ -38,7 +38,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from metabrowser import server
-from metabrowser.builtin_plugins.github import pull_list, pull_list_refresh, pulls
+from metabrowser.builtin_plugins.github import gh, pull_list, pull_list_refresh, pulls
 from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository, write_list_refresh
 from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
@@ -60,6 +60,7 @@ from tests.github_pull_fixture import (
     Origin,
     generated_item,
     install_fake_gh,
+    logged_gh_calls,
     scenario,
     seed_catalog,
 )
@@ -130,7 +131,9 @@ def _large_items(numbers: range) -> list[dict[str, Any]]:
     ]
 
 
-def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> dict[str, Any]:
+def _record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin
+) -> tuple[dict[str, Any], dict[str, list[str]]]:
     home = tmp_path / "home"
     monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
     _allow_installed_git(monkeypatch)
@@ -155,6 +158,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
         selection=RepositorySelection(kind="repository"),
     )
     published = asyncio.run(acquire_source(source, home=home))
+    provider_calls = {"source acquisition": logged_gh_calls(tmp_path)}
 
     async def _pin() -> Any:
         subject = await open_revision(
@@ -204,6 +208,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             repository = ListedRepository(home, published.slug, "octo", "demo")
             recorded["absent"] = read()
             recorded["landing_absent"] = read(limit="0")
+            provider_calls["cold cache reads"] = logged_gh_calls(tmp_path)
             gate.clear()
             recorded["refresh_started"] = ask(state="all", target=500)
             recorded["pending"] = read()
@@ -211,6 +216,7 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             gate.set()
             settled()
             recorded["current"] = read()
+            provider_calls["catalog backfill"] = logged_gh_calls(tmp_path)
             recorded["more_done"] = read()
             recorded["more_window"] = read(after=str(recorded["current"]["body"]["next_after"]))
             recorded["open_current"] = read(state="open")
@@ -221,6 +227,11 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 == 304
             )
             recorded["not_due"] = ask(state="all", target=500)
+            assert ask(state="all", target=1000)["body"]["refresh"] == "not_due"
+            assert read() == recorded["current"]
+            provider_calls["cached windows, filters, Fetch more and reopen"] = logged_gh_calls(
+                tmp_path
+            )
             recorded["pin_changed"] = _answer(
                 client.get(_PULLS, params={"state": "all"}, headers={PIN_HEADER: "0" * 40})
             )
@@ -232,6 +243,9 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             gate.set()
             settled()
             recorded["refreshed"] = read()
+            provider_calls["due metadata refresh"] = logged_gh_calls(tmp_path)
+            assert read() == recorded["refreshed"]
+            provider_calls["fresh cached revisit"] = logged_gh_calls(tmp_path)
 
             # Actual persisted failure stamps, read through the production cache-only route.
             # Worker/network classification is covered by the catalog backend's own cases.
@@ -246,9 +260,26 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 "cache_unwritable",
                 "rate_limited",
             ):
+                message = "the saved catalog refresh failed"
+                if name in {"gh_missing", "gh_too_old", "not_logged_in"}:
+                    with monkeypatch.context() as setup:
+                        if name == "gh_missing":
+                            setup.setattr(gh, "gh_executable", lambda: None)
+                        else:
+                            auth = (
+                                {"stdout": '{"hosts":{}}\n', "exit": 0}
+                                if name == "not_logged_in"
+                                else {"stderr": "unknown flag: --json\n", "exit": 1}
+                            )
+                            answering({**online, "auth": auth})
+                        with pytest.raises(gh.GhError) as failure:
+                            asyncio.run(gh.gh_account())
+                        assert failure.value.state == name
+                        message = str(failure.value)
+                    answering(online)
                 stamp = PullRefreshStamp(
                     outcome=name,
-                    message="the saved catalog refresh failed",
+                    message=message,
                     at=utc_stamp(clock[0]),
                     reader="gh:octo-reader",
                     reset_at="2026-09-18T00:00:00Z" if name == "rate_limited" else None,
@@ -360,13 +391,13 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
         recorded["not_github_refresh"] = _answer(
             client.post(_REFRESH, json={"state": "all", "target": 500}, headers=JSON_BODY)
         )
-    return _session_tags(recorded)
+    return _session_tags(recorded), provider_calls
 
 
 def test_recording_is_what_a_served_mirror_answers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
-    recorded = _record(tmp_path, monkeypatch, pull_origin)
+    recorded, provider_calls = _record(tmp_path, monkeypatch, pull_origin)
     assert recorded["absent"]["body"]["reason"] == "not_cached"
     assert recorded["refresh_started"]["status"] == 202
     assert recorded["pending"]["body"]["state"] == "pending"
@@ -427,6 +458,8 @@ def test_recording_is_what_a_served_mirror_answers(
         if name not in windows and name not in prefix
     }
     assert len(lifecycle) + len(windows) + len(prefix) == len(stored)
+    # Fixture metadata: provider work observed during the real server session, not API fields.
+    lifecycle["provider_calls"] = provider_calls
     check_recording(RECORDING, lifecycle, transcript=TRANSCRIPT, indent=1)
     check_recording(WINDOW_RECORDING, windows, transcript=TRANSCRIPT, indent=1)
     check_recording(PREFIX_RECORDING, prefix, transcript=TRANSCRIPT, indent=1)
@@ -518,4 +551,16 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
         "observedRoot": 1,
         "gapStartsAt": None,
         "viewportHeight": 3000,
+    }
+
+
+def test_setup_guidance_retains_cached_content_and_failure_distinctions() -> None:
+    assert run_session("github-setup-guidance-behavior.js") == {
+        "setupStates": 3,
+        "views": 3,
+        "nullMessageFallbacks": True,
+        "backendTextPreserved": True,
+        "cachedRecordPreserved": True,
+        "explicit401Preserved": True,
+        "otherFailureKindsPreserved": True,
     }

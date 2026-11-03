@@ -124,6 +124,16 @@ const ABSENCE = Object.freeze({
 });
 
 /** @type {Readonly<Record<string, string>>} */
+const SETUP_FAILURES = Object.freeze({
+  gh_missing:
+    "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
+  gh_too_old:
+    "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
+  not_logged_in:
+    "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
+});
+
+/** @type {Readonly<Record<string, string>>} */
 const REVIEW_STATES = Object.freeze({
   APPROVED: "approved",
   CHANGES_REQUESTED: "requested changes",
@@ -229,6 +239,7 @@ const TRUNCATED = Object.freeze({
  *   canFetchComparison: boolean,
  *   freshness: string | null,
  *   failure: string | null,
+ *   failureHelp?: "install" | "update",
  *   pull: null | {
  *     title: string, number: number, state: string, stateLabel: string, author: string,
  *     actor: string | null, action: string,
@@ -691,7 +702,15 @@ export function describePull(envelope, page) {
   model.refreshing = envelope.refreshing;
   const last = envelope.last_refresh;
   if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
-    model.failure = `The last refresh failed: ${last.message ?? last.outcome.replaceAll("_", " ")}`;
+    model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? last.outcome.replaceAll("_", " ")}`;
+    if (["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome)) {
+      model.failure += `${model.failure.endsWith(".") ? "" : "."} You can still browse local files and any cached pull requests.`;
+      if (last.outcome === "gh_missing") {
+        model.failureHelp = "install";
+      } else if (last.outcome === "gh_too_old") {
+        model.failureHelp = "update";
+      }
+    }
   }
   const record = envelope.record;
   if (envelope.state === "absent" || envelope.state === "pending" || record === null) {
@@ -2164,6 +2183,13 @@ export function mountPullPage(container, ctx, mb) {
     }
     if (model.failure !== null) {
       status.append(h("span", { class: "github-pull-failure" }, [model.failure]));
+    }
+    if (model.failureHelp !== undefined) {
+      status.append(
+        outside("https://cli.github.com/", "", [
+          model.failureHelp === "install" ? "Install GitHub CLI" : "Update GitHub CLI",
+        ]),
+      );
     }
     if (model.canRefresh) {
       const refresh = h("button", { type: "button", class: "btn github-pull-refresh" }, [

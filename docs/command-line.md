@@ -500,10 +500,13 @@ subject to a reported rate-limit reset.
 Descriptions, comments, reviews, checks, and comparison objects are separate per-PR
 reads.
 
-Reading pull requests needs `gh` 2.81.0 or newer, signed in with `gh auth login`,
-because `gh api` refuses requests while signed out.
-A pull request that cannot be read does not fail the command, so a script reads the
-`pull_request` line or the route’s `state` rather than the exit status.
+Fetching new pull-request data needs GitHub CLI (`gh`), signed in to github.com.
+Use a current maintained release and verify the active account with
+`gh auth status --active --hostname github.com`; see
+[Git and GitHub setup](installation.md#git-and-github-setup).
+Cached PR metadata remains readable without `gh`. A pull request that cannot be read
+does not fail the command, so a script reads the `pull_request` line or the route’s
+`state` rather than the exit status.
 With a record cached, the pin stays at the record’s head and the `pull_request` line
 adds why the refresh failed.
 Without one, `/pull/<n>` pins the default branch and `/pull/<n>/commits/<id>` pins that
@@ -512,7 +515,7 @@ commit if the mirror has it, and the `pull_request` line says why:
 | Name | Meaning |
 | --- | --- |
 | `gh_missing` | `gh` is not on `PATH` |
-| `gh_too_old` | `gh` is older than the version above |
+| `gh_too_old` | This `gh` cannot report its active account; update GitHub CLI |
 | `not_logged_in` | `gh` is not signed in to github.com |
 | `rate_limited` | GitHub’s rate limit, with the time it resets when GitHub gives one |
 | `not_found_or_private` | The pull request does not exist, or the account cannot read it |
