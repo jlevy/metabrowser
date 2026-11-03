@@ -9,10 +9,9 @@
 // the same functions from the command line.
 //
 // The list is a tree of one level: a row is one anchor in the role of a tree's item, in a list
-// item with no role of its own. Step 4's changed files hang off the item, and add only
-// children: a chevron box before the state icon, a `.tree-children[role="group"]` after the
-// anchor, and `aria-expanded` on an anchor that has one. The walk goes by `rows`, not by the
-// DOM, so it reads the same however a row is drawn.
+// item with no role of its own. The walk goes by `rows`, not by the DOM, so it reads the same
+// however a row is drawn. Step 4 hangs a row's changed files off the item, which takes more
+// than the children: the plan's step 4 lists each place that keys on a row's shape today.
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. A list's refresh is asked for while the panel is shown, which the server
@@ -144,6 +143,7 @@ const ABSENCE = Object.freeze({
  *   status: "loading" | "absent" | "pending" | "current" | "stale" | "unavailable",
  *   rows: PullRow[],
  *   rowsVersion: number,
+ *   setSize: number,
  *   skeleton: boolean,
  *   listName: string,
  *   count: string | null,
@@ -278,6 +278,9 @@ export function describePulls(envelope, page) {
     status: "loading",
     rows: page.rows,
     rowsVersion: page.rowsVersion,
+    // How many rows the list has, which a window appended does not move: each row's place is
+    // told against it, and not against the rows held or drawn so far.
+    setSize: Math.max(envelope?.fetched ?? 0, page.rows.length),
     skeleton: false,
     listName: "Pull requests",
     count: null,
@@ -408,6 +411,21 @@ function isEnvelope(value) {
     typeof envelope.list === "string" &&
     Array.isArray(envelope.rows)
   );
+}
+
+/**
+ * Whether *response* is the pin guard's refusal of a page whose pin moved. The guard answers it
+ * by reloading the page onto the commit now served, so the list says nothing of its own for it,
+ * whatever order the events arrive in: a page Back restores polls before the guard's check, and
+ * "unavailable" would be on screen only until the reload. pull-page.js keeps the same rule.
+ *
+ * @param {PullsResponse} response
+ */
+function pinChanged(response) {
+  const body = /** @type {Record<string, unknown> | null} */ (
+    response.body !== null && typeof response.body === "object" ? response.body : null
+  );
+  return response.status === 409 && body?.code === "pin_changed";
 }
 
 /**
@@ -671,11 +689,14 @@ export function createPullsController(deps, options = {}) {
    * Hold the rows of a list file the panel has not read: the top window's, when that is all
    * it holds, and otherwise the whole range it holds, read again. A window appended while
    * that range is read makes it short, so it is not taken, and the next poll reads it again.
+   * Whether the rows were held is the answer: the poll takes the top window's tag only with
+   * them, so a read that did not land is not answered by a 304 next time.
    *
    * @param {HeldList} list
    * @param {PullsEnvelope} top
    * @param {string} content
    * @param {{request: number, signal: AbortSignal}} asked
+   * @returns {Promise<boolean>}
    */
   async function holdContent(list, top, content, asked) {
     let answer = top;
@@ -689,11 +710,10 @@ export function createPullsController(deps, options = {}) {
         { signal: asked.signal },
       );
       if (disposed || name !== filter) {
-        return;
+        return false;
       }
       if (whole.status !== 200 || !isEnvelope(whole.body) || list.version !== version) {
-        list.etag = null;
-        return;
+        return false;
       }
       answer = whole.body;
       named = contentOf(answer);
@@ -704,6 +724,7 @@ export function createPullsController(deps, options = {}) {
     holdRows(list, answer.rows, answer.source);
     list.nextAfter = answer.next_after;
     list.content = named;
+    return true;
   }
 
   /**
@@ -738,10 +759,15 @@ export function createPullsController(deps, options = {}) {
         if (request >= shownRequest) {
           shownRequest = request;
           holdEnvelope(list, response.body);
-          list.etag = response.etag;
           const content = contentOf(response.body);
-          if (content !== list.content) {
-            await holdContent(list, response.body, content, { request, signal: controller.signal });
+          if (
+            content === list.content ||
+            (await holdContent(list, response.body, content, {
+              request,
+              signal: controller.signal,
+            }))
+          ) {
+            list.etag = response.etag;
           }
           if (list.more && !response.body.refreshing && list.nextAfter === null) {
             list.more = false;
@@ -749,7 +775,7 @@ export function createPullsController(deps, options = {}) {
         }
       } else if (response.status === 304) {
         list.error = null;
-      } else {
+      } else if (!pinChanged(response)) {
         list.error = `The list is unavailable (HTTP ${response.status}).`;
       }
     } catch {
@@ -844,7 +870,9 @@ export function createPullsController(deps, options = {}) {
         }
       } else if (reader) {
         const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
-        list.error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
+        if (!pinChanged(response)) {
+          list.error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
+        }
         list.more = false;
       }
     } catch {
@@ -907,7 +935,7 @@ export function createPullsController(deps, options = {}) {
         if (list.nextAfter === null) {
           list.more = false;
         }
-      } else {
+      } else if (!pinChanged(response)) {
         list.error = `The list is unavailable (HTTP ${response.status}).`;
       }
     } catch {
@@ -1435,7 +1463,7 @@ export function mountPullsPanel(container, ctx, mb) {
     );
     const meta = h("span", { class: "github-pulls-meta" }, [row.meta]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
-    // item: its level is the list's one, and the browser counts its place among the rows.
+    // item: its level is the list's one, and `placeRows` tells its place.
     const anchor = /** @type {HTMLAnchorElement} */ (
       h(
         "a",
@@ -1466,6 +1494,7 @@ export function mountPullsPanel(container, ctx, mb) {
    * not what the list holds. Any other answer reuses the rows that say the same.
    *
    * @param {PullRow[]} rows
+   * @returns {number} The first row whose place in the list may have moved.
    */
   function paintRows(rows) {
     const kept = paintedRows.length;
@@ -1506,6 +1535,36 @@ export function mountPullsPanel(container, ctx, mb) {
       }
     }
     paintedRows = rows.slice();
+    return appends ? kept : 0;
+  }
+
+  /** The list's size the rows' places were last told against. */
+  let placedSize = -1;
+
+  /**
+   * Tell each row its place and the list's size, as every Files row is told. The browser would
+   * count them from the rows it has drawn, and `content-visibility: auto` keeps a row not yet
+   * drawn out of the accessibility tree: in Chrome 152, 43 of 100 rows at 800 px tall. Only the
+   * rows from *from* on can have moved, unless the size did.
+   *
+   * @param {PullRow[]} rows
+   * @param {number} size
+   * @param {number} from
+   */
+  function placeRows(rows, size, from) {
+    const resized = size !== placedSize;
+    placedSize = size;
+    const total = String(size);
+    for (let index = resized ? 0 : from; index < rows.length; index += 1) {
+      const row = painted.get(rows[index].number)?.row;
+      const at = String(index + 1);
+      if (row !== undefined && row.getAttribute("aria-posinset") !== at) {
+        row.setAttribute("aria-posinset", at);
+      }
+      if (row !== undefined && row.getAttribute("aria-setsize") !== total) {
+        row.setAttribute("aria-setsize", total);
+      }
+    }
   }
 
   /**
@@ -1548,7 +1607,9 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     if (model.rowsVersion !== paintedVersion) {
       paintedVersion = model.rowsVersion;
-      paintRows(model.rows);
+      placeRows(model.rows, model.setSize, paintRows(model.rows));
+    } else if (model.setSize !== placedSize) {
+      placeRows(model.rows, model.setSize, model.rows.length);
     }
     tellAges();
     list.setAttribute("aria-label", model.listName);
@@ -1758,6 +1819,100 @@ export function mountPullsPanel(container, ctx, mb) {
 }
 
 /**
+ * Whether the list a landing reads has nothing to say yet: no rows, no end, and no failure,
+ * with its refresh not run or still running.
+ *
+ * @param {PullsEnvelope | null} envelope
+ */
+function landingWaits(envelope) {
+  return (
+    envelope !== null &&
+    envelope.reason !== "not_github" &&
+    envelope.fetched === 0 &&
+    !envelope.complete &&
+    (envelope.state === "absent" || envelope.state === "pending") &&
+    (envelope.last_refresh === null || envelope.refreshing)
+  );
+}
+
+/**
+ * What the pane says at the list's own address, `/pulls`, as the list comes in. A first visit
+ * lands before the tab's refresh has run, so a list with nothing to say yet is read again while
+ * the page is shown, until it has rows, an end, or a failure to tell. The first read again is
+ * at the fast poll, as the tab's ask follows the landing by a moment; then the fast poll while
+ * a refresh runs, and the slow one while none does.
+ *
+ * @param {{
+ *   request: PullsDependencies["request"],
+ *   schedule(callback: () => void, delayMs: number): unknown,
+ *   cancel(handle: unknown): void,
+ *   isVisible(): boolean,
+ *   formatTime(iso: string): string,
+ *   say(text: string): void,
+ * }} deps
+ */
+export function followLanding(deps) {
+  const listening = new AbortController();
+  /** @type {unknown} */
+  let timer = null;
+  let reads = 0;
+  let reading = false;
+  let settled = false;
+
+  async function read() {
+    if (settled || reading || listening.signal.aborted) {
+      return;
+    }
+    reading = true;
+    reads += 1;
+    /** @type {PullsEnvelope | null} */
+    let envelope = null;
+    try {
+      const response = await deps.request("GET", `${PULLS_ROUTE}?limit=0`, {
+        signal: listening.signal,
+      });
+      envelope = isEnvelope(response.body) ? response.body : null;
+    } catch {
+      envelope = null;
+    } finally {
+      reading = false;
+    }
+    if (listening.signal.aborted) {
+      return;
+    }
+    deps.say(describeLanding(envelope, deps.formatTime));
+    settled = !landingWaits(envelope);
+    if (!settled && deps.isVisible()) {
+      const running = envelope?.refreshing === true || envelope?.state === "pending";
+      timer = deps.schedule(
+        () => {
+          timer = null;
+          void read();
+        },
+        reads === 1 || running ? FAST_POLL_MS : SLOW_POLL_MS,
+      );
+    }
+  }
+
+  void read();
+  return Object.freeze({
+    onVisibilityChange() {
+      if (!deps.isVisible()) {
+        deps.cancel(timer);
+        timer = null;
+      } else if (timer === null) {
+        void read();
+      }
+    },
+    dispose() {
+      listening.abort();
+      deps.cancel(timer);
+      timer = null;
+    },
+  });
+}
+
+/**
  * Mount what the pane says at the list's own address. Browser only.
  *
  * @param {HTMLElement} container
@@ -1767,22 +1922,26 @@ export function mountPullsPanel(container, ctx, mb) {
 export function mountPullsLanding(container, _ctx, mb) {
   const said = h("div", { class: "preview-empty" });
   container.replaceChildren(said);
+  const landing = followLanding({
+    request,
+    schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
+    cancel: (handle) => window.clearTimeout(/** @type {number | undefined} */ (handle)),
+    isVisible: () => document.visibilityState === "visible",
+    formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
+    say(text) {
+      if (said.textContent !== text) {
+        said.textContent = text;
+      }
+    },
+  });
   const listening = new AbortController();
-  /** @param {string} iso */
-  const formatTime = (iso) => mb.formatTimestamp(Date.parse(iso) / 1000);
-  void request("GET", `${PULLS_ROUTE}?limit=0`, { signal: listening.signal })
-    .then((response) => {
-      said.textContent = describeLanding(
-        isEnvelope(response.body) ? response.body : null,
-        formatTime,
-      );
-    })
-    .catch(() => {
-      said.textContent = describeLanding(null, formatTime);
-    });
+  document.addEventListener("visibilitychange", landing.onVisibilityChange, {
+    signal: listening.signal,
+  });
   return Object.freeze({
     dispose() {
       listening.abort();
+      landing.dispose();
     },
   });
 }

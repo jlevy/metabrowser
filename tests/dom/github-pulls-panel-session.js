@@ -174,6 +174,24 @@ function createPage() {
       request.resolve({ status: recording.status, etag: recording.etag, body: recording.body });
       await settle();
     },
+    /**
+     * Answer the oldest waiting poll as the route does when the list file is *recording*'s: a
+     * 304 to the tag that file has, and that answer to any other tag.
+     */
+    async poll(recording) {
+      assert(waiting.length > 0, "no request is waiting for an answer");
+      const [request] = waiting.splice(0, 1);
+      request.resolve(
+        request.etag === recording.etag
+          ? { status: 304, etag: request.etag, body: null }
+          : { status: recording.status, etag: recording.etag, body: recording.body },
+      );
+      await settle();
+    },
+    /** Whether the list the panel would paint holds pull request *number*. */
+    holds: (number) => model?.rows.some((row) => row.number === number) ?? false,
+    /** The requests made since the last look. */
+    requests: () => log.splice(0),
     /** Answer as the route does to a tag it still holds. */
     async notModified(index = 0) {
       assert(waiting.length > index, "no request is waiting for an answer");
@@ -285,6 +303,15 @@ async function run() {
   steps.push(
     page.observe("the page is shown again: it polls at once", controller, { paint: false }),
   );
+  // Back brings the page from the back/forward cache after the pin moved: it polls before the
+  // pin guard's own check, and the refusal is the guard's to answer, by a reload.
+  page.setVisible(false);
+  controller.onVisibilityChange();
+  page.setVisible(true);
+  controller.onVisibilityChange();
+  await settle();
+  await page.answer(recorded.pin_changed);
+  steps.push(page.observe("a poll the pin guard refused: the list says nothing of it", controller));
 
   // The end of the rows held, and the next GitHub page. A reader's reaching it is the ask.
   const toEnd = controller.reachedEnd();
@@ -586,6 +613,124 @@ async function run() {
   steps.push(crossed);
   controller.dispose();
 
+  // The list at its cap, where a refresh found pull request 1001 opened, so every window moved
+  // by a row. A window asked for the earlier rows, and the poll answered first: the window
+  // follows rows the list no longer holds, so it is dropped and asked again from the new cursor.
+  page = createPage();
+  controller = panel.createPullsController(page.deps, { filter: "closed", current: null });
+  void controller.start({ shown: true });
+  await settle();
+  await page.answer(recorded.at_cap_window);
+  page.observe("", controller, { paint: false });
+  void controller.reachedEnd();
+  await page.fire();
+  steps.push(
+    page.observe("a window and a poll of the list at its cap", controller, { paint: false }),
+  );
+  await page.answer(recorded.at_cap_moved, 1);
+  steps.push(
+    page.observe("the poll lands first: a pull request opened, and the rows moved", controller, {
+      paint: false,
+    }),
+  );
+  await page.answer(recorded.at_cap_window_2);
+  steps.push(
+    page.observe(
+      "the window of the earlier rows is dropped, and asked after the new cursor",
+      controller,
+      {
+        paint: false,
+      },
+    ),
+  );
+  await page.answer(recorded.at_cap_moved_after_902);
+  const between = page.observe("so the row between the two cursors is held", controller, {
+    paint: false,
+  });
+  Object.assign(between, { rowsHeld: controller.snapshot().rows, "holds 901": page.holds(901) });
+  steps.push(between);
+  controller.dispose();
+
+  // A range read again while a window lands: the window makes the range short, so it is not
+  // taken, and the next poll reads the list again.
+  page = createPage();
+  controller = panel.createPullsController(page.deps, { filter: "closed", current: null });
+  void controller.start({ shown: true });
+  await settle();
+  await page.answer(recorded.at_cap_window);
+  void controller.reachedEnd();
+  await settle();
+  await page.answer(recorded.at_cap_window_2);
+  page.observe("", controller, { paint: false });
+  await page.fire();
+  await page.answer(recorded.at_cap_moved);
+  void controller.reachedEnd();
+  await settle();
+  steps.push(
+    page.observe(
+      "200 rows held: the range is read again, and a window asked while it is out",
+      controller,
+      {
+        paint: false,
+      },
+    ),
+  );
+  await page.answer(recorded.at_cap_moved_after_801, 1);
+  const appended = page.observe("the window lands first, and is appended", controller, {
+    paint: false,
+  });
+  appended.rowsHeld = controller.snapshot().rows;
+  steps.push(appended);
+  await page.answer(recorded.at_cap_moved_whole);
+  const short = page.observe("then the range, short of the window: it is not taken", controller, {
+    paint: false,
+  });
+  short.rowsHeld = controller.snapshot().rows;
+  steps.push(short);
+  await page.fire();
+  await page.poll(recorded.at_cap_moved);
+  steps.push(page.observe("so the next poll reads the list again", controller, { paint: false }));
+  controller.dispose();
+
+  // A range read again that does not land: the reader chooses Open while it is out, and comes
+  // back. The tag is taken only with the rows, so Closed's poll is not answered by a 304 over
+  // the rows it held before.
+  page = createPage();
+  controller = panel.createPullsController(page.deps, { filter: "closed", current: null });
+  void controller.start({ shown: true });
+  await settle();
+  await page.answer(recorded.at_cap_window);
+  void controller.reachedEnd();
+  await settle();
+  await page.answer(recorded.at_cap_window_2);
+  await page.fire();
+  await page.answer(recorded.at_cap_moved);
+  page.observe("", controller, { paint: false });
+  controller.setFilter("open");
+  await settle();
+  steps.push(
+    page.observe("Open is chosen while Closed's range is read again", controller, { paint: false }),
+  );
+  await page.answer(recorded.open_current);
+  controller.setFilter("closed", { fromAddress: true });
+  await settle();
+  steps.push(
+    page.observe("Closed again: its poll names the tag of the rows it holds", controller, {
+      paint: false,
+    }),
+  );
+  await page.poll(recorded.at_cap_moved);
+  steps.push(
+    page.observe("so the list file it has not read is read again", controller, { paint: false }),
+  );
+  await page.answer(recorded.at_cap_moved_whole);
+  const caughtUp = page.observe("and the pull request that opened is held", controller, {
+    paint: false,
+  });
+  Object.assign(caughtUp, { rowsHeld: controller.snapshot().rows, "holds 1001": page.holds(1001) });
+  steps.push(caughtUp);
+  controller.dispose();
+
   // Disposal ends it: an answer after it paints nothing, and no timer is left.
   page = createPage();
   controller = panel.createPullsController(page.deps, { filter: "all", current: null });
@@ -650,6 +795,38 @@ async function run() {
     ),
   };
 
+  // The list's address on a first visit lands before the tab's refresh has run, so it reads
+  // the list again while there is nothing to say yet, and stops once there is.
+  page = createPage();
+  const said = [];
+  const following = panel.followLanding({
+    request: page.deps.request,
+    schedule: page.deps.schedule,
+    cancel: page.deps.cancel,
+    isVisible: page.deps.isVisible,
+    formatTime,
+    say: (line) => said.push(line),
+  });
+  await settle();
+  const firstVisit = [];
+  const look = (step) =>
+    firstVisit.push({
+      step,
+      requests: page.requests(),
+      said: said.splice(0),
+      timers: page.timerDelays(),
+    });
+  look("it mounts and reads the list");
+  await page.answer(recorded.landing_absent);
+  look("nothing cached, and the refresh not yet asked: it reads again soon");
+  await page.fire();
+  await page.answer(recorded.landing_pending);
+  look("the refresh is running: again at the fast poll");
+  await page.fire();
+  await page.answer(recorded.landing_gh_missing);
+  look("the refresh failed: it says why, and reads no more");
+  following.dispose();
+
   return {
     steps,
     failures,
@@ -657,6 +834,7 @@ async function run() {
     hostile,
     spelled,
     landing,
+    "the list's address, on a first visit": firstVisit,
     reader: await readerStory(),
     paint: await paintStory(panel),
   };
@@ -1098,10 +1276,18 @@ process.on("beforeExit", () => {
   }
 });
 
+// Printed in two parts: this script prints the steps, and github-pulls-panel-second-session.js,
+// which runs this same session, the rest. tryscript matches a command's expected output as one
+// regular expression, and the whole transcript in one block is larger than V8 compiles.
+// `--part 2` selects the second here, and `--part all` prints everything, for a reader.
 run()
   .then((transcript) => {
     finished = true;
-    process.stdout.write(`${JSON.stringify(transcript, null, 2)}\n`);
+    const { steps, ...rest } = transcript;
+    const part = process.argv.indexOf("--part");
+    const wanted = part === -1 ? "1" : process.argv[part + 1];
+    const chosen = wanted === "all" ? transcript : wanted === "2" ? rest : { steps };
+    process.stdout.write(`${JSON.stringify(chosen, null, 2)}\n`);
   })
   .catch((error) => {
     process.stderr.write(`${error.stack || error}\n`);
