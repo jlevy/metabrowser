@@ -14,6 +14,7 @@ add the evidence no transcript gives, each with what breaks it:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import stat
@@ -159,17 +160,28 @@ def test_an_unopened_tab_runs_no_gh_and_loads_nothing_past_the_route_tables(
 
 
 @pytest.fixture
-def read_only_checkout(tmp_path: Path, pull_origin: Origin) -> Iterator[Path]:
+def read_only_checkout(
+    tmp_path: Path, pull_origin: Origin, request: pytest.FixtureRequest
+) -> Iterator[Path]:
     """A checkout whose every directory and file is read-only, put back for cleanup."""
 
     checkout = clone_checkout(pull_origin, tmp_path / "checkout")
-    entries = [checkout, *checkout.rglob("*")]
+    roots = [checkout]
+    if getattr(request, "param", "main") == "linked":
+        linked = tmp_path / "linked-checkout"
+        subprocess.run(
+            ["git", "-C", str(checkout), "worktree", "add", "--detach", str(linked)],
+            check=True,
+            capture_output=True,
+        )
+        roots.append(linked)
+    entries = [entry for root in roots for entry in (root, *root.rglob("*"))]
     modes = {path: stat.S_IMODE(os.lstat(path).st_mode) for path in entries}
     for path in sorted(entries, key=lambda entry: len(entry.parts), reverse=True):
         if not path.is_symlink():
             path.chmod(modes[path] & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
     try:
-        yield checkout
+        yield roots[-1]
     finally:
         for path in sorted(entries, key=lambda entry: len(entry.parts)):
             if not path.is_symlink():
@@ -368,3 +380,161 @@ def _rendered(client: Any) -> dict[str, str]:
     for part, answer in answers.items():
         assert answer.status_code == 200, (part, answer.text)
     return {part: answer.json()["html"] for part, answer in answers.items()}
+
+
+@pytest.mark.parametrize("read_only_checkout", ["main", "linked"], indirect=True)
+@pytest.mark.parametrize("serve_subdirectory", [False, True])
+def test_checkout_comparison_fetch_uses_only_the_overlay(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    read_only_checkout: Path,
+    pull_origin: Origin,
+    serve_subdirectory: bool,
+) -> None:
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.cache.urls import GitSource
+    from tests.golden_harness import isolate_cli
+    from tests.test_cli_github_checkout_golden import _after  # pyright: ignore[reportPrivateUsage]
+
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout_module._RESOLVED.clear()  # pyright: ignore[reportPrivateUsage]
+    checkout_module._PULLS.clear()  # pyright: ignore[reportPrivateUsage]
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+
+    def remote_url_for(source: GitSource) -> str:
+        return pull_origin.url if source.normalized == CANONICAL else source.normalized
+
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
+    monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT)
+    before = fingerprint(read_only_checkout)
+    common_before = fingerprint(tmp_path / "checkout")
+    root = read_only_checkout / "src" if serve_subdirectory else read_only_checkout
+    real_git = subprocess.run(
+        ["sh", "-c", "command -v git"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    git_log = _logging_tool(tmp_path / "git-bin", "git", then=real_git)
+    monkeypatch.setattr(
+        "metabrowser.git.process.git_executable", lambda: str(git_log.parent / "git")
+    )
+    request = tmp_path / "request.json"
+    route = "/api/plugin/github/pull-refresh"
+    record = _api(root, route, {"number": 10, "retry": True}, request)
+    assert record.exit_code == 0, record.stderr
+    assert _after(record)["record"]["unavailable"]["comparison"] == "no_store"
+    assert not list((home / "repository-stores").iterdir())
+
+    fetched = _api(
+        root,
+        route,
+        {"number": 10, "retry": True, "comparison": True},
+        request,
+    )
+    assert fetched.exit_code == 0, fetched.stderr
+    after = _after(fetched)
+    assert after["record"]["comparison"] is not None, after
+    assert after["pin"] is None
+    assert after["comparison_route"].startswith("/api/plugin/github/pull-comparison?")
+    compared = _api(root, after["comparison_route"], None, request)
+    assert compared.exit_code == 0, compared.stderr
+    assert compared.payload()["manifest"]["files"]
+    assert fingerprint(read_only_checkout) == before
+
+    # A fresh server adopts the persisted store without acquisition or a timestamp write.
+    checkout_module._RESOLVED.clear()  # pyright: ignore[reportPrivateUsage]
+    checkout_module._PULLS.clear()  # pyright: ignore[reportPrivateUsage]
+    calls: list[str] = []
+
+    async def forbidden(*args: Any, **kwargs: Any) -> Any:
+        calls.append("acquire")
+        raise AssertionError("a cached comparison must not acquire")
+
+    monkeypatch.setattr("metabrowser.cache.acquire.acquire_source", forbidden)
+    cached = _api(root, "/api/plugin/github/pull?number=10", None, request)
+    assert cached.payload()["record"]["comparison"] == after["record"]["comparison"]
+    assert cached.payload()["comparison_route"] == after["comparison_route"]
+    assert calls == []
+    assert fingerprint(read_only_checkout) == before
+
+    assert fingerprint(tmp_path / "checkout") == common_before
+    assert _calls(git_log), "the comparison exercises real Git"
+    assert all(str(read_only_checkout) not in call for call in _calls(git_log))
+    assert all(str(tmp_path / "checkout") not in call for call in _calls(git_log))
+
+
+def test_comparison_fetch_joining_metadata_refresh_is_not_lost(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.gh_lists import PullDataError
+    from metabrowser.builtin_plugins.github.served_pull import ServedPull
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, tmp_path / "home")  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None
+    acquisitions: list[Path] = []
+
+    async def run() -> None:
+        coordinator = RefreshCoordinator(limit=1)
+        entered, release = asyncio.Event(), asyncio.Event()
+
+        async def held_refresh(self: ServedPull) -> None:
+            entered.set()
+            await release.wait()
+
+        async def refused(repository: checkout_module.CheckoutRepository) -> Any:
+            acquisitions.append(repository.checkout_root)
+            raise PullDataError("network_error", "the repository could not be read from its origin")
+
+        monkeypatch.setattr(ServedPull, "refresh", held_refresh)
+        monkeypatch.setattr(checkout_module, "_acquire_comparison", refused)
+        try:
+            assert checkout_module.start_pull_refresh(coordinator, repository, 10) == "started"
+            await asyncio.wait_for(entered.wait(), timeout=5)
+            assert (
+                checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
+                == "joined"
+            )
+            release.set()
+            await coordinator.drain(timeout_s=5)
+            assert not coordinator.running(checkout_module.checkout_job_key(repository, 10))
+            held = checkout_module.checkout_pulls(repository).held(10)
+            assert held is not None and held.last is not None
+            assert held.last["outcome"] == "network_error"
+        finally:
+            await coordinator.aclose()
+
+    asyncio.run(run())
+    assert acquisitions == [checkout]
+
+
+def test_failed_comparison_fetch_preserves_cached_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    from metabrowser.cache.acquire import RemoteAccessError
+    from tests.golden_harness import isolate_cli
+    from tests.test_cli_github_checkout_golden import _after  # pyright: ignore[reportPrivateUsage]
+
+    isolate_cli(tmp_path, monkeypatch)
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT)
+    request = tmp_path / "request.json"
+    route = "/api/plugin/github/pull-refresh"
+    before = _after(_api(checkout, route, {"number": 10, "retry": True}, request))
+
+    async def unavailable(*args: Any, **kwargs: Any) -> Any:
+        raise RemoteAccessError(
+            "network_unreachable", "private filesystem detail must stay internal"
+        )
+
+    monkeypatch.setattr("metabrowser.cache.acquire.acquire_source", unavailable)
+    fetched = _api(checkout, route, {"number": 10, "retry": True, "comparison": True}, request)
+    assert fetched.exit_code == 1
+    after = _after(fetched)
+    assert after["record"] == before["record"]
+    assert after["last_refresh"]["outcome"] == "network_error"
+    assert "private filesystem detail" not in fetched.stdout
+    assert after["pin"] is None and after["comparison_route"] is None

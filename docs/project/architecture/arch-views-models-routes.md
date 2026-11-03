@@ -225,6 +225,15 @@ refresh coordinator and answers `202` at once, naming `github/pull?number=<n>` a
 `status_route`, which a one-shot `--api` prints after the refresh ends, exiting 1 when
 it failed; it is a POST with a JSON object body for the same reason
 `/api/source/refresh` is, and plugin data routes are one path segment, hence the name.
+On a served checkout, `{"number": n, "retry": true, "comparison": true}` also acquires
+the store its Files changed needs.
+`comparison: true` without `retry: true` is refused.
+Acquisition leaves the source folder and its pin unchanged, and a request joining a
+metadata refresh retains the comparison action for that job.
+The envelope’s `comparison_route` names `GET github/pull-comparison` with the pull
+number, immutable endpoints, and build and store tokens.
+This route reads only the managed store and uses the diff plugin’s comparison service;
+it never acquires one.
 A request with `"retry": true` is a reader’s own action, a press of **Fetch** or
 **Refresh**, and only that can add a pull request to the cache.
 Any other is the page’s own, sent when it is visible and its record is stale: with no
@@ -401,6 +410,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md`, `cli-api-diff-view-file.tryscript.md`, `cli-api-diff-no-hunks.tryscript.md`, `cli-checkout-overlay.txt` |
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-checkout-overlay.txt` |
 | `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt` |
+| `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-checkout.txt` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt` |
 | `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |

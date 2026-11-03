@@ -12,8 +12,10 @@ grammar refuses is not one the routes list: they answer ``not_github``. On a for
 Reading creates nothing. The routes read the records under the slug the source has, or
 would have once published, and answer ``absent`` while there is no source directory. A
 job's first write claims the slug and publishes the source with no store, the cache's
-``unattached`` state (:func:`claim_source`). Nothing about the checkout is recorded: no
-path, no branch. Nothing is written to it, and no Git runs in it.
+``unattached`` state (:func:`claim_source`). A reader's explicit comparison Fetch may
+attach a store that borrows the checkout's objects; its lender path stays internal to the
+cache. A healthy existing store is reused without acquisition. Nothing is written to the
+checkout, no Git runs in it, and the served folder stays the same.
 
 What is resolved is remembered for the served root and the application home, so a route
 answers from memory after its first request. Resolving reads the checkout's Git pointer
@@ -26,38 +28,52 @@ event loop (:func:`resolve_served_checkout`), once per root.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import logging
 import threading
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
-from metabrowser.mirror_refresh import MAX_PULL_JOBS, PullJobStart, mirror_session
+from metabrowser.mirror_refresh import MAX_PULL_JOBS, PullJobStart, StoreTurn, mirror_session
 from metabrowser.source import get_source_session
 
 if TYPE_CHECKING:
     from metabrowser.builtin_plugins.github.served_pull import ServedPulls
+    from metabrowser.cache.acquire import PublishedSource
     from metabrowser.cache.urls import GitSource
     from metabrowser.mirror_refresh import RefreshCoordinator
 
 # Roots a process resolves: one server serves one root, and tests serve several.
 _MAX_RESOLVED: Final = 8
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
 class CheckoutRepository(ListedRepository):
     """A served checkout's repository: where its records are, and the source to claim.
 
-    It has no store, so a pull request's record is written without a comparison.
+    Before a store is attached, its records are written without a comparison.
     """
 
     git_source: GitSource
+    checkout_root: Path
+    cached: PublishedSource | None = field(default=None, compare=False, repr=False)
 
 
 _RESOLVED: dict[tuple[str, str], CheckoutRepository | None] = {}
-_PULLS: dict[tuple[str, str], ServedPulls] = {}
+
+
+@dataclass
+class _CheckoutPulls:
+    pulls: ServedPulls
+    turn: StoreTurn = field(default_factory=StoreTurn)
+
+
+_PULLS: dict[tuple[str, str, str], _CheckoutPulls] = {}
 _LOCK: Final = threading.Lock()
 
 
@@ -84,7 +100,7 @@ def _resolve(root: Path, home: Path) -> CheckoutRepository | None:
     from metabrowser.builtin_plugins.github.urls import GithubUrlReducer, parse_repository_url
     from metabrowser.cache.acquire import source_slug
     from metabrowser.cache.urls import GitSource, classify_root_argument
-    from metabrowser.repository_context import discover_repository_context
+    from metabrowser.repository_context import discover_repository_context, find_git_root
 
     context = discover_repository_context(root)
     if context is None:
@@ -101,7 +117,12 @@ def _resolve(root: Path, home: Path) -> CheckoutRepository | None:
         return None
     owner, repo = parsed
     source = GitSource(classified.transport, classified.form, classified.normalized)
-    return CheckoutRepository(home, source_slug(source, home), owner, repo, source)
+    checkout_root = find_git_root(root)
+    if checkout_root is None:
+        return None
+    cached = _cached_store(source, home)
+    slug = cached.slug if cached is not None else source_slug(source, home)
+    return CheckoutRepository(home, slug, owner, repo, source, checkout_root, cached)
 
 
 def resolve_served_checkout(app: Any) -> None:
@@ -142,19 +163,58 @@ def served_checkout(app: Any) -> CheckoutRepository | None:
     return _RESOLVED.get(key)
 
 
-def checkout_pulls(repository: CheckoutRepository) -> ServedPulls:
-    """The checkout's pull requests: one set per repository, kept as a mirror's is."""
+def _cached_store(source: GitSource, home: Path) -> PublishedSource | None:
+    from metabrowser.cache.acquire import AcquisitionError, cached_source
+    from metabrowser.cache.atomic import RecordError
+    from metabrowser.cache.identity import SlugCollisionError
+    from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
+    from metabrowser.home import PrivateStorageError, StorageDirectoryError
 
+    try:
+        return cached_source(source, home)
+    except (
+        AcquisitionError,
+        RecordError,
+        SlugCollisionError,
+        LayoutError,
+        FutureLayoutFormatError,
+        PrivateStorageError,
+        StorageDirectoryError,
+        OSError,
+    ):
+        # A record remains readable without a usable store. An explicit comparison
+        # refresh reports the acquisition failure, and may repair a moved lender.
+        return None
+
+
+def _checkout_key(repository: CheckoutRepository) -> tuple[str, str, str]:
+    return str(repository.home), repository.source, str(repository.checkout_root)
+
+
+def _checkout_state(repository: CheckoutRepository) -> _CheckoutPulls:
     from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 
-    key = (str(repository.home), repository.slug)
+    key = _checkout_key(repository)
     with _LOCK:
         held = _PULLS.get(key)
         if held is None:
             if len(_PULLS) >= _MAX_RESOLVED:
                 _PULLS.pop(next(iter(_PULLS)))
-            held = _PULLS[key] = ServedPulls(repository)
+            held = _PULLS[key] = _CheckoutPulls(ServedPulls(repository.cached or repository))
         return held
+
+
+def checkout_pulls(repository: CheckoutRepository) -> ServedPulls:
+    """The checkout's pull records, with a cached store if one is already usable."""
+
+    return _checkout_state(repository).pulls
+
+
+def checkout_job_key(repository: CheckoutRepository, number: int) -> str:
+    """A stable internal job key while a checkout acquires its store."""
+
+    identity = hashlib.sha256("\0".join(_checkout_key(repository)).encode()).hexdigest()
+    return f"checkout:{identity}:pull/{number}"
 
 
 def claim_source(repository: ListedRepository) -> ListedRepository:
@@ -201,40 +261,134 @@ def claim_source(repository: ListedRepository) -> ListedRepository:
     return claimed
 
 
-# The keys of a checkout's record jobs started, some of which may have ended. Read and
-# written only on the event loop.
+# Active jobs are bounded independently of the set of remembered records. An explicit
+# comparison request can upgrade an already-running metadata job without losing the ask.
 _PULL_JOBS: set[str] = set()
+_COMPARISON_WANTED: set[str] = set()
 
 
 def start_pull_refresh(
-    coordinator: RefreshCoordinator, pulls: ServedPulls, number: int
+    coordinator: RefreshCoordinator,
+    repository: CheckoutRepository,
+    number: int,
+    *,
+    comparison: bool = False,
 ) -> PullJobStart:
-    """Start or join pull request *number*'s refresh on a checkout. Runs on the event loop.
+    """Start or join a checkout's pull refresh; only *comparison* may acquire a store."""
 
-    As on a mirror, at most :data:`MAX_PULL_JOBS` may be queued or running, since the
-    numbers are request text; past it a request is refused, ``too_many``. A checkout's job
-    reads GitHub and no store, so it takes one of the coordinator's network slots and no
-    turn at a store.
-    """
-
-    key = pulls.key(number)
+    key = checkout_job_key(repository, number)
     if coordinator.running(key):
+        if comparison:
+            _COMPARISON_WANTED.add(key)
         return "joined"
     _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
     if len(_PULL_JOBS) >= MAX_PULL_JOBS:
         return "too_many"
     _PULL_JOBS.add(key)
-    return coordinator.start(key, partial(_pull_job, pulls, number))
+    if comparison:
+        _COMPARISON_WANTED.add(key)
+    return coordinator.start(
+        key, partial(_pull_job, coordinator, repository, number, key), network=False
+    )
 
 
-async def _pull_job(pulls: ServedPulls, number: int) -> None:
-    companion = await pulls.companion(number)
-    await companion.refresh()
+async def _acquire_comparison(repository: CheckoutRepository) -> PublishedSource:
+    from metabrowser.cache.acquire import (
+        AcquisitionError,
+        LenderMissingError,
+        RemoteAccessError,
+        acquire_source,
+    )
+    from metabrowser.cache.atomic import RecordError
+    from metabrowser.cache.identity import SlugCollisionError
+    from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
+    from metabrowser.cache.lender import CheckoutRefusedError
+    from metabrowser.cache.locks import LockBusyError
+    from metabrowser.git.process import GitError
+    from metabrowser.home import PrivateStorageError, StorageDirectoryError
+
+    try:
+        return await acquire_source(
+            repository.git_source, home=repository.home, checkout=repository.checkout_root
+        )
+    except (LenderMissingError, CheckoutRefusedError) as exc:
+        raise PullDataError("lender_missing", "the checkout cannot supply this comparison") from exc
+    except RemoteAccessError as exc:
+        state = "not_found_or_private" if exc.state == "not_found_or_private" else "network_error"
+        raise PullDataError(state, "the repository could not be read from its origin") from exc
+    except GitError as exc:
+        raise PullDataError("git_failed", "Git could not prepare this comparison") from exc
+    except LockBusyError as exc:
+        raise PullDataError(
+            "refreshing_elsewhere", "another refresh is preparing the store"
+        ) from exc
+    except (
+        AcquisitionError,
+        RecordError,
+        SlugCollisionError,
+        LayoutError,
+        FutureLayoutFormatError,
+        PrivateStorageError,
+        StorageDirectoryError,
+        OSError,
+    ) as exc:
+        raise PullDataError("fetch_failed", "the comparison store could not be prepared") from exc
+
+
+async def _pull_job(
+    coordinator: RefreshCoordinator, repository: CheckoutRepository, number: int, key: str
+) -> None:
+    from metabrowser.builtin_plugins.github import pulls
+    from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
+    from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp, write_pull_refresh
+    from metabrowser.builtin_plugins.github.served_pull import PullRefreshOutcome
+    from metabrowser.home import PrivateStorageError
+
+    state = _checkout_state(repository)
+    try:
+        # Waiting at the store keeps no network slot, matching mirror refresh jobs.
+        async with state.turn(lambda: True), coordinator.slot():
+            companion = await state.pulls.companion(number)
+            while True:
+                comparison = key in _COMPARISON_WANTED
+                _COMPARISON_WANTED.discard(key)
+                if comparison and state.pulls.git_dir is None:
+                    try:
+                        published = await _acquire_comparison(repository)
+                    except PullDataError as exc:
+                        at = utc_stamp(pulls.utc_now())
+                        companion.last = PullRefreshOutcome(
+                            outcome=exc.state, message=str(exc), reset_at=exc.reset_at, at=at
+                        )
+                        try:
+                            claimed = await asyncio.to_thread(claim_source, repository)
+                            await asyncio.to_thread(
+                                write_pull_refresh,
+                                claimed.home,
+                                claimed.slug,
+                                number,
+                                PullRefreshStamp(
+                                    outcome=exc.state,
+                                    message=str(exc),
+                                    reset_at=exc.reset_at,
+                                    at=at,
+                                ),
+                            )
+                        except (PullDataError, PrivateStorageError, OSError):
+                            log.debug("could not record checkout comparison failure", exc_info=True)
+                        return
+                    state.pulls.attach_store(published)
+                await companion.refresh()
+                if key not in _COMPARISON_WANTED or state.pulls.git_dir is not None:
+                    return
+    finally:
+        _COMPARISON_WANTED.discard(key)
 
 
 __all__ = [
     "CheckoutRepository",
     "checkout_pulls",
+    "checkout_job_key",
     "claim_source",
     "ensure_resolved",
     "resolve_served_checkout",

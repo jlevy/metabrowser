@@ -19,10 +19,10 @@ refresh that fails leaves the record as it was. The next automatic attempt waits
 window, so a missing ``gh`` is not asked on every poll, nor again by a command started
 just after one that asked, and after ``rate_limited`` it waits for GitHub's ``reset_at``.
 
-A checkout served as a folder has a set too, of its repository with no store
-(:mod:`.checkout`): its jobs are keyed by the source's slug, and its records are written
-with no comparison, ``no_store``. A server that has a store treats such a record as stale
-whatever its age, so its Files changed is not left unavailable.
+A checkout served as a folder has a set too (:mod:`.checkout`). Before a store is
+attached, its records have no comparison, ``no_store``. An explicit comparison Fetch can
+attach a store without changing the served folder. A server that has a store treats a
+record written without one as stale whatever its age.
 """
 
 from __future__ import annotations
@@ -243,10 +243,17 @@ class ServedPulls:
 
     @property
     def git_dir(self) -> Path | None:
-        """The store a refresh fetches into, or ``None`` on a checkout, which has none."""
+        """The store a refresh fetches into, or ``None`` before one is attached."""
 
         published = self.published
         return None if isinstance(published, ListedRepository) else published.git_dir
+
+    def attach_store(self, published: PublishedSource) -> None:
+        """Use the acquired store for later refreshes, retaining each number's state."""
+
+        self.published = published
+        for held in self._kept.values():
+            held.published = published
 
     def key(self, number: int) -> str:
         return f"{_job_prefix(self.published)}:pull/{number}"

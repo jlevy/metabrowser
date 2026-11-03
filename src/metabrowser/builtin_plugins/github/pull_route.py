@@ -26,9 +26,10 @@ only a pull request with a record, and only when that record is stale and not tr
 the window. So nothing a link can do adds to the cache.
 
 Which pull requests a server has is :func:`pull_host`'s to say, and nothing else here
-knows whether it is a mirror or a checkout. A checkout's server has no store, so it answers a
-record with no comparison, ``no_store``, whoever wrote it, and a server with a store answers
-a record written that way as ``stale``.
+knows whether it is a mirror or a checkout. A checkout with no attached store answers a
+record with no comparison, ``no_store``, whoever wrote it. A server with a store answers
+a record written that way as ``stale``. Only an explicit comparison Fetch may attach a
+store to a checkout's pull records.
 """
 
 from __future__ import annotations
@@ -44,9 +45,11 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal, TypedDict
+from urllib.parse import urlencode
 
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.checkout import (
+    checkout_job_key,
     checkout_pulls,
     served_checkout,
     start_pull_refresh,
@@ -64,7 +67,7 @@ from metabrowser.builtin_plugins.github.served_pull import (
 )
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_record
 from metabrowser.git.tree_source import GitRevisionSubject
-from metabrowser.http_caching import build_scoped_etag
+from metabrowser.http_caching import BUILD_TAG, build_scoped_etag, store_tag
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
     PullJobStart,
@@ -75,7 +78,7 @@ from metabrowser.source import RepositorySubject
 from metabrowser.view_routes import parse_pull_number
 
 PULL_ROUTE: Final = "/api/plugin/github/pull"
-_REFRESH_FIELDS: Final = frozenset({"number", "retry"})
+_REFRESH_FIELDS: Final = frozenset({"number", "retry", "comparison"})
 NUMBER_REQUIRED: Final = '"number" is a pull-request number'
 
 type PullState = Literal["absent", "pending", "current", "stale"]
@@ -212,14 +215,14 @@ class PullHost:
     pulls: ServedPulls
     running: Callable[[int], bool]
     start: Callable[[int], PullJobStart]
+    start_comparison: Callable[[int], PullJobStart] | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
     """This server's pull requests, or ``None``.
 
     On a mirror, those the provider keeps. On a folder, those of a served checkout's
-    repository (:mod:`.checkout`), whose jobs run on the server's refresh coordinator with
-    no store.
+    repository (:mod:`.checkout`), whose jobs run on the server's refresh coordinator.
     """
 
     session = mirror_session(app)
@@ -231,8 +234,9 @@ def pull_host(app: Any) -> PullHost | None:
         pulls = checkout_pulls(checkout)
         return PullHost(
             pulls,
-            lambda number: coordinator.running(pulls.key(number)),
-            partial(start_pull_refresh, coordinator, pulls),
+            lambda number: coordinator.running(checkout_job_key(checkout, number)),
+            partial(start_pull_refresh, coordinator, checkout),
+            partial(start_pull_refresh, coordinator, checkout, comparison=True),
         )
     served = session.pull_requests
     if not isinstance(served, ServedPulls):
@@ -300,6 +304,19 @@ def pull_envelope(view: PullView) -> PullEnvelope:
     if not has_store and isinstance(record, PullRecord) and dumped is not None:
         dumped = _without_store(dumped)
         record = record.model_copy(update={"comparison": None})
+    route = comparison_route(record) if isinstance(record, PullRecord) else None
+    if route is not None and host.start_comparison is not None and served.git_dir is not None:
+        assert isinstance(record, PullRecord) and record.comparison is not None
+        route = "/api/plugin/github/pull-comparison?" + urlencode(
+            {
+                "number": view.number,
+                "left": record.comparison.base,
+                "right": record.comparison.head,
+                "base_policy": "merge_base",
+                "build": BUILD_TAG,
+                "store": store_tag(served.git_dir),
+            }
+        )
     return PullEnvelope(
         state=state,
         reason=absence,
@@ -311,7 +328,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         fresh_for_s=FRESHNESS_WINDOW_S,
         refreshing=view.refreshing,
         last_refresh=view.kept.last if view.kept is not None else served.last_refresh(view.number),
-        comparison_route=comparison_route(record) if isinstance(record, PullRecord) else None,
+        comparison_route=route,
         record=dumped if isinstance(record, PullRecord) else None,
     )
 
@@ -355,13 +372,14 @@ class RefreshRequest:
 
     number: int
     retry: bool
+    comparison: bool = False
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
     """What a ``POST`` body names, or :class:`PullRequestError`."""
 
     if set(body) - _REFRESH_FIELDS:
-        raise PullRequestError('a refresh request names only "number" and "retry"')
+        raise PullRequestError('a refresh request names only "number", "retry", and "comparison"')
     number = body.get("number")
     if (
         not isinstance(number, int)
@@ -372,7 +390,10 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
     retry = body.get("retry", False)
     if not isinstance(retry, bool):
         raise PullRequestError('"retry" is true or false')
-    return RefreshRequest(number, retry)
+    comparison = body.get("comparison", False)
+    if not isinstance(comparison, bool) or (comparison and not retry):
+        raise PullRequestError('"comparison" is true or false and requires "retry": true')
+    return RefreshRequest(number, retry, comparison)
 
 
 async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart:
@@ -383,6 +404,8 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
     stale and no attempt is due to wait (``not_due`` otherwise).
     """
 
+    if ask.comparison and host.start_comparison is not None:
+        return host.start_comparison(ask.number)
     if host.running(ask.number):
         return "joined"
     if not ask.retry:

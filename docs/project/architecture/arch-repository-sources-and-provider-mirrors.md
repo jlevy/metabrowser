@@ -754,6 +754,26 @@ The paging loop, `read_list`, is shared with the record (`gh_lists.py`).
 The server reaches the repository through its `StoreMirror`, the one served source that
 names a GitHub repository today; a folder’s server answers `not_github`.
 
+### Pull requests beside a checkout
+
+A folder’s pull routes resolve its checkout’s `origin` to the GitHub plugin’s canonical
+repository identity.
+Metadata reads create nothing, and metadata refreshes can publish an unattached source.
+A healthy store already attached to that source is reused without acquisition or a cache
+timestamp write.
+
+An explicit Files changed Fetch may acquire a store with the checkout as its lender.
+The pull record then uses the same store API and comparison service as a managed URL.
+The served folder root and Git tab stay unchanged; no Git process runs in the checkout,
+and the checkout is never written.
+A served subdirectory resolves to its enclosing checkout before acquisition.
+Lender paths stay inside private cache metadata.
+
+A comparison request that joins an active metadata job is retained until that job can
+acquire the store. Jobs take their turn at the store before consuming a network slot.
+An acquisition failure preserves the last pull record and reports a typed refresh
+outcome. `GET` routes never acquire or fetch.
+
 ### Changed files of a pull request
 
 A pull request’s changed files are one more file beside its record:

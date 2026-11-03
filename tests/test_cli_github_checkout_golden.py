@@ -52,6 +52,9 @@ from tests.golden_harness import (
     run_metab,
 )
 from tests.required_tools import needs_git
+from tests.test_cli_github_pull_golden import (
+    _in_a_stable_order,  # pyright: ignore[reportPrivateUsage]
+)
 
 pytestmark = [
     needs_git,
@@ -104,7 +107,7 @@ class _Session:
             result.block(
                 " ".join(quoted(arg) for arg in shown),
                 **sections,
-                gh=logged_gh_calls(self.tmp_path),
+                gh=_in_a_stable_order(logged_gh_calls(self.tmp_path)),
             )
         )
         return result
@@ -234,10 +237,31 @@ def test_golden_a_checkouts_pull_requests(
     assert again.payload()["comparison_route"] is None
     assert again.payload()["record"]["unavailable"] == {"comparison": "no_store"}
 
+    session.say(
+        "An explicit comparison Fetch attaches the cached store without changing the folder"
+    )
+    fetched = session.post(
+        checkout, f"{PULL}-refresh", {"number": 10, "retry": True, "comparison": True}
+    )
+    assert fetched.exit_code == 0, fetched.stderr
+    after = _after(fetched)
+    assert after["pin"] is None and after["record"]["comparison"] is not None
+    route = after["comparison_route"]
+    assert route.startswith("/api/plugin/github/pull-comparison?")
+    compared = session.get(checkout, route)
+    assert compared.exit_code == 0, compared.stderr
+    assert compared.payload()["manifest"]["files"]
+
     for name, before in fingerprints.items():
         root = checkout if name == "src" else tmp_path / name
         assert fingerprint(root) == before, name
-    rendered = label_home(Labels().apply("".join(session.blocks)), session.home)
+    from urllib.parse import parse_qs, urlsplit
+
+    labels = Labels()
+    query = parse_qs(urlsplit(route).query)
+    labels.add(query["build"][0], "<BUILD>")
+    labels.add(query["store"][0], "<STORE_TAG>")
+    rendered = label_home(labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
     check_golden("cli-github-checkout.txt", rendered)

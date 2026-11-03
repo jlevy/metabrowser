@@ -275,11 +275,11 @@ status: 200
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/10
-gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
-gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
-gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1
+gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
 gh auth status
 # metab checkout --show /pull/10
 exit: 0
@@ -1006,11 +1006,11 @@ status: 200
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/10 (If-None-Match)
-gh api repos/octo/demo/issues/10/comments?per_page=100&page=1 (If-None-Match)
-gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1 (If-None-Match)
-gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1 (If-None-Match)
 gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/issues/10/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1 (If-None-Match)
 gh auth status
 ## The checkout's server offers no Files changed for that record: it has no store
 # metab checkout --api '/api/plugin/github/pull?number=10'
@@ -1098,6 +1098,283 @@ status: 200
     },
     "unavailable": {
       "comparison": "no_store"
+    }
+  }
+}
+--- stderr ---
+--- gh ---
+## An explicit comparison Fetch attaches the cached store without changing the folder
+# metab checkout --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "pin": null,
+    "pin_ref": null,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": null,
+    "record": {
+      "schema_version": 2,
+      "source": "https://github.com/octo/demo",
+      "number": 10,
+      "fetched_at": "2026-09-17T12:00:00Z",
+      "reader": "gh:octo-reader",
+      "etags": {
+        "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
+        "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
+        "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
+        "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
+        "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
+        "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+      },
+      "pull": {
+        "number": 10,
+        "title": "WIP: draft the next page",
+        "body": "Not ready.",
+        "body_truncated": false,
+        "state": "open",
+        "draft": true,
+        "merged": false,
+        "merged_by": null,
+        "commits": 1,
+        "merge_commit_sha": null,
+        "mergeable": "conflicting",
+        "labels": [],
+        "author": "maintainer",
+        "created_at": "2026-09-16T10:57:23Z",
+        "updated_at": "2026-09-16T17:39:01Z",
+        "merged_at": null,
+        "closed_at": null,
+        "base": {
+          "ref": "topic",
+          "sha": "c691256511d05858850bc7684ae062fea0d41132",
+          "repository": "octo/demo"
+        },
+        "head": {
+          "ref": "wip",
+          "sha": "7a7d6596e515735d244dc1d942463c95851e139c",
+          "repository": "octo/demo"
+        },
+        "html_url": "https://github.com/octo/demo/pull/10"
+      },
+      "issue_comments": [],
+      "reviews": [],
+      "review_comments": [],
+      "check_runs": [],
+      "status": {
+        "state": "pending",
+        "statuses": []
+      },
+      "comparison": null,
+      "truncated": {
+        "issue_comments": false,
+        "reviews": false,
+        "review_comments": false,
+        "check_runs": false,
+        "statuses": false,
+        "text": false
+      },
+      "unavailable": {
+        "comparison": "no_store"
+      }
+    }
+  },
+  "status_route": "/api/plugin/github/pull?number=10"
+}
+after: /api/plugin/github/pull?number=10
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 10,
+  "pin": null,
+  "pin_ref": null,
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
+  "record": {
+    "schema_version": 2,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
+      "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
+      "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
+      "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+    },
+    "pull": {
+      "number": 10,
+      "title": "WIP: draft the next page",
+      "body": "Not ready.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "merged_by": null,
+      "commits": 1,
+      "merge_commit_sha": null,
+      "mergeable": "conflicting",
+      "labels": [],
+      "author": "maintainer",
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "c691256511d05858850bc7684ae062fea0d41132",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "wip",
+        "sha": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "repository": "octo/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/10"
+    },
+    "issue_comments": [],
+    "reviews": [],
+    "review_comments": [],
+    "check_runs": [],
+    "status": {
+      "state": "pending",
+      "statuses": []
+    },
+    "comparison": {
+      "base": "c691256511d05858850bc7684ae062fea0d41132",
+      "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "base_from": "base_branch"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {}
+  }
+}
+--- stderr ---
+--- body ---
+{"number": 10, "retry": true, "comparison": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/10 (If-None-Match)
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/issues/10/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1 (If-None-Match)
+gh auth status
+# metab checkout --api '/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>
+status: 200
+{
+  "schema": "file-diff-v1",
+  "schema_version": 1,
+  "resolved": {
+    "comparison_id": "git:6b7a4cb6dc7432f7",
+    "source": {
+      "name": "git"
+    },
+    "kind": "content",
+    "base_policy": "merge_base",
+    "left": {
+      "kind": "commit",
+      "id": "c691256511d05858850bc7684ae062fea0d41132",
+      "symbolic": "c691256511d05858850bc7684ae062fea0d41132"
+    },
+    "right": {
+      "kind": "commit",
+      "id": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "symbolic": "7a7d6596e515735d244dc1d942463c95851e139c"
+    },
+    "options": {
+      "context": 3,
+      "rename_detection": true,
+      "rename_similarity": 50
+    },
+    "warnings": []
+  },
+  "manifest": {
+    "files": [
+      {
+        "id": "f1",
+        "kind": "added",
+        "new": {
+          "path": "docs/draft.md",
+          "entry_type": "file",
+          "mode": "100644",
+          "content": {
+            "kind": "git_object",
+            "oid": "da5fc9b8d4dda2a91060b97e5e3467b4d39849bd"
+          }
+        },
+        "binary": false,
+        "availability": "ready",
+        "additions": 1,
+        "deletions": 0
+      }
+    ],
+    "totals": {
+      "files": 1,
+      "additions": 1,
+      "deletions": 0,
+      "exact": true
+    },
+    "truncated": false
+  },
+  "patches": {
+    "f1": {
+      "file_id": "f1",
+      "hunks": [
+        {
+          "old_start": 0,
+          "old_count": 0,
+          "new_start": 1,
+          "new_count": 1,
+          "lines": [
+            {
+              "op": "add",
+              "text": "# Draft",
+              "no_newline": false
+            }
+          ]
+        }
+      ],
+      "truncated": false
     }
   }
 }

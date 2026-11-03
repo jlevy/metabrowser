@@ -923,6 +923,30 @@ def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
     )
 
 
+def cached_source(source: GitSource, home: Path) -> PublishedSource | None:
+    """Read a healthy published source without a fetch, a Git process, or any cache write.
+
+    A folder server can reuse a store while keeping its filesystem subject. Unlike
+    acquisition, a miss does not check the Git floor, claim a source, or touch access
+    timestamps. Blocking and bounded; run off the event loop. Damaged records or an
+    unavailable lender raise the same errors acquisition reports.
+    """
+
+    if not home.exists():
+        return None
+    validate_storage_separation(home)
+    if read_layout(home, shared="keep") is None:
+        return None
+    found = _find_published(source, home)
+    if found is not None:
+        _require_consistent_borrowing(found.git_dir, found.lender)
+        if found.lender is not None:
+            problem = _lender_problem(found.lender, source)
+            if problem is not None:
+                raise LenderMissingError(source.normalized, found.lender, problem)
+    return found
+
+
 def source_slug(source: GitSource, home: Path) -> str:
     """The slug *source*'s directory has in *home*, or would have once published.
 
@@ -1294,6 +1318,7 @@ __all__ = [
     "ValidationFailedError",
     "acquire_into_staging",
     "acquire_source",
+    "cached_source",
     "publish_from_staging",
     "publish_unattached_source",
     "remote_url_for",

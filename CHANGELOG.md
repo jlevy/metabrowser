@@ -111,6 +111,15 @@ Plugin SDK:
 
 Reviewing beside a checkout:
 
+- A folder served from a GitHub checkout can show a pull request’s Files changed.
+  Its explicit **Fetch** attaches a cached store, borrowing the checkout’s objects when
+  one is needed. The folder and its Git tab stay on the checkout; Git and writes run only
+  in the managed store.
+  Reading a cached comparison starts no network work.
+  `POST /api/plugin/github/pull-refresh` accepts
+  `{"number": n, "retry": true, "comparison": true}` for the same action, and the pull
+  envelope names the comparison route to read after the job finishes.
+
 - `--checkout <path>` serves a repository or pull-request URL by borrowing objects from
   a checkout you already have instead of cloning it: a 1.2 GB repository that took 185 s
   and 1.2 GB as a full mirror took 5 s and about 1 MB.

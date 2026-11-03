@@ -132,6 +132,42 @@ async def pull_markdown_handler(request: Request) -> JSONResponse:
     return JSONResponse(body, status_code=status_code, headers=_NO_STORE)
 
 
+async def pull_comparison_handler(request: Request) -> Response:
+    """Read a checkout's pinned PR comparison from its store; never acquire on GET."""
+
+    from metabrowser.builtin_plugins.diff.sidekick import comparison_at
+    from metabrowser.builtin_plugins.github.pull_route import (
+        PullRequestError,
+        pull_host,
+        requested_number,
+    )
+    from metabrowser.git.process import GitLocation, repository_store_target
+    from metabrowser.git.wire import is_full_revision
+
+    try:
+        requested_number(request.query_params)
+    except PullRequestError as exc:
+        return _invalid_request(str(exc))
+    left = request.query_params.get("left", "")
+    right = request.query_params.get("right", "")
+    if (
+        not is_full_revision(left)
+        or not is_full_revision(right)
+        or "revision" in request.query_params
+    ):
+        return _invalid_request("a pull comparison requires two full commit IDs")
+    await _resolve(request)
+    host = pull_host(request.app)
+    if host is None or host.pulls.git_dir is None:
+        return JSONResponse(
+            {"error": "this comparison has no available repository store", "code": "no_store"},
+            status_code=409,
+            headers=_NO_STORE,
+        )
+    target = repository_store_target(git_dir=host.pulls.git_dir)
+    return await comparison_at(request, GitLocation.revision(target, right))
+
+
 async def _json_body(request: Request) -> dict[str, Any] | tuple[str, int]:
     """The body, a JSON object of at most :data:`MAX_REFRESH_REQUEST_BYTES`.
 
@@ -378,6 +414,7 @@ __all__ = [
     "pull_handler",
     "pull_markdown_handler",
     "pull_refresh_handler",
+    "pull_comparison_handler",
     "pulls_handler",
     "pulls_refresh_handler",
 ]

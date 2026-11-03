@@ -1038,9 +1038,9 @@ acquisition. Each updates
 **Step 6: Files changed on a checkout.**
 
 - *Reviewed:* that nothing is written to the checkout and no Git runs in it, byte for
-  byte with the directory read-only; that the overlay is created only by opening Files
-  changed; the base the page names; each typed state; and that the hostile-configuration
-  replica leaves no marker.
+  byte with the directory read-only; that the overlay is created only by an explicit
+  Files changed Fetch; the base the page names; each typed state; and that the
+  hostile-configuration replica leaves no marker.
 - *Leaves out:* healing, blob verification, conversions, and deepening, which are steps
   2, 3, and 5 of the review-mirror plan.
 
