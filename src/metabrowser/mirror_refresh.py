@@ -107,6 +107,9 @@ type StartedOrJoined = Literal["started", "joined"]
 # How a request for a pull request's refresh was answered; ``"too_many"`` started nothing,
 # because :data:`MAX_PULL_JOBS` were queued or running.
 type PullJobStart = Literal["started", "joined", "too_many"]
+# How a request for the source's refresh was answered: ``"too_many"`` started nothing, when
+# only the attended pull request was stale and the queue had no room for its job.
+type RefreshStart = Literal["started", "joined", "too_many"]
 # How a request for the fetch a missing commit waits for was answered: the mirror's
 # fetch was started or joined, or the mirror is ``"fresh"`` and none was asked for.
 type CommitFetch = Literal["started", "joined", "fresh"]
@@ -416,12 +419,14 @@ class _Miss:
     A later count of refreshes ended means a refresh ended since, and a later count of
     fetches ran that one fetched. ``pull_jobs`` are the keys of the pull-request jobs asked
     for on its account, which may bring it; a job is waited for whichever pull request is
-    attended by the time it ends.
+    attended by the time it ends. ``pull_job_refused`` is set while the last ask for the
+    attended one's job found the queue full, so that job has not run.
     """
 
     refreshes_ended: int
     fetches_ran: int
     pull_jobs: set[str] = field(default_factory=set[str])
+    pull_job_refused: bool = False
 
 
 def _now_utc() -> datetime:
@@ -791,13 +796,14 @@ class MirrorSession:
 
     # ── Refresh ─────────────────────────────────────────────────
 
-    def request_refresh(self, *, for_selection: bool = False) -> StartedOrJoined:
+    def request_refresh(self, *, for_selection: bool = False) -> RefreshStart:
         """Start a background refresh of the mirror, or join the one running.
 
         A URL selection still waiting, as after a fetch that failed, waits for this one.
         The data served beside the mirror is refreshed as its own job when it is stale,
-        and in a server, when only it is stale, only it is refreshed. *for_selection* is
-        the fetch a pin the mirror lacks waits for: the mirror's alone.
+        and in a server, when only it is stale, only it is refreshed, which a full queue
+        can refuse (``"too_many"``). *for_selection* is the fetch a pin the mirror lacks
+        waits for: the mirror's alone.
         """
 
         now = _now_utc()
@@ -805,8 +811,10 @@ class MirrorSession:
         # Only a server skips a fresh mirror; a one-shot command asked for its refresh.
         skip_mirror = self._fetch_on_miss and self._pending_selection is None
         if companion_stale and skip_mirror and not self._mirror_stale(now):
-            # Refused means a full queue and work under way, which its status reports.
-            return "started" if self.request_companion_refresh() == "started" else "joined"
+            return self.request_companion_refresh() or "joined"
+        return self._refresh_mirror(companion_stale=companion_stale)
+
+    def _refresh_mirror(self, *, companion_stale: bool) -> StartedOrJoined:
         started = self._coordinator.start(self.mirror.key, self._refresh_job, network=False)
         if self._pending_selection is not None:
             self._selection_state = "pending"
@@ -833,7 +841,7 @@ class MirrorSession:
         if retry or self._companion_stale(now):
             self.request_companion_refresh()
         if retry or self._mirror_stale(now) or self._coordinator.running(self.mirror.key):
-            return self.request_refresh(for_selection=True)
+            return self._refresh_mirror(companion_stale=False)
         return "fresh"
 
     def request_companion_refresh(self) -> PullJobStart | None:
@@ -1089,6 +1097,7 @@ class MirrorSession:
         seen = self._misses.get(key)
         if (
             seen is not None
+            and not seen.pull_job_refused
             and seen.refreshes_ended < self._refreshes_ended
             and not self.refreshing()
             and not any(self._coordinator.running(job) for job in seen.pull_jobs)
@@ -1102,16 +1111,16 @@ class MirrorSession:
             if len(self._misses) >= MAX_REMEMBERED_MISSES:
                 self._misses.pop(next(iter(self._misses)))
             seen = self._misses[key] = _Miss(self._refreshes_ended, self._fetches_ran)
-        started = self.request_refresh(for_selection=True)
+        started = self._refresh_mirror(companion_stale=False)
         # A commit the mirror lacks may be a newer one of the attended pull request, which
         # only that refresh fetches; a branch or tag never is. Another number may be attended
-        # by the time its job ends, so the miss remembers the job.
-        if (
-            key[1] is not None
-            and self.companion is not None
-            and self.request_companion_refresh() != "too_many"
-        ):
-            seen.pull_jobs.add(self.companion.key)
+        # by the time its job ends, so the miss remembers the job. One a full queue refused
+        # has not run, so the miss waits for an ask that finds it room.
+        if key[1] is not None and self.companion is not None:
+            asked = self.request_companion_refresh()
+            seen.pull_job_refused = asked == "too_many"
+            if not seen.pull_job_refused:
+                seen.pull_jobs.add(self.companion.key)
         return SelectionPendingError(started)
 
 
@@ -1257,6 +1266,7 @@ __all__ = [
     "RefKind",
     "RefreshCoordinator",
     "RefreshResult",
+    "RefreshStart",
     "SelectionError",
     "SelectionFetchFailedError",
     "SelectionNotACommitError",

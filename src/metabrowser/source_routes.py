@@ -350,7 +350,9 @@ async def api_source_refresh(request: Request) -> JSONResponse:
 
     Returns ``202`` as soon as the job is scheduled; the response never waits on the
     network. ``refresh`` says whether this request started the job or joined one that
-    was running, and ``status`` is the envelope as of that moment.
+    was running, and ``status`` is the envelope as of that moment. When only the attended
+    pull request is stale and the queue of pull requests has no room for its job, nothing
+    starts and the answer is ``429`` with ``too_many``, as the pull-request route says.
 
     ``{"for": "commit"}`` asks for the fetch a commit the mirror lacks waits for
     (:meth:`~metabrowser.mirror_refresh.MirrorSession.request_commit_fetch`): the
@@ -371,6 +373,17 @@ async def api_source_refresh(request: Request) -> JSONResponse:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
     started = mirror.request_commit_fetch(retry=retry) if for_commit else mirror.request_refresh()
     status = source_status(mirror)
+    if started == "too_many":
+        # Only the attended pull request was stale, and the queue of pull requests is full.
+        return JSONResponse(
+            {
+                "refresh": started,
+                "status": dict(status),
+                "error": "too many pull requests are being fetched; try again when one has finished",
+                "code": "too_many",
+            },
+            status_code=429,
+        )
     # Nothing scheduled and nothing running is an answer, not accepted work.
     accepted = started != "fresh" or status["refreshing"]
     return JSONResponse(

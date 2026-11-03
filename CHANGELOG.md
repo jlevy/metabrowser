@@ -334,6 +334,8 @@ GitHub URLs and HTTPS:
   Past eight pull requests queued or running, a request is refused 429 `too_many`. The
   mirror’s fetch and the pull request whose head is served go ahead of that queue, and a
   list’s refresh does not wait for it.
+  The served one may run one over the bound; past that, `/api/source/refresh` answers
+  429 `too_many` too when that pull request is all it would refresh.
   A newer head is offered as the source’s `latest`, and `/api/source/pin` accepts
   `refs/pull/<n>/head` to take it.
   Only the stale one of the mirror and the record is refreshed, a pin the mirror lacks

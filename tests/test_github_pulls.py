@@ -1692,6 +1692,15 @@ def test_the_attended_pull_request_may_run_one_over_the_bound_and_no_more(
         assert ask(number) == (429, "too_many")
         assert _read(client, number).json()["refreshing"] is False
 
+    # A source refresh that would refresh only that pull request says so, and starts nothing.
+    monkeypatch.setattr(session, "_fetch_on_miss", True)
+    monkeypatch.setattr(type(session), "_mirror_stale", lambda _self, _now: False)
+    refused = client.post("/api/source/refresh", json={}, headers=_JSON)
+    assert refused.status_code == 429, refused.text
+    assert (refused.json()["refresh"], refused.json()["code"]) == ("too_many", "too_many")
+    assert refused.json()["status"]["pull_request"] == 10
+    assert session.pull_refreshing(10) is False
+
     gate.set()
     while any(session.pull_refreshing(number) for number in (*range(100, 100 + MAX_PULL_JOBS), 7)):
         time.sleep(0.01)

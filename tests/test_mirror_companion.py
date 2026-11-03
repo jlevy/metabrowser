@@ -711,6 +711,86 @@ def test_a_pending_miss_waits_for_the_job_it_started_whichever_is_attended_by_th
     assert asyncio.run(scenario()) == (True, True, True)
 
 
+async def _fill_the_queue(stand: _Stand) -> None:
+    """Eight other numbers, and the attended 7 one over, then 20 attended: 20 has no room."""
+
+    await stand.session.attend(7)
+    for number in range(8, 16):
+        assert stand.session.request_pull_refresh(number) == "started"
+    assert stand.session.request_pull_refresh(7) == "started"
+    await stand.session.attend(20)
+    assert stand.session.request_companion_refresh() == "too_many"
+
+
+def test_a_source_refresh_the_queue_has_no_room_for_says_so_and_starts_nothing() -> None:
+    """When only the attended pull request is stale, a refusal of its job is the answer: a
+    "joined" would say work was accepted that was not."""
+
+    async def scenario() -> tuple[str, list[str]]:
+        stand = _Stand()
+        fresh = _Mirror(stand.events, fetched_at=_now())
+        stand.session = MirrorSession(
+            fresh, stand.coordinator, pull_requests=stand.pulls, fetch_on_miss=True
+        )
+        await stand.session.observe()
+        await _fill_the_queue(stand)
+        await _spin()
+        answered = stand.session.request_refresh()
+        await _spin()
+        seen = list(stand.events)
+        await stand.finish()
+        return answered, seen
+
+    answered, seen = asyncio.run(scenario())
+    assert answered == "too_many"
+    assert seen == ["pull 8"], "nothing else started"
+
+
+def test_a_pending_miss_whose_pull_request_job_was_refused_waits_for_room() -> None:
+    """A full queue refused the attended pull request's job, so it has not run, and the commit
+    may be one only it brings: the miss stays pending, and a later ask that finds room starts
+    the job and then waits for it."""
+
+    async def scenario() -> None:
+        stand = _Stand()
+        session = stand.session
+        missing = "a" * 40
+
+        async def ask() -> None:
+            await session.switch_pin(ref=None, oid=missing)
+
+        session.request_refresh(for_selection=True)
+        await _spin()
+        assert stand.events == ["mirror"]
+        await _fill_the_queue(stand)
+        with pytest.raises(SelectionPendingError):
+            await ask()
+        await stand.end_mirror()
+        assert stand.events[-1] == "pull 8"
+        # The mirror's fetch ended, and the queue is still full: still pending, not "not found".
+        with pytest.raises(SelectionPendingError):
+            await ask()
+        assert not session.pull_refreshing(20)
+        await stand.end(8)
+        await stand.end_mirror()
+        # Now there is room, so this ask starts 20's job, and the miss waits for it.
+        with pytest.raises(SelectionPendingError):
+            await ask()
+        assert session.pull_refreshing(20)
+        while session.refreshing() or any(
+            session.pull_refreshing(number) for number in (*range(9, 16), 7, 20)
+        ):
+            for pull in stand.pulls.by_number.values():
+                pull.gate.set()
+            stand.mirror.gate.set()
+            await _spin()
+        with pytest.raises(SelectionNotFoundError):
+            await ask()
+        await stand.finish()
+
+    asyncio.run(scenario())
+
+
 def test_attending_changes_the_number_and_its_refresh_together() -> None:
     """While the set reads the new number's state, the session is still on the old one, so a
     refresh asked for then is the old one's, as its staleness is."""
