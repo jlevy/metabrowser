@@ -66,8 +66,10 @@ export const HUNK_TAIL_LINES = 8;
 export const HUNK_RANGE_LINES = 100;
 // How long the pane stays still before its place is written to the history entry. A click
 // writes at once, so this only keeps a moving pane from calling `history.replaceState`,
-// which Safari limits to 100 calls in 30 s.
-export const PLACE_WRITE_MS = 100;
+// which Safari limits to 100 calls in 30 s, and past that throws. Writes this long after the
+// last move are at least this far apart, so 350 ms allows 85 in 30 s, however the reader
+// paces their moves; 100 ms allowed 297 to a reader moving the pane in short tugs.
+export const PLACE_WRITE_MS = 350;
 // How long a landing holds its place after the page last changed height, for a page still
 // rendering what it fetches. Measured 2026-11-02 in Chrome 152, Back onto a page loaded
 // again, the widest gap between two changes in height: 231 ms for 34 files, 501 ms for a
@@ -83,7 +85,20 @@ export const LANDING_SETTLE_MS = 2000;
 export const REFRESH_ASK_MS = 500;
 // The blocks a place is counted in: the conversation's cards and sections, and Files
 // changed's files, which keep their order for as long as the page shows one comparison.
+// A place is an index, so a refresh that adds a card above it while a landing holds puts the
+// pane one block off. Accepted: it takes a refresh completing inside the settle window.
 const PLACE_BLOCKS = ".github-pull-card, .github-pull-section, .diff-file";
+// The keys a browser moves a pane with. Tab is one, since moving focus scrolls to what takes it.
+const PANE_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "PageUp",
+  "PageDown",
+  "Home",
+  "End",
+  " ",
+  "Tab",
+]);
 // The key of a place in `history.state`, which no other code of the shell writes into.
 const PLACE_KEY = "pullPlace";
 
@@ -1207,6 +1222,21 @@ function isPanePlace(value) {
 }
 
 /**
+ * Whether a key press can move the pane, and so ends a landing's hold. A bare modifier cannot,
+ * and in a field typing a letter or moving the caret does not, so a reader who starts typing
+ * in a filter during the settle window keeps their place. Pure.
+ *
+ * @param {string} key
+ * @param {{closest?: (selector: string) => unknown} | null} target
+ */
+export function keyMovesPane(key, target) {
+  if (!PANE_KEYS.has(key)) {
+    return false;
+  }
+  return key === "Tab" || !target?.closest?.("input, textarea, select, [contenteditable]");
+}
+
+/**
  * @typedef {{
  *   read(): unknown,
  *   write(place: PanePlace): void,
@@ -1589,7 +1619,9 @@ export function mountPullPage(container, ctx, mb) {
    * @param {Record<string, any>} rendered
    */
   function renderMarkdown(part, rendered) {
-    documentStyles ??= mb.loadKpressAssets(rendered.assets).catch(() => {});
+    documentStyles ??= mb.loadKpressAssets(rendered.assets).catch((error) => {
+      console.warn("metabrowser github: the text styles did not load", error);
+    });
     void Promise.all([inertReady, documentStyles]).then(([inert]) => {
       const element = texts.get(part);
       const plain = element?.querySelector(":scope > .github-pull-plain");
@@ -1707,14 +1739,14 @@ export function mountPullPage(container, ctx, mb) {
   const branch = (name) =>
     h("span", { class: "git-ref git-ref-remote", "data-tip-text": name }, [name]);
 
-  /** The registry's disclosure chevron: the shell's constant, not the pull request's text. */
+  /** The registry's disclosure chevron, parsed once: a constant, not the pull request's text. */
+  const chevronSvg = new DOMParser().parseFromString(mb.icons.toggle || "", "text/html").body
+    .firstElementChild;
   function chevron() {
-    const svg = new DOMParser().parseFromString(mb.icons.toggle || "", "text/html").body
-      .firstElementChild;
-    return svg === null
+    return chevronSvg === null
       ? null
       : h("span", { class: "github-pull-fold-chevron", "aria-hidden": "true" }, [
-          document.importNode(svg, true),
+          document.importNode(chevronSvg, true),
         ]);
   }
 
@@ -2178,10 +2210,22 @@ function keepPlace(pane, body, tab, number) {
   pane.addEventListener("click", keeper.flush, { capture: true, signal });
   // Whatever a reader moves the pane with: a wheel, a finger, a scrollbar, a key. Only input
   // says so, since the browser's own scroll anchoring also moves a page that changes height.
+  // So a scroll with no input the page can see, from assistive technology or the find bar, is
+  // undone by the next change in height inside the settle window: telling it from anchoring
+  // would end the hold on what the hold exists to override.
   for (const type of ["wheel", "touchstart", "pointerdown"]) {
     pane.addEventListener(type, keeper.readerMoved, { capture: true, passive: true, signal });
   }
-  window.addEventListener("keydown", keeper.readerMoved, { capture: true, signal });
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      const target = /** @type {HTMLElement | null} */ (event.target);
+      if (keyMovesPane(event.key, target)) {
+        keeper.readerMoved();
+      }
+    },
+    { capture: true, signal },
+  );
   const heights = new ResizeObserver(() => keeper.contentChanged());
   heights.observe(body);
   return {

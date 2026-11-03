@@ -172,6 +172,9 @@ Those names are examples of a general rule rather than a list of exceptions.
 A `.env` or `.env.local` file may contribute only `METABROWSER_LOG_LEVEL` and
 `METABROWSER_REQUEST_LOG`. Every other name is read from the process environment or not
 at all, and Metabrowser logs a warning naming any of its own variables it ignored.
+A file that is not a regular file or is larger than 64 KB is skipped with a warning, and
+a value’s `${VAR}` is left as written, so a browsed repository’s file cannot hold the
+command by blocking its read or taking minutes to parse.
 
 The rule is an allowlist because the loader cannot tell a file the operator wrote from
 one in the repository being browsed, and a denylist secures only the names somebody

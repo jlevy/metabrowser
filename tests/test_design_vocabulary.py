@@ -1001,8 +1001,8 @@ _FONT_SIZE_EXEMPT: dict[tuple[str, str], str] = {
     # Reported, not changed: --code-font-size is defined nowhere, so a diff's code reads at
     # 0.85rem, 13.6px, and follows the browser's root size. The ramp's --mono-block-font-size
     # is 12px. Moving to it shrinks every diff on every page, which is the owner's decision.
-    ("diff/styles.css", ".metabrowser-diff-host .diff-line"): "13.6px pending a decision",
-    ("diff/styles.css", ".metabrowser-diff-host .diff-split-side"): "13.6px pending a decision",
+    ("diff/styles.css", ".metabrowser-diff-host .diff-line"): "13.6px pending mb-ruyu",
+    ("diff/styles.css", ".metabrowser-diff-host .diff-split-side"): "13.6px pending mb-ruyu",
     # One step below the structured view's mono, in em so it follows that view's size.
     ("structured/styles.css", ".tok-meta"): "relative to the row it annotates",
 }

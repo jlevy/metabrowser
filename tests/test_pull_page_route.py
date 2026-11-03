@@ -87,6 +87,11 @@ def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:
     # The route's one list of KPress's stylesheets, and nothing a text could name.
     assert source.count("mb.loadKpressAssets(") == 1
     assert "mb.loadKpressAssets(rendered.assets)" in source
+    # A failure to load them leaves the text readable under the shell's rules, and is said.
+    assert 'console.warn("metabrowser github: the text styles did not load", error);' in source
+    # The chevron is the shell's constant, so it is parsed once and each fold takes a copy.
+    assert source.count("new DOMParser()") == 1
+    assert "document.importNode(chevronSvg, true)" in source
     assert "insertAdjacentHTML" not in source and "outerHTML" not in source
     assert source.count('rel: "noopener noreferrer"') == 1
     # GitHub's own rendering of the text is never read.
@@ -141,9 +146,10 @@ def test_a_readers_place_is_kept_in_the_entry_and_disposed_with_the_page() -> No
     glue = source[source.index("function keepPlace(") :]
     assert 'pane.addEventListener("click", keeper.flush, { capture: true, signal });' in glue
     assert 'for (const type of ["wheel", "touchstart", "pointerdown"]) {' in glue
-    assert (
-        'window.addEventListener("keydown", keeper.readerMoved, { capture: true, signal });' in glue
-    )
+    # Only a key that can move the pane, which the session lists.
+    listener = glue[glue.index('window.addEventListener(\n    "keydown",') :]
+    assert "if (keyMovesPane(event.key, target)) {" in listener[: listener.index("capture")]
+    assert "{ capture: true, signal }" in listener
     assert "window.history.replaceState({ ...window.history.state, [PLACE_KEY]: place }" in glue
     disposal = glue[glue.index("dispose() {") :]
     for released in ("listening.abort();", "heights.disconnect();", "keeper.dispose();"):
@@ -182,11 +188,11 @@ def test_a_hunk_is_painted_as_text_in_a_native_disclosure() -> None:
 def test_one_box_scrolls_all_of_a_hunk() -> None:
     """The lines above the cut and below it move together, under a label that stays put.
 
-    With a scroller each, a wide hunk had a scrollbar in its middle. On pallets/click#3030,
-    in the ``docs/options.md`` comment with its 7 earlier lines open, in headless Chrome:
-    the box has a ``scrollWidth`` of 1,859 px in 1,047, the only scroller in the card; at
-    ``scrollLeft`` 200 both parts' lines move 200 px and the label none; every line is
-    1,859 px wide; and with the disclosure closed the box does not scroll.
+    With a scroller each, a wide hunk had a scrollbar in its middle. Measured again with the
+    label at ``100cqi``, 2026-11-02 in headed Chrome 152, on pallets/click#3030 with every
+    fold open: the first wide box has a ``scrollWidth`` of 1,859 px in 685; at ``scrollLeft``
+    200 its 15 lines move 200 px and the label none; every line is 1,859 px wide, the label
+    is the box's 685 px, and its row's far end is still the label, so a click there opens it.
     """
 
     source = PAGE_JS.read_text(encoding="utf-8")
