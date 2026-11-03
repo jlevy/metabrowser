@@ -357,8 +357,8 @@ so it is its own pull request with its own independent review.
   `served_pull` does today.
   The bound is needed because the numbers are request text, which is why
   `MAX_REMEMBERED_MISSES` bounds the selections it remembers.
-- `MirrorSession` runs any companion’s refresh as a coordinator job under `_fetch_turn`,
-  which is the body of `_companion_job` given the companion.
+- `MirrorSession` runs any companion’s refresh as a coordinator job under its turn at
+  the store, which is the body of `_companion_job` given the companion.
 - The job is `refresh_pull_request`, unchanged: the record and `refs/pull/<n>/head`
   together, under the key `<store key>:pull/<n>`, so concurrent requests join it.
 
@@ -394,11 +394,23 @@ bounded set, plus a direct start of any number’s refresh by the plugin’s `PO
 - `MAX_CONCURRENT_REFRESHES` bounds network jobs across the mirror, the lists, and every
   pull request.
 - Pull-request jobs and the mirror’s own fetch take turns at the store through
-  `_fetch_turn`.
+  `StoreTurn`, and take a network slot only once their turn has come.
+  A job that is only waiting holds nothing, so a list’s refresh, which needs no turn,
+  does not wait behind a queue.
+- The mirror’s fetch and the attended pull request’s go first, because a page of code
+  waits on them, and in the order they asked, so neither starves the other.
+  At most `MAX_FIRST_IN_A_ROW`, one of each, go ahead of a waiting pull request, so
+  nothing waits for ever however often those two are asked for again.
+  Each waits for at most the job running, the other, and one more: 21 s at the slowest
+  measured refresh, where a plain queue would be 56 s.
 - A new bound limits how many distinct pull-request jobs may be queued or running.
   A request past it is refused with a typed state, `429` with `too_many`, and starts
   nothing. The bound, `MAX_PULL_JOBS`, is set from the measured duration of one refresh,
-  which is at least eight `gh` processes and one `git fetch`.
+  which is at least eight `gh` processes and one `git fetch`. The attended pull request
+  may run one over it, through any route, so other numbers filling the queue do not
+  refuse its refresh. It is one over and not one per attended switch: once a job of an
+  earlier attended number holds that place, the new number is refused too until a job
+  ends.
 
 **Status, freshness row, and ref selector.**
 
@@ -418,6 +430,20 @@ The pull envelope gains the pin’s ref, and the page has three cases:
 | Is the record’s head | **Browse code** is a link to the root, as now |
 | Is on this pull request’s head ref and behind the record’s head | The existing offer to switch to the newer head |
 | Is anything else: a branch, a tag, another pull request | **Browse code** is a button that posts this pull request’s head ref to `/api/source/pin` and then opens the root. No warning is shown, because nothing is wrong |
+
+The third row also covers a pull-request URL whose head could not be served when the
+server opened, which pins the default branch and fetches the record later on Fetch.
+Before this step the page said its code was not the pull request’s head and Files
+changed said the head moved.
+Now it says nothing, deliberately: the page reads the same either way, Files changed
+compares the record’s own commits, and Browse code reaches the head.
+Only the second row’s offer says anything.
+
+A review comment’s file takes the same form as Browse code: a link where that is a link,
+and a button that serves the head and then opens the file where that is a button, so
+what moves the pin is never a link that a modified click would open without moving it.
+A button is a real `<button>` for keyboards and screen readers and looks the same as the
+link, as the [design system](../../../design-system.md#control-families) says.
 
 **View file.** View file switches the pin by commit ID. `resolve_pin` then serves a
 commit under a pull request’s head ref when it is that ref’s tip, for any pull request

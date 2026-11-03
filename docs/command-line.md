@@ -382,6 +382,10 @@ unchanged part costs GitHub nothing against the rate limit.
 A one-shot `--api /api/plugin/github/pull-refresh` with
 `--data <file with {"number": 123, "retry": true}>` also refreshes it, waits, prints the
 record under `after:`, and exits 1 when the refresh failed.
+The `pull` and `pull-markdown` routes and the `pull-refresh` body all require the
+number. `"retry": true` is a reader’s own request: without it, a number with no record
+answers `not_cached`, one refreshed inside its window answers `not_due`, and neither
+starts anything.
 
 A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s, and a server
 opens at the top of the repository.

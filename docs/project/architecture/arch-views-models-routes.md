@@ -228,7 +228,7 @@ Any other is the page’s own, sent when it is visible and its record is stale: 
 record it answers `200` with `refresh: "not_cached"`, inside the window or before a rate
 limit’s `reset_at` it answers `200` with `not_due`, and each starts nothing.
 Past `MAX_PULL_JOBS` queued or running, a request is refused `429` with `refresh` and
-`code` of `too_many`, and starts nothing.
+`code` of `too_many`, and starts nothing; the attended pull request may run one over.
 `github/pull` also sends an entity tag over everything but the record, which changes
 only with `fetched_at`, and answers a matching `If-None-Match` with `304`, so the
 pull-request page polls it as cheaply as the status route.
