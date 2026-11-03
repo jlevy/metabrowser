@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, Self
 
-from metabrowser.cache.atomic import publish_entry, read_record, write_record_atomic
+from metabrowser.cache.atomic import RecordError, publish_entry, read_record, write_record_atomic
 from metabrowser.cache.identity import (
     ObjectFormat,
     cache_slug,
@@ -698,10 +698,17 @@ def _publish_source_directory(
     slug: str,
     source: GitSource,
     source_id: str,
-    store_id: str,
+    store_id: str | None,
     at: str,
     alias_lock: CacheLock,
 ) -> None:
+    """Publish the source directory, with its alias when *store_id* names a store.
+
+    With no store it holds ``source.yml`` alone: the ``unattached`` source a folder server's
+    first pull-request record publishes, to which :func:`_attach_existing_source` attaches
+    a store when the repository is acquired later.
+    """
+
     entry, liveness = _claim_staging(home)
     staged_rel = staging_entry(entry)
     try:
@@ -718,17 +725,18 @@ def _publish_source_directory(
             ),
             REPOSITORY_SOURCE_CONTRACT_ID,
         )
-        write_record_atomic(
-            home,
-            f"{staged_rel}/store-alias.yml",
-            RepositoryStoreAlias(
-                source_id=source_id,
-                store_id=store_id,
-                generation=1,
-                updated_at=at,
-            ),
-            REPOSITORY_STORE_ALIAS_CONTRACT_ID,
-        )
+        if store_id is not None:
+            write_record_atomic(
+                home,
+                f"{staged_rel}/store-alias.yml",
+                RepositoryStoreAlias(
+                    source_id=source_id,
+                    store_id=store_id,
+                    generation=1,
+                    updated_at=at,
+                ),
+                REPOSITORY_STORE_ALIAS_CONTRACT_ID,
+            )
         publish_entry(home, staged_rel, source_directory(slug), owner=alias_lock)
     except BaseException:
         _delete_staging(home, entry)
@@ -913,6 +921,58 @@ def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
         state.last_fetch_at,
         store.lender,
     )
+
+
+def source_slug(source: GitSource, home: Path) -> str:
+    """The slug *source*'s directory has in *home*, or would have once published.
+
+    Blocking and bounded, and it creates nothing: a home that does not exist, and a slug
+    no source has claimed, read as unclaimed. What a folder server reads a checkout's
+    pull-request records under before any is written.
+    """
+
+    source_id = source_identity(source.transport, source.normalized)
+
+    def owner(candidate: str) -> str | None:
+        try:
+            return _source_id_for_slug(home, candidate, shared="keep")
+        except (OSError, PrivateStorageError, RecordError, ValidationFailedError):
+            # Unreadable is not another source's: the claim reads it again, and refuses.
+            return None
+
+    return cache_slug(source.transport, source.normalized, source_id, slug_owner=owner)
+
+
+def publish_unattached_source(source: GitSource, home: Path) -> tuple[Path, str]:
+    """Publish *source*'s directory with no store, unless it has one; return the home and slug.
+
+    The first write of a pull-request record or list from a folder server, which has no
+    store: it claims the slug as an acquisition does and publishes ``source.yml`` alone,
+    the ``unattached`` source. Acquiring the source later attaches its store to the same
+    directory (:func:`_attach_existing_source`), and a source published with a store is
+    left as it is. A missing home is created with its cache layout, as the first
+    acquisition creates it. Nothing about whoever asked is recorded. Blocking: it takes the
+    home's and the source's locks.
+    """
+
+    validate_storage_separation(home)
+    source_id = source_identity(source.transport, source.normalized)
+    slug = source_slug(source, home)
+    if home.exists() and _source_id_for_slug(home, slug, shared="keep") == source_id:
+        # Published already, with a store or without.
+        return home, slug
+    home = open_cache(home).home
+    slug, alias_lock = _claim_source_slug(home, source, source_id)
+    try:
+        with alias_lock:
+            if not os.path.lexists(home / source_directory(slug)):
+                _publish_source_directory(
+                    home, slug, source, source_id, None, canonical_now(), alias_lock
+                )
+    finally:
+        if alias_lock.held:
+            alias_lock.release()
+    return home, slug
 
 
 def publish_from_staging(staged: StagingAcquisition) -> PublishedSource:
@@ -1235,5 +1295,7 @@ __all__ = [
     "acquire_into_staging",
     "acquire_source",
     "publish_from_staging",
+    "publish_unattached_source",
     "remote_url_for",
+    "source_slug",
 ]
