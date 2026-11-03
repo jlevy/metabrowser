@@ -1508,7 +1508,7 @@ def test_the_parts_are_in_flight_together_and_read_as_they_did_in_sequence(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Five requests at once, and a record whose bytes do not say in what order they answered."""
-    real = pulls.gh_api
+    real = gh_lists.gh_api
     running = 0
     most = 0
     seen: list[str] = []
@@ -1525,7 +1525,7 @@ def test_the_parts_are_in_flight_together_and_read_as_they_did_in_sequence(
         finally:
             running -= 1
 
-    monkeypatch.setattr(pulls, "gh_api", counted)
+    monkeypatch.setattr(gh_lists, "gh_api", counted)
     stand.answer(scenario(stand.origin))
     record = stand.refresh(7)
     assert most == 5, "the pull is read first, for its head, and then the other five together"
