@@ -1547,6 +1547,11 @@ export function mountPullsPanel(container, ctx, mb) {
    * drawn out of the accessibility tree: in Chrome 152, 43 of 100 rows at 800 px tall. Only the
    * rows from *from* on can have moved, unless the size did.
    *
+   * Measured 2026-11-03 in headless Chrome 152 at the cap, 1,000 rows, eight back-to-back pairs
+   * against the paint without it, at a load average of 13: a window appended took 1.7 ms of
+   * paint against 1.6 ms, a repaint that moves every row's place 14.9 ms against 14.8 ms, and
+   * the tab's activation to its next paint 28.4 ms against 27.7 ms, which this does not run in.
+   *
    * @param {PullRow[]} rows
    * @param {number} size
    * @param {number} from
