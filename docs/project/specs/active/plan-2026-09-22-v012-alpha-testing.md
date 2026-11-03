@@ -383,11 +383,17 @@ and closed unmerged on 2026-10-26 (`mb-299e`).
   Its three checks, the evidence audit and the data and browser differentials, were run
   again on 2026-10-26 on `main` at `c2d493e9`, above #268. Every flagged row was
   classified by hand, and none is an unexplained product difference; the bead’s notes
-  hold the counts. No product file has changed since:
+  hold the counts. No product file changed from there to `c934a0b4`:
   `git diff --stat c2d493e9 c934a0b4 -- src pyproject.toml uv.lock package-lock.json`
   prints nothing. A product change above `c934a0b4` needs the checks run again.
-  The gate’s accept rule also asks for the written list of intended changes to existing
-  behavior, which is
+  [Stack 278](https://github.com/jlevy/metabrowser/stack/278)
+  ([#273](https://github.com/jlevy/metabrowser/pull/273) to
+  [#277](https://github.com/jlevy/metabrowser/pull/277)) changed product files above
+  `c934a0b4`; [#275](https://github.com/jlevy/metabrowser/pull/275)’s shell fixes and
+  [#277](https://github.com/jlevy/metabrowser/pull/277)’s inert-image and diff-module
+  changes show on a regular folder, so the three checks are owed again on the head that
+  is tagged. The gate’s accept rule also asks for the written list of intended changes to
+  existing behavior, which is
   [Changes to existing behavior](../../reviews/review-2026-10-01-v012-changes-to-existing-behavior.md),
   for the user to sign off.
 
@@ -435,8 +441,9 @@ only, and starts after 0.12.0 is tagged.
 
 **Review.** The
 [review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md) has a row
-for every pull request in the stack and for #268, and states its limits: no person has
-reviewed the stack, and no pull request has a GitHub review decision.
+for every pull request in the stack, for #268, and for
+[stack 278](https://github.com/jlevy/metabrowser/stack/278), and states its limits: no
+person has reviewed the stack, and no pull request has a GitHub review decision.
 Its #267 row holds that pull request’s independent review, which reported on 2026-11-01.
 
 **The user’s decisions and checks.**

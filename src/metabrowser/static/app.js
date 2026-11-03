@@ -1446,10 +1446,10 @@ function reconcileMountedTree(nextTree, chromeHtml) {
 
 function treeTruncationNoteHtml(maxFiles) {
   var reason = maxFiles
-    ? `Metabrowser stopped after ${formatCount(maxFiles)} files`
+    ? `Metabrowser stopped after ${formatCount(maxFiles)}`
     : "Metabrowser reached its file limit";
   return (
-    '<div class="tree-truncation-note" role="status">' +
+    '<div class="notice tree-truncation-note" data-severity="warning" role="status">' +
     "<strong>File list incomplete.</strong> " +
     reason +
     ", so some files and folders are not shown." +
@@ -4723,7 +4723,7 @@ function applyDrawerOpenState() {
       (filterDrawerOpen ? "Hide more filters" : "Show more filters") +
         (count > 0 ? ` (${count} active)` : ""),
     );
-    toggle.setAttribute("title", filterDrawerOpen ? "Fewer filters" : "More filters");
+    toggle.dataset.tipText = filterDrawerOpen ? "Fewer filters" : "More filters";
   }
 }
 

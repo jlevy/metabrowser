@@ -15,6 +15,11 @@
 //
 // Each step prints the address, what the pane shows and who owns it, which nav panel is
 // active, and the commit requests it made. Exits 1 on a failed invariant.
+//
+// `options` is what the server does next, and a step may change it: `behind` the entries
+// behind the first address, `gateHeldDuringInit` a repository gate that answers only at
+// `catchUp`, `notARepository` and `gateFailures` what it answers, and `commitRequestsFail`
+// a commit route the network cannot reach.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -81,8 +86,8 @@ async function createPage(start, options = {}) {
   const shown = { pane: "nothing", navPanel: "files" };
   const held = new Map();
   const listeners = new Map();
-  const entries = [start];
-  let index = 0;
+  const entries = [...(options.behind ?? []), start];
+  let index = entries.length - 1;
   const location = {};
   const moveTo = (url) => {
     const parsed = new URL(url, "http://127.0.0.1:8471");
@@ -131,6 +136,10 @@ async function createPage(start, options = {}) {
     const route = String(url);
     if (route.startsWith("/api/git/repo")) {
       await held.get(route);
+      if (options.gateFailures > 0) {
+        options.gateFailures -= 1;
+        return answer({ error: "unavailable" }, 503);
+      }
       return answer(
         options.notARepository
           ? { is_repo: false }
@@ -141,6 +150,9 @@ async function createPage(start, options = {}) {
       const id = route.slice("/api/git/commit/".length);
       log.push(`GET /api/git/commit/${id}`);
       await held.get(route);
+      if (options.commitRequestsFail) {
+        throw new TypeError("Failed to fetch");
+      }
       if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(id)) {
         return answer(
           {
@@ -266,7 +278,12 @@ async function createPage(start, options = {}) {
     registerNavPanel(next) {
       panel = next;
     },
-    removeNavPanel() {},
+    removeNavPanel(id) {
+      if (shown.navPanel === id) {
+        shown.navPanel = "files";
+      }
+      panel = null;
+    },
     renderPreviewHtml: (html, claim) => paint(claim, html.replace(/<[^>]*>/g, "")),
     renderPreviewNode(node, claim) {
       const revision = /data-revision="([^"]*)"/.exec(node.innerHTML)?.[1];
@@ -320,7 +337,19 @@ async function createPage(start, options = {}) {
   sandbox.navigationController = controller;
   routes.attachController(controller);
   await controller.start();
-  await sandbox.MetabrowserGitPanel.init();
+  let releaseGate = () => {};
+  if (options.gateHeldDuringInit) {
+    held.set(
+      "/api/git/repo",
+      new Promise((resolve) => {
+        releaseGate = resolve;
+      }),
+    );
+  }
+  const initializing = sandbox.MetabrowserGitPanel.init();
+  if (!options.gateHeldDuringInit) {
+    await initializing;
+  }
 
   const settle = async () => {
     for (let turn = 0; turn < 8; turn += 1) {
@@ -344,15 +373,34 @@ async function createPage(start, options = {}) {
     history,
     listeners,
     log,
+    options,
     routes,
     settle,
     shown,
+    /** Who holds the pane: every claim on it, even one that repaints the same text, moves this. */
+    claim: () => previewPane.snapshot().claim,
     async back() {
       traverse(-1);
       await settle();
     },
     async forward() {
       traverse(1);
+      await settle();
+    },
+    /** The repository gate answers at last, and `init` runs to its end. */
+    async catchUp() {
+      releaseGate();
+      await initializing;
+      await settle();
+    },
+    /** The reader clicking the Git tab, whose `onShow` asks the gate whether HEAD moved. */
+    async showGitTab() {
+      sandbox.MetabrowserShell.activateNavPanel("git");
+      await settle();
+    },
+    /** `init` again, after a teardown. */
+    async restart() {
+      await sandbox.MetabrowserGitPanel.init();
       await settle();
     },
     /** An in-page open, the way the shell and plugins reach navigation. */
@@ -440,9 +488,13 @@ async function createPage(start, options = {}) {
     const page = await createPage(`/commit/${COMMIT_A}`);
     page.read();
     page.history.pushState(null, "", `/commit/${COMMIT_A}#diff-1`);
+    const claim = page.claim();
     await page.back();
     const fragment = page.read();
     assert(fragment.requests.length === 0, "a fragment step asked for the commit again");
+    // The detail is cached, so only the claim tells a step that changes nothing from one that
+    // selects the commit again, which renders the diff anew and resets the pane.
+    assert(page.claim() === claim, "a fragment step selected the commit again");
     assert(fragment.pane === `commit ${COMMIT_A.slice(0, 7)}`, "a fragment step lost the commit");
     transcript["a fragment on the commit shown"] = fragment;
   }
@@ -484,7 +536,103 @@ async function createPage(start, options = {}) {
     await short.back();
     const landed = short.read();
     assert(landed.pane === opened.pane, `Back onto a short ID: ${landed.pane}`);
-    transcript["an address the repository cannot answer"] = { absent, opened, landed };
+    // Whether an ID is full is a fact about its text, which a request lost on the way to being
+    // refused again does not change: the address still cannot work, and the sentence says why.
+    short.options.commitRequestsFail = true;
+    await short.open("src/a.py");
+    short.read();
+    await short.back();
+    const unreachable = short.read();
+    assert(unreachable.pane === opened.pane, `a short ID, unreachable: ${unreachable.pane}`);
+    short.options.commitRequestsFail = false;
+    // The route's grammar admits capitals and its full-ID rule does not, so an ID of the right
+    // length is refused too, and the sentence has to say why.
+    const upper = await createPage(`/commit/${COMMIT_A.toUpperCase()}`);
+    const uppercase = upper.read();
+    assert(uppercase.pane.startsWith("Full commit ID needed"), `capitals: ${uppercase.pane}`);
+    assert(uppercase.pane.includes("lowercase"), `capitals, not said: ${uppercase.pane}`);
+    transcript["an address the repository cannot answer"] = {
+      absent,
+      opened,
+      landed,
+      unreachable,
+      uppercase,
+    };
+  }
+
+  // Stepping before the panel is ready. The panel adds its listener only when the repository
+  // gate answers, so what it restores is where the reader is by then, not where the page opened.
+  {
+    const page = await createPage("/view/src/a.py", {
+      behind: [`/commit/${COMMIT_A}`],
+      gateHeldDuringInit: true,
+    });
+    page.read();
+    await page.back();
+    const waiting = page.read();
+    await page.catchUp();
+    const ready = page.read();
+    assert(ready.pane === `commit ${COMMIT_A.slice(0, 7)}`, `an early Back: ${ready.pane}`);
+    assert(ready.owner === "git", "an early Back left the pane with the file");
+    assert(ready.navPanel === "git", "an early Back did not show the Git panel");
+
+    const opened = await createPage(`/commit/${COMMIT_A}`, { gateHeldDuringInit: true });
+    await opened.open("src/a.py");
+    await opened.catchUp();
+    const moved = opened.read();
+    assert(moved.pane === "file src/a.py", `the address the page opened on: ${moved.pane}`);
+    assert(moved.owner === "file", "the address the page opened on took the pane");
+    transcript["stepping before the panel is ready"] = { waiting, ready, moved };
+  }
+
+  // A landing the panel does not outlive paints nothing: there is no panel behind the commit,
+  // and nothing would handle the next one. A gate that fails once tears the panel down as one
+  // that says the root stopped being a repository does, which mb-5gs6 tracks.
+  for (const [step, gate] of [
+    ["the root stopped being a repository", { notARepository: true }],
+    ["the repository gate failed once", { gateFailures: 1 }],
+  ]) {
+    const page = await createPage("/view/README.md");
+    await page.selectRow(COMMIT_A);
+    await page.open("src/a.py");
+    page.read();
+    Object.assign(page.options, gate);
+    await page.back();
+    const after = page.read();
+    assert(after.pane === "file src/a.py", `${step}: ${after.pane}`);
+    assert(after.owner === "file", `${step}: a commit took the pane with no panel behind it`);
+    assert(after.navPanel === "files", `${step}: ${after.navPanel}`);
+    assert(page.listeners.get("popstate")?.size === 1, `${step}: the panel still listens`);
+    transcript[`a landing when ${step}`] = after;
+  }
+
+  // A panel that went away and came back starts over: neither a selection nor a refusal from
+  // its previous life answers for the pane now.
+  {
+    const page = await createPage(`/commit/${COMMIT_A}`);
+    page.options.notARepository = true;
+    await page.showGitTab();
+    page.options.notARepository = false;
+    page.read();
+    await page.restart();
+    const selection = page.read();
+    assert(selection.navPanel === "git", "an old selection stood in for the one restored");
+    assert(selection.requests.length === 1, "the restart did not load the commit it restored");
+    assert(selection.pane === `commit ${COMMIT_A.slice(0, 7)}`, `restart: ${selection.pane}`);
+
+    const short = await createPage(`/commit/${SHORT}`);
+    short.options.notARepository = true;
+    await short.showGitTab();
+    short.options.notARepository = false;
+    short.options.commitRequestsFail = true;
+    short.read();
+    await short.restart();
+    const refusal = short.read();
+    assert(
+      refusal.pane === "Could not load this commit.",
+      `an old refusal stood in for this failure: ${refusal.pane}`,
+    );
+    transcript["a panel that came back starts over"] = { selection, refusal };
   }
 
   // A folder that is not a repository has no panel, and nothing listens for a landing.

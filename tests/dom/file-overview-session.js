@@ -11,7 +11,8 @@
 // is a stand-in for the few calls they make, and `mb.watchRollup` is the SDK's, whose
 // `fetch` here answers what each step says instead of asking a server: the rollups below
 // have the shape `/api/rollup` answers, which cli-api.tryscript.md pins. The folder header's
-// tally is lifted verbatim from app.js, which cannot load without a document.
+// tally and the file list's note on a capped index are lifted verbatim from app.js, which
+// cannot load without a document.
 //
 // Each step prints what is on screen: the totals, the distribution's text, starting with
 // its caption, and whether it offers Retry. Exits 1 on a failed invariant.
@@ -54,6 +55,7 @@ class FakeElement {
     this.hidden = false;
     this.ownText = "";
     this.html = "";
+    this.htmlWrites = 0;
     this.classList = {
       add: (...names) => {
         this.className = [...new Set([...this.className.split(" "), ...names])]
@@ -105,6 +107,7 @@ class FakeElement {
   }
   set innerHTML(value) {
     this.html = value;
+    this.htmlWrites += 1;
     this.children = [];
     this.ownText = "";
   }
@@ -269,6 +272,8 @@ const rollupError = (status) =>
       panel,
       requests: () => requests,
       settle,
+      /** Times the totals' markup was replaced, each of which restarts a skeleton's delay. */
+      totalsWrites: () => totals().htmlWrites,
       read() {
         const shownTotals = totals();
         // A folder the inventory leaves out mounts neither body.
@@ -412,6 +417,75 @@ const rollupError = (status) =>
     view.panel.dispose();
   }
 
+  // A later answer that the scan is running brings both skeletons back, whatever ended them.
+  // The distribution rebuilds its own from that answer, and the totals have to follow it.
+  const SCANNING = { path: "docs", index_status: "scanning", node: null };
+  const FINISHED_WITHOUT = { path: "docs", index_status: "done", truncated: false, node: null };
+  for (const [step, answers, resume] of [
+    ["a refresh failing during a scan, then Retry", [SCANNING, rollupError(500)], "retry"],
+    ["a refresh failing during a scan, then a change", [SCANNING, rollupError(500)], "change"],
+    ["an index that finished without the folder, then a rescan", [FINISHED_WITHOUT], "change"],
+    ["a failed first request, then a change", [rollupError(500)], "change"],
+    ["a failed first request, then Retry", [rollupError(500)], "retry"],
+  ]) {
+    const [firstAnswer, ...later] = answers;
+    const view = page(PENDING_DIR, firstAnswer);
+    await view.settle();
+    for (const answer of later) {
+      view.answers.next = answer;
+      await view.inventoryChanged();
+    }
+    const stopped = view.read();
+    noSkeleton(stopped, step);
+    view.answers.next = SCANNING;
+    if (resume === "retry") {
+      view.retry();
+      await view.settle();
+    } else {
+      await view.inventoryChanged();
+    }
+    const resumed = view.read();
+    assert(resumed.totals === "skeleton", `${step}: totals ${resumed.totals}`);
+    assert(resumed.distribution === "skeleton", `${step}: distribution ${resumed.distribution}`);
+    transcript[`${step} brings both skeletons back`] = { stopped, resumed };
+    view.panel.dispose();
+  }
+
+  // Every refresh of a scan answers the same, and only a change repaints the totals. Past a
+  // failure and back it still ends the same way, when the index says nothing is coming.
+  {
+    const view = page(PENDING_DIR, SCANNING);
+    await view.settle();
+    const writes = view.totalsWrites();
+    await view.inventoryChanged();
+    assert(view.totalsWrites() === writes, "a scan's refresh repainted the totals' skeleton");
+    view.answers.next = rollupError(500);
+    await view.inventoryChanged();
+    view.answers.next = SCANNING;
+    await view.inventoryChanged();
+    const resumed = view.read();
+    assert(resumed.totals === "skeleton", `past a failure: totals ${resumed.totals}`);
+    view.answers.next = FINISHED_WITHOUT;
+    await view.inventoryChanged();
+    const finished = view.read();
+    noSkeleton(finished, "an index that finished after a resumed scan");
+    assert(finished.totals === "nothing", `an index finished after: totals ${finished.totals}`);
+    transcript["a resumed scan still finishes"] = { resumed, finished };
+    view.panel.dispose();
+  }
+
+  // Totals already on screen are not a skeleton's to take back.
+  {
+    const view = page(COMPLETE_DIR, rollupError(500));
+    await view.settle();
+    view.answers.next = SCANNING;
+    await view.inventoryChanged();
+    const shown = view.read();
+    assert(shown.totals.includes("Total"), `a rescan took the envelope's totals: ${shown.totals}`);
+    transcript["a rescan leaves the totals the envelope carries"] = shown;
+    view.panel.dispose();
+  }
+
   // A folder the inventory leaves out: nothing can answer, so nothing is asked, nothing
   // waits, and File Overview says why. Its rollup would be refused.
   for (const reason of ["hidden", "symlink"]) {
@@ -515,6 +589,23 @@ const rollupError = (status) =>
     assert(shown["still scanning"].skeleton, "a scanning folder's header stopped loading");
     assert(!shown.hidden.skeleton && !shown.symlink.skeleton, "a tally waits for nothing");
     transcript["the folder header's tally"] = shown;
+
+    // The file list says the same of a capped index. Its count helper writes the noun, and
+    // the route may not name the limit.
+    const noteHtml = vm.runInNewContext(
+      `${["formatCount", "treeTruncationNoteHtml"].map(lift).join("\n")}
+       treeTruncationNoteHtml;`,
+    );
+    const note = (maxFiles) => noteHtml(maxFiles).replace(/<[^>]*>/g, "");
+    const notes = { "3 files": note(3), "1 file": note(1), "no limit named": note(undefined) };
+    assert(
+      notes["3 files"] ===
+        "File list incomplete. Metabrowser stopped after 3 files, so some files and folders are not shown.",
+      `the capped note: ${notes["3 files"]}`,
+    );
+    assert(notes["1 file"].includes("stopped after 1 file,"), `one file: ${notes["1 file"]}`);
+    assert(notes["no limit named"].includes("its file limit"), notes["no limit named"]);
+    transcript["the file list's note on a capped index"] = notes;
   }
 
   console.warn = originalWarn;

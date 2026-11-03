@@ -30,6 +30,10 @@ from dotenv import dotenv_values, find_dotenv
 
 from metabrowser.capabilities import CAPABILITY_ENV_VARS
 
+# `metab` already imports this at startup (`cli/serve.py`), and it imports no other Git
+# module, so a folder's start pays nothing for it here.
+from metabrowser.git.process import loggable
+
 log = logging.getLogger(__name__)
 
 DOTENV_NAMES: tuple[str, ...] = (".env", ".env.local")
@@ -96,6 +100,18 @@ if ALLOWED_KEYS & set(CAPABILITY_ENV_VARS):
     raise RuntimeError("capability variables must never be loadable from a dotenv file")
 
 
+def _one_line(text: str) -> str:
+    """*text* as part of a one-line warning, with nothing in it acting on a terminal.
+
+    The file's names and the directory it is in are the browsed repository's, so they
+    could colour or erase the line that reports them. A quoted key may also hold a line
+    break, which :func:`~metabrowser.git.process.loggable` keeps and which would start a
+    line the file wrote.
+    """
+
+    return loggable(text).replace("\n", "\\n")
+
+
 def load_dotenv_chain() -> list[Path]:
     """Apply the allowlisted names from ``.env`` then ``.env.local``.
 
@@ -106,6 +122,10 @@ def load_dotenv_chain() -> list[Path]:
     and ``.env`` beats ``.env.local``. Every other name is ignored, and
     those carrying one of this package's prefixes are reported at
     WARNING so an operator is not left guessing.
+
+    A file that cannot be read as text is skipped with a warning: it is
+    the browsed repository's to write, and it must not stop the command
+    that browses it.
 
     Returns the files found and parsed, in load order, for callers that
     want to surface which files were consulted. A file every one of
@@ -118,9 +138,20 @@ def load_dotenv_chain() -> list[Path]:
         if not found:
             continue
         path = Path(found)
+        try:
+            values = dotenv_values(found)
+        except (UnicodeDecodeError, OSError) as exc:
+            if path not in _reported:
+                _reported.add(path)
+                log.warning(
+                    "%s: skipped, because it could not be read as text (%s).",
+                    _one_line(str(path)),
+                    type(exc).__name__,
+                )
+            continue
         parsed.append(path)
         ignored: list[str] = []
-        for key, value in dotenv_values(found).items():
+        for key, value in values.items():
             if value is None:
                 continue
             if key in ALLOWED_KEYS:
@@ -133,8 +164,8 @@ def load_dotenv_chain() -> list[Path]:
             log.warning(
                 "%s: ignored %s — a dotenv file may only set %s. "
                 "Export the others in the environment instead; see SECURITY.md.",
-                path,
-                ", ".join(sorted(ignored)),
+                _one_line(str(path)),
+                _one_line(", ".join(sorted(ignored))),
                 ", ".join(sorted(ALLOWED_KEYS)),
             )
     return parsed

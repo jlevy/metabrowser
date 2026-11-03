@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from devtools import check_parity
+from tests.golden_harness import block
 from tests.required_tools import needs_node
 
 _HEADER = "| Surface | Status | CLI | Golden or reason |\n| --- | --- | --- | --- |\n"
@@ -1047,6 +1048,81 @@ def test_a_named_in_process_golden_is_held_to_the_same_route_rules(
         assert problems == []
     else:
         assert any("/api/tree" in found and problem in found for found in problems)
+
+
+# One whole command as the gate reads it, printed by a command rather than run by one.
+_PRINTED_COMMAND = "# metab root --api /api/tree\nexit: 0\n--- stdout ---\n"
+
+
+def test_a_printed_command_header_reads_as_a_command_so_it_cannot_be_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, only_tree: None
+) -> None:
+    """The gate cannot tell these apart, which is why ``block`` refuses to write one.
+
+    Written by hand, the transcript below passes the gate on a route nothing ran. It
+    cannot reach the gate that way: a test has to compare a ``.txt`` to what ``block``
+    wrote, and ``check_goldens.py`` fails one no test compares.
+    """
+
+    golden_dir = tmp_path / "golden"
+    _write_golden(
+        golden_dir,
+        "session.txt",
+        _in_process_block("metab root --walk", stdout=_PRINTED_COMMAND),
+    )
+    monkeypatch.setattr(check_parity, "GOLDEN_DIR", golden_dir)
+    monkeypatch.setattr(
+        check_parity,
+        "MAP_DOC",
+        _write_map(tmp_path, "| `/api/tree` | covered | `--api` | `session.txt` |"),
+    )
+
+    assert check_parity.check() == []
+    with pytest.raises(ValueError, match="2 command headers"):
+        block("metab root --walk", 0, _PRINTED_COMMAND, "")
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "sections"),
+    [
+        (_PRINTED_COMMAND, "", {}),
+        (f"before\n{_PRINTED_COMMAND}after\n", "", {}),
+        ("", _PRINTED_COMMAND, {}),
+        ("", "", {"gh": _PRINTED_COMMAND.splitlines()}),
+    ],
+    ids=["stdout", "inside-stdout", "stderr", "section"],
+)
+def test_block_refuses_a_command_header_anywhere_after_its_own(
+    stdout: str, stderr: str, sections: dict[str, list[str]]
+) -> None:
+    with pytest.raises(ValueError, match="2 command headers"):
+        block("metab root --walk", 0, stdout, stderr, **sections)
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        "metab root --api /api/tree\n",
+        "# metab root --api /api/tree\n",
+        "# metab root --api /api/tree\nexit: 0\n",
+        "exit: 0\n--- stdout ---\n",
+        "# metab root --api /api/tree\n--- stdout ---\n",
+    ],
+    ids=["command-alone", "line-alone", "no-stream-line", "no-command-line", "no-exit-line"],
+)
+def test_block_records_output_that_is_not_a_whole_command_header(stdout: str) -> None:
+    recorded = block("metab root --walk", 0, stdout, "")
+
+    assert recorded == f"# metab root --walk\nexit: 0\n--- stdout ---\n{stdout}--- stderr ---\n"
+
+
+def test_block_refuses_a_command_line_that_does_not_read_as_one_command() -> None:
+    """A line break in the command is the same ambiguity, from the other side."""
+
+    with pytest.raises(ValueError, match="0 command headers"):
+        block("metab root\n--walk", 0, "", "")
+    with pytest.raises(ValueError, match="2 command headers"):
+        block("metab root\nexit: 0\n--- stdout ---\n# metab root --api /api/tree", 0, "", "")
 
 
 def test_a_failing_tryscript_is_supplemented_by_a_named_in_process_golden(

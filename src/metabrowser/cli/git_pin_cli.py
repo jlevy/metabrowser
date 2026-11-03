@@ -393,6 +393,7 @@ def run_pin_api(
     no_active_content: bool = False,
     allow_edits: bool = False,
     checkout: Path | None = None,
+    headers: bool = True,
 ) -> None:
     """Acquire a source, attach the pin its URL selects, and ``--api``."""
 
@@ -424,6 +425,7 @@ def run_pin_api(
                 untrusted=True,
                 no_active_content=no_active_content,
                 allow_edits=False,
+                headers=headers,
             )
 
     run_cancelling_on_hangup(_run())

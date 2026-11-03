@@ -33,9 +33,9 @@ Serving https://github.com/pallets/click at http://127.0.0.1:8411/pull/3866
 Later runs reuse that clone and say so
 (`using the clone of … cached in ~/.cache/metabrowser, fetched 3 hours ago`).
 
-A `/pull/123/files` URL opens the same pull request, on its Conversation tab: choose
-**Files changed**. Once you are there, the browser’s address is `/pull/123/files`, which
-reopens on that tab.
+A `/pull/123/files` URL copied from GitHub opens on **Files changed**, and the `Serving`
+line prints that address, `http://127.0.0.1:8411/pull/123/files`. A `/pull/123/commits`
+URL opens on Conversation, because the page has no Commits tab.
 
 ## What the Page Shows
 

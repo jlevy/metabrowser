@@ -84,6 +84,7 @@ __all__ = [
     "KPressRenderError",
     "build_export_request",
     "clear_render_cache",
+    "document_stylesheets",
     "export_kpress_document",
     "get_kpress_static_asset",
     "inert_render",
@@ -272,6 +273,41 @@ def _anchored_headings(headings: object, anchors: dict[str, str]) -> list[dict[s
     return entries
 
 
+def _assets_loading(assets: dict[str, Any], loading: frozenset[str]) -> dict[str, Any]:
+    """*assets*, a KPress asset manifest, keeping only entries loaded one of these ways."""
+
+    kept = [
+        asset
+        for asset in cast("list[object]", assets.get("assets") or [])
+        if isinstance(asset, dict) and asset.get("loading") in loading
+    ]
+    return {key: value for key, value in assets.items() if key not in {"assets", "import_map"}} | {
+        "assets": kept
+    }
+
+
+@cache
+def document_stylesheets() -> dict[str, Any]:
+    """The manifest of KPress's stylesheets, for prose a page sets in a KPress article itself.
+
+    What KPress lists for an empty document, so no text chooses what a page loads, and
+    stylesheets alone: nothing in it runs. A page gives it to ``loadKpressAssets``. One
+    render, once per process.
+    """
+
+    rendered = render_kpress_view(
+        source_text="",
+        source_path="document-stylesheets.md",
+        kind="markdown",
+        view="document",
+        ext=".md",
+        mtime_hash="document-stylesheets",
+        size=0,
+        include_toc="off",
+    )
+    return _assets_loading(cast("dict[str, Any]", rendered["assets"]), frozenset({"stylesheet"}))
+
+
 def inert_render(rendered: dict[str, Any]) -> dict[str, Any]:
     """*rendered* for a page that must not trust it: allowlisted HTML and no scripts.
 
@@ -295,14 +331,9 @@ def inert_render(rendered: dict[str, Any]) -> dict[str, Any]:
     inert["html"], anchors = harden_document(html)
     assets = rendered.get("assets")
     if isinstance(assets, dict):
-        kept = [
-            asset
-            for asset in cast("list[object]", assets.get("assets") or [])
-            if isinstance(asset, dict) and asset.get("loading") in {"stylesheet", "resource"}
-        ]
-        inert["assets"] = {
-            key: value for key, value in assets.items() if key not in {"assets", "import_map"}
-        } | {"assets": kept}
+        inert["assets"] = _assets_loading(
+            cast("dict[str, Any]", assets), frozenset({"stylesheet", "resource"})
+        )
     inert["widgets"] = {}
     model = rendered.get("model")
     if isinstance(model, dict):

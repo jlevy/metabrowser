@@ -19,11 +19,8 @@ from pathlib import Path
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "src" / "metabrowser" / "static"
 PLUGINS_DIR = STATIC_DIR.parent / "builtin_plugins"
-AGENT_LOG_STYLES_CSS = PLUGINS_DIR / "agent_log" / "styles.css"
-# The Bytes view renders inside the shared `.code-block` surface, so it
-# inherits the classified monospace rule instead of declaring its own.
-BINARY_STYLES_CSS = PLUGINS_DIR / "binary" / "styles.css"
-STYLE_FILES = (STATIC_DIR / "styles.css", AGENT_LOG_STYLES_CSS, BINARY_STYLES_CSS)
+# Every stylesheet the app ships: a plugin's chrome is chrome.
+STYLE_FILES = (STATIC_DIR / "styles.css", *sorted(PLUGINS_DIR.glob("*/*.css")))
 SEARCH_PALETTE_JS = STATIC_DIR / "search-palette.js"
 KEYBOARD_SHORTCUTS_JS = STATIC_DIR / "keyboard-shortcuts.js"
 
@@ -52,6 +49,12 @@ MONO_ALLOWED_SELECTORS = frozenset(
         ".md-body:not(.metabrowser-kpress-host) code",
         ".log-event-raw pre",
         ".log-event-raw code",
+        # A diff's lines and a comment's hunk of one: the user's code.
+        ".metabrowser-diff-host .diff-line",
+        ".metabrowser-diff-host .diff-split-side",
+        ".github-pull-hunk",
+        # A JSON or YAML document's own structure, whose indent carries meaning.
+        ".structured-tree",
         ".compression-badge",
         ".metabrowser-kpress-error-detail",
         ".log-event-header",

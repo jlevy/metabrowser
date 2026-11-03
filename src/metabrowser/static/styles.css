@@ -256,6 +256,7 @@
                                    (source views, logs, raw JSON)
        --micro-font-size     10px  deliberately-minimized marks (the
                                    brand line)
+       --page-title-font-size 24px the title of a page no file stands behind
      One exception: .compression-badge draws a 7px glyph — iconography,
      not text, and not part of the ramp.
 
@@ -281,6 +282,7 @@
   --tooltip-font-size: var(--body-font-size);
   --tooltip-detail-font-size: var(--ui-small-font-size);
   --micro-font-size: 10px;
+  --page-title-font-size: 24px;
   --document-body-font-size: 15px;
   --kpress-host-font-size-base: var(--document-body-font-size);
   --mono-block-font-size: var(--ui-small-font-size);
@@ -1448,6 +1450,47 @@ body {
 .metabrowser-kpress-host .kpress details[open] > summary::after {
   transform: rotate(90deg);
 }
+/* ── Section heading — the title of a section in a stack ─────────
+   The tab bar's uppercase, bold, tracked grammar at the body size, over a neutral rule.
+   A use site owns the space around it; the type and the rule are here. */
+.section-heading {
+  padding: 0 0 var(--section-heading-divider-gap);
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--body-font-size);
+  font-weight: var(--label-font-weight);
+  letter-spacing: var(--label-letter-spacing);
+  line-height: 1.25;
+  text-transform: var(--label-text-transform);
+}
+/* ── Fold expander — a run of content withheld until asked for ───
+   The tree's disclosure vocabulary on a full-width row: the registry's chevron, at row
+   height, hovering with the shared token like every other clickable row. */
+.fold-expander {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: var(--ui-row-height);
+  padding: 0 10px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--highlight-bg);
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: var(--ui-small-font-size);
+  text-align: left;
+  cursor: pointer;
+}
+.fold-expander:hover {
+  background: var(--hover-bg);
+}
+.fold-expander:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
 /* ── Icon buttons — shared icon-only control primitive ───────────
    Every icon-only control in the chrome reads the same: a
    --icon-btn-size hit target holding the app-wide --icon-glyph mark,
@@ -1755,15 +1798,19 @@ body {
     color var(--transition-fast),
     background var(--transition-fast);
 }
-.menu-seg:hover,
-.menu-seg:focus-visible {
+.menu-seg:hover {
   background: var(--hover-bg);
   color: var(--text);
-  outline: none;
 }
 .menu-seg[aria-checked="true"] {
   background: var(--highlight-bg);
   color: var(--link);
+}
+/* The chip's ring. A focused segment's fill cannot be the signal: the checked rule above
+   would hide it, and the checked segment is where keyboard focus lands. */
+.menu-seg:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
 }
 /* The sanctioned exception to --icon-glyph: here the glyph is the whole
    label of the segment (sun / moon / monitor), not a mark beside text,
@@ -1929,12 +1976,7 @@ html.theme-anim .menu {
    INVENTORY_MAX_FILES). Finalized dirs still carry usable totals;
    this just tells the user the tree is partial. */
 .tree-truncation-note {
-  padding: 8px 12px;
-  margin: 0 0 4px;
-  color: var(--text);
-  font-size: var(--ui-small-font-size);
-  background: var(--sidebar-bg);
-  border-bottom: 1px solid var(--border);
+  margin: 4px var(--pane-header-padding-x) 8px;
 }
 
 /* Path-rendering convention — pathBaseHtml() in app.js wraps the last
@@ -2133,30 +2175,15 @@ html.theme-anim .menu {
   background: var(--sidebar-bg);
   font-size: var(--ui-small-font-size);
 }
+/* The trigger is a `.chip-menu-trigger`: it names the served ref and opens a list, as a
+   select does. Only what a long name needs is local. */
 .source-ref-selector-toggle {
   max-width: 100%;
+}
+.source-ref-selector-label {
+  min-width: 0;
   overflow: hidden;
-  padding: 2px 6px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
-  background: none;
-  color: var(--text);
-  font: inherit;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.source-ref-selector-toggle::after {
-  content: " \25BE";
-  color: var(--muted);
-}
-.source-ref-selector-toggle:hover,
-.source-ref-selector-toggle[aria-expanded="true"] {
-  background: var(--hover-bg);
-}
-.source-ref-selector-toggle:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 2px;
 }
 .source-ref-selector-panel {
   position: absolute;
@@ -2168,23 +2195,6 @@ html.theme-anim .menu {
 .source-ref-selector-panel[hidden] {
   display: none;
 }
-.source-ref-selector-kinds {
-  display: flex;
-  gap: 4px;
-}
-.source-ref-selector-kind {
-  padding: 2px 8px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-chrome);
-  background: none;
-  color: var(--muted);
-  font: inherit;
-  cursor: pointer;
-}
-.source-ref-selector-kind[aria-pressed="true"] {
-  border-color: var(--border);
-  color: var(--text);
-}
 .source-ref-selector-filter {
   width: 100%;
   padding: 3px 6px;
@@ -2193,6 +2203,10 @@ html.theme-anim .menu {
   background: var(--bg);
   color: var(--text);
   font: inherit;
+}
+.source-ref-selector-filter:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
 }
 .source-ref-selector-list {
   max-height: min(50vh, 320px);
@@ -2802,15 +2816,26 @@ html[data-prose-font="sans"] {
   color: var(--muted);
   cursor: pointer;
   user-select: var(--toggle-user-select);
-  border-bottom: 2px solid transparent;
+  border-bottom: var(--tab-active-border-width) solid transparent;
   margin-bottom: -1px;
   font-family: var(--font-sans);
   transition:
     color var(--transition-fast),
     border-color var(--transition-fast);
 }
+/* A tab that is an address: a link, so back, forward, and open in a new tab work.
+   What a <button> gets from the browser is stated here, so the two are the same tab. */
+a.tab-btn {
+  line-height: normal;
+  text-align: center;
+  text-decoration: none;
+}
 .tab-btn:hover {
   color: var(--text);
+}
+.tab-btn:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
 }
 .tab-btn.active {
   color: var(--text);
@@ -2920,7 +2945,9 @@ html[data-prose-font="sans"] {
   border-radius: var(--radius-pill);
   background: var(--viz-surface);
 }
-.chip-group[data-layout="wrap"] > .chip:hover {
+/* After the rules above that set a chip's rest fill, which tie with it on specificity, so a
+   joined chip answers the pointer as a lone chip and a wrapped chip do. */
+.chip-group > .chip:hover {
   background: var(--hover-bg);
 }
 /* Single-select: accent fill, the .menu-seg[aria-checked] treatment. */
@@ -2970,7 +2997,8 @@ html[data-prose-font="sans"] {
   color: var(--link);
   font-weight: var(--weight-medium);
 }
-.chip-menu[aria-expanded="true"] .chip-menu-trigger {
+.chip-menu[aria-expanded="true"] .chip-menu-trigger,
+.source-ref-selector-toggle[aria-expanded="true"] {
   background: var(--hover-bg);
   color: var(--text);
   box-shadow: inset 0 0 0 1px var(--viz-border-strong);
@@ -3087,7 +3115,7 @@ html[data-prose-font="sans"] {
   border-radius: var(--radius-pill);
   background: var(--link);
   color: var(--bg);
-  font-size: 10px;
+  font-size: var(--micro-font-size);
   line-height: 14px;
   text-align: center;
   font-variant-numeric: tabular-nums;
@@ -3537,7 +3565,7 @@ html[data-prose-font="sans"] {
 }
 .folder-header-count,
 .folder-header-age {
-  font-size: 12px;
+  font-size: var(--ui-small-font-size);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;

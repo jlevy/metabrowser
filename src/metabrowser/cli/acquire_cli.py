@@ -220,6 +220,7 @@ def run_api_after_acquire(
     no_active_content: bool = False,
     allow_edits: bool = False,
     checkout: Path | None = None,
+    headers: bool = True,
 ) -> None:
     """Acquire *source*, then issue a cache route against an empty ASGI root."""
 
@@ -246,4 +247,5 @@ def run_api_after_acquire(
             untrusted=untrusted,
             no_active_content=no_active_content,
             allow_edits=allow_edits,
+            headers=headers,
         )

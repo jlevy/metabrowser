@@ -325,9 +325,10 @@ A `/tree/` or `/blob/` URL may name a branch whose name contains `/`; the mirror
 where the ref ends, preferring a branch, then a tag, then a commit ID. Ref names match
 exactly, including letter case, and `HEAD` names the default branch.
 `--no-serve` prints what the URL selected after the identity lines (`selection`, `pin`,
-`path`, and `lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor), and `--show`
-and `--api` print the same lines on stderr and pin that commit.
-A `/pull/<n>` URL pins the pull request’s head; see [Pull requests](#pull-requests).
+`path`, `lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor, and `tab` for a pull
+request’s `/files`), and `--show` and `--api` print the same lines on stderr and pin
+that commit. A `/pull/<n>` URL pins the pull request’s head; see
+[Pull requests](#pull-requests).
 Query parameters other than `?plain=1` are dropped.
 Any other github.com page, `http://`, and GitHub’s own top-level pages are refused with
 a message that names the shape and offers the repository URL.
@@ -387,12 +388,18 @@ unchanged part costs GitHub nothing against the rate limit.
 A one-shot `--api /api/plugin/github/pull-refresh --data <file with {}>` also refreshes
 it, waits, prints the record under `after:`, and exits 1 when the refresh failed.
 
-A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s. A
-`/pull/<n>/files` URL selects the same pull request as `/pull/<n>`, so it serves the
-same page; `--show /pull/<n>/files` is the way to ask for Files changed.
-Other pull-request pages, such as `/pull/<n>/checks`, and a repository’s `/pulls` list
-are refused. Each command opens one pull request: `--show /pull/<other>` answers
-`this source serves pull request <n>`, and a served folder or checkout answers
+A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s, and a server
+opens at the top of the repository.
+A `/pull/<n>/files` URL selects the same pull request as `/pull/<n>` and adds
+`tab: files` to the selection lines, and a server opens at `/pull/<n>/files`, as its
+`Serving` line prints.
+The tab says only where a server opens: `--show` and `--api` answer the path or route
+they are given, so `--show /pull/<n>/files` is the way to ask for Files changed without
+a browser. A `/pull/<n>/commits` URL is the same as `/pull/<n>`, because the page has no
+Commits tab. Other pull-request pages, such as `/pull/<n>/checks`, and a repository’s
+`/pulls` list are refused.
+Each command opens one pull request: `--show /pull/<other>` answers
+`this source serves pull request <n>`, and a folder or a checkout answers
 `this source serves no pull request`.
 
 `--show /pull/<n>` reports the page’s kind and a summary of its record, after the
@@ -415,13 +422,12 @@ its fetch, `stale` after, or `absent` with a reason.
 Its `comparison_route` is Files changed, the merge base of the base branch and the head
 to the head, as GitHub shows it; issue it with `--api` to get the diff.
 `--diff` does not open an `https://` source, so this route is the way to read one.
-`--api` prints two header lines before the envelope, which `tail -n +3` drops for a tool
-such as `jq`:
+`--format json` prints the envelope alone, for a tool such as `jq`:
 
 ```shell
 URL=https://github.com/owner/repo/pull/123
-ROUTE=$(metab "$URL" --api /api/plugin/github/pull | tail -n +3 | jq -r .comparison_route)
-metab "$URL" --api "$ROUTE" | tail -n +3 |
+ROUTE=$(metab "$URL" --api /api/plugin/github/pull --format json | jq -r .comparison_route)
+metab "$URL" --api "$ROUTE" --format json |
   jq -r '.manifest.files[] | "\(.kind) \(.new.path // .old.path) +\(.additions) -\(.deletions)"'
 ```
 
@@ -648,7 +654,8 @@ metab ./notes --api '/api/git/log?limit=5'
 metab ./notes --api /api/cache/layout
 metab ./notes --api '/api/cache/sources?limit=20'
 
-# YAML instead of JSON.
+# Only the envelope, as JSON or YAML, for a tool to parse.
+metab ./notes --api /api/git/refs --format json
 metab ./notes --api /api/git/refs --format yaml
 
 # A route that takes a POST body.
@@ -667,6 +674,10 @@ status: 200
   "views": [ ... ]
 }
 ```
+
+With `--format json` or `--format yaml`, stdout is the envelope alone, so it parses.
+A body that is not JSON is one string, and a refresh that waits prints only the status
+it ended with, the answer the output above would print under `after:`.
 
 The exit status is non-zero when the route answers outside 2xx, so a script can act on
 failure without parsing the body.
