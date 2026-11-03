@@ -170,7 +170,7 @@ def test_golden_pull_files_listed_refreshed_and_refused(
     assert head.payload()["rows"][2]["previous_path"] == "docs/old-guide.md"
     tail = session.get(f"?number={TREE_PULL}&offset=245")
     assert [row["display"] for row in tail.payload()["rows"]] == [
-        "src/metabrowser/cli/two.py",
+        "src/app/views/two.py",
         "tools/new/script.sh",
         "weird/bell�name.txt",
         "weird/zero�width.md",

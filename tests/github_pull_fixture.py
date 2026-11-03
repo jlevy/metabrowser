@@ -670,7 +670,7 @@ def list_entries(origin: Origin) -> dict[str, Any]:
 
 # ── Changed files ───────────────────────────────────────────────
 
-# Pull request 106's files: a chain of single-child folders, ``src/metabrowser``, that
+# Pull request 106's files: a chain of single-child folders, ``src/app``, that
 # splits below; a rename inside a folder and one across folders; a deleted file; a binary
 # file, which GitHub counts as no lines; a name with a control character and one with a
 # zero-width space, which the display rule replaces; and enough of one folder's files to
@@ -681,12 +681,12 @@ _TREE_FILES: Final[tuple[tuple[str, str, str | None, int, int], ...]] = (
     ("docs/guide.md", "renamed", "docs/old-guide.md", 3, 0),
     ("docs/removed.md", "removed", None, 0, 12),
     *(
-        (f"src/metabrowser/builtin_plugins/github/mod_{index:03d}.py", "modified", None, 4, 2)
+        (f"src/app/plugins/github/mod_{index:03d}.py", "modified", None, 4, 2)
         for index in range(239)
     ),
-    ("src/metabrowser/builtin_plugins/github/pull_files.py", "added", None, 120, 0),
-    ("src/metabrowser/cli/one.py", "modified", None, 1, 1),
-    ("src/metabrowser/cli/two.py", "added", None, 9, 0),
+    ("src/app/plugins/github/pull_files.py", "added", None, 120, 0),
+    ("src/app/views/one.py", "modified", None, 1, 1),
+    ("src/app/views/two.py", "added", None, 9, 0),
     ("tools/new/script.sh", "renamed", "scripts/script.sh", 0, 0),
     ("weird/bell\u0007name.txt", "added", None, 1, 0),
     ("weird/zero\u200bwidth.md", "modified", None, 1, 1),

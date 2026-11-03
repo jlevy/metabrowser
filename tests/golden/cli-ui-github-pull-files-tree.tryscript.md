@@ -16,9 +16,8 @@ full-size pages, recorded in `tests/fixtures/github-pull-files-responses.json`.
 `a list fills page by page` is pull request 106’s first list, read between its pages:
 each step says the window the tree asked for, which is past the rows it holds while the
 same list fills, the honest count, with the pages GitHub’s `Link` header counted, and
-the rows. A folder whose only child is a folder is one row,
-`src/metabrowser/builtin_plugins/github`, until the third page brings
-`src/metabrowser/cli` and the chain splits.
+the rows. A folder whose only child is a folder is one row, `src/app/plugins/github`,
+until the third page brings `src/app/views` and the chain splits.
 How folders start is decided by the list’s size, the pages GitHub counted included: open
 under the threshold, and only the top level over it.
 A reader’s toggle of a chain row opens or closes every folder in it, and the file a page
@@ -79,7 +78,7 @@ $ node tests/dom/github-pull-files-tree-session.js
           "v docs/ (2)",
           "  R guide.md (from docs/old-guide.md) +3 -0",
           "  D removed.md +0 -12",
-          "v src/metabrowser/builtin_plugins/github/ (96)",
+          "v src/app/plugins/github/ (96)",
           "  M mod_000.py +4 -2",
           "  M mod_001.py +4 -2",
           "  M mod_002.py +4 -2",
@@ -107,7 +106,7 @@ $ node tests/dom/github-pull-files-tree-session.js
           "v docs/ (2)",
           "  R guide.md (from docs/old-guide.md) +3 -0",
           "  D removed.md +0 -12",
-          "v src/metabrowser/builtin_plugins/github/ (196)",
+          "v src/app/plugins/github/ (196)",
           "  M mod_000.py +4 -2",
           "  M mod_001.py +4 -2",
           "  M mod_002.py +4 -2",
@@ -135,15 +134,15 @@ $ node tests/dom/github-pull-files-tree-session.js
           "v docs/ (2)",
           "  R guide.md (from docs/old-guide.md) +3 -0",
           "  D removed.md +0 -12",
-          "v src/metabrowser/ (242)",
-          "  v builtin_plugins/github/ (240)",
+          "v src/app/ (242)",
+          "  v plugins/github/ (240)",
           "    M mod_000.py +4 -2",
           "    M mod_001.py +4 -2",
           "    M mod_002.py +4 -2",
           "    … 235 more",
           "    M mod_238.py +4 -2",
           "    A pull_files.py +120 -0",
-          "  v cli/ (2)",
+          "  v views/ (2)",
           "    M one.py +1 -1",
           "    A two.py +9 -0",
           "v tools/new/ (1)",
@@ -162,7 +161,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "v docs/ (2)",
         "  R guide.md (from docs/old-guide.md) +3 -0",
         "  D removed.md +0 -12",
-        "> src/metabrowser/ (242)",
+        "> src/app/ (242)",
         "v tools/new/ (1)",
         "  R script.sh (from scripts/script.sh) +0 -0",
         "v weird/ (2)",
@@ -176,15 +175,15 @@ $ node tests/dom/github-pull-files-tree-session.js
         "v docs/ (2)",
         "  R guide.md (from docs/old-guide.md) +3 -0",
         "  D removed.md +0 -12",
-        "v src/metabrowser/ (242)",
-        "  v builtin_plugins/github/ (240)",
+        "v src/app/ (242)",
+        "  v plugins/github/ (240)",
         "    M mod_000.py +4 -2"
       ]
     },
     "past the threshold only the top level shows": [
       "> assets/ (1)",
       "> docs/ (2)",
-      "> src/metabrowser/ (242)",
+      "> src/app/ (242)",
       "> tools/new/ (1)",
       "> weird/ (2)",
       "M README.md +2 -1"
@@ -192,7 +191,7 @@ $ node tests/dom/github-pull-files-tree-session.js
     "the file a page shows is revealed and current": [
       "> assets/ (1)",
       "> docs/ (2)",
-      "> src/metabrowser/ (242)",
+      "> src/app/ (242)",
       "> tools/new/ (1)",
       "v weird/ (2)",
       "  A bell�name.txt +1 -0  <- current",

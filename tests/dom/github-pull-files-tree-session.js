@@ -116,7 +116,7 @@ async function main() {
   const whole = tree.buildFileTree(holder.rows());
 
   // The chain a reader closes stays closed for every folder in it.
-  const chain = tree.visibleRows(whole, expansion).find((row) => row.name === "src/metabrowser");
+  const chain = tree.visibleRows(whole, expansion).find((row) => row.name === "src/app");
   const closed = tree.toggleFolder(expansion, chain);
   const reopened = tree.toggleFolder(closed, { ...chain, expanded: false });
   stories["a chain row toggles as one"] = {

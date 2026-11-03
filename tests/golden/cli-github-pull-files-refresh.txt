@@ -193,12 +193,12 @@ status: 200
   "limit": 3000,
   "rows": [
     {
-      "path": "src/metabrowser/cli/two.py",
+      "path": "src/app/views/two.py",
       "previous_path": null,
       "status": "added",
       "additions": 9,
       "deletions": 0,
-      "display": "src/metabrowser/cli/two.py",
+      "display": "src/app/views/two.py",
       "previous_display": null
     },
     {
