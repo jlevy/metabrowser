@@ -2388,3 +2388,101 @@ def test_borrowing_only_acquisition_reuses_an_existing_full_store(linear: _Stand
     )
     assert reused.git_dir == full.git_dir and reused.lender is None
     assert fingerprint(checkout) == before
+
+
+@pytest.mark.parametrize("damage", ["missing", "corrupt", "origin_missing"])
+def test_explicit_recovery_restores_observed_blob_ids_without_writing_checkout(
+    linear: _Stand, damage: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import zlib
+
+    from metabrowser.cache.object_recovery import recover_comparison_objects
+    from metabrowser.git.object_failures import observed_object_failures
+    from metabrowser.git.process import repository_store_target
+    from metabrowser.git.tree_source import GitObjectUnavailableError, read_store_blob
+    from tests.git_pin_harness import pinned_client
+
+    replica = linear.replica
+    work = replica.origin.parent / "source"
+    pinned_git(work, "checkout", "-q", "pr")
+    (work / "m").write_text("changed in the pull request\n")
+    pinned_git(work, "commit", "-qam", "change existing file")
+    head = pinned_git(work, "rev-parse", "HEAD")
+    pinned_git(work, "push", "-q", str(replica.origin), "HEAD:refs/pull/1/head")
+    linear.answer(scenario_for(replica, base=replica["M5"], head=head, earlier=replica["H1"]))
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    aside = linear.tmp_path / "aside"
+    aside.mkdir()
+    for path in (checkout / ".git/objects/pack").iterdir():
+        shutil.move(path, aside / path.name)
+    for pack in aside.glob("*.pack"):
+        with pack.open("rb") as stream:
+            subprocess.run(
+                ["git", "unpack-objects", "-q"],
+                cwd=checkout,
+                stdin=stream,
+                check=True,
+                capture_output=True,
+                env=pinned_git_env(),
+            )
+    envelope = linear.pull("--checkout", str(checkout))
+    base = envelope["record"]["comparison"]["base"]
+    oid = pinned_git(checkout, "rev-parse", f"{base}:m")
+    authentic = pinned_git(checkout, "cat-file", "blob", oid).encode() + b"\n"
+    loose = checkout / ".git/objects" / oid[:2] / oid[2:]
+    assert loose.exists()
+    if damage == "corrupt":
+        forged = b"forged lender bytes\n"
+        loose.unlink()
+        loose.write_bytes(zlib.compress(b"blob " + str(len(forged)).encode() + b"\0" + forged))
+    else:
+        loose.unlink()
+    if damage == "origin_missing":
+        (replica.origin / "objects" / oid[:2] / oid[2:]).unlink()
+    before = fingerprint(checkout)
+    published = asyncio.run(acquire_source(SOURCE, home=linear.home))
+    assert published is not None
+    target = repository_store_target(git_dir=published.git_dir)
+    commits = (base, head)
+    route = f"/api/plugin/diff/comparison?left={base}&right={head}&base_policy=merge_base"
+    monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
+
+    async def run() -> None:
+        # Commit negotiation claims success although the descendant is still missing.
+        if damage == "missing":
+            await pull_refs.fetch_commit(published, head)
+            with pytest.raises(GitObjectUnavailableError):
+                await read_store_blob(target, oid)
+        async with pinned_client(published.git_dir, head) as (client, _subject):
+            if damage == "corrupt":
+                # Another file's request does not scan/hash this whole manifest.
+                untouched = await client.get(route + "&file=p")
+                assert untouched.status_code == 200, untouched.text
+                assert sidekick._COMPARISONS.sizes()["bodies"] == 1
+            response = await client.get(route)
+            assert response.status_code == 409, response.text
+            expected = "object_corrupt" if damage == "corrupt" else "object_unavailable"
+            assert response.json()["error"] == expected
+            if damage == "corrupt":
+                assert sidekick._COMPARISONS.sizes()["bodies"] == 0
+                assert sidekick._COMPARISONS.sizes()["manifests"] == 0
+            pending = observed_object_failures.pending(target, commits)
+            assert [failure.oid for failure in pending] == [oid]
+            # Recovery must keep the displayed endpoints even after the PR ref moves.
+            pinned_git(replica.origin, "update-ref", "refs/pull/1/head", replica["M5"])
+            if damage == "missing":
+                assert await recover_comparison_objects(published, commits) == pending
+                assert await read_store_blob(target, oid) == authentic
+                assert observed_object_failures.pending(target, commits) == ()
+                ready = await client.get(route)
+                assert ready.status_code == 200, ready.text
+                assert ready.json()["patches"]
+            else:
+                with pytest.raises(pull_refs.PullRefError) as refused:
+                    await recover_comparison_objects(published, commits)
+                expected = "object_corrupt" if damage == "corrupt" else "commits_unavailable"
+                assert refused.value.state == expected
+                assert observed_object_failures.pending(target, commits) == pending
+        assert fingerprint(checkout) == before
+
+    asyncio.run(run())

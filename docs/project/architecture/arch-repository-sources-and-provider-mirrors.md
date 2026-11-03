@@ -383,8 +383,7 @@ rename into place through the alias commit, and the alias is the sole visibility
 A crash between the two renames leaves a completed store no alias names; it is never a
 visible half-entry, and the next acquisition of the same source reuses it.
 Nothing deletes a published store automatically.
-Attaching a user-owned checkout to a store, and merging stores by provider identity, are
-deferred by the thin-mirror plan.
+Merging stores by provider identity is deferred by the thin-mirror plan.
 
 ### Overlay stores
 
@@ -453,9 +452,39 @@ The design and its experiments are in
    nothing, and a read of a borrowed object answers `object_unavailable`. Cache routes
    read records and no object, so they still answer.
 
-What is not here yet is in the plan’s step 2: a dangling *pin* is detected by the next
-read and refreshed by hand, since nothing heals it, and blob hashes are not verified on
-read.
+Complete object reads verify the Git object ID against the header and bytes, using the
+store’s SHA-1 or SHA-256 format.
+A mismatch is `object_corrupt`. Windowed reads hash discarded prefixes and tails only
+when the existing drain bound consumes the complete object.
+A larger partial window stays useful and makes no claim of whole-object authentication;
+verification does not extend its read bound.
+
+A borrowed comparison verifies only the blobs of the files being hydrated, within the
+existing per-run byte budget.
+It does not hash an entire manifest or walk history.
+Detected corruption prevents a response body from being cached and invalidates any
+in-memory manifest for that comparison.
+
+`git/object_failures.py` keeps at most eight observed object IDs for each of sixteen
+store/commit selections, for ten minutes.
+It retains no object bytes or Git diagnostics.
+`cache/object_recovery.py` handles an explicit recovery: check the displayed immutable
+commits and those observed IDs, fetch missing IDs under the existing fetch lock and
+sweep rules, then authenticate them before clearing the observations.
+The recovery has one sixty-second deadline, including lock waits.
+Before declaring success it advances the store reader pool’s generation and reaps idle
+actors, so no later request reads an unlinked obsolete pack.
+Actors already leased to a request finish their transaction and are recycled on release;
+repair does not interrupt that request.
+Cancellation during recycling preserves the stale queue slot for the next reader to
+recycle. An ordinary commit fetch can succeed while leaving a descendant blob absent;
+exact-ID fetching repairs that object without changing a ref or writing the checkout.
+A corrupt lender that Git still claims to have remains a typed refusal, and an origin
+that no longer serves a displayed object is `commits_unavailable`.
+
+Measured on macOS with nine alternating pairs, complete-read hashing added 0.021 ms for
+3.9 KiB, 0.029 ms for 64 KB, and 4.586 ms for 8 MiB. The 32 MiB partial-window path
+calls no hash; its timing pairs were too noisy to establish a difference.
 
 ### Cache record contracts
 
