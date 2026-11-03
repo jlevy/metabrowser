@@ -646,6 +646,21 @@ The PR comparison route resolves the requested commits before adopting a validat
 manifest, and a missing, corrupt, or mismatched entry is recomputed once through the
 existing shared comparison-cache task and replaced atomically.
 Persistence failure leaves the PR record and computed answer usable.
+Persisted manifests are adopted only when their private bank currently permits writes,
+including effective access and read-only mount checks; a read-only bank still serves
+recomputed comparisons.
+Detected corruption first attempts to invalidate the exact slot atomically, then
+advances that slot’s epoch beside the bank.
+The epoch makes old data miss even if the slot could not be written and its permissions
+are restored before a restart.
+A manifest captures that epoch before computation, so an older in-flight write cannot
+relabel itself as current.
+A missing epoch starts a new one; a malformed or unreadable epoch disables persistence.
+There are at most sixteen bounded epoch records, one per slot, with no index, scan, or
+lock; invalidating one slot leaves the other disk hits intact.
+If the epoch cannot be written, the response requires clearing the affected repository
+cache before retrying; no process can retain new corruption knowledge across a restart
+when every persistence attempt fails.
 `GET /api/plugin/github/pull-comparison` reads only the selected PR’s published store
 and never fetches. Its initial answer hydrates eight ready files.
 The shared diff service retains its fifty-file default for other callers; encoded bodies
