@@ -740,8 +740,60 @@ async def _refresh(published: PublishedSource | ListedRepository, number: int) -
     raise AssertionError("unreachable")
 
 
+async def _recover_comparison(
+    published: PublishedSource, number: int, pair: tuple[str, str] | None
+) -> None:
+    """An explicit retry's displayed selection, or the cached selection for number-only retry."""
+    from metabrowser.builtin_plugins.github.pull_manifest import invalidate_pull_manifest
+    from metabrowser.cache.object_recovery import recover_comparison_objects
+    from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX
+    from metabrowser.cache.pull_refs import base_branch_usable, ref_commit
+    from metabrowser.git.object_failures import observed_object_failures
+    from metabrowser.git.process import repository_store_target
+
+    if pair is None:
+        cached = await asyncio.to_thread(read_pull_record, published.home, published.slug, number)
+        if not isinstance(cached, PullRecord):
+            return
+        if cached.comparison is not None:
+            pair = (cached.comparison.base, cached.comparison.head)
+        else:
+            base = cached.pull.base.sha
+            branch = cached.pull.base.ref
+            if cached.pull.state == "open" and await base_branch_usable(published, branch):
+                base = await ref_commit(published, BRANCH_MIRROR_PREFIX + branch) or base
+            pair = (base, cached.pull.head.sha)
+    target = repository_store_target(git_dir=published.git_dir)
+    failures = observed_object_failures.pending(target, pair)
+    if any(failure.state == "object_corrupt" for failure in failures):
+        try:
+            await asyncio.to_thread(invalidate_pull_manifest, published, pair)
+        except (OSError, PrivateStorageError) as exc:
+            raise PullDataError(
+                "cache_unwritable", "the comparison cache could not discard damaged metadata"
+            ) from exc
+    try:
+        await recover_comparison_objects(published, pair)
+    except PullRefError as exc:
+        state: PullDataState
+        match exc.state:
+            case "object_corrupt":
+                state = "object_corrupt"
+            case "commits_unavailable":
+                state = "commits_unavailable"
+            case "comparison_too_large":
+                state = "comparison_too_large"
+            case _:
+                state = _fetch_failure(exc).state
+        raise PullDataError(state, str(exc)) from exc
+
+
 async def refresh_pull_request(
-    published: PublishedSource | ListedRepository, number: int
+    published: PublishedSource | ListedRepository,
+    number: int,
+    *,
+    recover: bool = False,
+    recovery_pair: tuple[str, str] | None = None,
 ) -> PullRecord:
     """Read pull request *number* of *published* from GitHub and cache it; see the module.
 
@@ -756,6 +808,8 @@ async def refresh_pull_request(
         try:
             if isinstance(published, ListedRepository):
                 published = await asyncio.to_thread(claim_source, published)
+            elif recover:
+                await _recover_comparison(published, number, recovery_pair)
             record = await _refresh(published, number)
         except GitError as exc:
             raise _git_failure(number, exc) from exc

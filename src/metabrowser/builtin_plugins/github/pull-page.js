@@ -712,6 +712,9 @@ export function describePull(envelope, page) {
     !envelope.refreshing &&
     (envelope.state === "stale" ||
       model.failure !== null ||
+      (page.tab === "files" &&
+        typeof record.comparison?.base === "string" &&
+        typeof record.comparison?.head === "string") ||
       (typeof record.unavailable?.comparison === "string" &&
         record.unavailable.comparison !== "no_store"));
   const age = relativeAge(record.fetched_at ?? null, page.nowMs);
@@ -890,6 +893,7 @@ export function createPullController(deps, options) {
   let readerAsked = false;
   /** Asked for by a reader's selection, and the ask is on its way. */
   let fetching = false;
+  let refreshPending = false;
   /** Markdown by part, for the record fetched at `markdownFor`. @type {Map<string, Record<string, any>>} */
   const markdown = new Map();
   /** @type {string | null} */
@@ -900,7 +904,7 @@ export function createPullController(deps, options) {
   let inFlight = 0;
 
   function model() {
-    return describePull(envelope, {
+    const next = describePull(envelope, {
       number: options.number,
       tab,
       nowMs: deps.now(),
@@ -908,6 +912,12 @@ export function createPullController(deps, options) {
       fetching,
       checkoutHead: options.checkoutHead ?? null,
     });
+    if (refreshPending) {
+      next.refreshing = true;
+      next.canRefresh = false;
+      next.canFetchComparison = false;
+    }
+    return next;
   }
 
   function render() {
@@ -1070,9 +1080,13 @@ export function createPullController(deps, options) {
    * page's own request says nothing to the reader, whose page still shows what it did and
    * still offers Refresh.
    *
-   * @param {{number: number, retry?: boolean, comparison?: boolean}} ask
+   * @param {{number: number, retry?: boolean, comparison?: boolean, recovery?: {base: string, head: string}}} ask
    */
   async function askForRefresh(ask) {
+    if (ask.retry) {
+      refreshPending = true;
+      render();
+    }
     cancelAsk();
     const request = ++sent;
     try {
@@ -1098,16 +1112,27 @@ export function createPullController(deps, options) {
         error = "The refresh request failed.";
       }
     }
+    if (ask.retry) {
+      refreshPending = false;
+    }
     if (!disposed) {
       render();
       scheduleNext();
     }
   }
 
-  /** A reader's own press of Fetch or Refresh, which the server always takes as due. */
-  async function requestRefresh() {
+  /**
+   * A reader's own press of Fetch or Refresh. Files names the comparison still displayed,
+   * which can be older than the latest metadata the page has polled.
+   * @param {{base: string, head: string} | undefined} [recovery]
+   */
+  async function requestRefresh(recovery) {
     if (!disposed && model().canRefresh) {
-      await askForRefresh({ number: options.number, retry: true });
+      await askForRefresh({
+        number: options.number,
+        retry: true,
+        ...(recovery === undefined ? {} : { recovery }),
+      });
     }
   }
 
@@ -2025,7 +2050,16 @@ export function mountPullPage(container, ctx, mb) {
       const refresh = h("button", { type: "button", class: "btn github-pull-refresh" }, [
         model.status === "absent" ? "Fetch" : "Refresh",
       ]);
-      refresh.addEventListener("click", () => void controller.requestRefresh());
+      refresh.addEventListener("click", () => {
+        if (listening.signal.aborted || shown?.canRefresh !== true) {
+          return;
+        }
+        const displayed = shown.tab === "files" ? diffFor : null;
+        filesRefresh = displayed;
+        void controller.requestRefresh(
+          displayed === null ? undefined : { base: displayed.left, head: displayed.right },
+        );
+      });
       status.append(refresh);
     }
     if (model.headOffer !== null) {
@@ -2190,6 +2224,10 @@ export function mountPullPage(container, ctx, mb) {
 
   /** Settles when the diff last asked for has mounted, or was replaced. */
   let diffMounted = Promise.resolve();
+  /** An explicit Files refresh waiting for its job; metadata polls alone never remount.
+   * @type {{left: string, right: string, route?: string} | null}
+   */
+  let filesRefresh = null;
 
   function disposeDiff() {
     diffHandle?.dispose?.();
@@ -2291,6 +2329,23 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {PullModel} model */
   function paintFiles(model) {
+    if (filesRefresh !== null) {
+      if (model.refreshing) {
+        return;
+      }
+      const displayed = filesRefresh;
+      filesRefresh = null;
+      if (model.failure === null && model.message === null && diffFor === displayed) {
+        place?.keeper.flush();
+        diffMounted = mountDiff(displayed).then(() => {
+          if (shown?.tab === "files" && diffFor === displayed) {
+            paintFiles(shown);
+            place?.keeper.land();
+          }
+        });
+      }
+      return;
+    }
     const comparison = model.comparison;
     const action = filesAction(diffFor, comparison);
     if (comparison === null || action === "unavailable") {
@@ -2500,6 +2555,7 @@ export function mountPullPage(container, ctx, mb) {
     /** Settles when a diff asked for by `setTab("files")` has mounted. */
     whenFilesReady: () => diffMounted,
     dispose() {
+      filesRefresh = null;
       listening.abort();
       observer?.disconnect();
       place?.dispose();

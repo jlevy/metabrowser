@@ -47,6 +47,9 @@ if TYPE_CHECKING:
 # for a 295 KB record, pallets/click#3030 (median of 30 on 2026-11-02, load average 17).
 # Sixty-four is more pull requests than a reader refreshes in one session, for 72 KB.
 MAX_KEPT_PULLS: Final = 64
+# Eight revisions per PR; metadata updates cannot evict the comparison actually displayed.
+# Two 64-character IDs per entry keep this below 2 KiB per held PR even with SHA-256.
+MAX_ISSUED_COMPARISONS: Final = 8
 
 
 class PullRefreshOutcome(TypedDict):
@@ -97,6 +100,35 @@ class ServedPull:
     without_store: bool = False
     _last_attempt: datetime | None = field(default=None, repr=False)
     _refreshing: bool = field(default=False, repr=False)
+    _recoveries: OrderedDict[tuple[str, str] | None, None] = field(
+        default_factory=OrderedDict, repr=False
+    )
+    _issued: OrderedDict[tuple[str, str], None] = field(default_factory=OrderedDict, repr=False)
+    _displayed: tuple[str, str] | None = field(default=None, repr=False)
+
+    def note_comparison(self, pair: tuple[str, str], *, displayed: bool = False) -> None:
+        """Remember a comparison this PR issued; metadata cannot evict the displayed pair."""
+        if displayed:
+            self._displayed = pair
+        self._issued[pair] = None
+        self._issued.move_to_end(pair)
+        while len(self._issued) > MAX_ISSUED_COMPARISONS:
+            oldest = next(key for key in self._issued if key != self._displayed)
+            del self._issued[oldest]
+
+    def issued_comparison(self, pair: tuple[str, str]) -> bool:
+        return pair in self._issued
+
+    def request_recovery(self, pair: tuple[str, str] | None = None) -> bool:
+        """Retain explicit actions joining a running job, coalescing identical selections."""
+        if pair not in self._recoveries and len(self._recoveries) >= MAX_ISSUED_COMPARISONS:
+            return False
+        self._recoveries[pair] = None
+        return True
+
+    def discard_recovery(self, pair: tuple[str, str] | None) -> None:
+        """A refused job must not leave new network work for a later automatic refresh."""
+        self._recoveries.pop(pair, None)
 
     @property
     def key(self) -> str:
@@ -149,27 +181,40 @@ class ServedPull:
             self.without_store = without_store
 
     async def refresh(self) -> None:
-        """Read the pull request again; a failure is kept as :attr:`last`."""
-
+        """Read again, consuming explicit recovery requests before the ordinary PR fetch."""
         self._last_attempt = pulls.utc_now()
         self._refreshing = True
         try:
-            record = await pulls.refresh_pull_request(self.published, self.number)
-        except pulls.PullDataError as exc:
-            self.last = PullRefreshOutcome(
-                outcome=exc.state,
-                message=str(exc),
-                reset_at=exc.reset_at,
-                at=_stamp(pulls.utc_now()),
-            )
-            return
+            while True:
+                recover = bool(self._recoveries)
+                pair = self._recoveries.popitem(last=False)[0] if recover else None
+                try:
+                    record = (
+                        await pulls.refresh_pull_request(
+                            self.published, self.number, recover=True, recovery_pair=pair
+                        )
+                        if recover
+                        else await pulls.refresh_pull_request(self.published, self.number)
+                    )
+                except pulls.PullDataError as exc:
+                    self.last = PullRefreshOutcome(
+                        outcome=exc.state,
+                        message=str(exc),
+                        reset_at=exc.reset_at,
+                        at=_stamp(pulls.utc_now()),
+                    )
+                else:
+                    self.fetched_at = record.fetched_at
+                    self.without_store = written_without_store(record)
+                    if record.comparison is not None:
+                        self.note_comparison((record.comparison.base, record.comparison.head))
+                    self.last = PullRefreshOutcome(
+                        outcome="succeeded", message=None, reset_at=None, at=record.fetched_at
+                    )
+                if not self._recoveries:
+                    return
         finally:
             self._refreshing = False
-        self.fetched_at = record.fetched_at
-        self.without_store = written_without_store(record)
-        self.last = PullRefreshOutcome(
-            outcome="succeeded", message=None, reset_at=None, at=record.fetched_at
-        )
 
 
 def served_pull(published: PublishedSource | ListedRepository, number: int) -> ServedPull:
@@ -183,12 +228,16 @@ def served_pull(published: PublishedSource | ListedRepository, number: int) -> S
     fetched_at = record.fetched_at if isinstance(record, PullRecord) else None
     without_store = isinstance(record, PullRecord) and written_without_store(record)
     last = last_refresh(published, number)
+    issued = OrderedDict[tuple[str, str], None]()
+    if isinstance(record, PullRecord) and record.comparison is not None:
+        issued[(record.comparison.base, record.comparison.head)] = None
     if last is None:
         return ServedPull(
             published=published,
             number=number,
             fetched_at=fetched_at,
             without_store=without_store,
+            _issued=issued,
         )
     return ServedPull(
         published=published,
@@ -197,6 +246,7 @@ def served_pull(published: PublishedSource | ListedRepository, number: int) -> S
         last=last,
         without_store=without_store,
         _last_attempt=_parse_stamp(last["at"]),
+        _issued=issued,
     )
 
 

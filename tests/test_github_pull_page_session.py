@@ -419,7 +419,13 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
-    # A server with no GitHub repository, which answers for no number.
+    # A server with no GitHub repository, which answers for no number. Explicitly
+    # choose a plain folder: the test runner itself lives inside a GitHub checkout.
+    from metabrowser.server import _set_root_dir
+
+    plain = tmp_path / "plain-folder"
+    plain.mkdir()
+    _set_root_dir(plain)
     reset_source_session()
     with TestClient(app) as client:
         recorded["not_github"] = _answer(client.get(_PULL, params={"number": 7}))
@@ -542,4 +548,5 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "failedRenderRecovers": True,
         "staleRetryIsInert": True,
         "checkoutFetchIsExplicit": True,
+        "displayedComparisonRepair": True,
     }

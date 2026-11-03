@@ -177,6 +177,107 @@ async function run() {
     await settle();
     assert.equal(mounted, 1, "a stale Retry cannot remount a disposed page");
   }
+  for (const outcome of ["same", "moved", "failed"]) {
+    let current = structuredClone(initial.body);
+    let reply;
+    const requests = [];
+    const mounted = [];
+    let disposed = 0;
+    globalThis.fetch = async (_route, options = {}) => {
+      if (options.method === "POST") {
+        requests.push(JSON.parse(options.body));
+        return new Promise((resolve) => {
+          reply = resolve;
+        });
+      }
+      return { status: 200, headers: { get: () => null }, json: async () => current };
+    };
+    const container = new Element("main");
+    const handle = page.mountPullPage(
+      container,
+      {
+        number: 7,
+        tab: "files",
+        reader: { initial, fetchAfterMs: 0 },
+      },
+      {
+        ensureAsset: async () => {},
+        ensureKindAssets: async () => {},
+        getRegisteredView: () => ({
+          render: async (host, options) => {
+            mounted.push(options.comparison);
+            host.textContent = "Displayed changes";
+            return {
+              dispose: () => {
+                disposed += 1;
+              },
+            };
+          },
+        }),
+        formatAge: () => ({ label: "now", className: "age" }),
+        formatTimestamp: () => "now",
+        navigation: { href: () => "/view/" },
+        sourceKind: () => "git_revision",
+        icons: { toggle: "" },
+      },
+    );
+    const tick = async () => {
+      const [id, callback] = timers.entries().next().value;
+      timers.delete(id);
+      callback();
+      await settle();
+    };
+    await settle();
+    await handle.whenFilesReady();
+    assert.equal(mounted.length, 1);
+    const displayed = { base: mounted[0].left, head: mounted[0].right };
+    if (outcome === "moved") {
+      current = structuredClone(current);
+      current.record.comparison.head = "e".repeat(40);
+      current.record.pull.head.sha = "e".repeat(40);
+      await tick();
+      assert.equal(mounted.length, 1, "a metadata-only head advance retains displayed changes");
+    }
+    const refresh = [...container.descendants()].find(
+      (element) => element.tag === "button" && element.textContent === "Refresh",
+    );
+    assert.ok(refresh, "fresh Files offers explicit repair");
+    refresh.events.get("click")();
+    await settle();
+    refresh.events.get("click")();
+    await settle();
+    assert.deepEqual(requests, [{ number: 7, retry: true, recovery: displayed }]);
+    assert.equal(mounted.length, 1, "a pending POST cannot remount");
+    current = { ...current, refreshing: true };
+    reply({ status: 202, headers: { get: () => null }, json: async () => ({ pull: current }) });
+    await settle();
+    await tick();
+    assert.equal(mounted.length, 1, "waiting for a job cannot remount");
+    current = {
+      ...current,
+      refreshing: false,
+      last_refresh: {
+        outcome: outcome === "failed" ? "network_error" : "succeeded",
+        message: outcome === "failed" ? "offline" : null,
+        reset_at: null,
+        at: current.fetched_at,
+      },
+    };
+    await tick();
+    await handle.whenFilesReady();
+    assert.equal(mounted.length, outcome === "failed" ? 1 : 2);
+    assert.equal(disposed, outcome === "failed" ? 0 : 1);
+    assert.deepEqual(mounted.at(-1), mounted[0], "repair never selects a newer head");
+    if (outcome === "moved") {
+      assert.match(container.textContent, /Show the newer changes/);
+    }
+    await tick();
+    assert.equal(mounted.length, outcome === "failed" ? 1 : 2, "only one remount per repair");
+    handle.dispose();
+    refresh.events.get("click")();
+    await settle();
+    assert.equal(requests.length, 1, "disposed Refresh is inert");
+  }
   const checkout = JSON.parse(
     fs.readFileSync(
       path.join(root, "tests/fixtures/github-checkout-comparison-responses.json"),
@@ -231,6 +332,7 @@ async function run() {
     failedRenderRecovers: true,
     staleRetryIsInert: true,
     checkoutFetchIsExplicit: true,
+    displayedComparisonRepair: true,
   };
 }
 run()

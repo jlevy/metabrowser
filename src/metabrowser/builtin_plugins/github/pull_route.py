@@ -66,6 +66,7 @@ from metabrowser.builtin_plugins.github.served_pull import (
 )
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_record
 from metabrowser.git.tree_source import GitRevisionSubject
+from metabrowser.git.wire import is_full_revision
 from metabrowser.http_caching import BUILD_TAG, build_scoped_etag, store_tag
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
@@ -77,7 +78,7 @@ from metabrowser.source import RepositorySubject
 from metabrowser.view_routes import parse_pull_number
 
 PULL_ROUTE: Final = "/api/plugin/github/pull"
-_REFRESH_FIELDS: Final = frozenset({"number", "retry", "comparison"})
+_REFRESH_FIELDS: Final = frozenset({"number", "retry", "comparison", "recovery"})
 NUMBER_REQUIRED: Final = '"number" is a pull-request number'
 
 type PullState = Literal["absent", "pending", "current", "stale"]
@@ -365,13 +366,16 @@ class RefreshRequest:
     number: int
     retry: bool
     comparison: bool = False
+    recovery: tuple[str, str] | None = None
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
     """What a ``POST`` body names, or :class:`PullRequestError`."""
 
     if set(body) - _REFRESH_FIELDS:
-        raise PullRequestError('a refresh request names only "number", "retry", and "comparison"')
+        raise PullRequestError(
+            'a refresh request names only "number", "retry", "comparison", and "recovery"'
+        )
     number = body.get("number")
     if (
         not isinstance(number, int)
@@ -385,7 +389,28 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
     comparison = body.get("comparison", False)
     if not isinstance(comparison, bool) or (comparison and not retry):
         raise PullRequestError('"comparison" is true or false and requires "retry": true')
-    return RefreshRequest(number, retry, comparison)
+    recovery = body.get("recovery")
+    pair: tuple[str, str] | None = None
+    if recovery is not None:
+        if (
+            comparison
+            or not retry
+            or not isinstance(recovery, dict)
+            or set(recovery) != {"base", "head"}
+        ):
+            raise PullRequestError(
+                '"recovery" names a displayed base and head and requires "retry": true'
+            )
+        base, head = recovery.get("base"), recovery.get("head")
+        if (
+            not isinstance(base, str)
+            or not isinstance(head, str)
+            or not is_full_revision(base)
+            or not is_full_revision(head)
+        ):
+            raise PullRequestError('"recovery" requires two full commit IDs')
+        pair = (base, head)
+    return RefreshRequest(number, retry, comparison, pair)
 
 
 async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart:
@@ -396,6 +421,14 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
     stale and no attempt is due to wait (``not_due`` otherwise).
     """
 
+    queued: ServedPull | None = None
+    if ask.retry and not ask.comparison:
+        served = await host.pulls.companion(ask.number)
+        queued = served
+        if ask.recovery is not None and not served.issued_comparison(ask.recovery):
+            raise PullRequestError("this pull request did not issue the requested comparison")
+        if not served.request_recovery(ask.recovery):
+            return "too_many"
     if ask.comparison and host.start_comparison is not None:
         return host.start_comparison(ask.number)
     if host.running(ask.number):
@@ -406,7 +439,10 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
             return "not_cached"
         if not served.is_stale(pulls.utc_now(), window_s=FRESHNESS_WINDOW_S):
             return "not_due"
-    return host.start(ask.number)
+    started = host.start(ask.number)
+    if started == "too_many" and queued is not None:
+        queued.discard_recovery(ask.recovery)
+    return started
 
 
 def status_route(number: int) -> str:

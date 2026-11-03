@@ -108,6 +108,10 @@ async def pull_handler(request: Request) -> Response:
     envelope = await asyncio.to_thread(pull_envelope, view)
     if view.kept is not None:
         view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
+    comparison = (envelope.get("record") or {}).get("comparison")
+    if view.host is not None and isinstance(comparison, dict):
+        served = await view.host.pulls.companion(number)
+        served.note_comparison((comparison["base"], comparison["head"]))
     etag = envelope_etag(envelope, stamp)
     headers = {**_NO_STORE, "etag": etag}
     if matches_if_none_match(request, etag):
@@ -142,7 +146,10 @@ async def pull_comparison_handler(request: Request) -> Response:
     """Read a checkout's pinned PR comparison from its store; never acquire on GET."""
 
     from metabrowser.builtin_plugins.diff.sidekick import comparison_at
-    from metabrowser.builtin_plugins.github.pull_manifest import load_pull_manifest
+    from metabrowser.builtin_plugins.github.pull_manifest import (
+        invalidate_pull_manifest,
+        load_pull_manifest,
+    )
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
         cached_pull_record,
@@ -150,8 +157,10 @@ async def pull_comparison_handler(request: Request) -> Response:
         requested_number,
     )
     from metabrowser.cache.acquire import PublishedSource
+    from metabrowser.git.object_failures import observed_object_failures
     from metabrowser.git.process import GitLocation, repository_store_target
     from metabrowser.git.wire import is_full_revision
+    from metabrowser.home import PrivateStorageError
 
     try:
         number = requested_number(request.query_params)
@@ -188,13 +197,37 @@ async def pull_comparison_handler(request: Request) -> Response:
             status_code=404,
             headers=_NO_STORE,
         )
+    served = await host.pulls.companion(number)
+    if record.comparison is not None:
+        served.note_comparison((record.comparison.base, record.comparison.head))
+    # Read-only full-endpoint links remain usable after a restart. Only an already
+    # issued PR pair can gain protected display ownership for POST network repair.
+    if served.issued_comparison((left, right)):
+        served.note_comparison((left, right), displayed=True)
     target = repository_store_target(git_dir=published.git_dir)
-    return await comparison_at(
+    response = await comparison_at(
         request,
         GitLocation.revision(target, right),
         max_initial_files=INITIAL_PULL_FILES,
         manifest_loader=partial(load_pull_manifest, published),
     )
+
+    if response.status_code == 409 and any(
+        failure.state == "object_corrupt"
+        for failure in observed_object_failures.pending(target, (left, right))
+    ):
+        try:
+            await asyncio.to_thread(invalidate_pull_manifest, published, (left, right))
+        except (OSError, PrivateStorageError):
+            return JSONResponse(
+                {
+                    "error": "object_corrupt",
+                    "message": "An object does not match its ID, and its cached comparison could not be discarded.",
+                },
+                status_code=409,
+                headers=_NO_STORE,
+            )
+    return response
 
 
 async def _json_body(request: Request) -> dict[str, Any] | tuple[str, int]:
@@ -259,7 +292,10 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
             {"error": "this server serves no GitHub repository", "code": "not_github"},
             status_code=409,
         )
-    started = await start_refresh(host, ask)
+    try:
+        started = await start_refresh(host, ask)
+    except PullRequestError as exc:
+        return _invalid_request(str(exc))
     # Read after the start, on the loop: a job is running, whatever it does next.
     view = pull_view(host, get_source_session().subject, ask.number)
     envelope = await asyncio.to_thread(pull_envelope, view)

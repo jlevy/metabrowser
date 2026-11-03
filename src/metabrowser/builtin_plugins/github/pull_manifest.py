@@ -109,6 +109,23 @@ def _write(published: PublishedSource, key: tuple[str, ...], answer: ResolvedMan
     write_private_file_atomic(published.home, _path(published, key), data)
 
 
+def invalidate_pull_manifest(published: PublishedSource, pair: tuple[str, str]) -> None:
+    """Invalidate disposable metadata derived from a detected corrupt comparison.
+
+    The private atomic writer publishes an invalid cache marker instead of deleting
+    through an unchecked path. A later read recomputes it. Refusals are reported by the
+    caller; a failed invalidation must not be presented as successful repair.
+    """
+    location = GitLocation.revision(
+        RepositoryStoreTarget(published.git_dir, published.object_format), pair[1]
+    )
+    intent = {"left": pair[0], "right": pair[1], "base_policy": "merge_base"}
+    key = comparison_cache_key(location, intent, store_tag(published.git_dir))
+    assert key is not None
+    if _read(published, key) is not None:
+        write_private_file_atomic(published.home, _path(published, key), b"{}")
+
+
 async def load_pull_manifest(
     published: PublishedSource, source: GitDiffSource, intent: dict[str, Any], key: tuple[str, ...]
 ) -> ResolvedManifest:

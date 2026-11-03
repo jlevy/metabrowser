@@ -41,6 +41,9 @@ EXTRA_PAGE_REQUESTS: Final = 10
 _LOGIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\[\]-]{0,99}$")
 
 type PullDataState = Literal[
+    "object_corrupt",
+    "commits_unavailable",
+    "comparison_too_large",
     "gh_missing",
     "gh_too_old",
     "not_logged_in",

@@ -106,7 +106,7 @@ $ node tests/dom/github-pull-page-session.js
         "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true}"
       ],
       "timer": "fast",
-      "paints": 1,
+      "paints": 2,
       "paint": {
         "status": "pending",
         "tab": "conversation",
@@ -355,7 +355,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "current",
         "tab": "files",
         "message": null,
-        "canRefresh": false,
+        "canRefresh": true,
         "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
@@ -793,7 +793,7 @@ $ node tests/dom/github-pull-page-session.js
         "POST /api/plugin/github/pull-refresh {\"number\":8,\"retry\":true}"
       ],
       "timer": "fast",
-      "paints": 1,
+      "paints": 2,
       "paint": {
         "status": "stale",
         "message": null,
@@ -877,7 +877,7 @@ $ node tests/dom/github-pull-page-session.js
         "POST /api/plugin/github/pull-refresh {\"number\":14,\"retry\":true}"
       ],
       "timer": "slow",
-      "paints": 1,
+      "paints": 2,
       "paint": {
         "status": "absent",
         "message": "The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
@@ -1279,4 +1279,14 @@ $ node tests/dom/github-pull-page-second-session.js
   }
 }
 ? 0
+```
+The production mount keeps the displayed comparison through waiting and failed repairs,
+and remounts it once after success even if metadata has advanced to another head.
+Pending and disposed controls cannot issue duplicate requests.
+Asset and render failures retain their local Retry action; a checkout with no store
+retains its explicit Fetch changes.
+
+```console
+$ node tests/dom/github-pull-page-mount-behavior.js
+{"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsExplicit":true,"displayedComparisonRepair":true}
 ```

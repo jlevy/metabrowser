@@ -815,6 +815,38 @@ acquire the store. Jobs take their turn at the store before consuming a network 
 An acquisition failure preserves the last pull record and reports a typed refresh
 outcome. `GET` routes never acquire or fetch.
 
+Files changed offers Refresh even while its record is fresh.
+The reader’s action sends `retry: true` and `recovery: {base, head}` for the comparison
+still displayed. Automatic refresh remains stale-only.
+Metadata updates do not replace displayed changes: a successful repair remounts that
+same comparison once and restores its scroll position; a failed or waiting job leaves it
+in place. The existing newer-changes action remains the way to select a newer head.
+A checkout with `no_store` instead offers Fetch changes.
+
+The server validates complete object IDs and a pair issued by that PR in this session
+before permitting repair.
+Each held PR retains eight issued pairs and protects its last displayed pair from
+metadata eviction. An explicit retry joining a running job is queued, even if that job
+fails; equal queued selections coalesce.
+Number-only explicit refresh continues to repair the current cached comparison.
+Old full-endpoint GET links remain readable after a restart, but an old pair that this
+session cannot associate with the PR cannot authorize network repair.
+No persistent comparison history is added.
+
+Only IDs observed missing while reading that comparison and its two endpoints are
+checked and, when absent, fetched exactly.
+A complete recovered object must match its ID before its failure is cleared.
+Detection of corrupt bytes invalidates in-memory answers and the persisted manifest;
+failure to discard that metadata is reported.
+A corrupt lender is refused without modifying its objects.
+Large partial previews retain their existing read bounds and do not claim a whole-object
+authentication.
+
+If a cached managed source loses its pinned root tree before startup, opening it reports
+a path-free pin-open error without a traceback or automatic clone.
+Live Files Refresh requires a running source; startup does not start an implicit repair
+fetch.
+
 ### Changed files of a pull request
 
 A pull request’s changed files are one more file beside its record:
@@ -1191,9 +1223,9 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 ### Planned seams
 
 Nothing below is built, and none of it is on the v0.12 path.
-The thin-mirror plan retired the provider mirror and the provider ports and deferred
-attaching a user’s checkout (`mb-cbak`); the rows stay as the design that later work
-starts from.
+The thin-mirror plan retired the provider mirror and provider ports.
+Checkout PR browsing uses the store-backed path described above; these broader provider
+abstractions remain future work.
 
 | Area | Planned boundary | Responsibility |
 | --- | --- | --- |
