@@ -336,6 +336,11 @@ async function main() {
   transcript.scrolled = state(article, viewport);
 
   const toggle = article.querySelector(".kpress-toc-toggle");
+  transcript.toggleNamed = {
+    accessible: toggle.getAttribute("aria-label"),
+    tooltip: toggle.getAttribute("title"),
+    appTooltip: toggle.getAttribute("data-tip-text"),
+  };
   toggle.dispatch("click");
   transcript.toggleOpened = state(article, viewport);
   const troubleshooting = article

@@ -563,15 +563,20 @@ A pull request with no record is fetched only by a reader’s own request, and o
 record refreshes when its page asks and it is due.
 A pin the mirror lacks fetches the mirror, and a commit pin also refreshes the attended
 pull request, whose `refs/pull/<n>/head` may bring it; a branch or tag pin never runs
-`gh`. Within one server these jobs take turns before the store’s fetch lock, so none
-finds another holding it and reports a refresh running elsewhere.
+`gh`. Within one server these jobs take turns before the store’s fetch lock
+(`StoreTurn`), so none finds another holding it and reports a refresh running elsewhere.
+The mirror’s fetch and the attended pull request’s go first, since a page of code waits
+on them, and a job takes its network slot only once its turn has come, so a list’s
+refresh does not wait behind a queue of pull requests.
+A pin by commit ID that is the tip of a fetched pull-request head is served under that
+head and attends to it, whichever page asked: a commit page does this as View file does.
 How each refresh ended is kept beside the record in `pulls/<n>.refresh.json`, so the
 route and a later command report it, and a failed one is tried again after a window, not
 on every poll or by the next command, and after `rate_limited` not before `reset_at`.
-`POST /api/plugin/github/pull-refresh` starts or joins the job and returns `202` at
-once, naming `/api/plugin/github/pull?number=<n>` as its `status_route`; a one-shot
-`--api` waits for the job, prints that route, and exits 1 unless the refresh succeeded;
-one that found the store busy did not refresh the record.
+`POST /api/plugin/github/pull-refresh` with `{"number": <n>}` starts or joins the job
+and returns `202` at once, naming `/api/plugin/github/pull?number=<n>` as its
+`status_route`; a one-shot `--api` waits for the job, prints that route, and exits 1
+unless the refresh succeeded; one that found the store busy did not refresh the record.
 After the job, the session reads the pinned ref’s tip again, so a newer head behind
 `refs/pull/<n>/head` is offered as `latest`, and `resolve_pin` accepts that ref.
 One-shot modes fetch only a pull request with no usable record, or one whose commit URL
@@ -583,10 +588,11 @@ The pull-request page (`builtin_plugins/github/pull-page.js`) is the view the Gi
 plugin registers for the `pull-request` kind, which the shell mounts at `/pull/<n>` and
 `/pull/<n>/files`; a served pull-request URL opens there.
 It reads the pull route only, polling it with an entity tag while visible, and renders
-each text as Markdown through `GET /api/plugin/github/pull-markdown?part=<part>`, which
-renders one text of the cached record through KPress’s sanitized mode and then reduces
-it to an allowlist of plain markup, on the server and again in the page, so nothing in
-it loads, restyles the page, reaches the application’s handlers, or names an element.
+each text as Markdown through
+`GET /api/plugin/github/pull-markdown?number=<n>&part=<part>`, which renders one text of
+the cached record through KPress’s sanitized mode and then reduces it to an allowlist of
+plain markup, on the server and again in the page, so nothing in it loads, restyles the
+page, reaches the application’s handlers, or names an element.
 The page sets the result in a KPress article of its own making, under KPress’s
 stylesheets, so a text reads as the same Markdown in a file does.
 Files changed is the diff plugin’s view over the record’s comparison, passed as two

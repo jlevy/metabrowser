@@ -300,17 +300,21 @@ def rate_limit_reset(response: GhResponse, *, now: datetime) -> str | None:
     """When GitHub will answer again, if *response* is a rate-limit refusal, else ``None``.
 
     ``Retry-After`` (a secondary limit) wins; otherwise an exhausted primary limit
-    resets at ``x-ratelimit-reset``, in epoch seconds.
+    resets at ``x-ratelimit-reset``, in epoch seconds. A time no clock can hold is header
+    text saying there is a limit and not when, so it is ``"unknown"``.
     """
 
     if response.status not in {403, 429}:
         return None
     retry_after = response.headers.get("retry-after", "")
-    if retry_after.isdigit():
-        return (now + timedelta(seconds=int(retry_after))).strftime("%Y-%m-%dT%H:%M:%SZ")
-    if response.headers.get("x-ratelimit-remaining") == "0":
-        reset = response.headers.get("x-ratelimit-reset", "")
-        return _epoch_text(int(reset)) if reset.isdigit() else "unknown"
+    try:
+        if retry_after.isdigit():
+            return (now + timedelta(seconds=int(retry_after))).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if response.headers.get("x-ratelimit-remaining") == "0":
+            reset = response.headers.get("x-ratelimit-reset", "")
+            return _epoch_text(int(reset)) if reset.isdigit() else "unknown"
+    except (OverflowError, ValueError, OSError):
+        return "unknown"
     if response.status == 429 or _mentions_rate_limit(response.body):
         return "unknown"
     return None

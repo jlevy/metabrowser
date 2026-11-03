@@ -204,6 +204,30 @@ def test_rate_limit_reset_reads_retry_after_then_the_primary_reset() -> None:
     assert rate_limit_reset(GhResponse(429, {}, b"{}"), now=now) == "unknown"
 
 
+@pytest.mark.parametrize(
+    "headers",
+    [
+        # Past what a timedelta holds, past what a date holds, and past what int() reads.
+        {"retry-after": "99999999999999"},
+        {"retry-after": "999999999999"},
+        {"retry-after": "9" * 5000},
+        # A character that isdigit() takes and int() refuses, which a header can carry.
+        {"retry-after": "\u00b2"},
+        {"x-ratelimit-remaining": "0", "x-ratelimit-reset": "99999999999999"},
+        {"x-ratelimit-remaining": "0", "x-ratelimit-reset": "9" * 5000},
+        {"x-ratelimit-remaining": "0", "x-ratelimit-reset": "\u00b2"},
+    ],
+)
+def test_a_rate_limit_time_no_clock_can_hold_says_a_limit_without_a_time(
+    headers: dict[str, str],
+) -> None:
+    """An exception here would end the refresh job with no stamp, and the page would keep
+    the previous outcome; a typed ``rate_limited`` with no ``reset_at`` is what it means."""
+
+    now = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
+    assert rate_limit_reset(GhResponse(403, headers, b"{}"), now=now) == "unknown"
+
+
 def test_gh_api_runs_isolated_with_fixed_arguments(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1576,6 +1600,114 @@ def test_past_the_bound_on_jobs_a_request_is_refused_and_starts_nothing(
 
 async def _attended_refresh(session: Any) -> Any:
     return session.request_companion_refresh()
+
+
+def test_on_a_real_session_a_queue_of_pull_requests_delays_neither_the_mirror_nor_the_attended(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Through the routes, with the real mirror and the real set, and only the time a refresh
+    takes held on a gate: both go next after the job running, whatever is queued."""
+
+    _stand, client = pinned_pull
+    ran: list[object] = []
+    release = threading.Semaphore(0)
+
+    async def waiting(served: ServedPull) -> None:
+        ran.append(served.number)
+        await asyncio.to_thread(release.acquire, True, 30)
+
+    original = StoreMirror.refresh
+
+    async def recording(self: StoreMirror) -> Any:
+        ran.append("mirror")
+        await asyncio.to_thread(release.acquire, True, 30)
+        return await original(self)
+
+    monkeypatch.setattr(ServedPull, "refresh", waiting)
+    monkeypatch.setattr(StoreMirror, "refresh", recording)
+
+    def wait_for(count: int) -> None:
+        deadline = time.monotonic() + 30
+        while len(ran) < count and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(ran) >= count, ran
+
+    def ask(number: int) -> None:
+        answer = client.post(_REFRESH_ROUTE, json={"number": number, "retry": True}, headers=_JSON)
+        assert answer.status_code == 202, answer.text
+
+    for number in (100, 101, 102):
+        ask(number)
+    wait_for(1)
+    # A reader's own request for the fetch a commit waits for: the attended job and the mirror's.
+    fetch = client.post("/api/source/refresh", json={"for": "commit", "retry": True}, headers=_JSON)
+    assert fetch.status_code == 202, fetch.text
+    time.sleep(0.2)
+    assert ran == [100], "the store has one job at a time"
+    for count in range(2, 6):
+        release.release()
+        wait_for(count)
+    release.release()
+    session = mirror_session(app)
+    assert session is not None
+    while session.pull_refreshing(102) or session.pull_refreshing(7) or session.refreshing():
+        time.sleep(0.01)
+    assert ran == [100, 7, "mirror", 101, 102]
+
+
+def test_the_attended_pull_request_may_run_one_over_the_bound_and_no_more(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Through the page's route as through the freshness row's, the attended number is not
+    refused because other numbers filled the bound. It is one over the bound and not one per
+    attended switch: past that it is refused like any other, and asking again finds room."""
+
+    _stand, client = pinned_pull
+    gate = threading.Event()
+    ran: list[int] = []
+
+    async def waiting(served: ServedPull) -> None:
+        ran.append(served.number)
+        await asyncio.to_thread(gate.wait, 30)
+
+    monkeypatch.setattr(ServedPull, "refresh", waiting)
+
+    def ask(number: int) -> tuple[int, str]:
+        answer = client.post(_REFRESH_ROUTE, json={"number": number, "retry": True}, headers=_JSON)
+        return answer.status_code, answer.json()["refresh"]
+
+    session = mirror_session(app)
+    assert session is not None and client.portal is not None
+    assert client.get("/api/source/status").json()["pull_request"] == 7
+    for number in range(100, 100 + MAX_PULL_JOBS):
+        assert ask(number) == (202, "started")
+    assert ask(100 + MAX_PULL_JOBS) == (429, "too_many")
+    assert ask(7) == (202, "started"), "the attended number, at the bound, on the page's route"
+    assert ask(7) == (202, "joined")
+
+    # Each switch onto another head used to start one more job past the bound.
+    for number in (8, 9, 10):
+        client.portal.call(session.attend, number)
+        assert client.portal.call(_attended_refresh, session) == "too_many"
+        assert ask(number) == (429, "too_many")
+        assert _read(client, number).json()["refreshing"] is False
+
+    # A source refresh that would refresh only that pull request says so, and starts nothing.
+    monkeypatch.setattr(session, "_fetch_on_miss", True)
+    monkeypatch.setattr(type(session), "_mirror_stale", lambda _self, _now: False)
+    refused = client.post("/api/source/refresh", json={}, headers=_JSON)
+    assert refused.status_code == 429, refused.text
+    assert (refused.json()["refresh"], refused.json()["code"]) == ("too_many", "too_many")
+    assert refused.json()["status"]["pull_request"] == 10
+    assert session.pull_refreshing(10) is False
+
+    gate.set()
+    while any(session.pull_refreshing(number) for number in (*range(100, 100 + MAX_PULL_JOBS), 7)):
+        time.sleep(0.01)
+    assert sorted(ran) == sorted({*range(100, 100 + MAX_PULL_JOBS), 7}), "nothing past the bound"
+    assert client.portal.call(_attended_refresh, session) == "started", "there is room now"
+    while session.pull_refreshing(10):
+        time.sleep(0.01)
 
 
 def test_a_commit_url_newer_than_the_record_refreshes_the_pull_request_to_serve_it(

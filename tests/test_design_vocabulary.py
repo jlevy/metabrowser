@@ -1007,8 +1007,8 @@ _FONT_SIZE_EXEMPT: dict[tuple[str, str], str] = {
     # Reported, not changed: --code-font-size is defined nowhere, so a diff's code reads at
     # 0.85rem, 13.6px, and follows the browser's root size. The ramp's --mono-block-font-size
     # is 12px. Moving to it shrinks every diff on every page, which is the owner's decision.
-    ("diff/styles.css", ".metabrowser-diff-host .diff-line"): "13.6px pending a decision",
-    ("diff/styles.css", ".metabrowser-diff-host .diff-split-side"): "13.6px pending a decision",
+    ("diff/styles.css", ".metabrowser-diff-host .diff-line"): "13.6px pending mb-ruyu",
+    ("diff/styles.css", ".metabrowser-diff-host .diff-split-side"): "13.6px pending mb-ruyu",
     # One step below the structured view's mono, in em so it follows that view's size.
     ("structured/styles.css", ".tok-meta"): "relative to the row it annotates",
 }
@@ -1357,6 +1357,16 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     # Links take the link token rather than the browser's blue.
     assert github[".github-pull-header a"]["color"] == "var(--link)"
+    # A button that moves the pin looks as a link does: no primitive's border or fill.
+    action = github[".github-pull-text-action"]
+    assert (action["color"], action["border"], action["background"]) == (
+        "var(--link)",
+        "0",
+        "transparent",
+    )
+    assert "github-pull-browse" not in page and '"Browse code"' in page
+    assert page.count('class: "github-pull-text-action"') == 1
+    assert '"github-pull-file github-pull-text-action"' in page
     # A hunk is the user's code, at the chrome-context mono size, in the app's mono face.
     assert github[".github-pull-hunk"]["font-family"] == "var(--font-mono)"
     assert github[".github-pull-hunk"]["font-size"] == "var(--mono-block-font-size)"

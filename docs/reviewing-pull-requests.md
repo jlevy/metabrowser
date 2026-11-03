@@ -132,7 +132,7 @@ repository above and about 7 s on `pallets/click`, and one already cached about 
 ## Staying Current
 
 The page shows how old the record is and which account read it
-(`Fetched 3 min ago by gh:your-login`). A record is current for a minute and then stale,
+(`Fetched 3 min ago by your-login`). A record is current for a minute and then stale,
 when the page adds `may be out of date`. A stale record refreshes when the server starts
 and when a stale page becomes visible, and a stale page offers **Refresh**. The row at
 the foot of the navigation pane says when the mirror was last fetched; click it to
