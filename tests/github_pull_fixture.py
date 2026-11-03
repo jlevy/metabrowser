@@ -47,6 +47,7 @@ import functools
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -555,6 +556,34 @@ def logged_gh_calls(directory: Path) -> list[str]:
         calls.append(f"gh api {path}" + (" (If-None-Match)" if conditional else ""))
     log.unlink()
     return calls
+
+
+def in_a_stable_order(calls: list[str]) -> list[str]:
+    """The log's calls, with those that run together in one order.
+
+    A refresh reads the pull first, for its head, and then its other parts in flight
+    together, which reach the log in whatever order the processes did. Only those parts
+    are sorted: a list's pages are read one after another, and their order is pinned.
+    """
+
+    ordered: list[str] = []
+    together: list[str] = []
+    for call in calls:
+        if _RECORD_PART.match(call):
+            together.append(call)
+            continue
+        ordered.extend(sorted(together))
+        together = []
+        ordered.append(call)
+    ordered.extend(sorted(together))
+    return ordered
+
+
+# The parts of a record a refresh reads together, after the pull itself.
+_RECORD_PART = re.compile(
+    r"gh api repos/[^/]+/[^/]+/"
+    r"(issues/\d+/comments|pulls/\d+/comments|pulls/\d+/reviews|commits/[0-9a-f]+/(status|check-runs))\?"
+)
 
 
 def api_entries(origin: Origin) -> dict[str, Any]:
