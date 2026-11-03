@@ -61,6 +61,8 @@ ELAPSED_PATHS: tuple[tuple[str, ...], ...] = (
 MIRROR_LOCATION_PATHS: tuple[tuple[str, ...], ...] = (
     ("location",),
     ("status", "location"),
+    ("borrows",),
+    ("status", "borrows"),
 )
 
 

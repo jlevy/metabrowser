@@ -14,6 +14,8 @@ import asyncio
 import contextlib
 import json
 import os
+import shutil
+import subprocess
 from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -55,6 +57,7 @@ from tests.cache_home_fixture import (
     _stage_and_publish_source,  # pyright: ignore[reportPrivateUsage]
     build_empty_home,
 )
+from tests.diff_fixture_repo import build_diff_fixture, git
 from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
@@ -343,6 +346,41 @@ def test_a_comparison_git_cannot_list_falls_through_to_github(
 
     _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
     local = LocalComparison(tmp_path / "no-such-store.git", "b" * 40, "c" * 40)
+    listed = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
+    assert (listed.listed_from, len(listed.rows)) == ("github", 2)
+
+
+@pytest.mark.parametrize("lender", ["lender_missing", "commits_unavailable"])
+def test_a_borrowed_store_that_can_no_longer_read_the_comparison_falls_through_to_github(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, lender: str
+) -> None:
+    """A mirror that borrows objects reads the record's commits through its checkout.
+
+    Once the checkout is gone (``lender_missing``) or has collected the head
+    (``commits_unavailable``), Git refuses them, and the list is GitHub's rather than none.
+    ``base_uncertain`` and ``parent_unavailable`` never reach this read: the first leaves a
+    record with no comparison, the second answers only one commit's diff, and the list asks
+    for neither a merge base nor a parent.
+    """
+
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    base, head = build_diff_fixture(checkout)
+    store = tmp_path / "store.git"
+    git(tmp_path, "init", "-q", "--bare", str(store))
+    (store / "objects" / "info" / "alternates").write_text(f"{checkout / '.git' / 'objects'}\n")
+    local = LocalComparison(store, base, head)
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    borrowed = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
+    assert borrowed.listed_from == "comparison"
+    if lender == "lender_missing":
+        shutil.rmtree(checkout)
+    else:
+        git(checkout, "reset", "-q", "--hard", base)
+        git(checkout, "reflog", "expire", "--expire=now", "--all")
+        git(checkout, "gc", "-q", "--prune=now")
+        with pytest.raises(subprocess.CalledProcessError):
+            git(checkout, "cat-file", "-e", f"{head}^{{commit}}")
     listed = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
     assert (listed.listed_from, len(listed.rows)) == ("github", 2)
 

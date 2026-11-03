@@ -161,6 +161,8 @@ status: 200
   "name": null,
   "origin": null,
   "location": null,
+  "borrows": null,
+  "shallow": false,
   "refreshable": false,
   "latest": null,
   "ref_on_origin": null,

@@ -110,6 +110,8 @@ status: 200
   "name": "origin",
   "origin": "<ORIGIN>",
   "location": "<HOME>/repository-stores/<STORE_KEY>/repository.git",
+  "borrows": null,
+  "shallow": false,
   "refreshable": true,
   "latest": "8653ceb4d5ca69e2e7e3b39d04645b3820233854",
   "ref_on_origin": true,

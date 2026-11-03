@@ -52,6 +52,7 @@ type PullDataState = Literal[
     "head_mismatch",
     "fetch_failed",
     "refreshing_elsewhere",
+    "lender_missing",
     "git_failed",
     "record_too_large",
     "cache_unwritable",

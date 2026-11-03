@@ -1058,6 +1058,18 @@ async function main() {
     ["no comparison in the record", recordComparison, null],
   ].map(([when, mounted, next]) => `${when}: ${runtime.filesAction(mounted, next)}`);
 
+  // What Files changed says instead, for a record whose comparison could not be made and
+  // for one whose merge base the store's shallow history cannot settle.
+  const filesUnavailable = Object.fromEntries(
+    ["fetch_failed", "no_merge_base", "base_uncertain", "commits_unavailable"].map((why) => {
+      const answer = structuredClone(recorded.current.body);
+      answer.record.comparison = null;
+      answer.record.unavailable = { comparison: why };
+      const model = runtime.describePull(answer, { number: 7, tab: "", nowMs: page.clock.now });
+      return [why, { files: model.filesUnavailable, notes: model.notes }];
+    }),
+  );
+
   // What a review comment shows of its hunk: the recorded pull request with one comment,
   // whose fields are the case's, through describePull. The stand-in's hunks are short, as
   // a recording is small, so the long ones are written here. Whatever the case, the two
@@ -1097,30 +1109,29 @@ async function main() {
     }),
   );
 
-  // Two transcripts, since tryscript's matcher has a limit on how long one can be. Every
-  // run plays the whole story, and the argument chooses what it prints.
-  const place = placeStory(runtime);
-  console.log(
-    JSON.stringify(
-      process.argv[2] === "hunks-and-place"
-        ? { hunks, place }
-        : {
-            steps,
-            states,
-            notGithub: {
-              status: notGithub.status,
-              message: notGithub.message,
-              canRefresh: notGithub.canRefresh,
-            },
-            links,
-            wire: runtime.gitPathWire("src/app.txt"),
-            pageDefense: inert,
-            filesChanged: files,
-          },
-      null,
-      2,
-    ),
-  );
+  // Printed in two parts: this script prints the first, and
+  // github-pull-page-second-session.js, which runs this same session, the second.
+  // tryscript matches a command's expected output as one regular expression, and the
+  // whole transcript in one block is larger than V8 compiles. `--part 2` selects the
+  // second here, and `--part all` prints everything, for a reader.
+  const first = {
+    steps,
+    states,
+    notGithub: {
+      status: notGithub.status,
+      message: notGithub.message,
+      canRefresh: notGithub.canRefresh,
+    },
+    links,
+    wire: runtime.gitPathWire("src/app.txt"),
+    pageDefense: inert,
+    filesChanged: files,
+  };
+  const second = { filesUnavailable, hunks, place: placeStory(runtime) };
+  const part = process.argv.indexOf("--part");
+  const wanted = part === -1 ? "1" : process.argv[part + 1];
+  const chosen = wanted === "all" ? { ...first, ...second } : wanted === "2" ? second : first;
+  console.log(JSON.stringify(chosen, null, 2));
 }
 
 main().catch((error) => {

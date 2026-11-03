@@ -223,6 +223,8 @@ status: 200
     {
       "id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
       "publication": "published",
+      "mode": "full",
+      "lender": null,
       "identity": {
         "created_at": "2026-09-17T12:00:00Z",
         "acquisition": {
@@ -256,6 +258,8 @@ status: 200
     {
       "id": "sha256:c3c36fb283ea2c90a566bfb072d621839b3940b93ef33c8a53b8d4e120dc22bf",
       "publication": "published",
+      "mode": "full",
+      "lender": null,
       "identity": {
         "created_at": "2026-09-17T12:00:00Z",
         "acquisition": {
@@ -316,6 +320,8 @@ status: 200
     "store": {
       "id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
       "publication": "published",
+      "mode": "full",
+      "lender": null,
       "identity": {
         "created_at": "2026-09-17T12:00:00Z",
         "acquisition": {
@@ -613,6 +619,8 @@ status: 200
     {
       "id": "sha256:4c2d8559cb0179baca3afa2f633e1cfd7271b82e4fb7f0c451dfa9354aa70aff",
       "publication": "published",
+      "mode": "full",
+      "lender": null,
       "identity": {
         "created_at": "2026-09-17T12:00:00Z",
         "acquisition": {
@@ -646,6 +654,8 @@ status: 200
     {
       "id": "sha256:c3c36fb283ea2c90a566bfb072d621839b3940b93ef33c8a53b8d4e120dc22bf",
       "publication": "damaged",
+      "mode": "full",
+      "lender": null,
       "identity": {
         "created_at": "2026-09-17T12:00:00Z",
         "acquisition": {
@@ -709,6 +719,130 @@ status: 200
     ],
     "store": null
   }
+}
+? 0
+```
+
+## Test: stores that borrow from a checkout
+
+`mode` says whether a store holds all its objects (`full`) or borrows from a checkout
+the reader named (`overlay`), and `lender` whether that checkout’s objects are still
+there. The checkout’s path is not here: these routes name no path.
+Itsdangerous’s alternates file names something other than its record says, which is
+damage. Markupsafe’s checkout has gone, which is not damage: the records are as they
+were, and naming where the checkout is now repairs it.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/overlay metab root --api /api/cache/stores
+api: /api/cache/stores
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "stores": [
+    {
+      "id": "sha256:84b4d10c2cb4434a734326ce37e519802d313c88b83783304b3fdb8b8646a080",
+      "publication": "damaged",
+      "mode": "overlay",
+      "lender": "present",
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "2.50.1",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/trunk",
+        "default_revision": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e",
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        }
+      },
+      "problems": [
+        {
+          "record": "store.yml",
+          "code": "mismatch",
+          "message": "store.yml disagrees with the store's alternates file about what it borrows."
+        }
+      ],
+      "referenced_by": [
+        {
+          "slug": "github-com--pallets--itsdangerous--428923955b39",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    },
+    {
+      "id": "sha256:c72e53ac1334507aefa51f16c87f73fdd076eb774f12b348b44f0baf40b6a530",
+      "publication": "published",
+      "mode": "overlay",
+      "lender": "lender_missing",
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "2.50.1",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/trunk",
+        "default_revision": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e",
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [
+        {
+          "slug": "github-com--pallets--markupsafe--c9f236af140d",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    },
+    {
+      "id": "sha256:f68db9d30e59b33c3db7869b2f860dda22207fddaf4ce29f8782c44710f1c142",
+      "publication": "published",
+      "mode": "overlay",
+      "lender": "present",
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "2.50.1",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/trunk",
+        "default_revision": "5f4c1a2e8b0d9c7e6a5f4b3c2d1e0f9a8b7c6d5e",
+        "last_fetch_at": "2026-09-17T12:00:05Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:05Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [
+        {
+          "slug": "github-com--pallets--jinja--1b7f05892a34",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
 }
 ? 0
 ```

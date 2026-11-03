@@ -8,6 +8,11 @@
      two of these, as `.kpress-long-text`'s is, so its text box is a Markdown file's. */
   --github-pull-text-inset: var(--pane-header-padding-x);
   --github-pull-gap: 12px;
+  /* A pull request's texts are messages, not committed documents, so they read in the
+     interface sans whatever the reading font, at that face's width for the same "Max text
+     width" (docs/design-system.md, "Serif Is for Documents"). */
+  --kpress-host-font-prose: var(--prose-sans-font);
+  --doc-measure: var(--message-measure);
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -168,9 +173,9 @@
 .github-pull-text {
   padding: var(--pane-header-padding-y) var(--github-pull-text-inset);
 }
-/* A text before its Markdown arrives, in the reading type it is about to have. */
+/* A text before its Markdown arrives, in the type it is about to have. */
 .github-pull-plain {
-  font-family: var(--kpress-font-prose);
+  font-family: var(--prose-sans-font);
   font-size: var(--document-body-font-size);
   line-height: var(--kpress-line-height-normal);
   white-space: pre-wrap;

@@ -287,6 +287,11 @@
       dispose,
       onHistory,
       open,
+      /** The handle of the pull request's page holding the pane, for what sits beside it, or null. */
+      page: () => {
+        const current = shown();
+        return current === null || current.number === "list" ? null : current.handle;
+      },
       show,
       showList,
       shown: () => shown()?.number ?? null,

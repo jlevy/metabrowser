@@ -7721,7 +7721,13 @@ function startInventoryEventStream() {
 // navigation.js is linked by the same shell response, immediately ahead of this
 // script, so the module and this controller always exist together.
 var navigationController = window.MetabrowserNavigationRoute.createController({
-  apply: applyNavigationTarget,
+  apply(target, context) {
+    // A file or a folder reads the catalog.
+    if (target) {
+      quickFileCatalogFeed?.release();
+    }
+    return applyNavigationTarget(target, context);
+  },
 });
 window.MetabrowserNavigationRoute.attachController(navigationController);
 
@@ -7837,10 +7843,10 @@ function showPullPageLoadFailure(claim, what = "the pull-request page") {
 function pullPageHostDeps(routes) {
   var mountView = routes.createViewMount({
     sdk: window.metabrowser,
-    isCurrent: (claim) => isPreviewClaimCurrent(claim),
-    renderHtml: (html, claim) => renderPreviewHtml(html, claim),
+    isCurrent: isPreviewClaimCurrent,
+    renderHtml: renderPreviewHtml,
     renderNode: (node, claim) => renderPreviewNode(node, claim),
-    showLoadFailure: (claim, what) => showPullPageLoadFailure(claim, what),
+    showLoadFailure: showPullPageLoadFailure,
   });
   return {
     claim: () => {
@@ -7851,7 +7857,7 @@ function pullPageHostDeps(routes) {
       stopFolderHeaderSubscription();
       return claim;
     },
-    isCurrent: (claim) => isPreviewClaimCurrent(claim),
+    isCurrent: isPreviewClaimCurrent,
     mount: (claim, route, open) =>
       mountView(claim, "pull-request", {
         number: route.number,
@@ -8185,6 +8191,11 @@ function initQuickFileFinder() {
     quickFileCatalogFeed = window.MetabrowserCatalogFeed.create({
       catalog: knownFileCatalog,
     });
+    // A pull request's page reads no catalog until its palette or a file does, and each of
+    // those releases it (`catalog-feed.js#hold`).
+    if (window.location.pathname.startsWith(PULL_ROUTE_PREFIX)) {
+      quickFileCatalogFeed.hold();
+    }
     // The stream can open while its on-demand catalog modules are loading.
     // Start here if that open already happened, or if this browser has no live
     // transport; otherwise onopen starts it. JavaScript dispatches neither
@@ -8210,6 +8221,7 @@ function initQuickFileFinder() {
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
     maxRows: QUICK_FILE_RESULT_LIMIT,
+    onOpen: () => quickFileCatalogFeed?.release(),
     overlay: window.MetabrowserOverlay,
     // Coverage grows while the palette is open — the bulk feed lands, then
     // live deltas — so an open search re-runs instead of keeping the result
@@ -8246,6 +8258,7 @@ function clearBrowserFileCache(path) {
 if (typeof window !== "undefined") {
   window.metabrowser.debug = Object.freeze({
     clearFileCache: clearBrowserFileCache,
+    pullPage: () => pullPageHost?.page() ?? null,
     selectFile: selectFile,
   });
 

@@ -214,10 +214,16 @@ class MirrorRef:
 
 @dataclass(frozen=True, slots=True)
 class RefreshResult:
-    """How one refresh ended: a typed outcome code and when."""
+    """How one refresh ended: a typed outcome code and when.
+
+    ``swept`` names refs the store itself deleted before the fetch, because the checkout
+    an overlay borrows from no longer holds their objects; the origin was not asked about
+    them, so a served one is unobserved rather than gone from the origin.
+    """
 
     outcome: str
     at: str
+    swept: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,7 +233,8 @@ class RecordedFreshness:
     ``record_stamp`` identifies the record file as read -- its inode and nanosecond
     modification time, both new on every atomic rewrite -- so a caller can tell a
     rewrite apart from a record written earlier in the same second; ``None`` when the
-    mirror cannot say.
+    mirror cannot say. ``shallow`` is whether the store has a shallow boundary, which for
+    an overlay moves with the checkout.
     """
 
     last_fetch_at: str | None
@@ -235,6 +242,7 @@ class RecordedFreshness:
     last_outcome: str | None
     last_outcome_at: str | None
     record_stamp: tuple[int, int] | None = None
+    shallow: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,11 +256,14 @@ class MirrorDisplay:
     Both ``origin``, when it is a ``file://`` address, and ``location`` have the home
     directory as ``~`` when they are under it. All three are safe to print: a control
     or invisible character the origin put in its address is already replaced.
+    ``borrows`` is the checkout an overlay borrows objects from, under the same exception,
+    and ``None`` for a mirror that holds all its own objects.
     """
 
     name: str
     origin: str
     location: str
+    borrows: str | None = None
 
 
 class ServedMirror(Protocol):
@@ -679,6 +690,10 @@ class MirrorSession:
         self._recorded_with_result: RecordedFreshness | None = None
         self._last_success_at: str | None = None
         self._tip: tuple[str, str | None] | None = None
+        # Refs an overlay's sweep deleted and no fetch has named since. Absent from the
+        # store by its own hand, not the origin's, so the status says nothing about them
+        # until a fetch brings one back, which a pull request's own fetch does.
+        self._swept: set[str] = set()
         # The ref last served, kept while a commit pinned by ID is served under none.
         self._last_ref: str | None = None
         self._pin_lock = asyncio.Lock()
@@ -718,7 +733,16 @@ class MirrorSession:
             if subject is None or subject.ref is None:
                 self._tip = None
                 return
-            self._tip = (subject.ref, await self.mirror.ref_tip(subject.ref))
+            tip = await self.mirror.ref_tip(subject.ref)
+            if tip is not None:
+                self._swept.discard(subject.ref)
+            # A ref the store swept is unobserved, never reported as gone from the origin.
+            self._tip = None if tip is None and subject.ref in self._swept else (subject.ref, tip)
+
+    def shallow(self) -> bool:
+        """Whether the store had a shallow boundary when it was last observed."""
+
+        return self._recorded.shallow
 
     def last_fetch_at(self) -> str | None:
         recorded = self._recorded.last_fetch_at
@@ -943,6 +967,7 @@ class MirrorSession:
         except Exception:
             log.exception("refreshing the served mirror failed")
             result = RefreshResult("failed", _utc_timestamp())
+        self._swept.update(result.swept)
         self._set_result(result)
         if result.outcome in _FETCHED_OUTCOMES:
             self._last_success_at = result.at
