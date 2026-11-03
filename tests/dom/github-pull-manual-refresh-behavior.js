@@ -85,11 +85,11 @@ async function run() {
     true,
   );
   process.stdout.write(
-    JSON.stringify({
+    `${JSON.stringify({
       manualFailuresRetry: cases,
       automaticReadsFetch: false,
       noStoreKeepsOwnAction: true,
-    }) + "\n",
+    })}\n`,
   );
 }
 run().catch((error) => {

@@ -186,7 +186,9 @@ async function run() {
   const posts = [];
   globalThis.fetch = async (_route, options = {}) => {
     const answer = options.method === "POST" ? checkout.started : checkout.before;
-    if (options.method === "POST") posts.push(JSON.parse(options.body));
+    if (options.method === "POST") {
+      posts.push(JSON.parse(options.body));
+    }
     return { status: answer.status, headers: { get: () => null }, json: async () => answer.body };
   };
   const checkoutContainer = new Element("main");
