@@ -646,6 +646,14 @@ status: 200
       "kind": "browser"
     },
     {
+      "path": "/pulls",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "browser"
+    },
+    {
       "path": "/view/{path:path}",
       "methods": [
         "GET",
@@ -670,7 +678,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 50
+  "count": 51
 }
 ? 0
 ```
