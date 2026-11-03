@@ -5,16 +5,18 @@ title: Clarify GitHub CLI setup and validate optional dependency failures
 kind: task
 status: in_progress
 priority: 1
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
 dependencies: []
 parent_id: is-01m6hkbt0t0qhvrhxhktgefe38
+child_order_hints:
+  - is-01m6hra3df66c1bt2efxqw0q9q
 hold: null
 hold_until: null
 created_at: 2026-11-03T22:25:14.780Z
-updated_at: 2026-11-03T22:25:23.776Z
+updated_at: 2026-11-03T22:26:08.429Z
 started_at: 2026-11-03T22:25:23.775Z
 ---
 Owner requests a dependency/setup audit across local browsing, existing Git checkouts, managed repository URLs and PR metadata. Verify gh missing, signed out, too old/broken, and cached offline behavior; provide clean descriptive actionable UI/CLI messages and straightforward installation/authentication guidance aligned with tbd shortcut setup-github-cli. Prefer standard gh installation and gh auth login/status; no wrappers, unnecessary installer or compatibility scaffolding. Distinguish Git admission requirements from optional gh metadata support, keep cached reads network-free, and prove ordinary local browsing remains usable. Independent runtime and documentation agents audit findings before any forward change; final wheel acceptance covers relevant states.
