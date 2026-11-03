@@ -18,6 +18,7 @@ from metabrowser.git.process import GitError, repository_store_target
 from metabrowser.git.tree_source import (
     GitObjectCorruptError,
     GitObjectUnavailableError,
+    recycle_store_readers,
     verify_store_object,
 )
 from metabrowser.git.wire import is_full_revision
@@ -67,6 +68,7 @@ async def recover_comparison_objects(
                 await fetch_objects(published, tuple(missing), timeout_s=RECOVERY_TIMEOUT_S)
                 for oid in missing:
                     await verify(oid)
+            await recycle_store_readers(target)
     except PullRefError as exc:
         if exc.state in {"fetch_failed", "not_found_or_private"}:
             raise PullRefError(

@@ -811,6 +811,8 @@ class _StoreReaderPool:
         self._create_lock = asyncio.Lock()
         self._closed = False
         self._holders = 0
+        self._generation = 0
+        self._reader_generations: dict[_BatchObjectReader, int] = {}
 
     @asynccontextmanager
     async def checkout(self) -> AsyncGenerator[_BatchObjectReader]:
@@ -825,31 +827,80 @@ class _StoreReaderPool:
         for reader in self._readers:
             await reader.aclose()
         self._readers.clear()
+        self._reader_generations.clear()
         while True:
             try:
                 self._available.get_nowait()
             except asyncio.QueueEmpty:
                 break
 
+    async def recycle(self) -> None:
+        """Retire idle processes now and leased processes when their transactions finish.
+
+        Changing the generation synchronously marks even a queue waiter that already
+        received an actor but has not resumed. It must recycle before handing it out.
+        Live leases retain exclusive ownership; no repair kills their transaction.
+        """
+        self._generation += 1
+        idle: list[_BatchObjectReader] = []
+        while True:
+            try:
+                idle.append(self._available.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        try:
+            for reader in idle:
+                await self._recycle_if_stale(reader)
+        finally:
+            # Keep ownership here, rather than in spawned tasks: cancellation can
+            # arrive before such a task starts and enters its own cleanup handler.
+            for reader in idle:
+                if self._closed:
+                    await reader.aclose()
+                else:
+                    self._available.put_nowait(reader)
+
+    async def _recycle_if_stale(self, reader: _BatchObjectReader) -> None:
+        while not self._closed and self._reader_generations[reader] != self._generation:
+            generation = self._generation
+            await reader._poison()
+            if not self._closed:
+                self._reader_generations[reader] = generation
+
     async def _acquire(self) -> _BatchObjectReader:
         if self._closed:
             raise GitBatchProtocolError("batch reader pool is closed")
         try:
-            return self._available.get_nowait()
+            reader = self._available.get_nowait()
         except asyncio.QueueEmpty:
-            pass
-        async with self._create_lock:
-            if len(self._readers) < MAX_BATCH_READERS_PER_STORE:
-                reader = _BatchObjectReader(self._target)
-                self._readers.append(reader)
-                return reader
-        return await self._available.get()
+            async with self._create_lock:
+                if self._closed:
+                    raise GitBatchProtocolError("batch reader pool is closed") from None
+                if len(self._readers) < MAX_BATCH_READERS_PER_STORE:
+                    reader = _BatchObjectReader(self._target)
+                    self._readers.append(reader)
+                    self._reader_generations[reader] = self._generation
+                    return reader
+            reader = await self._available.get()
+        try:
+            await self._recycle_if_stale(reader)
+            if self._closed:
+                raise GitBatchProtocolError("batch reader pool is closed")
+            return reader
+        except BaseException:
+            # Cancellation while recycling must not consume a queue slot forever.
+            if not self._closed:
+                self._available.put_nowait(reader)
+            raise
 
     async def _release(self, reader: _BatchObjectReader) -> None:
-        if self._closed:
-            await reader.aclose()
-            return
-        await self._available.put(reader)
+        try:
+            await self._recycle_if_stale(reader)
+        finally:
+            if self._closed:
+                await reader.aclose()
+            else:
+                self._available.put_nowait(reader)
 
 
 def _pool_key(target: RepositoryStoreTarget) -> Path:
@@ -887,6 +938,19 @@ def store_batch_reader_count(target: RepositoryStoreTarget) -> int:
     with _POOLS_GUARD:
         pool = _POOLS.get(_pool_key(target))
         return 0 if pool is None else len(pool._readers)
+
+
+async def recycle_store_readers(target: RepositoryStoreTarget) -> None:
+    """After explicit repair, stop retained processes from reopening obsolete pack bytes.
+
+    Runs on the store readers' serving loop. Idle readers are reaped before returning;
+    active leases are marked stale and reaped on release, before another request uses
+    them. No source is closed and no in-flight object transaction is interrupted.
+    """
+    with _POOLS_GUARD:
+        pool = _POOLS.get(_pool_key(target))
+    if pool is not None:
+        await pool.recycle()
 
 
 async def read_store_blob(
@@ -1721,6 +1785,7 @@ __all__ = [
     "follow_git_symlinks",
     "git_revision_subject",
     "read_store_blob",
+    "recycle_store_readers",
     "verify_store_object",
     "verify_store_blobs",
     "ref_branch_name",
