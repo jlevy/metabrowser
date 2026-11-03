@@ -370,7 +370,8 @@ def _boundary_is_plain(common_dir: Path) -> bool:
     """Whether ``shallow`` is absent or a regular file: a FIFO would block every Git read."""
 
     try:
-        return stat.S_ISREG(os.stat(common_dir / "shallow").st_mode)
+        boundary = common_dir / "shallow"
+        return stat.S_ISREG(os.stat(boundary).st_mode) and os.access(boundary, os.R_OK)
     except FileNotFoundError:
         return True
     except OSError:
@@ -518,7 +519,11 @@ def attach_lender(git_dir: Path, lender: StoreLender) -> None:
     boundary = git_dir / "shallow"
     temporary = boundary.with_name(f".shallow.{secrets.token_hex(6)}")
     temporary.symlink_to(lender_boundary_path(lender))
-    os.replace(temporary, boundary)
+    try:
+        os.replace(temporary, boundary)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def rebind_lender(git_dir: Path, lender: StoreLender) -> None:
@@ -663,6 +668,8 @@ def lender_problem(lender: StoreLender) -> str | None:
         return "the checkout this mirror borrows objects from now borrows objects itself"
     if not _objects_readable(objects):
         return "the objects of the checkout this mirror borrows from could not be read"
+    if not _boundary_is_plain(objects.parent):
+        return "the checkout this mirror borrows from has an unreadable shallow boundary"
     return None
 
 
@@ -700,12 +707,9 @@ def read_store_lender(home: Path, store_key: str) -> StoreLender | None:
     Read for each fetch, so a repair by another process is seen. Blocking.
     """
 
-    try:
-        store = read_record(
-            home, store_record(store_key, "store.yml"), REPOSITORY_STORE_CONTRACT_ID, shared="keep"
-        )
-    except FileNotFoundError:
-        return None
+    store = read_record(
+        home, store_record(store_key, "store.yml"), REPOSITORY_STORE_CONTRACT_ID, shared="keep"
+    )
     return store.lender if isinstance(store, RepositoryStore) else None
 
 
@@ -743,8 +747,9 @@ def collection_doubt(lender: StoreLender, oids: list[str]) -> str | None:
     and cannot lend now: a loose file whose mode a permission blip changed, or a pack that
     cannot be read, which a lender with no ref files (reftable) gives no tip to reveal. A
     ref is deleted only for the first. So an object counts as gone only when no loose file
-    of it is there, whatever its mode, and every file in the lender's pack directory can be
-    read, since Git then read every index and found none naming it. Anything else, a loose
+    of it is there, whatever its mode, and every pack in the lender's pack directory has
+    a readable index, since Git then read every index and found none naming it. Anything
+    else, a loose
     directory that cannot be searched or more pack entries than :data:`_MAX_PACK_ENTRIES`
     among them, is doubt. One ``lstat`` per object and one scan of the pack directory, run
     only when a sweep found something to delete. Blocking.
@@ -766,6 +771,10 @@ def collection_doubt(lender: StoreLender, oids: list[str]) -> str | None:
                     return f"{_UNLENT}: its pack directory has too many entries to check"
                 if not os.access(entry.path, os.R_OK):
                     return f"{_UNLENT}: a pack of it cannot be read"
+                if entry.name.endswith(".pack") and not os.access(
+                    Path(entry.path).with_suffix(".idx"), os.R_OK
+                ):
+                    return f"{_UNLENT}: a pack of it has no readable index"
     except FileNotFoundError:
         return None
     except OSError:

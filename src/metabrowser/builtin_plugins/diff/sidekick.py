@@ -279,6 +279,12 @@ def _git_failure(exc: GitError, path: str) -> JSONResponse:
 
 
 async def comparison_handler(request: Request) -> Response:
+    """The active subject's Git comparison, through the shared comparison service."""
+
+    return await comparison_at(request, session_git_location())
+
+
+async def comparison_at(request: Request, location: GitLocation) -> Response:
     """A Git comparison at the active subject's location, as a ChangeSetDocument.
 
     ``?revision=<rev>`` compares a commit against its first parent — the
@@ -323,7 +329,6 @@ async def comparison_handler(request: Request) -> Response:
             path=revision or f"{left}..{right}",
         )
 
-    location = session_git_location()
     # The token names the store in the key, the tag and the address alike; one stat a request.
     store = (
         store_tag(location.target.git_dir)

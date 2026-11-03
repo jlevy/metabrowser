@@ -275,7 +275,8 @@ class PullRecord(_Model):
     with the head (``no_merge_base``, Git's own answer and nothing else), cannot be known
     because the store's history is shallow (``base_uncertain``), or needs a commit the
     store cannot read, an ancestor the checkout it borrows from has collected
-    (``commits_unavailable``). The rest of the record stands.
+    (``commits_unavailable``). A history check that exceeds its deadline or output bound
+    records ``comparison_timeout`` or ``comparison_too_large``. The rest of the record stands.
     """
 
 

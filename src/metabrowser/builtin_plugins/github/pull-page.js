@@ -786,6 +786,21 @@ export function describePull(envelope, page) {
 }
 
 /**
+ * Whether *response* is the pin guard's refusal of a page whose pin moved. The guard
+ * answers it by reloading the page onto the commit now served, so the page says nothing
+ * of its own meanwhile: a page Back restores polls before the guard's check, and its
+ * "unavailable" would be on screen only until the reload.
+ *
+ * @param {{status: number, body: unknown}} response
+ */
+function pinChanged(response) {
+  const body = /** @type {Record<string, unknown> | null} */ (
+    response.body !== null && typeof response.body === "object" ? response.body : null
+  );
+  return response.status === 409 && body?.code === "pin_changed";
+}
+
+/**
  * @param {unknown} value
  * @returns {value is PullEnvelope}
  */
@@ -987,7 +1002,7 @@ export function createPullController(deps, options) {
         error = null;
       } else if (response.status === 304) {
         error = null;
-      } else {
+      } else if (!pinChanged(response)) {
         error = `The pull request is unavailable (HTTP ${response.status}).`;
       }
     } catch {
