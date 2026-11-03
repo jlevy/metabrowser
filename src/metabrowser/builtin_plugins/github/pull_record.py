@@ -4,9 +4,9 @@ A record holds what ``gh api`` said about one pull request, as the reader it nam
 it at ``fetched_at``: the pull request, its issue comments, reviews, review comments,
 check runs, and combined status, plus the comparison endpoints Git computed from it.
 It lives at ``sources/<slug>/pulls/<n>.json``, written by the home's private
-atomic file write and read with a size bound. Pydantic validates it on write and parses
-it on read; a record whose ``schema_version`` is not :data:`PULL_RECORD_SCHEMA` is
-refetched, never migrated.
+atomic file write under the source-alias lock and read lock-free with a size bound.
+Pydantic validates it on write and parses it on read; a record whose ``schema_version``
+is not :data:`PULL_RECORD_SCHEMA` is refetched, never migrated.
 
 Every list and every free-text field is bounded, and a bound that cut something says so
 in ``truncated`` or in the item's own ``*_truncated`` flag. The bounds are measured
@@ -32,6 +32,7 @@ from pydantic import (
 )
 
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
+from metabrowser.cache.locks import source_alias_lock
 from metabrowser.cache.paths import (
     source_pull_record,
     source_pull_refresh,
@@ -440,25 +441,67 @@ def ensure_pulls_directory(home: Path, slug: str) -> None:
     directory the cache would report as a damaged source. Blocking.
     """
 
+    _require_published_source(home, slug)
+    ensure_private_directory(home, source_pulls_directory(slug))
+
+
+def _require_published_source(home: Path, slug: str) -> None:
     try:
         status = os.lstat(home / source_record(slug, "source.yml"))
     except FileNotFoundError:
         raise FileNotFoundError("no source is published under this slug") from None
     if not stat.S_ISREG(status.st_mode):
         raise FileNotFoundError("no source is published under this slug")
-    ensure_private_directory(home, source_pulls_directory(slug))
 
 
-def write_pull_record(home: Path, slug: str, record: PullRecord) -> None:
-    """Publish *record* atomically under its source. Blocking; run it off the event loop.
+def _metadata_record(record: PullRecord, current: PullRecord | RecordAbsence) -> PullRecord:
+    """Retain only the latest shared comparison whose reader and inputs still match."""
+    comparison = None
+    if (
+        isinstance(current, PullRecord)
+        and current.comparison is not None
+        and current.source == record.source
+        and current.reader == record.reader
+        and current.pull.head.sha == record.pull.head.sha
+        and current.comparison.head == record.pull.head.sha
+        and current.pull.base.sha == record.pull.base.sha
+        and current.pull.base.ref == record.pull.base.ref
+        and current.pull.state == record.pull.state
+    ):
+        comparison = current.comparison
+    unavailable = dict(record.unavailable)
+    if comparison is None:
+        unavailable["comparison"] = "no_store"
+    else:
+        unavailable.pop("comparison", None)
+    return record.model_copy(update={"comparison": comparison, "unavailable": unavailable})
+
+
+def write_pull_record(
+    home: Path, slug: str, record: PullRecord, *, metadata_only: bool = False
+) -> PullRecord:
+    """Publish and return *record* under its source's alias lock. Blocking.
+
+    Every writer takes the same lock. A metadata-only writer merges a compatible
+    comparison from the latest shared record inside that publication boundary. Readers
+    remain lock-free and see the old or the complete new record. Async callers use
+    ``run_lock_section`` so cancellation abandons a queued lock wait.
 
     Raises :class:`RecordTooLargeError`, or the home's ``PrivateStorageError`` or an
     ``OSError`` when the cache cannot take it, a slug no source holds among them.
     """
-
     data = serialize_pull_record(record)
-    ensure_pulls_directory(home, slug)
-    write_private_file_atomic(home, source_pull_record(slug, record.number), data)
+    # Do not create a lock or any source path for an unclaimed source. Check again
+    # under the lock before creating the pulls directory or publishing the record.
+    _require_published_source(home, slug)
+    with source_alias_lock(home, slug):
+        ensure_pulls_directory(home, slug)
+        if metadata_only:
+            current = read_pull_record(home, slug, record.number)
+            record = fit_record(_metadata_record(record, current))
+            data = serialize_pull_record(record)
+        write_private_file_atomic(home, source_pull_record(slug, record.number), data)
+    return record
 
 
 def read_pull_record(

@@ -38,6 +38,7 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pydantic import BaseModel, ValidationError
@@ -98,6 +99,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     write_pull_refresh,
 )
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
+from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.providers import PullRequestFetch, PullRequestPin
 from metabrowser.cache.pull_refs import (
     BaseUncertainError,
@@ -640,7 +642,15 @@ async def _write(published: PublishedSource | ListedRepository, record: PullReco
         final = fit_record(record)
         if not isinstance(published, ListedRepository):
             await prepare_pull_manifest(published, final)
-        await asyncio.to_thread(write_pull_record, published.home, published.slug, final)
+        return await run_lock_section(
+            partial(
+                write_pull_record,
+                published.home,
+                published.slug,
+                final,
+                metadata_only=isinstance(published, ListedRepository),
+            )
+        )
     except RecordTooLargeError as exc:
         raise PullDataError("record_too_large", str(exc)) from exc
     except (PrivateStorageError, OSError) as exc:
@@ -648,7 +658,6 @@ async def _write(published: PublishedSource | ListedRepository, record: PullReco
         raise PullDataError(
             "cache_unwritable", "its record could not be written to the cache"
         ) from exc
-    return final
 
 
 async def _with_comparison(published: PublishedSource, record: PullRecord) -> PullRecord:
@@ -719,29 +728,9 @@ async def _refresh(published: PublishedSource | ListedRepository, number: int) -
                 "discarded; open it again",
             )
         if isinstance(published, ListedRepository):
-            # Another session may have computed this shared record's comparison. Keep
-            # it only for the same reader and unchanged comparison inputs. The folder
-            # envelope still withholds it until that server has attached a store.
-            comparison = None
-            if (
-                previous is not None
-                and previous.comparison is not None
-                and previous.pull.head.sha == record.pull.head.sha
-                and previous.comparison.head == record.pull.head.sha
-                and previous.pull.base.sha == record.pull.base.sha
-                and previous.pull.base.ref == record.pull.base.ref
-                and previous.pull.state == record.pull.state
-            ):
-                comparison = previous.comparison
-            unavailable = dict(record.unavailable)
-            if comparison is None:
-                unavailable["comparison"] = "no_store"
-            else:
-                unavailable.pop("comparison", None)
-            return await _write(
-                published,
-                record.model_copy(update={"comparison": comparison, "unavailable": unavailable}),
-            )
+            # Merge against the latest shared comparison inside the publication lock,
+            # not the cache snapshot taken before the network read.
+            return await _write(published, record)
         pull = record.pull
         try:
             fetched = await fetch_pull_head(

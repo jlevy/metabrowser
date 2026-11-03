@@ -804,7 +804,7 @@ def test_metadata_refresh_preserves_only_the_same_readers_comparison(
                 cached = original.model_copy(
                     update={"comparison": original.comparison.model_copy(update={"head": "f" * 40})}
                 )
-            write_pull_record(home, published.slug, cached)
+            await asyncio.to_thread(write_pull_record, home, published.slug, cached)
             pull = original.pull
             if change in ("head", "base"):
                 side = getattr(pull, change).model_copy(update={"sha": "f" * 40})
@@ -908,5 +908,54 @@ def test_acquisition_keeps_its_active_companion_bound_after_eviction(
         finally:
             release.set()
             await coordinator.aclose()
+
+    asyncio.run(run())
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_metadata_refresh_keeps_comparison_published_during_its_api_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.pull_record import read_pull_record
+    from tests.golden_harness import isolate_cli
+
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, home)  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None and repository.cached is None
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", lambda _source: pull_origin.url)
+    api = pulls._read_api  # pyright: ignore[reportPrivateUsage]
+
+    async def run() -> None:
+        published = await checkout_module._acquire_comparison(repository)  # pyright: ignore[reportPrivateUsage]
+        entered, release = asyncio.Event(), asyncio.Event()
+        first = True
+
+        async def delayed(*args: Any, **kwargs: Any) -> Any:
+            nonlocal first
+            if first:
+                first = False
+                assert kwargs["previous"] is None
+                entered.set()
+                await release.wait()
+            return await api(*args, **kwargs)
+
+        monkeypatch.setattr(pulls, "_read_api", delayed)
+        metadata = asyncio.create_task(pulls.refresh_pull_request(repository, 10))
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            shared = await pulls.refresh_pull_request(published, 10)
+            assert shared.comparison is not None
+            release.set()
+            refreshed = await metadata
+            assert refreshed.comparison == shared.comparison
+            assert "comparison" not in refreshed.unavailable
+            assert read_pull_record(home, published.slug, 10) == refreshed
+        finally:
+            release.set()
+            await metadata
 
     asyncio.run(run())
