@@ -86,7 +86,13 @@ async function run() {
     ).href
   );
   const results = [];
-  for (const scenario of ["survivor", "empty", "other focus"]) {
+  for (const scenario of [
+    "survivor",
+    "empty",
+    "other focus",
+    "windowed survivor",
+    "windowed other focus",
+  ]) {
     const timers = new Map();
     globalThis.window = {
       setTimeout(callback, delay) {
@@ -117,7 +123,17 @@ async function run() {
       chevron: () => null,
       href: (file) => `/${file}`,
       request: async (_method, route) => {
-        const files = generation === 0 ? ["a.py", "b.py"] : scenario === "empty" ? [] : ["a.py"];
+        const windowed = scenario.startsWith("windowed");
+        const files =
+          generation === 0
+            ? windowed
+              ? Array.from({ length: 300 }, (_, at) => `a${String(at).padStart(3, "0")}.py`)
+              : ["a.py", "b.py"]
+            : scenario === "empty"
+              ? []
+              : windowed
+                ? ["a000.py"]
+                : ["a.py"];
         const offset = Number(new URL(route, "http://example").searchParams.get("offset"));
         return {
           status: 200,
@@ -164,9 +180,11 @@ async function run() {
     view.controller.expand();
     await settle();
     const list = view.group.children[3];
-    const selected = list.children.find((element) => element.dataset.id === "b.py");
-    view.controller.focused("b.py");
-    (scenario === "other focus" ? elsewhere : selected).focus();
+    const selectedId = scenario.startsWith("windowed") ? "a250.py" : "b.py";
+    view.controller.focused(selectedId);
+    const selected = list.children.find((element) => element.dataset.id === selectedId);
+    assert.ok(selected, "the anchor is retained outside the visible row window");
+    (scenario.endsWith("other focus") ? elsewhere : selected).focus();
     generation = 1;
     for (const delay of [60000, 0]) {
       const entry = [...timers].find(([, timer]) => timer.delay === delay);
@@ -176,7 +194,13 @@ async function run() {
       await settle();
     }
     const expected =
-      scenario === "survivor" ? "a.py" : scenario === "empty" ? "owner" : "elsewhere";
+      scenario === "survivor"
+        ? "a.py"
+        : scenario === "windowed survivor"
+          ? "a000.py"
+          : scenario === "empty"
+            ? "owner"
+            : "elsewhere";
     assert.equal(document.activeElement.dataset.id, expected, scenario);
     results.push({ scenario, focus: expected });
     view.dispose();

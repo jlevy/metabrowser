@@ -91,6 +91,9 @@ export function mountFileTree(host) {
   const drawn = new Map();
   /** @type {Map<string, number>} */
   let index = new Map();
+  // Anchor settlement can remove an offscreen focused row before replacement paint.
+  /** @type {HTMLElement | null} */
+  let removedFocus = null;
   let rowHeight = 0;
   let disposed = false;
 
@@ -304,8 +307,10 @@ export function mountFileTree(host) {
   /** @param {FileTreeModel} next */
   function paint(next) {
     const focused =
+      removedFocus ??
       [...drawn.values()].find((entry) => entry.element === document.activeElement)?.element ??
       null;
+    removedFocus = null;
     const changedRows = model === null || model.rowsVersion !== next.rowsVersion;
     model = next;
     if (changedRows) {
@@ -345,9 +350,9 @@ export function mountFileTree(host) {
       live.textContent = next.live;
     }
     paintWindow();
-    // The old focused row was still connected during restate's anchor callback. Only
-    // replacement paint can tell whether it survived, and the settled anchor is drawn now.
-    if (focused !== null && !focused.isConnected) {
+    // Transfer only focus this replacement removed; an unrelated control keeps its focus.
+    // The settled anchor is drawn even when it was outside the previous row window.
+    if (focused !== null && !focused.isConnected && document.activeElement === document.body) {
       const anchor = controller.anchor();
       const arriving = anchor === null ? null : drawnElement(anchor);
       if (arriving === null) {
@@ -377,7 +382,11 @@ export function mountFileTree(host) {
         if (next === null) {
           return;
         }
+        const wasFocused = leaving !== null && leaving === document.activeElement;
         paintWindow();
+        if (!focus && wasFocused && leaving !== null && !leaving.isConnected) {
+          removedFocus = leaving;
+        }
         const arriving = drawnElement(next);
         arriving?.setAttribute("tabindex", "0");
         if (arriving !== null && focus) {

@@ -248,4 +248,6 @@ def test_removed_focused_file_transfers_focus_after_replacement_paint() -> None:
         {"scenario": "survivor", "focus": "a.py"},
         {"scenario": "empty", "focus": "owner"},
         {"scenario": "other focus", "focus": "elsewhere"},
+        {"scenario": "windowed survivor", "focus": "a000.py"},
+        {"scenario": "windowed other focus", "focus": "elsewhere"},
     ]
