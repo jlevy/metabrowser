@@ -137,6 +137,12 @@ async def merge_base_answer(
     read before and after Git ran, on every return, because it can be a link to a
     checkout that deepens or becomes shallow meanwhile: an answer Git computed on a
     boundary other than the one read cannot be believed.
+
+    A store that borrows can lack a commit its lender collected, and Git before 2.45 ends
+    a merge-base walk that meets one with the answer it gives for no common history, where
+    later Git fails. So a store with no boundary believes its answer only after a
+    ``rev-list`` over the same walk, which fails on any commit it cannot read whatever the
+    Git; that failure is raised.
     """
 
     boundary = await asyncio.to_thread(read_boundary, target.git_dir)
@@ -146,6 +152,7 @@ async def merge_base_answer(
         if boundary == frozenset() and await _boundary_still(target, boundary):
             if exc.returncode != 1:
                 raise
+            await _walk_readable(target, [left, right])
             return MergeBaseAnswer(None, certain=True)
         return MergeBaseAnswer(None, certain=False)
     merge_base = out.decode("ascii", errors="replace").strip()
@@ -153,7 +160,10 @@ async def merge_base_answer(
         return MergeBaseAnswer(
             None, certain=boundary == frozenset() and await _boundary_still(target, boundary)
         )
-    if boundary == frozenset() or merge_base in {left, right}:
+    if merge_base in {left, right}:
+        return MergeBaseAnswer(merge_base, certain=await _boundary_still(target, boundary))
+    if boundary == frozenset():
+        await _walk_readable(target, [left, right, f"^{merge_base}"])
         return MergeBaseAnswer(merge_base, certain=await _boundary_still(target, boundary))
     if boundary is None:
         return MergeBaseAnswer(merge_base, certain=False)
@@ -167,6 +177,12 @@ async def merge_base_answer(
         return MergeBaseAnswer(merge_base, certain=False)
     above = boundary.intersection(reached.decode("ascii", errors="replace").split())
     return MergeBaseAnswer(merge_base, certain=not above)
+
+
+async def _walk_readable(target: RepositoryStoreTarget, revisions: list[str]) -> None:
+    """Raise :class:`GitCommandError` unless every commit the walk reaches can be read."""
+
+    await run_git(["rev-list", "--count", *revisions], target=target, policy=STORE_READ_POLICY)
 
 
 async def _boundary_still(target: RepositoryStoreTarget, boundary: frozenset[str] | None) -> bool:

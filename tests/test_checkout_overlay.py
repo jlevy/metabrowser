@@ -1851,3 +1851,52 @@ def test_a_missing_borrowed_ancestor_is_commits_unavailable_and_not_no_merge_bas
     again = linear.pull()["record"]
     assert again["comparison"] is None
     assert again["unavailable"] == {"comparison": "commits_unavailable"}
+
+
+def _no_history_as_before_git_2_45(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Git before 2.45 answers exit 1, "no common history", for a walk it could not finish."""
+
+    from metabrowser.git import shallow
+
+    real = shallow.run_git
+
+    async def older(args: list[str], **kwargs: Any) -> bytes:
+        if args[0] == "merge-base":
+            raise git_process.GitCommandError(args, 1, "")
+        return await real(args, **kwargs)
+
+    monkeypatch.setattr(shallow, "run_git", older)
+
+
+def test_no_history_is_believed_only_when_the_walk_reads_every_commit(
+    linear: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git import shallow
+    from metabrowser.git.process import repository_store_target
+
+    replica = linear.replica
+    checkout = clone_checkout(replica, linear.tmp_path / "checkout")
+    aside = linear.tmp_path / "aside"
+    aside.mkdir()
+    for pack in (checkout / ".git" / "objects" / "pack").iterdir():
+        shutil.move(pack, aside / pack.name)
+    for pack in aside.glob("*.pack"):
+        with pack.open("rb") as stream:
+            subprocess.run(
+                ["git", "unpack-objects", "-q"],
+                cwd=checkout,
+                stdin=stream,
+                check=True,
+                capture_output=True,
+                env=pinned_git_env(),
+            )
+    linear.pull("--checkout", str(checkout))
+    target = repository_store_target(git_dir=linear.store)
+    _no_history_as_before_git_2_45(monkeypatch)
+
+    whole = asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
+    assert whole == shallow.MergeBaseAnswer(None, certain=True)
+
+    (checkout / ".git" / "objects" / replica["M3"][:2] / replica["M3"][2:]).unlink()
+    with pytest.raises(git_process.GitCommandError):
+        asyncio.run(shallow.merge_base_answer(target, replica["M5"], replica["H1"]))
