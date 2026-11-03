@@ -47,13 +47,11 @@ def part_text(record: PullRecord, part: str) -> str | None:
     return next((item.body for item in items if item.id == wanted), None)
 
 
-def render_part(view: PullView | None, part: str) -> tuple[int, dict[str, Any]]:
+def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
     """The status and body for one part. Blocking and bounded; run it off the loop."""
 
     if PART_PATTERN.fullmatch(part) is None:
         return 400, {"error": "name a part of the pull request", "code": "invalid_part"}
-    if view is None:
-        return 409, {"error": "this server serves no pull request", "code": "no_pull_request"}
     if view.host is None:
         return 409, {"error": "this server serves no GitHub repository", "code": "not_github"}
     served = view.host.pulls
