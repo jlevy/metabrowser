@@ -3,9 +3,9 @@ type: is
 id: is-01m6f60pqc21gnqnct2pdq16zb
 title: "Required reviews of overlay step 1: senior, security, correctness"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 33
+version: 34
 delegate: claude-code@spud10
 labels:
   - release:v0.12.0
@@ -45,8 +45,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T22:27:57.291Z
-updated_at: 2026-11-03T07:00:59.440Z
+updated_at: 2026-11-03T07:24:04.764Z
 started_at: 2026-11-03T00:14:32.016Z
+closed_at: 2026-11-03T07:24:04.763Z
+close_reason: Reviews A, B, C (round 1), D (round 2), and E (round 3, follow-up of the fixes after D) are published on PR 283 and every finding has a disposition; E1 fixed by reverting f987d033 at 483e3a83; the rest is mb-hjez.
+resolution: null
+duplicate_of: null
 ---
 The plan's step 1 touches parsing of a checkout's files, a trust boundary, and merge-base correctness, so it needs all three reviews by agents that did not write it, before it merges or the Pulls tab builds on it.
 
