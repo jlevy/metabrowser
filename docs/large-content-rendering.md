@@ -269,7 +269,12 @@ It exists for a list of a comparison’s files, so it takes a path and not a fil
 
 - **A path** is what the file is called now, which is GitHub’s `filename` for a renamed
   file, or else what it was called, its `previous_filename`, or a deleted file’s path.
-  `fileForPath(path)` answers whether the comparison holds one, without moving anything.
+  `fileForPath(path)` answers whether the comparison holds one, without moving anything,
+  typed the same way: `{kind: "file", path, fileId, changeKind, availability}`, where
+  `changeKind` is the change’s own kind, or
+  `{kind: "not_in_comparison", path, listTruncated}`, and on the page’s handle
+  `{kind: "no_diff", path}` while Files changed is not mounted, so a list can grey a row
+  the comparison lacks and leave alone one it cannot ask about yet.
 - **The answer** is immediate and typed, since a list from GitHub and a comparison
   computed here can differ:
   - `{kind: "jumped", fileId, path, availability, lines}`, where `lines` is a promise of
@@ -284,6 +289,8 @@ It exists for a list of a comparison’s files, so it takes a path and not a fil
 - **The file** is at the top of the pane when it returns, with no smooth scroll,
   expanded if it was collapsed, and stays there as anything else fills in, until the
   reader moves by wheel, touch, pointer or key.
+  The key that caused a jump is older than its pin and does not release it, whether a
+  list’s handler runs before or after the view’s; a key pressed afterwards does.
   A file too near the end to reach the top gets room past the last file, the same way an
   editor scrolls past its end, because otherwise the files above it filling in push it
   off the screen.
@@ -337,7 +344,7 @@ window that never existed on disk.
 | `FOLD_MATERIALIZATION_BATCH_ROWS` | 100 rows | Diff fold-expansion main-thread work per task |
 | `MAX_FILE_PATCH_BYTES` | 8 MiB | One file’s parse and rows in a comparison, and what one run hydrates |
 | `JUMP_QUIET_MS` | 50 ms | How long a burst of jumps stops before its last file is asked for |
-| `MAX_CACHED_MANIFESTS` | 16 | Server memory for comparisons kept by commit ID |
+| `MAX_CACHED_MANIFESTS` | 16 comparisons | Server memory for manifests kept by commit ID: up to 131 MB at the manifest cap, by the measurement beside the constant |
 | `MAX_CACHED_BODY_BYTES` | 64 MiB | Server memory for encoded comparison answers |
 
 A budget that degrades what the reader sees has a second requirement beyond bounding the

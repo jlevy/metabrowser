@@ -963,24 +963,27 @@ Large pull requests:
 - `diff/comparison` no longer recomputes a comparison on every request.
   The patch is limited to the files being hydrated, and the manifest is computed once,
   in one Git run. On a store, a request naming two commit IDs keeps its manifest and
-  answer in memory, sends an `ETag`, and answers `If-None-Match` with 304; with
-  `&build=` naming this build it is also `immutable`, so a browser’s Back makes no
-  request. Its documents are unchanged, and a folder’s comparison keeps nothing and sends
-  neither header.
+  answer in memory, sends an `ETag` naming the build and the store, and answers
+  `If-None-Match` with 304; with `&build=` naming this build and `&store=` naming this
+  store, which the page gets as `METABROWSER_SETTINGS.STORE_TAG`, it is also
+  `immutable`, so a browser’s Back makes no request, and one store’s kept answer never
+  stands for another’s or for a folder’s on the same origin.
+  Its documents are unchanged, and a folder’s comparison keeps nothing and sends neither
+  header. A store’s reads see none of the reader’s attributes files (`HOME`,
+  `XDG_CONFIG_HOME` and the system file), so every reader gets the same answer.
 - A pull request’s Conversation fetches Files changed when the browser is idle, so the
   tab opens with no request.
   A pull request’s page no longer fetches the repository’s file catalog until its search
   palette opens or the reader leaves for a file.
-- A comparison’s 8 MiB bound applies per file.
-  One file past it says it is too large to show, a file that would take a request past
-  it loads when the reader reaches it, and neither costs the rest of the comparison.
-  A file past 8 MiB of the whole patch could not be loaded at all before.
+- A comparison’s 8 MiB bound applies per file, and only to the files a request asked
+  for. One file past it says it is too large to show, a file that would take a request
+  past it loads when the reader reaches it, and neither costs the rest of the
+  comparison. A file past 8 MiB of the whole patch could not be loaded at all before.
 - A diff with files still to load says how many, such as “50 of 1,183 files loaded; the
   rest load as you reach them”, in a commit’s diff in a served folder as well.
-- A pull request’s record refreshes with its five parts in flight together, so it reads
-  in about 2.8 s where it took 4.9 s, and serving one with no record says “reading pull
-  request N” after half a second, on the cadence of a clone’s progress, instead of
-  saying nothing.
+- A pull request’s record refreshes with its five parts in flight together instead of
+  one after another, and serving one with no record says “reading pull request N” after
+  half a second, on the cadence of a clone’s progress, instead of saying nothing.
 - A deferred file reserves an estimate of its height, the diff asks for one file at a
   time, the one on screen nearest the top, and renders at most one per frame, and what
   is at the top of the pane stays there as files fill in.
@@ -996,6 +999,27 @@ Fixes:
   `resolved.warnings`, which the diff view shows above the files, and the rest of the
   comparison is kept. A section with no hunks whose path is quoted or holds ` b/` is read
   from its `diff --git` line rather than dropped.
+
+- A file whose name Git quotes with `\a`, `\b`, `\f`, `\r` or `\v` now loads: the parser
+  undid only `\n`, `\t`, `\"` and `\\`, so such a file was left out of every comparison
+  and `.patch` file with a warning.
+  A name that begins or ends with a space now loads alone from a comparison, where
+  `file=` was stripped before it was matched.
+  A tree entry Git refuses as a pathspec, such as `..` from a source that runs no fsck,
+  no longer fails the whole page: the comparison runs unrestricted for it.
+
+- A comparison’s patch runs are pinned to Git’s own `a/` and `b/` prefixes and to its
+  internal diff, so a folder’s `diff.noprefix`, `diff.mnemonicPrefix` and
+  `diff.external` no longer reach the parser, where `diff.noprefix` left a mode-only
+  change unnamed and failed.
+  `metab --diff` prints a document’s warnings above its files in text form, as the page
+  shows them. A Git failure behind `diff/comparison` answers “git diff failed” or “git
+  diff timed out” and logs the command; the body no longer spells every path asked for.
+
+- A diff’s “N of M files loaded” note counts a file that could not be loaded apart from
+  the loaded ones, a file that leaves the viewport after its answer arrived is rendered
+  rather than asked for again, and one file’s render failing no longer stops the files
+  after it from loading.
 
 - A `.env` or `.env.local` that cannot be read as text no longer stops `metab` with a
   traceback in every mode.
