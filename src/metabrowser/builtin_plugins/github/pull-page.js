@@ -1012,7 +1012,9 @@ export function createPullController(deps, options) {
    * @param {boolean} [first]
    */
   async function poll(first = false) {
-    if (disposed || polling || (!first && !deps.isVisible())) {
+    // Until the explicit POST is acknowledged, a newer GET could still see the pre-job
+    // record. Keep it from outranking the job's acknowledgement in latest-wins metadata.
+    if (disposed || polling || refreshPending || (!first && !deps.isVisible())) {
       return;
     }
     polling = true;
@@ -2414,21 +2416,34 @@ export function mountPullPage(container, ctx, mb) {
   /** @param {PullModel} model */
   function paintFiles(model) {
     if (filesRefresh !== null) {
+      const displayed = filesRefresh;
       if (model.refreshing) {
+        // Returning from Conversation still has to render Files while repair runs.
+        if (diffFor === null) {
+          diffMounted = mountDiff(displayed);
+        }
         return;
       }
-      const displayed = filesRefresh;
       filesRefresh = null;
-      if (model.failure === null && model.message === null && diffFor === displayed) {
-        place?.keeper.flush();
+      if (
+        diffFor === null ||
+        (model.failure === null && model.message === null && diffFor === displayed)
+      ) {
+        // Only an existing Files mount can supply the place this remount preserves.
+        // A history arrival already owns its saved place; Conversation must not overwrite it.
+        if (diffFor !== null) {
+          place?.keeper.flush();
+        }
         diffMounted = mountDiff(displayed).then(() => {
           if (shown?.tab === "files" && diffFor === displayed) {
             paintFiles(shown);
             place?.keeper.land();
           }
         });
+        return;
       }
-      return;
+      // The reader may have explicitly selected another comparison during the job.
+      // Let the current route render normally instead of restoring the older repair.
     }
     const comparison = model.comparison;
     const action = filesAction(diffFor, comparison);
@@ -2454,6 +2469,8 @@ export function mountPullPage(container, ctx, mb) {
         "Show the newer changes",
       ]);
       offer.addEventListener("click", () => {
+        // A reader's explicit newer selection ends the older repair's UI ownership.
+        filesRefresh = null;
         // What `whenFilesReady` waits for is the diff last asked for, this one included.
         diffMounted = mountDiff(comparison);
       });
