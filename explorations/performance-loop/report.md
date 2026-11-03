@@ -78,6 +78,7 @@ against one that did.
 | exp-037 | [Deferring unused Git imports and view-phase browser code brings v0.12 start-up within 1.05x of v0.11.0 and back under its startup-script gate, except --doctor](experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) | - | `cli_show_instr_millions` | accepted |
 | exp-038 | [A release rehearsal under load finds the v0.12 candidate equivalent to v0.11.0 and does not clear it](experiments/exp-038-v012-rehearsal-under-load-does-not-clear-the-candidate.md) | - | `project10_browser_first_row_ms` | unresolved |
 | exp-040 | [Files changed on a large pull request recomputes the whole patch on every request, and one deleted empty file makes it fail outright](experiments/exp-040-files-changed-recomputes-the-whole-patch-per-request.md) | - | `files_changed_first_diff_line_ms` | baseline |
+| exp-041 | [PR Files Start from a Prepared Manifest and a Visible Patch Prefix](experiments/exp-041-pr-files-use-a-prepared-manifest-and-visible-prefix.md) | - | `first_text_ms_pr_29121` | accepted |
 
 ## Absolute numbers, per condition
 
