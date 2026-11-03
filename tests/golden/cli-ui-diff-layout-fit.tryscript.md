@@ -18,13 +18,20 @@ selected.
 Choosing **Split** there draws it, with its sideways scroll, until the pane has
 room and loses it again.
 A pane that opens narrow draws **Unified** from its first draw and builds no Split row.
+The first decision measures the root’s own box, not its container’s, and counts a width
+within the return margin as narrow, because the scrollbar the draw brings has not
+arrived.
+A container with no width yet, as a commit’s stage has until it is placed, draws
+nothing until its first report, and draws in that report, before the browser paints.
 
 This browserless session loads the production `builtin_plugins/diff/diff-view.js` and
 mounts a document of the conformance corpus into a small element tree.
 The width a browser would report and the diff’s font size are given.
 It asserts, and so prints nothing for, that a wide pane builds what a mount with no
-observer does, node for node, that a report of the same width draws nothing, and that
-disposing lets the observer go and drops a fit still waiting.
+observer does, node for node, whether it drew at mount or at its first report; that a
+report of the same width draws nothing; that the root is not watched while its first
+draw changes its height, and is watched again from the next task; and that disposing
+lets the observer go and drops a fit still waiting.
 
 ```console
 $ node tests/dom/diff-layout-fit-session.js
@@ -271,7 +278,79 @@ $ node tests/dom/diff-layout-fit-session.js
       "preference": []
     },
     {
-      "step": "a container not laid out yet: Split",
+      "step": "opened 11 px from the limit, the scrollbar yet to come: Unified from the first draw",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": false,
+      "control": "unified",
+      "tips": [
+        "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
+      ],
+      "preference": []
+    },
+    {
+      "step": "the draw brought the scrollbar: nothing to change, and no Split built",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": false,
+      "control": "unified",
+      "tips": [
+        "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
+      ],
+      "preference": []
+    },
+    {
+      "step": "opened within a scrollbar of the limit: Unified",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": false,
+      "control": "unified",
+      "tips": [
+        "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
+      ],
+      "preference": []
+    },
+    {
+      "step": "no scrollbar came: it stays, as a pane that narrowed to this width does",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": false,
+      "control": "unified",
+      "tips": [
+        "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
+      ],
+      "preference": []
+    },
+    {
+      "step": "a host's padding is not the diff's width: Unified from the first draw",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": false,
+      "control": "unified",
+      "tips": [
+        "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
+      ],
+      "preference": []
+    },
+    {
+      "step": "its first report agrees",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": false,
+      "control": "unified",
+      "tips": [
+        "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
+      ],
+      "preference": []
+    },
+    {
+      "step": "638 px opens on Split, with room for a scrollbar",
       "draws": "split",
       "splitRows": 3,
       "unifiedRows": 0,
@@ -281,11 +360,95 @@ $ node tests/dom/diff-layout-fit-session.js
       "preference": []
     },
     {
-      "step": "its first report is narrow: Unified",
+      "step": "the scrollbar takes 11 px: Split still fits, and nothing changes",
+      "draws": "split",
+      "splitRows": 3,
+      "unifiedRows": 0,
+      "builtSplit": true,
+      "control": "split",
+      "tips": [],
+      "preference": []
+    },
+    {
+      "step": "a container not laid out yet draws nothing",
+      "draws": null,
+      "splitRows": 0,
+      "unifiedRows": 0,
+      "builtSplit": false,
+      "control": "split",
+      "tips": [],
+      "preference": []
+    },
+    {
+      "step": "a report with no width decides nothing",
+      "draws": null,
+      "splitRows": 0,
+      "unifiedRows": 0,
+      "builtSplit": false,
+      "control": "split",
+      "tips": [],
+      "preference": []
+    },
+    {
+      "step": "work that finishes while it waits draws nothing either",
+      "draws": null,
+      "splitRows": 0,
+      "unifiedRows": 0,
+      "builtSplit": false,
+      "control": "split",
+      "tips": [],
+      "preference": []
+    },
+    {
+      "step": "its first width draws in the report, before a paint: Unified, and no Split",
       "draws": "unified",
       "splitRows": 0,
       "unifiedRows": 4,
+      "builtSplit": false,
+      "control": "unified",
+      "tips": [
+        "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
+      ],
+      "preference": []
+    },
+    {
+      "step": "watched again, the same width changes nothing",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": false,
+      "control": "unified",
+      "tips": [
+        "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
+      ],
+      "preference": []
+    },
+    {
+      "step": "a later width is a fit like any other",
+      "draws": "split",
+      "splitRows": 3,
+      "unifiedRows": 0,
       "builtSplit": true,
+      "control": "split",
+      "tips": [],
+      "preference": []
+    },
+    {
+      "step": "not laid out, then wide: Split, drawn once",
+      "draws": "split",
+      "splitRows": 3,
+      "unifiedRows": 0,
+      "builtSplit": true,
+      "control": "split",
+      "tips": [],
+      "preference": []
+    },
+    {
+      "step": "not laid out, then within a scrollbar of the limit: Unified",
+      "draws": "unified",
+      "splitRows": 0,
+      "unifiedRows": 4,
+      "builtSplit": false,
       "control": "unified",
       "tips": [
         "Split: Too narrow for Split, so this shows Unified. Choose Split to scroll sideways."
@@ -301,6 +464,13 @@ $ node tests/dom/diff-layout-fit-session.js
     "638 px, was narrow: fits",
     "0 px, was narrow: too narrow",
     "0 px, had room: fits"
+  ],
+  "opening": [
+    "opened at 0 px: fits",
+    "opened at 617 px: too narrow",
+    "opened at 618 px: too narrow",
+    "opened at 637 px: too narrow",
+    "opened at 638 px: fits"
   ],
   "byTextSize": [
     "12 px text: Split fits from 530 px",

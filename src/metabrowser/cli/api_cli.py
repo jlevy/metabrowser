@@ -234,7 +234,8 @@ def _emit_api_response(
     """
 
     ctx = NormalizeContext(root=normalize_root, keep=normalize_keep)
-    if headers or after is None:
+    printed = headers or after is None
+    if printed:
         _echo_envelope("api", route, response, ctx, fmt, headers=headers)
 
     # An envelope built from an index that never finished is not the envelope
@@ -243,8 +244,8 @@ def _emit_api_response(
         typer.echo(f"index: {index_detail}", err=True)
     if response.incomplete:
         raise CLIError(
-            f"{route} answered HTTP {response.status_code} and then failed mid-response; "
-            "the body above is truncated"
+            f"{route} answered HTTP {response.status_code} and then failed mid-response"
+            + ("; the body above is truncated" if printed else "")
         )
     if not 200 <= response.status_code < 300:
         raise CLIError(f"{route} returned HTTP {response.status_code}")

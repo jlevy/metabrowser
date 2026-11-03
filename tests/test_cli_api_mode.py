@@ -117,6 +117,30 @@ def test_work_followed_to_its_end_prints_only_the_status_that_ended_it(
     assert json.loads(capsys.readouterr().out) == {"refreshing": False, "state": "current"}
 
 
+def test_an_answer_cut_mid_response_points_only_at_what_was_printed(
+    root: Path, capsys: Any
+) -> None:
+    """With work to follow, one document prints nothing of the first answer."""
+
+    ended = ApiResponse(200, json.dumps({"refreshing": False}).encode())
+    cut = ApiResponse(202, b'{"status_ro', incomplete=True)
+    arguments: dict[str, Any] = {
+        "fmt": "json",
+        "normalize_root": root,
+        "after": ("/api/plugin/github/pull", ended),
+    }
+
+    with pytest.raises(CLIError, match="failed mid-response; the body above is truncated$"):
+        _emit_api_response("/api/plugin/github/pull-refresh", cut, "skipped", **arguments)
+    assert capsys.readouterr().out.startswith("api: /api/plugin/github/pull-refresh\nstatus: 202\n")
+
+    with pytest.raises(CLIError, match="HTTP 202 and then failed mid-response$"):
+        _emit_api_response(
+            "/api/plugin/github/pull-refresh", cut, "skipped", headers=False, **arguments
+        )
+    assert capsys.readouterr().out == ""
+
+
 def test_api_reports_a_failing_status_and_exits_nonzero(root: Path, capsys: Any) -> None:
     """A transcript should be able to assert a failure honestly."""
 

@@ -452,9 +452,9 @@ GitHub URLs and HTTPS:
   They also return a reader to their place in either tab, by the comment or file they
   were in rather than by pixels, because what has rendered above it differs when the
   page loads again; a new entry starts at the top, and a fragment in the address or a
-  reader who has started scrolling is never overridden.
-  The page for a number the server does not serve links to the served pull request’s
-  page, on the same tab.
+  reader who has started scrolling with a wheel, a finger, the scrollbar, or a key is
+  never overridden. The page for a number the server does not serve links to the served
+  pull request’s page, on the same tab.
   `metab <pr-url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
   record, and `/api/plugin/github/pull-markdown?part=…` answers the allowlisted HTML of
   the description (`body`) or one comment, review, or review comment, and nothing else
@@ -841,6 +841,8 @@ Content trust:
   Such a folder’s Markdown now renders inert, so code blocks lose their highlighting, an
   outside image becomes a link, and Obsidian wiki links and embeds show as plain text;
   and its page carries the Content-Security-Policy.
+  It keeps KPress’s card and the reader’s measure, on the one inert path a mirrored
+  file’s Markdown and a pull request’s text also take.
   A folder served with neither flag renders as before.
 
 - In an inert render, a query alone and root-relative `/api`, `/_debug`, and `/raw`
@@ -1034,6 +1036,17 @@ Fixes:
   It is skipped with a warning naming the file, so a repository whose `.env` is not
   UTF-8 can still be browsed.
 
+- A `.env` or `.env.local` can no longer hold `metab` before it starts.
+  A FIFO, or a link to one or to a piped stdin, blocked the command, and a large file
+  could take minutes to parse.
+  One that is not a regular file or is larger than 64 KB is now skipped with a warning
+  naming the file, and python-dotenv’s warning about a line it cannot parse is printed
+  once for a file rather than once a line.
+  **A value’s `${VAR}` is no longer expanded:** `METABROWSER_LOG_LEVEL=${MY_LEVEL}` now
+  sets that literal text, which falls back to `INFO`, where 0.11.0 expanded it.
+  Expansion is what made the parse quadratic in the file’s lines, and neither name a
+  dotenv file may set needs it.
+
 - `metab --api <route> --format json` or `--format yaml` prints the envelope alone, so
   stdout parses; a body that is not JSON is one string, and a refresh that waits prints
   only the status it ended with.
@@ -1050,7 +1063,14 @@ Fixes:
   as other chips and the menu’s segments do, and a theme or reading-font segment and a
   tab (Overview, Document, Files) show the shared focus ring under the keyboard.
   A selected theme or font segment showed no focus at all, and a tab the browser’s own.
-  Nothing else on a plain-folder page changes: at rest, its pixels are the same.
+  A commit diff’s fold controls show that focus ring too, where they showed the
+  browser’s own. Nothing else on a plain-folder page changes at rest, apart from the next
+  entry.
+
+- The note that a folder’s file list is incomplete, in a folder over the file limit, is
+  now the app’s warning notice, as other notes about partial content are: a
+  warning-colored border on the ordinary surface, in place of the sidebar fill and
+  bottom rule.
 
 - The filter drawer’s toggle, a diff’s copy button, and a structured view’s copy button
   no longer show the browser’s tooltip beside the app’s. The drawer’s tooltip now
@@ -1065,6 +1085,8 @@ Fixes:
   The layout control shows what is drawn, and **Split** says why it is not selected.
   The remembered choice is not touched, and choosing **Split** in a narrow pane still
   draws it. A wide pane draws what it did.
+  A pane opening within 20 px of the limit counts as narrow, because the pane’s
+  scrollbar may not have arrived, so a reader sees one layout from the first paint.
 
 - A served folder holding a filename with a backslash, which POSIX allows, no longer
   fails its whole index: the index progress route errored and the tree answered HTTP

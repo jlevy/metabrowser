@@ -599,8 +599,8 @@ with the server stopped, since `repack` rewrites packs:
 
 | Direction | Command | What it does | Measured |
 | --- | --- | --- | --- |
-| Full → overlay, a checkout is named | `metab --api /api/cache/store-borrow --data '{"source": "...", "checkout": "~/src/repo"}'` | Checks the checkout as creation does, writes the alternates file, the link, and the record, runs `git repack -a -d -l`, which drops every local object the checkout has | 1,241 MB → 896 KB in 6.3 s |
-| Overlay → full, the checkout is going away | `metab --api /api/cache/store-dissociate --data '{"source": "..."}'` | Replaces the link by a copy, `git repack -a -d` copies the reachable borrowed objects in, then removes the alternates file and the record. A shallow boundary stays until `mb-dqvj` deepens it | 346 MB in 6.3 s, then 8.8 MB to unshallow |
+| Full → overlay, a checkout is named | `metab --api /api/cache/store-borrow --data borrow.json`, the file holding `{"source": "...", "checkout": "~/src/repo"}` | Checks the checkout as creation does, writes the alternates file, the link, and the record, runs `git repack -a -d -l`, which drops every local object the checkout has | 1,241 MB → 896 KB in 6.3 s |
+| Overlay → full, the checkout is going away | `metab --api /api/cache/store-dissociate --data dissociate.json`, the file holding `{"source": "..."}` | Replaces the link by a copy, `git repack -a -d` copies the reachable borrowed objects in, then removes the alternates file and the record. A shallow boundary stays until `mb-dqvj` deepens it | 346 MB in 6.3 s, then 8.8 MB to unshallow |
 
 `git clone --reference` and `--dissociate` are not used: the reference form refuses a
 shallow checkout, and the dissociate form is a repack anyway.
