@@ -2099,3 +2099,175 @@ def test_duplicate_numbers_keep_the_last_value_rule(
     refused = client.post(_REFRESH_ROUTE, content=b'{"number": 7, "number": null}', headers=_JSON)
     assert (refused.status_code, refused.json()["code"]) == (400, "invalid_request")
     assert stand.calls() == []
+
+
+@pytest.mark.parametrize("metadata_first", [False, True])
+def test_pull_record_publications_serialize_both_writer_orderings(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, metadata_first: bool
+) -> None:
+    from threading import Event
+
+    from metabrowser.builtin_plugins.github import pull_record
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from metabrowser.cache.locks import LockBusyError, source_alias_lock
+
+    shared = stand.refresh(7)
+    assert shared.comparison is not None
+    metadata = shared.model_copy(update={"comparison": None, "unavailable": {}})
+    initial = metadata.model_copy(
+        update={"pull": metadata.pull.model_copy(update={"title": "initial"})}
+    )
+    write_pull_record(stand.published.home, stand.published.slug, initial)
+    listed = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    first_record = metadata if metadata_first else shared
+    second_record = shared if metadata_first else metadata
+    first_record = first_record.model_copy(
+        update={"pull": first_record.pull.model_copy(update={"title": "first"})}
+    )
+    second_record = second_record.model_copy(
+        update={"pull": second_record.pull.model_copy(update={"title": "second"})}
+    )
+    entered, release, second_validated = Event(), Event(), Event()
+    write = pull_record.write_private_file_atomic
+    serialize = pull_record.serialize_pull_record
+
+    def delayed(home: Path, relative_path: str, data: bytes) -> None:
+        if json.loads(data)["pull"]["title"] == "first":
+            entered.set()
+            assert release.wait(10)
+        write(home, relative_path, data)
+
+    def validated(record: PullRecord) -> bytes:
+        data = serialize(record)
+        if record.pull.title == "second":
+            second_validated.set()
+        return data
+
+    monkeypatch.setattr(pull_record, "write_private_file_atomic", delayed)
+    monkeypatch.setattr(pull_record, "serialize_pull_record", validated)
+
+    async def run() -> None:
+        first = asyncio.create_task(
+            pulls._write(listed if metadata_first else stand.published, first_record)
+        )  # pyright: ignore[reportPrivateUsage]
+        second = None
+        try:
+            assert await asyncio.to_thread(entered.wait, 5)
+            with (
+                pytest.raises(LockBusyError),
+                source_alias_lock(stand.published.home, stand.published.slug, blocking=False),
+            ):
+                pass
+            assert await asyncio.to_thread(stand.record, 7) == initial, "readers wait for no lock"
+            second = asyncio.create_task(
+                pulls._write(stand.published if metadata_first else listed, second_record)
+            )  # pyright: ignore[reportPrivateUsage]
+            assert await asyncio.to_thread(second_validated.wait, 5)
+            assert not second.done(), "the other canonical writer bypassed the source lock"
+            release.set()
+            await asyncio.wait_for(first, 5)
+            saved = await asyncio.wait_for(second, 5)
+            assert saved.pull.title == "second"
+            assert saved.comparison == shared.comparison
+            assert "comparison" not in saved.unavailable
+            assert await asyncio.to_thread(stand.record, 7) == saved
+        finally:
+            release.set()
+            await first
+            if second is not None:
+                await second
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("metadata_only", [False, True])
+def test_cancelled_pull_publication_does_not_write_after_its_lock_is_released(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, metadata_only: bool
+) -> None:
+    from threading import Event
+
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from metabrowser.cache import locks
+    from tests.test_cache_async_locks import _BoundedHolder  # pyright: ignore[reportPrivateUsage]
+
+    original = stand.refresh(7)
+    changed = original.model_copy(
+        update={"pull": original.pull.model_copy(update={"title": "abandoned"})}
+    )
+    published = (
+        ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+        if metadata_only
+        else stand.published
+    )
+    entered = Event()
+    wait = locks._wait_for_flock  # pyright: ignore[reportPrivateUsage]
+
+    def waiting(*args: Any, **kwargs: Any) -> None:
+        entered.set()
+        wait(*args, **kwargs)
+
+    monkeypatch.setattr(locks, "_wait_for_flock", waiting)
+    holder = _BoundedHolder(
+        stand.published.home, f"locks.source_alias_lock(home, {stand.published.slug!r})"
+    )
+    try:
+
+        async def cancel() -> None:
+            job = asyncio.create_task(pulls._write(published, changed))  # pyright: ignore[reportPrivateUsage]
+            assert await asyncio.to_thread(entered.wait, 5)
+            assert not job.done()
+            job.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(job, 5)
+            assert await asyncio.to_thread(stand.record, 7) == original
+
+        asyncio.run(cancel())
+        assert holder.release() == "asked", "cancellation waited for the other process to release"
+    finally:
+        holder.close()
+    assert stand.record(7) == original
+    saved = asyncio.run(pulls._write(published, changed))  # pyright: ignore[reportPrivateUsage]
+    assert saved.pull.title == "abandoned" and stand.record(7) == saved
+
+
+def test_metadata_publication_refits_after_merge_and_preserves_record_on_rename_failure(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_record
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+
+    shared = stand.refresh(7)
+    assert shared.comparison is not None
+    unclaimed = stand.tmp_path / "unclaimed"
+    with pytest.raises(FileNotFoundError, match="no source is published"):
+        write_pull_record(unclaimed, stand.published.slug, shared)
+    assert not unclaimed.exists()
+    listed = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    limit = len(serialize_pull_record(shared)) + 1000
+    monkeypatch.setattr(pull_record, "MAX_PULL_RECORD_BYTES", limit)
+    # Consume the usual spare space to exercise merging at the exact byte budget.
+    monkeypatch.setattr(pull_record, "_FLAG_SLACK_BYTES", 0)
+    metadata = shared.model_copy(
+        update={
+            "comparison": None,
+            "pull": shared.pull.model_copy(update={"body": "x" * MAX_BODY_BYTES}),
+        }
+    )
+    merged = asyncio.run(pulls._write(listed, metadata))  # pyright: ignore[reportPrivateUsage]
+    assert merged.comparison == shared.comparison
+    assert merged.pull.body_truncated and len(serialize_pull_record(merged)) <= limit
+    assert stand.record(7) == merged
+    rename = os.replace
+    target = stand.published.home / source_pull_record(stand.published.slug, 7)
+
+    def refused(source: Any, destination: Any) -> None:
+        if Path(destination) == target:
+            raise PermissionError("private path detail")
+        rename(source, destination)
+
+    monkeypatch.setattr(os, "replace", refused)
+    with pytest.raises(PullDataError) as error:
+        asyncio.run(pulls._write(listed, metadata))  # pyright: ignore[reportPrivateUsage]
+    assert error.value.state == "cache_unwritable"
+    assert str(error.value) == "its record could not be written to the cache"
+    assert stand.record(7) == merged
