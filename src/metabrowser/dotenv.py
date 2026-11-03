@@ -18,12 +18,18 @@ diff or ssh command, and ``PATH``.
 The file is parsed rather than loaded: ``dotenv_values`` reads it without
 touching ``os.environ``, so a value outside the allowlist is never
 written to the process environment even transiently.
+
+The same reach means the file must not be able to stop the command, so
+only a regular file under ``MAX_DOTENV_BYTES`` is parsed, and a value's
+``${VAR}`` is left as written: neither allowed name needs it, and expanding
+it is what makes the parse quadratic in the file's bindings.
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import stat
 from pathlib import Path
 
 from dotenv import dotenv_values, find_dotenv
@@ -36,10 +42,26 @@ from metabrowser.git.process import loggable
 
 log = logging.getLogger(__name__)
 
+# python-dotenv's own logger, which warns once per statement it cannot parse.
+_parser_log = logging.getLogger("dotenv.main")
+
 DOTENV_NAMES: tuple[str, ...] = (".env", ".env.local")
 """Files searched, in load order. ``.env.local`` is conventionally
 gitignored for per-developer overrides; loaded after ``.env``, and
 ``setdefault`` means it only fills gaps ``.env`` left."""
+
+MAX_DOTENV_BYTES = 64 * 1024
+"""The largest dotenv file parsed; a larger one is skipped with a warning.
+
+python-dotenv reads the whole file and the cost is linear in its size with
+interpolation off. Measured 2026-11-02 with python-dotenv 1.2.2 on Python 3.14 (Apple
+silicon, machine under load, median of 3): the slowest shape found, a file of ``=``
+lines, took 257 ms at 64 KB, and the slow shapes took 3.5 s at 1 MB; plain
+``NAME=value`` lines took 38 ms at 64 KB and 2 ms at 4 KB. ``metab . --api`` parses each
+of the two files three times, and a pair of the slowest shape at the cap took it from
+1.15 s to 2.73 s, against about 25 s at 1 MB by the same arithmetic. An honest dotenv
+file is kilobytes, and what this skips is at worst two log settings, which the warning
+names the file for."""
 
 ALLOWED_KEYS: frozenset[str] = frozenset(
     {
@@ -91,6 +113,7 @@ _REPORTED_PREFIXES: tuple[str, ...] = ("METABROWSER_", "METAB_", "STRUCTURED_")
 # otherwise repeat the same warning. Report each file once per process, so
 # the message stays a signal.
 _reported: set[Path] = set()
+_parse_warned: set[Path] = set()
 
 # The capability variables decide how far content is trusted, so a file
 # the content controls must never supply them. Checked at import rather
@@ -112,6 +135,47 @@ def _one_line(text: str) -> str:
     return loggable(text).replace("\n", "\\n")
 
 
+def _report_skipped(path: Path, reason: str) -> None:
+    """Say once per process that *path* was skipped, and why."""
+
+    if path not in _reported:
+        _reported.add(path)
+        log.warning("%s: skipped, because %s.", _one_line(str(path)), reason)
+
+
+def _unfit_to_parse(found: str) -> str | None:
+    """Why the dotenv file at *found* is not to be parsed, or ``None`` if it can be.
+
+    ``find_dotenv`` admits a FIFO, and through a symlink a pipe on stdin, whose ``open``
+    blocks until a writer appears. Following the link is the point: a link to a regular
+    file is an ordinary way to share a dotenv file.
+    """
+
+    status = os.stat(found)
+    if not stat.S_ISREG(status.st_mode):
+        return "it is not a regular file"
+    if status.st_size > MAX_DOTENV_BYTES:
+        return f"it is larger than {MAX_DOTENV_BYTES // 1024} KB"
+    return None
+
+
+class _FirstParseWarning(logging.Filter):
+    """Let python-dotenv's first warning about *path* in this process through, and no other.
+
+    It warns per statement, so 64 KB of ``=`` lines would otherwise print 32,768 lines,
+    from each of the two files and each time the chain loads, to the reader's terminal.
+    """
+
+    def __init__(self, path: Path) -> None:
+        super().__init__()
+        self._path = path
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        first = self._path not in _parse_warned
+        _parse_warned.add(self._path)
+        return first
+
+
 def load_dotenv_chain() -> list[Path]:
     """Apply the allowlisted names from ``.env`` then ``.env.local``.
 
@@ -123,9 +187,9 @@ def load_dotenv_chain() -> list[Path]:
     those carrying one of this package's prefixes are reported at
     WARNING so an operator is not left guessing.
 
-    A file that cannot be read as text is skipped with a warning: it is
-    the browsed repository's to write, and it must not stop the command
-    that browses it.
+    A file that is not a regular file, is over ``MAX_DOTENV_BYTES``, or
+    cannot be read as text is skipped with a warning: it is the browsed
+    repository's to write, and it must not stop the command that browses it.
 
     Returns the files found and parsed, in load order, for callers that
     want to surface which files were consulted. A file every one of
@@ -138,17 +202,19 @@ def load_dotenv_chain() -> list[Path]:
         if not found:
             continue
         path = Path(found)
+        first_warning = _FirstParseWarning(path)
+        _parser_log.addFilter(first_warning)
         try:
-            values = dotenv_values(found)
+            unfit = _unfit_to_parse(found)
+            if unfit is not None:
+                _report_skipped(path, unfit)
+                continue
+            values = dotenv_values(found, interpolate=False)
         except (UnicodeDecodeError, OSError) as exc:
-            if path not in _reported:
-                _reported.add(path)
-                log.warning(
-                    "%s: skipped, because it could not be read as text (%s).",
-                    _one_line(str(path)),
-                    type(exc).__name__,
-                )
+            _report_skipped(path, f"it could not be read as text ({type(exc).__name__})")
             continue
+        finally:
+            _parser_log.removeFilter(first_warning)
         parsed.append(path)
         ignored: list[str] = []
         for key, value in values.items():
@@ -171,4 +237,4 @@ def load_dotenv_chain() -> list[Path]:
     return parsed
 
 
-__all__ = ["ALLOWED_KEYS", "DOTENV_NAMES", "load_dotenv_chain"]
+__all__ = ["ALLOWED_KEYS", "DOTENV_NAMES", "MAX_DOTENV_BYTES", "load_dotenv_chain"]

@@ -403,6 +403,18 @@ typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
 
+A **text action** is an action that sits among links in a line of chrome, with no border
+or fill, because a bordered button would read as a different thing from the link beside
+it. It is a link when the page already has the address, and a real `<button>` when
+following it first switches the served pin, so that a new tab or a copied address never
+opens something a click would not.
+Both forms look the same in their context, a tooltip and accessible name say which
+commit opens and whether the pin switches, and keyboard and screen-reader users still
+get the element they expect.
+The diff file bar’s [View file](#diff-file-bar), and
+[Browse code and a review comment’s file](#chrome) on a pull request’s page, are text
+actions. Each context sets one look for the `<a>` and the `<button>`.
+
 ### Choosing Among Values
 
 A control that offers two or more values, or one value on or off, is one of these.
@@ -859,9 +871,8 @@ the file at a side of the change: **View file**, and **View at parent** or **Vie
 base** where the old side exists.
 They stay visible rather than revealing on hover, because they are how a reader leaves
 the diff for the file.
-An action is a link when the page already has the file’s address and a button when
-following it first switches the served pin; both look the same, and the tooltip says
-which commit opens and whether the pin switches.
+They are [text actions](#control-families), so each is a link or a button by whether it
+first switches the served pin, and looks the same either way.
 A collapsed section keeps the section’s own border as its single line.
 
 ### Diff Change Surfaces
@@ -969,6 +980,7 @@ Until its render arrives a text shows as plain text in the same reading face and
 | Opened, updated, commented | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age). “Fetched 2 min ago” is a status sentence |
 | File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
 | Link | `--link`, underline on hover, the focus ring | As the freshness row’s link is |
+| Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
 | Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Files changed cannot be drawn; no severity for the offer of newer changes, which carries its own control |
 | A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |

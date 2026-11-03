@@ -20,6 +20,9 @@ from metabrowser.mirror_refresh import (
     RefKind,
     RefreshCoordinator,
     RefreshResult,
+    SelectionNotFoundError,
+    SelectionPendingError,
+    StoreTurn,
 )
 from metabrowser.repository_context import RepositoryContext
 
@@ -297,3 +300,527 @@ def test_a_commit_fetch_joins_the_mirror_fetch_but_not_the_pull_requests() -> No
     beside, joined, events = asyncio.run(scenario())
     assert (beside, joined) == ("fresh", "joined")
     assert events.count("mirror") == 1
+
+
+# ── Who goes next at the store, and what a waiting job holds ─────────
+
+
+class _Gated:
+    """A numbered pull request's refresh that runs until the test lets it end."""
+
+    def __init__(self, events: list[str], number: int) -> None:
+        self.events = events
+        self.number = number
+        self.key = f"store:pull/{number}"
+        self.gate = asyncio.Event()
+
+    def is_stale(self, now: datetime, *, window_s: float) -> bool:
+        return True
+
+    async def refresh(self) -> None:
+        self.events.append(f"pull {self.number}")
+        await self.gate.wait()
+        self.gate.clear()
+
+
+class _GatedSet:
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+        self.by_number: dict[int, _Gated] = {}
+
+    def key(self, number: int) -> str:
+        return f"store:pull/{number}"
+
+    async def companion(self, number: int) -> _Gated:
+        return self.by_number.setdefault(number, _Gated(self.events, number))
+
+    async def attend(self, number: int) -> _Gated:
+        return await self.companion(number)
+
+
+class _GatedMirror(_Mirror):
+    """A mirror whose fetch runs until the test lets it end, and that has no selection."""
+
+    def __init__(self, events: list[str]) -> None:
+        super().__init__(events)
+        self.gate = asyncio.Event()
+
+    async def open_selection(
+        self, *, ref: str | None, oid: str | None, keep_refs: tuple[str, ...] = ()
+    ) -> GitRevisionSubject:
+        raise SelectionNotFoundError("not in the mirror")
+
+    async def refresh(self) -> RefreshResult:
+        self.events.append("mirror")
+        await self.gate.wait()
+        self.gate.clear()
+        return RefreshResult("succeeded", _now())
+
+
+async def _spin() -> None:
+    for _ in range(50):
+        await asyncio.sleep(0)
+
+
+class _Stand:
+    """The real session and coordinator over gated fakes, for the order of jobs."""
+
+    def __init__(self) -> None:
+        self.events: list[str] = []
+        self.coordinator = RefreshCoordinator()
+        self.pulls = _GatedSet(self.events)
+        self.mirror = _GatedMirror(self.events)
+        self.session = MirrorSession(
+            self.mirror, self.coordinator, pull_requests=self.pulls, fetch_on_miss=True
+        )
+
+    async def end(self, number: int) -> None:
+        """Let pull request *number*'s running refresh end, and whatever follows it start."""
+
+        assert self.events[-1] == f"pull {number}", self.events
+        self.pulls.by_number[number].gate.set()
+        await _spin()
+
+    async def end_mirror(self) -> None:
+        assert self.events[-1] == "mirror", self.events
+        self.mirror.gate.set()
+        await _spin()
+
+    async def finish(self) -> None:
+        for number, pull in self.pulls.by_number.items():
+            if self.session.pull_refreshing(number):
+                pull.gate.set()
+        self.mirror.gate.set()
+        await _spin()
+        await self.coordinator.aclose()
+
+
+def test_a_job_waiting_its_turn_holds_no_slot_so_a_list_refresh_starts_at_once() -> None:
+    """A list's refresh needs no turn at the store, so jobs that are only waiting for one
+    must not keep it from a network slot."""
+
+    async def scenario() -> list[str]:
+        stand = _Stand()
+        for number in (8, 9, 10, 11):
+            assert stand.session.request_pull_refresh(number) == "started"
+        assert stand.session.request_refresh(for_selection=True) == "started"
+        await _spin()
+        assert stand.events == ["pull 8"]
+
+        async def list_job() -> None:
+            stand.events.append("list")
+
+        assert stand.coordinator.start("store:pulls", list_job) == "started"
+        await _spin()
+        seen = list(stand.events)
+        await stand.finish()
+        return seen
+
+    assert asyncio.run(scenario()) == ["pull 8", "list"]
+
+
+@pytest.mark.parametrize("mirror_first", [False, True])
+def test_a_store_job_with_the_turn_waits_for_a_slot_and_runs_when_one_frees(
+    mirror_first: bool,
+) -> None:
+    """The turn is taken before the slot, by every job at the store, so two lists holding
+    both slots hold up the fetch only until one ends, and nothing can deadlock."""
+
+    async def scenario() -> list[str]:
+        stand = _Stand()
+        lists = asyncio.Event()
+
+        async def list_job() -> None:
+            stand.events.append("list")
+            await lists.wait()
+
+        stand.coordinator.start("store:pulls/open", list_job)
+        stand.coordinator.start("store:pulls/closed", list_job)
+        await _spin()
+        if mirror_first:
+            stand.session.request_refresh(for_selection=True)
+            await _spin()
+        stand.session.request_pull_refresh(8)
+        if not mirror_first:
+            await _spin()
+            stand.session.request_refresh(for_selection=True)
+        await _spin()
+        assert stand.events == ["list", "list"], "both slots are the lists'"
+        lists.set()
+        await _spin()
+        if mirror_first:
+            await stand.end_mirror()
+            await stand.end(8)
+        else:
+            await stand.end(8)
+            await stand.end_mirror()
+        await stand.finish()
+        return stand.events[2:]
+
+    expected = ["mirror", "pull 8"] if mirror_first else ["pull 8", "mirror"]
+    assert asyncio.run(scenario()) == expected
+
+
+def test_the_mirrors_refresh_goes_ahead_of_every_queued_pull_request() -> None:
+    """A page of code waits for the mirror's fetch; a queue of other pull requests a reader
+    asked for must not stand in front of it."""
+
+    async def scenario() -> list[str]:
+        stand = _Stand()
+        for number in (8, 9, 10, 11):
+            assert stand.session.request_pull_refresh(number) == "started"
+        await _spin()
+        assert stand.session.request_refresh(for_selection=True) == "started"
+        await _spin()
+        await stand.end(8)
+        await stand.end_mirror()
+        await stand.end(9)
+        await stand.end(10)
+        await stand.end(11)
+        await stand.finish()
+        return stand.events
+
+    assert asyncio.run(scenario()) == ["pull 8", "mirror", "pull 9", "pull 10", "pull 11"]
+
+
+def test_the_attended_pull_request_goes_ahead_of_queued_ones_even_if_attended_late() -> None:
+    """Who goes first is decided when a turn is given, so a job queued before its number was
+    attended goes ahead too, and one whose number stopped being attended waits its place."""
+
+    async def scenario() -> list[str]:
+        stand = _Stand()
+        await stand.session.attend(7)
+        for number in (8, 9, 10):
+            assert stand.session.request_pull_refresh(number) == "started"
+        await _spin()
+        assert stand.session.request_pull_refresh(7) == "started"
+        await _spin()
+        await stand.end(8)
+        await stand.end(7)
+        # 9 is next, in order. Attending to 11's job, queued behind it, puts it ahead of 10.
+        assert stand.session.request_pull_refresh(11) == "started"
+        await _spin()
+        await stand.session.attend(11)
+        await stand.end(9)
+        await stand.end(11)
+        await stand.end(10)
+        await stand.finish()
+        return stand.events
+
+    assert asyncio.run(scenario()) == [f"pull {n}" for n in (8, 7, 9, 11, 10)]
+
+
+def test_a_job_whose_number_stopped_being_attended_waits_its_place() -> None:
+    async def scenario() -> list[str]:
+        stand = _Stand()
+        await stand.session.attend(7)
+        assert stand.session.request_pull_refresh(8) == "started"
+        await _spin()
+        assert stand.session.request_pull_refresh(9) == "started"
+        assert stand.session.request_pull_refresh(7) == "started"
+        await _spin()
+        await stand.session.attend(20)
+        await stand.end(8)
+        await stand.end(9)
+        await stand.end(7)
+        await stand.finish()
+        return stand.events
+
+    assert asyncio.run(scenario()) == ["pull 8", "pull 9", "pull 7"]
+
+
+def test_a_refresh_of_both_starts_with_the_mirror_as_it_was_asked_for_first() -> None:
+    """A server reads the mirror's record before a fetch. That read is inside the job's turn:
+    outside it, the attended pull request's job got to the store first, and the mirror's fetch
+    of a moment waited behind a refresh of several seconds."""
+
+    class _ReadsItsRecord(_GatedMirror):
+        async def recorded_freshness(self) -> RecordedFreshness:
+            await asyncio.sleep(0)
+            return await super().recorded_freshness()
+
+    async def scenario() -> list[str]:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        pulls = _GatedSet(events)
+        session = MirrorSession(
+            _ReadsItsRecord(events),
+            coordinator,
+            pull_requests=pulls,
+            fetch_on_miss=True,
+            follow_elsewhere=True,
+        )
+        await session.attend(7)
+        assert session.request_refresh() == "started"
+        await _spin()
+        seen = list(events)
+        await coordinator.aclose()
+        return seen
+
+    assert asyncio.run(scenario()) == ["mirror"]
+
+
+def test_the_mirror_and_the_attended_pull_request_cannot_starve_each_other() -> None:
+    """Each goes in the order it asked, whichever keeps asking again as soon as it can."""
+
+    async def scenario() -> list[str]:
+        stand = _Stand()
+        await stand.session.attend(7)
+        # The mirror asks and asks again; the attended pull request must still run each time.
+        stand.session.request_refresh(for_selection=True)
+        await _spin()
+        assert stand.events == ["mirror"]
+        stand.session.request_pull_refresh(7)
+        await _spin()
+        for _ in range(3):
+            await stand.end_mirror()
+            assert stand.events[-1] == "pull 7", "the attended job goes after the mirror's"
+            stand.session.request_refresh(for_selection=True)
+            await _spin()
+            await stand.end(7)
+            assert stand.events[-1] == "mirror", "the mirror's goes after the attended job"
+            stand.session.request_pull_refresh(7)
+            await _spin()
+        await stand.finish()
+        return stand.events
+
+    assert asyncio.run(scenario()) == ["mirror", "pull 7"] * 4
+
+
+def test_a_queued_pull_request_waits_through_at_most_one_job_of_each_that_goes_first() -> None:
+    """The mirror and the attended pull request asking for ever do not starve the rest."""
+
+    async def scenario() -> list[str]:
+        stand = _Stand()
+        session = stand.session
+        await session.attend(7)
+        assert session.request_pull_refresh(8) == "started"
+        await _spin()
+        for number in (9, 10):
+            assert session.request_pull_refresh(number) == "started"
+        session.request_refresh(for_selection=True)
+        session.request_pull_refresh(7)
+        await _spin()
+        await stand.end(8)
+        await stand.end_mirror()
+        # The mirror asks again at once, and 9 still goes before it.
+        session.request_refresh(for_selection=True)
+        await _spin()
+        await stand.end(7)
+        session.request_pull_refresh(7)
+        await _spin()
+        await stand.end(9)
+        await stand.end_mirror()
+        session.request_refresh(for_selection=True)
+        await _spin()
+        await stand.end(7)
+        await stand.end(10)
+        await stand.finish()
+        return stand.events
+
+    assert asyncio.run(scenario()) == [
+        "pull 8",
+        "mirror",
+        "pull 7",
+        "pull 9",
+        "mirror",
+        "pull 7",
+        "pull 10",
+        "mirror",
+    ]
+
+
+@pytest.mark.parametrize("cancelled", ["as the turn passes", "as its turn came"])
+def test_a_job_cancelled_while_it_waits_gives_up_its_place(cancelled: str) -> None:
+    """A job cancelled while the turn passes is skipped, and one cancelled after its turn came
+    and before it woke passes the turn on. Either way the next job runs."""
+
+    async def scenario() -> list[str]:
+        order: list[str] = []
+        turn = StoreTurn()
+
+        async def job(name: str, gate: asyncio.Event | None = None) -> None:
+            async with turn(lambda: False):
+                order.append(name)
+                if gate is not None:
+                    await gate.wait()
+
+        gate = asyncio.Event()
+        running = asyncio.create_task(job("running", gate))
+        await _spin()
+        doomed = asyncio.create_task(job("cancelled"))
+        last = asyncio.create_task(job("last"))
+        await _spin()
+        gate.set()
+        if cancelled == "as its turn came":
+            # The running job ends and gives the turn; the given job has not woken yet.
+            await asyncio.sleep(0)
+            assert running.done()
+        doomed.cancel()
+        await asyncio.gather(doomed, return_exceptions=True)
+        await last
+        await running
+        return order
+
+    assert asyncio.run(scenario()) == ["running", "last"]
+
+
+def test_a_pending_miss_waits_for_the_job_it_started_whichever_is_attended_by_then() -> None:
+    """A commit the mirror lacks can be a newer one of the attended pull request, and the
+    attended number can change while that job runs. A miss answered from the number attended
+    now says "not found" for a commit that may arrive a few seconds later."""
+
+    async def scenario() -> tuple[bool, bool, bool]:
+        stand = _Stand()
+        session = stand.session
+        missing = "a" * 40
+
+        async def ask() -> None:
+            await session.switch_pin(ref=None, oid=missing)
+
+        await session.attend(7)
+        session.request_refresh(for_selection=True)
+        await _spin()
+        with pytest.raises(SelectionPendingError):
+            await ask()
+        await stand.end_mirror()
+        assert stand.events[-1] == "pull 7" and session.pull_refreshing(7)
+
+        await session.attend(8)
+        # 7's job is still running, so the miss is still waiting on it. The ask also starts
+        # the job of the number attended now, which could bring the commit too.
+        with pytest.raises(SelectionPendingError):
+            await ask()
+        still_seven = session.pull_refreshing(7)
+        await stand.end(7)
+        # The ask started the mirror's fetch again, and that goes first.
+        await stand.end_mirror()
+        # Now only 8's job runs, which the miss also waits on.
+        assert stand.events[-1] == "pull 8" and not session.pull_refreshing(7)
+        with pytest.raises(SelectionPendingError):
+            await ask()
+        then_eight = session.pull_refreshing(8)
+        await stand.end(8)
+        await stand.end_mirror()
+        with pytest.raises(SelectionNotFoundError):
+            await ask()
+        answered = not session.refreshing() and not session.pull_refreshing(8)
+        await stand.finish()
+        return still_seven, then_eight, answered
+
+    assert asyncio.run(scenario()) == (True, True, True)
+
+
+async def _fill_the_queue(stand: _Stand) -> None:
+    """Eight other numbers, and the attended 7 one over, then 20 attended: 20 has no room."""
+
+    await stand.session.attend(7)
+    for number in range(8, 16):
+        assert stand.session.request_pull_refresh(number) == "started"
+    assert stand.session.request_pull_refresh(7) == "started"
+    await stand.session.attend(20)
+    assert stand.session.request_companion_refresh() == "too_many"
+
+
+def test_a_source_refresh_the_queue_has_no_room_for_says_so_and_starts_nothing() -> None:
+    """When only the attended pull request is stale, a refusal of its job is the answer: a
+    "joined" would say work was accepted that was not."""
+
+    async def scenario() -> tuple[str, list[str]]:
+        stand = _Stand()
+        fresh = _Mirror(stand.events, fetched_at=_now())
+        stand.session = MirrorSession(
+            fresh, stand.coordinator, pull_requests=stand.pulls, fetch_on_miss=True
+        )
+        await stand.session.observe()
+        await _fill_the_queue(stand)
+        await _spin()
+        answered = stand.session.request_refresh()
+        await _spin()
+        seen = list(stand.events)
+        await stand.finish()
+        return answered, seen
+
+    answered, seen = asyncio.run(scenario())
+    assert answered == "too_many"
+    assert seen == ["pull 8"], "nothing else started"
+
+
+def test_a_pending_miss_whose_pull_request_job_was_refused_waits_for_room() -> None:
+    """A full queue refused the attended pull request's job, so it has not run, and the commit
+    may be one only it brings: the miss stays pending, and a later ask that finds room starts
+    the job and then waits for it."""
+
+    async def scenario() -> None:
+        stand = _Stand()
+        session = stand.session
+        missing = "a" * 40
+
+        async def ask() -> None:
+            await session.switch_pin(ref=None, oid=missing)
+
+        session.request_refresh(for_selection=True)
+        await _spin()
+        assert stand.events == ["mirror"]
+        await _fill_the_queue(stand)
+        with pytest.raises(SelectionPendingError):
+            await ask()
+        await stand.end_mirror()
+        assert stand.events[-1] == "pull 8"
+        # The mirror's fetch ended, and the queue is still full: still pending, not "not found".
+        with pytest.raises(SelectionPendingError):
+            await ask()
+        assert not session.pull_refreshing(20)
+        await stand.end(8)
+        await stand.end_mirror()
+        # Now there is room, so this ask starts 20's job, and the miss waits for it.
+        with pytest.raises(SelectionPendingError):
+            await ask()
+        assert session.pull_refreshing(20)
+        while session.refreshing() or any(
+            session.pull_refreshing(number) for number in (*range(9, 16), 7, 20)
+        ):
+            for pull in stand.pulls.by_number.values():
+                pull.gate.set()
+            stand.mirror.gate.set()
+            await _spin()
+        with pytest.raises(SelectionNotFoundError):
+            await ask()
+        await stand.finish()
+
+    asyncio.run(scenario())
+
+
+def test_attending_changes_the_number_and_its_refresh_together() -> None:
+    """While the set reads the new number's state, the session is still on the old one, so a
+    refresh asked for then is the old one's, as its staleness is."""
+
+    class _SlowSet(_GatedSet):
+        def __init__(self, events: list[str]) -> None:
+            super().__init__(events)
+            self.read = asyncio.Event()
+
+        async def attend(self, number: int) -> _Gated:
+            await self.read.wait()
+            return await self.companion(number)
+
+    async def scenario() -> None:
+        events: list[str] = []
+        coordinator = RefreshCoordinator()
+        pulls = _SlowSet(events)
+        session = MirrorSession(_Mirror(events), coordinator, pull_requests=pulls)
+        pulls.read.set()
+        await session.attend(7)
+        seven = session.companion
+        pulls.read.clear()
+        attending = asyncio.create_task(session.attend(8))
+        await _spin()
+        assert session.companion is seven
+        assert session.request_companion_refresh() == "started"
+        assert session.pull_refreshing(7) and not session.pull_refreshing(8)
+        pulls.read.set()
+        await attending
+        assert session.companion is await pulls.companion(8)
+        await coordinator.aclose()
+
+    asyncio.run(scenario())

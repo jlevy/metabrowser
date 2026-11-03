@@ -698,7 +698,67 @@ function placeStory(runtime) {
     keeper.flush();
   });
   assert(timers.size === 0, "a disposed keeper started a timer");
+  // Asserted rather than printed, because this transcript is at the size tryscript can match.
+  // Safari throws past 100 `history.replaceState` calls in 30 s, however the moves are paced.
+  for (const betweenMoves of [101, 150, 200, 333, 351, 400, 1000]) {
+    const written = writesWhileMoving(runtime, betweenMoves);
+    assert(written < 100, `${written} writes in 30 s, moving every ${betweenMoves} ms`);
+  }
+  // A key ends a hold only if it can move the pane: not a bare modifier, and not typing.
+  const field = { closest: () => ({}) };
+  for (const [key, target, moves] of [
+    ["PageDown", null, true],
+    ["ArrowDown", null, true],
+    [" ", null, true],
+    ["Tab", null, true],
+    ["Tab", field, true],
+    ["ArrowDown", field, false],
+    [" ", field, false],
+    ["Shift", null, false],
+    ["Meta", null, false],
+    ["a", null, false],
+  ]) {
+    assert(
+      runtime.keyMovesPane(key, target) === moves,
+      `"${key}"${target ? " in a field" : ""} should${moves ? "" : " not"} end a hold`,
+    );
+  }
   return steps;
+}
+
+/** How many places a keeper writes in 30 s to a pane that moves every *betweenMs*. */
+function writesWhileMoving(runtime, betweenMs) {
+  const timers = new Map();
+  let nextTimer = 1;
+  let clock = 0;
+  let written = 0;
+  const keeper = runtime.createScrollKeeper({
+    read: () => null,
+    write() {
+      written += 1;
+    },
+    measure: () => ({ block: 0, offset: 0, top: 0 }),
+    apply: () => true,
+    anchored: () => false,
+    toTop() {},
+    schedule(callback, delayMs) {
+      const id = nextTimer++;
+      timers.set(id, { at: clock + delayMs, callback });
+      return id;
+    },
+    cancel: (handle) => timers.delete(handle),
+  });
+  for (clock = 0; clock < 30000; clock += betweenMs) {
+    for (const [id, timer] of [...timers]) {
+      if (timer.at <= clock) {
+        timers.delete(id);
+        timer.callback();
+      }
+    }
+    keeper.scrolled();
+  }
+  keeper.dispose();
+  return written;
 }
 
 async function main() {

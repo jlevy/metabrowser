@@ -68,6 +68,12 @@ ALLOWED_LINES: tuple[tuple[str, str, str], ...] = (
         "an iframe's title is its accessible name, and a frame shows no tooltip for it",
     ),
     (
+        "builtin_plugins/markdown/inert-toc.js",
+        'toggle.setAttribute("title", "Table of contents")',
+        "inside a rendered document's host the app's tooltip ignores data-tip-text, so a "
+        "document cannot label itself, and only this one shows",
+    ),
+    (
         "builtin_plugins/markdown/link-enhancer.js",
         'element.setAttribute("title", authoredTitle)',
         "gives a document's own link back the title its author wrote",
