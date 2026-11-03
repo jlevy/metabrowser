@@ -276,6 +276,28 @@ def copy_origin(built: Origin, directory: Path) -> Origin:
     return Origin(path, built.commits)
 
 
+def clone_checkout(
+    origin: Origin, path: Path, *, remote: str = CANONICAL + ".git", branch: str = "wip"
+) -> Path:
+    """A checkout of the stand-in origin, as a reader's clone of the repository is.
+
+    Its ``origin`` names *remote*, the GitHub address, while its objects came from the
+    local origin. On ``wip`` its ``HEAD`` is pull request 10's head, and it holds 8's,
+    which ``topic`` merged; it lacks 7's and 9's, which only their pull-request refs reach.
+    """
+
+    env = git_env(path.parent)
+    subprocess.run(
+        ["git", "clone", "-q", "--template=", origin.url, str(path)],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    for args in (("remote", "set-url", "origin", remote), ("checkout", "-q", branch)):
+        subprocess.run(["git", "-C", str(path), *args], check=True, capture_output=True, env=env)
+    return path
+
+
 def _etag(path: str, body: object) -> str:
     digest = hashlib.sha256(path.encode() + json.dumps(body, sort_keys=True).encode()).hexdigest()
     return f'W/"{digest}"'
@@ -1006,8 +1028,72 @@ def serve_stand_in(directory: Path, number: int, port: int) -> None:
         _run_cli([f"{CANONICAL}/pull/{number}", "--no-open", "--port", str(port)])
 
 
+# The checkouts :func:`build_checkout_home` makes, each with its ``origin`` and any other
+# remote: the repository by HTTPS and by SSH, a fork of it, a remote the plugin's grammar
+# refuses though discovery admits it, and one that is not GitHub.
+CHECKOUTS: Final[dict[str, tuple[str, tuple[tuple[str, str], ...]]]] = {
+    "checkout": (CANONICAL + ".git", ()),
+    "ssh-checkout": ("git@github.com:Octo/Demo.git", ()),
+    "fork-checkout": ("https://github.com/someone/demo.git", (("upstream", CANONICAL + ".git"),)),
+    "odd-checkout": ("https://github.com/under_score/demo.git", ()),
+    "elsewhere": ("https://gitlab.example/octo/demo.git", ()),
+}
+
+
+def build_checkout_home(directory: Path) -> None:
+    """Checkouts of the stand-in, and ``home`` as their folder servers' requests wrote it.
+
+    Through the production CLI path, ``metab <checkout> --api`` with the fake ``gh`` and a
+    fixed clock: the ``all`` list's first page, the records of 10, whose head is the
+    checkout's ``HEAD``, and of 7, which it lacks, and 7's changed files, all from
+    ``checkout``. No store is made, so the source is ``unattached``. ``folder`` is a plain
+    directory.
+    """
+
+    from metabrowser.builtin_plugins.github import pull_list, pulls
+    from metabrowser.cache import acquire
+    from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
+
+    origin = build_origin(directory)
+    for name, (remote, more) in CHECKOUTS.items():
+        path = clone_checkout(origin, directory / name, remote=remote)
+        for remote_name, url in more:
+            subprocess.run(
+                ["git", "-C", str(path), "remote", "add", remote_name, url],
+                check=True,
+                capture_output=True,
+                env=git_env(directory),
+            )
+    os.environ.update(install_fake_gh(directory, files_scenario(origin)))
+    os.environ["METABROWSER_CACHE_DIR"] = str(directory / "home")
+    os.environ["METABROWSER_LOG_LEVEL"] = "ERROR"
+    request = directory / "request.json"
+    asked: list[tuple[str, dict[str, Any]]] = [
+        ("/api/plugin/github/pulls-refresh", {}),
+        ("/api/plugin/github/pull-refresh", {"number": 10, "retry": True}),
+        ("/api/plugin/github/pull-refresh", {"number": 7, "retry": True}),
+        ("/api/plugin/github/pull-files-refresh", {"number": 7}),
+    ]
+    with (
+        _patched(pulls, "utc_now", lambda: FETCHED_AT),
+        _patched(pull_list, "utc_now", lambda: FETCHED_AT),
+        _patched(acquire, "canonical_now", lambda: FETCHED_AT.strftime("%Y-%m-%dT%H:%M:%SZ")),
+    ):
+        for route, body in asked:
+            request.write_text(json.dumps(body) + "\n", encoding="utf-8")
+            try:
+                _run_cli([str(directory / "checkout"), "--api", route, "--data", str(request)])
+            except SystemExit as exc:
+                if exc.code not in (0, None):
+                    raise
+    request.unlink()
+    (directory / "folder").mkdir(exist_ok=True)
+
+
 if __name__ == "__main__":
-    if len(sys.argv) == 5 and sys.argv[2] == "--serve":
+    if len(sys.argv) == 3 and sys.argv[2] == "--checkout":
+        build_checkout_home(Path(sys.argv[1]).resolve())
+    elif len(sys.argv) == 5 and sys.argv[2] == "--serve":
         serve_stand_in(Path(sys.argv[1]).resolve(), int(sys.argv[3]), int(sys.argv[4]))
     elif len(sys.argv) == 3 and sys.argv[2] == "--files":
         build_home(Path(sys.argv[1]).resolve(), files=True)
@@ -1015,5 +1101,5 @@ if __name__ == "__main__":
         build_home(Path(sys.argv[1]).resolve())
     else:
         raise SystemExit(
-            "usage: github_pull_fixture.py <directory> [--files | --serve <number> <port>]"
+            "usage: github_pull_fixture.py <directory> [--files | --checkout | --serve <number> <port>]"
         )
