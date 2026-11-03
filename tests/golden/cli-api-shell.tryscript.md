@@ -479,6 +479,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-comparison",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-markdown",
       "methods": [
         "GET",
@@ -657,7 +665,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 48
+  "count": 49
 }
 ? 0
 ```
