@@ -1247,8 +1247,9 @@ def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
         (b"[]", 400),
         (b"{", 400),
         (b'{"x": "' + b"y" * 2000 + b'"}', 413),
-        # An explicit number is whole and within the pull-request number range.
-        (b'{"number": null}', 400),
+        # The number is required, whole, and within what a pull request's number can be.
+        (b"{}", 400),
+        (b'{"retry": true}', 400),
         (b'{"number": "7"}', 400),
         (b'{"number": true}', 400),
         (b'{"number": 0}', 400),
@@ -1656,9 +1657,8 @@ def test_on_a_real_session_a_queue_of_pull_requests_delays_neither_the_mirror_no
     assert ran == [100, 7, "mirror", 101, 102]
 
 
-@pytest.mark.parametrize("legacy", [False, True])
 def test_the_attended_pull_request_may_run_one_over_the_bound_and_no_more(
-    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch, legacy: bool
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Through the page's route as through the freshness row's, the attended number is not
     refused because other numbers filled the bound. It is one over the bound and not one per
@@ -1675,14 +1675,7 @@ def test_the_attended_pull_request_may_run_one_over_the_bound_and_no_more(
     monkeypatch.setattr(ServedPull, "refresh", waiting)
 
     def ask(number: int) -> tuple[int, str]:
-        assert session is not None
-        attended = session.companion
-        body = (
-            {}
-            if legacy and isinstance(attended, ServedPull) and number == attended.number
-            else {"number": number, "retry": True}
-        )
-        answer = client.post(_REFRESH_ROUTE, json=body, headers=_JSON)
+        answer = client.post(_REFRESH_ROUTE, json={"number": number, "retry": True}, headers=_JSON)
         return answer.status_code, answer.json()["refresh"]
 
     session = mirror_session(app)
@@ -2040,117 +2033,34 @@ def test_the_first_refusal_in_order_is_the_one_raised(stand: _Stand) -> None:
     assert raised.value.state == "not_found_or_private"
 
 
-# Published one-shot calls that omit the number address the attended PR only.
-def test_legacy_attended_reads_are_aliases_without_work(
-    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("attended", [False, True])
+def test_pull_routes_require_a_number_before_reading_or_refreshing(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch, attended: bool
 ) -> None:
     stand, client = pinned_pull
+    settle(client)
+    if not attended:
+        serve_mirror(None)
     stand.calls()
 
     def forbidden(*_args: Any, **_kwargs: Any) -> Any:
-        raise AssertionError("a legacy GET must not run Git")
+        raise AssertionError("a missing number must be refused before looking up a pull request")
 
-    real_companion = ServedPulls.companion
-
-    async def existing_only(group: ServedPulls, number: int) -> ServedPull:
-        # The checkout/recovery layer records the displayed pair through this method.
-        # It may reuse a held companion, but the legacy read must never create one.
-        held = group.held(number)
-        assert held is not None, "a legacy GET must not create a companion"
-        result = await real_companion(group, number)
-        assert result is held
-        return result
-
-    monkeypatch.setattr(ServedPulls, "companion", existing_only)
+    monkeypatch.setattr("metabrowser.builtin_plugins.github.pull_route.pull_host", forbidden)
+    monkeypatch.setattr(ServedPulls, "companion", forbidden)
     monkeypatch.setattr(git_process, "run_git", forbidden)
-    canonical = _read(client, 7)
-    legacy = client.get("/api/plugin/github/pull")
-    assert legacy.status_code == 200
-    assert legacy.json() == canonical.json()
-    assert legacy.headers["etag"] == canonical.headers["etag"]
-    assert (
-        client.get(
-            "/api/plugin/github/pull", headers={"if-none-match": legacy.headers["etag"]}
-        ).status_code
-        == 304
-    )
-    markdown = client.get("/api/plugin/github/pull-markdown?part=body")
-    explicit = client.get("/api/plugin/github/pull-markdown?number=7&part=body")
-    assert markdown.status_code == 200 and markdown.json() == explicit.json()
+    expected = {"error": '"number" is a pull-request number', "code": "invalid_request"}
+    for route in ("pull", "pull-markdown?part=body"):
+        response = client.get(f"/api/plugin/github/{route}")
+        assert (response.status_code, response.json()) == (400, expected)
+    for body in ({}, {"retry": True}, {"retry": False}):
+        response = client.post(_REFRESH_ROUTE, json=body, headers=_JSON)
+        assert (response.status_code, response.json()) == (400, expected)
     assert stand.calls() == []
 
 
-def test_legacy_fresh_refresh_fetches_but_explicit_automatic_requests_do_not(
-    pinned_pull: tuple[_Stand, TestClient],
-) -> None:
-    stand, client = pinned_pull
-    stand.calls()
-    before = _read(client, 7).json()
-    assert before["state"] == "current"
-    for body in ({"number": 7}, {"retry": False}):
-        answer = client.post(_REFRESH_ROUTE, json=body, headers=_JSON)
-        assert (answer.status_code, answer.json()["refresh"]) == (200, "not_due")
-        assert stand.calls() == []
-    answer = client.post(_REFRESH_ROUTE, json={}, headers=_JSON)
-    assert (answer.status_code, answer.json()["refresh"]) == (202, "started")
-    settle(client)
-    after = client.get(answer.json()["status_route"])
-    assert after.status_code == 200
-    assert after.json()["record"] == before["record"]
-    assert after.json()["last_refresh"]["outcome"] == "succeeded"
-    assert len(stand.calls()) == 8
-
-
-@pytest.mark.parametrize("repository", [False, True])
-def test_legacy_routes_without_an_attended_pull_keep_the_absence_contract(
-    stand: _Stand, monkeypatch: pytest.MonkeyPatch, repository: bool
-) -> None:
-    try:
-        if repository:
-            _serving_repository_url(stand, monkeypatch)
-        else:
-            serve_mirror(None)
-        with TestClient(app) as client:
-            settle(client)
-            canonical_before = _read(client, 7).json()
-            assert canonical_before["reason"] in {"not_cached", "not_github"}
-            stand.calls()
-            response = client.get("/api/plugin/github/pull")
-            assert response.status_code == 200
-            envelope = response.json()
-            assert (
-                envelope["state"],
-                envelope["reason"],
-                envelope["number"],
-                envelope["source"],
-                envelope["pin"],
-            ) == ("absent", "no_pull_request", None, None, None)
-            assert envelope["record"] is None and envelope["refreshing"] is False
-            assert response.headers["cache-control"] == "no-store"
-            assert (
-                client.get(
-                    "/api/plugin/github/pull", headers={"if-none-match": response.headers["etag"]}
-                ).status_code
-                == 304
-            )
-            missing = {"error": "this server serves no pull request", "code": "no_pull_request"}
-            markdown = client.get("/api/plugin/github/pull-markdown?part=body")
-            assert (markdown.status_code, markdown.json()) == (409, missing)
-            invalid = client.get("/api/plugin/github/pull-markdown?part=invalid")
-            assert (invalid.status_code, invalid.json()["code"]) == (400, "invalid_part")
-            refresh = client.post(_REFRESH_ROUTE, json={}, headers=_JSON)
-            assert (refresh.status_code, refresh.json()) == (409, missing)
-            assert stand.calls() == []
-            # A higher layer may recognize this GitHub checkout; legacy absence must
-            # not alter whichever canonical repository context was already present.
-            assert _read(client, 7).json() == canonical_before
-    finally:
-        serve_mirror(None)
-        git_repo.clear_repo_cache()
-
-
 @pytest.mark.parametrize("value", ["", "null", "true", "0", "-7", "7.0", "7x"])
-def test_explicit_bad_numbers_never_use_the_attended_pull(
+def test_pull_routes_refuse_invalid_numbers(
     pinned_pull: tuple[_Stand, TestClient], value: str
 ) -> None:
     stand, client = pinned_pull
@@ -2166,7 +2076,7 @@ def test_explicit_bad_numbers_never_use_the_attended_pull(
     assert stand.calls() == []
 
 
-def test_explicit_duplicate_numbers_keep_the_canonical_last_value_rule(
+def test_duplicate_numbers_keep_the_last_value_rule(
     pinned_pull: tuple[_Stand, TestClient],
 ) -> None:
     stand, client = pinned_pull
@@ -2189,39 +2099,3 @@ def test_explicit_duplicate_numbers_keep_the_canonical_last_value_rule(
     refused = client.post(_REFRESH_ROUTE, content=b'{"number": 7, "number": null}', headers=_JSON)
     assert (refused.status_code, refused.json()["code"]) == (400, "invalid_request")
     assert stand.calls() == []
-
-
-def test_legacy_manual_retry_preserves_rate_limit_outcomes_and_automatic_gating(
-    pinned_pull: tuple[_Stand, TestClient],
-) -> None:
-    stand, client = pinned_pull
-    before = _read(client, 7).json()["record"]
-    path = "repos/octo/demo/pulls/7"
-    reset = FETCHED_AT + timedelta(minutes=30)
-    stand.answer(
-        _api(
-            scenario(stand.origin),
-            path,
-            {
-                "status": 403,
-                "headers": {
-                    "X-Ratelimit-Remaining": "0",
-                    "X-Ratelimit-Reset": str(int(reset.timestamp())),
-                },
-                "body": {"message": "API rate limit exceeded"},
-            },
-        )
-    )
-    stand.calls()
-    for body in ({}, {"retry": True}):
-        response = client.post(_REFRESH_ROUTE, json=body, headers=_JSON)
-        assert (response.status_code, response.json()["refresh"]) == (202, "started")
-        settle(client)
-        after = client.get(response.json()["status_route"]).json()
-        assert after["last_refresh"]["outcome"] == "rate_limited"
-        assert after["last_refresh"]["reset_at"] == reset.strftime("%Y-%m-%dT%H:%M:%SZ")
-        assert after["record"] == before
-        assert _gh_reads(stand)
-        automatic = client.post(_REFRESH_ROUTE, json={"retry": False}, headers=_JSON)
-        assert (automatic.status_code, automatic.json()["refresh"]) == (200, "not_due")
-        assert stand.calls() == []

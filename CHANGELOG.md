@@ -410,15 +410,13 @@ GitHub URLs and HTTPS:
   `/api/plugin/github/pull` adds `refreshing` and `last_refresh`, and answers `pending`
   while the first record is being read.
   Any server of a GitHub repository answers for any number, not only one its URL named.
-  Published `--api` calls that omit `number` still address the attended pull request,
-  and an empty `pull-refresh` body still requests a manual refresh even while fresh.
-  Explicit numbers retain their validation and explicit `retry: false` stays automatic.
-  For an explicit number, only `"retry": true`, a reader’s own action, can add a pull
-  request to the cache: without it a number with no record answers `not_cached`, a
-  record inside the window or before a rate limit lifts answers `not_due`, and neither
-  starts anything. Past eight pull requests queued or running, a request is refused 429
-  `too_many`. The mirror’s fetch and the pull request whose head is served go ahead of
-  that queue, and a list’s refresh does not wait for it.
+  The pull and Markdown routes and the refresh body require an explicit pull-request
+  number. Only `"retry": true`, a reader’s own action, can add a pull request to the
+  cache: without it a number with no record answers `not_cached`, a record inside the
+  window or before a rate limit lifts answers `not_due`, and neither starts anything.
+  Past eight pull requests queued or running, a request is refused 429 `too_many`. The
+  mirror’s fetch and the pull request whose head is served go ahead of that queue, and a
+  list’s refresh does not wait for it.
   The served one may run one over the bound; past that, `/api/source/refresh` answers
   429 `too_many` too when that pull request is all it would refresh.
   A newer head is offered as the source’s `latest`, and `/api/source/pin` accepts
@@ -1216,14 +1214,10 @@ Fixes:
   One that is not a regular file or is larger than 64 KB is now skipped with a warning
   naming the file, and python-dotenv’s warning about a line it cannot parse is printed
   once for a file rather than once a line.
-  Existing `${VAR}` and `${VAR:-default}` references retain their ordered meaning,
-  including `METABROWSER_LOG_LEVEL=${MY_LEVEL}` and helper bindings.
-  Expansion avoids copying the environment for every binding and repeatedly scanning
-  malformed references.
-  It admits at most 1,048,576 characters per expanded value and 4,194,304 across the
-  file, including overwritten helpers.
-  Exceeding either limit skips the whole file with one warning and continues to
-  `.env.local`; no partial settings are applied.
+  **A value’s `${VAR}` is no longer expanded:** `METABROWSER_LOG_LEVEL=${MY_LEVEL}` now
+  sets that literal text, which falls back to `INFO`, where 0.11.0 expanded it.
+  Expansion is what made the parse quadratic in the file’s lines, and neither name a
+  dotenv file may set needs it.
 
 - `metab --api <route> --format json` or `--format yaml` prints the envelope alone, so
   stdout parses; a body that is not JSON is one string, and a refresh that waits prints
