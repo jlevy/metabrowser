@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: open
 priority: 1
-version: 32
+version: 33
 labels:
   - release:v0.12.0
 dependencies: []
@@ -41,10 +41,13 @@ child_order_hints:
   - is-01m6g4n54pv6gbm7yzjxbskegg
   - is-01m6g4q0q0dvzhxj3yesx7qayg
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-03T07:24:25.696Z
+updated_at: 2026-11-03T07:34:27.748Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.
 
 ## Notes
 
 2026-11-03 status. Stack 278 is 272-277, 280, 284, 283, with the Pulls tab as stack 286 (279, 281, 285, 287, 288) on top of 283. PR 280 (design system, docs, workflows): reviewed, addressed, CI green at 996ea90d. PR 284 (large-PR performance): three review rounds; E1 (the mount's single long task, slower than github.com at 1,031 files) in progress, mb-ivvw. PR 283 (checkout overlay step 1): two review rounds addressed, CI green at e8b7ff3d, verified on the 1.2 GB private repository; a follow-up review of its last fixes is pending (mb-3kju). Open after that: mb-l351 (overlay step 2), mb-jwfx (quiet timings), mb-i9ll (the owner's own pass), mb-8pyc and mb-2g6f (folder differentials on the tagged head).
+
+
+2026-11-03 handoff pause. Heads: PR 280 996ea90d, PR 284 9b624b3a, PR 283 b29dc787 (top of stack 278). Reviews: 280 round 1; 284 rounds 1 to 3, with the E1 fix unreviewed; 283 rounds 1 to 3, with f987d033 reverted at 483e3a83. Open, in order: review the E1 fix and mb-ph3m (cold manifest, the gap to github.com at 1,031 files); mb-hjez (review E follow-ups on 283); the follow-up review of 996ea90d (mb-f15a); mb-6453 (file at top, for the Pulls nav); mb-l351 (overlay step 2); mb-jwfx (quiet timings); mb-i9ll (owner's pass); mb-8pyc and mb-2g6f (folder differentials on the tagged head). The Pulls tab is stack 286 on 283's branch, handed off on its own beads (mb-cbak, mb-zx9q). Merging waits for the owner.
