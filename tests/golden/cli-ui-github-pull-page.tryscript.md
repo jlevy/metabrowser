@@ -1031,7 +1031,7 @@ $ node tests/dom/github-pull-page-second-session.js
       ]
     },
     "no_store": {
-      "files": "Files changed is not shown here: a checkout's server keeps no copy of the pull request's commits, and Metabrowser does not compare them in your checkout. Open the pull request's GitHub address with metab to read it from a mirror.",
+      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged.",
       "notes": [
         "Files changed could not be read (no store)."
       ]
@@ -1055,21 +1055,21 @@ $ node tests/dom/github-pull-page-second-session.js
       "headOffer": null,
       "checkoutAtHead": "This checkout's HEAD is this pull request's head.",
       "comparison": null,
-      "files": "Files changed is not shown here: a checkout's server keeps no copy of the pull request's commits, and Metabrowser does not compare them in your checkout. Open the pull request's GitHub address with metab to read it from a mirror."
+      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
     },
     "HEAD is elsewhere": {
       "browse": null,
       "headOffer": null,
       "checkoutAtHead": null,
       "comparison": null,
-      "files": "Files changed is not shown here: a checkout's server keeps no copy of the pull request's commits, and Metabrowser does not compare them in your checkout. Open the pull request's GitHub address with metab to read it from a mirror."
+      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
     },
     "no repository context": {
       "browse": null,
       "headOffer": null,
       "checkoutAtHead": null,
       "comparison": null,
-      "files": "Files changed is not shown here: a checkout's server keeps no copy of the pull request's commits, and Metabrowser does not compare them in your checkout. Open the pull request's GitHub address with metab to read it from a mirror."
+      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
     },
     "a mirror's page, whatever it is handed": {
       "browse": "switches to refs/pull/7/head",

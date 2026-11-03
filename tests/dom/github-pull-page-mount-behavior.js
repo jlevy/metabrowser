@@ -177,7 +177,59 @@ async function run() {
     await settle();
     assert.equal(mounted, 1, "a stale Retry cannot remount a disposed page");
   }
-  return { failedAssetsRecover: true, failedRenderRecovers: true, staleRetryIsInert: true };
+  const checkout = JSON.parse(
+    fs.readFileSync(
+      path.join(root, "tests/fixtures/github-checkout-comparison-responses.json"),
+      "utf8",
+    ),
+  );
+  const posts = [];
+  globalThis.fetch = async (_route, options = {}) => {
+    const answer = options.method === "POST" ? checkout.started : checkout.before;
+    if (options.method === "POST") posts.push(JSON.parse(options.body));
+    return { status: answer.status, headers: { get: () => null }, json: async () => answer.body };
+  };
+  const checkoutContainer = new Element("main");
+  const checkoutHandle = page.mountPullPage(
+    checkoutContainer,
+    {
+      number: 10,
+      tab: "files",
+      reader: { initial: checkout.before, fetchAfterMs: 0 },
+    },
+    {
+      ensureAsset: async () => {},
+      ensureKindAssets: async () => {},
+      getRegisteredView: () => {
+        throw new Error("no comparison exists before Fetch");
+      },
+      formatAge: () => ({ label: "now", className: "age" }),
+      formatTimestamp: () => "now",
+      navigation: { href: () => "/view/" },
+      sourceKind: () => "filesystem",
+      icons: { toggle: "" },
+    },
+  );
+  await settle();
+  assert.deepEqual(posts, []);
+  const fetchChanges = [...checkoutContainer.descendants()].find(
+    (element) => element.tag === "button" && element.textContent === "Fetch changes",
+  );
+  assert.ok(fetchChanges, "Files changed offers explicit Fetch");
+  fetchChanges.events.get("click")();
+  await settle();
+  assert.deepEqual(posts, [{ number: 10, retry: true, comparison: true }]);
+  assert.equal(checkoutContainer.querySelector(".github-pull-fetch-changes"), null);
+  checkoutHandle.dispose();
+  fetchChanges.events.get("click")();
+  await settle();
+  assert.equal(posts.length, 1, "a disposed Fetch button starts nothing");
+  return {
+    failedAssetsRecover: true,
+    failedRenderRecovers: true,
+    staleRetryIsInert: true,
+    checkoutFetchIsExplicit: true,
+  };
 }
 run()
   .then((result) => process.stdout.write(`${JSON.stringify(result)}\n`))

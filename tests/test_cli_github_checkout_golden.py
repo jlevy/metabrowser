@@ -45,6 +45,7 @@ from tests.golden_harness import (
     Invocation,
     Labels,
     check_golden,
+    check_recording,
     isolate_cli,
     label_home,
     origin_identity,
@@ -261,6 +262,16 @@ def test_golden_a_checkouts_pull_requests(
     query = parse_qs(urlsplit(route).query)
     labels.add(query["build"][0], "<BUILD>")
     labels.add(query["store"][0], "<STORE_TAG>")
+    recorded = {
+        "before": {"status": 200, "etag": None, "body": again.payload()},
+        "started": {"status": 202, "etag": None, "body": _answered(fetched)},
+        "ready": {"status": 200, "etag": None, "body": after},
+    }
+    check_recording(
+        "github-checkout-comparison-responses.json",
+        json.loads(labels.apply(json.dumps(recorded))),
+        transcript="cli-ui-github-checkout-comparison.tryscript.md",
+    )
     rendered = label_home(labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered

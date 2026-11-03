@@ -226,6 +226,7 @@ const TRUNCATED = Object.freeze({
  *   message: string | null,
  *   refreshing: boolean,
  *   canRefresh: boolean,
+ *   canFetchComparison: boolean,
  *   freshness: string | null,
  *   failure: string | null,
  *   pull: null | {
@@ -634,7 +635,7 @@ export function filesUnavailableText(why) {
     return "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
   }
   if (why === "no_store") {
-    return "Files changed is not shown here: a checkout's server keeps no copy of the pull request's commits, and Metabrowser does not compare them in your checkout. Open the pull request's GitHub address with metab to read it from a mirror.";
+    return "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged.";
   }
   if (why === "comparison_timeout") {
     return "Files changed is unavailable: checking this pull request's history took too long. Refresh to try again.";
@@ -667,6 +668,7 @@ export function describePull(envelope, page) {
     message: page.error ?? null,
     refreshing: false,
     canRefresh: false,
+    canFetchComparison: false,
     freshness: null,
     failure: null,
     pull: null,
@@ -783,6 +785,7 @@ export function describePull(envelope, page) {
     model.checkoutAtHead = "This checkout's HEAD is this pull request's head.";
   }
   model.filesUnavailable = filesUnavailableText(record.unavailable?.comparison ?? null);
+  model.canFetchComparison = record.unavailable?.comparison === "no_store" && !envelope.refreshing;
   const comparison = record.comparison;
   if (comparison && typeof comparison.base === "string" && typeof comparison.head === "string") {
     model.comparison = {
@@ -1067,7 +1070,7 @@ export function createPullController(deps, options) {
    * page's own request says nothing to the reader, whose page still shows what it did and
    * still offers Refresh.
    *
-   * @param {{number: number, retry?: boolean}} ask
+   * @param {{number: number, retry?: boolean, comparison?: boolean}} ask
    */
   async function askForRefresh(ask) {
     cancelAsk();
@@ -1105,6 +1108,13 @@ export function createPullController(deps, options) {
   async function requestRefresh() {
     if (!disposed && model().canRefresh) {
       await askForRefresh({ number: options.number, retry: true });
+    }
+  }
+
+  /** An explicit Fetch for Files changed; opening the tab alone never acquires a store. */
+  async function requestComparison() {
+    if (!disposed && model().canFetchComparison) {
+      await askForRefresh({ number: options.number, retry: true, comparison: true });
     }
   }
 
@@ -1269,6 +1279,7 @@ export function createPullController(deps, options) {
     },
     poll: () => poll(),
     requestRefresh,
+    requestComparison,
     switchToHead,
     browseCode,
     requestMarkdown,
@@ -2284,7 +2295,17 @@ export function mountPullPage(container, ctx, mb) {
     const action = filesAction(diffFor, comparison);
     if (comparison === null || action === "unavailable") {
       disposeDiff();
-      body.replaceChildren(notice("error", [model.filesUnavailable]));
+      const message = notice("error", [model.filesUnavailable]);
+      if (model.canFetchComparison) {
+        const fetchChanges = h(
+          "button",
+          { type: "button", class: "btn github-pull-fetch-changes" },
+          ["Fetch changes"],
+        );
+        fetchChanges.addEventListener("click", () => void controller.requestComparison());
+        message.append(fetchChanges);
+      }
+      body.replaceChildren(message);
       return;
     }
     if (action === "mount") {

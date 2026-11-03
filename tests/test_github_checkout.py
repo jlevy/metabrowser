@@ -450,10 +450,18 @@ def test_checkout_comparison_fetch_uses_only_the_overlay(
         raise AssertionError("a cached comparison must not acquire")
 
     monkeypatch.setattr("metabrowser.cache.acquire.acquire_source", forbidden)
+    record_files = {
+        path: (path.stat().st_mtime_ns, path.read_bytes()) for path in home.rglob("*.yml")
+    }
+    git_before_read = _calls(git_log)
     cached = _api(root, "/api/plugin/github/pull?number=10", None, request)
     assert cached.payload()["record"]["comparison"] == after["record"]["comparison"]
     assert cached.payload()["comparison_route"] == after["comparison_route"]
     assert calls == []
+    assert _calls(git_log) == git_before_read
+    assert {
+        path: (path.stat().st_mtime_ns, path.read_bytes()) for path in home.rglob("*.yml")
+    } == record_files
     assert fingerprint(read_only_checkout) == before
 
     assert fingerprint(tmp_path / "checkout") == common_before
@@ -538,3 +546,35 @@ def test_failed_comparison_fetch_preserves_cached_record(
     assert after["last_refresh"]["outcome"] == "network_error"
     assert "private filesystem detail" not in fetched.stdout
     assert after["pin"] is None and after["comparison_route"] is None
+
+
+@pytest.mark.parametrize("damage", ["partial", "alternates"])
+def test_checkout_comparison_fetch_refuses_to_clone_when_borrowing_is_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, damage: str
+) -> None:
+    from metabrowser.cache import acquire
+    from tests.golden_harness import isolate_cli, pinned_git
+    from tests.test_cli_github_checkout_golden import _after  # pyright: ignore[reportPrivateUsage]
+
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    if damage == "partial":
+        pinned_git(checkout, "config", "remote.origin.promisor", "true")
+    else:
+        (checkout / ".git/objects/info/alternates").write_text("/unavailable\n")
+    before = fingerprint(checkout)
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT)
+    monkeypatch.setattr(acquire, "remote_url_for", lambda _source: pull_origin.url)
+    request = tmp_path / "request.json"
+    route = "/api/plugin/github/pull-refresh"
+    initial = _after(_api(checkout, route, {"number": 10, "retry": True}, request))
+    fetched = _api(checkout, route, {"number": 10, "retry": True, "comparison": True}, request)
+    assert fetched.exit_code == 1, fetched.stdout
+    after = _after(fetched)
+    assert after["last_refresh"]["outcome"] == "lender_missing"
+    assert after["record"] == initial["record"]
+    assert str(checkout) not in fetched.stdout
+    assert not list((home / "repository-stores").iterdir())
+    assert fingerprint(checkout) == before

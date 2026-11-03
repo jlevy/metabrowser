@@ -309,7 +309,10 @@ async def _acquire_comparison(repository: CheckoutRepository) -> PublishedSource
 
     try:
         return await acquire_source(
-            repository.git_source, home=repository.home, checkout=repository.checkout_root
+            repository.git_source,
+            home=repository.home,
+            checkout=repository.checkout_root,
+            allow_clone_fallback=False,
         )
     except (LenderMissingError, CheckoutRefusedError) as exc:
         raise PullDataError("lender_missing", "the checkout cannot supply this comparison") from exc
