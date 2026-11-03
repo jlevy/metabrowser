@@ -121,6 +121,7 @@ class ComparisonCache:
         self._manifests: OrderedDict[tuple[str, ...], ResolvedManifest] = OrderedDict()
         self._bodies: OrderedDict[tuple[str, ...], bytes] = OrderedDict()
         self._body_bytes = 0
+        self._body_generation = object()
         self._computing: dict[tuple[str, ...], asyncio.Task[ResolvedManifest]] = {}
 
     async def manifest(
@@ -171,8 +172,12 @@ class ComparisonCache:
             self._bodies.move_to_end(key)
         return kept
 
-    def remember_body(self, key: tuple[str, ...], body: bytes) -> None:
-        if len(body) > self._max_body_entry_bytes:
+    def body_generation(self) -> object:
+        """Capture before asynchronous work; invalidation retires all older body writers."""
+        return self._body_generation
+
+    def remember_body(self, key: tuple[str, ...], body: bytes, *, generation: object) -> None:
+        if generation is not self._body_generation or len(body) > self._max_body_entry_bytes:
             return
         replaced = self._bodies.pop(key, None)
         if replaced is not None:
@@ -185,6 +190,10 @@ class ComparisonCache:
 
     def invalidate(self, key: tuple[str, ...]) -> None:
         """Drop answers after an observed corrupt object; in-flight results stay uncached."""
+        # Invalidation is rare. Retire even unrelated in-flight encoders rather than
+        # retain per-key generation history after eviction. Already-held unrelated
+        # bodies stay valid. Object identity also rejects writers from replaced caches.
+        self._body_generation = object()
         self._manifests.pop(key, None)
         self._computing.pop(key, None)
         for body_key in tuple(self._bodies):

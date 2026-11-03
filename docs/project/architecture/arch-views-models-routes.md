@@ -163,11 +163,11 @@ reservation and its invariants, is in
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
-`github/pull-refresh`, `github/pull-markdown`, `github/pulls`, `github/pulls-refresh`.
-On a `GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
-`GitDiffSource.content` reads blobs through the shared cat-file pool; patch
-`document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
-`GitPath` and follow in-tree relative symlink blobs.
+`github/pull-comparison`, `github/pull-refresh`, `github/pull-markdown`, `github/pulls`,
+`github/pulls-refresh`. On a `GitRevisionSubject`, `diff/comparison` honors the pin
+through `GitLocation` and `GitDiffSource.content` reads blobs through the shared
+cat-file pool; patch `document`/`children`, `binary/chunk`, `structured/parsed`, and
+`agent-log/charts` honor `GitPath` and follow in-tree relative symlink blobs.
 `diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
 and reports it in the document.
 

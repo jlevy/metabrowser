@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -433,13 +434,13 @@ def test_the_bounds_hold_and_evict_the_oldest() -> None:
         assert cache.sizes()["manifests"] == 2
         assert set(cache._manifests) == {("a",), ("c",)}
 
-        cache.remember_body(("one",), b"12345")
-        cache.remember_body(("two",), b"12345")
+        cache.remember_body(("one",), b"12345", generation=cache.body_generation())
+        cache.remember_body(("two",), b"12345", generation=cache.body_generation())
         assert cache.body(("one",)) == b"12345"  # `one` is now the newer
-        cache.remember_body(("three",), b"12345")
+        cache.remember_body(("three",), b"12345", generation=cache.body_generation())
         assert cache.body(("two",)) is None and cache.body(("one",)) is not None
         assert cache.sizes()["body_bytes"] == 10
-        cache.remember_body(("huge",), b"1234567")
+        cache.remember_body(("huge",), b"1234567", generation=cache.body_generation())
         assert cache.body(("huge",)) is None, "past the entry bound: served and not kept"
 
     asyncio.run(run())
@@ -664,9 +665,11 @@ def test_corrupt_comparison_invalidation_drops_bodies_and_inflight_admission() -
 
         task = asyncio.create_task(cache.manifest(key, listing))
         await entered.wait()
-        cache.remember_body((*key, "one", "8"), b"corrupt")
-        cache.remember_body((*key, "one", "50"), b"also corrupt")
-        cache.remember_body((*other, "two"), b"valid")
+        cache.remember_body((*key, "one", "8"), b"corrupt", generation=cache.body_generation())
+        cache.remember_body(
+            (*key, "one", "50"), b"also corrupt", generation=cache.body_generation()
+        )
+        cache.remember_body((*other, "two"), b"valid", generation=cache.body_generation())
         cache.invalidate(key)
         release.set()
         await task
@@ -713,3 +716,112 @@ def test_invalidated_task_reaps_failure_after_its_waiter_cancels() -> None:
         assert not cache.has_manifest(key)
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("operation", ["repo_info", "_json_body", "encode_body"])
+@pytest.mark.parametrize("reset", ["invalidate", "replace"])
+def test_late_route_work_cannot_publish_a_body_after_invalidation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str, reset: str
+) -> None:
+    """A request holds its admission before any comparison or serialization can await."""
+    store, base, target = _store(tmp_path)
+    location = GitLocation.revision(repository_store_target(git_dir=store), target)
+    intent = {"left": base, "right": target, "base_policy": "merge_base"}
+    key = sidekick.comparison_cache_key(location, intent, store_tag(store))
+    assert key is not None
+    cache = ComparisonCache()
+    monkeypatch.setattr(sidekick, "_COMPARISONS", cache)
+    spy = _Spy(monkeypatch)
+
+    async def run() -> None:
+        entered, release = asyncio.Event(), threading.Event()
+        loop = asyncio.get_running_loop()
+        original = getattr(sidekick, operation)
+
+        async def paused_async(*args: Any, **kwargs: Any) -> Any:
+            entered.set()
+            assert await asyncio.to_thread(release.wait, 10), "request barrier timed out"
+            return await original(*args, **kwargs)
+
+        def paused_thread(*args: Any, **kwargs: Any) -> Any:
+            loop.call_soon_threadsafe(entered.set)
+            assert release.wait(10), "encoding barrier timed out"
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(
+            sidekick, operation, paused_async if operation == "repo_info" else paused_thread
+        )
+        pending = asyncio.create_task(sidekick.comparison_at(_plain_request(**intent), location))
+        try:
+            await asyncio.wait_for(entered.wait(), 10)
+            if reset == "replace":
+                monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
+            else:
+                cache.invalidate(key)
+            assert sidekick._COMPARISONS.sizes()["body_bytes"] == 0
+        finally:
+            release.set()
+        old = await pending
+        assert old.status_code == 200
+        assert sidekick._COMPARISONS.sizes()["bodies"] == 0
+        monkeypatch.setattr(sidekick, operation, original)
+        patches = spy.patches
+        fresh = await sidekick.comparison_at(_plain_request(**intent), location)
+        assert fresh.body == old.body
+        assert spy.patches == patches + 1, "a fresh request must recompute the uncached body"
+        assert sidekick._COMPARISONS.sizes()["bodies"] == 1
+        repeated = await sidekick.comparison_at(_plain_request(**intent), location)
+        assert repeated.body == fresh.body
+        assert spy.patches == patches + 1, "a fresh writer can populate the body cache"
+
+    asyncio.run(run())
+
+
+def test_stale_body_writers_preserve_fresh_entries_and_byte_accounting() -> None:
+    cache = ComparisonCache(max_body_bytes=10, max_body_entry_bytes=6)
+    key, other = ("comparison",), ("unrelated",)
+    body_key = (*key, "file", "8")
+    generation = cache.body_generation()
+    cache.remember_body(body_key, b"old", generation=generation)
+    cache.remember_body(other, b"keep", generation=generation)
+    cache.invalidate(key)
+    assert cache.sizes()["body_bytes"] == 4
+    cache.remember_body(body_key, b"fresh", generation=cache.body_generation())
+    cache.remember_body(body_key, b"stale", generation=generation)
+    cache.remember_body(("another",), b"stale", generation=generation)
+    assert cache.body(body_key) == b"fresh"
+    assert cache.body(other) == b"keep"
+    assert cache.body(("another",)) is None
+    assert cache.sizes() == {"manifests": 0, "bodies": 2, "body_bytes": 9}
+
+    generation = cache.body_generation()
+    cache.invalidate(("absent",))
+    cache.remember_body(("absent",), b"stale", generation=generation)
+    assert cache.body(("absent",)) is None, "even an absent key can have an in-flight writer"
+    assert cache.body(body_key) == b"fresh" and cache.body(other) == b"keep"
+    assert cache.sizes()["body_bytes"] == 9
+
+
+def test_body_admission_does_not_revive_after_lru_eviction_or_cache_replacement() -> None:
+    cache = ComparisonCache(max_body_bytes=4, max_body_entry_bytes=4)
+    key = ("comparison",)
+    old = cache.body_generation()
+    cache.remember_body(key, b"old", generation=old)
+    cache.invalidate(key)
+    fresh = cache.body_generation()
+    cache.remember_body(key, b"new!", generation=fresh)
+    cache.remember_body(("other",), b"last", generation=fresh)
+    assert cache.body(key) is None, "the key was evicted after fresh admission"
+    cache.invalidate(("absent",))
+    cache.remember_body(key, b"old", generation=old)
+    cache.remember_body(key, b"new!", generation=fresh)
+    assert cache.body(key) is None, "neither earlier generation can return after eviction"
+    assert cache.body(("other",)) == b"last"
+    assert cache.sizes() == {"manifests": 0, "bodies": 1, "body_bytes": 4}
+    current = cache.body_generation()
+    cache.remember_body(key, b"ok", generation=current)
+    assert cache.body(key) == b"ok" and cache.body(("other",)) is None
+    assert cache.sizes()["body_bytes"] == 2
+    replacement = ComparisonCache()
+    replacement.remember_body(key, b"old", generation=current)
+    assert replacement.sizes() == {"manifests": 0, "bodies": 0, "body_bytes": 0}

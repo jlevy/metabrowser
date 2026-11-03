@@ -45,6 +45,7 @@ from metabrowser.cache.records import REPOSITORY_STORE_CONTRACT_ID, RepositorySt
 from metabrowser.cache.urls import GitSource, classify_root_argument
 from metabrowser.git.process import (
     ACQUISITION_POLICY,
+    GitCommandError,
     RepositoryStoreTarget,
     run_git,
 )
@@ -715,15 +716,26 @@ def read_store_lender(home: Path, store_key: str) -> StoreLender | None:
     return store.lender if isinstance(store, RepositoryStore) else None
 
 
-async def _object_kinds(target: RepositoryStoreTarget, oids: list[str]) -> list[tuple[str, str]]:
+async def _object_kinds(
+    target: RepositoryStoreTarget, oids: list[str], *, lender: StoreLender
+) -> list[tuple[str, str]]:
     """Each object ID with the type the store reads it as, or ``missing``, in one Git process."""
 
-    out = await run_git(
-        ["cat-file", "--batch-check=%(objectname) %(objecttype)"],
-        target=target,
-        policy=ACQUISITION_POLICY,
-        stdin_bytes="".join(f"{oid}\n" for oid in oids).encode("ascii"),
-    )
+    try:
+        out = await run_git(
+            ["cat-file", "--batch-check=%(objectname) %(objecttype)"],
+            target=target,
+            policy=ACQUISITION_POLICY,
+            stdin_bytes="".join(f"{oid}\n" for oid in oids).encode("ascii"),
+        )
+    except GitCommandError as exc:
+        # Some Git/platform pairs fail to mmap a non-file index before answering any
+        # object kinds. Inspect packs only after that command failure; no object has
+        # been reported missing, so do not infer anything from its loose-file presence.
+        doubt = await asyncio.to_thread(collection_doubt, lender, [])
+        if doubt is not None:
+            raise LenderGoneError(doubt) from exc
+        raise
     kinds: list[tuple[str, str]] = []
     for line in out.decode("ascii", errors="replace").splitlines():
         oid, _, kind = line.partition(" ")
@@ -806,7 +818,8 @@ def collection_doubt(lender: StoreLender, oids: list[str]) -> str | None:
     else, a loose
     directory that cannot be searched or more pack entries than :data:`_MAX_PACK_ENTRIES`
     among them, is doubt. One ``lstat`` per object and one scan of the pack directory, run
-    only when a sweep found something to delete. Blocking.
+    only when a sweep found something to delete or an object-kind query failed. A failed
+    query passes no object IDs, so only pack health is checked. Blocking.
     """
 
     objects = Path(lender.objects)
@@ -866,7 +879,7 @@ async def sweep_dangling_refs(
             rows.append((oid, ref))
     if not rows:
         return Sweep((), ())
-    kinds = dict(await _object_kinds(target, sorted({oid for oid, _ref in rows})))
+    kinds = dict(await _object_kinds(target, sorted({oid for oid, _ref in rows}), lender=lender))
     dangling = sorted(ref for oid, ref in rows if kinds.get(oid, "missing") == "missing")
     if dangling:
         gone = sorted({oid for oid, _ref in rows if kinds.get(oid, "missing") == "missing"})
@@ -925,7 +938,7 @@ async def negotiation_tip_args(
     tips = await asyncio.to_thread(negotiation_tips, lender, preferred=preferred)
     lent: list[str] = []
     if tips:
-        kinds = dict(await _object_kinds(target, list(tips)))
+        kinds = dict(await _object_kinds(target, list(tips), lender=lender))
         lent = [oid for oid in tips if kinds.get(oid) == "commit"]
     return _tip_args(lent, held)
 
@@ -964,7 +977,7 @@ async def prepare_overlay_fetch(
     tips = await asyncio.to_thread(negotiation_tips, lender, preferred=preferred)
     lent: list[str] = []
     if tips:
-        kinds = dict(await _object_kinds(target, list(tips)))
+        kinds = dict(await _object_kinds(target, list(tips), lender=lender))
         lent = [oid for oid in tips if kinds.get(oid) == "commit"]
         if not lent:
             raise LenderGoneError(

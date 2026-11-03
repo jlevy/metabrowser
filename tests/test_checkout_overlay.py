@@ -2486,3 +2486,112 @@ def test_explicit_recovery_restores_observed_blob_ids_without_writing_checkout(
         assert fingerprint(checkout) == before
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("phase", ["negotiation", "sweep"])
+@pytest.mark.parametrize("damaged_index", [False, True])
+def test_failed_object_queries_classify_only_observed_lender_pack_damage(
+    linear: _Stand, monkeypatch: pytest.MonkeyPatch, phase: str, damaged_index: bool
+) -> None:
+    """Linux Git can fail to mmap an index directory before answering any object kinds."""
+
+    from metabrowser.cache import lender as lending
+    from metabrowser.cache.locks import store_fetch_lock
+
+    if phase == "sweep":
+        checkout, files = _no_file_tips_and_unreadable_packs(linear)
+    else:
+        checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+        linear.pull("--checkout", str(checkout))
+        files = list((checkout / ".git/objects/pack").iterdir())
+    lender = StoreLender(
+        objects=str(checkout / ".git/objects"), checkout=str(checkout), remote="origin"
+    )
+    assert bool(negotiation_tips(lender)) == (phase == "negotiation")
+    indexes = [path for path in files if path.suffix == ".idx"]
+    assert indexes
+    if damaged_index:
+        for index in indexes:
+            index.unlink()
+            index.mkdir()
+    before = fingerprint(checkout)
+    refs = linear.store_refs()
+    target = git_process.repository_store_target(git_dir=linear.store)
+    failure = git_process.GitCommandError(
+        ["cat-file", "--batch-check=%(objectname) %(objecttype)"],
+        128,
+        "fatal: mmap failed: No such device",
+    )
+    original = lending.run_git
+    queries = 0
+
+    async def failing(args: list[str], **kwargs: Any) -> bytes:
+        nonlocal queries
+        assert args[0] not in {"fetch", "update-ref"}, "a failed read must not write refs"
+        if args[0] == "cat-file":
+            queries += 1
+            raise failure
+        return await original(args, **kwargs)
+
+    monkeypatch.setattr(lending, "run_git", failing)
+
+    async def query() -> None:
+        if phase == "negotiation":
+            await lending.negotiation_tip_args(target, lender)
+        else:
+            with store_fetch_lock(linear.home, linear.store.parent.name) as lock:
+                await lending.sweep_dangling_refs(target, lock.descriptor, lender)
+
+    if damaged_index:
+        with pytest.raises(lending.LenderGoneError, match="no readable index") as raised:
+            asyncio.run(query())
+        assert raised.value.__cause__ is failure
+    else:
+        with pytest.raises(git_process.GitCommandError) as unrelated:
+            asyncio.run(query())
+        assert unrelated.value is failure
+    update = asyncio.run(
+        update_store(linear.home, linear.store.parent.name, remote_url=linear.replica.url)
+    )
+    assert update.outcome is (
+        RefreshOutcome.lender_missing if damaged_index else RefreshOutcome.failed
+    )
+    assert queries == 2, "the direct path and the real refresh each tried one object query"
+    assert update.swept == ()
+    assert linear.store_refs() == refs
+    assert fingerprint(checkout) == before
+
+
+@pytest.mark.parametrize("outcome", ["success", "timeout", "output_limit"])
+def test_object_queries_do_not_scan_pack_health_without_a_command_failure(
+    linear: _Stand, monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    from metabrowser.cache import lender as lending
+
+    checkout = clone_checkout(linear.replica, linear.tmp_path / "checkout")
+    linear.pull("--checkout", str(checkout))
+    lender = StoreLender(
+        objects=str(checkout / ".git/objects"), checkout=str(checkout), remote="origin"
+    )
+    target = git_process.repository_store_target(git_dir=linear.store)
+
+    def forbidden(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("only a failed Git command may inspect pack health")
+
+    monkeypatch.setattr(lending, "collection_doubt", forbidden)
+    if outcome == "success":
+        assert asyncio.run(lending.negotiation_tip_args(target, lender))
+        return
+    failure = (
+        git_process.GitTimeoutError()
+        if outcome == "timeout"
+        else git_process.GitOutputTooLargeError("bounded output")
+    )
+
+    async def failing(*args: Any, **kwargs: Any) -> bytes:
+        raise failure
+
+    monkeypatch.setattr(lending, "run_git", failing)
+    with pytest.raises(type(failure)) as raised:
+        asyncio.run(lending.negotiation_tip_args(target, lender))
+    assert raised.value is failure
