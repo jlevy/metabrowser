@@ -1716,3 +1716,50 @@ def test_created_entries_carry_no_acl_even_one_their_parent_passes_down(home: Pa
     assert len(_acl_lines(home / "cache")) == 1
     assert _acl_lines(staging) == []
     assert _acl_lines(home / "cache" / "layout.yml") == []
+
+
+def test_private_directory_write_admission_preserves_modes_and_refuses_links(home: Path) -> None:
+    directory = ensure_private_directory(home, "bank")
+    assert home_module.private_directory_is_writable(home, "bank")
+    directory.chmod(0o500)
+    try:
+        assert not home_module.private_directory_is_writable(home, "bank")
+        assert _mode(directory) == 0o500
+    finally:
+        directory.chmod(0o700)
+    (home / "bank-link").symlink_to(directory, target_is_directory=True)
+    with pytest.raises(PrivateStorageError):
+        home_module.private_directory_is_writable(home, "bank-link")
+    directory.chmod(0o755)
+    try:
+        with pytest.raises(PrivateStorageError):
+            home_module.private_directory_is_writable(home, "bank")
+        assert _mode(directory) == 0o755
+    finally:
+        directory.chmod(0o700)
+
+
+def test_private_directory_write_admission_checks_readonly_mount(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ensure_private_directory(home, "bank")
+    real = os.fstatvfs
+
+    def read_only(fd: int) -> os.statvfs_result:
+        info = real(fd)
+        return os.statvfs_result((*info[:8], info.f_flag | os.ST_RDONLY, info.f_namemax))
+
+    monkeypatch.setattr(home_module.os, "fstatvfs", read_only)
+    assert not home_module.private_directory_is_writable(home, "bank")
+
+
+@darwin_only
+def test_private_directory_write_admission_observes_owner_deny_acl(home: Path) -> None:
+    directory = ensure_private_directory(home, "bank")
+    _add_acl(directory, f"user:{_current_user_name()} deny add_file,delete_child")
+    before = _acl_lines(directory)
+    with pytest.raises(PermissionError):
+        (directory / "write-witness").write_bytes(b"must fail")
+    assert not home_module.private_directory_is_writable(home, "bank")
+    assert _mode(directory) == 0o700
+    assert _acl_lines(directory) == before
