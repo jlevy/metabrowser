@@ -5,7 +5,7 @@ title: "Spec: GitHub Pulls tab for mirrors and local checkouts"
 kind: epic
 status: in_progress
 priority: 1
-version: 14
+version: 15
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies: []
@@ -19,11 +19,15 @@ child_order_hints:
   - is-01m6fk7mz18kwadmnr0w05da09
   - is-01m6fvyjc2bffw1nzzywz9z1y6
 created_at: 2026-11-02T21:40:30.142Z
-updated_at: 2026-11-03T17:23:05.424Z
+updated_at: 2026-11-03T20:18:11.740Z
 ---
 Every pull request of a GitHub repository in a Pulls tab beside Files and Git, newest first, with GitHub-style state icons. Each row expands in place to its changed files as a tree, like a folder. The pane shows this tab at a pull request's address. Works on a mirror and on an existing checkout, with nothing written to the user's repository. Delivered as a native stack above the v0.12 stack. See the plan's Delivery.
 
 ## Notes
+
+2026-11-03 FINAL READINESS at ea771741211193a387c1771e04df29b5a9698100. The full 14-PR stack is independently reviewed and ready for the owner's merge decision. All actual bases contain their lower layer, both native stacks match, every PR is open/non-draft and mergeable/clean, and all 171 CI jobs across 19 current-head workflow runs passed. Final make verify: 4712 Python passed, 9 expected skips, 373 transcript checks; dependency audits, distribution and isolated installed-wheel checks passed. Exact-head public live: 8 passed; fresh installed-wheel Chrome: 22 actions with 25 unchanged checkout/common-Git fingerprints. Managed repository URLs and existing main/linked checkouts pass. Final Review G: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . All findings have published dispositions; fixed threads are resolved, while rebutted/declined threads remain reviewer-visible. Completed stabilization/review beads are closed and residual baseline observer mb-czrw is under mb-2iok. Both WIP branches and the original local server remain unchanged. Frontend/backend ship together on one local server with explicit-number requests; compatibility-only work remains canceled. Historical timing evidence keeps its original source pins; no quiet-machine or universal 500ms claim. Quiet timings, remaining performance/browser/release follow-ups and explicit owner-merge beads remain open. No PR merged or history rewritten. After the owner merges stack278, unstack286, retarget279 to main and relink279/281/285/287/288 as documented on279.
+
+Earlier chronological notes (superseded where they describe pending final gates):
 
 2026-11-03 PAUSE POINT, final heads, all CI 9 of 9 green, every layer containing its base (claude/v012-overlay-acquisition at b29dc787): #279 9379cefe, #281 9fcb0c21, #285 d9bd5f56, #287 (draft) 2bf3d194, #288 (draft) fb780169. WIP branches, not in any PR, each needing its PR branch merged in before work resumes: wip/pulls-4-files fff7d6a3, wip/pulls-5-checkout 24a95778. Each PR's 'Status, 2026-11-03 (paused for a handoff)' section says what is next.
 
