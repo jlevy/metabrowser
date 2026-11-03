@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Literal
+from typing import Literal, NamedTuple
 from urllib.parse import parse_qs, quote, quote_from_bytes, unquote_to_bytes
 
 from metabrowser.inventory_engine.contract import native_inventory_path
@@ -190,42 +190,90 @@ def parse_pull_number(text: str) -> int | None:
     return int(text) if _PULL_NUMBER.fullmatch(text) is not None else None
 
 
-def format_pull_href(number: int, tab: str = "") -> str:
-    """Return a pull request's page, ``/pull/<n>`` or ``/pull/<n>/files``."""
+class PullRoute(NamedTuple):
+    """What ``/pull/<n>[/files[/<path>]]`` names: a page, its tab, and one changed file."""
+
+    number: int
+    tab: str
+    file: str
+
+
+def _pull_file_segments(file: str) -> list[str]:
+    """The segments of a changed file's path, which the route spells one per segment.
+
+    The path is a path *within the pull request's comparison*, as a commit route's inner
+    path is, so it is checked for shape and never for the served root: no segment empty,
+    ``.``, or ``..``, and none holding a backslash or NUL.
+    """
+
+    segments = file.split("/")
+    if any(
+        segment in ("", ".", "..") or "\\" in segment or "\0" in segment for segment in segments
+    ):
+        raise ValueError("pull route names a file by a normalized path")
+    return segments
+
+
+def format_pull_href(number: int, tab: str = "", file: str = "") -> str:
+    """Return a pull request's page, ``/pull/<n>`` or ``/pull/<n>/files``, or one file of
+    its Files changed, ``/pull/<n>/files/<path>``, each segment percent-encoded."""
 
     if _PULL_NUMBER.fullmatch(str(number)) is None or tab not in PULL_ROUTE_TABS:
         raise ValueError("pull route requires a pull-request number and a known tab")
-    return f"{PULL_ROUTE_PREFIX}{number}" + (f"/{tab}" if tab else "")
+    head = f"{PULL_ROUTE_PREFIX}{number}" + (f"/{tab}" if tab else "")
+    if not file:
+        return head
+    if tab != "files":
+        raise ValueError("pull route names a file only in Files changed")
+    try:
+        encoded = [
+            quote_from_bytes(segment.encode("utf-8"), safe="")
+            for segment in _pull_file_segments(file)
+        ]
+    except UnicodeEncodeError as exc:
+        raise ValueError("pull route names a file by a normalized path") from exc
+    return head + "/" + "/".join(encoded)
 
 
-def decode_safe_pull_route(raw_path: bytes) -> tuple[int, str] | None:
-    """Decode ``/pull/<n>[/files]`` into (number, tab), or ``None``.
+def decode_safe_pull_route(raw_path: bytes) -> PullRoute | None:
+    """Decode ``/pull/<n>[/files[/<path>]]`` into a :class:`PullRoute`, or ``None``.
 
     Whether the pull request is cached, or the server has any, is the pull route's
-    answer, not this gate's. A trailing slash names the same page.
+    answer, not this gate's, and whether its files include *path* is the file list's: a
+    path is never looked up on disk. A trailing slash names the same page, but not a
+    file, which has no trailing slash. The number and the tab are spelled literally.
     """
 
     if not raw_path.startswith(PULL_ROUTE_PREFIX.encode()):
         return None
     segments = raw_path[len(PULL_ROUTE_PREFIX) :].split(b"/")
-    if len(segments) > 1 and segments[-1] == b"":
+    if len(segments) in (2, 3) and segments[-1] == b"":
         segments.pop()
-    if len(segments) > 2:
-        return None
     try:
-        number, tab = (
-            segments[0].decode("ascii"),
-            (segments[1].decode("ascii") if len(segments) == 2 else ""),
-        )
+        number = segments[0].decode("ascii")
+        tab = segments[1].decode("ascii") if len(segments) >= 2 else ""
     except UnicodeDecodeError:
         return None
     if (
         _PULL_NUMBER.fullmatch(number) is None
         or tab not in PULL_ROUTE_TABS
-        or (len(segments) == 2 and not tab)
+        or (len(segments) >= 2 and not tab)
+        or (len(segments) > 2 and tab != "files")
     ):
         return None
-    return int(number), tab
+    inner: list[str] = []
+    try:
+        for raw_segment in segments[2:]:
+            if _MALFORMED_ESCAPE.search(raw_segment):
+                return None
+            decoded = unquote_to_bytes(raw_segment)
+            if b"/" in decoded:
+                return None
+            inner.append(decoded.decode("utf-8", errors="strict"))
+        file = "/".join(_pull_file_segments("/".join(inner))) if inner else ""
+    except (UnicodeDecodeError, ValueError):
+        return None
+    return PullRoute(int(number), tab, file)
 
 
 def parse_pulls_selection(selection: str) -> str | None | Literal[False]:

@@ -69,7 +69,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | `unknown-jsonl` | Other `.jsonl` | Log, Raw JSON | File envelope |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | Bounded byte-chunk hook |
-| `pull-request` | No file; the shell selects it for `/pull/<n>[/files]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `diff/comparison` for Files changed |
+| `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `diff/comparison` for Files changed, at one changed file for `/pull/<n>/files/<path>` |
 | `pull-request-list` | No file; the shell mounts it in the Pulls tab, and in the pane at `/pulls` | Pull requests | `github/pulls` envelope; `github/pulls-refresh` for the refresh and the next page; `github/pull` for a row’s record |
 
 Two kinds are also **containers** — folder-like entries whose children are addressable
@@ -132,6 +132,7 @@ the sources that produce them.
 | `/commit/<rev>` | A commit’s change set against its first parent | Implemented, for a full commit ID; anything else says it needs one (`revision_not_full`). Back or Forward onto the entry restores the commit |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | Route parses; the panel restores the commit, not yet the file |
 | `/pull/<n>[/files]` | A pull request’s page: its conversation, or its Files changed | Implemented. The shell mounts the view a plugin registers for the `pull-request` kind (the GitHub plugin’s), for any number of the repository; one with no record offers **Fetch**, and an address alone fetches nothing |
+| `/pull/<n>/files/<path>` | One changed file of that page: Files changed, with the diff at that file | Implemented. The path is one in the pull request’s comparison, a segment at a time, never looked up on disk. A file row in the Pulls tab links to it; `--show` reports the page and whether the cached list of changed files holds the path |
 | `/pulls` | A repository’s list of pull requests with none selected; `?state=` names its filter | Implemented. The pane says what is listed, and the Pulls tab shows the list. A server with no GitHub repository answers the shell, and the page’s own request says there is nothing to list |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison (`...` for merge base) | Specified, not built |
 
@@ -409,7 +410,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
-| `/pull` | covered | `--show /pull/<n>[/files]` | `cli-github-pull.tryscript.md` |
+| `/pull` | covered | `--show /pull/<n>[/files[/<path>]]` | `cli-github-pull.tryscript.md`, `cli-github-pull-files.tryscript.md` |
 | `/pulls` | covered | `--show /pulls` | `cli-github-pulls.tryscript.md` |
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
 | `/raw` | exempt | — | asset serving; the query form and `/raw/{path}` share one resolver and send the file’s bytes plus sandbox headers, covered by `tests/test_raw_passthrough.py`, `tests/test_content_trust.py`, `tests/test_raw_path_route.py`, and, on a served Git pin, `tests/test_serve_pin.py` |

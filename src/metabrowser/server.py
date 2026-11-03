@@ -1937,11 +1937,12 @@ async def commit_shell(request: Request) -> Response:
 
 
 async def pull_shell(request: Request) -> Response:
-    """Serve the SPA shell for ``/pull/<n>[/files]``, a pull request's page.
+    """Serve the SPA shell for ``/pull/<n>[/files[/<path>]]``, a pull request's page.
 
     A pull request is its own address space, like a commit: the page is not a path in
-    the served tree. The view that renders it is the one a plugin registers for the
-    `pull-request` kind; the pull route says what this server has of that number.
+    the served tree, and a changed file's path is one in its comparison, never on disk.
+    The view that renders it is the one a plugin registers for the `pull-request` kind;
+    the pull route says what this server has of that number.
     """
 
     raw_path = request.scope.get("raw_path")

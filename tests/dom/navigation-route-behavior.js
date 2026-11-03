@@ -114,7 +114,20 @@ observe("pull-request page href", pullRoute.pullHref(7));
 observe("pull-request Files changed href", pullRoute.pullHref(7, "files"));
 observe("pull-request page parses", pullRoute.parsePull("/pull/7"));
 observe("pull-request tab parses with a trailing slash", pullRoute.parsePull("/pull/7/files/"));
-for (const pathname of ["/pull/0", "/pull/07", "/pull/7/commits", "/pull/7/files/x", "/pull/x"]) {
+for (const pathname of [
+  "/pull/0",
+  "/pull/07",
+  "/pull/7/commits",
+  "/pull/7/commits/x",
+  "/pull/x",
+  "/pull/7/files/src/",
+  "/pull/7/files//x",
+  "/pull/7/files/%2E%2E/x",
+  "/pull/7/files/a%2Fb",
+  "/pull/7/files/a%5Cb",
+  "/pull/7/files/a%00b",
+  "/pull/7/files/%FF",
+]) {
   observe(`reject pull-request route ${pathname}`, pullRoute.parsePull(pathname));
 }
 for (const [number, tab] of [
@@ -126,6 +139,25 @@ for (const [number, tab] of [
     refusal(() => pullRoute.pullHref(number, tab)),
   );
 }
+// One changed file: its path is the pull request's text, and reaches the address only
+// through this encoder, a segment at a time, as view_routes.format_pull_href spells it.
+observe("a changed file's href", [
+  pullRoute.pullHref(7, "files", "src/app.py"),
+  pullRoute.pullHref(7, "files", "docs/a b/雪.md"),
+  pullRoute.pullHref(7, "files", "a%b?#c"),
+]);
+observe("a changed file's route parses back", [
+  pullRoute.parsePull("/pull/7/files/src/app.py"),
+  pullRoute.parsePull(pullRoute.pullHref(7, "files", "docs/a b/雪.md")),
+  pullRoute.parsePull(pullRoute.pullHref(7, "files", "a%b?#c")),
+]);
+observe("a changed file's href refuses what is not a normalized path", [
+  refusal(() => pullRoute.pullHref(7, "", "src/app.py")),
+  refusal(() => pullRoute.pullHref(7, "files", "src/")),
+  refusal(() => pullRoute.pullHref(7, "files", "a/../b")),
+  refusal(() => pullRoute.pullHref(7, "files", "a\\b")),
+  refusal(() => pullRoute.pullHref(7, "files", "\ud800")),
+]);
 
 // History landing on a pull-request route: the shown page switches its tab; a page a
 // commit or file replaced in the meantime is mounted again; a landing the navigation
@@ -147,6 +179,11 @@ observe(
   pullRoute.pullHistoryAction("/pull/7", null, true),
 );
 observe("back onto a view route is not a page's", pullRoute.pullHistoryAction("/view/", 7, false));
+observe("history onto a changed file's address names the file", [
+  pullRoute.pullHistoryAction("/pull/7/files/src/app.py", 7, false),
+  pullRoute.pullHistoryAction("/pull/7/files/src/app.py", 8, false),
+  pullRoute.pullHistoryAction("/pull/7/files/src/app.py", 7, true),
+]);
 
 // The list's address: its filter, and what history does with it.
 observe("the list's addresses", [
@@ -425,6 +462,7 @@ function makePullShell(pathname) {
   });
   const page = (number) => ({
     setTab: (tab) => log.push(`#${number} tab "${tab}"`),
+    showFile: (path) => log.push(`#${number} shows the file ${path}`),
     flush: () => log.push(`#${number} writes its place`),
     dispose: () => log.push(`#${number} disposed`),
   });
@@ -496,6 +534,40 @@ function makePullShell(pathname) {
     shell.mounts[3].resolve(shell.page(10));
     await click;
     observe("two keys' opens replace the entry, and a click's pushes", shell.log);
+  }
+
+  {
+    // One changed file's address: a page that mounts for it lands on the file once it holds
+    // the pane, whatever the shell passes the view, and the page shown goes to a file in
+    // place. A key's open replaces and a click's pushes, as for a row; history onto a file of
+    // the page shown goes to it, and the host hands the shown page only to that number.
+    const shell = makePullShell("/pull/7/files/src/app.py");
+    const landed = shell.host.show({ number: 7, tab: "files", file: "src/app.py" });
+    observe("a file's page is no page until it mounts", shell.host.pageFor(7));
+    shell.mounts[0].resolve(shell.page(7));
+    await landed;
+    await shell.host.open({ number: 7, tab: "files", file: "src/b.py", replace: true });
+    await shell.host.open({ number: 7, tab: "files", file: "docs/a b.md" });
+    shell.location.pathname = "/pull/7/files/src/b.py";
+    shell.host.onHistory("/pull/7/files/src/b.py", false);
+    // A walk of the files jumped the page itself: only the address moves when it stops.
+    await shell.host.open({
+      number: 7,
+      tab: "files",
+      file: "src/c.py",
+      replace: true,
+      jumped: true,
+    });
+    await shell.host.open({ number: 7, tab: "" });
+    const other = shell.host.open({ number: 8, tab: "files", file: "x.py", replace: true });
+    shell.mounts[1].resolve(shell.page(8));
+    await other;
+    observe("the shown page is handed to its own number only", [
+      shell.host.pageFor(7) === null,
+      shell.host.pageFor(8) !== null,
+      pullRoute.attachedHost() === shell.host,
+    ]);
+    observe("a file's address lands on the file", shell.log);
   }
 
   {
