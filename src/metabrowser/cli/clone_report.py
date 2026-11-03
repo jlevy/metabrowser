@@ -43,6 +43,7 @@ from typing import Final, TextIO
 
 from metabrowser.cache.paths import CACHE_ROOT
 from metabrowser.cache.records import canonical_now
+from metabrowser.cli.common import maybe_cli_logging
 from metabrowser.git.progress import GitProgress, ProgressStage
 from metabrowser.git.tree_source import display_segment
 from metabrowser.paths_safe import tilde_path
@@ -389,11 +390,14 @@ async def saying_while_waiting(text: str, *, stream: TextIO | None = None) -> As
             await asyncio.sleep(TICK_S)
 
     saying = asyncio.ensure_future(say())
-    try:
-        yield
-    finally:
-        saying.cancel()
-        report.clear_status_line()
+    # A log record written meanwhile, with a log level asked for, ends the line first, as
+    # a clone's progress has it: the record would otherwise start after the status text.
+    with maybe_cli_logging(report.end_status_line):
+        try:
+            yield
+        finally:
+            saying.cancel()
+            report.clear_status_line()
 
 
 def _age_of(timestamp: str | None) -> str | None:

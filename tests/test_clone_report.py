@@ -574,6 +574,32 @@ def _wait(monkeypatch: pytest.MonkeyPatch, stream: io.StringIO, seconds: float) 
     return stream.getvalue()
 
 
+def test_a_log_record_during_the_wait_gets_a_line_of_its_own(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With a log level asked for, a record written while the status line is drawn ends that
+    line first (Qodo on #284, 6), as a clone's progress does; the record itself goes where
+    the CLI's handler sends it."""
+    import logging
+
+    monkeypatch.setattr(clone_report, "WAIT_QUIET_S", 0.01)
+    monkeypatch.setattr(clone_report, "TICK_S", 0.01)
+    monkeypatch.setenv("METABROWSER_LOG_LEVEL", "debug")
+    stream = _Terminal()
+
+    async def run() -> None:
+        async with clone_report.saying_while_waiting("reading pull request 7", stream=stream):
+            await asyncio.sleep(0.05)
+            logging.getLogger("metabrowser.test").debug("a record mid-read")
+            await asyncio.sleep(0.05)
+
+    asyncio.run(run())
+    written = stream.getvalue()
+    assert "reading pull request 7 (" in written
+    assert "\n" in written, "the status line was ended before the record"
+    assert "a record mid-read" in capsys.readouterr().err
+
+
 def test_a_step_quicker_than_the_quiet_moment_says_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
