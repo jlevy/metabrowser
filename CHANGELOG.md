@@ -365,7 +365,10 @@ GitHub URLs and HTTPS:
   read them. It is in front whenever a pull request’s page is, and at the list’s own
   address, `/pulls`. Selecting a row reads the pull request in the same page, fetching
   it if it has no record; holding K, J, or an arrow walks the rows and opens the one it
-  stops on.
+  stops on, and one Back leaves the rows however many were passed.
+  Opening a GitHub repository now runs `gh` for its list of pull requests once the first
+  file tree has painted, at most once a minute, whether or not the tab is opened; the
+  request names the repository and carries `gh`’s own sign-in.
 
 - Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
   way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
@@ -1175,6 +1178,10 @@ Fixes:
   index, and `/api/tree` and `/api/recent` answered `tally_cache_status: "idle"`, as
   0.11.0 did. They now answer `truncated`, as `/api/index/progress` and `--walk` already
   did.
+
+- Switching between the Files and Git tabs no longer carries one list’s scroll offset
+  into the other: the two share one scroller, and each now keeps its own place in it,
+  where 0.11.0 opened Git at however far Files was scrolled.
 
 ## 0.11.0
 
