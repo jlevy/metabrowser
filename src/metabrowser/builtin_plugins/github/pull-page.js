@@ -2451,6 +2451,9 @@ export function mountPullPage(container, ctx, mb) {
   /** @param {PullModel} model */
   function paint(model) {
     shown = model;
+    if (model.tab !== "files") {
+      wantedFile = null;
+    }
     paintHeader(model);
     // The conversation reads in the column; a diff takes the pane.
     body.classList.toggle("github-pull-column", model.tab !== "files");
@@ -2644,6 +2647,7 @@ export function mountPullPage(container, ctx, mb) {
       return () => currentFileListeners.delete(listener);
     },
     dispose() {
+      wantedFile = null;
       listening.abort();
       observer?.disconnect();
       place?.dispose();

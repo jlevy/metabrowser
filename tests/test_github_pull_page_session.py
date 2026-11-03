@@ -545,3 +545,11 @@ def test_file_history_restores_place_and_fresh_selection_wins() -> None:
         "conversationBack": 350,
         "freshSelection": 700,
     }
+
+
+def test_pending_file_selection_belongs_to_one_files_visit() -> None:
+    assert run_session("github-pull-pending-file-behavior.js") == {
+        "abandonedJump": False,
+        "unavailableRetainsSelection": True,
+        "replacementRetainsSelection": True,
+    }

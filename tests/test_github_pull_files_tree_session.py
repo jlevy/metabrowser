@@ -251,3 +251,10 @@ def test_removed_focused_file_transfers_focus_after_replacement_paint() -> None:
         {"scenario": "windowed survivor", "focus": "a000.py"},
         {"scenario": "windowed other focus", "focus": "elsewhere"},
     ]
+
+
+def test_closed_file_tree_replies_cannot_own_a_reopened_visit() -> None:
+    assert run_session("github-pull-files-lifecycle-behavior.js") == {
+        "ownedReads": 9,
+        "ownedRefreshReplies": 6,
+    }

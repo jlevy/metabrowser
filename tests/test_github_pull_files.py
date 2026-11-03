@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import AsyncGenerator, Callable
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -45,6 +46,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
     LocalComparison,
     PullFileList,
     PullFileRow,
+    read_files_refresh,
     read_pull_files,
     serialize_pull_files,
     write_files_refresh,
@@ -546,3 +548,61 @@ def test_a_window_outside_its_bounds_is_refused(params: dict[str, str]) -> None:
 def test_a_refresh_request_outside_its_shape_is_refused(body: dict[str, Any]) -> None:
     with pytest.raises(FilesRequestError):
         files_refresh_request(body)
+
+
+def _comparison_for_limit_test(tmp_path: Path) -> LocalComparison:
+    work = tmp_path / "work"
+    work.mkdir()
+    base, head = build_diff_fixture(work)
+    store = tmp_path / "store.git"
+    git(tmp_path, "clone", "-q", "--bare", str(work), str(store))
+    return LocalComparison(store, base, head)
+
+
+@pytest.mark.parametrize("failure", ["missing", "truncated"])
+def test_failed_local_listing_honors_rate_limit_before_github_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repository: ListedRepository,
+    failure: str,
+) -> None:
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    local = LocalComparison(tmp_path / "missing.git", "b" * 40, "c" * 40)
+    if failure == "truncated":
+        local = _comparison_for_limit_test(tmp_path)
+        monkeypatch.setattr("metabrowser.diff.adapters.git.MAX_MANIFEST_FILES", 1)
+    limited = PullRefreshStamp(
+        outcome="rate_limited",
+        message="GitHub said to wait",
+        reset_at="2026-09-18T00:00:00Z",
+        at="2026-09-17T12:00:00Z",
+        reader="gh:reader",
+    )
+    write_files_refresh(repository.home, repository.slug, TREE_PULL, limited)
+    with pytest.raises(PullDataError) as held:
+        asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
+    assert (held.value.state, held.value.reset_at) == ("rate_limited", limited.reset_at)
+    assert read_files_refresh(repository.home, repository.slug, TREE_PULL) == limited
+    assert not Path(os.environ["FAKE_GH_LOG"]).exists(), (
+        "the rate limit must hold account reads too"
+    )
+    assert read_pull_files(repository.home, repository.slug, TREE_PULL) == "not_cached"
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(days=1))
+    listed = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
+    assert (listed.listed_from, len(listed.rows)) == ("github", 2)
+    assert Path(os.environ["FAKE_GH_LOG"]).read_text()
+
+
+def test_usable_local_listing_needs_no_github_while_rate_limited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository
+) -> None:
+    _answer(tmp_path, monkeypatch, {})
+    local = _comparison_for_limit_test(tmp_path)
+    limited = PullRefreshStamp(
+        outcome="rate_limited", reset_at="2026-09-18T00:00:00Z", at="2026-09-17T12:00:00Z"
+    )
+    write_files_refresh(repository.home, repository.slug, TREE_PULL, limited)
+    listed = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=local, slot=_free))
+    assert listed.listed_from == "comparison" and listed.rows
+    assert not Path(os.environ["FAKE_GH_LOG"]).exists()

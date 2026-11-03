@@ -753,6 +753,7 @@ export function createFileTreeController(deps, options) {
   /** @type {AbortController | null} */
   let inflight = null;
   let polling = false;
+  let generation = 0;
   /** When this asked for a refresh of its own, a reader's or one a window. */
   /** @type {number | null} */
   let askedAt = null;
@@ -859,6 +860,15 @@ export function createFileTreeController(deps, options) {
     }
   }
 
+  // Replies belong to one visible visit. Cancellation releases the GET immediately even
+  // when its transport takes time to abort; an old finally cannot release a newer read.
+  function cancelRequests() {
+    generation += 1;
+    inflight?.abort();
+    inflight = null;
+    polling = false;
+  }
+
   /** @param {boolean} [now] */
   function scheduleNext(now = false) {
     clearTimer();
@@ -885,9 +895,9 @@ export function createFileTreeController(deps, options) {
     );
   }
 
-  /** Read the rows past those held, or all of them for a list that is not the one held. */
-  async function poll() {
-    if (disposed || polling) {
+  /** Read the rows past those held. @param {boolean} [reader] */
+  async function poll(reader = false) {
+    if (!live() || polling) {
       return;
     }
     polling = true;
@@ -898,7 +908,7 @@ export function createFileTreeController(deps, options) {
       const response = await deps.request("GET", `${FILES_ROUTE}?${holder.query()}`, {
         signal: controller.signal,
       });
-      if (disposed) {
+      if (inflight !== controller || controller.signal.aborted || !live()) {
         return;
       }
       if (response.status === 200 && isFilesEnvelope(response.body)) {
@@ -915,7 +925,7 @@ export function createFileTreeController(deps, options) {
         error = `The list of files is unavailable (HTTP ${response.status}).`;
       }
     } catch {
-      if (disposed || controller.signal.aborted) {
+      if (inflight !== controller || controller.signal.aborted || !live()) {
         return;
       }
       error = "The server did not answer.";
@@ -927,7 +937,7 @@ export function createFileTreeController(deps, options) {
     }
     render();
     if (!again) {
-      askIfDue(false);
+      askIfDue(reader);
     }
     scheduleNext(again);
   }
@@ -938,13 +948,17 @@ export function createFileTreeController(deps, options) {
    * @param {boolean} retry A press of Retry or Fetch, which the server's window does not hold.
    */
   async function ask(retry) {
+    if (!live()) {
+      return;
+    }
+    const mine = generation;
     asked = true;
     askedAt = deps.now();
     try {
       const response = await deps.request("POST", FILES_REFRESH_ROUTE, {
         body: { number, retry },
       });
-      if (disposed) {
+      if (mine !== generation || !live()) {
         return;
       }
       const answer = /** @type {{files?: unknown, error?: unknown} | null} */ (response.body);
@@ -961,9 +975,10 @@ export function createFileTreeController(deps, options) {
         error = `The list of files was not asked for (${said ?? `HTTP ${response.status}`}).`;
       }
     } catch {
-      if (!disposed) {
-        error = "The request to list the files failed.";
+      if (mine !== generation || !live()) {
+        return;
       }
+      error = "The request to list the files failed.";
     }
     render();
     scheduleNext();
@@ -1147,12 +1162,13 @@ export function createFileTreeController(deps, options) {
         return;
       }
       const reader = how.reader === true;
-      if (!expanded) {
+      const opening = !expanded;
+      if (opening) {
         expanded = true;
         render();
       }
-      if (envelope === null) {
-        void poll().then(() => askIfDue(reader));
+      if (opening || envelope === null) {
+        void poll(reader);
       } else {
         askIfDue(reader);
         scheduleNext();
@@ -1164,6 +1180,7 @@ export function createFileTreeController(deps, options) {
       }
       expanded = false;
       clearTimer();
+      cancelRequests();
       clearWalk();
       render();
     },
@@ -1175,6 +1192,7 @@ export function createFileTreeController(deps, options) {
       shown = visible;
       if (!visible) {
         clearTimer();
+        cancelRequests();
         clearWalk();
       } else if (expanded) {
         void poll();
@@ -1186,6 +1204,7 @@ export function createFileTreeController(deps, options) {
       }
       if (!deps.isVisible()) {
         clearTimer();
+        cancelRequests();
         clearWalk();
       } else if (expanded && shown) {
         void poll();
@@ -1345,7 +1364,7 @@ export function createFileTreeController(deps, options) {
       disposed = true;
       clearTimer();
       clearWalk();
-      inflight?.abort();
+      cancelRequests();
     },
     snapshot: () => ({
       expanded,

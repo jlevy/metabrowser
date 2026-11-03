@@ -57,6 +57,8 @@ from metabrowser.builtin_plugins.github.pull_list import (
     LocalComparison,
     PullFileList,
     PullFileRow,
+    rate_limit_holds,
+    read_files_refresh,
     read_pull_files,
     write_files_refresh,
     write_pull_files,
@@ -375,9 +377,21 @@ async def refresh_pull_files(
     time. Raises only :class:`PullDataError`; how it ended is kept beside the list either way.
     """
 
+    listed = await _from_comparison(repository, number, local) if local else None
+    if listed is None:
+        # A named comparison can still fail or be truncated. Check at the network
+        # boundary, after trying it, and retain the original hold unchanged.
+        stamp = await asyncio.to_thread(
+            read_files_refresh, repository.home, repository.slug, number
+        )
+        if stamp is not None and rate_limit_holds(stamp, now=pull_list.utc_now()):
+            raise PullDataError(
+                "rate_limited",
+                stamp.message or "GitHub's rate limit holds; retry after the reset time",
+                reset_at=stamp.reset_at,
+            )
     reader: str | None = None
     try:
-        listed = await _from_comparison(repository, number, local) if local else None
         if listed is not None:
             await _write(repository, listed)
         else:
