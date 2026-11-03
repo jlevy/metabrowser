@@ -18,4 +18,4 @@ def test_pr_page_recorder_owns_readiness_and_process_cleanup() -> None:
         timeout=10,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "recorder lifecycle: 7 scenarios passed\n"
+    assert result.stdout == "recorder lifecycle: 8 scenarios passed\n"

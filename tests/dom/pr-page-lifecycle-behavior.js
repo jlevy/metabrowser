@@ -56,6 +56,11 @@ async function probe(failure, keepServer = false) {
     signalCode: null,
     stdout: { on() {} },
     stderr: { on() {} },
+    once(name, listener) {
+      if (name === "error" && failure === "spawn" && pid === 301) {
+        queueMicrotask(() => listener(Error("executable missing")));
+      }
+    },
     kill(signal) {
       this.signalCode = signal;
     },
@@ -78,6 +83,9 @@ async function probe(failure, keepServer = false) {
       }
       assert.equal(command, "/fixture/chrome");
       chrome = child(301);
+      if (failure === "spawn") {
+        chrome.pid = undefined;
+      }
       return chrome;
     },
   };
@@ -91,7 +99,7 @@ async function probe(failure, keepServer = false) {
       assert.equal(directory, profile);
       profilePresent = false;
     },
-    existsSync: () => failure !== "port",
+    existsSync: () => failure !== "port" && failure !== "spawn",
     readFileSync: (file) =>
       file.endsWith("DevToolsActivePort") ? "1234\n/devtools/browser/test" : "server log",
     openSync: () => 9,
@@ -211,6 +219,7 @@ async function run() {
   const failures = [];
   for (const [stage, keep] of [
     ["readiness", false],
+    ["spawn", false],
     ["port", false],
     ["connection", false],
     ["navigation", false],
@@ -228,6 +237,11 @@ async function run() {
         assert.equal(result.chrome, null, "readiness exhaustion never starts Chrome");
         assert.match(result.errors.join("\n"), /server.*ready/i);
         assert.equal(result.output, undefined, "a failed run never publishes a sample");
+      } else if (stage === "spawn") {
+        assert.equal(result.browserCloses, 0);
+        assert.equal(result.connectionCloses, 0);
+        assert.equal(result.chrome.pid, undefined);
+        assert.match(result.errors.join("\n"), /Chrome could not start/);
       } else if (stage === "port") {
         assert.equal(result.browserCloses, 0, "launch may fail before a connection exists");
         assert.equal(result.connectionCloses, 0);
@@ -251,7 +265,7 @@ async function run() {
     }
   }
   assert.deepEqual(failures, []);
-  process.stdout.write("recorder lifecycle: 7 scenarios passed\n");
+  process.stdout.write("recorder lifecycle: 8 scenarios passed\n");
 }
 
 run().catch((error) => {

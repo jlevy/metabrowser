@@ -171,10 +171,17 @@ async function launchChrome() {
   chrome = spawn(CHROME, [...FLAGS, ...extra, `--user-data-dir=${profile}`, "about:blank"], {
     stdio: ["ignore", "ignore", "pipe"],
   });
+  let launchError = null;
+  chrome.once("error", (error) => {
+    launchError = error;
+  });
   chrome.stderr.on("data", () => {});
   const portFile = path.join(profile, "DevToolsActivePort");
   let ws = null;
   for (let i = 0; i < 300 && !ws; i++) {
+    if (launchError !== null) {
+      throw new Error("Chrome could not start", { cause: launchError });
+    }
     if (fs.existsSync(portFile)) {
       const [p, wsPath] = fs.readFileSync(portFile, "utf8").trim().split("\n");
       if (p && wsPath) {
@@ -200,7 +207,7 @@ async function closeChrome() {
     }
   } catch {}
   chromeConnection?.close();
-  if (chrome !== null) {
+  if (chrome !== null && chrome.pid !== undefined) {
     for (let i = 0; i < 50 && chrome.exitCode === null && chrome.signalCode === null; i++) {
       await sleep(100);
     }
