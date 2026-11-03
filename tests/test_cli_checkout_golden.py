@@ -44,6 +44,7 @@ from tests.golden_harness import (
     check_golden,
     isolate_cli,
     label_home,
+    normalize_pull_comparison_scopes,
     pinned_git,
     quoted,
     run_metab,
@@ -350,7 +351,8 @@ def test_golden_a_pull_request_beside_a_checkout(
         record.unlink()
     session.comparison()
 
-    check_golden("cli-checkout-overlay.txt", "\n".join(session.blocks))
+    rendered = normalize_pull_comparison_scopes("\n".join(session.blocks))
+    check_golden("cli-checkout-overlay.txt", rendered)
 
 
 def _unpack_objects(checkout: Path, aside: Path) -> None:
