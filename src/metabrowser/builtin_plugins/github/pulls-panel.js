@@ -1475,7 +1475,7 @@ export function mountPullsPanel(container, ctx, mb) {
         // A tab switch has no file at the top; its explicit address remains the selection.
         if (file !== null && currentRow !== null) {
           currentFile = file.path;
-          trees.get(currentRow)?.controller.setCurrent(file.path);
+          trees.get(currentRow)?.controller.followCurrent(file.path);
         }
       }) ?? null;
   }
@@ -1513,6 +1513,9 @@ export function mountPullsPanel(container, ctx, mb) {
           }
         },
         focusedIn: () => {
+          if (focusedTree !== null && focusedTree !== number) {
+            trees.get(focusedTree)?.controller.cancelWalk();
+          }
           focusedTree = number;
         },
       });
@@ -1996,6 +1999,12 @@ export function mountPullsPanel(container, ctx, mb) {
      * @param {string | null} [file]
      */
     setCurrent(number, file = null) {
+      if (currentRow !== null && currentRow !== number) {
+        trees.get(currentRow)?.controller.cancelWalk();
+      }
+      if (focusedTree !== null && focusedTree !== number) {
+        trees.get(focusedTree)?.controller.cancelWalk();
+      }
       controller.setCurrent(number);
       currentFile = file;
       const row = number === null ? undefined : painted.get(number)?.row;

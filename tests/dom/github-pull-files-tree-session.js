@@ -360,11 +360,46 @@ async function controllerStory(tree) {
   }
   story.push({ step: "Enter pushes the focused file", opens: opens.splice(0) });
   const shown = "weird/bell\u0007name.txt";
-  controller.setCurrent(shown);
+  controller.followCurrent(shown);
   if (controller.current() !== shown || !model.rows.some((row) => row.id === shown)) {
     throw Error("a scrolled file must be revealed");
   }
   look("a file reported by the page is revealed without moving its address");
+  const pairAt = model.rows.findIndex(
+    (row, at) => row.kind === "file" && model.rows[at + 1]?.kind === "file",
+  );
+  const startWalk = () => {
+    controller.focused(model.rows[pairAt].id);
+    controller.move(1, { repeat: true });
+    if (controller.snapshot().walking === null) {
+      throw Error("the probe needs a pending file walk");
+    }
+  };
+  startWalk();
+  const target = controller.snapshot().walking;
+  controller.followCurrent(target);
+  controller.released();
+  if (opens.length !== 1 || opens[0].file !== target) {
+    throw Error("scroll feedback cancelled the active walk");
+  }
+  story.push({
+    step: "the walk's own scroll report does not cancel its final address",
+    opens: opens.splice(0),
+  });
+  startWalk();
+  controller.setCurrent(shown);
+  controller.released();
+  if (controller.snapshot().walking !== null || opens.length !== 0) {
+    throw Error("a later route must cancel the old walk");
+  }
+  look("a later route cancels a pending file walk");
+  startWalk();
+  controller.setShown(false);
+  controller.released();
+  if (controller.snapshot().walking !== null || opens.length !== 0) {
+    throw Error("a hidden panel must cancel the old walk");
+  }
+  look("hiding the panel cancels a pending file walk");
   controller.collapse();
   if (timers.size !== 0) {
     throw Error("a collapsed tree must stop polling");

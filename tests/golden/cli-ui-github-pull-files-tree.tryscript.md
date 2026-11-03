@@ -502,10 +502,38 @@ $ node tests/dom/github-pull-files-tree-session.js
       ]
     },
     {
-      "step": "a closed or hidden tree has no timer",
+      "step": "the walk's own scroll report does not cancel its final address",
+      "opens": [
+        {
+          "file": "docs/removed.md",
+          "replace": true,
+          "jumped": true
+        }
+      ]
+    },
+    {
+      "step": "a later route cancels a pending file walk",
       "requests": [],
       "held": 249,
       "current": "weird/bell\u0007name.txt",
+      "notice": null,
+      "timers": [
+        60000
+      ]
+    },
+    {
+      "step": "hiding the panel cancels a pending file walk",
+      "requests": [],
+      "held": 249,
+      "current": "docs/removed.md",
+      "notice": null,
+      "timers": []
+    },
+    {
+      "step": "a closed or hidden tree has no timer",
+      "requests": [],
+      "held": 249,
+      "current": "docs/removed.md",
       "notice": null,
       "timers": []
     }

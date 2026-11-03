@@ -1116,6 +1116,19 @@ export function createFileTreeController(deps, options) {
     return null;
   }
 
+  /** Follow a file already shown by the page, without invalidating an active walk. @param {string | null} path */
+  function followCurrent(path) {
+    if (disposed) {
+      return;
+    }
+    markCurrent(path);
+    if (path !== null && expansion !== null && !index.has(path)) {
+      expansion = revealPath(expansion, path);
+      restate();
+      render();
+    }
+  }
+
   return Object.freeze({
     /**
      * The row was expanded. *reader* is a reader's own: a click, a key, or opening a file of it.
@@ -1155,6 +1168,7 @@ export function createFileTreeController(deps, options) {
       shown = visible;
       if (!visible) {
         clearTimer();
+        clearWalk();
       } else if (expanded) {
         void poll();
       }
@@ -1165,27 +1179,20 @@ export function createFileTreeController(deps, options) {
       }
       if (!deps.isVisible()) {
         clearTimer();
+        clearWalk();
       } else if (expanded && shown) {
         void poll();
       }
     },
-    /**
-     * The address names a file of this pull request, or none: its row is current, and the
-     * folders above it open. Not a selection: nothing opens.
-     *
-     * @param {string | null} path
-     */
+    /** A route selected this file; any earlier delayed keyboard open is obsolete. @param {string | null} path */
     setCurrent(path) {
-      if (disposed) {
-        return;
-      }
-      markCurrent(path);
-      if (path !== null && expansion !== null && !index.has(path)) {
-        expansion = revealPath(expansion, path);
-        restate();
-        render();
-      }
+      clearWalk();
+      followCurrent(path);
     },
+    /** The diff reported its position; this can be feedback from the active walk itself. */
+    followCurrent,
+    /** Another route, focused tree, or panel owns the next navigation. */
+    cancelWalk: clearWalk,
     /**
      * Move by a key, over the rows a reader sees, folders and files alike. Clamped at the ends,
      * where it opens nothing again.
