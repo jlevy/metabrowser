@@ -479,6 +479,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-comparison",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-files",
       "methods": [
         "GET",
@@ -695,7 +703,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 53
+  "count": 54
 }
 ? 0
 ```
