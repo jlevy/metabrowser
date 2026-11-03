@@ -271,7 +271,9 @@ class ServedPulls:
         if held is not None:
             return held
         read = await asyncio.to_thread(served_pull, self.published, number)
-        # Another request may have read it meanwhile, and then its job may have run.
+        # A different pull's Fetch may have attached the store while this read waited.
+        # Rebind before adoption; a newer already-held companion still wins below.
+        read.published = self.published
         return self.held(number) or self._keep(read)
 
     async def attend(self, number: int) -> ServedPull:

@@ -765,8 +765,9 @@ mirror’s fetch, since it never touches a store.
 `GET /api/plugin/github/pulls` parses a list only when its file changed.
 The paging loop, `read_list`, is shared with the record (`gh_lists.py`).
 
-The server reaches the repository through its `StoreMirror`, the one served source that
-names a GitHub repository today; a folder’s server answers `not_github`.
+The server’s `served_repository` chooses its `StoreMirror` or the served checkout’s
+validated GitHub origin.
+A source that supplies neither answers `not_github`.
 
 ### Pull requests beside a checkout
 

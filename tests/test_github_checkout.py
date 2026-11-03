@@ -578,3 +578,107 @@ def test_checkout_comparison_fetch_refuses_to_clone_when_borrowing_is_unavailabl
     assert str(checkout) not in fetched.stdout
     assert not list((home / "repository-stores").iterdir())
     assert fingerprint(checkout) == before
+
+
+@pytest.mark.parametrize(
+    "damage", ["future", "missing", "corrupt", "unknown", "config_future", "config_corrupt"]
+)
+def test_existing_checkout_source_refuses_unknown_cache_before_writing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, damage: str
+) -> None:
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.gh_lists import PullDataError
+    from tests.golden_harness import isolate_cli
+
+    isolated = isolate_cli(tmp_path, monkeypatch)
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, isolated.home)  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None
+    checkout_module.claim_source(repository)
+    layout = isolated.home / "layout.yml"
+    config = Path(os.environ["METABROWSER_CONFIG_DIR"]) / "config.yml"
+    if damage == "missing":
+        layout.unlink()
+    elif damage == "corrupt":
+        layout.write_text("not: [valid\n")
+    elif damage == "config_corrupt":
+        config.write_text("not: [valid\n")
+    else:
+        path = config if damage == "config_future" else layout
+        replacement = "f00" if damage == "unknown" else "f02"
+        path.write_text(path.read_text().replace("format: f01", f"format: {replacement}", 1))
+    before = fingerprint(isolated.home)
+    config_before = fingerprint(config.parent)
+    with pytest.raises(PullDataError) as refused:
+        checkout_module.claim_source(repository)
+    assert refused.value.state == "cache_unwritable"
+    assert str(refused.value) == "the repository could not be recorded in the cache"
+    assert fingerprint(isolated.home) == before
+    assert fingerprint(config.parent) == config_before
+
+
+def test_other_pull_read_crossing_attachment_uses_store_for_every_refresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    from threading import Event
+
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github import served_pull as served_module
+    from metabrowser.builtin_plugins.github.pull_record import PullRecord, read_pull_record
+    from metabrowser.mirror_refresh import RefreshCoordinator
+    from tests.golden_harness import isolate_cli
+
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, home)  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", lambda _source: pull_origin.url)
+    monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT)
+    entered, release = Event(), Event()
+    read = served_module.served_pull
+
+    def delayed_read(published: Any, number: int) -> served_module.ServedPull:
+        held = read(published, number)
+        if number == 7:
+            entered.set()
+            assert release.wait(10)
+        return held
+
+    monkeypatch.setattr(served_module, "served_pull", delayed_read)
+
+    async def run() -> None:
+        coordinator = RefreshCoordinator(limit=2)
+        group = checkout_module.checkout_pulls(repository)
+        reading = asyncio.create_task(group.companion(7))
+        try:
+            assert await asyncio.to_thread(entered.wait, 5)
+            assert (
+                checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
+                == "started"
+            )
+            await coordinator.drain(timeout_s=10)
+            assert group.git_dir is not None
+            release.set()
+            held = await reading
+            assert held.published is group.published
+            assert await group.companion(7) is held
+            for comparison in (False, True):
+                assert (
+                    checkout_module.start_pull_refresh(
+                        coordinator, repository, 7, comparison=comparison
+                    )
+                    == "started"
+                )
+                await coordinator.drain(timeout_s=10)
+                record = read_pull_record(home, repository.slug, 7)
+                assert isinstance(record, PullRecord)
+                assert record.comparison is not None, record.unavailable
+                assert held.published is group.published
+        finally:
+            release.set()
+            await reading
+            await coordinator.aclose()
+
+    asyncio.run(run())

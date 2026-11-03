@@ -44,7 +44,7 @@ from metabrowser.cache.identity import (
     source_identity,
     store_key,
 )
-from metabrowser.cache.layout import open_cache, read_config, read_layout
+from metabrowser.cache.layout import open_cache, preflight_layout, read_config, read_layout
 from metabrowser.cache.lender import (
     CheckoutRefusedError,
     Lender,
@@ -986,7 +986,7 @@ def publish_unattached_source(source: GitSource, home: Path) -> tuple[Path, str]
     home's and the source's locks.
     """
 
-    validate_storage_separation(home)
+    preflight_layout(home)
     source_id = source_identity(source.transport, source.normalized)
     slug = source_slug(source, home)
     if home.exists() and _source_id_for_slug(home, slug, shared="keep") == source_id:
