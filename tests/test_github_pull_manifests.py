@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import zlib
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -223,3 +224,49 @@ def test_another_cached_pr_comparison_does_not_switch_the_served_pin(
     assert compared.json()["resolved"]["right"]["id"] == other["record"]["comparison"]["head"]
     assert client.get("/api/plugin/github/pull?number=7").json()["pin"] == original["pin"]
     assert stand.calls() == [], "a cached comparison read fetched the network"
+
+
+def test_corrupt_manifest_is_discarded_before_backing_repair_and_restart(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git.object_failures import observed_object_failures
+    from metabrowser.git.process import repository_store_target
+
+    stand, client = pinned_pull
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
+    expected = client.get(route).json()
+    record = stand.record(7)
+    assert isinstance(record, PullRecord) and record.comparison is not None
+    store = stand.published.git_dir
+    oid = git(store, "rev-parse", f"{record.comparison.head}:src/app.txt").decode().strip()
+    genuine = git(store, "cat-file", "blob", oid)
+    loose = store / "objects" / oid[:2] / oid[2:]
+    loose.parent.mkdir(exist_ok=True)
+    saved = loose.read_bytes() if loose.exists() else None
+    # This private fixture's own object shadows an empty alternate; no checkout is changed.
+    borrowed = stand.tmp_path / "empty-borrowed-objects"
+    borrowed.mkdir()
+    (store / "objects/info/alternates").write_text(str(borrowed) + "\n")
+    forged = b"forged line\n" * 23
+    assert forged != genuine
+    loose.unlink(missing_ok=True)
+    loose.write_bytes(zlib.compress(b"blob " + str(len(forged)).encode() + b"\0" + forged))
+    directory = stand.published.home / pull_manifest._directory(stand.published)
+    for path in directory.glob("*.json"):
+        path.unlink()
+    asyncio.run(pull_manifest.prepare_pull_manifest(stand.published, record))
+    _fresh(monkeypatch)
+    refused = client.get(route)
+    assert refused.status_code == 409
+    assert refused.json()["error"] == "object_corrupt"
+    # Restore genuine backing data, then discard process-local failure/cache state.
+    if saved is None:
+        loose.unlink()
+    else:
+        loose.write_bytes(saved)
+    assert git(store, "cat-file", "blob", oid) == genuine
+    observed_object_failures.forget_store(repository_store_target(git_dir=store))
+    _fresh(monkeypatch)
+    replayed = client.get(route)
+    assert replayed.status_code == 200
+    assert replayed.json() == expected, "a repaired object must not replay forged statistics"

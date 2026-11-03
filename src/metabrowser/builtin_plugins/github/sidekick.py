@@ -96,7 +96,10 @@ async def pull_handler(request: Request) -> Response:
 async def pull_comparison_handler(request: Request) -> Response:
     """The selected PR's comparison, from its trusted store and no network."""
     from metabrowser.builtin_plugins.diff.sidekick import comparison_at
-    from metabrowser.builtin_plugins.github.pull_manifest import load_pull_manifest
+    from metabrowser.builtin_plugins.github.pull_manifest import (
+        invalidate_pull_manifest,
+        load_pull_manifest,
+    )
     from metabrowser.builtin_plugins.github.pull_record import PullRecord
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
@@ -105,7 +108,9 @@ async def pull_comparison_handler(request: Request) -> Response:
         pull_view,
         requested_number,
     )
+    from metabrowser.git.object_failures import observed_object_failures
     from metabrowser.git.process import GitLocation, RepositoryStoreTarget
+    from metabrowser.home import PrivateStorageError
 
     try:
         number = requested_number(request.query_params)
@@ -142,15 +147,32 @@ async def pull_comparison_handler(request: Request) -> Response:
             status_code=404,
             headers=_NO_STORE,
         )
-    location = GitLocation.revision(
-        RepositoryStoreTarget(published.git_dir, published.object_format), query["right"]
-    )
-    return await comparison_at(
+    left, right = query["left"], query["right"]
+    target = RepositoryStoreTarget(published.git_dir, published.object_format)
+    location = GitLocation.revision(target, right)
+    response = await comparison_at(
         request,
         location,
         max_initial_files=INITIAL_PULL_FILES,
         manifest_loader=partial(load_pull_manifest, published),
     )
+
+    if response.status_code == 409 and any(
+        failure.state == "object_corrupt"
+        for failure in observed_object_failures.pending(target, (left, right))
+    ):
+        try:
+            await asyncio.to_thread(invalidate_pull_manifest, published, (left, right))
+        except (OSError, PrivateStorageError):
+            return JSONResponse(
+                {
+                    "error": "object_corrupt",
+                    "message": "An object does not match its ID, and its cached comparison could not be discarded.",
+                },
+                status_code=409,
+                headers=_NO_STORE,
+            )
+    return response
 
 
 async def pull_markdown_handler(request: Request) -> JSONResponse:
