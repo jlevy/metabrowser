@@ -9,6 +9,11 @@
 //
 // It asserts, and so prints nothing for, the same budgets at each step of a held key: requests
 // in flight, one file per frame, and the target's place.
+//
+// Then a first page of ready files, as a comparison's first page or a folder's commit sends
+// them: the mount draws the files within the pane and one screen more, and holds the rest
+// with their answers, drawn one a frame when reached or gone to and never asked for. The
+// pane measures what a bar and a row take from the same layout, as a browser lays them out.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -25,6 +30,7 @@ function assert(condition, message) {
 const BAR_PX = 30;
 const ROW_PX = 20;
 const PANE_PX = 400;
+const PANE_WIDTH_PX = 800;
 
 let clock = 1000;
 const timers = [];
@@ -159,7 +165,7 @@ class LaidOutElement {
     if (this.classList.contains("diff-file-bar")) {
       return BAR_PX;
     }
-    if (this.classList.contains("diff-split-row")) {
+    if (this.classList.contains("diff-split-row") || this.classList.contains("diff-line")) {
       return ROW_PX;
     }
     if (this.classList.contains("diff-file-body-collapsed")) {
@@ -173,7 +179,11 @@ class LaidOutElement {
   getBoundingClientRect() {
     const pane = this.closest("[data-kpress-viewport]");
     if (this === pane) {
-      return { top: 0, bottom: PANE_PX, height: PANE_PX };
+      return { top: 0, bottom: PANE_PX, height: PANE_PX, width: PANE_WIDTH_PX };
+    }
+    if (pane === null || !pane.laidOut) {
+      // Not in a pane that lays itself out: no box, as a container with none has in a browser.
+      return { top: 0, bottom: 0, height: 0, width: 0 };
     }
     let top = -pane.scrollTop;
     for (let node = this; node.parentNode; node = node.parentNode) {
@@ -185,7 +195,7 @@ class LaidOutElement {
       }
     }
     const height = this.layoutHeight();
-    return { top, bottom: top + height, height };
+    return { top, bottom: top + height, height, width: PANE_WIDTH_PX };
   }
 }
 
@@ -307,6 +317,47 @@ function comparison() {
   };
 }
 
+/**
+ * A first page of *ready* files of *rows* added lines each, every one's answer in the document,
+ * as a comparison's first page or a folder's commit sends them, and *deferred* files after them.
+ */
+function readyComparison(ready, rows, deferred) {
+  const document_ = comparison();
+  const files = [
+    ...Array.from({ length: ready }, (_, index) =>
+      change(`r${index + 1}`, `r${index + 1}.py`, {
+        availability: "ready",
+        additions: rows,
+        deletions: 0,
+      }),
+    ),
+    ...Array.from({ length: deferred }, (_, index) => change(`d${index + 1}`, `d${index + 1}.py`)),
+  ];
+  document_.manifest = {
+    files,
+    totals: { files: files.length, additions: ready * rows, deletions: 0, exact: true },
+    truncated: false,
+  };
+  document_.patches = Object.fromEntries(
+    files
+      .filter((file) => file.availability === "ready")
+      .map((file) => [file.id, patchOf(file.id, rows)]),
+  );
+  return document_;
+}
+
+function pathOf(section) {
+  return section.find("diff-file-path")[0].textContent;
+}
+
+/** The files whose rows are in the page, in order. */
+function drawnFiles(page) {
+  return page.pane
+    .find("diff-file")
+    .filter((section) => section.find("diff-split-row").length > 0)
+    .map(pathOf);
+}
+
 async function main() {
   globalThis.document = {
     createElement: (tag) => new LaidOutElement(tag),
@@ -347,10 +398,11 @@ async function main() {
   /** The loader is the plugin's, one per page, so one page's requests are on at a time. */
   let open = null;
 
-  function mount(document_ = comparison()) {
+  function mount(document_ = comparison(), { laidOut = true } = {}) {
     open?.handle.dispose();
     const pane = new LaidOutElement("div");
     pane.isPane = true;
+    pane.laidOut = laidOut;
     pane.scrollTop = 0;
     pane.clientHeight = PANE_PX;
     pane.getBoundingClientRect = () => ({ top: 0, bottom: PANE_PX, height: PANE_PX });
@@ -855,6 +907,168 @@ async function main() {
     say("a file the reader scrolled past is no longer asked for", reading);
   }
 
+  // ── Ready files past the first screen are held, with their answers ──
+  // A comparison's first page can be fifty files of rows, and drawing them all at mount was
+  // one task the reader waited on (review of #284, E1). The mount draws the files whose
+  // estimated top is within the pane and one more screen; every later ready file is a bar
+  // that reserves its own rows and is drawn when it is reached, one a frame, from the answer
+  // in hand, so nothing is asked for and nothing it draws differs.
+  const heldPage = mount(readyComparison(12, 8, 2));
+  say(
+    "a first page of ready files: rows for the first screen and one more, the rest held",
+    heldPage,
+    undefined,
+    {
+      drawn: drawnFiles(heldPage),
+      reserving: heldPage.pane
+        .find("diff-file-body")
+        .filter((body) => body.style.minHeight)
+        .map((body) => pathOf(body.parentNode)),
+      heldReserves: heldPage.sectionOf("r5.py").find("diff-file-body")[0].style.minHeight,
+    },
+  );
+  assert(heldPage.requests.length === 0, "a held file was asked for");
+  steps.push({
+    step: "fileForPath: a held file is a ready file of the comparison",
+    answers: [heldPage.handle.fileForPath("r9.py")],
+  });
+  await heldPage.turn();
+  assert(drawnFiles(heldPage).length === 4, "a held file was drawn before it was reached");
+
+  // The reader scrolls: the held files on screen are drawn one a frame, topmost first, and the
+  // file at the top stays where it is.
+  heldPage.pane.scrollTop =
+    heldPage.sectionOf("r6.py").getBoundingClientRect().top + heldPage.pane.scrollTop;
+  const heldTop = heldPage.topFile();
+  const perTurn = [];
+  for (let turn = 0; turn < 4; turn += 1) {
+    const before = drawnFiles(heldPage);
+    await heldPage.turn();
+    perTurn.push(drawnFiles(heldPage).filter((file) => !before.includes(file)));
+    assert(perTurn.at(-1).length <= 1, "two held files were drawn in one frame");
+    assert(heldPage.topFile() === heldTop, "a held file filling in moved the file at the top");
+    assert(
+      Math.abs(heldPage.sectionOf(heldTop).getBoundingClientRect().top) < 0.5,
+      "the file at the top drifted as a held file filled in",
+    );
+  }
+  say(
+    "the reader scrolls to them: one a frame, topmost first, nothing asked for",
+    heldPage,
+    undefined,
+    {
+      drawnPerFrame: perTurn,
+      top: heldPage.sectionOf(heldTop).getBoundingClientRect().top,
+      rows: heldPage.sectionOf("r6.py").find("diff-split-row").length,
+    },
+  );
+  assert(heldPage.requests.length === 0, "a held file on screen was asked for");
+
+  // A jump to a held file: at the top at once, the frame that shows its bar there draws no rows,
+  // and its lines are in the frame after, with no request.
+  clock += 1000;
+  const toHeld = heldPage.handle.scrollToFile("r11.py");
+  const heldBar = heldPage.sectionOf("r11.py").getBoundingClientRect().top;
+  await heldPage.turn();
+  const rowsWithTheBar = heldPage.sectionOf("r11.py").find("diff-split-row").length;
+  assert(rowsWithTheBar === 0, "a held file was drawn in the frame that shows its bar at the top");
+  await heldPage.turn();
+  say(
+    "a jump to a held file: at the top at once, its bar's frame first, then its lines",
+    heldPage,
+    toHeld,
+    {
+      targetTop: heldBar,
+      rowsInTheBarsFrame: rowsWithTheBar,
+      lines: await toHeld.lines,
+      lineRows: heldPage.sectionOf("r11.py").find("diff-split-row").length,
+    },
+  );
+  assert(heldPage.requests.length === 0, "a jump to a held file asked for it");
+
+  // A held key over held files draws nothing until it comes up, then the file it rests on.
+  const keyPage = mount(readyComparison(12, 8, 0));
+  await keyPage.turn();
+  clock += 1000;
+  const heldWalk = ["r5.py", "r6.py", "r7.py", "r8.py", "r9.py"];
+  const heldJumps = [];
+  for (const file of heldWalk) {
+    const drawnBefore = drawnFiles(keyPage).length;
+    heldJumps.push(keyPage.handle.scrollToFile(file));
+    clock += 33;
+    await keyPage.turn();
+    assert(
+      Math.abs(keyPage.sectionOf(file).getBoundingClientRect().top) < 0.5,
+      `the bar of ${file} was not at the top at once`,
+    );
+    if (file !== heldWalk[0]) {
+      assert(drawnFiles(keyPage).length === drawnBefore, "a held key drew a file it passed");
+    }
+  }
+  clock += view.JUMP_QUIET_MS;
+  await keyPage.turn();
+  await keyPage.turn();
+  say(
+    "a key held over held files: nothing drawn it passed, then the file it rests on",
+    keyPage,
+    undefined,
+    {
+      outcomes: await Promise.all(heldJumps.map((step) => step.lines)),
+      drawn: drawnFiles(keyPage),
+    },
+  );
+  assert(keyPage.requests.length === 0, "a held key over held files asked for one");
+
+  // Held and deferred together: a held file is loaded, so the count says what is still to come.
+  const mixed = mount(readyComparison(6, 8, 3));
+  say("held files are loaded: the count is of the files still to come", mixed, undefined, {
+    drawn: drawnFiles(mixed),
+  });
+
+  // A diff that fits is drawn at mount, whole, as it always was: nothing held, nothing observed.
+  const observersBefore = ScriptedObserver.all.length;
+  const small = mount(readyComparison(3, 4, 0));
+  say("a diff that fits is drawn whole at mount, as before", small, undefined, {
+    drawn: drawnFiles(small),
+    reserving: small.pane.find("diff-file-body").filter((body) => body.style.minHeight).length,
+    observers: ScriptedObserver.all.length - observersBefore,
+  });
+
+  // Where nothing is laid out there is no screen to measure, and every ready file is drawn.
+  const unmeasured = mount(readyComparison(12, 8, 0), { laidOut: false });
+  say(
+    "nothing laid out to measure: every ready file is drawn at mount, as before",
+    unmeasured,
+    undefined,
+    {
+      drawn: drawnFiles(unmeasured).length,
+    },
+  );
+
+  // Replaced and disposed: a held file is never drawn into a view that is gone.
+  const replaced = mount(readyComparison(12, 8, 0));
+  replaced.pane.scrollTop =
+    replaced.sectionOf("r8.py").getBoundingClientRect().top + replaced.pane.scrollTop;
+  replaced.observer.report(replaced.pane);
+  await nextTask();
+  const pendingFrames = frames.length;
+  const replacedRoot = replaced.pane.children[0];
+  const replacement = mount(readyComparison(3, 4, 0));
+  for (const frame of frames.splice(0)) {
+    frame(clock);
+  }
+  await nextTask();
+  assert(pendingFrames === 1, "a held file on screen was not waiting for its frame");
+  assert(
+    replacedRoot.find("diff-file").filter((section) => section.find("diff-split-row").length > 0)
+      .length === 4,
+    "a replaced view drew a held file after it was disposed",
+  );
+  assert(replaced.observer.observed.size === 0, "a replaced view kept observing its held files");
+  assert(replaced.pane.children.length === 0, "a replaced view left its root");
+  assert(drawnFiles(replacement).length === 3, "the replacement was not drawn whole");
+  replacement.handle.dispose();
+
   // ── Bounds, in the fixture's own arithmetic ───────────────────
   const reservations = [
     [{ additions: 10, deletions: 0 }, "unified"],
@@ -870,6 +1084,43 @@ async function main() {
     { paneTop: 0, paneHeight: 400, scrollTop: 100, targetTop: 300, contentBottom: 500 },
     { paneTop: 40, paneHeight: 400, scrollTop: 0, targetTop: 40, contentBottom: 70 },
   ].map((geometry) => view.jumpPlacement(geometry));
+  const line = (op) => ({ op, text: op });
+  const hunk = (...ops) => ({
+    old_start: 1,
+    old_count: 1,
+    new_start: 1,
+    new_count: 1,
+    lines: ops.map(line),
+  });
+  const run = (op, count) => Array.from({ length: count }, () => op);
+  const heldRows = [
+    ["8 added lines", { hunks: [hunk(...run("add", 8))] }, "split"],
+    [
+      "context, 3 removed and 5 added, context",
+      { hunks: [hunk("context", ...run("del", 3), ...run("add", 5), "context")] },
+      "unified",
+    ],
+    [
+      "context, 3 removed and 5 added, context",
+      { hunks: [hunk("context", ...run("del", 3), ...run("add", 5), "context")] },
+      "split",
+    ],
+    ["a run of 50 added lines, which folds", { hunks: [hunk(...run("add", 50))] }, "unified"],
+    [
+      "two hunks of one line each, truncated",
+      { truncated: true, hunks: [hunk("add"), hunk("del")] },
+      "unified",
+    ],
+  ].map(([what, patch, layout]) => `${what} in ${layout}: ${view.patchRows(patch, layout)} rows`);
+  const firstScreens = [
+    { paneHeight: 400, rootTop: 0, barPx: 30, rowPx: 20 },
+    { paneHeight: 900, rootTop: 300, barPx: 30, rowPx: 20 },
+    { paneHeight: 900, rootTop: 1200, barPx: 30, rowPx: 20 },
+    null,
+  ].map(
+    (screen) =>
+      `${screen === null ? "nothing measured" : `a ${screen.paneHeight} px pane, the diff ${screen.rootTop} px down`}: ${view.firstScreenBudget(screen)} px`,
+  );
 
   // ── Disposal ──────────────────────────────────────────────────
   const leaving = mount();
@@ -887,8 +1138,22 @@ async function main() {
   globalThis.setTimeout = realSetTimeout;
   globalThis.clearTimeout = realClearTimeout;
   Date.now = realNow;
-  fs.writeSync(1, `${JSON.stringify({ steps, reservations, placements }, null, 2)}\n`);
+  fs.writeSync(
+    1,
+    `${JSON.stringify({ steps, reservations, placements, heldRows, firstScreens }, null, 2)}\n`,
+  );
+  finished = true;
 }
+
+// A step that awaits a promise nothing will settle empties the event loop, and Node then
+// exits cleanly having printed nothing: that is a failure, not a pass.
+let finished = false;
+process.on("exit", (code) => {
+  if (code === 0 && !finished) {
+    console.error("the session stopped before its last step: a promise it awaited never settled");
+    process.exitCode = 1;
+  }
+});
 
 main().catch((error) => {
   console.error(error);

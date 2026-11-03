@@ -37,6 +37,7 @@ from tests.github_pull_fixture import (
     files_page,
     files_scenario,
     generated_item,
+    in_a_stable_order,
     install_fake_gh,
     list_page,
     logged_gh_calls,
@@ -102,7 +103,7 @@ class _Session:
             result.block(
                 " ".join(quoted(arg) for arg in shown),
                 **sections,
-                gh=logged_gh_calls(self.tmp_path),
+                gh=in_a_stable_order(logged_gh_calls(self.tmp_path)),
             )
         )
         return result
