@@ -5,7 +5,7 @@ title: "Step 4: changed files in a row, expandable like a folder"
 kind: feature
 status: in_progress
 priority: 1
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -22,12 +22,14 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:40:35.668Z
-updated_at: 2026-11-03T07:19:02.636Z
+updated_at: 2026-11-03T07:25:52.141Z
 started_at: 2026-11-03T06:46:31.128Z
 ---
 Delivery step 4, added 2026-11-02. A row is a container: it expands to its changed files as a tree using the Files tree's row contract, from one gh request per 100 files with no Git. File rows open /pull/<n>/files/<path>. See the plan's Changed Files in a Row.
 
 ## Notes
+
+2026-11-03 HANDOFF (paused for another agent): #287 (draft) branch claude/pulls-4-files head 0699900a holds the data half only. The second half is on wip/pulls-4-files (fff7d6a3, cut from c2059f4e, so it needs the layers below merged in before it continues): /pull/<n>/files/<path> done and tested (2cd41853, 02dd2d04); the tree itself (fff7d6a3: pull-files-tree.js controller, pull-files-view.js, chevron and auto-expand in pulls-panel.js, keys in pulls-nav.js) type-checks and its session passes but has NEVER rendered in a browser. Next, in order: run it in real Chrome; measure AUTO_EXPAND_FILES and FILE_ROWS_OVERSCAN (placeholders 300 and 40); the walking budgets; browserless coverage, design-system tests, parity rows; arch-nav-containers.md wording and the CHANGELOG line; then mb-egnj and mb-w5rc. Use pull requests the list can reach (newest 1,000): astral-sh/ruff#29121 (1,627 files), #29817 (1,031), django/django#21728 (2,235), python/typeshed#16357 (5,855). Decisions for the owner: (1) a file's address shows the whole Files changed jumped to that file, not a one-file document, because a walk moves the address and a one-file document per step would refetch the comparison and lose the jump (implementer's recommendation); (2) 'the selection follows a reader who scrolls the diff by hand' needs the diff view to report the file at the top of the pane, requested from its owner.
 
 2026-11-03 HANDOFF (second half, paused mid-work). Branch wip/pulls-4-files at fff7d6a3, cut from claude/pulls-4-files c2059f4e. Nothing was pushed to claude/pulls-4-files; #287 untouched.
 

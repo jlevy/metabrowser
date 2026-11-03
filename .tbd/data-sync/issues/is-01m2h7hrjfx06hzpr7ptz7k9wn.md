@@ -5,7 +5,7 @@ title: "GitHub pull-request list for a mirrored repository: bounded list data fr
 kind: feature
 status: in_progress
 priority: 1
-version: 26
+version: 27
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -25,12 +25,14 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-09-15T00:30:26.382Z
-updated_at: 2026-11-03T06:47:01.835Z
+updated_at: 2026-11-03T07:25:50.209Z
 started_at: 2026-09-16T21:10:44.906Z
 ---
 Publish a bounded query-keyed ChangeRequestIndex after direct PR hydration works. Keep rows summary-only and record normalized query identity, deterministic ordering, per-page provenance, observation window and remote consistency, dedupe, bounds, cursors, and honest coverage. Store one repository/auth-scoped index reused by all attached clones and managed URL sources; listing fetches no Git refs. Cover continuation, moving pages, reauth isolation, stale/offline state, missing direct item, and no-ref-fetch.
 
 ## Notes
+
+2026-11-03 HANDOFF (paused for another agent): #279 head fff4d499 (pin_changed fix e8b7ff3d merged forward); reviews A, B, C addressed. Awaiting the owner's merge, after stack 278. Open question for the owner in the PR body (whether a first GET of the list should fetch). When 278 merges, stack 286 must be unstacked, #279 retargeted to main, and relinked.
 
 2026-11-03 status: PR #279, layer 1 of stack 286, base claude/v012-overlay-acquisition, head 1cb84734, CI 9 of 9 green, mergeable. Reviews A, B, C addressed (mb-r5me, mb-u0gx closed). Since then only forward merges of the stack below (#280 454a509e, then f7cf3464 and 2a22035b). Children stay in progress until the owner merges. Open question for the owner in the PR body: whether a first GET of the list should fetch when nothing is cached.
 

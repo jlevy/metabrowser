@@ -5,7 +5,7 @@ title: "Step 6: Files changed on a checkout, from an overlay of the served check
 kind: feature
 status: open
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies: []
@@ -14,11 +14,13 @@ child_order_hints:
   - is-01m6f3add4akft3c0x2p54f5v2
   - is-01m6f3adv181gkevbha1epsyj1
 created_at: 2026-11-02T21:40:38.500Z
-updated_at: 2026-11-03T06:47:10.100Z
+updated_at: 2026-11-03T07:25:53.478Z
 ---
 Delivery step 6. When the base and head commits are in the checkout, the page shows the diff with read-only Git and names the base it used. When they are missing, it says so, writes nothing, and gives the two commands.
 
 ## Notes
+
+2026-11-03 HANDOFF (paused for another agent): not started. Starts after step 5, from the overlay acquisition in the stack below (plan-2026-11-02-pr-review-mirror-and-checkout.md).
 
 2026-11-03 status: the plan's step 6 is revised (483b3a17): Files changed on a checkout reads an overlay store borrowing the served checkout's objects, created when the reader opens Files changed, per plan-2026-11-02-pr-review-mirror-and-checkout.md. Not started; it follows step 5. Children mb-5bqy and mb-awvw are rewritten to match.
 

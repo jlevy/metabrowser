@@ -5,7 +5,7 @@ title: "GitHub Pulls tab: list a mirrored repository's pull requests and open an
 kind: feature
 status: in_progress
 priority: 1
-version: 28
+version: 29
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -28,12 +28,14 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-09-15T00:30:52.949Z
-updated_at: 2026-11-03T06:47:04.588Z
+updated_at: 2026-11-03T07:25:51.498Z
 started_at: 2026-11-03T00:48:45.465Z
 ---
 Add the Pull Requests repository-scoped nav panel after direct view and the bounded index. Project only the index row fields—no review/check summary—through RepositoryActivity and reuse bounded paging, virtualization, roving selection, query-key restoration, loading/error, root replacement, and disposal through public SDK. Selection opens the direct PR address; expansion exposes comparison files. Counts/grouping/visibility come from the bounded model. Execute exact panel-window, selection, restoration, replacement, and disposal owners in hosted-review-session and cli-ui-hosted-review.
 
 ## Notes
+
+2026-11-03 HANDOFF (paused for another agent): #285 head 9a12b01a. Round 1 (A, B) and round 2 (C, run on Opus) addressed: C1-C7 fixed, C8 declined, plus the list's pin_changed rule. Open: mb-kstl and mb-qjpa (Qodo Lows on the landing; fix sketches in the beads and threads), then a light follow-up review of 2cfed240 (new read loop on /pulls, the pin_changed rule, the new recording family), which can fold into the strong-tier pass (mb-wlxn). The panel session prints in two parts (tryscript's block-size limit); more steps will need a third.
 
 2026-11-03 status: PR #285, layer 3 of stack 286, head 766a4c3b, CI 9 of 9 green. Reviews A (senior) and B (performance) addressed at d0e277e2 (mb-m971 closed). Round-2 review C, run on Opus because the strong tier's credits ran out, found 1 Medium (tests for the Files handler's scoping and the focus fallback) and 6 Low; being addressed now under mb-7d12, with the list's pin_changed 409 after a back-cache restore. Strong-tier pass owed: mb-wlxn.
 
