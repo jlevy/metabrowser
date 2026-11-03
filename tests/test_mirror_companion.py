@@ -715,7 +715,10 @@ def test_a_job_cancelled_while_it_waits_gives_up_its_place(cancelled: str) -> No
             assert running.done()
         doomed.cancel()
         await asyncio.gather(doomed, return_exceptions=True)
-        await last
+        # A turn nobody passed on leaves the last job waiting for ever: say so, and do not
+        # wait for the test's timeout.
+        await asyncio.wait({last}, timeout=5)
+        assert last.done(), f"the turn was not passed on; ran {order}"
         await running
         return order
 
