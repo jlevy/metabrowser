@@ -5,7 +5,7 @@ title: Refresh user, design, internal and self-documentation maps
 kind: task
 status: in_progress
 priority: 1
-version: 22
+version: 23
 delegate: codex@spud10
 labels: []
 dependencies:
@@ -35,7 +35,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-04T05:44:31.974Z
-updated_at: 2026-11-04T14:58:13.402Z
+updated_at: 2026-11-04T15:28:56.196Z
 started_at: 2026-11-04T13:48:45.627Z
 ---
 InventoryREADME documentationmap,allhuman-authoreddocs,designsystem/architecture/QA/development/releaseguides,shippedselfdocs/CLIhelp/pluginSDK/types/manifests,AGENTS/skillroutesandgeneratedcopies. Readrelevantselfhelp beforegeneration. Correctstaleclaims/links/featurestates, avoidduplicatingpolicy, usecommon-docfooter andpinnedformatter. Verifydoc/help/skilldrift andinstalledartifact; publishrevieweddocsPR ifchangesneeded.
@@ -43,3 +43,5 @@ InventoryREADME documentationmap,allhuman-authoreddocs,designsystem/architecture
 ## Notes
 
 2026-11-04: Documentation proposal is prepared and independently reviewed across current operator/setup, architecture, design, QA, portable skill and all 37 plan statuses. Fifty-five logical files change, including two archive moves and one shipped JavaScript comment; no runtime semantic edit is proposed. Seventeen accepted documentation findings are tracked separately. Actual account-fix main is afaf38b85a83443e25002765203c216bd11f8dfa (PR #297). Final factual rendering waits for its current-main CI and clean independent integration review. No documentation source changes or documentation PR have been applied yet.
+
+2026-11-04: Applied the independently approved factual/semantic render and committed 3f5bd2d33a638c6b3e174250d4ed3c26bc88811d on codex/pr-stack-docs-01a1a051, directly above actual account-fix main afaf38b85a83443e25002765203c216bd11f8dfa. All 56 selected postimages match the approved render exactly; 55 logical files change, including two plan moves. All 37 plan dispositions are reviewed. Normal formatting/commit hooks passed, and immutable independent documentation, focused security and performance reviews are clean with explicit coverage limits. Full make verify is running; the documentation branch has not been pushed and no docs PR exists yet. Actual merge, final self-documentation/host skill installation and completion remain pending.
