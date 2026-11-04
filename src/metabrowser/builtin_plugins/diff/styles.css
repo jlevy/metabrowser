@@ -14,6 +14,18 @@
   --diff-add-gutter: var(--status-success);
   --diff-del-gutter: var(--status-error);
   --diff-change-gutter-width: 3px;
+  /* Held bodies and their eventual chrome use the same token-based dimensions. */
+  --diff-code-row-height: calc(1.5 * var(--mono-block-font-size));
+  --diff-header-padding-y: 4px;
+  --diff-notice-padding-y: 10px;
+  --diff-header-row-height: calc(
+    1.5 *
+    var(--ui-small-font-size) +
+    2 *
+    var(--diff-header-padding-y)
+  );
+  --diff-fold-row-height: max(var(--ui-row-height), calc(1.5 * var(--ui-small-font-size) + 2px));
+  --diff-notice-row-height: calc(1.5 * var(--body-font-size) + 2 * var(--diff-notice-padding-y));
 }
 
 .metabrowser-diff-host .diff-toolbar {
@@ -224,7 +236,9 @@
 }
 
 .metabrowser-diff-host .diff-hunk-header {
-  padding: 4px 10px;
+  padding: var(--diff-header-padding-y) 10px;
+  line-height: 1.5;
+  white-space: nowrap;
   color: var(--muted);
   background: var(--highlight-bg);
   font-size: var(--ui-small-font-size);
@@ -340,6 +354,12 @@
   user-select: none;
 }
 
+.metabrowser-diff-host .diff-fold-control {
+  height: var(--diff-fold-row-height);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
 .metabrowser-diff-host .diff-fold-chevron {
   display: inline-flex;
   align-items: center;
@@ -377,6 +397,14 @@
 }
 
 .metabrowser-diff-host .diff-availability {
-  padding: 10px 12px;
+  padding: var(--diff-notice-padding-y) 12px;
   color: var(--muted);
+}
+
+/* Patch chrome remains complete on one line in the existing horizontal scroller.
+   Code keeps its independent wrapping behavior; outer warnings still wrap. */
+.metabrowser-diff-host .diff-file-body > .diff-patch-truncated {
+  font-size: var(--body-font-size);
+  line-height: 1.5;
+  white-space: nowrap;
 }
