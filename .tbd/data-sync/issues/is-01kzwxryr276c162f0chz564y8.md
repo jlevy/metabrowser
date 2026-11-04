@@ -5,13 +5,13 @@ title: Prevent live tree inserts from duplicating paged rows
 kind: bug
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
 labels: []
 dependencies: []
 parent_id: is-01kzwhmcj1b9fngz4nj21p1p7e
 created_at: 2026-08-13T06:43:24.026Z
-updated_at: 2026-08-13T07:01:30.600Z
+updated_at: 2026-11-04T17:07:16.056Z
 closed_at: 2026-08-13T07:01:30.599Z
 close_reason: Fixed deferred-page reconciliation and retained focus-repair snapshots across animated live removals. The 213-entry real-browser regression now mounts every path once, updates sentinel totals on pending removals, and repairs focus after mounted removals.
 ---

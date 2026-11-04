@@ -5,13 +5,13 @@ title: "PR #24 review R14: Refresh keeps a stale commit-detail cache"
 kind: bug
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-06-git-graph-view.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-06-git-graph-view.md
 labels: []
 dependencies: []
 parent_id: is-01kzctqt5s7te6w75jm5pvg6g7
 created_at: 2026-08-11T21:30:23.958Z
-updated_at: 2026-08-11T21:30:47.462Z
+updated_at: 2026-11-04T17:14:17.845Z
 closed_at: 2026-08-11T21:30:47.461Z
 close_reason: Fixed on feat/git-graph-view; covered by tests that fail without the fix.
 ---

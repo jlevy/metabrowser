@@ -5,13 +5,13 @@ title: Codify the parity principle in AGENTS.md and development.md
 kind: task
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md
 labels: []
 dependencies: []
 parent_id: is-01m0jsvvcqw7knvxbaq4sn6ddj
 created_at: 2026-08-21T18:38:49.250Z
-updated_at: 2026-08-28T07:48:15.114Z
+updated_at: 2026-11-04T17:07:28.508Z
 closed_at: 2026-08-28T07:48:15.114Z
 close_reason: check_parity.py enforces the parity table in make lint/lint-check with 8 tests covering each failure mode; the rule is in AGENTS.md and its reasoning in docs/development.md. Table starts honest at 2 covered, 20 gap, 2 exempt.
 resolution: null

@@ -5,14 +5,14 @@ title: "PR 28 review R11: cleared recency window makes the overlay cutoff NaN"
 kind: bug
 status: closed
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md
 labels:
   - ui
 dependencies: []
 parent_id: is-01kzqkvjhnr72wwk0cz3pmq7zp
 created_at: 2026-08-11T05:14:12.186Z
-updated_at: 2026-08-11T05:26:27.724Z
+updated_at: 2026-11-04T17:07:09.291Z
 closed_at: 2026-08-11T05:26:27.723Z
 close_reason: Overlay bails when no window is active and the guard tests for a number. Verified in-browser; fixed in b37c6dd.
 ---

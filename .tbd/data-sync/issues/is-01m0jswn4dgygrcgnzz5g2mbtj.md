@@ -5,8 +5,8 @@ title: "metab --show <path>: the four layers for one selection"
 kind: feature
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m0jsxgfznxwn8cwr2n3p01f4
 parent_id: is-01m0jsvvcqw7knvxbaq4sn6ddj
 created_at: 2026-08-21T18:38:48.461Z
-updated_at: 2026-08-28T07:09:44.158Z
+updated_at: 2026-11-04T17:07:28.508Z
 closed_at: 2026-08-28T07:09:44.155Z
 close_reason: metab --show PATH reports route, kind, views, and model summary in text or JSON, built on /api/file and format_view_href. Pinned by tests/golden/cli-show.tryscript.md across all eight built-in kinds.
 resolution: null

@@ -5,8 +5,8 @@ title: "P3: prior-art brief and treemap layout spike"
 kind: task
 status: closed
 priority: 1
-version: 6
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 7
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels: []
 dependencies:
   - type: blocks
@@ -17,7 +17,7 @@ dependencies:
     target: is-01kxz312nhbcvmn8fxex952bq8
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-07-20T04:32:52.344Z
-updated_at: 2026-07-20T07:30:37.034Z
+updated_at: 2026-11-04T17:07:20.946Z
 closed_at: 2026-07-20T07:30:37.034Z
 close_reason: Prior-art survey and layout spike recorded in docs/project/research/research-2026-07-20-folder-treemap-layout.md; measured 800 cells in ~3ms vs the 16ms budget, rollup well under its budget
 ---

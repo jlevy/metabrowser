@@ -5,13 +5,13 @@ title: Show tallies for aggregate file-type presets
 kind: task
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md
 labels: []
 dependencies: []
 parent_id: is-01kzp82ktssqmf4fhm8sxmvb6p
 created_at: 2026-08-11T18:10:56.579Z
-updated_at: 2026-08-11T18:30:19.970Z
+updated_at: 2026-11-04T16:59:26.272Z
 closed_at: 2026-08-11T18:30:19.969Z
 close_reason: Added index-wide Docs, Code, and Data tallies that match extension and filename preset semantics, follow Show ignored, and are covered by focused tests, real-browser checks, make verify, and green CI.
 ---

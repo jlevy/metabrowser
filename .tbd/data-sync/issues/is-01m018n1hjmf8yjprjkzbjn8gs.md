@@ -5,15 +5,15 @@ title: Make folder Files and Ignored totals disjoint
 kind: feature
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels:
   - browser
   - design-system
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-08-14T23:10:27.889Z
-updated_at: 2026-08-14T23:16:54.657Z
+updated_at: 2026-11-04T17:07:22.868Z
 closed_at: 2026-08-14T23:16:54.654Z
 close_reason: Implemented disjoint Files and Ignored rows in the shared Overview/Treemap totals model, updated design and architecture docs, added conservation and boundary coverage, and passed make verify.
 ---

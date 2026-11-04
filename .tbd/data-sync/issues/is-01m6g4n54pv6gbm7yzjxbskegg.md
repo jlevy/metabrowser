@@ -5,7 +5,7 @@ title: "Follow-ups from review E on PR 283: merge-base edge cases and a kept err
 kind: task
 status: closed
 priority: 2
-version: 5
+version: 6
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -13,7 +13,7 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-03T07:23:24.693Z
-updated_at: 2026-11-03T20:17:10.175Z
+updated_at: 2026-11-04T17:18:10.238Z
 started_at: 2026-11-03T08:05:59.077Z
 closed_at: 2026-11-03T20:17:10.175Z
 close_reason: "Completed by forward commits in the PR-support stack; independent reviews, rechecks and dispositions are published on the owning PRs. Final integration ea771741211193a387c1771e04df29b5a9698100 passed make verify (4712 Python, 9 expected skips, 373 transcripts), 8 public live tests, installed-wheel Chrome (22 actions, 25 unchanged checkout/Git fingerprints), and all 171 CI jobs across 19 current-head runs on 14 PRs. Final clean review: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . No PR merged."
@@ -30,3 +30,7 @@ Not reviewed yet: merge 2a22035b, the page in Chrome under the untrusted profile
 ## Notes
 
 2026-11-03 independent-review integration at final tip 58270d69. E follow-ups implemented and independently reviewed in F: a51cc866 old/unknown-Git readable ancestry accepts complete criss-cross history; timeout/output-limit failures remain typed and preserve records;48c03f84 bounds regular pack-index validation and preserves uncertain refs;6ade0868 clears stale pin_changed/304 error. f987d033 stays forward-reverted and 00c0f48b retained. Owning #283 3cb49015 includes original published b29dc787 by an empty-tree forward merge. Final full verification, publication and remote CI are coordinator gates still pending; no PR merged.
+
+2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
+
+The Review E follow-ups landed through PR #283: readable complete criss-cross ancestry, typed timeout/output failures, bounded pack-index validation and cleared stale pin_changed errors. The regression-causing f987d033 remains forward-reverted, and 00c0f48b is retained. Keep this completed review follow-up closed.

@@ -5,8 +5,8 @@ title: Unified filtering across navigation and folder views
 kind: epic
 status: closed
 priority: 1
-version: 10
-spec_path: docs/project/specs/active/plan-2026-07-20-unified-filtering.md
+version: 12
+spec_path: null
 labels: []
 dependencies: []
 child_order_hints:
@@ -14,7 +14,7 @@ child_order_hints:
   - is-01ky071dj04cfxc3gdq6z74xe0
   - is-01ky071dz7zqcfxgxf97pc9vfn
 created_at: 2026-07-20T16:51:20.795Z
-updated_at: 2026-11-01T16:21:22.625Z
+updated_at: 2026-11-04T17:14:25.503Z
 closed_at: 2026-11-01T16:21:22.624Z
 close_reason: All 3 children are closed with mb-0tu2 and mb-wta0.
 resolution: null
@@ -29,3 +29,5 @@ Phase 1 is implemented and validated: shared FilterState and mb.filters, Current
 ## Notes
 
 2026-07-31 search architecture review decoupled hierarchical filtering from search. Hide mode uses /api/filter/tree rather than a search endpoint. The slash-key finder and future full-text mode do not persist, alter filter chips, or dim the tree.
+
+Tracking reconciliation: the structured spec_path `docs/project/specs/active/plan-2026-07-20-unified-filtering.md` does not exist in landed main da87bb13c4434324af576b554711278139621b6b. No exact surviving document or immutable historical blob has been established by this audit. Retire this broken structured pointer while preserving this completed task's status, description and implementation/review history. This note retains the former path for historical context; it does not claim that a current plan is the exact successor.

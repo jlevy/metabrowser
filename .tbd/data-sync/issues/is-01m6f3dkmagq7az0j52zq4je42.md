@@ -5,7 +5,7 @@ title: "Keyboard: walking changed files jumps the diff to that file"
 kind: task
 status: closed
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -14,7 +14,7 @@ parent_id: is-01m6f39zpnk9rc3kjy552b88qj
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:42:34.377Z
-updated_at: 2026-11-03T20:17:10.161Z
+updated_at: 2026-11-04T17:18:14.148Z
 started_at: 2026-11-03T06:46:33.001Z
 closed_at: 2026-11-03T20:17:10.161Z
 close_reason: "Completed by forward commits in the PR-support stack; independent reviews, rechecks and dispositions are published on the owning PRs. Final integration ea771741211193a387c1771e04df29b5a9698100 passed make verify (4712 Python, 9 expected skips, 373 transcripts), 8 public live tests, installed-wheel Chrome (22 actions, 25 unchanged checkout/Git fingerprints), and all 171 CI jobs across 19 current-head runs on 14 PRs. Final clean review: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . No PR merged."
@@ -40,3 +40,7 @@ The user, 2026-11-02: easy to scroll through files within a PR, and it may requi
 2026-11-02: budgets from the performance study, explorations/performance-loop/experiments/exp-040-files-changed-recomputes-the-whole-patch-per-request.md on origin/claude/v012-pr-review-perf at a377ef0a; read its jump section. Bar on screen within 50 ms; first lines within 150 ms for any file N; drift 0 px; key delivered at 33 ms per step (30 per second); at most 1 request in flight, the resting file; queue empty within 300 ms of key-up; no task over 50 ms. Do not drive jumps by scrolling to DOM you then hydrate: hydrating neighbours pushed the target 53,661 px off screen. Call the diff view's scrollToFile API being built on claude/v012-large-pr-perf, with target-first hydration, cancellation, and no drift, rather than reimplementing it. The other session sends its contract when it lands; do not merge jump-scrolling before then.
 
 2026-11-03 completion clarification (supersedes the paused handoff status, preserving its history): changed-file keyboard walking, bounded tree rendering, currentFile/onCurrentFile scroll following, history/Back restoration, navigation ownership cancellation and focus retention are implemented and independently reviewed in the integrated stack. Real Chrome and production browserless sessions cover the completed flow, so the earlier never-rendered/no-current-file-feedback statements are historical. Measured large-PR results retain their exact build and load provenance; they are not a claim that every wall-clock budget passes or that the separate quiet-machine follow-up mb-jwfx is complete. Frozen candidate: 2bd58827700e951c3cd7359efd6fd20bfe33f96d. Supporting validation available to the coordinator includes completed independent source reviews, eight public read-only live GitHub tests, 22 Chrome checks and 25 unchanged checkout/common-Git fingerprints. These are supporting results, not a claim that final gates have finished: exact-head make verify is still running, and the normal push and remote CI remain pending. No PR has been merged. Keep this bead open until the coordinator records the final gates; no closure or sync is performed by this note.
+
+2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
+
+The landed changed-file tree supports keyboard walking, named-file navigation, current-file scroll feedback, Back restoration and focus retention. The earlier unfinished-WIP statements are historical. Keep this scoped navigation task closed; this does not complete the separate quiet-performance follow-up mb-jwfx.

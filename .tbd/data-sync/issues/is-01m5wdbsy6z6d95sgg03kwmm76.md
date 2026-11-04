@@ -5,14 +5,14 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: open
 priority: 1
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-03T07:01:16.083Z
+updated_at: 2026-11-04T17:18:27.373Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
 
@@ -57,3 +57,7 @@ PRACTICAL CONSTRAINT: on 2026-10-26 the data volume was 94 percent full, 403 GiB
 
 
 2026-11-03, the pull-request layers above 277: PR 280 at 996ea90d and PR 283 at e8b7ff3d are reviewed and green; PR 284 at 9d6e0930 is green with E1 (High, performance) in progress. The Pulls tab is stack 286 on 283. Nothing is merged; merging waits for the owner.
+
+2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
+
+The old statements that #272–#277 or the later PR layers remain open and that nothing has merged are historical. This completes the current feature landing and local development-build installation only. Keep the release coordinator open for the quiet rehearsal, release-head differentials, full release runbook and human matrix, owner release sign-off, version/tag and publication requirements. No release tag, GitHub Release or PyPI publication is claimed.

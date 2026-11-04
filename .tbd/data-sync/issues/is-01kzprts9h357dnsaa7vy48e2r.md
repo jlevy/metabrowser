@@ -5,14 +5,14 @@ title: Live filter is not a recency window and reads as broken
 kind: task
 status: closed
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md
 labels:
   - ui
 dependencies: []
 parent_id: is-01kzp82ktssqmf4fhm8sxmvb6p
 created_at: 2026-08-10T21:21:34.512Z
-updated_at: 2026-08-11T16:57:07.168Z
+updated_at: 2026-11-04T16:59:26.272Z
 closed_at: 2026-08-11T16:57:07.167Z
 close_reason: "Resolved for v0.3.0: Live is now the server-owned 90-second mtime window for every file. Agent-log active badges and live tailing remain separate. Unit, browser-behavior, full make verify, and real-browser filesystem-event checks pass."
 ---

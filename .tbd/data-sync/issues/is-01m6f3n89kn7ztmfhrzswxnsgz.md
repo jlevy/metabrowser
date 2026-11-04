@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: open
 priority: 1
-version: 47
+version: 48
 labels:
   - release:v0.12.0
 dependencies: []
@@ -47,7 +47,7 @@ child_order_hints:
   - is-01m6jhcsrvevhaa1kg3fh6g8zg
   - is-01m6k4bp5bmh38vg43syytha0v
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-04T12:27:20.546Z
+updated_at: 2026-11-04T17:18:14.931Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.
 
@@ -78,3 +78,7 @@ Earlier chronological notes (superseded where they describe pending final gates)
 2026-11-03 R5 full gate result: 4,696 Python tests passed with9expected skips; tryscript370passed/3failed. The three failures are stale expectations from independently reviewed runtime changes: #281 numberless/no-attended GET now200legacyabsence instead of400, #281 empty-body/no-attended POST409no_pull_request instead of400, and the #288 mount-session transcript lacks the three new true C1 lifecycle result fields. Agents are correcting exactly those recorded blocks and adjacent false number-required prose, with no production change. Child mb-gy9q tracks the two #281 blocks. The C1 block exists only in #288; no new lower #287 block is being added. R5 full additive run continues at its immutable actual wheel; its audit A/B/C is complete with all inherited residuals explicitly explained. We will prove complete product/source/lock equivalence for the transcript-only successor, retain R5 provenance honestly and run complete make verify on the final successor. No final-pass marker or push/merge occurred.
 
 2026-11-03 owner clarification: this is a new feature stack whose frontend and backend ship together on one local server; there are no old-client backward-compatibility constraints. Earlier interpretation of additive as preserving omitted-number PR calls was too broad. Compatibility-only API aliases and the extra dotenv expansion resolver have been forward-reverted, without rewriting history. #280 ed400452 is tree-identical to reviewed64fa; #281 a30750dc restores required numbers with focused current-contract tests. Final clean composition de87065ded8a606f21fb85093474c8ca0cc50cbe has its entire src tree exactly equal measured/reviewed68db82b5 (treeca658425530ac05b2202ba7f9d223ade08fbd9f4), preserving all G1/cache/recovery/navigation/rendering fixes. All live frontend and CLI calls/current runnable examples supply explicit numbers. Root focused148tests passed147.07seconds; full exact-head verification, independent composition audit, Chrome smoke and public live checks are in progress. R6 ed0 full makeverify passed before this policy clarification and is retained as superseded evidence. The complete945 diagnostic run (20527data/1320browser/120file/three connectionpairs) is preserved NONFINAL, not a backward-compatibility gate or owner-signoff requirement for new PR API shapes. No source branches pushed yet beyond earlier font64fa; no PR merged; all merges forward; original WIP and8863 untouched.
+
+2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
+
+The reviewed PR-support stack is landed and fully accepted for managed repository sources and existing checkouts. The earlier merge and final feature-acceptance prerequisites are satisfied. Keep this broad parent open for genuine remaining rendering/windowing, quiet-host performance and release follow-ups. Loaded-host measurements do not prove that all performance goals pass.

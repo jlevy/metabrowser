@@ -5,8 +5,8 @@ title: "Address review: PR 28 — nav filter controls"
 kind: task
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md
 labels:
   - ui
 dependencies: []
@@ -15,7 +15,7 @@ child_order_hints:
   - is-01kzqkw6av9x7xawv6szcbgzfe
   - is-01kzqkw6m0s8kx8cz0f5dtqjaq
 created_at: 2026-08-11T05:13:51.915Z
-updated_at: 2026-08-11T05:26:28.237Z
+updated_at: 2026-11-04T17:07:08.720Z
 closed_at: 2026-08-11T05:26:28.236Z
 close_reason: "All 12 PR #28 review findings dispositioned; three fixed in b37c6dd, nine already fixed. CI green, threads replied."
 ---

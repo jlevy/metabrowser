@@ -5,15 +5,15 @@ title: Migrate Quick File commands and hints to the shared registry
 kind: task
 status: closed
 priority: 1
-version: 10
-spec_path: docs/project/specs/active/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
+version: 11
+spec_path: docs/project/specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kzwhme4gyzm3akfkd83vh2sw
 parent_id: is-01kzwhmcj1b9fngz4nj21p1p7e
 created_at: 2026-08-13T03:11:12.258Z
-updated_at: 2026-08-13T05:58:13.795Z
+updated_at: 2026-11-04T17:07:16.056Z
 closed_at: 2026-08-13T05:58:13.794Z
 close_reason: Quick File now registers every command and hint with the shared registry, uses the shared modal lifecycle and control binding, and retains search, focus, and catalog behavior; make verify passes with 921 tests.
 ---

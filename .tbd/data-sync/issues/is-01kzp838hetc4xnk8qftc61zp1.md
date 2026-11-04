@@ -5,14 +5,14 @@ title: Apply filters to the tree as a decoration layer
 kind: feature
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md
 labels:
   - ui
 dependencies: []
 parent_id: is-01kzp82ktssqmf4fhm8sxmvb6p
 created_at: 2026-08-10T16:29:06.477Z
-updated_at: 2026-08-10T16:29:19.543Z
+updated_at: 2026-11-04T16:59:26.272Z
 closed_at: 2026-08-10T16:29:19.542Z
 close_reason: Implemented on feat/nav-filter-controls; make verify green at 813 tests.
 ---

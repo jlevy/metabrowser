@@ -5,8 +5,8 @@ title: Shared in-process ASGI client and a stated session schema
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m0jswn4dgygrcgnzz5g2mbtj
 parent_id: is-01m0jsvvcqw7knvxbaq4sn6ddj
 created_at: 2026-08-21T18:38:47.763Z
-updated_at: 2026-08-28T06:48:57.859Z
+updated_at: 2026-11-04T17:07:28.508Z
 closed_at: 2026-08-28T06:48:57.850Z
 close_reason: Shared InProcessClient (with POST, query-in-path, headers, and caller label/logger) lifted to cli/asgi_client.py; normalize.py adds the stated session schema with an evidence-based field table. Every existing golden byte-identical; 1628 tests pass.
 resolution: null

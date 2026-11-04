@@ -5,14 +5,14 @@ title: FilterState module and mb.prefs/mb.filters SDK surface
 kind: feature
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md
 labels:
   - ui
 dependencies: []
 parent_id: is-01kzp82ktssqmf4fhm8sxmvb6p
 created_at: 2026-08-10T16:29:05.692Z
-updated_at: 2026-08-10T16:29:18.943Z
+updated_at: 2026-11-04T16:59:26.272Z
 closed_at: 2026-08-10T16:29:18.942Z
 close_reason: Implemented on feat/nav-filter-controls; make verify green at 813 tests.
 ---

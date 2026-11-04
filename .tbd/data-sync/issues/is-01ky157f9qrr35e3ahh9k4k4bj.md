@@ -5,13 +5,13 @@ title: "PR13/R1: global rollup response budget (node + payload cap)"
 kind: bug
 status: closed
 priority: 0
-version: 2
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels: []
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-07-21T01:39:13.836Z
-updated_at: 2026-07-21T02:01:47.947Z
+updated_at: 2026-11-04T17:07:16.887Z
 closed_at: 2026-07-21T02:01:47.945Z
 close_reason: "Fixed in the R1-R8 review-response commit on PR #13; verified by new unit/vm assertions plus a live browser pass (hostile filenames, Back/Forward zoom trail, live header); make verify green"
 ---

@@ -5,8 +5,8 @@ title: Build the shared modal overlay layer
 kind: feature
 status: closed
 priority: 1
-version: 10
-spec_path: docs/project/specs/active/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
+version: 11
+spec_path: docs/project/specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzwhmdc3jqvad5w25pdww804
 parent_id: is-01kzwhmcj1b9fngz4nj21p1p7e
 created_at: 2026-08-13T04:04:33.294Z
-updated_at: 2026-08-13T05:34:36.121Z
+updated_at: 2026-11-04T17:07:16.056Z
 closed_at: 2026-08-13T05:34:36.120Z
 close_reason: Implemented and verified the shared modal portal, close routing, inert background, focus containment/restoration, arbitration, trigger control binding, styling, and strict types.
 ---

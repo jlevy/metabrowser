@@ -5,8 +5,8 @@ title: Standardize rollup chooser as Files then Bytes
 kind: task
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels:
   - browser
   - overview
@@ -14,7 +14,7 @@ labels:
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-08-14T19:30:26.300Z
-updated_at: 2026-08-14T19:37:59.951Z
+updated_at: 2026-11-04T17:07:22.868Z
 closed_at: 2026-08-14T19:37:59.950Z
 close_reason: Implemented Files-first metric ordering and Files default while preserving saved choices; validated both views and CI.
 ---

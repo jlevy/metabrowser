@@ -5,15 +5,15 @@ title: Build the strict tree keyboard navigator
 kind: feature
 status: closed
 priority: 1
-version: 5
-spec_path: docs/project/specs/active/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
+version: 6
+spec_path: docs/project/specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kzwhmdrhp7q8g25hh0rrz7yh
 parent_id: is-01kzwhmcj1b9fngz4nj21p1p7e
 created_at: 2026-08-13T04:04:45.405Z
-updated_at: 2026-08-13T06:09:37.574Z
+updated_at: 2026-11-04T17:07:16.056Z
 closed_at: 2026-08-13T06:09:37.569Z
 close_reason: Added the strict tree navigator with semantic synchronization, roving focus, durable repair, scope-aware commands, pointer continuity, and exhaustive DOM behavior tests; make verify passes with 922 tests.
 ---

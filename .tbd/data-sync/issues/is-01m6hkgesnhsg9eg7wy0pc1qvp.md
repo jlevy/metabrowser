@@ -3,9 +3,9 @@ type: is
 id: is-01m6hkgesnhsg9eg7wy0pc1qvp
 title: Show progressive PR catalog status and default to Open
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10.local
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m6hkbt0t0qhvrhxhktgefe38
 hold: null
 hold_until: null
 created_at: 2026-11-03T21:02:13.812Z
-updated_at: 2026-11-03T22:03:03.307Z
+updated_at: 2026-11-04T17:14:29.600Z
 started_at: 2026-11-03T21:07:03.476Z
+closed_at: 2026-11-04T17:14:29.600Z
+close_reason: "Scoped implementation independently reviewed and tested; owning feature PRs are actually merged. Final main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9 includes account fix https://github.com/jlevy/metabrowser/pull/297 and documentation https://github.com/jlevy/metabrowser/pull/298, with final manual acceptance and per-issue qualifications checked. Individual source, test, review and merge evidence: ACTION-PLAN.json SHA-256 d0867a696ee055cc27911e83c4f70744b419a3ca4a7a1218f0eeaf419dc37589. Future scope and historical dependency relationships remain open or preserved as recorded."
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes

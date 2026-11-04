@@ -5,8 +5,8 @@ title: "git: wire models and runtime validators"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-06-git-graph-view.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-06-git-graph-view.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzctrph2jcrdp5v7f91ga2a6
 parent_id: is-01kzctqt5s7te6w75jm5pvg6g7
 created_at: 2026-08-07T00:42:50.736Z
-updated_at: 2026-08-07T01:29:02.973Z
+updated_at: 2026-11-04T17:14:17.845Z
 closed_at: 2026-08-07T01:29:02.973Z
 close_reason: null
 ---

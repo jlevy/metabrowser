@@ -5,7 +5,7 @@ title: "PullFileList: job, routes, and bounds"
 kind: task
 status: in_progress
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -19,7 +19,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:40:45.617Z
-updated_at: 2026-11-03T04:31:40.359Z
+updated_at: 2026-11-04T17:18:18.039Z
 started_at: 2026-11-03T03:58:48.242Z
 ---
 One gh request per 100 files, the patch dropped, a cut list said honestly, freshness from the row's updated_at, GET pull-files and POST pull-files-refresh, and goldens. Needs no Git, proven on a source with no store.
@@ -32,3 +32,7 @@ One gh request per 100 files, the patch dropped, a cut list said honestly, fresh
 
 
 2026-11-03 (later): 7de06f9d weighs a partial list by rows, so a comparison list is never replaced by GitHub page 1. Against #284 (f7cf3464): the local source already calls the manifest half of the split, GitDiffSource.resolve and .manifest on a store GitLocation, whose signatures are unchanged there and whose store reads inherit STORE_READ_POLICY attribute isolation; direct policy on the record merge base, so no base_uncertain; any DiffSourceError/GitError (commits_unavailable, lender_missing) falls through to GitHub. Not shared: the diff plugin private _COMPARISONS cache (mb-w5rc). Branch head a84968ab, make test passed.
+
+2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
+
+The bounded incremental file-list job, routes and tests are merged, including the progressive-publication account guard from PR #297. Retain the unimplemented expected-count mb-egnj and shared kept-manifest mb-w5rc follow-ups. Keep this partial-scope parent open; current row/page counts do not claim an expected total.

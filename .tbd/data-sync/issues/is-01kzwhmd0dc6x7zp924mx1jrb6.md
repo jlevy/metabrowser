@@ -5,8 +5,8 @@ title: Build the shortcut registry and binding presentation system
 kind: feature
 status: closed
 priority: 1
-version: 13
-spec_path: docs/project/specs/active/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
+version: 14
+spec_path: docs/project/specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
 labels: []
 dependencies:
   - type: blocks
@@ -21,7 +21,7 @@ dependencies:
     target: is-01kzwmpf6yhydjd4btqdz0gpd4
 parent_id: is-01kzwhmcj1b9fngz4nj21p1p7e
 created_at: 2026-08-13T03:11:11.884Z
-updated_at: 2026-08-13T05:27:59.175Z
+updated_at: 2026-11-04T17:07:16.056Z
 closed_at: 2026-08-13T05:27:59.174Z
 close_reason: Implemented and verified the shared shortcut registry, canonical binding presentation, scoped dispatch, validation, and strict global types.
 ---

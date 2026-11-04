@@ -5,13 +5,13 @@ title: "Bugbot R3-1: viewport reserve must measure the status line"
 kind: task
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels: []
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-07-23T22:32:40.239Z
-updated_at: 2026-07-23T22:45:15.719Z
+updated_at: 2026-11-04T17:07:22.868Z
 closed_at: 2026-07-23T22:45:15.719Z
 close_reason: "Viewport reserve now measures the caption height (relayout: caption -> size -> measure); live-verified pane does not scroll and caption fully visible."
 ---

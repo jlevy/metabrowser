@@ -5,7 +5,7 @@ title: Load PR catalog progressively with accurate repository totals and lazy de
 kind: feature
 status: in_progress
 priority: 1
-version: 24
+version: 25
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -33,7 +33,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-03T20:59:41.464Z
-updated_at: 2026-11-04T04:08:37.118Z
+updated_at: 2026-11-04T17:18:16.482Z
 started_at: 2026-11-03T21:00:05.436Z
 ---
 Owner requests incremental/resumable automatic prefetch of the lightweight catalog for all repository PRs, with exact repository/filter totals. Initially show up to500 and expand the display with Fetch more. Fetch full PR description/conversation/reviews/checks only on demand or a small nearby prefetch window; derive diffs from fetched Git objects, audit actual payload sizes and avoid repeated full diff transfers. Filters Open | Closed | All, defaultOpen. Bold numeric status with repository name and Showing last500 when partial. Align Conversation/Files changed tabs with the content column at wide and narrow widths. Preserve cache-only GETs, account/rate/fair scheduling, keyboard/history/visibility ownership and main/linked checkout vsmanaged URL workflows. No compatibility aliases; forward-only childPR above288; no merge.
@@ -51,3 +51,7 @@ Catalog jobs now do one initial account check and validate each GraphQL page vie
 Remaining delivery gates: final full verify; exact-wheel eight public live tests, primary/dependency Chrome acceptance and a standard cold/warm/revalidation diagnostic; normal atomic push with quality hook; three chained PRs appended to native stack286, published reviews and current CI; global CLI replacement and detached owner-server restarts; final bead closure and issues-only sync. Keep owner-merge parents and low followups mb-0cr3/mb-dpvu open. Never merge or rewrite history; never name the private test repository publicly.
 
 2026-11-04 UTC: a78ad4c5 completed normal make verify (4696 Python passed, 9 expected skips, 373 transcripts; audit/types/lint/dist/installed smoke passed). Exact noneditable wheel SHA256 5723628bc0d495d8ec68ce2e2f175a528116eca1fb44c174a270625a18b4ff67 passed 8 public live tests, 51 primary Chrome actions, 71 dependency actions and standard 5000-row cold/warm/restart/incremental diagnostic. These are completed gates at a78, not coverage of later source. Two distinct retained ResizeObserver records and automatic/canceled network requests are classified in durable report; no zero-error or comparative speed claim. Installed global CLI and owner8863/8864 now run verifieda78 with no external-browser launch. Owner subsequently requested optional native-stack UI, loading skeletons and consistent number/username/branch typography in new fourth stacked PR, tracked mb-5m05 with mb-50g8/mb-oa9b/mb-zh44/mb-kycf. Fourth layer currently implementing and requires independent review/new committed gate/new finalwheel. No new branches pushed/PRs opened yet. All old14heads unchanged; no PR merged/history rewritten.
+
+2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
+
+The progressive catalog, exact totals, Open/Closed/All controls, native-stack UI, loading skeletons and design follow-ups are reviewed, merged and accepted. The earlier unpushed, still-implementing, final coordinator-gate and global-installation statements are historical; those feature-landing technical gates are complete. Keep this broader parent open for discarded fallback patch payload mb-0cr3 and historical-row reconciliation mb-dpvu. Remaining bookkeeping is distinct from completed technical acceptance.

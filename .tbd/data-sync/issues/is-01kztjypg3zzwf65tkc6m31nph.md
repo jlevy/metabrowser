@@ -5,13 +5,13 @@ title: Keep the root summary pending until its inventory snapshot is complete
 kind: bug
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md
 labels: []
 dependencies: []
 parent_id: is-01kzrtbtsh9k6p8x84rta84y4p
 created_at: 2026-08-12T08:55:48.991Z
-updated_at: 2026-08-12T09:04:54.406Z
+updated_at: 2026-11-04T17:07:11.417Z
 closed_at: 2026-08-12T09:04:54.406Z
 close_reason: Implemented with regression coverage; full make verify passed on 2026-08-12.
 ---

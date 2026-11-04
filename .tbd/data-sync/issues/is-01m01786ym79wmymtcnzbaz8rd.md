@@ -5,15 +5,15 @@ title: Unify folder totals and type rollups into one Files section
 kind: feature
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels:
   - browser
   - design-system
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-08-14T22:45:58.867Z
-updated_at: 2026-08-14T23:04:40.630Z
+updated_at: 2026-11-04T17:07:22.868Z
 closed_at: 2026-08-14T23:04:40.629Z
 close_reason: Implemented one collapsible Files section with a single Files/Bytes metric column, fixed Total and Ignored context, scope-only Show ignored behavior, shared Treemap controls, current design documentation, TDD coverage, live browser validation, and a green make verify gate.
 ---

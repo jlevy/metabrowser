@@ -5,13 +5,13 @@ title: "Navigation equivalence: history semantics for folder zooms"
 kind: task
 status: closed
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels: []
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-07-20T16:51:38.962Z
-updated_at: 2026-07-21T02:01:48.628Z
+updated_at: 2026-11-04T17:07:22.868Z
 closed_at: 2026-07-21T02:01:48.627Z
 close_reason: "Implemented with review finding R4: commitRoute push/replace semantics, popstate routing, Back/Forward retrace folder zooms — verified live; spec checkbox ticked"
 ---

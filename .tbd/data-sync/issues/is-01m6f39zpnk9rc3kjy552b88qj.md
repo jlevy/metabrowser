@@ -5,7 +5,7 @@ title: "Step 4: changed files in a row, expandable like a folder"
 kind: feature
 status: in_progress
 priority: 1
-version: 15
+version: 16
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: claude-code@spud10
 labels: []
@@ -22,7 +22,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:40:35.668Z
-updated_at: 2026-11-03T08:09:00.754Z
+updated_at: 2026-11-04T17:18:17.254Z
 started_at: 2026-11-03T06:46:31.128Z
 ---
 Delivery step 4, added 2026-11-02. A row is a container: it expands to its changed files as a tree using the Files tree's row contract, from one gh request per 100 files with no Git. File rows open /pull/<n>/files/<path>. See the plan's Changed Files in a Row.
@@ -52,3 +52,7 @@ SURPRISING: Safari limits replaceState, so a held key must not replace per step:
 2026-11-02: the performance study has reported (exp-040 on origin/claude/v012-pr-review-perf). The gate on the tree's shape and keyboard is lifted; jump-scrolling waits for the scrollToFile contract (mb-zx9q). Binding: build the tree from a file list and never from hydrated documents. The plan's gh pulls/<n>/files list satisfies this and needs no Git. A windowed list is likely needed past a few hundred files, and the tree must be bounded or virtualized at 1,183 rows.
 
 2026-11-02: GATE. Do not fix this step's data shape before the large-pull-request performance study on branch claude/v012-pr-review-perf reports; the other session will message its result. It may recommend splitting the manifest from the patches, virtualizing, and a changed-files list, which overlaps this tree. MAX_HYDRATED_FILES and MAX_MANIFEST_FILES bear on it. Stress case: 1,183 files, +281,131 lines.
+
+2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
+
+The changed-file row tree, named-file route and keyboard/current-file feedback are implemented, reviewed and merged. The older never-rendered and unfinished navigation statements are historical. Keep this partial-scope parent open: mb-egnj expected N-of-M counts and mb-w5rc shared kept-manifest access remain unimplemented; broader rendering budgets are not discharged by this note.

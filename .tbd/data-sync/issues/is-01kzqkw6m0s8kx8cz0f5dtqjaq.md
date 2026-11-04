@@ -5,14 +5,14 @@ title: "PR 28 review R12: filtered tally goes stale when type or size changes"
 kind: bug
 status: closed
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md
 labels:
   - ui
 dependencies: []
 parent_id: is-01kzqkvjhnr72wwk0cz3pmq7zp
 created_at: 2026-08-11T05:14:12.479Z
-updated_at: 2026-08-11T05:26:27.976Z
+updated_at: 2026-11-04T17:07:09.291Z
 closed_at: 2026-08-11T05:26:27.976Z
 close_reason: Filtered tally recomputed per pass, cache removed. Verified in-browser; fixed in b37c6dd.
 ---

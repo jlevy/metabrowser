@@ -5,8 +5,8 @@ title: Parity table and devtools/check_parity.py
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01m0jsxgty51qvw61s6sfwv688
 parent_id: is-01m0jsvvcqw7knvxbaq4sn6ddj
 created_at: 2026-08-21T18:38:48.803Z
-updated_at: 2026-08-28T07:48:15.100Z
+updated_at: 2026-11-04T17:07:28.508Z
 closed_at: 2026-08-28T07:48:15.090Z
 close_reason: check_parity.py enforces the parity table in make lint/lint-check with 8 tests covering each failure mode; the rule is in AGENTS.md and its reasoning in docs/development.md. Table starts honest at 2 covered, 20 gap, 2 exempt.
 resolution: null

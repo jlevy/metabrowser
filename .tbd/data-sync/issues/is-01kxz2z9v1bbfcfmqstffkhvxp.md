@@ -3,10 +3,10 @@ type: is
 id: is-01kxz2z9v1bbfcfmqstffkhvxp
 title: Folder views and treemap overview
 kind: epic
-status: open
+status: closed
 priority: 1
-version: 65
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 67
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels: []
 dependencies: []
 child_order_hints:
@@ -72,7 +72,11 @@ child_order_hints:
   - is-01m0k536dmsjghcf1hs38rv2gz
   - is-01m0k536rmz4gptv9bzhftagk1
 created_at: 2026-07-20T06:21:20.085Z
-updated_at: 2026-08-21T21:54:37.460Z
+updated_at: 2026-11-04T17:21:02.436Z
+closed_at: 2026-11-04T17:21:02.435Z
+close_reason: Scoped folder framework, rollup data plane and Treemap delivered; all nine0 descendants are closed, source and done plan verified. Completed against actual final main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9; final independent integration review and all nine main CI jobs passed. Original evidence retains its execution pins; genuine future and release scope remains separate.
+resolution: null
+duplicate_of: null
 extensions:
   linear:
     id: 4dd009a3-2c8f-4b0e-9db5-5c488fa328dc

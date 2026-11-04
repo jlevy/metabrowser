@@ -3,10 +3,10 @@ type: is
 id: is-01m0k536dmsjghcf1hs38rv2gz
 title: Say which population the type distribution counts
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -14,8 +14,12 @@ parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 hold: null
 hold_until: null
 created_at: 2026-08-21T21:54:37.107Z
-updated_at: 2026-11-01T17:59:53.529Z
+updated_at: 2026-11-04T17:14:29.837Z
 started_at: 2026-11-01T16:05:49.733Z
+closed_at: 2026-11-04T17:14:29.837Z
+close_reason: "Scoped implementation independently reviewed and tested; owning feature PRs are actually merged. Final main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9 includes account fix https://github.com/jlevy/metabrowser/pull/297 and documentation https://github.com/jlevy/metabrowser/pull/298, with final manual acceptance and per-issue qualifications checked. Individual source, test, review and merge evidence: ACTION-PLAN.json SHA-256 d0867a696ee055cc27911e83c4f70744b419a3ca4a7a1218f0eeaf419dc37589. Future scope and historical dependency relationships remain open or preserved as recorded."
+resolution: null
+duplicate_of: null
 ---
 The type distribution in File Overview counts against a population the reader has to infer, and two people in one session inferred it wrong.
 

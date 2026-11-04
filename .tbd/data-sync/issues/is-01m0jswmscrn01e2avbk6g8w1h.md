@@ -5,8 +5,8 @@ title: "metab --api <route>: any data route through the real request stack"
 kind: feature
 status: closed
 priority: 1
-version: 11
-spec_path: docs/project/specs/active/plan-2026-08-21-cli-parity-and-golden-coverage.md
+version: 12
+spec_path: docs/project/specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md
 labels: []
 dependencies:
   - type: blocks
@@ -29,7 +29,7 @@ dependencies:
     target: is-01kzsb4jzq5a37evdz4bk0dqg4
 parent_id: is-01m0jsvvcqw7knvxbaq4sn6ddj
 created_at: 2026-08-21T18:38:48.107Z
-updated_at: 2026-08-28T06:59:43.100Z
+updated_at: 2026-11-04T17:07:28.508Z
 closed_at: 2026-08-28T06:59:43.087Z
 close_reason: metab --api ROUTE ships with JSON/YAML rendering, POST via --data, query-string passthrough, normalized envelopes, and honest exit codes. Pinned by tests/golden/cli-api.tryscript.md, verified deterministic across consecutive runs.
 resolution: null

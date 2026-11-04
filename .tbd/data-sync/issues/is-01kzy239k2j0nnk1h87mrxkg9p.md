@@ -5,15 +5,15 @@ title: "Treemap hierarchy: folders and files with shared file-type colors"
 kind: feature
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels:
   - ui
   - treemap
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-08-13T17:18:11.553Z
-updated_at: 2026-08-13T18:12:40.816Z
+updated_at: 2026-11-04T17:07:22.868Z
 closed_at: 2026-08-13T18:12:40.815Z
 close_reason: Implemented hierarchy-only folder/file layout with shared Overview file-type palette mapping and neutral remainder behavior.
 ---

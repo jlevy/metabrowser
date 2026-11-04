@@ -5,15 +5,15 @@ title: Optionally mirror extension and size filters upstream
 kind: task
 status: closed
 priority: 3
-version: 3
-spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md
 labels:
   - ui
   - backend
 dependencies: []
 parent_id: is-01kzp82ktssqmf4fhm8sxmvb6p
 created_at: 2026-08-10T23:11:22.545Z
-updated_at: 2026-11-01T16:21:20.547Z
+updated_at: 2026-11-04T16:59:26.272Z
 closed_at: 2026-11-01T16:21:20.546Z
 close_reason: /api/tree takes types and min_size (server.py on main, near line 1944).
 resolution: null

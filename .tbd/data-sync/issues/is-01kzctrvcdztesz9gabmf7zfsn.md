@@ -5,8 +5,8 @@ title: "git: /api/git/ route collection"
 kind: task
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-06-git-graph-view.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-06-git-graph-view.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzctsqjdfn84ykr7cr4hzhxm
 parent_id: is-01kzctqt5s7te6w75jm5pvg6g7
 created_at: 2026-08-07T00:43:03.948Z
-updated_at: 2026-08-07T01:29:03.000Z
+updated_at: 2026-11-04T17:14:17.845Z
 closed_at: 2026-08-07T01:29:03.000Z
 close_reason: null
 ---

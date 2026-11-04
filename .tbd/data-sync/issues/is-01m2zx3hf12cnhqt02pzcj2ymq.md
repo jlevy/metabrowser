@@ -5,14 +5,14 @@ title: "HTML preview: offer the page as a full browser tab, outside the frame"
 kind: feature
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-06-html-rendering-and-trust-model.md
 labels:
   - release:v0.11.0
 dependencies: []
 parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 created_at: 2026-09-20T17:16:31.071Z
-updated_at: 2026-09-20T17:39:21.181Z
+updated_at: 2026-11-04T17:14:19.317Z
 closed_at: 2026-09-20T17:39:21.179Z
 close_reason: Merged to main as 269320b2 (PR 220). Plugin-local bar with a plain anchor to the same /raw/<path> the frame uses; session test, parity row html.full-page-escape, golden, docs, CHANGELOG. Full pre-push gate green on macOS and all seven CI checks green; user confirmed the full-page tab in a real browser.
 resolution: null

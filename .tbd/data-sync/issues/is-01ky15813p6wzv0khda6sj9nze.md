@@ -5,13 +5,13 @@ title: "PR13/R6: metric-aware labels and honest interactive semantics"
 kind: bug
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels: []
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-07-21T01:39:32.085Z
-updated_at: 2026-07-21T02:01:48.306Z
+updated_at: 2026-11-04T17:07:22.868Z
 closed_at: 2026-07-21T02:01:48.306Z
 close_reason: Fixed in the R1-R8 review-response commit (metric-aware aria, actionable-only roles, label-strip buttons, sublabel suppression); geometric arrow-key neighbor selection deferred as polish under mb-ga98's remaining scope
 ---

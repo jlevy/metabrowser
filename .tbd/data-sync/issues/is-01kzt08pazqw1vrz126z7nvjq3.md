@@ -5,13 +5,13 @@ title: "PR #24 review R18: tab switch leaves an orphaned preview spinner"
 kind: bug
 status: closed
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-06-git-graph-view.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-06-git-graph-view.md
 labels: []
 dependencies: []
 parent_id: is-01kzctqt5s7te6w75jm5pvg6g7
 created_at: 2026-08-12T03:29:13.566Z
-updated_at: 2026-08-12T03:29:14.509Z
+updated_at: 2026-11-04T17:14:17.845Z
 closed_at: 2026-08-12T03:29:14.508Z
 close_reason: Fixed on feat/git-graph-view (59f99ba).
 ---

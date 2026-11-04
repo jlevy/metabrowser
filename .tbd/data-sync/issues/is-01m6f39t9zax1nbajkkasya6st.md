@@ -5,7 +5,7 @@ title: "Spec: GitHub Pulls tab for mirrors and local checkouts"
 kind: epic
 status: in_progress
 priority: 1
-version: 19
+version: 20
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies: []
@@ -23,7 +23,7 @@ child_order_hints:
   - is-01m6hp3w66pyvqttk9w3hbmj70
   - is-01m6hx4w87z6r8ndnbt57avr53
 created_at: 2026-11-02T21:40:30.142Z
-updated_at: 2026-11-03T23:50:40.131Z
+updated_at: 2026-11-04T17:18:15.705Z
 ---
 Every pull request of a GitHub repository in a Pulls tab beside Files and Git, newest first, with GitHub-style state icons. Each row expands in place to its changed files as a tree, like a folder. The pane shows this tab at a pull request's address. Works on a mirror and on an existing checkout, with nothing written to the user's repository. Delivered as a native stack above the v0.12 stack. See the plan's Delivery.
 
@@ -40,3 +40,7 @@ Earlier chronological notes (superseded where they describe pending final gates)
 2026-11-03 status: the stack is native stack 286 (#279 → #281 → #285), based on claude/v012-overlay-acquisition, the top of stack 278. Step 1 (#279, head 1cb84734) and step 2 (#281, head 5d5546fc) are implemented, reviewed, addressed and green, and wait for the owner's merge decision. Step 3 (#285, head 766a4c3b) is green, with its round-2 review findings being addressed (mb-7d12). Step 4 (claude/pulls-4-files): data half done, second half in progress. Step 5 (claude/pulls-5-checkout): in progress. Step 6: plan revised to the overlay of the served checkout, not started. Strong-tier pass owed on reviews run on Opus: mb-wlxn.
 
 2026-11-03 closure-scope clarification: retain this parent open while its explicit owner-merge conditions remain. mb-lnkl says its children stay in progress until the owner merges; mb-4nju says its children close at merge. Those rules apply to their own descendant chains, not automatically to siblings. mb-cbak and mb-r50o are direct children here; mb-zx9q is under mb-q3jt; mb-5bqy is under mb-r50o. None is a descendant of mb-lnkl or mb-4nju, and no equivalent merge-only rule was found in their parent chains. Their completed implementation/review work can be closed by the coordinator after final readiness gates without claiming that the stack has merged. mb-wlxn now has completed strong-review evidence; the old owed-review and unfinished-WIP notes are historical. No status, dependency, source, stack or remote state is changed by this clarification.
+
+2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
+
+The implemented Pulls list, direct opening, changed-file tree, checkout support and overlay integration are reviewed and merged. The old step-4/step-5 WIP and owed strong-review statements are historical. Keep this parent open for the unimplemented expected-count mb-egnj and shared-manifest mb-w5rc descendants through mb-ywt7/mb-q3jt.

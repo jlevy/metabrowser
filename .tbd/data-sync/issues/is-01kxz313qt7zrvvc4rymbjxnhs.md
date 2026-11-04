@@ -5,13 +5,13 @@ title: "P3: budgets, design review, and docs"
 kind: task
 status: closed
 priority: 2
-version: 4
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels: []
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-07-20T06:22:19.386Z
-updated_at: 2026-07-23T22:14:31.910Z
+updated_at: 2026-11-04T17:07:22.868Z
 closed_at: 2026-07-23T22:14:31.909Z
 close_reason: "All three items done: (1) integration test test_rollup_reflects_real_fs_mutation_through_fs_change covers real mutation -> watcher -> fs.change (with root-scope ancestor upserts) -> rollup refresh, both add and delete; (2) .tm-viewport height now measured at mount/window-resize (clamped 280-900px, calc fallback retained, dispose detaches listener), vm-tested; (3) design-review checklist run via browser probe in both themes and both color modes: age text ramp darkened to clear WCAG AA on all washes and given its missing dark variants, two-tone focus ring, sub-label opacity fade, print hides toolbar, reduced motion verified, folder-header summary gap fixed. make verify green; 14/14 live regression checks pass."
 ---

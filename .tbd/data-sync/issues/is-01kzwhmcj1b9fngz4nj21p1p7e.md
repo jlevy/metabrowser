@@ -5,8 +5,8 @@ title: Contextual keyboard help and tree navigation
 kind: epic
 status: closed
 priority: 1
-version: 24
-spec_path: docs/project/specs/active/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
+version: 25
+spec_path: docs/project/specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
 labels: []
 dependencies: []
 child_order_hints:
@@ -21,7 +21,7 @@ child_order_hints:
   - is-01kzwzn505z94t1zdr90g50jf7
   - is-01kzwzn5nthdfwhgdhjfbd3yn9
 created_at: 2026-08-13T03:11:11.425Z
-updated_at: 2026-08-13T07:23:50.742Z
+updated_at: 2026-11-04T17:07:15.458Z
 closed_at: 2026-08-13T07:23:50.741Z
 close_reason: All implementation, browser-validation, and review-follow-up beads are complete; the full release handoff gate passes.
 ---

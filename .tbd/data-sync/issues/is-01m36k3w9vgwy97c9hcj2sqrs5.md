@@ -5,7 +5,7 @@ title: "v0.12 thin mirror: GitHub-web-like browsing from a local git/gh mirror"
 kind: epic
 status: open
 priority: 1
-version: 55
+version: 56
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 labels:
   - release:v0.12.0
@@ -67,6 +67,12 @@ child_order_hints:
   - is-01m3zcr48ne1mv1emvqf5rg3mq
   - is-01m3zcr4trbfndm6fp8jr10q8d
 created_at: 2026-09-23T07:36:37.434Z
-updated_at: 2026-10-02T22:46:22.291Z
+updated_at: 2026-11-04T17:18:28.139Z
 ---
 Epic for the 2026-09-23 thin-mirror plan (PR #227). Metabrowser is a thin wrapper: full bare mirrors updated with git fetch, no invented refs, gc off, views pinned by commit ID, gh as credential helper and API client, PR data as validated JSON records, seamless background refresh. Delivery: Design, Simplify, URL open, PR data, PR view; each a stacked PR with independent review and green CI.
+
+## Notes
+
+2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
+
+The implemented thin-mirror core, URL/PR browsing, Pulls catalog, direct PR pages, existing-checkout workflow and bounded overlay integration are reviewed and merged. Keep this broad epic open for its genuinely unfinished testing, math, invisible-character, rehearsal/differential and harness descendants. Do not infer that feature-landing acceptance completes every descendant or authorizes publication.

@@ -5,13 +5,13 @@ title: "git: browser tests for layout, panel, and end-to-end flow"
 kind: task
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-06-git-graph-view.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-06-git-graph-view.md
 labels: []
 dependencies: []
 parent_id: is-01kzctqt5s7te6w75jm5pvg6g7
 created_at: 2026-08-07T00:43:42.605Z
-updated_at: 2026-08-07T01:29:03.049Z
+updated_at: 2026-11-04T17:14:17.845Z
 closed_at: 2026-08-07T01:29:03.049Z
 close_reason: null
 ---

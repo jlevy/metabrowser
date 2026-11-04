@@ -5,13 +5,13 @@ title: Bugbot R4 dispositions
 kind: task
 status: closed
 priority: 2
-version: 2
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels: []
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-07-23T22:51:53.114Z
-updated_at: 2026-07-23T22:51:54.188Z
+updated_at: 2026-11-04T17:07:22.868Z
 closed_at: 2026-07-23T22:51:54.188Z
 close_reason: Fixes landed and pushed; rebuttal and deferral recorded in the PR disposition comment.
 ---

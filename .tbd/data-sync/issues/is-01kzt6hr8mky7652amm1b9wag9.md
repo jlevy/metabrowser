@@ -5,12 +5,12 @@ title: Show file-count tallies for every age filter
 kind: feature
 status: closed
 priority: 2
-version: 3
-spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md
 labels: []
 dependencies: []
 created_at: 2026-08-12T05:19:01.906Z
-updated_at: 2026-08-12T05:57:41.090Z
+updated_at: 2026-11-04T17:07:14.096Z
 closed_at: 2026-08-12T05:57:41.090Z
 close_reason: "Implemented in 1280ff2: every finite age filter shows a cumulative index-wide tally using the file-type count style, with Show ignored behavior, refresh-on-open, tests, documentation, and visual verification."
 ---

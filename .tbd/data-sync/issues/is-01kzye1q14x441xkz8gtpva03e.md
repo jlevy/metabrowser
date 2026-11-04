@@ -5,8 +5,8 @@ title: Fix Treemap Bytes and Files metric switching
 kind: bug
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels:
   - ui
   - treemap
@@ -14,7 +14,7 @@ labels:
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-08-13T20:47:02.692Z
-updated_at: 2026-08-13T20:55:38.700Z
+updated_at: 2026-11-04T17:07:22.868Z
 closed_at: 2026-08-13T20:55:38.699Z
 close_reason: Fixed Treemap metric selection feedback and nested-container hover layering with focused regression coverage, live-browser validation, and updated design and architecture contracts.
 ---

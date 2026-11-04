@@ -5,13 +5,13 @@ title: Keep navigation tally status aligned with its inventory snapshot
 kind: bug
 status: closed
 priority: 1
-version: 4
-spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
+version: 5
+spec_path: docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md
 labels: []
 dependencies: []
 parent_id: is-01kzrtbtsh9k6p8x84rta84y4p
 created_at: 2026-08-12T08:51:32.885Z
-updated_at: 2026-08-12T09:04:54.399Z
+updated_at: 2026-11-04T17:07:10.078Z
 closed_at: 2026-08-12T09:04:54.399Z
 close_reason: Implemented with regression coverage; full make verify passed on 2026-08-12.
 ---

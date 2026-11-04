@@ -5,13 +5,13 @@ title: Validate keyboard Help and navigation end to end
 kind: task
 status: closed
 priority: 1
-version: 8
-spec_path: docs/project/specs/active/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
+version: 9
+spec_path: docs/project/specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
 labels: []
 dependencies: []
 parent_id: is-01kzwhmcj1b9fngz4nj21p1p7e
 created_at: 2026-08-13T03:11:13.039Z
-updated_at: 2026-08-13T07:01:30.835Z
+updated_at: 2026-11-04T17:07:16.056Z
 closed_at: 2026-08-13T07:01:30.835Z
 close_reason: Completed DOM, HTML, package, distribution, documentation, real-browser, public-hygiene, audit, and full verification gates. make verify passes 933 pytest tests and 30 golden scenarios.
 ---

@@ -5,15 +5,15 @@ title: Tracked-versus-ignored nav tally
 kind: feature
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-08-09-nav-filter-controls.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-09-nav-filter-controls.md
 labels:
   - ui
   - backend
 dependencies: []
 parent_id: is-01kzp82ktssqmf4fhm8sxmvb6p
 created_at: 2026-08-10T16:29:07.001Z
-updated_at: 2026-08-10T16:29:19.942Z
+updated_at: 2026-11-04T16:59:26.272Z
 closed_at: 2026-08-10T16:29:19.941Z
 close_reason: Implemented on feat/nav-filter-controls; make verify green at 813 tests.
 ---

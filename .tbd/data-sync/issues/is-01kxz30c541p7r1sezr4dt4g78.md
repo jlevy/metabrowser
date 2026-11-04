@@ -5,15 +5,15 @@ title: "P2: /api/rollup route, wire models, settings"
 kind: task
 status: closed
 priority: 1
-version: 3
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 4
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kxz30cg1b87r31kc0b9zd27c
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-07-20T06:21:55.236Z
-updated_at: 2026-07-20T07:30:25.387Z
+updated_at: 2026-11-04T17:07:22.868Z
 closed_at: 2026-07-20T07:30:25.387Z
 close_reason: "Implemented in the full spike (commits efccc10, e98f8a1, edea91c): folder envelope + rollup data plane + shell wiring + SDK surface + layout module + treemap renderer, all tested (745-test suite and make verify green)"
 ---

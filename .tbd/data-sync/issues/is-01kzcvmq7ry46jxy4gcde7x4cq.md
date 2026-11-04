@@ -5,8 +5,8 @@ title: "HTML P1: sandbox /raw responses and require same-origin proof on /api"
 kind: task
 status: closed
 priority: 1
-version: 14
-spec_path: docs/project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md
+version: 15
+spec_path: docs/project/specs/done/plan-2026-08-06-html-rendering-and-trust-model.md
 delegate: unknown@cursor
 labels:
   - security
@@ -22,7 +22,7 @@ parent_id: is-01kzcvm6cpe5b8sb9b9n3gb16g
 hold: null
 hold_until: null
 created_at: 2026-08-07T00:58:17.207Z
-updated_at: 2026-09-20T05:50:32.655Z
+updated_at: 2026-11-04T17:14:19.317Z
 started_at: 2026-09-18T04:04:15.120Z
 closed_at: 2026-09-20T05:50:32.653Z
 close_reason: "Implemented on survivor draft #209 https://github.com/jlevy/metabrowser/pull/209 (parallel to stack #218). Publication review remains mb-d658. Nothing merged to main."

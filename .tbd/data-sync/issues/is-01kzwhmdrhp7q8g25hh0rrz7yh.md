@@ -5,15 +5,15 @@ title: Integrate ARIA tree semantics and focus repair through app render paths
 kind: feature
 status: closed
 priority: 1
-version: 11
-spec_path: docs/project/specs/active/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
+version: 12
+spec_path: docs/project/specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
 labels: []
 dependencies:
   - type: blocks
     target: is-01kzwhme4gyzm3akfkd83vh2sw
 parent_id: is-01kzwhmcj1b9fngz4nj21p1p7e
 created_at: 2026-08-13T03:11:12.656Z
-updated_at: 2026-08-13T06:29:01.063Z
+updated_at: 2026-11-04T17:07:16.056Z
 closed_at: 2026-08-13T06:29:01.062Z
 close_reason: Integrated one semantic ARIA tree across root, recent, lazy, paginated, and live-rendered rows; unified pointer and keyboard actions; synchronized focus through every mutation path; and added token-based focus treatment. make verify passes with 927 tests.
 ---

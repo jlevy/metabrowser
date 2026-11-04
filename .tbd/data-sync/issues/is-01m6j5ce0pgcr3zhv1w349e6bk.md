@@ -3,9 +3,9 @@ type: is
 id: is-01m6j5ce0pgcr3zhv1w349e6bk
 title: Make branch chips copyable on hover and keyboard focus
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 9
 spec_path: docs/design-system.md
 delegate: claude-code@spud10.local
 labels: []
@@ -18,8 +18,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-04T02:14:36.294Z
-updated_at: 2026-11-04T03:32:50.413Z
+updated_at: 2026-11-04T17:14:30.881Z
 started_at: 2026-11-04T02:28:29.856Z
+closed_at: 2026-11-04T17:14:30.881Z
+close_reason: "Scoped implementation independently reviewed and tested; owning feature PRs are actually merged. Final main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9 includes account fix https://github.com/jlevy/metabrowser/pull/297 and documentation https://github.com/jlevy/metabrowser/pull/298, with final manual acceptance and per-issue qualifications checked. Individual source, test, review and merge evidence: ACTION-PLAN.json SHA-256 d0867a696ee055cc27911e83c4f70744b419a3ca4a7a1218f0eeaf419dc37589. Future scope and historical dependency relationships remain open or preserved as recorded."
+resolution: null
+duplicate_of: null
 ---
 Owner requests a tiny click-to-copy icon when hovering branch names in most locations. Reuse shared branch-chip/copy primitives and existing clipboard ownership/security helpers. Reveal on hover and focus-visible without layout shifts; exact underlying branch/ref text, accessible labels and success feedback, no row navigation on copy. Preserve dropdown/menu semantics and avoid nested interactive controls; use eligible locations or sibling control placement. Audit Git history, PR metadata/list, source selector and other branch surfaces together with mb-12tf. No new clipboard framework or dependency.
 

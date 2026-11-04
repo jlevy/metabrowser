@@ -5,13 +5,13 @@ title: "Bugbot R3-2: route handler must honor the folder marker"
 kind: task
 status: closed
 priority: 1
-version: 2
-spec_path: docs/project/specs/active/plan-2026-07-20-folder-views-and-treemap-overview.md
+version: 3
+spec_path: docs/project/specs/done/plan-2026-08-12-directory-file-type-summary.md
 labels: []
 dependencies: []
 parent_id: is-01kxz2z9v1bbfcfmqstffkhvxp
 created_at: 2026-07-23T22:32:40.664Z
-updated_at: 2026-07-23T22:45:16.061Z
+updated_at: 2026-11-04T17:07:22.868Z
 closed_at: 2026-07-23T22:45:16.060Z
 close_reason: "handleRouteChange compares (path, isDir) vs the last committed route; live-verified a #README.md -> #README.md/ flip re-navigates and normalizes."
 ---

@@ -5,8 +5,8 @@ title: Git graph nav panel and Git API
 kind: epic
 status: closed
 priority: 1
-version: 26
-spec_path: docs/project/specs/active/plan-2026-08-06-git-graph-view.md
+version: 27
+spec_path: docs/project/specs/done/plan-2026-08-06-git-graph-view.md
 labels: []
 dependencies: []
 child_order_hints:
@@ -31,7 +31,7 @@ child_order_hints:
   - is-01kzt08p0xh3yr6aa1j4rkqfm5
   - is-01kzt08pazqw1vrz126z7nvjq3
 created_at: 2026-08-07T00:42:29.944Z
-updated_at: 2026-11-01T16:21:21.585Z
+updated_at: 2026-11-04T17:14:17.269Z
 closed_at: 2026-11-01T16:21:21.583Z
 close_reason: All 20 children are closed with mb-tyqr.
 resolution: null

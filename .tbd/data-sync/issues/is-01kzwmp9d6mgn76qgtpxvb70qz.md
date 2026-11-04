@@ -5,8 +5,8 @@ title: Build Help and contextual navigation hints
 kind: feature
 status: closed
 priority: 1
-version: 10
-spec_path: docs/project/specs/active/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
+version: 11
+spec_path: docs/project/specs/done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md
 labels: []
 dependencies:
   - type: blocks
@@ -15,7 +15,7 @@ dependencies:
     target: is-01kzwhmdrhp7q8g25hh0rrz7yh
 parent_id: is-01kzwhmcj1b9fngz4nj21p1p7e
 created_at: 2026-08-13T04:04:39.461Z
-updated_at: 2026-08-13T05:45:05.687Z
+updated_at: 2026-11-04T17:07:16.056Z
 closed_at: 2026-08-13T05:45:05.685Z
 close_reason: Implemented and verified the registry-driven Help dialog, approved project copy/link, stable actionable and contextual nav hints, shell asset order, application composition, styling, and disposal.
 ---

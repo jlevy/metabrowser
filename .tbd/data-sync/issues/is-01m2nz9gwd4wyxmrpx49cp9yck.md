@@ -5,7 +5,7 @@ title: "GitHub pull requests on an existing checkout: shared records, no writes 
 kind: feature
 status: closed
 priority: 1
-version: 33
+version: 34
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: null
 labels: []
@@ -23,7 +23,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-09-16T20:42:19.915Z
-updated_at: 2026-11-03T20:17:10.154Z
+updated_at: 2026-11-04T17:18:13.350Z
 started_at: 2026-09-16T21:12:28.713Z
 closed_at: 2026-11-03T20:17:10.154Z
 close_reason: "Completed by forward commits in the PR-support stack; independent reviews, rechecks and dispositions are published on the owning PRs. Final integration ea771741211193a387c1771e04df29b5a9698100 passed make verify (4712 Python, 9 expected skips, 373 transcripts), 8 public live tests, installed-wheel Chrome (22 actions, 25 unchanged checkout/Git fingerprints), and all 171 CI jobs across 19 current-head runs on 14 PRs. Final clean review: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . No PR merged."
@@ -68,3 +68,7 @@ SURPRISES. (a) classify_root_argument gives a bare repository URL selection kind
 2026-09-30: deferred by the user's 2026-09-23 decision (thin-mirror plan, Decisions). Not part of v0.12; does not gate mb-n2ro. The design text predates the thin mirror (provider store, auth contexts, leases and SDK panels are retired); re-plan against the thin-mirror plan before starting.
 
 2026-11-03 completion clarification (supersedes the paused handoff status, preserving its history): the approved thin-mirror checkout workflow is implemented through step 6. Existing main and linked checkouts, including subdirectories, use shared PR records and the managed comparison store while retaining the folder source root and pin. The completed CLI/recording/parity/docs and browser evidence replace the earlier half-done/not-run statements. The older provider-store/auth-context design description is historical; the approved thin-mirror plan is the delivered scope. Opening Files changed does not automatically acquire a store. With no_store, the reader explicitly selects Fetch changes to acquire a borrowing overlay; reads do not fetch or write into the checkout. Frozen candidate: 2bd58827700e951c3cd7359efd6fd20bfe33f96d. Supporting validation available to the coordinator includes completed independent source reviews, eight public read-only live GitHub tests, 22 Chrome checks and 25 unchanged checkout/common-Git fingerprints. These are supporting results, not a claim that final gates have finished: exact-head make verify is still running, and the normal push and remote CI remain pending. No PR has been merged. Keep this bead open until the coordinator records the final gates; no closure or sync is performed by this note.
+
+2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
+
+Existing ordinary and linked checkouts now use the landed shared records and managed comparison store while keeping the folder source and avoiding checkout writes. Fetch changes remains an explicit action when no store exists. The earlier unfinished or final-gate-pending statements refer to their dated candidate. Keep this completed existing-checkout scope closed.
