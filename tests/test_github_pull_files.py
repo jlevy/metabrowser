@@ -26,7 +26,8 @@ from uuid import UUID
 
 import pytest
 
-from metabrowser.builtin_plugins.github import pull_files_refresh, pull_list, pull_record
+from metabrowser.builtin_plugins.github import gh_lists, pull_files_refresh, pull_list, pull_record
+from metabrowser.builtin_plugins.github.gh import GhError, GhResponse
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError
 from metabrowser.builtin_plugins.github.pull_files_refresh import refresh_pull_files
 from metabrowser.builtin_plugins.github.pull_files_route import (
@@ -258,7 +259,15 @@ def test_a_first_fill_is_published_page_by_page_and_a_reread_at_the_end(
     assert [
         (len(item.rows), item.complete, item.last_page) if isinstance(item, PullFileList) else item
         for item in seen
-    ] == ["not_cached", "not_cached", (100, False, 3), (200, False, 3), (200, False, 3)]
+    ] == [
+        "not_cached",
+        "not_cached",
+        "not_cached",
+        (100, False, 3),
+        (100, False, 3),
+        (200, False, 3),
+        (200, False, 3),
+    ]
 
     seen.clear()
     second = _refresh(repository, TREE_PULL, _watching(home, TREE_PULL, seen))
@@ -267,6 +276,7 @@ def test_a_first_fill_is_published_page_by_page_and_a_reread_at_the_end(
     assert {item.generation for item in seen if isinstance(item, PullFileList)} == {
         first.generation
     }
+    assert len(seen) == 5
     assert all(isinstance(item, PullFileList) and len(item.rows) == 249 for item in seen)
 
 
@@ -406,6 +416,86 @@ def test_a_retry_after_a_stop_does_not_shrink_what_is_held(
     with pytest.raises(PullDataError):
         _refresh(repository, TREE_PULL, _watching(home, TREE_PULL, seen))
     assert all(isinstance(item, PullFileList) and len(item.rows) == 200 for item in seen)
+
+
+@pytest.mark.parametrize(
+    ("switch_at", "fail_at", "outcome", "fetched"),
+    [
+        (1, None, "account_changed", 0),
+        (2, 3, "account_changed", 100),
+        (None, None, "succeeded", 250),
+        (None, 3, "network_error", 200),
+    ],
+)
+def test_progressive_prefixes_stay_with_the_verified_account(
+    monkeypatch: pytest.MonkeyPatch,
+    repository: ListedRepository,
+    switch_at: int | None,
+    fail_at: int | None,
+    outcome: str,
+    fetched: int,
+) -> None:
+    """A later page failure cannot make an unchecked, mixed-account prefix current."""
+
+    login = "reader-a"
+    account_reads: list[str] = []
+    requests: list[str] = []
+
+    async def active() -> str:
+        account_reads.append(login)
+        return login
+
+    async def response(path: str, *, etag: str | None = None, now: object = None) -> GhResponse:
+        nonlocal login
+        requests.append(path)
+        page = len(requests)
+        assert path == files_page(TREE_PULL, page)
+        if page == switch_at:
+            login = "reader-b"
+        if page == fail_at:
+            raise GhError("the controlled next page is offline", state="network_error")
+        headers = {"etag": f'"{login}-page-{page}"'}
+        if page < 3:
+            headers["link"] = (
+                f"<https://api.github.com/repos/octo/demo/pulls/{TREE_PULL}/files"
+                f'?page={page + 1}>; rel="next"'
+            )
+        rows = [
+            {
+                "filename": f"{login}/page-{page}/{index}.txt",
+                "status": "modified",
+                "additions": 1,
+                "deletions": 0,
+            }
+            for index in range(50 if page == 3 else 100)
+        ]
+        return GhResponse(200, headers, json.dumps(rows).encode())
+
+    monkeypatch.setattr(pull_files_refresh, "active_account", active)
+    monkeypatch.setattr(gh_lists, "gh_api", response)
+    if outcome == "succeeded":
+        _refresh(repository, TREE_PULL)
+    else:
+        with pytest.raises(PullDataError) as caught:
+            _refresh(repository, TREE_PULL)
+        assert caught.value.state == outcome
+    listed = read_pull_files(repository.home, repository.slug, TREE_PULL)
+    envelope = pull_files_envelope(
+        FilesView(TREE_PULL, repository, None, False, None), FilesWindow(TREE_PULL)
+    )
+    last_refresh = envelope["last_refresh"]
+    assert last_refresh is not None and last_refresh["outcome"] == outcome
+    assert envelope["fetched"] == fetched
+    if fetched:
+        assert isinstance(listed, PullFileList) and listed.reader == "gh:reader-a"
+        assert {row.path.split("/")[0] for row in listed.rows} == {"reader-a"}
+        assert all(mark.etag and mark.etag.startswith('"reader-a-') for mark in listed.marks)
+        assert listed.complete is (outcome == "succeeded")
+        assert envelope["state"] == ("stale" if outcome == "account_changed" else "current")
+    else:
+        assert listed == "not_cached" and envelope["state"] == "absent"
+    assert len(requests) == (switch_at if switch_at is not None else 3)
+    assert len(account_reads) <= len(requests) + 1
 
 
 # ── What starts a job ───────────────────────────────────────────

@@ -71,7 +71,9 @@ cloned https://github.com/octo/demo in 0.0 s
 gh api repos/octo/demo --jq .size
 gh auth status
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=1
+gh auth status
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=2
+gh auth status
 gh api repos/octo/demo/pulls/106/files?per_page=100&page=3
 gh auth status
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
@@ -676,7 +678,9 @@ Error: the refresh ended with rate_limited
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/104/files?per_page=100&page=1
+gh auth status
 gh api repos/octo/demo/pulls/104/files?per_page=100&page=2
+gh auth status
 gh api repos/octo/demo/pulls/104/files?per_page=100&page=3
 # metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
 exit: 0
@@ -791,3 +795,4 @@ Error: the refresh ended with cache_unwritable
 --- gh ---
 gh auth status
 gh api repos/octo/demo/pulls/105/files?per_page=100&page=1
+gh auth status
