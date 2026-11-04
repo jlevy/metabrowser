@@ -656,6 +656,21 @@ def test_existing_checkout_source_refuses_unknown_cache_before_writing(
         asyncio.run(checkout_module.claim_source(repository))
     assert refused.value.state == "cache_unwritable"
     assert str(refused.value) == "the repository could not be recorded in the cache"
+
+    from metabrowser.builtin_plugins.github import pull_list_refresh, pull_list_route
+
+    async def no_account() -> str:
+        raise AssertionError("a refused source must not contact gh")
+
+    monkeypatch.setattr(pull_list_refresh, "active_account", no_account)
+    with pytest.raises(PullDataError) as list_refused:
+        asyncio.run(pull_list_refresh.refresh_pull_list(repository, "all"))
+    assert list_refused.value.state == "cache_unwritable"
+    view = pull_list_route.ListView(repository, None, False)
+    envelope = pull_list_route.pull_list_envelope(view, pull_list_route.ListWindow("all"))
+    assert envelope["last_refresh"] is not None
+    assert envelope["last_refresh"]["outcome"] == "cache_unwritable"
+    assert not pull_list_route.refresh_wanted(view, pull_list_route.RefreshRequest("all"))
     assert snapshot(isolated.home) == before
     assert snapshot(config.parent) == config_before
 
