@@ -853,3 +853,33 @@ def test_malformed_saved_reset_does_not_become_a_network_hold(
     listed = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=None, slot=_free))
     assert (listed.listed_from, len(listed.rows)) == ("github", 2)
     assert len(Path(os.environ["FAKE_GH_LOG"]).read_text().splitlines()) == 3
+
+
+def test_memory_only_file_refusal_does_not_mask_a_later_shared_rate_hold(
+    home: Path, repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another process's durable deadline still holds after a local admission refusal."""
+
+    from metabrowser.cache.paths import source_pull_files_refresh
+
+    refused = PullRefreshStamp(
+        outcome="cache_unwritable", at="2026-09-17T12:00:00Z", message="cache refused"
+    )
+    write_files_refresh(home, repository.slug, TREE_PULL, refused, persist=False)
+    relative = source_pull_files_refresh(repository.slug, TREE_PULL)
+    assert not (home / relative).exists()
+    held = PullRefreshStamp(
+        outcome="rate_limited", at="2026-09-17T12:00:00Z", reset_at="2026-09-17T12:05:00Z"
+    )
+    # The canonical disk writer models another process, which has no local memory entry.
+    pull_record.write_refresh_stamp(home, repository.slug, relative, held)
+    assert read_files_refresh(home, repository.slug, TREE_PULL) == held
+    write_files_refresh(home, repository.slug, TREE_PULL, refused, persist=False)
+    remembered = read_files_refresh(home, repository.slug, TREE_PULL)
+    assert remembered is not None and remembered.outcome == "cache_unwritable"
+    assert remembered.reset_at == held.reset_at
+    assert pull_record.read_refresh_stamp(home, relative) == held
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(minutes=6))
+    succeeded = PullRefreshStamp(outcome="succeeded", at="2026-09-17T12:06:00Z")
+    write_files_refresh(home, repository.slug, TREE_PULL, succeeded)
+    assert read_files_refresh(home, repository.slug, TREE_PULL) == succeeded

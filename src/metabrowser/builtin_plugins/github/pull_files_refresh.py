@@ -390,23 +390,28 @@ async def refresh_pull_files(
     time. Raises only :class:`PullDataError`; how it ended is kept beside the list either way.
     """
 
-    # Publish and bind a checkout before using its canonical cache paths.
-    repository = await claim_source(repository)
-    # One identity for the whole refresh, including every progressive page or fallback.
-    generation = uuid4().hex
-    listed = await _from_comparison(repository, number, local, generation) if local else None
-    stamp = await asyncio.to_thread(read_files_refresh, repository.home, repository.slug, number)
-    held = stamp if rate_limit_holds(stamp, now=pull_list.utc_now()) else None
-    # A named comparison can still fail or be truncated. Check at the network
-    # boundary, after trying it, and retain the original hold unchanged.
-    if listed is None and held is not None:
-        raise PullDataError(
-            "rate_limited",
-            held.message or "GitHub's rate limit holds; retry after the reset time",
-            reset_at=held.reset_at,
-        )
     reader: str | None = None
+    held: PullRefreshStamp | None = None
+    source_claimed = False
     try:
+        # Publish and bind a checkout before using its canonical cache paths.
+        repository = await claim_source(repository)
+        source_claimed = True
+        # One identity for the whole refresh, including every progressive page or fallback.
+        generation = uuid4().hex
+        listed = await _from_comparison(repository, number, local, generation) if local else None
+        stamp = await asyncio.to_thread(
+            read_files_refresh, repository.home, repository.slug, number
+        )
+        held = stamp if rate_limit_holds(stamp, now=pull_list.utc_now()) else None
+        # A named comparison can still fail or be truncated. The saved network hold
+        # applies after that local attempt, and is retained unchanged below.
+        if listed is None and held is not None:
+            raise PullDataError(
+                "rate_limited",
+                held.message or "GitHub's rate limit holds; retry after the reset time",
+                reset_at=held.reset_at,
+            )
         if listed is not None:
             await _write(repository, listed)
         else:
@@ -415,6 +420,9 @@ async def refresh_pull_files(
             reader = f"gh:{login}"
             listed = await _from_github(repository, number, login, slot, generation)
     except PullDataError as exc:
+        if held is not None and exc.state == "rate_limited":
+            # This attempt stopped at the already saved hold, before any provider request.
+            raise
         stamp = PullRefreshStamp(
             outcome=exc.state,
             message=str(exc)[:_MESSAGE_CHARS],
@@ -423,7 +431,12 @@ async def refresh_pull_files(
             reader=reader,
         )
         await asyncio.to_thread(
-            write_files_refresh, repository.home, repository.slug, number, stamp
+            write_files_refresh,
+            repository.home,
+            repository.slug,
+            number,
+            stamp,
+            persist=source_claimed,
         )
         raise
     # Local success changes the latest outcome, but says nothing about when GitHub
