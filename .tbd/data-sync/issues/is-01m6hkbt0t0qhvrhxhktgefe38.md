@@ -5,7 +5,7 @@ title: Load PR catalog progressively with accurate repository totals and lazy de
 kind: feature
 status: in_progress
 priority: 1
-version: 22
+version: 23
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -32,7 +32,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-03T20:59:41.464Z
-updated_at: 2026-11-03T23:14:00.548Z
+updated_at: 2026-11-04T00:16:47.117Z
 started_at: 2026-11-03T21:00:05.436Z
 ---
 Owner requests incremental/resumable automatic prefetch of the lightweight catalog for all repository PRs, with exact repository/filter totals. Initially show up to500 and expand the display with Fetch more. Fetch full PR description/conversation/reviews/checks only on demand or a small nearby prefetch window; derive diffs from fetched Git objects, audit actual payload sizes and avoid repeated full diff transfers. Filters Open | Closed | All, defaultOpen. Bold numeric status with repository name and Showing last500 when partial. Align Conversation/Files changed tabs with the content column at wide and narrow widths. Preserve cache-only GETs, account/rate/fair scheduling, keyboard/history/visibility ownership and main/linked checkout vsmanaged URL workflows. No compatibility aliases; forward-only childPR above288; no merge.
@@ -48,3 +48,5 @@ New owner requests are tracked under mb-yto3 (dependencies/setup; children mb-qf
 Catalog jobs now do one initial account check and validate each GraphQL page viewer. The deliberate response-reader contract and stale-publication/account-switch controls passed independent review, 86 focused tests and two golden cases; the former stricter second-snapshot proof remains preserved separately. PR decoding/rendering/DOM readiness use existing finite profiler labels; 15 lifecycle/page/panel tests and one profiler test passed. Root independently reviewed the changes and committed-byte reconciliation is clean. The concise QA session separates cold metadata, warm revisit/restart and one incremental revalidation.
 
 Remaining delivery gates: final full verify; exact-wheel eight public live tests, primary/dependency Chrome acceptance and a standard cold/warm/revalidation diagnostic; normal atomic push with quality hook; three chained PRs appended to native stack286, published reviews and current CI; global CLI replacement and detached owner-server restarts; final bead closure and issues-only sync. Keep owner-merge parents and low followups mb-0cr3/mb-dpvu open. Never merge or rewrite history; never name the private test repository publicly.
+
+2026-11-04 UTC: a78ad4c5 completed normal make verify (4696 Python passed, 9 expected skips, 373 transcripts; audit/types/lint/dist/installed smoke passed). Exact noneditable wheel SHA256 5723628bc0d495d8ec68ce2e2f175a528116eca1fb44c174a270625a18b4ff67 passed 8 public live tests, 51 primary Chrome actions, 71 dependency actions and standard 5000-row cold/warm/restart/incremental diagnostic. These are completed gates at a78, not coverage of later source. Two distinct retained ResizeObserver records and automatic/canceled network requests are classified in durable report; no zero-error or comparative speed claim. Installed global CLI and owner8863/8864 now run verifieda78 with no external-browser launch. Owner subsequently requested optional native-stack UI, loading skeletons and consistent number/username/branch typography in new fourth stacked PR, tracked mb-5m05 with mb-50g8/mb-oa9b/mb-zh44/mb-kycf. Fourth layer currently implementing and requires independent review/new committed gate/new finalwheel. No new branches pushed/PRs opened yet. All old14heads unchanged; no PR merged/history rewritten.
