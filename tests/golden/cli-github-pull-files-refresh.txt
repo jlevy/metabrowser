@@ -297,6 +297,7 @@ status: 200
   "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {

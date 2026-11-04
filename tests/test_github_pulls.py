@@ -1007,9 +1007,9 @@ def test_the_route_parses_a_record_again_only_when_it_changed(
 
     monkeypatch.setattr(pull_route, "read_pull_record", counting)
     home, slug = stand.published.home, stand.published.slug
-    first, _ = pull_route.cached_pull_record(home, slug, 7)
-    again, _ = pull_route.cached_pull_record(home, slug, 7)
-    assert again is first and reads == [7]
+    first, _, first_revision = pull_route.cached_pull_record(home, slug, 7)
+    again, _, again_revision = pull_route.cached_pull_record(home, slug, 7)
+    assert again is first and reads == [7] and again_revision == first_revision
     stand.refresh(7)
     pull_route.cached_pull_record(home, slug, 7)
     assert reads == [7, 7]
@@ -2330,3 +2330,127 @@ def test_author_and_merger_avatars_come_from_existing_detail_responses(stand: _S
     reused = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
     assert len(reused) == len(sent) == 6
     assert all(any(arg.startswith("If-None-Match: ") for arg in args) for args in reused)
+
+
+def test_markdown_revision_tracks_content_not_refresh_metadata(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Same-second changes invalidate HTML; warm reads reuse one parsed content digest."""
+    from metabrowser.builtin_plugins.github import pull_route
+
+    stand, client = pinned_pull
+    stand.calls()
+    pull_route._PARSED.clear()
+    hashed: list[dict[str, Any]] = []
+    digest = pull_route._record_revision
+
+    def counting(dumped: dict[str, Any]) -> str:
+        hashed.append(dumped)
+        return digest(dumped)
+
+    monkeypatch.setattr(pull_route, "_record_revision", counting)
+    first = _read(client, 7).json()
+    revision = first["record_revision"]
+    assert isinstance(revision, str) and len(revision) == 64
+    for _ in range(5):
+        assert _read(client, 7).json()["record_revision"] == revision
+    markdown = client.get(
+        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
+    ).json()
+    assert markdown["record_revision"] == revision and len(hashed) == 1
+    # Canonical ordering and all ownership/content fields are part of the identity.
+    dumped = hashed[0]
+    assert digest(dict(reversed(list(dumped.items())))) == revision
+    for field, value in (
+        ("reader", "gh:another-reader"),
+        ("source", "https://github.com/o/r"),
+        ("number", 8),
+    ):
+        assert digest({**dumped, field: value}) != revision
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    refreshed = record.model_copy(
+        update={
+            "fetched_at": (FETCHED_AT + timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "etags": {**record.etags, "fixture": '"new-provider-tag"'},
+        }
+    )
+    write_pull_record(stand.published.home, stand.published.slug, refreshed)
+    same = _read(client, 7).json()
+    assert same["fetched_at"] != first["fetched_at"]
+    assert same["record_revision"] == revision and len(hashed) == 2
+    newer = refreshed.model_copy(
+        update={
+            "pull": refreshed.pull.model_copy(update={"body": "Different text in the same second."})
+        }
+    )
+    write_pull_record(stand.published.home, stand.published.slug, newer)
+    changed = _read(client, 7).json()
+    assert changed["fetched_at"] == same["fetched_at"]
+    assert changed["record_revision"] != revision and len(hashed) == 3
+    markdown = client.get(
+        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
+    ).json()
+    assert markdown["record_revision"] == changed["record_revision"]
+    assert "Different text in the same second." in markdown["html"]
+    assert stand.calls() == []
+
+
+def test_markdown_response_keeps_the_record_it_actually_rendered(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replacement during rendering cannot pair old text with a newer revision."""
+    from metabrowser import kpress_adapter
+
+    stand, client = pinned_pull
+    first = _read(client, 7).json()
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    newer = record.model_copy(
+        update={
+            "pull": record.pull.model_copy(
+                update={"body": "A replacement published while rendering."}
+            )
+        }
+    )
+    render = kpress_adapter.render_kpress_view
+    replaced = False
+
+    def replace_during_render(**kwargs: Any) -> dict[str, Any]:
+        nonlocal replaced
+        if not replaced:
+            replaced = True
+            assert kwargs["source_text"] == record.pull.body
+            write_pull_record(stand.published.home, stand.published.slug, newer)
+        return render(**kwargs)
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", replace_during_render)
+    old = client.get(
+        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
+    ).json()
+    current = _read(client, 7).json()
+    assert old["fetched_at"] == current["fetched_at"]
+    assert old["record_revision"] == first["record_revision"] != current["record_revision"]
+    assert "replacement published" not in old["html"]
+    fresh = client.get(
+        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
+    ).json()
+    assert fresh["record_revision"] == current["record_revision"]
+    assert "A replacement published while rendering." in fresh["html"]
+
+
+def test_an_uncacheable_read_keeps_its_parsed_record_revision(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file appearing after the cache-key stat still answers a coherent parsed record."""
+    from metabrowser.builtin_plugins.github import pull_route
+
+    _stand, client = pinned_pull
+    monkeypatch.setattr(pull_route, "_file_stamp", lambda *_args: None)
+    core = _read(client, 7).json()
+    markdown = client.get(
+        "/api/plugin/github/pull-markdown", params={"number": 7, "part": "body"}
+    ).json()
+    assert core["record"] is not None
+    assert isinstance(core["record_revision"], str)
+    assert markdown["record_revision"] == core["record_revision"]

@@ -66,6 +66,7 @@ status: 200
   "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -521,6 +522,7 @@ status: 200
   "pin": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
   "pin_ref": "refs/pull/9/head",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "ab195089308bb1b911b4af52095d9c9e5d4b5a04d8281285218837be606e7aba",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -684,6 +686,7 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "pin_ref": "refs/remotes/origin/topic",
   "fetched_at": null,
+  "record_revision": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
@@ -734,6 +737,7 @@ status: 200
   "pin": null,
   "pin_ref": null,
   "fetched_at": null,
+  "record_revision": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
@@ -798,6 +802,7 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "pin_ref": "refs/remotes/origin/topic",
   "fetched_at": null,
+  "record_revision": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -827,6 +832,7 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "pin_ref": "refs/remotes/origin/topic",
   "fetched_at": null,
+  "record_revision": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -856,6 +862,7 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "pin_ref": "refs/remotes/origin/topic",
   "fetched_at": null,
+  "record_revision": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -977,6 +984,7 @@ status: 202
     "pin": "c691256511d05858850bc7684ae062fea0d41132",
     "pin_ref": "refs/remotes/origin/topic",
     "fetched_at": null,
+    "record_revision": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -1000,6 +1008,7 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "pin_ref": "refs/remotes/origin/topic",
   "fetched_at": null,
+  "record_revision": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -1032,6 +1041,7 @@ status: 202
     "pin": "c691256511d05858850bc7684ae062fea0d41132",
     "pin_ref": "refs/remotes/origin/topic",
     "fetched_at": null,
+    "record_revision": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -1055,6 +1065,7 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "pin_ref": "refs/remotes/origin/topic",
   "fetched_at": null,
+  "record_revision": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -1088,6 +1099,7 @@ status: 200
     "pin": "c691256511d05858850bc7684ae062fea0d41132",
     "pin_ref": "refs/remotes/origin/topic",
     "fetched_at": null,
+    "record_revision": null,
     "fresh_for_s": 60.0,
     "refreshing": false,
     "last_refresh": {
@@ -1216,6 +1228,7 @@ status: 200
 {
   "number": 7,
   "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
   "part": "body",
   "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>",
   "assets": {

@@ -80,10 +80,37 @@ class Element {
       }
     }
   }
-  querySelector(selector) {
-    return (
-      [...this.descendants()].find((element) => element.classes.has(selector.slice(1))) ?? null
+  querySelectorAll(selector) {
+    const direct = selector.startsWith(":scope > ");
+    const wanted = direct ? selector.slice(9) : selector;
+    const nodes = direct
+      ? this.children.filter((node) => typeof node !== "string")
+      : [...this.descendants()];
+    return nodes.filter((node) =>
+      wanted === "a[href]"
+        ? node.tag === "a" && node.attributes.has("href")
+        : wanted.startsWith(".") && node.classes.has(wanted.slice(1)),
     );
+  }
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] ?? null;
+  }
+  replaceWith(...nodes) {
+    const parent = this.parentNode;
+    if (!parent) {
+      return;
+    }
+    const at = parent.children.indexOf(this);
+    if (at < 0) {
+      return;
+    }
+    parent.children.splice(at, 1, ...nodes);
+    for (const node of nodes) {
+      if (typeof node !== "string") {
+        node.parentNode = parent;
+      }
+    }
+    this.parentNode = null;
   }
   closest() {
     return null;
@@ -121,6 +148,168 @@ async function settle() {
     await new Promise((resolve) => setImmediate(resolve));
   }
 }
+async function markdownOwnership(page) {
+  for (const delayed of ["inert", "styles"]) {
+    for (const transition of ["response", "replace", "metadata", "tab", "dispose"]) {
+      const timers = new Map();
+      globalThis.document = {
+        visibilityState: "visible",
+        addEventListener() {},
+        removeEventListener() {},
+        createElement: (tag) => new Element(tag),
+        importNode: () => new Element("svg"),
+      };
+      globalThis.window = {
+        location: { pathname: "/pull/7" },
+        setTimeout(callback, delay) {
+          const id = Symbol();
+          timers.set(id, { callback, delay });
+          return id;
+        },
+        clearTimeout: (id) => timers.delete(id),
+      };
+      let release;
+      const waiting = new Promise((resolve) => {
+        release = resolve;
+      });
+      // The sanitizer is a dependency boundary here: exact HTML transfer/ownership,
+      // not sanitizer policy, is exercised by this mounted controller session.
+      const inert = {
+        sanitizeHtml: (html) => html,
+        kpressProse(html) {
+          const node = document.createElement("p");
+          node.textContent = html;
+          return node;
+        },
+      };
+      const first = structuredClone(recorded.current);
+      first.body.record_revision = "a".repeat(64);
+      first.body.record.pull.body = "plain A";
+      first.body.record.issue_comments = [];
+      first.body.record.reviews = [];
+      first.body.record.review_comments = [];
+      first.body.record.comparison = null;
+      first.body.record.unavailable.comparison = "no_store";
+      let current = first;
+      let releaseResponse;
+      let markdownReads = 0;
+      let assets = 0;
+      globalThis.fetch = async (route) => {
+        const response = (body) => ({
+          status: 200,
+          headers: { get: () => null },
+          json: async () => body,
+        });
+        if (route.startsWith("/api/plugin/github/pull-markdown")) {
+          markdownReads += 1;
+          const reply = response({
+            fetched_at: current.body.fetched_at,
+            record_revision: current.body.record_revision,
+            html: current.body.record.pull.body === "plain A" ? "rendered A" : "rendered B",
+            assets: {},
+          });
+          if (transition === "response" && markdownReads === 1) {
+            return new Promise((resolve) => {
+              releaseResponse = () => resolve(reply);
+            });
+          }
+          return reply;
+        }
+        return route.startsWith("/api/plugin/github/pull?")
+          ? response(current.body)
+          : { status: 304, headers: { get: () => null } };
+      };
+      const container = new Element("main");
+      const handle = page.mountPullPage(
+        container,
+        { number: 7, tab: "", reader: { initial: first, fetchAfterMs: 0 } },
+        {
+          perf,
+          ensureAsset: async () => {
+            if (delayed === "inert") {
+              await waiting;
+            }
+            window.MetabrowserInertHtml = inert;
+          },
+          loadKpressAssets: () => {
+            assets += 1;
+            return delayed === "styles" ? waiting : Promise.resolve();
+          },
+          ...require("./sdk-ref-fixture.js").refHelpers(document),
+          formatAge: () => ({ label: "now", className: "age" }),
+          formatTimestamp: () => "now",
+          navigation: { href: () => "/view/" },
+          sourceKind: () => "git_revision",
+          icons: { toggle: "" },
+        },
+      );
+      const body = () =>
+        [...container.descendants()].find((node) => node.getAttribute("data-part") === "body");
+      const poll = async () => {
+        const ready = [...timers.values()];
+        timers.clear();
+        for (const timer of ready) {
+          timer.callback();
+        }
+        await settle();
+      };
+      await settle();
+      const old = body();
+      assert.equal(
+        old.textContent,
+        "plain A",
+        `${delayed}/${transition}: delayed positive control`,
+      );
+      if (["response", "replace", "metadata"].includes(transition)) {
+        current = structuredClone(first);
+        current.body.refreshing = true; // A harmless header paint must not strand the body.
+        if (transition === "metadata") {
+          current.body.fetched_at = "2026-09-17T12:00:01Z";
+          current.body.record.fetched_at = current.body.fetched_at;
+        } else {
+          current.body.record_revision = "b".repeat(64);
+          current.body.record.pull.body = "plain B"; // Deliberately the SAME fetched_at.
+        }
+        await poll();
+        assert.equal(body().textContent, transition === "metadata" ? "plain A" : "plain B");
+        if (transition === "metadata") {
+          assert.equal(body(), old, "same content retains its actual element across a new model");
+          assert.equal(markdownReads, 1, "timestamp-only refresh reuses the client Markdown cache");
+        } else {
+          assert.notEqual(body(), old, "changed text owns a new element");
+          assert.equal(markdownReads, 2, "same-second new revision asks for its own Markdown");
+        }
+        if (releaseResponse) {
+          releaseResponse();
+          await settle();
+        }
+      } else if (transition === "tab") {
+        handle.land({ tab: "files" });
+        handle.land({ tab: "" });
+        await settle();
+        assert.notEqual(body(), old, "Files/Conversation remount creates its own text element");
+      } else {
+        handle.dispose();
+      }
+      release();
+      await settle();
+      assert.equal(assets, 1, "all admitted parts share the same stylesheet readiness promise");
+      const expected =
+        transition === "dispose"
+          ? "plain A"
+          : ["replace", "response"].includes(transition)
+            ? "rendered B"
+            : "rendered A";
+      assert.equal(
+        body().textContent,
+        expected,
+        `${delayed}/${transition}: only current owned HTML appears`,
+      );
+      handle.dispose();
+    }
+  }
+}
+
 async function run() {
   const timers = new Map();
   const frames = new Map();
@@ -578,6 +767,7 @@ async function run() {
     1,
     "reentrant disposal releases the just-created subscription",
   );
+  await markdownOwnership(page);
   for (const label of [
     "githubPull:decode",
     "githubPull:render",
@@ -595,6 +785,7 @@ async function run() {
     bridgeAfterPaint: true,
     bridgeFramesOwned: true,
     hiddenReadiness: true,
+    markdownOwnership: true,
   };
 }
 module.exports = { Element, recorded, root, settle, perf };

@@ -127,6 +127,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   assert.equal(container.querySelector(".spinner"), null);
   const pending = structuredClone(recorded.current.body);
   pending.record = null;
+  pending.record_revision = null;
   pending.state = "pending";
   pending.refreshing = true;
   resolveCore({ status: 200, headers: { get: () => "pending" }, json: async () => pending });

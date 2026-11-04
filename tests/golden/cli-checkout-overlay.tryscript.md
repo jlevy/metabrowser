@@ -316,6 +316,7 @@ status: 200
   "pin": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
   "pin_ref": "refs/pull/1/head",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "ea0fa3cbb88d81b8a290275b28e1ae59117b955f960a2d8d66975cfb2cd06bed",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {

@@ -583,17 +583,17 @@ $ node tests/dom/github-pull-page-session.js
         "headOffer": null,
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
-      "conversation": "reask",
+      "conversation": "keep",
       "markdown": []
     },
     {
-      "step": "a render of the older record is dropped",
-      "requests": [
-        "GET /api/plugin/github/pull-markdown?number=7&part=body"
-      ],
+      "step": "a same-content render remains usable after a refresh",
+      "requests": [],
       "timer": "slow",
       "paints": 0,
-      "markdown": []
+      "markdown": [
+        "body: <div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
+      ]
     },
     {
       "step": "another refresh brought a comment full of markup",
@@ -1298,5 +1298,6 @@ retains its explicit Fetch changes.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsExplicit":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true}
+{"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsExplicit":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true}
+? 0
 ```

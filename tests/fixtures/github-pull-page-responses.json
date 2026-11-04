@@ -10,6 +10,7 @@
       "pin": "c691256511d05858850bc7684ae062fea0d41132",
       "pin_ref": "refs/remotes/origin/topic",
       "fetched_at": null,
+      "record_revision": null,
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": null,
@@ -30,6 +31,7 @@
         "pin": "c691256511d05858850bc7684ae062fea0d41132",
         "pin_ref": "refs/remotes/origin/topic",
         "fetched_at": null,
+        "record_revision": null,
         "fresh_for_s": 60.0,
         "refreshing": true,
         "last_refresh": null,
@@ -50,6 +52,7 @@
       "pin": "c691256511d05858850bc7684ae062fea0d41132",
       "pin_ref": "refs/remotes/origin/topic",
       "fetched_at": null,
+      "record_revision": null,
       "fresh_for_s": 60.0,
       "refreshing": true,
       "last_refresh": null,
@@ -68,6 +71,7 @@
       "pin": "c691256511d05858850bc7684ae062fea0d41132",
       "pin_ref": "refs/remotes/origin/topic",
       "fetched_at": "2026-09-17T12:00:00Z",
+      "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": {
@@ -256,6 +260,7 @@
     "body": {
       "number": 7,
       "fetched_at": "2026-09-17T12:00:00Z",
+      "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
       "part": "body",
       "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
     }
@@ -266,6 +271,7 @@
     "body": {
       "number": 7,
       "fetched_at": "2026-09-17T12:00:00Z",
+      "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
       "part": "issue_comment/3341937855",
       "html": "\n<div><div><p>Thanks. CI is green; one question inline.</p></div></div>"
     }
@@ -276,6 +282,7 @@
     "body": {
       "number": 7,
       "fetched_at": "2026-09-17T12:00:00Z",
+      "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
       "part": "review/3279967139",
       "html": "\n<div><div><p>Looks right.</p></div></div>"
     }
@@ -286,6 +293,7 @@
     "body": {
       "number": 7,
       "fetched_at": "2026-09-17T12:00:00Z",
+      "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
       "part": "review_comment/2383608906",
       "html": "\n<div><div><p>Why does this line change?</p></div></div>"
     }
@@ -329,6 +337,7 @@
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:00:00Z",
+      "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": {
@@ -354,6 +363,7 @@
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:00:00Z",
+      "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": {
@@ -381,6 +391,7 @@
         "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
         "pin_ref": "refs/pull/7/head",
         "fetched_at": "2026-09-17T12:00:00Z",
+        "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
         "fresh_for_s": 60.0,
         "refreshing": true,
         "last_refresh": {
@@ -408,6 +419,7 @@
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:00:00Z",
+      "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
       "fresh_for_s": 60.0,
       "refreshing": true,
       "last_refresh": {
@@ -433,6 +445,7 @@
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:05:00Z",
+      "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": {
@@ -626,6 +639,7 @@
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:06:00Z",
+      "record_revision": "46821243f33b6fa2ed6490d178a2bacf9661526b35ba72e889f14e4aeaae6267",
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": {
@@ -823,6 +837,7 @@
     "body": {
       "number": 7,
       "fetched_at": "2026-09-17T12:06:00Z",
+      "record_revision": "46821243f33b6fa2ed6490d178a2bacf9661526b35ba72e889f14e4aeaae6267",
       "part": "issue_comment/3341937856",
       "html": "\n<div><div><p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<a href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span>image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n</div></div>"
     }
@@ -1083,6 +1098,7 @@
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:06:00Z",
+      "record_revision": "df3d26909cd53796d5e46bf0553520b2d9a075c24e8c69882f2b56fcaef8db60",
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": {
@@ -1200,6 +1216,7 @@
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:06:00Z",
+      "record_revision": "ab195089308bb1b911b4af52095d9c9e5d4b5a04d8281285218837be606e7aba",
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": {
@@ -1319,6 +1336,7 @@
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:06:00Z",
+      "record_revision": "abf41bf60303ed397626a1b62901f022bafe03917514150c0a5349547e464c14",
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": {
@@ -1436,6 +1454,7 @@
       "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:06:00Z",
+      "record_revision": "abf41bf60303ed397626a1b62901f022bafe03917514150c0a5349547e464c14",
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": {
@@ -1463,6 +1482,7 @@
         "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
         "pin_ref": "refs/pull/7/head",
         "fetched_at": "2026-09-17T12:06:00Z",
+        "record_revision": "abf41bf60303ed397626a1b62901f022bafe03917514150c0a5349547e464c14",
         "fresh_for_s": 60.0,
         "refreshing": false,
         "last_refresh": {
@@ -1492,6 +1512,7 @@
         "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
         "pin_ref": "refs/pull/7/head",
         "fetched_at": "2026-09-17T12:06:00Z",
+        "record_revision": "abf41bf60303ed397626a1b62901f022bafe03917514150c0a5349547e464c14",
         "fresh_for_s": 60.0,
         "refreshing": true,
         "last_refresh": {
@@ -1519,6 +1540,7 @@
       "pin": "f7c5a9918657080d6aeb455902615b6e17df760a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": "2026-09-17T12:41:00Z",
+      "record_revision": "0f443a47764cd3b9b655b1b6a3501b8348ce3737025d7a5d5f9c4fd03a98651b",
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": {
@@ -1697,6 +1719,7 @@
       "pin": "f7c5a9918657080d6aeb455902615b6e17df760a",
       "pin_ref": "refs/pull/7/head",
       "fetched_at": null,
+      "record_revision": null,
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": null,
@@ -1717,6 +1740,7 @@
         "pin": "f7c5a9918657080d6aeb455902615b6e17df760a",
         "pin_ref": "refs/pull/7/head",
         "fetched_at": null,
+        "record_revision": null,
         "fresh_for_s": 60.0,
         "refreshing": false,
         "last_refresh": null,
@@ -1739,6 +1763,7 @@
       "pin": null,
       "pin_ref": null,
       "fetched_at": null,
+      "record_revision": null,
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": null,

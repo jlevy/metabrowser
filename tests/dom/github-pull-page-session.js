@@ -231,7 +231,7 @@ function createPage(runtime, options) {
   let reloads = 0;
   let navigations = [];
   // What the conversation last painted, to run the page's own paint decision on each paint.
-  let conversation = { key: "", recordAt: null };
+  let conversation = { key: "", recordRevision: null };
   const server = { pull: null, refresh: [], pin: [], markdown: new Map(), held: [] };
   const clock = { now: Date.parse("2026-09-17T12:00:30Z") };
 
@@ -343,7 +343,7 @@ function createPage(runtime, options) {
         const last = paints[paints.length - 1];
         entry.paint = options.brief ? summarizeState(last) : summarize(last);
         if (last.pull !== null && last.tab === "") {
-          const next = { key: runtime.conversationKey(last), recordAt: last.recordAt };
+          const next = { key: runtime.conversationKey(last), recordRevision: last.recordRevision };
           entry.conversation = runtime.conversationAction(conversation, next);
           conversation = next;
         }
@@ -857,9 +857,9 @@ async function main() {
       page.fire(),
     ),
   );
-  // The body's render was made from the older record; answered now, it is dropped.
+  // The same content revision keeps an already requested render usable after refresh.
   steps.push(
-    await page.step("a render of the older record is dropped", async () => {
+    await page.step("a same-content render remains usable after a refresh", async () => {
       controller.requestMarkdown("body");
       await page.releaseMarkdown();
     }),

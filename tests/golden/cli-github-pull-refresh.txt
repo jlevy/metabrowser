@@ -12,6 +12,7 @@ status: 200
   "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -245,6 +246,7 @@ status: 202
     "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
     "pin_ref": "refs/pull/7/head",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -268,6 +270,7 @@ status: 200
   "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -318,6 +321,7 @@ status: 200
   "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -363,6 +367,7 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "pin_ref": "refs/remotes/origin/topic",
   "fetched_at": null,
+  "record_revision": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": null,
@@ -386,6 +391,7 @@ status: 200
     "pin": "c691256511d05858850bc7684ae062fea0d41132",
     "pin_ref": "refs/remotes/origin/topic",
     "fetched_at": null,
+    "record_revision": null,
     "fresh_for_s": 60.0,
     "refreshing": false,
     "last_refresh": null,
@@ -411,6 +417,7 @@ status: 202
     "pin": "c691256511d05858850bc7684ae062fea0d41132",
     "pin_ref": "refs/remotes/origin/topic",
     "fetched_at": null,
+    "record_revision": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": null,
@@ -429,6 +436,7 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "pin_ref": "refs/remotes/origin/topic",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -535,6 +543,7 @@ status: 200
     "pin": "c691256511d05858850bc7684ae062fea0d41132",
     "pin_ref": "refs/remotes/origin/topic",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
     "fresh_for_s": 60.0,
     "refreshing": false,
     "last_refresh": {
@@ -638,6 +647,7 @@ status: 200
   "pin": "8ae27617c9c475851b67ee69433d008836d112ba",
   "pin_ref": "refs/pull/8/head",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "df3d26909cd53796d5e46bf0553520b2d9a075c24e8c69882f2b56fcaef8db60",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -864,6 +874,7 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "pin_ref": "refs/remotes/origin/topic",
   "fetched_at": null,
+  "record_revision": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -967,6 +978,7 @@ status: 200
   "pin": "c691256511d05858850bc7684ae062fea0d41132",
   "pin_ref": "refs/remotes/origin/topic",
   "fetched_at": null,
+  "record_revision": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -996,6 +1008,7 @@ status: 200
   "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "pin_ref": "refs/pull/7/head",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "5f6cee1af17443e959e58c06e78d075f2aa143c66d86e9b0b3a6d9858bd55e29",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {

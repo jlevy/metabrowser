@@ -194,7 +194,7 @@ async def pull_comparison_handler(request: Request) -> Response:
         raise AssertionError("a store-backed pull host has no published source")
     from metabrowser.builtin_plugins.github.pull_record import PullRecord
 
-    record, _dumped = await asyncio.to_thread(
+    record, _dumped, _revision = await asyncio.to_thread(
         cached_pull_record, published.home, published.slug, number
     )
     if not isinstance(record, PullRecord):

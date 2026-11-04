@@ -312,7 +312,7 @@ class _Facts:
 
 
 def _facts(home: Path, slug: str, number: int) -> _Facts:
-    record, _dumped = cached_pull_record(home, slug, number)
+    record, _dumped, _revision = cached_pull_record(home, slug, number)
     held = record if isinstance(record, PullRecord) else None
     row = cached_list_row(home, slug, number)
     times = [moment for moment in (held and held.pull.updated_at, row and row.updated_at) if moment]

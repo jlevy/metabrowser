@@ -175,6 +175,7 @@ const TRUNCATED = Object.freeze({
  *   pin: string | null,
  *   pin_ref: string | null,
  *   fetched_at: string | null,
+ *   record_revision: string | null,
  *   refreshing: boolean,
  *   last_refresh: {outcome: string, message: string | null, reset_at: string | null, at: string} | null,
  *   comparison_route: string | null,
@@ -236,7 +237,7 @@ const TRUNCATED = Object.freeze({
  *   number: number,
  *   tab: string,
  *   status: "loading" | "absent" | "pending" | "current" | "stale" | "unavailable",
- *   recordAt: string | null,
+ *   recordRevision: string | null,
  *   message: string | null,
  *   refreshing: boolean,
  *   canRefresh: boolean,
@@ -683,7 +684,7 @@ export function describePull(envelope, page) {
     number: page.number,
     tab: page.tab,
     status: "unavailable",
-    recordAt: null,
+    recordRevision: null,
     message: page.error ?? null,
     refreshing: false,
     canRefresh: false,
@@ -733,7 +734,7 @@ export function describePull(envelope, page) {
       !envelope.refreshing;
     return model;
   }
-  model.recordAt = typeof record.fetched_at === "string" ? record.fetched_at : null;
+  model.recordRevision = envelope.record_revision;
   model.message = page.error ?? null;
   model.canRefresh =
     !envelope.refreshing &&
@@ -865,7 +866,11 @@ function isEnvelope(value) {
     typeof envelope.refreshing === "boolean" &&
     Number.isInteger(envelope.number) &&
     Number(envelope.number) > 0 &&
-    (envelope.record === null || typeof envelope.record === "object")
+    (envelope.record === null || typeof envelope.record === "object") &&
+    (envelope.record === null
+      ? envelope.record_revision === null
+      : typeof envelope.record_revision === "string" &&
+        /^[a-f0-9]{64}$/.test(envelope.record_revision))
   );
 }
 
@@ -925,7 +930,7 @@ export function createPullController(deps, options) {
   /** Asked for by a reader's selection, and the ask is on its way. */
   let fetching = false;
   let refreshPending = false;
-  /** Markdown by part, for the record fetched at `markdownFor`. @type {Map<string, Record<string, any>>} */
+  /** Markdown by part, for the record content revision `markdownFor`. @type {Map<string, Record<string, any>>} */
   const markdown = new Map();
   /** @type {string | null} */
   let markdownFor = null;
@@ -1030,11 +1035,11 @@ export function createPullController(deps, options) {
     }
     shownRequest = request;
     envelope = next;
-    const fetchedAt = next.record === null ? null : next.fetched_at;
-    if (fetchedAt !== markdownFor) {
+    const revision = next.record === null ? null : next.record_revision;
+    if (revision !== markdownFor) {
       // Another record: its texts may differ, so nothing rendered from the last one
       // is shown again. The page asks again for the parts a reader sees.
-      markdownFor = fetchedAt;
+      markdownFor = revision;
       markdown.clear();
       asked.clear();
       queue.length = 0;
@@ -1266,7 +1271,7 @@ export function createPullController(deps, options) {
             response.status !== 200 ||
             body === null ||
             typeof body.html !== "string" ||
-            body.fetched_at !== markdownFor
+            body.record_revision !== markdownFor
           ) {
             // A render of a record the page no longer shows, or none at all: the
             // plain text stays, and a newer record is asked for again.
@@ -1668,15 +1673,15 @@ export function conversationKey(model) {
  * rendered and asks again for the texts still plain, whose renders of the older record
  * were dropped.
  *
- * @param {{key: string, recordAt: string | null}} previous
- * @param {{key: string, recordAt: string | null}} next
+ * @param {{key: string, recordRevision: string | null}} previous
+ * @param {{key: string, recordRevision: string | null}} next
  * @returns {"repaint" | "reask" | "keep"}
  */
 export function conversationAction(previous, next) {
   if (previous.key !== next.key) {
     return "repaint";
   }
-  return previous.recordAt !== next.recordAt ? "reask" : "keep";
+  return previous.recordRevision !== next.recordRevision ? "reask" : "keep";
 }
 
 /**
@@ -1857,7 +1862,7 @@ export function mountPullPage(container, ctx, mb) {
   let shown = null;
   let bodyKey = "";
   /** The record the conversation last asked for Markdown from. @type {string | null} */
-  let markdownRecord = null;
+  let markdownRevision = null;
   /** @type {Map<string, HTMLElement>} */
   const texts = new Map();
   // The allowlist a text's Markdown passes through before it is inserted; a text stays
@@ -2047,11 +2052,18 @@ export function mountPullPage(container, ctx, mb) {
    * @param {Record<string, any>} rendered
    */
   function renderMarkdown(part, rendered) {
+    const element = texts.get(part);
     documentStyles ??= mb.loadKpressAssets(rendered.assets).catch((error) => {
       console.warn("metabrowser github: the text styles did not load", error);
     });
     void Promise.all([inertReady, documentStyles]).then(([inert]) => {
-      const element = texts.get(part);
+      if (
+        listening.signal.aborted ||
+        rendered.record_revision !== shown?.recordRevision ||
+        texts.get(part) !== element
+      ) {
+        return;
+      }
       const plain = element?.querySelector(":scope > .github-pull-plain");
       if (!element || !plain || inert === null) {
         return;
@@ -2803,8 +2815,8 @@ export function mountPullPage(container, ctx, mb) {
     }
     const key = conversationKey(model);
     const action = conversationAction(
-      { key: bodyKey, recordAt: markdownRecord },
-      { key, recordAt: model.recordAt },
+      { key: bodyKey, recordRevision: markdownRevision },
+      { key, recordRevision: model.recordRevision },
     );
     bodyKey = key;
     if (action === "repaint") {
@@ -2821,7 +2833,7 @@ export function mountPullPage(container, ctx, mb) {
         }
       }
     }
-    markdownRecord = model.recordAt;
+    markdownRevision = model.recordRevision;
   }
 
   // Disposing a page ends its work: a superseded page's requests are cancelled, whatever

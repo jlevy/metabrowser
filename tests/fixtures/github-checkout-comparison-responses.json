@@ -10,6 +10,7 @@
       "pin": null,
       "pin_ref": null,
       "fetched_at": "2026-09-17T12:00:00Z",
+      "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": {
@@ -102,6 +103,7 @@
         "pin": null,
         "pin_ref": null,
         "fetched_at": "2026-09-17T12:00:00Z",
+        "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
         "fresh_for_s": 60.0,
         "refreshing": true,
         "last_refresh": {
@@ -194,6 +196,7 @@
       "pin": null,
       "pin_ref": null,
       "fetched_at": "2026-09-17T12:00:00Z",
+      "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
       "fresh_for_s": 60.0,
       "refreshing": false,
       "last_refresh": {

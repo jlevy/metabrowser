@@ -100,6 +100,7 @@ class PullEnvelope(TypedDict):
     pin: str | None
     pin_ref: str | None
     fetched_at: str | None
+    record_revision: str | None
     fresh_for_s: float
     refreshing: bool
     last_refresh: PullRefreshOutcome | None
@@ -162,6 +163,7 @@ class _Parsed:
     stamp: tuple[int, int, int]
     record: PullRecord
     dumped: dict[str, Any]
+    revision: str
 
 
 # Records parsed for this route, keyed by home, slug, and number, each kept with the
@@ -183,26 +185,37 @@ def _file_stamp(home: Path, slug: str, number: int) -> tuple[int, int, int] | No
     return status.st_ino, status.st_mtime_ns, status.st_size
 
 
+def _record_revision(dumped: dict[str, Any]) -> str:
+    """Reader-owned content identity, unaffected by refresh time and provider ETags."""
+
+    content = {key: value for key, value in dumped.items() if key not in {"fetched_at", "etags"}}
+    return hashlib.sha256(
+        json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
 def cached_pull_record(
     home: Path, slug: str, number: int
-) -> tuple[PullRecord | RecordAbsence, dict[str, Any] | None]:
-    """The record and its JSON form, parsed again only when its file changed."""
+) -> tuple[PullRecord | RecordAbsence, dict[str, Any] | None, str | None]:
+    """One parsed record, its JSON and content revision, reused while the file is unchanged."""
 
     key = (str(home), slug, number)
     stamp = _file_stamp(home, slug, number)
     with _PARSED_LOCK:
         hit = _PARSED.get(key)
     if hit is not None and stamp is not None and hit.stamp == stamp:
-        return hit.record, hit.dumped
+        return hit.record, hit.dumped, hit.revision
     record = read_pull_record(home, slug, number)
-    if not isinstance(record, PullRecord) or stamp is None:
-        return record, None
+    if not isinstance(record, PullRecord):
+        return record, None, None
     dumped = record.model_dump(mode="json")
-    with _PARSED_LOCK:
-        if key not in _PARSED and len(_PARSED) >= _MAX_PARSED:
-            _PARSED.pop(next(iter(_PARSED)))
-        _PARSED[key] = _Parsed(stamp, record, dumped)
-    return record, dumped
+    revision = _record_revision(dumped)
+    if stamp is not None:
+        with _PARSED_LOCK:
+            if key not in _PARSED and len(_PARSED) >= _MAX_PARSED:
+                _PARSED.pop(next(iter(_PARSED)))
+            _PARSED[key] = _Parsed(stamp, record, dumped, revision)
+    return record, dumped, revision
 
 
 @dataclass(frozen=True, slots=True)
@@ -289,6 +302,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
             pin=view.pin,
             pin_ref=view.pin_ref,
             fetched_at=None,
+            record_revision=None,
             fresh_for_s=FRESHNESS_WINDOW_S,
             refreshing=False,
             last_refresh=None,
@@ -296,7 +310,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
             record=None,
         )
     served = host.pulls
-    record, dumped = cached_pull_record(served.home, served.slug, view.number)
+    record, dumped, revision = cached_pull_record(served.home, served.slug, view.number)
     has_store = served.git_dir is not None
     # Through the module, so records and their age share one clock seam.
     state, absence = pull_state(
@@ -318,6 +332,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         pin=view.pin,
         pin_ref=view.pin_ref,
         fetched_at=record.fetched_at if isinstance(record, PullRecord) else None,
+        record_revision=revision,
         fresh_for_s=FRESHNESS_WINDOW_S,
         refreshing=view.refreshing,
         last_refresh=view.kept.last if view.kept is not None else served.last_refresh(view.number),

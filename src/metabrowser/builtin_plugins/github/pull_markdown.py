@@ -6,8 +6,9 @@ sanitized trust mode: raw HTML in the text is cleaned, never trusted, and GitHub
 ``body_html`` is never read. KPress keeps what a document of its own may use, so
 :func:`~metabrowser.inert_html.harden` then reduces the HTML to a small allowlist of plain markup. A
 part is ``body``, the description, or ``issue_comment/<id>``, ``review/<id>``, or
-``review_comment/<id>``. The answer is that HTML with the record's ``fetched_at`` and the
-``part``, so a page drops a render of a record it no longer shows, and the manifest of
+``review_comment/<id>``. The answer carries the same parsed record's ``record_revision``
+and its ``fetched_at`` timestamp and ``part``, so a page can drop superseded content even
+when two records share a timestamp. It also carries the manifest of
 KPress's stylesheets, which set the text as they set a Markdown file. That manifest is the
 same for every text, and it is the only part of KPress's render envelope that reaches
 the page: the render's own asset list names scripts KPress adds for what a text contains,
@@ -56,7 +57,7 @@ def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
         return 409, {"error": "this server serves no GitHub repository", "code": "not_github"}
     served = view.host.pulls
     number = view.number
-    record, _dumped = cached_pull_record(served.home, served.slug, number)
+    record, _dumped, revision = cached_pull_record(served.home, served.slug, number)
     if not isinstance(record, PullRecord):
         return 404, {"error": "no record of this pull request is cached", "code": record}
     text = part_text(record, part)
@@ -83,6 +84,7 @@ def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
     return 200, {
         "number": number,
         "fetched_at": record.fetched_at,
+        "record_revision": revision,
         "part": part,
         "html": html,
         "assets": kpress_adapter.document_stylesheets(),
