@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: open
 priority: 1
-version: 46
+version: 47
 labels:
   - release:v0.12.0
 dependencies: []
@@ -47,11 +47,15 @@ child_order_hints:
   - is-01m6jhcsrvevhaa1kg3fh6g8zg
   - is-01m6k4bp5bmh38vg43syytha0v
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-04T11:15:57.733Z
+updated_at: 2026-11-04T12:27:20.546Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.
 
 ## Notes
+
+Current checkpoint: first9featurePRs are actually merged to main8aae81d0. Remaining12forwardcascade to f9e8c524 has exact whole-tree equality to reviewed a4; normalatomicpublication succeeded, freshheadCI/nativegroup/artifactchecks still pending. GlobalinstalledCLI/previews remain verifieda4 (samecode) pending finalmain replacement. Mandatorypostlanding integratedreview/docs/skills/plans/beads remains mb-ao35. Preserve draft247/WIPs and audit .tbd/config.yml; clean independent landingcheckout is /Users/levy/wrk/github/metabrowser-landing-01a1a051.
+
+Earlier checkpoints:
 
 2026-11-03 FINAL READINESS at ea771741211193a387c1771e04df29b5a9698100. The full 14-PR stack is independently reviewed and ready for the owner's merge decision. All actual bases contain their lower layer, both native stacks match, every PR is open/non-draft and mergeable/clean, and all 171 CI jobs across 19 current-head workflow runs passed. Final make verify: 4712 Python passed, 9 expected skips, 373 transcript checks; dependency audits, distribution and isolated installed-wheel checks passed. Exact-head public live: 8 passed; fresh installed-wheel Chrome: 22 actions with 25 unchanged checkout/common-Git fingerprints. Managed repository URLs and existing main/linked checkouts pass. Final Review G: https://github.com/jlevy/metabrowser/pull/288#pullrequestreview-5758664799 . All findings have published dispositions; fixed threads are resolved, while rebutted/declined threads remain reviewer-visible. Completed stabilization/review beads are closed and residual baseline observer mb-czrw is under mb-2iok. Both WIP branches and the original local server remain unchanged. Frontend/backend ship together on one local server with explicit-number requests; compatibility-only work remains canceled. Historical timing evidence keeps its original source pins; no quiet-machine or universal 500ms claim. Quiet timings, remaining performance/browser/release follow-ups and explicit owner-merge beads remain open. No PR merged or history rewritten. After the owner merges stack278, unstack286, retarget279 to main and relink279/281/285/287/288 as documented on279.
 
