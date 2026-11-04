@@ -1,7 +1,9 @@
 # Nav Containers: Item-Like and Folder-Like Roles
 
-**Status:** Implemented for the first two container kinds (directories and patch files);
-archives and PR mirrors are planned.
+**Status:** The shared container contract is implemented for directories and patch
+files. The GitHub plugin separately implements its Pulls list and changed-file trees;
+these are not the provider-neutral hosted-review containers proposed below.
+Archives and that generic hosted-review model remain unimplemented.
 The diff plugin is the first adopter, through the
 [general diff rendering plan](../specs/active/plan-2026-08-17-general-diff-rendering.md).
 
@@ -107,15 +109,20 @@ children hook groups by path and the narrowed document carries both halves.
 ## Collection panels
 
 A folder-like container does not have to live in the Files tree.
-The planned Pull Requests nav panel exposes one virtual hosted-review collection whose
-children come from a bounded `ChangeRequestIndex/v1`. It reuses Git history’s paged
-loading, virtualization, roving selection, and restoration mechanics, while each
-selected PR uses the container behavior above to expose changed files.
+The GitHub plugin’s Pulls panel reads indexed windows from its repository catalog and
+mounts bounded row and changed-file windows.
+Selecting a PR opens `/pull/<number>`; its file tree uses the plugin’s file-list and
+comparison routes. This does not register a `ChangeRequestIndex/v1` container or revive
+the retired provider-neutral model.
 
-Counts, grouping, and folder visibility come from the complete bounded collection model,
-never from currently mounted rows.
-The collection overview makes its query, bounds, freshness, completeness, offline state,
-and refresh diagnostics visible.
+Counts and completeness come from the cached catalog and provider totals, never from
+currently mounted rows.
+The panel displays the selected filter, freshness, available rows, and refresh
+diagnostics. The current contracts are in
+[Views, Models, and Routes](arch-views-models-routes.md).
+
+The hosted-review rows above and the projection lifetimes below retain the generic
+design proposal; they are not implemented GitHub plugin surfaces.
 
 ## Transient projections and the four cache lifetimes
 

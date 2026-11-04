@@ -20,8 +20,7 @@ links to the document that covers each in depth.
 - [Python inventory cost](architecture/arch-python-inventory-cost.md) — what the
   reference engine’s walk spends per entry, and what is still on that path
 - [Git and comparison sources](architecture/arch-git-and-comparison-sources.md) — the
-  Git process boundary, the four-layer stack, and the rule for adding a comparison
-  source
+  Git and provider boundaries, and the rule for adding a comparison source
 - [Repository sources and provider mirrors](architecture/arch-repository-sources-and-provider-mirrors.md)
   — session subjects, worktree-free Git object stores, provider mirrors, and their
   concurrency and lifetime boundaries
@@ -41,28 +40,26 @@ links to the document that covers each in depth.
 ## Active Feature Plans
 
 - [v0.12 thin mirror for Git and GitHub browsing](specs/active/plan-2026-09-23-v012-thin-mirror.md)
-  — the v0.12 design: full-clone mirrors refreshed with `git fetch`, `gh` for
-  authentication and pull-request data, and the pull request that delivered each step
+  — the original mirror design and its delivery record; the checkout plan below extends
+  it with borrowed stores and explicit recovery
 - [v0.12 alpha testing and stack acceptance](specs/active/plan-2026-09-22-v012-alpha-testing.md)
   — executable foundation quick start, manual end-to-end matrix, automated coverage, and
   what remains before the release
 - [GitHub Pulls tab for mirrors and local checkouts](specs/active/plan-2026-10-01-github-pulls-tab.md)
-  — planned, not started: a list of a repository’s pull requests beside Files and Git,
-  opening any of them, for a repository opened from a GitHub URL and for an existing
-  checkout; starts after 0.12.0 is tagged
+  — implemented catalog, list, changed-file navigation, and numbered PR pages for
+  managed repositories and existing checkouts; the revision sections describe the
+  resumable catalog and optional native-stack enrichment
 - [Pull-request review from a mirror or an existing checkout](specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md)
-  — designed and measured, not started: an overlay store that borrows an existing
-  checkout’s objects instead of cloning them again, how a checkout is found, what breaks
-  when the checkout changes, and the decisions the user makes first
+  — implemented object borrowing, bounded explicit repair, and folder-server
+  comparisons; conversion and broader deepening remain separate work
 - [Opt-in trusted-local file editing](specs/active/plan-2026-07-16-trusted-local-file-editing.md)
 - [Scanning state and recent directories](specs/active/plan-2026-07-16-scanning-state-and-recent-directories.md)
 - [Quick file finder and search providers](specs/active/plan-2026-07-17-scalable-file-search.md)
-- [Full-page HTML rendering and an explicit trust model](specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
 - [Menu primitives and gated file actions](specs/active/plan-2026-08-06-menu-primitives-and-file-actions.md)
-- [Git graph nav panel](specs/active/plan-2026-08-06-git-graph-view.md)
 - [Markdown navigation extensions](specs/active/plan-2026-08-13-markdown-navigation-extensions.md)
 - [General diff rendering](specs/active/plan-2026-08-17-general-diff-rendering.md)
 - [End-to-end load time, from the CLI to first paint](specs/active/plan-2026-08-21-load-time-performance.md)
+- [Flat-tree delivery cost](specs/active/plan-2026-09-15-flat-tree-delivery-cost.md)
 - [Hosted review model and GitHub provider](specs/active/plan-2026-08-27-github-provider-and-pull-requests.md)
 - [Git status and working-tree diffs](specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Mermaid diagram rendering](specs/active/plan-2026-08-21-mermaid-diagram-rendering.md)
@@ -130,6 +127,8 @@ Once its questions are answered and its measurements are superseded, it moves to
 
 ## Done Plans
 
+- [Git graph nav panel](specs/done/plan-2026-08-06-git-graph-view.md)
+- [Full-page HTML rendering and an explicit trust model](specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
 - [CLI parity and golden coverage](specs/done/plan-2026-08-21-cli-parity-and-golden-coverage.md)
 - [One file-type source of truth](specs/done/plan-2026-08-21-file-type-source-of-truth.md)
 - [Diff syntax highlighting and layouts](specs/done/plan-2026-08-24-diff-syntax-highlighting-and-layouts.md)

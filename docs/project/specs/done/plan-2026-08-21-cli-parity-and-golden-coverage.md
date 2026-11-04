@@ -7,7 +7,11 @@
 **Status:** Delivered.
 All twelve beads under epic `mb-u29h` are closed.
 The parity table has no gap rows, and `devtools/check_parity.py` reports the current
-covered and exempt counts when it runs.py`rejects a`gap` row outright.
+covered and exempt counts when it runs; it rejects a `gap` row outright.
+The implementation checklist below records the original plan.
+Current functional and paint boundaries are maintained by
+[Views, Models, and Routes](../../architecture/arch-views-models-routes.md); the broad
+view-layer exemption in the original proposal is superseded.
 
 ## Overview
 

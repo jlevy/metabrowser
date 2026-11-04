@@ -9,10 +9,10 @@ code and from this document.
 **Status:** Partly implemented.
 Repository subjects, `SourceSession`, capabilities, the attached-filesystem content
 source, `GitCommandTarget`, the immutable Git tree source with `GitPath` file, raw, and
-tree routes, `file://` and `https://` acquisition of full clones into a shared,
-read-only repository store, and the GitHub URL reducer are implemented; `metab` opens a
-pin in-process for `--show`, non-cache `--api`, and `--check-api`, at the commit its URL
-selects, and serves it over HTTP under the forced untrusted profile.
+tree routes, `file://` and `https://` acquisition into a shared, read-only repository
+store, admitted checkout borrowing, and the GitHub URL reducer are implemented; `metab`
+opens a pin in-process for `--show`, non-cache `--api`, and `--check-api`, at the commit
+its URL selects, and serves it over HTTP under the forced untrusted profile.
 Under that profile its Markdown renders inert, reduced to an allowlist of plain markup
 on the server and again in the page, and the page carries a Content-Security-Policy; see
 [SECURITY.md](../../../SECURITY.md#content-trust-model).
@@ -351,10 +351,13 @@ See [uv storage](https://docs.astral.sh/uv/reference/storage/) for the conventio
 
 ## Shared Repository Store
 
-One logical repository store owns one worktree-free Git database: a read-only mirror of
+One logical repository store owns one worktree-free Git database for read-only views of
 its origin. It is a bare repository created with an empty template and configuration
-written only by Metabrowser, with automatic maintenance and `gc` off, and filled by one
-fetch of every object reachable from the origin’s branches and tags, a full clone.
+written only by Metabrowser, with automatic maintenance and `gc` off.
+Fresh acquisition without an admitted lender fetches the objects reachable from the
+origin’s branches and tags into a full store.
+An admitted checkout can instead lend objects to an [overlay store](#overlay-stores).
+A healthy published store keeps its mode and is reused.
 These invariants hold for every store:
 
 - there is no shared index or checked-out branch;
@@ -362,13 +365,14 @@ These invariants hold for every store:
 - its refs are the origin’s branches under `refs/remotes/origin/`, its tags, and the
   `refs/pull/<n>/head` of each pull request opened from it; Metabrowser writes no ref of
   its own;
-- a full store’s content is self-contained: every object is present, and nothing depends
-  on alternates into a user-owned checkout or on the origin after acquisition; an
-  overlay store’s objects are its own or a named checkout’s
-  ([Overlay stores](#overlay-stores));
+- a full store owns the objects fetched during acquisition and does not depend on
+  alternates into a user-owned checkout or on the origin for those objects; an overlay
+  store’s objects are its own or a named checkout’s ([Overlay stores](#overlay-stores));
 - tree enumeration and blob reads are bounded and cancellation-aware; and
-- nothing removes objects: no operation runs `gc`, `prune`, or `repack`, so a commit a
-  reader pinned stays readable without a lock or a ref.
+- Metabrowser does not remove objects: no operation runs `gc`, `prune`, or `repack`, so
+  readers need no object-retention lock or ref in a full store.
+  An overlay’s borrowed objects can disappear when its lender changes; the overlay
+  lifecycle handles that loss.
 
 The repository library assigns a stable internal `RepositoryStoreId`. A conservative,
 credential-free Git source identity may create the store before provider resolution.
@@ -392,7 +396,7 @@ batch readers, `pull_refs.py`, `update.py`, the freshness window, the fetch lock
 the pull-request records.
 `/api/cache/stores` reports the `mode`.
 
-| Mode | Objects | When |
+| Mode | Objects | On fresh acquisition |
 | --- | --- | --- |
 | `full` | Every object, fetched from the origin | No checkout is named, or borrowing is refused |
 | `overlay` | `objects/info/alternates` names a checkout’s objects directory, and the store holds what that lacks | The reader named a checkout with `--checkout` |
@@ -401,10 +405,14 @@ The design and its experiments are in
 [the plan](../specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md).
 `cache/lender.py` reads the checkout, and `cache/acquire.py` fills the store:
 
-1. **Only a named checkout lends.** The working directory never does, because any
-   directory a reader stands in can be made to pass for a checkout of any repository,
-   and Git does not verify an object’s hash on read.
-   `metab <url>` inside one clones and prints the flag, once, since a store then exists.
+1. **Only a checkout named now or previously lends.** A healthy published store is
+   reused first, including an overlay with its remembered lender.
+   On a cache miss without a selected lender, acquisition creates a full store.
+   The working directory never grants borrowing permission, because any directory a
+   reader stands in can be made to pass for a checkout of any repository, and Git does
+   not verify an object’s hash on read.
+   If that directory is a matching checkout, the fresh acquisition prints the flag that
+   would have selected it.
 2. **The checks come first, with no Git in the checkout.** `.git`, `commondir`,
    `config`, and every ref are read as bounded regular files.
    A remote whose identity is the source’s, through the provider’s grammar, is required,
@@ -936,6 +944,16 @@ A pull request’s changed files are one more file beside its record:
 refresh ended (`cache/paths.py: source_pull_files`). `PullFileList` in `pull_list.py`
 holds the model and its bounds with their measurements, written atomically as a private
 JSON file and read with a byte limit.
+File-list schema 2 requires a `generation`: one opaque UUID minted after source
+admission for the entire logical refresh, shared by its local or GitHub publications.
+It stays stable through progressive pages and subsequent reads, including a server
+restart. Concurrent refreshes have distinct generations even at the same timestamp.
+Older or malformed file-list records are a typed cache miss; a passive read never
+rewrites them. An explicit refresh can replace disposable records in an admitted home.
+Source admission refuses unknown or future application layouts.
+A worker rejected at this boundary attempts no cache write.
+Work that passed admission earlier can still publish later; refusal does not drain
+concurrent writers or coordinate a live layout upgrade.
 A row keeps `path`, `previous_path`, GitHub’s `status`, and the line counts; GitHub’s
 embedded patch is dropped before anything is kept.
 The path is the row’s identity, a rename’s new path, since the diff view jumps to a file
@@ -949,7 +967,10 @@ A manifest cut at `MAX_MANIFEST_FILES`, or one Git cannot list, as on a mirror w
 checkout is gone (`lender_missing`) or has collected the head (`commits_unavailable`),
 falls through to GitHub’s list, which runs no Git: the account, then
 `repos/<owner>/<repo>/pulls/<n>/files`, one page of a hundred at a time up to GitHub’s
-3,000 files, then the account again.
+3,000 files. The worker checks that the active account still matches the record’s reader
+before each progressive-prefix publication and before publishing the complete list.
+An observed change stops the job with `account_changed`; previously checked prefixes
+remain readable and the envelope marks them stale.
 `tests/test_github_pull_files.py` lists a source directory that has no store, with a
 `git` first on `PATH` that fails and logs.
 
@@ -958,10 +979,29 @@ file does, as `complete: false` with the page count GitHub’s `Link` gave, so a
 sees a first list arrive and a held one never shrinks while it is reread, each page with
 its `If-None-Match` and a full last page whole; the whole list is published at the end.
 A failure leaves the file as last published, and its stamp says why.
+The reader uses generation and repository/account/comparison identity to distinguish a
+replacement from an appended page; timestamp precision does not establish identity.
+
+A source-admission failure occurs before a refresh stamp can be written safely.
+The worker then keeps `cache_unwritable` in the bounded in-memory outcome cache, exposes
+it through the normal envelope, and holds automatic retries without contacting GitHub or
+attempting a lock, directory creation, or write in the refused home.
+Reading the refresh outcome selects the newest `at` from memory and disk independently
+of the strongest unexpired provider `reset_at`. An older, delayed provider hold
+therefore keeps its network deadline without hiding a newer `cache_unwritable` outcome
+or message. While a provider hold is active, equal-`at` outcomes retain precedence for
+the stronger reset deadline; exact ties prefer memory.
+With no active hold, equal-`at` outcomes keep the existing memory-first tie rule.
+The memory-only outcome can be lost on restart or eviction; it is not a durable cache
+repair. After admission, the worker attempts normal stamp publication.
+`tests/test_github_checkout.py` covers real refused layouts and unchanged home/config
+fingerprints; the file-list and tree session tests cover replacement, append, and read
+stability. `tests/test_github_pull_files.py` covers delayed shared holds, newer refusal
+outcomes, and expired equal-time holds.
 
 The job runs on the refresh coordinator under `<slug>:pull/<n>/files`, started outside
-the network slots, and holds a slot for each `gh` request alone, so a long list never
-holds one between pages and the mirror’s fetch waits at most for a page.
+the network slots. Each `gh` request acquires and releases its own network slot; the
+file-list job does not retain a slot between requests.
 It takes no turn at the store.
 At most `MAX_PULL_JOBS` file lists may be queued or running, since the numbers are
 request text; past it a request is refused `too_many`.
@@ -1180,12 +1220,12 @@ publication holds the alias lock and the store lock together.
 | `absent` | `claim_staging` | `staging_claimed` | `staging_entry` | no | Take `locks/staging/<entry>.lock`, then create `staging/<entry>/` on the cache filesystem. |
 | `staging_claimed` | `lookup_remote_head` | `head_observed` | `staging_entry` | yes | `git ls-remote --symref origin HEAD` records the remote default branch and its object ID. |
 | `staging_claimed` | `remote_unavailable` | `abandoned` | `staging_entry` | no | Typed failure; staging deleted. |
-| `head_observed` | `fetch_started` | `fetching` | `staging_entry` | yes | `init --bare --template=`, Metabrowser-written config with automatic maintenance and gc off, then one fetch of every object with explicit refspecs; no low-speed bound until acquisition stalls are measured, so user cancellation is the guard. An overlay adds its two configuration keys, its alternates file, and its boundary link first, and the fetch its negotiation tips. |
+| `head_observed` | `fetch_started` | `fetching` | `staging_entry` | yes | `init --bare --template=`, Metabrowser-written config with automatic maintenance and gc off, then a fetch with explicit refspecs. HTTPS uses the 1,000 bytes/s for 30 s low-speed policy and the fetch has a 900 s deadline; the user can also cancel. An overlay adds its two configuration keys, its alternates file, and its boundary link first, and the fetch its negotiation tips. |
 | `fetching` | `fetch_failed` | `abandoned` | `staging_entry` | no | Typed failure; staging deleted. |
 | `fetching` | `cancelled` | `abandoned` | `staging_entry` | no | Git terminated (4.4 ms to exit after SIGTERM, `explorations/repository-cache/results/concurrency.json`); staging deleted. |
-| `fetching` | `fetch_succeeded` | `fetched` | `staging_entry` | no | Every object reachable from the fetched branches and tags is present in staging. |
+| `fetching` | `fetch_succeeded` | `fetched` | `staging_entry` | no | Fetched objects are available through the staging store’s own object directory and, for overlays, its admitted lender; shallow boundaries remain explicit. |
 | `fetched` | `validation_failed` | `abandoned` | `staging_entry` | no | The observed HEAD object, its branch, or the object format did not validate; staging deleted. |
-| `fetched` | `validated` | `validated` | `staging_entry` | no | Records written in staging: strategy full and object_state complete. |
+| `fetched` | `validated` | `validated` | `staging_entry` | no | Write `store.yml` with acquisition metadata and the optional lender, and `state.yml` with the default ref/revision, fetch time, and acquisition outcome. |
 | `validated` | `publish_store` | `store_published` | `source_alias`, `repository_store`, `staging_entry` | no | Take the alias lock, then the store lock, and keep both through the alias commit; verify the store directory is absent and rename staging into `repository-stores/<store-key>`. |
 | `validated` | `store_exists_same_identity` | `store_reused` | `source_alias`, `repository_store`, `staging_entry` | no | Under the same two locks, a concurrent acquisition had published the same deterministic store first; its records validate, and staging is deleted after the locks are released. |
 | `store_published` | `publish_alias` | `alias_published` | `source_alias`, `repository_store`, `staging_entry` | no | Still under both locks, atomically create `sources/<slug>/` with `source.yml` and `store-alias.yml` as the sole visibility commit; release both locks. |
@@ -1294,9 +1334,9 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 | Plugin content reader | `plugin_api.py`: `resolve_content`, `resolve_content_container`, `stat_content`, `read_content_window`, `ContentRef`, `ContentStat`, `ContentWindow`; `source.py`: `FilesystemContentSource.open_ref`, `read_artifact_window`; `git/tree_source.py`: `GitTreeSource.open_ref`, `blob_logical_ext`; `content_errors.py`: `ContentReadError`, `ContentUnavailableError` | One bounded, source-agnostic read for plugin data hooks over an opaque `ContentRef`, with every read taking an explicit byte maximum and no unbounded variant, filesystem work in the thread pool and pinned reads through the pooled `cat-file` actors, and one catchable failure family carrying the `code` and `http_status` the pinned routes answer with. The four built-in data hooks that read bytes hold no Git import and no source-kind branch |
 | Plugin and route bridge | `plugin_api.py`: `open_content`, `source_capabilities`, `require_source_capability`, filesystem-only path helpers; `server.py`, `events_route.py`, `git/routes.py`, `git/content_routes.py`, `git/repo.py`, `git/history.py`; `diff/adapters/git.py`: `GitDiffSource`; `builtin_plugins/diff/sidekick.py`: comparison, document, and children hooks; `builtin_plugins/binary/sidekick.py`: chunk hook; `builtin_plugins/structured`: parsed hook; `builtin_plugins/agent_log/sidekick.py`: charts hook; `plugin_loader/classify.py`: `classify_identity` | Resolve the active content-source handle rather than assuming the global root is a `Path`; capability-gate recency, ignore, watcher, activity, mutation, and Git listing sizes; honor a pinned `GitRevisionSubject` on Git collection, file, raw, tree, rollup, catalog, index status, capabilities, tree filter tallies, tree summary, filtered tree totals, include_ignored no-op, tree depth, file envelope ext, markdown frontmatter, text preview window, in-tree symlink follow including plugin sidekicks, diff-comparison including `GitDiffSource.content`, KPress, patch-file container, binary-chunk, identity-and-content-kind, structured-parsed, and agent-log routes, and image preview; keep route, CLI, and golden parity |
 | Revision tree | `git/tree_source.py`: `GitPath`, `GitTreeSource`, `GitRevisionSubject`, `list_tree`, `read_blob`; shared per-store `cat-file --batch-command --buffer` pool (`MAX_BATCH_READERS_PER_STORE`); `git/content_routes.py`: file, raw, tree, catalog, `split_git_container_wire`, and extension plugin kinds | Enumerate NUL-framed byte-safe full-OID trees and read size-gated blobs from a `RepositoryStoreTarget` with no materialization. `GitPath` wires are the identity on every route that accepts one, and blob kinds come from extension, basename, sniffed adapter, and bounded JSON/YAML/frontmatter mappings. The per-route projections are in [Git and Comparison Sources](arch-git-and-comparison-sources.md) |
-| Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_source`; `cache/reclaim.py`: staging sweep | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition fetches every object of a `file://` or `https://` source and publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
+| Repository store | `cache/repository_store.py`: `open_revision`; `cache/records.py`: source aliases and store state; `cache/acquire.py`: `acquire_source`; `cache/reclaim.py`: staging sweep | `open_revision` checks that a commit is in the published store and returns its `GitRevisionSubject`, writing nothing and holding no lock. Acquisition reuses a healthy published store. On a cache miss it borrows from an admitted checkout or makes a full clone of the `file://` or `https://` source, then publishes the store and its alias under the alias and store locks. Nothing deletes a published store |
 | Serving a pin | `source.py`: `serve_subject_opener`, `lifespan_subject`, `attach_owned_subject`, `close_owned_subject`; `server.py`: `_lifespan`, `_pin_label_html`; `cli/git_pin_cli.py`: `run_serve_pin`; `source_routes.py`: `source_status` | Serve mode acquires, resolves what the URL selects, proves that pin opens, and hands the server an opener, because a pin’s batch readers belong to the event loop that started them. The application lifespan opens the pin in the serving loop before the inventory reads the subject, attaches it, and closes whichever pin is served at shutdown; each start opens a fresh pin. `/api/source/status` and the navigation heading report the pin and the ref it was resolved from, a pull-request URL’s number, and for a served mirror the repository’s name, its origin, and where the mirror is kept ([What a mirror’s page is called](#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept)). On a served pin the cache routes and the `/raw/<path>` form answer `unsupported_for_subject`, and the untrusted profile is forced |
-| Refresh and pin switching | `cache/origin.py`: `ls_remote_head_args`, `mirror_fetch_args`, `mirror_prune_args`, `classify_remote_failure`; `cache/update.py`: `update_store`, `remove_interrupted_fetch_leftovers`; `locks.py`: `store_fetch_lock`; `cache/resolve.py`: `resolve_pin`, `resolve_selection`, `ref_tip`, `list_mirror_refs`; `cache/served_mirror.py`: `StoreMirror`, `repository_name`, `display_directory`; `mirror_refresh.py`: `RefreshCoordinator`, `MirrorSession`, `serve_mirror`, `lifespan_refresh`; `source.py`: `replace_owned_subject`; `source_routes.py`: `api_source_refresh`, `api_source_pin`, `api_source_refs`, `view_on_pin`, `SourcePinGuard`; `static/source-freshness.js`, `static/source-pin-guard.js`, `static/source-ref-selector.js` | One fetch per refresh under the store’s fetch side lock, from the source’s URL, with typed outcomes, which the Git processes inherit so it stays held while any of them runs. The coordinator keeps background jobs on the application state keyed by store key, joins concurrent requests, runs at most two at once, and cancels them at shutdown; a Ctrl-C kills their process groups before it exits. Status freshness is answered from memory. One resolver serves URL opening and the pin route: exact ref names from one `for-each-ref` (branch, then tag, then commit ID). The ref selector lists the mirror’s branches or tags from one more `for-each-ref`, filtered and bounded in the route, and a switch that names the page’s `/view/` address answers where that page goes on the new pin. A pin replaces the served subject under a new generation, attaching the new subject before closing the old, so no request meets a moment with nothing served. In a server, a selection the mirror lacks starts one background fetch and answers `selection_pending`, then the switch or not found; a URL selection the mirror lacked at startup is served when that fetch brings it, under a new generation like any switch. The lifespan’s opener is left alone, so a restart serves the pin the banner announced. Serve mode refreshes a stale mirror once at startup and follows a refresh another process is running until it ends; one-shot modes never fetch unless asked. Any failure of the atomic fetch is followed by a prune of stale refs on their own and one more try, which clears a ref clash (`side` becoming `side/x`, a case-only rename) however Git words it; a clash that remains on a case-insensitive store, or a fetch that folded one ref into its case twin, puts every ref back and is `ref_case_collision`. A page on a pin names the commit it shows on its `fetch` data requests (`static/source-pin-guard.js`), and `SourcePinGuard` refuses another commit with `pin_changed`; the commit rather than the session generation is the token because a generation restarts at 1 in every server process. Back and forward bring such a page back from the browser’s caches without asking, so on a history landing the same script asks the status route once and reloads the page, at most once, when another commit is served; the page stays cacheable, so a landing with nothing switched keeps the back/forward cache and its scroll position. A commit pinned by ID is served under the ref last served, or the served pull request’s head ref, when it is that ref’s tip, so a switch away and back by ID stays on the ref |
+| Refresh and pin switching | `cache/origin.py`: `ls_remote_head_args`, `mirror_fetch_args`, `mirror_prune_args`, `classify_remote_failure`; `cache/update.py`: `update_store`, `remove_interrupted_fetch_leftovers`; `locks.py`: `store_fetch_lock`; `cache/resolve.py`: `resolve_pin`, `resolve_selection`, `ref_tip`, `list_mirror_refs`; `cache/served_mirror.py`: `StoreMirror`, `repository_name`, `display_directory`; `mirror_refresh.py`: `RefreshCoordinator`, `MirrorSession`, `serve_mirror`, `lifespan_refresh`; `source.py`: `replace_owned_subject`; `source_routes.py`: `api_source_refresh`, `api_source_pin`, `api_source_refs`, `view_on_pin`, `SourcePinGuard`; `static/source-freshness.js`, `static/source-pin-guard.js`, `static/source-ref-selector.js` | One fetch per refresh under the store’s fetch side lock, from the source’s URL, with typed outcomes, which the Git processes inherit so it stays held while any of them runs. The coordinator keeps background jobs on the application state keyed by store key, joins concurrent requests, runs at most two at once, and cancels them at shutdown; a Ctrl-C kills their process groups before it exits. Status freshness is answered from memory. One resolver serves URL opening and the pin route: exact ref names from one `for-each-ref` (branch, then tag, then commit ID). The ref selector lists the mirror’s branches or tags from one more `for-each-ref`, filtered and bounded in the route, and a switch that names the page’s `/view/` address answers where that page goes on the new pin. A pin replaces the served subject under a new generation, attaching the new subject before closing the old, so no request meets a moment with nothing served. In a server, a selection the mirror lacks starts one background fetch and answers `selection_pending`, then the switch or not found; a URL selection the mirror lacked at startup is served when that fetch brings it, under a new generation like any switch. The lifespan’s opener is left alone, so a restart serves the pin the banner announced. Serve mode refreshes a stale mirror once at startup and follows a refresh another process is running until it ends. One-shot URL startup may acquire the source and obtain missing PR metadata or required Git refs; after URL selection resolves, ordinary cache-only reads do not fetch, while explicit refresh actions may. Any failure of the atomic fetch is followed by a prune of stale refs on their own and one more try, which clears a ref clash (`side` becoming `side/x`, a case-only rename) however Git words it; a clash that remains on a case-insensitive store, or a fetch that folded one ref into its case twin, puts every ref back and is `ref_case_collision`. A page on a pin names the commit it shows on its `fetch` data requests (`static/source-pin-guard.js`), and `SourcePinGuard` refuses another commit with `pin_changed`; the commit rather than the session generation is the token because a generation restarts at 1 in every server process. Back and forward bring such a page back from the browser’s caches without asking, so on a history landing the same script asks the status route once and reloads the page, at most once, when another commit is served; the page stays cacheable, so a landing with nothing switched keeps the back/forward cache and its scroll position. A commit pinned by ID is served under the ref last served, or the served pull request’s head ref, when it is that ref’s tip, so a switch away and back by ID stays on the ref |
 | Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
 | Providers and GitHub URLs | `cache/providers.py`: `RepositoryProvider`, `url_reducers`, `provider_git_config`, `check_first_clone`, `repository_context_for`, `open_pull_request`; `builtin_plugins/github/`: `GithubUrlReducer`, `GithubProvider`, `run_gh`; `cache/urls.py`: `RepositorySelection`, `ReducerRejection` | Core names no provider. The GitHub reducer turns web, raw, and SSH URLs into the canonical source plus a selection, or a typed refusal; the provider supplies the `gh` credential helper, the first-clone size check, a mirror’s `repository_context`, and the head a pull-request URL pins |
 | Pull-request records | `builtin_plugins/github/gh.py`: `gh_api`, `gh_account`; `builtin_plugins/github/pulls.py`: `refresh_pull_request`, `open_pull_request`; `builtin_plugins/github/pull_record.py`: `PullRecord`, `read_pull_record`, `write_pull_record`; `builtin_plugins/github/sidekick.py`: `pull_handler`, `pull_refresh_handler`; `builtin_plugins/github/pull_route.py`: `pull_envelope`, `pull_host`, `start_refresh`; `builtin_plugins/github/served_pull.py`: `ServedPull`, `ServedPulls`; `mirror_refresh.py`: `CompanionRefresh`, `PullRequestSet`, `MAX_PULL_JOBS`; `cache/pull_refs.py`: `fetch_pull_head`, `comparison_endpoints` | Read a pull request with bounded, conditional `gh api` pages, fetch `refs/pull/<n>/head` under the store’s fetch side lock, compute the merge-base endpoints, and keep one record per pull request; serve it from the cache alone, and refresh it in the refresh coordinator beside the mirror. See [Pull-request records](#pull-request-records) |
@@ -1325,8 +1365,11 @@ architecture and beads are updated before code publication.
 Phases 2 to 4 are implemented.
 Phase 1’s binding and storage contracts were built and then removed with the
 hosted-review code. Phase 6 is implemented for a directly opened pull request, as the
-GitHub plugin’s own records rather than provider-mirror snapshots; its discovery and
-navigation half and phase 5 are deferred, and phase 7 is later work.
+GitHub plugin’s own records rather than provider-mirror snapshots.
+Discovery, navigation, and checkout-backed PR comparisons are implemented through the
+[Pulls tab plan](../specs/active/plan-2026-10-01-github-pulls-tab.md); the original
+provider-neutral mechanisms are not.
+Phase 7 remains later work.
 
 1. Correct the unreleased binding and storage contracts so provider repository identity
    is independent of a generic cache entry.
@@ -1413,17 +1456,22 @@ Their measurements stay in the exploration as the record to revisit:
 
 - **Blobless acquisition with default-revision prefetch.** Serving the default
   revision’s tree took 5.8–5.9 s blobless against 8.8–17.8 s full for `python/mypy` over
-  HTTPS. Stores are full clones now; blobless clones return only if a measurement shows
-  full clones too slow for common repositories.
-- **Explicit convergence, object-ID requests, and recorded promisor remotes.** No store
-  is missing objects, so nothing converges, requests blobs by ID, or has a promisor
-  remote. The configuration snapshot that guarded promisor remotes was never verified on
-  reads and is gone.
-- **No implicit lazy fetch.** `GIT_NO_LAZY_FETCH=1` stays set on every store read as
-  defense in depth; no behavior depends on it.
-- **Durable refs, coalesced fetch jobs, and job refs.** Nothing prunes a store, so a
-  commit stays reachable without a ref of Metabrowser’s own, and refresh is one plain
-  fetch under one lock per mirror.
+  HTTPS. Fresh acquisition without an admitted lender remains a full clone; borrowed
+  stores are covered separately above.
+  Blobless acquisition remains future work.
+- **Generic convergence and recorded promisor remotes.** The former partial-clone
+  convergence design remains retired.
+  Borrowed stores can lose objects when their lender changes; their explicit, bounded
+  recovery can request observed object IDs.
+  That path does not restore a promisor remote or background full-store convergence.
+- **No implicit lazy fetch.** `GIT_NO_LAZY_FETCH=1` stays set on every store read.
+  Missing borrowed objects remain visible as unavailable until explicit network work
+  repairs them, when the origin can still supply them.
+- **Generic durable and job refs.** The former convergence scheme remains retired.
+  Current PR acquisition keeps its fetched pull ref, and an overlay sweeps refs whose
+  borrowed objects disappeared before fetching.
+  This is separate from garbage collection of a full store’s own objects; fetch work
+  remains serialized per store.
 
 Still open, with owners:
 

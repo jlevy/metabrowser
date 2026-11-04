@@ -1,29 +1,31 @@
 # Plan: Pull-Request Review from a Mirror or an Existing Checkout
 
-**Status:** Designed, independently reviewed, and tested; decided by the owner on
-2026-11-02; step 1 of [Delivery](#delivery) is in progress.
+**Status:** Overlay acquisition, bounded explicit recovery, and checkout-backed PR
+comparisons are implemented in [#283](https://github.com/jlevy/metabrowser/pull/283) and
+[#288](https://github.com/jlevy/metabrowser/pull/288) and are present on
+[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b),
+recorded on 2026-11-04. [Delivery](#delivery) maps the implemented scope; the
+[alpha plan’s landing status](plan-2026-09-22-v012-alpha-testing.md#landing-status)
+records current integration and release evidence.
+Conversions and broader deepening remain future work.
+
 The design was proven by experiments on 2026-11-02 against a 1.2 GB private repository
 and small local replicas, reviewed the same day with the verdict *sound with changes*,
-and revised: every finding of the review is applied below and proven again against the
-reviewer’s own replicas.
-[Independent Review](#independent-review) records each finding and its disposition,
-[What the Experiments Established](#what-the-experiments-established) says which claims
-were proven and which are inferred, and
-[Open Decisions for the User](#open-decisions-for-the-user) records what the owner
-settled. [Delivery](#delivery) says what can ship in 0.12.x.
+and revised. [Independent Review](#independent-review) preserves those findings and
+[What the Experiments Established](#what-the-experiments-established) distinguishes
+proofs from inferences.
+[Open Decisions for the User](#open-decisions-for-the-user) records the original
+decisions.
 
-This plan extends the [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md), which stays
-the authority for the list, the tab, numbered routes, and the pages on a checkout, and
-the [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), which stays the authority
-for the mirror, `gh`, and records.
-It revises one decision of the Pulls tab plan,
-[the alternates option](plan-2026-10-01-github-pulls-tab.md#local-checkouts), one of its
-Files changed cases, and one invariant of
-[Shared Repository Store](../../architecture/arch-repository-sources-and-provider-mirrors.md#shared-repository-store);
-[The Rule This Changes](#the-rule-this-changes) names them.
-Beads: `mb-cbak` (pull requests on a checkout), `mb-lnkl` and `mb-iw1v` (the list and
-the tab), `mb-dqvj` (shallow history), which this plan touches but does not start, and
-`mb-shwd` (the review).
+This plan extends the [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md) and the
+[thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md).
+It revised the original
+[alternates decision](plan-2026-10-01-github-pulls-tab.md#local-checkouts), a Files
+changed case, and the store invariant; [The Rule This Changes](#the-rule-this-changes)
+records that design change.
+Current runtime contracts are in
+[Repository Sources and Provider Mirrors](../../architecture/arch-repository-sources-and-provider-mirrors.md)
+and [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
 
 ## Goal
 
@@ -54,7 +56,8 @@ usually immutable”.
 - Fork remotes as a list source, SSH transports, and GitHub Enterprise, as in the Pulls
   tab plan. A fork checkout may still lend its objects.
 - Reclaiming disk from existing full mirrors automatically.
-  A conversion exists ([Conversions](#conversions)) and is explicit.
+  The planned conversion ([Conversions](#conversions)) is explicit and is not
+  implemented.
 
 ## What the Experiments Established
 
@@ -332,8 +335,8 @@ metab https://github.com/owner/repo/pull/123 --checkout ~/src/repo-feature-x
 The borrowed directory is the common directory’s `objects`, which every worktree shares;
 the store records that directory, not the worktree.
 
-**Several pull requests.** After the Pulls tab plan’s step 2, any number is a page of
-the same server, and each head is one fetch of about a second into the overlay:
+**Several pull requests.** Any numbered PR is a page of the same server.
+Explicit metadata refresh and comparison acquisition are independent of list discovery:
 
 ```shell
 metab https://github.com/owner/repo --checkout ~/src/repo
@@ -341,15 +344,18 @@ metab https://github.com/owner/repo --checkout ~/src/repo
 metab https://github.com/owner/repo --api '/api/plugin/github/pull?number=124'
 ```
 
-Until step 2 lands, each pull request is its own `metab <url>`, sharing one store.
+A cache-only GET may report an absent record; it does not fetch a PR merely because its
+number is addressed.
+The browser starts the appropriate background action.
 
 **`metab <checkout>` and finding a pull request from there.** The Pulls tab plan’s steps
 4 and 5: the folder server lists and opens pull requests from the shared records.
 Its step 5 changes with this plan
 ([Fit with the Pulls Tab Plan](#fit-with-the-pulls-tab-plan)): Files changed is read
-from an overlay store that borrows the served checkout, created on first need, and never
-from the checkout directly.
-The CLI form is the plan’s own:
+from a store opened or acquired by explicit **Fetch changes**, borrowing the served
+checkout without writing to it.
+Opening Files alone does not acquire a store, and a borrowing refusal does not fall back
+to a full clone. The CLI form is the plan’s own:
 
 ```shell
 metab ~/src/repo --api '/api/plugin/github/pull?number=123'
@@ -358,7 +364,9 @@ metab ~/src/repo --api '/api/plugin/github/pulls?state=open'
 
 ### Storage Modes
 
-Which mode applies, and the fallback:
+For URL acquisition with `--checkout`, the following mode/fallback rules apply.
+The folder server’s **Fetch changes** path is borrowing-only when no healthy managed
+store exists; it reports refusal instead of cloning when lending is ineligible:
 
 | Situation | Mode | What the reader is told |
 | --- | --- | --- |
@@ -670,12 +678,33 @@ state is reached by a transcript.
 
 ## Delivery
 
-Each step is one pull request against `main`, implemented and reviewed by separate
-agents, with `make verify` and green CI, merged before the next starts, updating
-[Views, Models, and Routes](../../architecture/arch-views-models-routes.md) and
-`CHANGELOG.md` in the same change.
-The review added work to step 1; it is listed honestly rather than deferred, because
-each item is a correctness or safety condition of the mode itself.
+The implemented scopes below are present on
+[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b).
+The
+[postlanding integration review](https://github.com/jlevy/metabrowser/pull/297#pullrequestreview-5770654024)
+records their current source and acceptance evidence.
+Conversions and broader deepening remain future work; merging the implemented subset
+does not complete those steps or publish a release.
+
+| Step | Implemented scope or remaining work | Owning evidence |
+| --- | --- | --- |
+| 1. Overlay acquisition | Explicit URL borrowing, lender admission, shallow certainty, safe ref sweep, and typed refusal | [#283](https://github.com/jlevy/metabrowser/pull/283) |
+| 2. Healing and verification | Explicit retry of observed missing/corrupt objects; complete bounded blob verification; partial windows keep their limits; immutable displayed pairs remain selected | [#283](https://github.com/jlevy/metabrowser/pull/283), [#288](https://github.com/jlevy/metabrowser/pull/288) |
+| 3. Conversions | Full-store/overlay repack routes are not implemented | [Conversions](#conversions), future work |
+| 4. Overlay inside the folder server | Recognized main/linked/subdirectory checkouts read shared metadata; Fetch changes acquires explicitly without changing the folder root or its checkout | [#288](https://github.com/jlevy/metabrowser/pull/288) |
+| 5. Broader deepening | Unshallowing as an independent measured background feature remains outside the bounded certainty recovery path | `mb-dqvj`, future work |
+
+Repair can still be unavailable: the origin may no longer serve an old object, missing
+ancestry may prevent negotiation, or a missing pinned root tree may prevent startup
+before a page can offer repair.
+No full clone, full-store scan, or checkout write is implied by recovery.
+
+### Original delivery estimate
+
+The following table records the 2026-11-02 design estimate.
+Its shipping order, automatic-healing wording, and cost estimates are historical, not
+current promises. The implementation table above and current architecture define the
+accepted behavior.
 
 | Step | Scope | Checkpoint a person can see | Needed for the user’s goal | Ships |
 | --- | --- | --- | --- | --- |
@@ -740,7 +769,8 @@ For a documentation agent, after step 1 and again after step 2:
 - **The alternates file is a hard dependency.** A moved or deleted checkout stops every
   read until it is fixed, and a fetch cannot heal that case.
   The open check turns it into a refusal with the repair command rather than a failing
-  page, and the conversion exists for a checkout about to go.
+  page. Conversion before removing a lender remains a planned feature, not a recovery
+  command available today.
 - **Git’s behavior with alternates is relied on in four places** that could change
   between versions: `everything_local` skipping a fetch whose tips are present, the
   re-want of a missing local object, `repack -l`, and the lockfile rename over a

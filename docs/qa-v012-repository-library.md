@@ -23,7 +23,7 @@ Where the two disagree, believe `--help`. Test layering lives in
 Acquisition, GitPath wires, and the one-subject rule live in
 [repository sources and provider mirrors](project/architecture/arch-repository-sources-and-provider-mirrors.md).
 The HTML-trust invariant lives in
-[full-page HTML rendering and an explicit trust model](project/specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
+[full-page HTML rendering and an explicit trust model](project/specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
 and [SECURITY.md](../SECURITY.md).
 
 Validate post-landing stability fixes on top of current `main`. Archive containers
@@ -226,9 +226,13 @@ before going on. Run all checks on this same selected commit.
   mode flag acquires or reuses the store and serves the commit its URL selects; ssh
   refuses. Serving a **local filesystem** root (v0.10) is a different product and is in
   scope for the regression steps below.
-- **Only a server, or an explicit refresh request, fetches.** A served mirror refreshes
-  from its origin in the background; `--show`, `--api`, and `--check-api` never fetch
-  unless the command is `--api /api/source/refresh`.
+- **Acquisition and refresh are separate from cached reads.** Opening an unacquired
+  source URL can acquire its Git store, and PR startup can fetch missing metadata and
+  required Git head/ref data, including when the store already exists.
+  After URL selection resolves, cache-only GETs and ordinary reads do not fetch or
+  implicitly repair missing Git objects.
+  Server background refresh and explicit source or GitHub refresh actions can fetch,
+  including when an explicit refresh route is called through `--api`.
 - **Investigate every test failure.** Watch-backend and overlay-dependent failures
   require a recorded cause and comparable CI evidence.
   Do not regenerate goldens to conceal a host difference or count a failed local
@@ -681,6 +685,9 @@ floor.
 
 Repeat once with an empty directory already at `METABROWSER_CACHE_DIR` (the `mktemp -d`
 case). The refusal must leave the cache empty and the configuration directory absent.
+Remove only that empty scratch directory with `rmdir "${METABROWSER_CACHE_DIR}"` and
+confirm `test ! -e "${METABROWSER_CACHE_DIR}"` before continuing.
+If it is not empty, record the failure instead of deleting its contents.
 
 The pin modes acquire through the same mapper, so repeat the refusal through them:
 
@@ -1250,18 +1257,25 @@ isolated cache, since a full mirror already in the cache is kept:
 export METABROWSER_CACHE_DIR=$(mktemp -d)/cache METABROWSER_CONFIG_DIR=$(mktemp -d)/config
 CHECKOUT=~/src/repo  # your checkout
 URL=https://github.com/owner/repo/pull/123  # an open pull request
-( cd "$CHECKOUT/.git" && find objects -type f | wc -l; cksum config packed-refs ) > before
+COMMON_GIT_DIR=$(git -C "$CHECKOUT" rev-parse --path-format=absolute --git-common-dir)
+( cd "$COMMON_GIT_DIR" && find objects -type f | wc -l; cksum config packed-refs ) > before
 time uv --config-file uv.toml run --frozen metab "$URL" --checkout "$CHECKOUT" --no-serve
 du -sh "$METABROWSER_CACHE_DIR"
 uv --config-file uv.toml run --frozen metab "$URL" --api /api/source/status
-( cd "$CHECKOUT/.git" && find objects -type f | wc -l; cksum config packed-refs ) | diff before -
+( cd "$COMMON_GIT_DIR" && find objects -type f | wc -l; cksum config packed-refs ) | diff before -
 ```
 
-**Pass:** The command prints `borrowing objects from <checkout>`, and in seconds; the
-cache is kilobytes; `borrows` names the checkout; the page’s file count and additions
-and deletions match `gh pr view`; and the final `diff` prints nothing.
-Run the first command again from a linked worktree of the checkout, in a new cache, and
-expect `borrows` to name the main checkout.
+**Pass:** The command prints `borrowing objects from <checkout>`; `borrows` names the
+checkout; the page’s file count and additions and deletions match `gh pr view`; and the
+final `diff` prints nothing.
+Record the elapsed time and cache size as observations, not universal pass thresholds.
+
+Repeat the block with `CHECKOUT` set to the linked worktree’s path and a new isolated
+cache and configuration directory.
+Pass that path explicitly to `--checkout`, resolve its common Git directory again, and
+record a fresh before/after fingerprint there.
+Changing only the current directory does not select a different lender.
+Expect `borrows` to name the shared main checkout.
 Serve it once and look at the heading’s tooltip, which ends
 `borrowing objects from <checkout>: a bare Git repository, …`.
 
@@ -2100,7 +2114,7 @@ was acquired or served, or a served pin ran a script).
 | --- | --- |
 | ssh acquire and serve | Closed; refuse is the test |
 | The browser’s view of a pending URL selection | It needs an origin that is slow or missing while the page is open. `tests/golden/cli-github-url-waits.txt` pins the states: a page opened while the selection waited goes to it when the fetch finds it, and the freshness row says when it is not on the origin or could not be fetched, with a Retry for the second |
-| A pull-request list, inline review anchors, checkout attachment, and rebind | Deferred from v0.12 by the thin-mirror plan. The pull-request page itself is 5.7 |
+| Inline review anchors and broader checkout attachment/rebind workflows | These remain future scope in the plans. The Pulls list and checkout-backed PR review are implemented and covered above; the pull-request page is 5.7 |
 | The Hosted Review Format and provider-resource code | Removed from the stack in #246; kept, unmaintained, on the `reference/v012-hosted-review` branch |
 | Archive containers | `mb-380k` |
 | HTML preview on a pin | A pin never offers Preview. Check 7 of 3.4 covers the preview frame on a folder, and 6.3 its response headers |

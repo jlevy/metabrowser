@@ -639,12 +639,12 @@ stylistic.
 
 Metabrowser ships the server, the browser shell, and the built-in plugins as one
 artifact from one repository.
-The page is served uncached and every asset URL carries a content-derived version, so a
-browser cannot hold an old `app.js` against a new `/api/rollup`. Settings are inlined
-into that same page, so the browser’s file-type definitions and the server’s are always
-the same object from the same process.
-There is no window in which the two halves disagree, so code written to survive that
-window is dead on arrival.
+A newly loaded page receives the running build’s shell and inlined settings through an
+uncached index response and versioned local asset URLs.
+After replacing a local server build, reload existing tabs: an already-open document
+retains its loaded JavaScript until the document reloads.
+That ordinary reload boundary does not create a separately versioned client contract or
+justify compatibility shims between the two halves.
 
 `/api/*` shapes, `window.metabrowser`, `METABROWSER_SETTINGS`, the plugin manifest, and
 the built-in plugin interfaces are therefore internal contracts.
@@ -846,7 +846,8 @@ Challenging an existing rule from first principles is ordinary work, not an over
 
 ## Issue Tracking
 
-The repository uses tbd v0.8.1 for git-native issues and plans:
+The repository uses tbd for git-native issues and plans.
+`.tbd/config.yml` records the setup version; `tbd --version` reports the installed CLI:
 
 ```shell
 tbd prime

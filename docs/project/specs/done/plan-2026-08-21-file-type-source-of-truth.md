@@ -6,6 +6,17 @@
 
 **Status:** Complete
 
+**Current-state addendum (2026-11-04):** This plan records the original move from
+per-folder color slots to registry-owned hue.
+Later refinement replaced its flat lightness/chroma rule with a deterministic per-family
+position inside each theme’s `ToneBand`; hue remains registry-owned and gamut pullback
+changes only chroma.
+The current registry uses schema version 4. The schema-version-2 rollout and flat-tone
+measurements below remain historical.
+Current derivation is in [`color_oklch.py`](../../../../src/metabrowser/color_oklch.py),
+[`file_type_registry.py`](../../../../src/metabrowser/file_type_registry.py), and
+[`serialize_distribution_colors`](../../../../src/metabrowser/file_type_filters.py).
+
 ## Overview
 
 What a file *is* — its family, its label, its color, the extensions and basenames that

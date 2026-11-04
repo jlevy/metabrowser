@@ -4,7 +4,15 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Partly delivered; broader load-time, flat-tree, and visual-stability goals
+remain open.
+
+On-demand asset bundles, progressive inventory delivery, cooperative provider work, and
+an enforced startup-script budget are implemented.
+They do not complete the remaining whole-tree, warm-reopen, navigation-window, and
+visual-stability work below.
+The opening measurements and experiment narratives are historical baselines, not
+measurements of the current build.
 
 ## Overview
 

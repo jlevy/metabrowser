@@ -41,8 +41,8 @@ metab ./path/to/directory
 ```
 
 `metab` is the standard installed command.
-The `metabrowser` compatibility command matches the package name and enables the concise
-`uvx metabrowser@latest ...` form.
+The `metabrowser` package-name alias enables the concise `uvx metabrowser@latest ...`
+form.
 
 Upgrade deliberately to a reviewed release by naming its exact version:
 

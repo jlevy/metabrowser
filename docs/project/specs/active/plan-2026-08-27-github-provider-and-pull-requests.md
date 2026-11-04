@@ -24,8 +24,12 @@ above records. Phases 2 through 4A are superseded: the thin-mirror plan’s
 [Delivery](plan-2026-09-23-v012-thin-mirror.md#delivery) section names the pull requests
 that open GitHub URLs, read pull-request records with `gh`, and render the pull-request
 page in their place, so the unchecked items in those phases will not be done as written.
-The pull-request index and panel (Phases 3C and 4B) and anchored review threads (Phase
-4C) are deferred by the user’s 2026-09-23 decision.
+The pull-request index and panel (Phases 3C and 4B) are implemented by the later
+[Pulls tab plan](plan-2026-10-01-github-pulls-tab.md), without this plan’s retired
+provider-neutral model.
+Anchored review threads (Phase 4C) remain deferred.
+Optional native GitHub membership is implemented separately; it does not complete Phase
+6’s stack derivation, aggregate state, or comparison projections.
 Phases 5 and 6, hosted releases, and GitLab remain later work and need re-planning
 against the thin mirror before they start.
 The v0.12 stack has landed; the release is `mb-4bd2` and requires the user’s explicit

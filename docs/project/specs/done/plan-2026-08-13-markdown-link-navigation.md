@@ -31,7 +31,10 @@ GitHub-compatible links are implemented first because they establish that founda
 but the feature is not complete until the Obsidian scope also passes end-to-end
 fixtures.
 Static-site routing, GitHub remote-URL localization, backlinks, graph features,
-and note transclusion remain explicitly mapped follow-ups.
+and note transclusion were originally deferred from this baseline.
+Their later delivery, retired interfaces, and remaining scope belong to the
+[Markdown navigation extensions plan](../active/plan-2026-08-13-markdown-navigation-extensions.md);
+this completion status does not assert that every later extension is finished.
 
 ## Goals
 

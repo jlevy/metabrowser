@@ -4,7 +4,12 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Per-page catalog hashing implemented; broader flat-tree delivery debt
+remains open.
+
+The walker still emits batches of 256. The larger batch and the attached-walk, catalog,
+and Long Task acceptance targets below remain unfinished; historical timing results do
+not establish their current performance.
 
 ## Overview
 
@@ -70,11 +75,11 @@ Worth about 5% between them.
 Real, small, and not the answer — stated plainly so nobody mistakes this tier for the
 fix.
 
-- **Catalog content hash, per-page join** (`mb-wpqq`). 62 ms → 41 ms at 300,000 rows,
-  byte-identical digest, three tests.
-  Written and tested during the v0.10.0 round and held back only because it touches a
-  path exp-034’s captures measured.
-  Lands first.
+- **Catalog content hash, per-page join.** Implemented in `events_route.py`’s
+  `_catalog_content_identity`. The original measurement was 62 ms → 41 ms at 300,000
+  rows with a byte-identical digest.
+  This bounded constant optimization does not remove whole-index catalog construction or
+  sort costs.
 - **Walker emit batch 256 → 1,024** (`mb-nuhb`). 1.2 s off an attached 300k walk; 1,024
   is the contract ceiling, since `MAX_CHANGE_PATHS` is 1,024 and above it a change
   becomes `all_dirty` and forces a resync.

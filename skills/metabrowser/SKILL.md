@@ -3,13 +3,15 @@ name: metabrowser
 description: >-
   Browse local or remote directories and files with Metabrowser, including
   Markdown, structured data, source code, images, logs, and binary metadata, and
-  review GitHub pull requests from their URLs. Use when a user asks to explore a
+  review GitHub pull requests from a repository URL or an existing checkout. Use when a user asks to explore a
   directory, inspect a file or live log, open a local file browser, inventory a
   directory, read or review a GitHub pull request or its diff, or inspect and validate
   Metabrowser plugins.
 compatibility: >-
   Requires either a local metab command or uv (for the zero-install uvx fallback, which
-  needs network access on first use). Pull requests also need gh, signed in, and Git.
+  needs network access on first use). Git-backed browsing requires Git; fetching fresh
+  GitHub metadata requires gh and a verified sign-in. Cached PR records remain readable
+  without new provider work.
 ---
 # Metabrowser
 
@@ -49,8 +51,8 @@ resolves one.
 ## Route the Task
 
 - Browse a local directory or file: pass its path directly (`<invocation> <path>`). A
-  file selects that file inside its parent directory, and the reported URL carries a
-  `#<relative-path>` fragment
+  file selects that file inside its parent directory at `/view/<relative-path>`; a
+  fragment selects a document location, such as a heading or line
 - Start a headless server: add `--no-open`. Serving blocks until the server is stopped,
   so start it in the background and report the URL it prints instead of waiting for the
   command to exit
@@ -68,12 +70,24 @@ resolves one.
 
 ## Review a Pull Request
 
-A pull request opens only from its URL. There is no list of a repository’s pull
-requests, and `metab <checkout>` serves none.
-When a checkout of the repository exists, add `--checkout <path>` once: the mirror
-borrows its objects instead of cloning them, nothing is written to the checkout, and
-later commands remember it.
-Without the flag a checkout is never used, even from inside it.
+Open a GitHub repository URL, a pull-request URL, or an existing checkout.
+A recognized main or linked worktree, including a served subdirectory, has a **Pulls**
+tab. The catalog starts with Open PRs; Closed includes merged PRs.
+Metadata loads incrementally in the background, while **Fetch more** expands the
+displayed window.
+
+A folder server keeps its filesystem root and does not fetch Git objects merely because
+a pull request is opened.
+If Files changed has no comparison store, **Fetch changes** explicitly opens a healthy
+published store, including an existing full store, or acquires an overlay that borrows
+the checkout’s objects without writing to it.
+Borrowing refusal does not silently start a full clone.
+
+For a URL-backed server, `--checkout <path>` explicitly supplies a lender for its
+managed store. The choice is remembered; a URL open does not infer a lender from the
+current working directory.
+This flag is separate from opening a checkout as a folder server.
+
 For an agent, these read everything without a browser or a port, where `<url>` is
 `https://github.com/<owner>/<repo>/pull/<n>`:
 
@@ -94,8 +108,12 @@ For an agent, these read everything without a browser or a port, where `<url>` i
 To give a person the page, run `<invocation> <url> --no-open` in the background and
 report the address on its `Serving … at` line.
 Each server takes its own port and pins one head; it opens any other pull request of the
-repository at `/pull/<n>`, which offers **Fetch** if it has not been read.
-Metabrowser only reads: to comment or approve, use GitHub.
+repository at `/pull/<n>`. **Refresh** retries metadata or an unavailable comparison;
+**Show the newer changes** selects a newly reported head.
+A refresh keeps the displayed immutable comparison until the reader chooses to move.
+Optional `gh-stack` support adds authoritative stack membership and navigation; its
+absence does not block ordinary PR reading.
+Metabrowser only reads: to comment, approve, or merge, use GitHub.
 It opens github.com only.
 The
 [guide](https://github.com/jlevy/metabrowser/blob/main/docs/reviewing-pull-requests.md)

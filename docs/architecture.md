@@ -26,11 +26,13 @@ Optional third-party assets enhance syntax highlighting, charts, or specialized
 renderers after the shell can already paint a useful first view.
 
 The server and the browser shell are one deployable unit, not two independently
-versioned peers. The index route is served uncached, `_static_asset_url` stamps every
-script with a content-derived `?v=` token, and `client_settings_dict` inlines the
-browser’s configuration into that same response.
-An upgraded server therefore always serves the matching shell, settings, and built-in
-plugins together; a browser cannot pair an old asset with a new route.
+versioned peers. The index route is served uncached, `_static_asset_url` adds a
+file-derived `?v=` cache token to local asset URLs, and `client_settings_dict` inlines
+the browser’s configuration into that same response.
+A newly loaded document receives the shell, settings, and built-in plugins from the
+running server build.
+After replacing a local server build, reload existing tabs so they use that build too;
+an already-open document does not replace its loaded JavaScript automatically.
 This is why internal contracts change in one commit and why compatibility shims between
 the two halves are forbidden — see
 [Compatibility and Legacy Code](development.md#compatibility-and-legacy-code).
@@ -66,13 +68,14 @@ and named-block anchors before rendering.
 Missing and ambiguous wiki targets remain visible; media wiki embeds reuse `/raw`, and
 note, heading, and named-block transclusion returns through KPress with shared depth,
 document, source-byte, cycle, abort, and disposal limits and a per-embed elapsed-time
-limit. The plugin also exposes bounded immutable graph analysis through the SDK;
-visualization remains outside the resolver.
-The shell remains Markdown-dialect agnostic: the plugin intercepts only plain primary
-activation through the public navigation SDK, while modifier clicks, new tabs,
-downloads, external URLs, and ordinary not-found handling retain browser behavior.
-Fragment scrolling runs only after the matching asynchronous Markdown mount completes
-and ends with that mount’s disposer.
+limit. The SDK does not expose Markdown graph analysis.
+A future graph surface requires a bounded server data route backed by a KPress-owned
+link-intent manifest; parsing the Markdown again in the browser can diverge from the
+rendered document. The shell remains Markdown-dialect agnostic: the plugin intercepts
+only plain primary activation through the public navigation SDK, while modifier clicks,
+new tabs, downloads, external URLs, and ordinary not-found handling retain browser
+behavior. Fragment scrolling runs only after the matching asynchronous Markdown mount
+completes and ends with that mount’s disposer.
 
 ## Git
 
@@ -183,13 +186,13 @@ No extension discloses exact basenames and Other types discloses raw extensions;
 cap at 20 children and conserve their omitted values in an exact Others row.
 Each type-table row renders the selected count or byte share as an inline bar beside its
 exact value and percentage.
-The two-row tally summary always leads with unignored Files and follows with Ignored.
-The rows are disjoint and conserve the complete directory population.
+The tally summary has three fixed rows: Files, Ignored, and Total.
+Files and Ignored are disjoint populations; Total is their sum.
 Each composition track normalizes its own row to 100% and segments it by the same
 top-level semantic file-type families shown in the type table.
-Segment order also matches the type table: registry group order first, then descending
-selected-metric value within each group for the active Show ignored scope.
-Both tracks use this one order so Files and Ignored remain directly comparable.
+Segment order follows registry group order, then descending selected-metric value within
+each group across the combined population.
+All three tracks share this fixed order; toggling Show ignored cannot reorder them.
 Hovering a segment uses the shared body-portaled navigation tooltip with the semantic
 family name in bold and its exact disjoint-population file count and byte size below.
 The whole Ignored row uses the shared dimmed-content opacity applied to ignored
@@ -335,7 +338,7 @@ which space it belongs to:
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
 | `/pull/<n>`, `/pull/<n>/files` | A pull request’s page: its conversation, or its Files changed | A pull-request number, then an optional tab |
 | `/pull/<n>/files/<inner>` | One changed file of that page’s Files changed | A pull-request number, then a path within its comparison |
-| `/pulls` | A repository’s list of pull requests, with none selected | `?state=` names its filter: `open` or `closed`, and none for all of them |
+| `/pulls` | A repository’s list of pull requests, with none selected | Open by default; `?state=closed` or `?state=all` selects another filter |
 | `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
 | `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
 
@@ -491,10 +494,12 @@ which remains reachable as an ordinary file view.
 Inventory endpoints return current partial state plus progress metadata instead of
 waiting for a complete walk.
 
-The CLI opens a browser only after the canonical route returns an HTTP success response.
-A free TCP port alone is not considered ready, and neither is a redirect, so every
-startup URL the CLI prints, probes, and opens is a `/view/` route rather than the
-redirecting origin.
+The CLI prints, probes, and opens the canonical URL for the selected resource, using
+`selection_view_href` for repository selections.
+Tree and file selections use `/view/`; a pull-request selection can use `/pull/<n>` or
+its `/files` tab.
+The browser opens only after that URL returns an HTTP success response.
+A free TCP port alone is not considered ready, and neither is the origin’s redirect.
 
 ## Live Update Model
 
@@ -514,10 +519,12 @@ walker/watcher construction boundary.
 The value retains at most the final two eligible suffix components: `bundle.js.map` and
 `archive.tar.gz` keep `.js.map` and `.tar.gz`, while `bundle.umd.min.js.map` and
 `types.d.ts.map` become `.js.map` and `.ts.map`. A component must be lowercase,
-alphanumeric, nonempty, and bounded in length; dotfiles remain extensionless.
-The fixed component cap prevents filenames from creating an unbounded vocabulary in
-navigation and rollup tallies while preserving common compound formats.
-Browser consumers use the indexed value instead of reparsing the full filename.
+alphanumeric, nonempty, and bounded in length.
+A leading dot belongs to the basename: `.gitignore` is extensionless, while
+`.eslintrc.json` has `.json`. The fixed component cap prevents filenames from creating
+an unbounded vocabulary in navigation and rollup tallies while preserving common
+compound formats. Browser consumers use the indexed value instead of reparsing the full
+filename.
 
 The browser keeps a normalized file store.
 Tree panels and recent-file views subscribe to that store rather than maintaining

@@ -27,8 +27,8 @@ number that decides arguments:
 
 Two things follow, and both are design constraints rather than observations.
 
-**A construction costs roughly thirty validations.** Anything building a second object
-per entry is the largest single item on the path.
+**A second object adds per-entry construction cost.** The measurements above show why an
+extra construction and conversion must be justified on this path.
 This is why the walker yields the record the inventory retains rather than yielding a
 contract type and converting it.
 

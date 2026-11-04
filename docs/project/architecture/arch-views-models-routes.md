@@ -36,8 +36,8 @@ selected     can do              data                 is drawn
 
 The layers are deliberately decoupled: a view never learns which source produced its
 model, and a model never learns which route reached it.
-That is what lets one diff renderer serve a patch file, a commit, and later a pull
-request without knowing the difference.
+That is what lets one diff renderer serve a patch file, a commit, and a pull request
+without knowing the difference.
 
 The repository cache validates its own records against installed artifact contracts; see
 [Cache record contracts](arch-repository-sources-and-provider-mirrors.md#cache-record-contracts).
@@ -246,9 +246,13 @@ record it answers `200` with `refresh: "not_cached"`, inside the window or befor
 limit’s `reset_at` it answers `200` with `not_due`, and each starts nothing.
 Past `MAX_PULL_JOBS` queued or running, a request is refused `429` with `refresh` and
 `code` of `too_many`, and starts nothing; the attended pull request may run one over.
-`github/pull` also sends an entity tag over everything but the record, which changes
-only with `fetched_at`, and answers a matching `If-None-Match` with `304`, so the
-pull-request page polls it as cheaply as the status route.
+`github/pull` carries `record_revision`, a content identity for the validated record,
+and sends an entity tag over the envelope without repeating the record body in the tag
+input.
+The revision is a SHA-256 digest of the record excluding `fetched_at` and provider
+`etags`; it is reused with the parsed record while the cached file is unchanged.
+A matching `If-None-Match` answers `304`. Refresh time describes freshness, while the
+revision distinguishes changed content even when two refreshes have the same timestamp.
 `diff/comparison` on a store, for a request whose endpoints are all full commit IDs,
 sends an entity tag that names the build and the store, answers a matching
 `If-None-Match` with `304` once the store is known to hold the commits, and keeps its
@@ -274,10 +278,15 @@ its answer is not kept.
 `builtin_plugins/diff/comparison_cache.py` says what an answer depends on besides the
 two commit IDs, and `cli-diff-comparison-cache.txt` pins each case.
 `github/pull-markdown?number=<n>&part=<part>` renders one text of the cached record
-through KPress in its sanitized mode and answers the resulting HTML, with the record’s
-`fetched_at` and the part: `body`, or `issue_comment/<id>`, `review/<id>`, or
-`review_comment/<id>`. It also answers the manifest of KPress’s stylesheets, the same
-for every text, so the page sets a text in the rules a Markdown file reads under.
+through KPress in its sanitized mode and answers the resulting HTML, with the same
+parsed record’s `record_revision`, its `fetched_at`, and the part: `body`, or
+`issue_comment/<id>`, `review/<id>`, or `review_comment/<id>`. It also answers the
+manifest of KPress’s stylesheets, the same for every text, so the page sets a text in
+the rules a Markdown file reads under.
+The page accepts a reply only for its current record revision and text selection, and
+checks that ownership again after awaiting stylesheets.
+Superseded work cannot publish HTML or populate the current text cache.
+A timestamp-only refresh keeps the rendered text and its cached Markdown.
 It never fetches; a part the record lacks is `unknown_part`. KPress keeps what a
 document of its own may use, so the hook reduces that HTML to an allowlist
 (`src/metabrowser/inert_html.py`, with links made absolute against the pull request’s
@@ -352,18 +361,35 @@ stopped part-way, `last_page` is the page count GitHub’s `Link` gave, `capped`
 GitHub stopped at its 3,000 files, and `truncated` that an item was left out.
 A row keeps `path`, its identity, `previous_path`, GitHub’s `status`, and the line
 counts, with `display` and `previous_display` through the pinned tree’s display rule;
-`rows` is the window from `offset`, all by default and none with `limit=0`. It sends an
-entity tag over everything but the rows.
+`rows` is the window from `offset`, all by default and none with `limit=0`. The
+envelope’s `generation` identifies one admitted logical refresh and is shared by all of
+its progressive publications; it is null when no list is held.
+A held tree that receives a different generation rereads from offset zero; more rows
+under the same generation extend that tree.
+`fetched_at` remains freshness data.
+The entity tag covers everything but the rows, including generation and progress.
 `POST github/pull-files-refresh` with `{"number": n, "retry": false}` starts or joins
 that list’s refresh and answers `202`, naming `github/pull-files` with `limit=0` as its
-`status_route`. GitHub’s pages are published one by one as they arrive, never as fewer
-rows than the file holds, and a held list is reread conditionally.
-`"retry": true` is a reader’s own action; any other request starts a list that is not
-held, not complete, or stale, and not tried within the window.
+`status_route`. GitHub’s pages are published progressively after checking that the
+active account still matches the list’s reader, never as fewer rows than the file holds.
+The complete list receives the same account check; a held list is reread conditionally.
+An observed account change stops publication and marks previously checked prefixes
+stale. `"retry": true` is a reader’s own action; any other request starts a list that is
+not held, not complete, or stale, and not tried within the window.
 Past `rate_limited` nothing reads GitHub until `reset_at`, though the local comparison
 may still list. A request held answers `not_due` with `200`. A file-list job takes no
 turn at the store and holds a network slot for each `gh` request alone; past
-`MAX_PULL_JOBS` of them queued or running, a request is refused 429 `too_many`. See
+`MAX_PULL_JOBS` of them queued or running, a request is refused 429 `too_many`. If
+source admission refuses the application cache, `last_refresh` still reports
+`cache_unwritable` and automatic retries back off in bounded server memory.
+That rejected worker starts no GitHub request and attempts no lock, directory creation,
+or file write in the refused home.
+The envelope keeps the newest refresh outcome and message independently of the strongest
+active provider reset deadline, so an older shared hold cannot hide a newer refusal or
+shorten the network backoff.
+Workers admitted before the refusal can still publish later; admission does not drain
+those jobs. This fallback does not promise persistence across server restarts or memory
+eviction. See
 [Changed files of a pull request](arch-repository-sources-and-provider-mirrors.md#changed-files-of-a-pull-request).
 
 ### Planned plugin registration surfaces

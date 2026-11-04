@@ -5,17 +5,20 @@
 **Author:** Metabrowser maintainers
 
 **Status:** Partly delivered.
-Four of the seven items below shipped with the navigation baseline: configured
-static-site adapters, verified GitHub URL localization, broken-link and graph analysis,
-and bounded Obsidian transclusion.
-Each carries its own **Status** line in its section.
+Configured static-site adapters, verified GitHub URL localization, and bounded Obsidian
+transclusion are implemented.
+The earlier browser graph-analysis API was retired when Markdown parsing ownership moved
+to KPress; it is not a current SDK surface.
+Each section below distinguishes its delivered history from remaining work.
 
-Three remain, and they are the whole of what this plan still owes:
+Remaining work includes:
 
 - **Source-view line locations** — blocked on implementing the reserved `_mb_` query
   namespace in the URL codec, which the baseline pinned by test but left uninterpreted.
 - **Frontmatter alias lookup** — still an evaluation, not a commitment.
 - **Explicit mounted roots** — multi-repository and cross-vault navigation.
+- **Graph analysis** — a bounded server route backed by a KPress-owned intent manifest,
+  as described in [functional UI parity](plan-2026-09-10-functional-ui-cli-parity.md).
 
 ## Context
 
@@ -33,6 +36,9 @@ Missing and ambiguous destinations remain visible rather than falling back to in
 order, fuzzy matching, case folding, or traversal outside the active root.
 
 ## Public Contracts
+
+The mounted-root and source-line extensions below are proposed contracts, not fields
+already supported by the current SDK.
 
 ### Project Context
 
@@ -130,15 +136,17 @@ Acceptance criteria:
 
 ### Broken Links, Backlinks, and Graph Analysis (`mb-cl0b`)
 
-**Status:** Implemented as a bounded, abortable Markdown-plugin analysis API over an
-immutable catalog snapshot and the shared standard, wiki, adapter, and GitHub resolvers.
+**Status:** Previously implemented in the browser, then retired; replacement server
+analysis remains planned.
 
-The Markdown plugin exposes a bounded asynchronous graph analyzer over immutable catalog
-snapshots and the shared resolvers.
-It returns nodes, resolved edges, unresolved edges, backlinks, diagnostics, and an
-explicit completeness flag.
+The former Markdown-plugin API analyzed immutable catalog snapshots with the shared
+resolvers and returned nodes, resolved and unresolved edges, backlinks, diagnostics, and
+completeness. It is no longer exported.
+The replacement must use KPress’s parser and sanitizer transaction rather than a second
+Markdown grammar, following the
+[current architecture](../../architecture/arch-views-models-routes.md#cli-and-functional-ui-parity).
 
-Acceptance criteria:
+Original acceptance criteria, retained as design history:
 
 - standard Markdown and wiki edges use the same resolution rules as click-time links;
 - analysis never changes click-time resolver state;

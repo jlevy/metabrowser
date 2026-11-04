@@ -4,15 +4,20 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Landed on `main`, slated for 0.11.0. `/raw` sandbox, `/api` same-origin
-proof, the `--untrusted` capability profile, path-shaped `/raw/{path}`, and the html
-preview kind arrived in [#209](https://github.com/jlevy/metabrowser/pull/209), the
-full-page escape in [#220](https://github.com/jlevy/metabrowser/pull/220), the relative,
+**Status:** Implemented and landed on `main`. `/raw` sandbox, `/api` same-origin proof,
+the `--untrusted` capability profile, path-shaped `/raw/{path}`, and the html preview
+kind arrived in [#209](https://github.com/jlevy/metabrowser/pull/209), the full-page
+escape in [#220](https://github.com/jlevy/metabrowser/pull/220), the relative,
 nested-frame, and dangerous-type coverage in
 [#221](https://github.com/jlevy/metabrowser/pull/221), and the dotenv allowlist in
 [#223](https://github.com/jlevy/metabrowser/pull/223), generalized from a denylist to an
 allowlist in [#224](https://github.com/jlevy/metabrowser/pull/224). Publication review
-remains `mb-d658`.
+`mb-d658` is closed; its close record names the reviewed merge of #209.
+
+This archived plan preserves the original design and rollout.
+Current containment and capability guarantees are documented in
+[SECURITY.md](../../../../SECURITY.md); the open questions below are outside the
+delivered implementation scope.
 
 ## Overview
 
@@ -648,8 +653,8 @@ Documentation lands with the phase that makes it true, per the documentation pla
 - [Core architecture](../../../architecture.md)
 - [Plugin authoring](../../../plugins.md) — trust model and discovery
 - [Security policy](../../../../SECURITY.md)
-- [Menu primitives and gated file actions](plan-2026-08-06-menu-primitives-and-file-actions.md)
-- [Trusted-local file editing](plan-2026-07-16-trusted-local-file-editing.md)
+- [Menu primitives and gated file actions](../active/plan-2026-08-06-menu-primitives-and-file-actions.md)
+- [Trusted-local file editing](../active/plan-2026-07-16-trusted-local-file-editing.md)
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

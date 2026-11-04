@@ -6,6 +6,21 @@
 
 **Status:** Implemented and validated.
 
+**Current-state addendum (2026-11-04):** The original eligibility limits, loading sizes,
+error table, and sidekick function map below are historical design details.
+The current byte view loads a bounded prefix even when a file exceeds the preview
+ceiling.
+The default ceiling is 32 MiB for both plain and compressed logical content; the
+view starts at 1 MiB and grows later requests up to 8 MiB. The handler returns
+`preview_limited` when the file extends beyond that prefix.
+Shared content-reader limits still apply, and read failures can still refuse a preview.
+The async
+[binary handler](../../../../src/metabrowser/builtin_plugins/binary/sidekick.py) and
+[byte view](../../../../src/metabrowser/builtin_plugins/binary/bytes-view.js) own these
+current policies for folders and pinned Git content.
+The original measurements below are evidence for their recorded configurations, not new
+performance claims.
+
 ## Overview
 
 Add a minimal, generic byte view for files Metabrowser classifies as binary.

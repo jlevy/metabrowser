@@ -178,9 +178,12 @@ browser pays for one when it scrolls in:
 Flat at any size — 33 ms from 1 MiB through 8 GiB with 132 nodes — and the only option
 past a few tens of MB. It gives up browser find-in-page and select-all over the file,
 needs scrollbar downscaling past the height clamp, and is substantially more code.
-No Metabrowser view uses it yet.
-Reach for it when a view must open files larger than memory allows, and say in the plan
-what replaces the native behaviors.
+The source and binary content renderers do not virtualize their loaded text.
+Navigation collections use a separate policy: the Pulls panel mounts a variable-height
+viewport with overscan and protected current or focused rows through
+`createPullsWindow`. Git history likewise mounts a bounded logical-row window.
+For file content, reach for virtualization when the view must open files larger than
+memory allows, and say in the plan what replaces the native behaviors.
 
 Canvas rendering is not on this ladder.
 The design system reserves canvas for charts because text must stay selectable.
@@ -227,8 +230,10 @@ off while the measured one stays on its line.
 root state synchronously.
 Above 100 ready files, the renderer reprojects 100 files per task and invalidates stale
 batches when a newer layout selection arrives.
-This keeps the cold blocking task below the 200 ms interaction budget at the server’s
-1,000-file manifest bound without making ordinary diffs asynchronous.
+The measured 1,000-file fixture kept the cold blocking task below the 200 ms interaction
+budget without making ordinary diffs asynchronous.
+The current Git manifest cap is `MAX_MANIFEST_FILES`, 2,000 files; that cap does not
+extend the older fixture’s timing result to a larger change set.
 The repeatable fixture and measurements live in
 [Diff layout bound benchmark](../explorations/diff-layout/).
 
@@ -398,7 +403,10 @@ window that never existed on disk.
 | `JUMP_QUIET_MS` | 50 ms | How long a burst of jumps stops before its last file is asked for |
 | `MAX_CACHED_MANIFESTS` | 16 comparisons | Server memory for manifests kept by commit ID: up to 131 MB at the manifest cap, and about 190 MB of RSS, by the measurements beside the constant |
 | `MAX_CACHED_BODY_BYTES` | 64 MiB | Server memory for encoded comparison answers |
-| `WINDOW_ROWS` | 100 rows | One append of the Pulls tab’s plain rows. `MAX_LIST_ROWS`, 1,000, stays under the budget with `content-visibility: auto` and needs no windowing; the measurements are beside the constant in `builtin_plugins/github/pulls-panel.js` |
+| `MAX_MANIFEST_FILES` | 2,000 files | Git comparison manifest entries; larger change sets report truncation |
+| `WINDOW_ROWS` | 100 rows | One cached-page request by the Pulls panel; automatic catalog backfill is not capped by the display window |
+| `DISPLAY_ROWS` | 500 rows | Initial Pulls display budget and each explicit Fetch more increment |
+| `PULL_ROWS_OVERSCAN` | 40 rows | Neighbors on either side of the visible Pulls viewport; `createPullsWindow` also retains protected current or focused rows |
 
 A budget that degrades what the reader sees has a second requirement beyond bounding the
 resource: the degradation has to apply uniformly to everything on screen.

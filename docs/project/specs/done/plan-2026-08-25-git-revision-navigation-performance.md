@@ -1114,7 +1114,7 @@ names the measured bottleneck.
 
 - [Git graph view plan](plan-2026-08-06-git-graph-view.md)
 - [Unbounded Git history plan](plan-2026-08-25-unbounded-virtualized-git-history.md)
-- [Load-time performance plan](plan-2026-08-21-load-time-performance.md)
+- [Load-time performance plan](../active/plan-2026-08-21-load-time-performance.md)
 - [Rendering large content](../../../large-content-rendering.md)
 - [Web Performance Framework](../../../web-performance-framework.md)
 - [Performance loop](../../../../explorations/performance-loop/README.md)

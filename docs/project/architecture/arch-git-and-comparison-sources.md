@@ -42,9 +42,9 @@ Kind checks use the leaf path.
 `include_ignored=0` is a no-op because ignore is absent.
 `depth` nests SPA children the way filesystem listings do (default 2) and emits a lazy
 sentinel past the cap.
-LFS pointers stay stored bytes; a blob the store lacks is `object_unavailable`. Serving
-acquired Git remains later.
-See
+LFS pointers stay stored bytes; a missing blob is `object_unavailable`. Acquired full
+stores and admitted borrowed overlays support both one-shot commands and the listening
+server. See
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
 How Metabrowser talks to Git, and how anything that produces a comparison plugs into the
@@ -55,23 +55,20 @@ covers provenance and anchoring within the diff pipeline.
 This document covers the Git side: the process boundary, what crosses it, and the rule a
 new source has to satisfy.
 
-## The four layers
+## Dependency Layers
 
-The stack has four tiers, and the dependency arrow only ever points down:
+The GitHub plugin owns hosted collaboration metadata and uses the shared Git and diff
+pipeline:
 
 ```text
 ┌─────────────────────────────────────────────┐
-│ Provider adapters (GitHub)  designed only   │  ← normalize hosted APIs
+│ GitHub plugin records and acquisition       │  ← GitHub metadata and Git object IDs
 ├─────────────────────────────────────────────┤
-│ Hosted Review Format        models only     │  ← references Git object IDs
+│ Git                                         │  ← produces File Diff Format
 ├─────────────────────────────────────────────┤
-│ Git                         implemented     │  ← produces File Diff Format
-├─────────────────────────────────────────────┤
-│ File Diff Format            implemented     │  ← knows nothing above it
+│ File Diff Format                            │  ← source-neutral comparison data
 └─────────────────────────────────────────────┘
 ```
-
-Each tier obeys one rule, and the rules are what keep the tiers separable:
 
 - **File Diff Format is source-neutral.** It has no Git vocabulary.
   A renderer never learns whether a document came from a `.patch` file, a commit, or a
@@ -79,19 +76,16 @@ Each tier obeys one rule, and the rules are what keep the tiers separable:
 - **Git is a source, not a substrate.** It produces File Diff Format documents through
   the `DiffSource` port and otherwise exposes its own read-only collection API. It does
   not reach into the renderer.
-- **Hosted Review Format models collaboration, not patches.** A change request carries
-  lifecycle, participants, reviews, threads, checks, merge state, freshness, and
-  references to immutable Git object IDs.
-  It does not copy Git objects or add fields to File Diff Format.
-- **Provider adapters normalize into the common format.** GitHub is the first adapter;
-  future providers such as GitLab satisfy the same port.
-  Provider response shapes and renderer branches never cross that boundary.
+- **The GitHub plugin owns its validated PR records.** They carry lifecycle,
+  participants, reviews, conversation, checks, merge state, freshness, and references to
+  immutable Git object IDs.
+  The records do not copy Git objects or add fields to File Diff Format.
 
-The practical payoff: a pull-request document adds the information Git and patches do
-not have, while its comparison resolves provider refs to object IDs and reuses the
-entire existing diff and revision-content pipeline.
-Hosted review is a new format and plugin view, but not a second diff renderer or Git
-history authority.
+The earlier common Hosted Review Format and provider-adapter tier is a retired design,
+preserved in [Hosted Review Model and Provider Boundary](arch-hosted-review-model.md).
+It is not a current runtime format or a port that another provider must implement.
+The GitHub plugin adds its PR view while its comparison resolves immutable object IDs
+and reuses the existing diff and revision-content pipeline.
 
 ## Why identity is the whole problem
 
@@ -265,13 +259,17 @@ trusted `GitCommandTarget` constructed by core.
 The process boundary converts that handle into fixed arguments while continuing to scrub
 ambient repository environment variables.
 Caller-supplied paths do not become `GIT_DIR`, `GIT_WORK_TREE`, or environment
-overrides. Store reads disable mailmap, and implicit lazy fetch as defense in depth: a
-store is a full clone with no promisor remote.
+overrides. Store reads disable mailmap and implicit lazy fetch.
+A store may hold its own objects or borrow from an admitted checkout; neither read path
+may start network work to satisfy an absent object.
 The spawn seam refuses any policy that would leave lazy fetch on for a store target.
 For a repository-store target, history and detail start from the subject’s pinned full
 object ID rather than ambient `HEAD`; refs remain optional observations.
-Commit detail and the diff comparison run Git directly, because a full store holds every
-blob they read.
+Commit detail and diff comparisons use the trusted store target.
+Borrowed history requires merge-base certainty checks, and missing or corrupt objects
+produce typed unavailable results.
+Explicit recovery is described in
+[Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
 
 The immutable content source resolves a full object ID to one tree, enumerates paths
 with NUL-framed `ls-tree` output, and reads bounded blobs through owned batch `cat-file`
@@ -309,8 +307,10 @@ Listings do not follow symlinks.
 File, raw, KPress, and plugin sidekicks follow in-tree relative symlink blobs.
 Gitlinks are distinct non-folder entries, and LFS pointers remain ordinary blobs (stored
 pointer bytes, no smudge).
-A blob the tree names but the store lacks, which only a damaged store can produce, is
-`object_unavailable` and does not contact the remote.
+A blob the tree names can become unavailable through store damage or loss of an object
+in the borrowed lender.
+The read returns `object_unavailable` without contacting the remote; explicit recovery
+is a separate operation.
 `/view/` on that subject accepts a `GitPath` wire, optionally plus a patch-file
 container inner, and refuses a filesystem spelling.
 `/api/tree` keeps Git-native `entries` and also projects a SPA `tree` array

@@ -1,7 +1,9 @@
 # Plan: v0.12 Alpha Testing and Stack Acceptance
 
 **Status:** Active until 0.12.0 is released.
-The stack this plan tested has merged to `main`, and 0.12.0 is not yet tagged.
+The implemented feature layers are on
+[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b)
+as of 2026-11-04. 0.12.0 is not yet tagged or released.
 T0 through T2 were run on 2026-09-24 in the scope of the
 [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), and
 [QA: v0.12 alpha acceptance](../../qa/qa-2026-09-24-v012-alpha-acceptance.md) records
@@ -14,15 +16,20 @@ URL, inspect the intended immutable content, and reopen previously acquired cont
 offline. A directly addressed PR must work without first populating a discovery index.
 Tests must prove the installed application path as well as the individual contracts.
 
-Implementation was one linear chain of pull requests above `main`, linked on GitHub as
-[stack 218](https://github.com/jlevy/metabrowser/stack/218). It has merged, so the
-candidate for everything below is `main`, and the QA runbook’s
-[Pins](../../../qa-v012-repository-library.md#pins) section selects a commit of it.
+The initial implementation was one linear chain of pull requests above `main`, linked on
+GitHub as [stack 218](https://github.com/jlevy/metabrowser/stack/218). The later feature
+landings are recorded under [Landing status](#landing-status).
+The candidate for the remaining release work is the recorded `main` commit, and the QA
+runbook’s [Pins](../../../qa-v012-repository-library.md#pins) section selects a commit
+of it.
 The release coordinator is `mb-4bd2`; `mb-n2ro`, which coordinated the landing, is
 closed.
 
-The [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md) owns the v0.12 feature
-design and the capabilities it defers.
+The [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md) records the initial v0.12
+design. The [Pulls tab](plan-2026-10-01-github-pulls-tab.md) and
+[checkout review](plan-2026-11-02-pr-review-mirror-and-checkout.md) plans extend its
+scope with discovery, local checkout comparisons, explicit recovery, and optional
+native-stack metadata.
 The [repository plan](plan-2026-08-11-open-repo-from-git-url.md) and
 [GitHub plan](plan-2026-08-27-github-provider-and-pull-requests.md) are background for
 the foundation it kept.
@@ -34,27 +41,32 @@ prerequisite for these product milestones.
 ## Feature Coverage
 
 The states below describe implementation, not release approval.
-**Built on stack** means the code was built on the stack and is now on `main`,
-unreleased; **retired** means the thin-mirror plan replaced the design; **deferred**
-means the user moved the capability out of v0.12 on 2026-09-23.
+**Implemented** means the selected source revision provides the capability; it does not
+establish merge or release approval.
+**Retired** means the thin-mirror plan replaced the design; **deferred** means the
+capability remains outside the implemented scope.
+Later owner decisions expanded the original discovery and checkout scope; the rows below
+distinguish those features from still-deferred review anchors and SSH.
 
 | Feature / owning phase | State | What works and what remains | First useful test |
 | --- | --- | --- | --- |
 | Local browsing and Git history/diffs | Released baseline | Filesystem Markdown, structured data, images, binary content, Git history/detail and diff infrastructure remain available | T0 browser regression |
 | HTML trust foundation | Built on `main` | Sandboxed raw responses, same-origin API proof and `--untrusted` exist; every new acquired-content entry point must apply them | T0 regression; T1 acquired-content isolation |
 | Repository design and hosted-review records / 0–0D | Removed from the stack (2026-09-30) | The identity, source binding, repository/PR/comment/review/thread/check records, schemas, validators, corpora, installed contract discovery, and coverage oracle are kept, unmaintained, on the `reference/v012-hosted-review` branch, tagged `reference/v012-hosted-review-2026-09-30`; pull-request data is the GitHub plugin’s JSON records | None on this stack |
-| Private cache format / 1A | Built on stack | Owner-only POSIX home, `f01` records, locks, safe publication, the staging sweep, and cache-inspection routes exist; nothing deletes a published store; Windows storage fails closed pending ACL support | T0 cache and recovery tests |
-| Mirror acquisition / 1B-a, thin-mirror steps 2 and 5 | Built on stack | `file://` and `https://` acquisition publishes a complete, read-only worktree-free store (a full clone), pins the commit the URL selects, and reuses the cache offline; a refresh is one `git fetch` under a fetch side lock | T0 real CLI; M02 and M05 |
-| Source sessions and content readers / 1B-b | Built on stack | Attached filesystem and immutable Git subjects share capability-aware routes and bounded plugin content readers | T0 CLI/API and local browser regression |
-| Immutable Git revisions and serving / 1B-c, steps 3 and 4 | Built on stack | Byte-safe paths, full-OID trees, batch readers, and a lock-free pin open serve `--show`, `--api`, `--check-api`, and the browser under the forced untrusted profile; a background refresh offers a newer revision, and the pin switches to a branch, tag, or commit; `--walk` refuses a Git source by design | T0 pin and content tests; M03 to M06 |
-| GitHub URL reduction and selection / step 5 | Built on stack | Repository, tree, blob, commit, raw, and pull-request URLs reduce to a source, ref, path, and lines; a slash-containing ref splits against the mirror’s refs; any other shape is refused with a typed error | M02 |
-| GitHub authentication / steps 5 and 6 | Built on stack | `gh` is Git’s credential helper for github.com and the API client, so Metabrowser reads no token | M10 |
-| Pull-request data and page / steps 6 and 7 | Built on stack | One validated JSON record per pull request from `gh api`, `refs/pull/<n>/head`, merge-base Files changed, conversation, reviews, review comments, and checks, reopened offline | M07 to M11 |
-| View file from a diff | Built on stack | Each file bar of a commit’s diff or Files changed opens the file at either side of the change | M03 and M08 |
-| Untrusted Markdown, line anchors, and heading anchors | Built on stack | Inert Markdown and a Content-Security-Policy for untrusted sources, `#L` anchors and `?plain=1`, and `user-content-` heading ids | M06 and the record’s round-2 rows |
-| Background object convergence / 2B | Retired | Stores are full clones, so no object is missing; the Simplify PR removed the prefetch and the convergence state | None |
+| Private cache format / 1A | Implemented | Owner-only POSIX home, `f01` records, locks, safe publication, the staging sweep, and cache-inspection routes exist; nothing deletes a published store; Windows storage fails closed pending ACL support | T0 cache and recovery tests |
+| Mirror acquisition / 1B-a, thin-mirror steps 2 and 5 | Implemented | Fresh `file://` or `https://` acquisition without an admitted lender makes a full clone; an admitted checkout can lend objects to an overlay. Both modes serve pinned revisions without a worktree. Healthy published stores are reused offline; a refresh runs under the store’s fetch side lock | T0 real CLI; M02 and M05 |
+| Source sessions and content readers / 1B-b | Implemented | Attached filesystem and immutable Git subjects share capability-aware routes and bounded plugin content readers | T0 CLI/API and local browser regression |
+| Immutable Git revisions and serving / 1B-c, steps 3 and 4 | Implemented | Byte-safe paths, full-OID trees, batch readers, and a lock-free pin open serve `--show`, `--api`, `--check-api`, and the browser under the forced untrusted profile; a background refresh offers a newer revision, and the pin switches to a branch, tag, or commit; `--walk` refuses a Git source by design | T0 pin and content tests; M03 to M06 |
+| GitHub URL reduction and selection / step 5 | Implemented | Repository, tree, blob, commit, raw, and pull-request URLs reduce to a source, ref, path, and lines; a slash-containing ref splits against the mirror’s refs; any other shape is refused with a typed error | M02 |
+| GitHub authentication / steps 5 and 6 | Implemented | `gh` is Git’s credential helper for github.com and the API client, so Metabrowser reads no token | M10 |
+| Pull-request data and page / steps 6 and 7 | Implemented | One validated JSON record per pull request from `gh api`, `refs/pull/<n>/head`, merge-base Files changed, conversation, reviews, review comments, and checks, reopened offline | M07 to M11 |
+| View file from a diff | Implemented | Managed immutable sources offer View file at either side of a change. Folder PR comparisons retain their filesystem root and do not expose managed-source View file or Browse code controls | M03 and M08 |
+| Untrusted Markdown, line anchors, and heading anchors | Implemented | Inert Markdown and a Content-Security-Policy for untrusted sources, `#L` anchors and `?plain=1`, and `user-content-` heading ids | M06 and the record’s round-2 rows |
+| Background object convergence / 2B | Retired design | Generic partial-clone convergence is not implemented. Borrowed stores can lose objects; explicit Files Refresh repairs observed failures when the origin can supply them, without writing to the checkout | Checkout repair and corruption regressions |
 | Selected-ref jobs, credential leases, provider binding, snapshots, and rebind / 2B and 3A | Retired | `git fetch`, the `gh` credential helper, and one record per pull request replace them | None |
-| PR discovery and navigation / 3C and 4B; review anchors / 4C; SSH; checkout attachment | Deferred | Not part of v0.12 | M12 and M13 are not run |
+| PR discovery, navigation, and checkout-backed comparisons | Implemented successor | Open/Closed/All catalog windows, direct numbered PR pages, changed-file navigation, and explicit Fetch changes on a recognized checkout | M12 and the current PR QA session |
+| Native GitHub stack membership | Optional implemented enrichment | One bounded repository snapshot supplies known ordered membership; absent tooling or API access does not block ordinary PR reading | Optional-stack QA session |
+| Review anchors / 4C; SSH; provider rebind | Deferred | The original provider-neutral workflow is not implemented | M10b and M13 remain deferred |
 
 The plans also retain these separate or later features:
 
@@ -98,10 +110,12 @@ capability; rows for a deferred capability say so.
 | T0: local Git foundation | Selected commit, supported Git, isolated cache directory | Acquire a `file://` origin, reopen its default full OID, inspect files/tree through `--show` and `--api`, and preserve local browsing | Passed: foundation acceptance in #226 and M01 in the acceptance run. Rerun it with the quick start below and the [foundation QA runbook](../../../qa-v012-repository-library.md) |
 | T1: repository URL alpha | URL open and serving, ref and path selection, and trust integration (thin-mirror steps 3 to 5) | Open repository/tree/blob/commit/raw URLs; view content, history, and diffs; preserve slash-containing refs and path/line intent; reopen cached content offline | Passed in the acceptance run and its reruns; M03’s base and head files pass in the rerun on View file |
 | T2: direct PR alpha | T1 plus `gh` pull-request records and the pull-request page (steps 6 and 7) | Paste a PR URL; read its description, review/check state, changed files, and pinned comparison; reload and reopen offline | Passed in the acceptance run and its reruns, M08’s base and head files included, except M10’s private and revoked cases, which are blocked for lack of a private fixture |
-| T3: discovery, navigation, and anchors | Deferred with the capabilities it tests | Bounded paginated PR navigation with honest counts/partiality, direct selection outside that index, and explicit outdated/unmappable anchors | Not part of v0.12 |
+| T3: discovery and navigation | Pulls catalog and numbered PR routes | Exact provider totals, resumable metadata backfill, bounded displayed windows, direct selection outside the window, and no implicit checkout acquisition | Implemented; validate M12 on the selected artifact. Inline review anchoring remains separate |
 
-T2, in the thin-mirror scope, was the v0.12 landing milestone and is the release’s. T3
-and SSH acquisition are deferred, and neither gates the release.
+T2 was the original thin-mirror landing milestone.
+Current acceptance also covers the implemented T3 discovery/navigation and checkout
+paths; SSH and review anchoring remain separate deferred capabilities.
+Release authorization remains with the user.
 A T0 build must be described as a foundation test build, not as GitHub URL or PR
 support.
 
@@ -130,7 +144,10 @@ support.
    exists, and interrupt a refresh.
    This completes T2, the release milestone.
 
-M10b, M12, and M13 test deferred capabilities and are not run for v0.12.
+Run M12 for the implemented discovery/navigation path and use the
+[current PR QA session](../../../qa-v012-repository-library.md#410-pull-request-data)
+for managed and checkout-backed comparisons.
+M10b and M13 still describe deferred provider-rebind and inline-anchoring work.
 
 At each stage, run its automated scenarios before manual browsing, then capture the
 actual browser results.
@@ -306,7 +323,7 @@ and contents out of committed docs and logs.
 | M10 / T2 | Exercise a private fixture, an unauthorized fixture, missing `gh`/login, revoked access and a rate-limited fixture | Clear typed recovery, no interactive login on a request path, no token/private payload in diagnostics, no principal mixing |
 | M10b / T2 | Bind a disposable attached checkout, change its remote to a different fixture repository, then use the explicit rebind operation | **Deferred; not run for v0.12.** Automatic rebind refuses; explicit recovery identifies the new repository and disposes of the old binding without presenting old snapshots as new content |
 | M11 / T2 | Cancel or restart during refresh; revisit the previously complete PR | Prior snapshot remains usable; cancelled work does not publish mixed or regressed state |
-| M12 / T3 | Page/filter PR navigation, then directly open a PR outside the current window | **Deferred; not run for v0.12.** Counts and completeness describe the bounded query; direct selection does not falsify that query |
+| M12 / T3 | Filter Open/Closed/All, expand the display window, resume a partial catalog, and directly open a PR outside the window | Exact provider totals and cached counts stay distinct; cached reads do not fetch, background pages yield to selected work, and direct selection does not falsify the list. On a checkout, opening Files does not acquire a store; explicit Fetch changes does |
 | M13 / T3 | Inspect resolved, unresolved, outdated and unmappable review threads | **Deferred; not run for v0.12.** State remains explicit; no invented line placement or disappearing thread |
 
 Use real browser evidence for layout, browser history, iframe origin isolation, CSP,
@@ -350,8 +367,37 @@ testing plan performs neither.
 
 ### Landing status
 
-Recorded 2026-11-01, on `main` at `c934a0b4`. These commands give the current state, and
-they win where this section disagrees:
+**Feature landing, 2026-11-04.** The feature layers through
+[#283](https://github.com/jlevy/metabrowser/pull/283) and
+[#295](https://github.com/jlevy/metabrowser/pull/295) landed on
+[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b).
+
+**Current integration, 2026-11-04.** The later changed-file account-publication fix in
+[#297](https://github.com/jlevy/metabrowser/pull/297), reviewed at
+[`cc93c132`](https://github.com/jlevy/metabrowser/commit/cc93c1320e097768836089f77068f9e665333ac4),
+is merged into
+[`main` at afaf38b8](https://github.com/jlevy/metabrowser/commit/afaf38b85a83443e25002765203c216bd11f8dfa).
+The
+[postlanding integration review](https://github.com/jlevy/metabrowser/pull/297#pullrequestreview-5770654024)
+records the source reconciliation and acceptance provenance for this current commit.
+The account-publication finding is resolved.
+The review reconciles the tested source and installed-artifact evidence to this main by
+exact tree identity; those earlier executions are not relabeled as reruns.
+[Main CI](https://github.com/jlevy/metabrowser/actions/runs/41852239825): all nine jobs
+passed on this actual main commit.
+0.12.0 is not yet tagged or released.
+
+Prelanding full-suite, installed-wheel, browser and performance runs retain their exact
+commits and artifacts in the linked reviews and QA records.
+A history-only merge or source-tree equality check does not rerun those tests.
+This landing record does not complete the remaining release rehearsal, performance or
+future-feature work below, or authorize a release.
+
+#### Historical landing record (2026-11-01)
+
+The record below is dated 2026-11-01, on `main` at `c934a0b4`; it is historical
+evidence, not acceptance of later feature stacks.
+These commands give the current state:
 
 - `tbd show mb-4bd2` gives the order of the remaining work and the beads that block the
   release; `mb-n2ro`, which coordinated the landing, is closed;
@@ -376,7 +422,16 @@ Two pull requests stayed out of `main`:
 branch, and [#262](https://github.com/jlevy/metabrowser/pull/262), superseded by #268
 and closed unmerged on 2026-10-26 (`mb-299e`).
 
-**Gates, and their state.**
+**Current contract decision.** The owner clarified on 2026-11-03 that the server and
+frontend ship together: old-client compatibility is not a requirement for their internal
+API. The compatibility-only omitted-number aliases and dotenv expansion resolver were
+forward-reverted. Current PR requests name their number explicitly.
+The older v0.11.0 differential below remains diagnostic history; it does not require
+restoring those deliberately removed behaviors.
+Product correctness, security, installed-artifact acceptance, and the documented plugin
+SDK gate still apply.
+
+**Historical gates and their state on the recorded commit.**
 
 - **The landing gate** (`mb-2g6f`, in progress): regular-folder behavior is unchanged
   from v0.11.0 except for documented changes.

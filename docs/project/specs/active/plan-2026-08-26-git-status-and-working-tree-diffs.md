@@ -1246,7 +1246,7 @@ directory placeholders or hide untracked files while claiming complete status.
 
 - Git-status implementation epic: `mb-097x`
 - [Git-status research](../../research/research-2026-08-26-git-status-and-dirty-working-trees.md)
-- [Git graph and API](plan-2026-08-06-git-graph-view.md)
+- [Git graph and API](../done/plan-2026-08-06-git-graph-view.md)
 - [General diff rendering](plan-2026-08-17-general-diff-rendering.md)
 - [Git revision navigation performance](../done/plan-2026-08-25-git-revision-navigation-performance.md)
 - [Unbounded logical Git history](../done/plan-2026-08-25-unbounded-virtualized-git-history.md)

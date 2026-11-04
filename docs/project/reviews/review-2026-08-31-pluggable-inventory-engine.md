@@ -464,9 +464,9 @@ revalidate on read, so a stale entry is a miss and never a wrong answer.
 Walk-to-settled on this repository, five runs: 2,640 ms to 1,117 ms median.
 
 A campaign against that residual is recorded as
-[exp-024](../../../../explorations/performance-loop/experiments/exp-024-the-walker-builds-each-entry-once.md)
+[exp-024](../../../explorations/performance-loop/experiments/exp-024-the-walker-builds-each-entry-once.md)
 and
-[exp-025](../../../../explorations/performance-loop/experiments/exp-025-the-instrument-was-measuring-the-order-it-ran-in.md),
+[exp-025](../../../explorations/performance-loop/experiments/exp-025-the-instrument-was-measuring-the-order-it-ran-in.md),
 registering H65 to H72. Two more accepts took the in-process walk from 1,847 ms to about
 1,203: the walker stamped every entry with `dataclasses.replace`, which reads twenty
 fields back through string-keyed `getattr`, and its add path allocated a delta map it
