@@ -3,9 +3,10 @@ type: is
 id: is-01m6jhcsrvevhaa1kg3fh6g8zg
 title: Review landed main and reconcile all documentation and planning
 kind: epic
-status: open
+status: in_progress
 priority: 1
-version: 7
+version: 8
+delegate: codex@spud10
 labels: []
 dependencies: []
 parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
@@ -13,8 +14,11 @@ child_order_hints:
   - is-01m6jhct45pr1qjep5v3ea0a69
   - is-01m6jhctf78vq1v7ndv43jzssy
   - is-01m6jhctt8b803j2y1smqr8h4k
+hold: null
+hold_until: null
 created_at: 2026-11-04T05:44:31.258Z
-updated_at: 2026-11-04T12:27:20.819Z
+updated_at: 2026-11-04T13:48:45.611Z
+started_at: 2026-11-04T13:48:45.610Z
 ---
 Afterfeaturestacklands, fullintegratedreviewonmain; auditalluser/design/internal/release/selfdocs andskillmaps againstactualimplementation; refreshstalecontent/generatedcopies viaexistingcommands; reconcileallplans/specs/beads/dependencies/status/evidence. Keepgenuinefollowupsopenwithclearcurrentstate; closeonlycompletedlandedwork. Documentfindings, forwardfixPRs asneeded, independentlyreviewandverify/CI finalchanges.
 

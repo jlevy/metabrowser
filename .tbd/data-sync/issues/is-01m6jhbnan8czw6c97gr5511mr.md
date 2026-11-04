@@ -3,9 +3,9 @@ type: is
 id: is-01m6jhbnan8czw6c97gr5511mr
 title: Adjudicate new PR reviews and safely land the complete feature stack
 kind: epic
-status: in_progress
+status: closed
 priority: 1
-version: 15
+version: 16
 delegate: codex@spud10
 labels: []
 dependencies:
@@ -25,8 +25,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-04T05:43:53.938Z
-updated_at: 2026-11-04T12:27:20.269Z
+updated_at: 2026-11-04T13:48:45.346Z
 started_at: 2026-11-04T12:27:19.983Z
+closed_at: 2026-11-04T13:48:45.345Z
+close_reason: "All21 feature PRs have landed with normal atomic merge commits: native278 at8aae81d0 and rerooted native296 atda87bb13. Both actual main CI runs passed all9 jobs; final source/tree equals the tested f9 composition and all21 reviewed heads are ancestors. Original landing children are closed. Mandatory postlanding integration review and its new account-provenance fix mb-dvhc, documentation/skills and plan/bead reconciliation continue in mb-ao35."
+resolution: null
+duplicate_of: null
 ---
 Owner authorizes safe landing of the entire reviewed feature stack after current-head CI, automated/manual E2E, conflict and review gates. Merge forward only; no rewrite or force push. Native278 has9 layers;286 has11 published layers and will have12 after the new Markdown ownership layer is published. Review the full composition before merging anything. Then merge278, unstack/reroot/cascade/relink286 onto actualmain and qualify current heads again before its native merge. Preserve draft247, explicitly do-not-merge, and both WIP branches. Mandatory dependent postlanding integrated review, documentation/skills refresh and plans/specs/beads reconciliation remain mb-ao35.
 

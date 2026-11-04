@@ -3,11 +3,16 @@ type: is
 id: is-01m6jhctf78vq1v7ndv43jzssy
 title: Refresh user, design, internal and self-documentation maps
 kind: task
-status: open
+status: in_progress
 priority: 1
-version: 18
+version: 21
+delegate: codex@spud10
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m6jhctt8b803j2y1smqr8h4k
+  - type: blocks
+    target: is-01m6k4bp5bmh38vg43syytha0v
 parent_id: is-01m6jhcsrvevhaa1kg3fh6g8zg
 child_order_hints:
   - is-01m6k9n0qktzjxhd049b92zgqz
@@ -27,7 +32,10 @@ child_order_hints:
   - is-01m6kb79wn3mpeqsfm82gp93hb
   - is-01m6kb7a7528d1apcy8p2s87wf
   - is-01m6kc1pp5490wfy9ak9jd2q2n
+hold: null
+hold_until: null
 created_at: 2026-11-04T05:44:31.974Z
-updated_at: 2026-11-04T13:30:19.200Z
+updated_at: 2026-11-04T13:48:46.419Z
+started_at: 2026-11-04T13:48:45.627Z
 ---
 InventoryREADME documentationmap,allhuman-authoreddocs,designsystem/architecture/QA/development/releaseguides,shippedselfdocs/CLIhelp/pluginSDK/types/manifests,AGENTS/skillroutesandgeneratedcopies. Readrelevantselfhelp beforegeneration. Correctstaleclaims/links/featurestates, avoidduplicatingpolicy, usecommon-docfooter andpinnedformatter. Verifydoc/help/skilldrift andinstalledartifact; publishrevieweddocsPR ifchangesneeded.

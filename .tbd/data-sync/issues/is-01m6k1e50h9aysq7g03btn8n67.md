@@ -3,9 +3,9 @@ type: is
 id: is-01m6k1e50h9aysq7g03btn8n67
 title: Preserve the latest file-list outcome alongside the strongest provider hold
 kind: bug
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -13,8 +13,12 @@ parent_id: is-01m6jhbnan8czw6c97gr5511mr
 hold: null
 hold_until: null
 created_at: 2026-11-04T10:24:52.751Z
-updated_at: 2026-11-04T10:51:19.915Z
+updated_at: 2026-11-04T13:48:45.085Z
 started_at: 2026-11-04T10:32:11.978Z
+closed_at: 2026-11-04T13:48:45.085Z
+close_reason: The original feature-stack review, disposition, fix and publication scopes are complete. All21 requested feature PRs merged normally through native stacks278 and296, ending at main da87bb13c4434324af576b554711278139621b6b. Each owning fix and reviewed head is retained by ancestry; current-head CI and all exact publication/readback gates passed. The independently reproduced postlanding account-provenance bug remains open as mb-dvhc under mb-73n4, and the required documentation/skill/planning phase remains mb-ao35; this closure does not declare those later scopes complete.
+resolution: null
+duplicate_of: null
 ---
 New postpush PR288 review comment discussion_r4466332226 questions read_files_refresh choosing the entire strongest-deadline stamp and potentially hiding a newer memory cache_unwritable outcome. Ordinary older durable hold is already copied into the memory refusal; verify the concurrent later-publication case through real worker/route behavior before accepting or rebutting. Preserve strongest live provider reset and automatic retry behavior. Independent read-only adjudication assigned; source0487921d remains frozen. Public finding: https://github.com/jlevy/metabrowser/pull/288#discussion_r4466332226. Keep landing gated on a concrete disposition.
 
