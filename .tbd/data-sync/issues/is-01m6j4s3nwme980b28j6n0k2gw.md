@@ -5,12 +5,16 @@ title: Show small lazy GitHub author avatars in PR metadata
 kind: task
 status: in_progress
 priority: 1
-version: 2
+version: 4
 spec_path: docs/design-system.md
+delegate: claude-code@spud10.local
 labels: []
 dependencies: []
 parent_id: is-01m6j4m8h98qy2w5w5wj5d46gj
+hold: null
+hold_until: null
 created_at: 2026-11-04T02:04:03.131Z
-updated_at: 2026-11-04T02:04:03.696Z
+updated_at: 2026-11-04T02:28:29.842Z
+started_at: 2026-11-04T02:28:29.842Z
 ---
 Owner requests a small circular profile image alongside the GitHub author. Reuse existing metadata/avatar facilities where possible; audit minimal catalog/detail fields and CSP. Explicit small dimensions, circular clipping, lazy loading/async decode, meaningful decorative/accessibility choice and graceful missing-image fallback. Avoid fetching all catalog avatars, extra per-row API calls, or blocking PR content. Use fixed validated GitHub avatar hosts or existing cache/proxy policy; no new dependency.
