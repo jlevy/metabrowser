@@ -5,7 +5,7 @@ title: Adjudicate new PR reviews and safely land the complete feature stack
 kind: epic
 status: in_progress
 priority: 1
-version: 11
+version: 12
 labels: []
 dependencies:
   - type: blocks
@@ -21,10 +21,10 @@ child_order_hints:
   - is-01m6jrtcsc7jkzpzxfqq4t8q35
   - is-01m6jtxcrqybrpkrw91fnfp1sk
 created_at: 2026-11-04T05:43:53.938Z
-updated_at: 2026-11-04T08:30:52.182Z
+updated_at: 2026-11-04T09:56:27.393Z
 ---
-Owner now conditionally authorizes merging ready feature PRs after every review, automated/manual E2E, CI and conflict check passes. Audit all21openPRs: monitored20featurePRs plus draft247 explicitlydo-not-merge reference (excluded). Resolve nine newQodo claims on289/292/293 with concrete evidence, fixconfirmeddefects inowninglayers, mergeforward only/cascade, repeat affected independent review/tests and finalexactartifact acceptance, normalfullgates/pushhooks/CI. Onceallready merge278 via normalnative stackmerge preservinghistory, unstack286 onlyafter278lands, retarget279main, mergeforward/cascade ifneeded/relinkall11, watchCI, thenmergeready286. No rebase/forcepush; preserveprivatefixtures/WIP. Postlandingintegratedreview/documentation/spec/beadreconciliation follows in dependentphase.
+Owner authorizes safe landing of the entire reviewed feature stack after current-head CI, automated/manual E2E, conflict and review gates. Merge forward only; no rewrite or force push. Native278 has9 layers;286 has11 published layers and will have12 after the new Markdown ownership layer is published. Review the full composition before merging anything. Then merge278, unstack/reroot/cascade/relink286 onto actualmain and qualify current heads again before its native merge. Preserve draft247, explicitly do-not-merge, and both WIP branches. Mandatory dependent postlanding integrated review, documentation/skills refresh and plans/specs/beads reconciliation remain mb-ao35.
 
 ## Notes
 
-Owner explicitly expanded to all21openPRs and conditionally authorizesfeaturestackmerge afterreviews/automated+manualE2E/CI/conflicts. Draft247excludedbyexplicitdo-not-merge; independentlanding-safety audit archived109file restoration ofretiredpublicAPIs, historicalchecksnotcurrentmainvalidation. NineQodo claims adjudicated:2893runtimebugs+exportconsistencycleanup;2921retrybug/assertclaimrebut;293testquality+deterministicchromereservation+retryUX. Root289fix74f946b3independentlyclean andmergedforwardthrough292base2a7d9cc7; Navnowexclusive292writer; reviewerprepares293candidateoutside. No PR merged/pushednewfixesyet; currentinstalled409/old20remoteheads stillvalidhistoricaltestartifacts. Fullnewfinalreview/gates/exactwheel/manualsessions/CIafterallfixes beforelanding.
+Nine Qodo claims have evidence-backed dispositions and resolved threads. Additional reviews found287 same-second file-list identity collision (mb-lma2),288 refused-cache invisible/no-backoff outcome (mb-r1yh), and two existing-main Markdown ownership races (mb-xgmg). All fixed forward in owning layers plus new top layer0487921d; local cascade complete, source clean. Exact048 makeverify passed4780Python/9expectedskips/378transcriptcommands; unchanged full hooks active. Wheel0c03fbd1 matches341committed package files. Fresh publiclive8pass and browser93baseline+4regression sessions/15checks pass; zero new runtime exceptions, known baseline ResizeObserver retained. Older timing evidence stays pinned, no new speed claim. Publication of8updated refs+newbranch, specialist artifacts, newPR/native12 proof, currentCI and both stackmerges remain pending. Final receipts in coordination/installed-0487921d and final-0487921d-acceptance.

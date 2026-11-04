@@ -5,7 +5,7 @@ title: Review landed main and reconcile all documentation and planning
 kind: epic
 status: open
 priority: 1
-version: 5
+version: 6
 labels: []
 dependencies: []
 parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
@@ -14,10 +14,10 @@ child_order_hints:
   - is-01m6jhctf78vq1v7ndv43jzssy
   - is-01m6jhctt8b803j2y1smqr8h4k
 created_at: 2026-11-04T05:44:31.258Z
-updated_at: 2026-11-04T06:10:05.054Z
+updated_at: 2026-11-04T09:56:27.667Z
 ---
 Afterfeaturestacklands, fullintegratedreviewonmain; auditalluser/design/internal/release/selfdocs andskillmaps againstactualimplementation; refreshstalecontent/generatedcopies viaexistingcommands; reconcileallplans/specs/beads/dependencies/status/evidence. Keepgenuinefollowupsopenwithclearcurrentstate; closeonlycompletedlandedwork. Documentfindings, forwardfixPRs asneeded, independentlyreviewandverify/CI finalchanges.
 
 ## Notes
 
-Prelandingreadonlyinventorycomplete at409:174Markdownentries,23activeplans/14done/14architecture/49explorations; exacthashes/checklist underpostlanding-docs-409. ConfirmedstaleportableMetabrowser skill(URL-only/noList/noCheckout/#fragment),projectindex/TODO/alpha/overlaycurrent-stateclaims;2archivecandidates+1unindexedactiveplan;developmenttbd0.8.1vsconfig0.9.0drift. NoMetabrowserhelpMarkdownorautomaticSkillgenerator: actualselfdocsflatTyperhelp/registry/doctor/routes/SDKtypes/manifests plushand-authoredportableSkill. Generatedtbd/templatepairsalreadymatch. MUSTrepinlandedmainbeforeapplying; inventorydoesnotclaimrefreshdone. Dependslandingmb-1b8s.
+Prelanding inventory and unapplied17file draft are prepared under postlanding-docs-a7b964c4-drafts;37plans and complete2375-bead history audited at that snapshot. Re-pin actual landedmain and refresh counts before applying. New final048 protocol also needs truthful record_revision content identity, logical file-list generation/schema2 and memory-only cache-refusal backoff documentation plus concise unreleased changelog. No automatic Metabrowser skill generator exists; portable Skill and CLI/help/registry/doctor/SDK/manifests are actual self-doc surfaces. Generated tbd/template pairs already match. Keep real future P3 work open and historical measurements pinned. This phase is mandatory after feature landing; drafts do not mean completion.
