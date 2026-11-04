@@ -605,8 +605,13 @@ def test_checkout_comparison_fetch_refuses_to_clone_when_borrowing_is_unavailabl
 @pytest.mark.parametrize(
     "damage", ["future", "missing", "corrupt", "unknown", "config_future", "config_corrupt"]
 )
+@pytest.mark.parametrize("rate_hold", [False, True])
 def test_existing_checkout_source_refuses_unknown_cache_before_writing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, damage: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pull_origin: Origin,
+    damage: str,
+    rate_hold: bool,
 ) -> None:
     from metabrowser.builtin_plugins.github import checkout as checkout_module
     from metabrowser.builtin_plugins.github.gh_lists import PullDataError
@@ -617,6 +622,19 @@ def test_existing_checkout_source_refuses_unknown_cache_before_writing(
     repository = checkout_module._resolve(checkout, isolated.home)  # pyright: ignore[reportPrivateUsage]
     assert repository is not None
     asyncio.run(checkout_module.claim_source(repository))
+    from datetime import timedelta
+
+    from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
+    reset_at = "2026-09-17T12:05:00Z" if rate_hold else None
+    if rate_hold:
+        pull_list.write_files_refresh(
+            isolated.home,
+            repository.slug,
+            7,
+            PullRefreshStamp(outcome="rate_limited", at="2026-09-17T12:00:00Z", reset_at=reset_at),
+        )
     layout = isolated.home / "layout.yml"
     config = Path(os.environ["METABROWSER_CONFIG_DIR"]) / "config.yml"
     if damage == "missing":
@@ -673,6 +691,53 @@ def test_existing_checkout_source_refuses_unknown_cache_before_writing(
     assert not pull_list_route.refresh_wanted(view, pull_list_route.RefreshRequest("all"))
     assert snapshot(isolated.home) == before
     assert snapshot(config.parent) == config_before
+
+    # The real file-list worker reports failed admission in memory without touching
+    # the refused cache, so a visible tree does not retry on every automatic poll.
+    from metabrowser.builtin_plugins.github import pull_files_refresh, pull_files_route
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
+
+    async def no_provider() -> str:
+        raise AssertionError("a refused cache must not contact gh")
+
+    monkeypatch.setattr(pull_files_refresh, "active_account", no_provider)
+
+    async def attempt() -> None:
+        coordinator = RefreshCoordinator()
+        try:
+            await pull_files_route._run_files_refresh(  # pyright: ignore[reportPrivateUsage]
+                repository, 7, None, coordinator
+            )
+        finally:
+            await coordinator.aclose()
+
+    asyncio.run(attempt())
+    view = pull_files_route.FilesView(7, repository, None, False, None)
+    envelope = pull_files_route.pull_files_envelope(view, pull_files_route.FilesWindow(7))
+    assert envelope["last_refresh"] is not None
+    assert envelope["last_refresh"]["outcome"] == "cache_unwritable"
+    assert envelope["last_refresh"]["message"] == str(refused.value)
+    assert envelope["last_refresh"]["reset_at"] == reset_at
+    assert (
+        pull_files_route.files_refresh_wanted(view, pull_files_route.FilesRefreshRequest(7, False))[
+            0
+        ]
+        is False
+    )
+    assert snapshot(isolated.home) == before
+    assert snapshot(config.parent) == config_before
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=61))
+    due, _ = pull_files_route.files_refresh_wanted(
+        view, pull_files_route.FilesRefreshRequest(7, False)
+    )
+    assert due is (not rate_hold)
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(seconds=301))
+    due, _ = pull_files_route.files_refresh_wanted(
+        view, pull_files_route.FilesRefreshRequest(7, False)
+    )
+    assert due is True
 
 
 def test_other_pull_read_crossing_attachment_uses_store_for_every_refresh(
