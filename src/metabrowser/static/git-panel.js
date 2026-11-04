@@ -2464,10 +2464,25 @@
       return;
     }
     started = true;
+    const generation = historyGeneration;
 
     const info = await fetchRepoInfo();
     if (!info) {
-      started = false;
+      if (generation === historyGeneration) {
+        started = false;
+      }
+      return;
+    }
+    try {
+      await window.metabrowser.ensureAsset("sdk-views");
+    } catch (error) {
+      if (generation === historyGeneration) {
+        started = false;
+      }
+      throw error;
+    }
+    // A teardown while the helpers loaded relinquished this pending registration.
+    if (!started || generation !== historyGeneration) {
       return;
     }
     state.headRevision = info.head?.revision ?? null;
@@ -2496,6 +2511,7 @@
     // Exposed for tests, which drive the panel without a network.
     _internals: {
       appendPage,
+      teardown,
       ensurePageLoaded,
       emptyState,
       ageClass,

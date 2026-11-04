@@ -27,7 +27,7 @@ asking again fetches only what failed.
 $ node tests/dom/plugin-view-helpers-session.js
 {
   "withoutACompositor": {
-    "helpersBefore": "0 of 9",
+    "helpersBefore": "0 of 14",
     "requestedTogether": [
       "link rel=stylesheet /plugin-static/fixture-kind/styles.css",
       "link rel=modulepreload <the plugin's module>",
@@ -43,7 +43,7 @@ $ node tests/dom/plugin-view-helpers-session.js
         "module evaluation: a Source view with a gutter of 1 lines"
       ]
     },
-    "helpersAfter": "9 of 9",
+    "helpersAfter": "14 of 14",
     "pluginCode": [
       "module evaluation: a Source view with a gutter of 1 lines",
       "render: a Source view with a gutter of 2 lines",
@@ -71,6 +71,36 @@ $ node tests/dom/plugin-view-helpers-session.js
       "loading": "resolved",
       "pluginCode": [
         "module evaluation: a Source view with a gutter of 1 lines"
+      ]
+    }
+  },
+  "sourceHeaderReadiness": {
+    "folder": {
+      "requested": [],
+      "loading": "resolved"
+    },
+    "requestedTogether": [
+      "source-ref-selector",
+      "sdk-views"
+    ],
+    "afterSelector": {
+      "loading": "pending",
+      "mounted": []
+    },
+    "loaded": {
+      "loading": "resolved",
+      "mounted": [
+        "source header"
+      ]
+    },
+    "afterFailure": {
+      "loading": "rejected: helpers unavailable",
+      "mounted": []
+    },
+    "retry": {
+      "loading": "resolved",
+      "mounted": [
+        "source header"
       ]
     }
   }

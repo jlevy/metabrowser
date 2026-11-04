@@ -465,6 +465,7 @@ sandbox.metabrowser = {
       tooltipHideCount += 1;
     },
   },
+  ensureAsset: async () => {},
   ensureKindAssets: async (kind) => {
     ensuredKinds.push(kind);
     diffAssetsLoaded = true;
@@ -1829,8 +1830,15 @@ async function run() {
   registeredPanel = null;
   // /api/git/repo answers is_repo:false, so nothing is registered, but
   // a later init can retry after that transient/negative result.
+  const viewAssets = [];
+  const assetWaits = [];
+  sandbox.metabrowser.ensureAsset = (name) => {
+    viewAssets.push(name);
+    return new Promise((resolve, reject) => assetWaits.push({ resolve, reject }));
+  };
   responses.set("/api/git/repo", { is_repo: false, reason: "not_a_repo" });
   await panel.init();
+  assertEqual("gate: a plain folder never asks for view helpers", viewAssets, []);
   assertEqual("gate: no tab outside a repository", registeredPanel, null);
 
   responses.set("/api/git/repo", {
@@ -1839,8 +1847,35 @@ async function run() {
     head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
   });
   responses.set("/api/git/refs", { is_repo: true, refs: [] });
-  await panel.init();
+  const failedInit = panel.init();
+  await new Promise(setImmediate);
+  assertEqual("gate: waits for helpers before registering", registeredPanel, null);
+  assetWaits.shift().reject(new Error("view helpers unavailable"));
+  let rejected = false;
+  try {
+    await failedInit;
+  } catch {
+    rejected = true;
+  }
+  assertTrue("gate: asset failure is surfaced", rejected);
+  assertEqual("gate: failed helpers cannot register", registeredPanel, null);
+  const cancelledInit = panel.init();
+  await new Promise(setImmediate);
+  internals.teardown();
+  const replacementInit = panel.init();
+  await new Promise(setImmediate);
+  assetWaits.shift().resolve();
+  await cancelledInit;
+  assertEqual("gate: disposed init cannot register over a replacement", registeredPanel, null);
+  assetWaits.shift().resolve();
+  await replacementInit;
+  assertEqual("gate: helper retries preserve the one bundle identity", viewAssets, [
+    "sdk-views",
+    "sdk-views",
+    "sdk-views",
+  ]);
   assertTrue("gate: init retries and registers", registeredPanel !== null);
+  sandbox.metabrowser.ensureAsset = async () => {};
 
   internals.setStateForTests(internals.emptyState());
   responses.delete("/api/git/log");

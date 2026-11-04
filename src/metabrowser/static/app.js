@@ -8337,7 +8337,7 @@ async function startSourceRefSelector() {
   if (!isGitRevisionSource() || !element || !assets) {
     return;
   }
-  await assets.ensureAsset("source-ref-selector");
+  await Promise.all([assets.ensureAsset("source-ref-selector"), assets.ensureAsset("sdk-views")]);
   window.MetabrowserSourceRefSelector?.mount(element);
 }
 

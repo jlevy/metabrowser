@@ -81,8 +81,8 @@ def test_a_plugin_finds_every_view_helper_wherever_its_code_runs(
     # load theirs. Its whole output is pinned by cli-ui-plugin-view-helpers.tryscript.md.
     loaded = view_helpers["withoutACompositor"]
     # The startup script keeps none of the helpers, or the move saved nothing.
-    assert loaded["helpersBefore"] == "0 of 9"
-    assert loaded["helpersAfter"] == "9 of 9"
+    assert loaded["helpersBefore"] == "0 of 14"
+    assert loaded["helpersAfter"] == "14 of 14"
     # The plugin's stylesheet and module are on the wire beside the helpers, not a
     # round trip after them, and none of its code has run while they are.
     assert loaded["requestedTogether"] == [STYLESHEET, MODULE_PRELOAD, VIEW_HELPERS]
@@ -307,3 +307,15 @@ def test_sdk_exports_shared_metric_emphasis_classes() -> None:
     assert "sizeClass: sizeClass" in src
     assert "MetabrowserFormatters.countClass" in src
     assert "MetabrowserFormatters.sizeClass" in src
+
+
+def test_core_source_header_waits_for_both_assets_and_retries(view_helpers: dict[str, Any]) -> None:
+    header = view_helpers["sourceHeaderReadiness"]
+    assert header == {
+        "folder": {"requested": [], "loading": "resolved"},
+        "requestedTogether": ["source-ref-selector", "sdk-views"],
+        "afterSelector": {"loading": "pending", "mounted": []},
+        "loaded": {"loading": "resolved", "mounted": ["source header"]},
+        "afterFailure": {"loading": "rejected: helpers unavailable", "mounted": []},
+        "retry": {"loading": "resolved", "mounted": ["source header"]},
+    }

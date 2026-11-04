@@ -71,6 +71,12 @@ const sdkSource = fs.readFileSync(
 );
 vm.runInContext(sdkSource, sandbox, { filename: "plugin-sdk.js" });
 
+vm.runInContext(
+  fs.readFileSync(path.join(repoRoot, "src/metabrowser/static/plugin-sdk-views.js"), "utf8"),
+  sandbox,
+  { filename: "plugin-sdk-views.js" },
+);
+
 if (typeof clickHandler !== "function") {
   failures.push("SDK did not install a delegated click listener");
 } else {

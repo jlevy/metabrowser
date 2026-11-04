@@ -759,8 +759,8 @@ def test_ref_chip_kinds_differ_in_form_not_only_hue() -> None:
     # The kind classes must reach the markup from the wire, not be guessed
     # in the browser.
     panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
-    sdk = (STATIC / "plugin-sdk.js").read_text(encoding="utf-8")
-    assert "ref.is_trunk" in panel and "git-ref-trunk" in sdk
+    views = (STATIC / "plugin-sdk-views.js").read_text(encoding="utf-8")
+    assert "ref.is_trunk" in panel and "git-ref-trunk" in views
 
 
 def test_git_history_vocabulary_is_documented() -> None:

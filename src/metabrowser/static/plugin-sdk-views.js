@@ -4,7 +4,8 @@
 // tree paints. Two things are here instead, in one file because nothing uses either
 // without the other: a Source view's line gutter and `#L` anchors
 // (`window.MetabrowserSourceLineAnchors`), and the SDK helpers that build a view's
-// markup -- the Source surface, the copy wrapper, the partial-content notice -- with
+// markup -- the Source surface, ref chips and their sibling copy controls, the copy
+// wrapper, age labels and the partial-content notice -- with
 // the syntax service, since nothing asks for a token until a view shows code.
 //
 // It is the `sdk-views` on-demand bundle. `loadViewComposition` fetches it beside the
@@ -749,7 +750,249 @@
     throw new Error("plugin-sdk-views.js did not define the line anchors");
   }
   const lineAnchors = definedLineAnchors;
-  const { delegateOwnerAttribute, escapeHtml, formatSize } = mb;
+  const { delegateOwnerAttribute, ownDelegate, escapeHtml, formatSize } = mb;
+
+  /** Shared branch/tag markup. `name` is the raw copy value, independent of its label.
+   * @param {string} name
+   * @param {{label?:string,kind?:string,trunk?:boolean,head?:boolean,copy?:"inline"|"sibling"|false}} [options]
+   */
+  function refChipHtml(name, options = {}) {
+    const kind = options.kind === "tag" ? "tag" : options.kind === "remote" ? "remote" : "local";
+    const classes = ["git-ref", `git-ref-${kind}`];
+    if (options.trunk) {
+      classes.push("git-ref-trunk");
+    }
+    if (options.head) {
+      classes.push("git-ref-head");
+    }
+    const copy = options.copy ?? "inline";
+    if (copy) {
+      classes.push("git-ref-copyable");
+    }
+    return (
+      `<span class="${classes.join(" ")}" data-tip-text="${escapeHtml(options.label ?? name)}"` +
+      (copy === "sibling" ? ` data-ref-copy="${escapeHtml(name)}"` : "") +
+      ">" +
+      `<span class="git-ref-label">${escapeHtml(options.label ?? name)}</span>` +
+      (copy === "inline" ? refCopyHtml(name) : "") +
+      "</span>"
+    );
+  }
+
+  /** @param {string} name */
+  function refCopyHtml(name) {
+    const label = `Copy ref ${name}`;
+    return (
+      `<button type="button" class="icon-btn git-ref-copy" data-mb-copy="text"` +
+      ` data-mb-copy-text="${escapeHtml(name)}"${delegateOwnerAttribute()}` +
+      ` data-mb-copy-label="${escapeHtml(label)}" data-tip-text="${escapeHtml(label)}"` +
+      ` aria-label="${escapeHtml(label)}">${global.MetabrowserIcons?.copy ?? ""}</button>`
+    );
+  }
+
+  /** DOM form of the same owned, escaped chip; no repository text becomes markup.
+   * @param {string} name
+   * @param {Parameters<typeof refChipHtml>[1]} [options]
+   * @returns {HTMLElement}
+   */
+  function refChip(name, options = {}) {
+    const chip = document.createElement("span");
+    const kind = options.kind === "tag" ? "tag" : options.kind === "remote" ? "remote" : "local";
+    chip.className = `git-ref git-ref-${kind}${options.trunk ? " git-ref-trunk" : ""}${options.head ? " git-ref-head" : ""}`;
+    chip.dataset.tipText = options.label ?? name;
+    const label = document.createElement("span");
+    label.className = "git-ref-label";
+    label.textContent = options.label ?? name;
+    chip.append(label);
+    const copy = options.copy ?? "inline";
+    if (copy) {
+      chip.classList.add("git-ref-copyable");
+    }
+    if (copy === "sibling") {
+      chip.dataset.refCopy = name;
+    }
+    if (copy === "inline") {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "icon-btn git-ref-copy";
+      button.setAttribute("data-mb-copy", "text");
+      button.setAttribute("data-mb-copy-text", name);
+      ownDelegate(button);
+      const tip = `Copy ref ${name}`;
+      button.setAttribute("data-mb-copy-label", tip);
+      button.setAttribute("data-tip-text", tip);
+      button.setAttribute("aria-label", tip);
+      button.innerHTML = global.MetabrowserIcons?.copy ?? "";
+      chip.append(button);
+    }
+    return chip;
+  }
+
+  /** Put secondary copy controls outside a primary row link/button. Each mounted row
+   * owns its controls and disposer; active global hide listeners are released on hide/dispose.
+   * Geometry is read only on entry. A scroll/resize while focus stays hides controls;
+   * the next pointer/focus entry positions them against the current chip boxes.
+   * @param {HTMLElement} primary
+   * @param {HTMLElement} host
+   * @returns {() => void}
+   */
+  function mountRefCopies(primary, host) {
+    const chips = [...primary.querySelectorAll("[data-ref-copy]")];
+    if (!chips.length) {
+      return () => {};
+    }
+    host.classList.add("git-ref-copy-host");
+    const layer = document.createElement("span");
+    layer.className = "git-ref-copy-layer";
+    const buttons = chips.map((chip) => {
+      const button = /** @type {HTMLButtonElement} */ (
+        refChip(chip.getAttribute("data-ref-copy") ?? "").querySelector("button")
+      );
+      layer.append(button);
+      return button;
+    });
+    host.append(layer);
+    let hiding = false;
+    function hide() {
+      hiding = true;
+      if (layer.contains(document.activeElement)) {
+        primary.focus({ preventScroll: true });
+      }
+      global.removeEventListener("resize", hide);
+      document.removeEventListener("scroll", hide, true);
+      layer.hidden = true;
+      for (const button of buttons) {
+        button.tabIndex = -1;
+      }
+      hiding = false;
+    }
+    function position() {
+      if (hiding) {
+        return;
+      }
+      const box = host.getBoundingClientRect();
+      const primaryBox = primary.getBoundingClientRect();
+      layer.hidden = false;
+      for (let index = 0; index < chips.length; index++) {
+        const rect = chips[index].getBoundingClientRect();
+        // A chip can fit its own group yet be clipped by a narrower metadata line.
+        // Keep the sibling hit target inside every containing box through the primary.
+        let left = primaryBox.left;
+        let right = primaryBox.right;
+        for (
+          let ancestor = chips[index].parentElement;
+          ancestor;
+          ancestor = ancestor.parentElement
+        ) {
+          const box = ancestor.getBoundingClientRect();
+          left = Math.max(left, box.left);
+          right = Math.min(right, box.right);
+          if (ancestor === primary) {
+            break;
+          }
+        }
+        const button = buttons[index];
+        button.hidden = rect.width < 20 || rect.right > right || rect.left < left;
+        const kind = chips[index].classList.contains("git-ref-tag")
+          ? "tag"
+          : chips[index].classList.contains("git-ref-remote")
+            ? "remote"
+            : "local";
+        button.style.setProperty(
+          "--git-ref-copy-ink",
+          chips[index].classList.contains("git-ref-trunk")
+            ? "var(--git-ref-bg)"
+            : `var(--git-ref-${kind})`,
+        );
+        button.style.left = `${rect.right - box.left - 16}px`;
+        button.style.top = `${rect.top - box.top + (rect.height - 16) / 2}px`;
+        button.tabIndex = button.hidden ? -1 : 0;
+      }
+      global.addEventListener("resize", hide);
+      document.addEventListener("scroll", hide, true);
+    }
+    /** @param {FocusEvent | PointerEvent} event */
+    function leave(event) {
+      if (
+        !host.contains(/** @type {Node | null} */ (event.relatedTarget)) &&
+        (event.type === "focusout" || !host.contains(document.activeElement))
+      ) {
+        hide();
+      }
+    }
+    hide();
+    host.addEventListener("pointerenter", position);
+    host.addEventListener("focusin", position);
+    host.addEventListener("pointerleave", leave);
+    host.addEventListener("focusout", leave);
+    return () => {
+      hide();
+      host.removeEventListener("pointerenter", position);
+      host.removeEventListener("focusin", position);
+      host.removeEventListener("pointerleave", leave);
+      host.removeEventListener("focusout", leave);
+      layer.remove();
+    };
+  }
+
+  // Age buckets shared with the shell's tree column. The thresholds
+  // mirror app.js formatAge exactly (sec <1m, min <1h, hr <1d, day
+  // <7d, wk <30d, old beyond); keep the two lists in sync so a
+  // treemap fill and a tree row never disagree about freshness.
+  /** @type {Array<[string, number]>} */
+  const AGE_BUCKET_STEPS = [
+    ["sec", 60 * 1000],
+    ["min", 60 * 60 * 1000],
+    ["hr", 24 * 60 * 60 * 1000],
+    ["day", 7 * 24 * 60 * 60 * 1000],
+    ["wk", 30 * 24 * 60 * 60 * 1000],
+  ];
+
+  /** @param {unknown} mtimeSeconds */
+  function ageBucket(mtimeSeconds) {
+    if (typeof mtimeSeconds !== "number" || !Number.isFinite(mtimeSeconds) || mtimeSeconds <= 0) {
+      return null;
+    }
+    const absMs = Math.abs(Date.now() - mtimeSeconds * 1000);
+    for (const [bucket, limitMs] of AGE_BUCKET_STEPS) {
+      if (absMs < limitMs) {
+        return bucket;
+      }
+    }
+    return "old";
+  }
+
+  // Compact age text mirrors app.js formatAge ("3h", "2d", "<1m", …)
+  // so a plugin label and a tree row read identically.
+  /** @type {Array<[string, number]>} */
+  const AGE_LABEL_STEPS = [
+    ["y", 365 * 24 * 60 * 60 * 1000],
+    ["mo", 30 * 24 * 60 * 60 * 1000],
+    ["w", 7 * 24 * 60 * 60 * 1000],
+    ["d", 24 * 60 * 60 * 1000],
+    ["h", 60 * 60 * 1000],
+    ["m", 60 * 1000],
+  ];
+
+  /** @param {unknown} mtimeSeconds */
+  function ageLabelHtml(mtimeSeconds) {
+    // The colored age chip the shell shows in tree rows and headers:
+    // `<span class="age-<bucket>">3h</span>` on the shared freshness
+    // tokens, or "" when there is no meaningful mtime.
+    const bucket = ageBucket(mtimeSeconds);
+    if (bucket === null) {
+      return "";
+    }
+    const absMs = Math.abs(Date.now() - /** @type {number} */ (mtimeSeconds) * 1000);
+    let text = "<1m";
+    for (const [suffix, stepMs] of AGE_LABEL_STEPS) {
+      if (absMs >= stepMs) {
+        text = `${Math.round(absMs / stepMs)}${suffix}`;
+        break;
+      }
+    }
+    return `<span class="age-${bucket}">${escapeHtml(text)}</span>`;
+  }
 
   const HIGHLIGHT_TOKEN_CLASS_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
   /** @type {Readonly<Record<string, string>>} */
@@ -1282,6 +1525,11 @@
   }
 
   Object.assign(mb, {
+    refChipHtml,
+    refChip,
+    mountRefCopies,
+    ageBucket,
+    ageLabelHtml,
     highlightSyntax: highlightSyntax,
     isLargeTextPreview: isLargeTextPreview,
     langForExtension: langForExtension,
