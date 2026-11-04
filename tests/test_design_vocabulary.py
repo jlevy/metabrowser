@@ -1495,7 +1495,13 @@ def test_diff_text_and_reserved_geometry_use_the_dense_mono_token() -> None:
         ".metabrowser-diff-host .diff-split-side",
     ):
         assert "font-size: var(--mono-block-font-size)" in _rule(css, selector)
-    assert "1.5 * var(--mono-block-font-size)" in view
+    metrics = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))[
+        ".metabrowser-diff-host"
+    ]
+    assert metrics["--diff-code-row-height"] == "calc(1.5 * var(--mono-block-font-size))"
+    for kind in ("code", "header", "fold", "notice"):
+        assert f"--diff-{kind}-row-height" in metrics
+        assert f"var(--diff-{kind}-row-height)" in view
 
 
 def test_branch_copy_plate_has_readable_interactive_ink() -> None:

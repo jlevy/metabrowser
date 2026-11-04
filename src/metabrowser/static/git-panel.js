@@ -147,6 +147,10 @@
   /** @type {number | null} */
   let pendingPreviewClaim = null;
   let started = false;
+  let viewHelpersReady = false;
+  let viewHelpersFailed = false;
+  /** @type {Promise<boolean> | null} */
+  let viewHelpersPending = null;
   let refreshing = false;
   let recoveringSession = false;
   /** @type {{start: number, end: number} | null} */
@@ -1360,7 +1364,7 @@
       return;
     }
 
-    if (state.rowCount === 0 && state.loading) {
+    if (state.rowCount === 0 && (state.loading || viewHelpersPending !== null)) {
       // The first paint of the Git tab: the row geometry is known before
       // the data, so it is drawn as skeleton rows rather than announced.
       const skeleton = document.createElement("div");
@@ -1372,8 +1376,13 @@
       panel.replaceChildren(skeleton);
       return;
     }
-    if (state.rowCount === 0 && state.failed) {
-      renderRefreshState(panel, "Could not read repository history.");
+    if (state.rowCount === 0 && (state.failed || viewHelpersFailed)) {
+      renderRefreshState(
+        panel,
+        viewHelpersFailed
+          ? "Could not load Git view controls. Refresh to try again."
+          : "Could not read repository history.",
+      );
       return;
     }
     if (state.rowCount === 0) {
@@ -2287,10 +2296,52 @@
   }
 
   /**
+   * Load the required views once, retaining a visible, retryable Git panel on failure.
+   * @returns {Promise<boolean>}
+   */
+  async function ensureViewHelpers() {
+    if (viewHelpersReady) {
+      return true;
+    }
+    if (viewHelpersPending !== null) {
+      return viewHelpersPending;
+    }
+    const generation = historyGeneration;
+    viewHelpersFailed = false;
+    /** @type {Promise<boolean>} */
+    const pending = window.metabrowser.ensureAsset("sdk-views").then(
+      () => {
+        if (viewHelpersPending !== pending || generation !== historyGeneration) {
+          return false;
+        }
+        viewHelpersPending = null;
+        viewHelpersReady = true;
+        return true;
+      },
+      () => {
+        if (viewHelpersPending === pending && generation === historyGeneration) {
+          viewHelpersPending = null;
+          viewHelpersFailed = true;
+          renderPanel();
+        }
+        return false;
+      },
+    );
+    viewHelpersPending = pending;
+    renderPanel();
+    return pending;
+  }
+
+  /**
    * @param {{preserveDetail?: boolean, selectedId?: string | null}} [options]
    * @returns {Promise<void>}
    */
   async function refreshHistory(options = {}) {
+    const restoreLanding = viewHelpersFailed;
+    const generation = historyGeneration;
+    if ((!viewHelpersReady && !(await ensureViewHelpers())) || generation !== historyGeneration) {
+      return;
+    }
     if (state.loading || refreshing) {
       return;
     }
@@ -2335,10 +2386,17 @@
     } finally {
       refreshing = false;
     }
+    if (restoreLanding) {
+      await restoreCommitLanding();
+    }
   }
 
   /** @returns {Promise<void>} */
   async function ensureHistory() {
+    const generation = historyGeneration;
+    if ((!viewHelpersReady && !(await ensureViewHelpers())) || generation !== historyGeneration) {
+      return;
+    }
     if (state.loading) {
       return;
     }
@@ -2408,6 +2466,9 @@
     lastSelection = null;
     refColors = new Map();
     started = false;
+    viewHelpersReady = false;
+    viewHelpersFailed = false;
+    viewHelpersPending = null;
     window.removeEventListener("popstate", restoreCommitLanding);
     shell()?.removeNavPanel("git");
   }
@@ -2435,9 +2496,16 @@
     }
     try {
       bridge.activateNavPanel("git");
+      if (!viewHelpersReady && !(await ensureViewHelpers())) {
+        return;
+      }
       await ensureHistory();
       // The panel may have gone, or the reader stepped on, while it caught up.
-      if (started && routes.parseCommit(window.location.pathname)?.revision === wanted) {
+      if (
+        started &&
+        viewHelpersReady &&
+        routes.parseCommit(window.location.pathname)?.revision === wanted
+      ) {
         await selectCommit(wanted, { fromRoute: true });
       }
     } catch (error) {
@@ -2452,9 +2520,9 @@
   /**
    * Register the Git tab if the served root is a repository.
    *
-   * Called once at startup and never awaited by the shell: whether this
-   * is a repository has no bearing on first paint, and a directory that
-   * is not one should not pay for the feature at all.
+   * The deferred shell awaits registration. The required view helpers load when
+   * Git is shown (including a commit landing), with an in-panel retry on failure.
+   * A directory outside a repository never asks for those helpers.
    *
    * @returns {Promise<void>}
    */
@@ -2473,15 +2541,7 @@
       }
       return;
     }
-    try {
-      await window.metabrowser.ensureAsset("sdk-views");
-    } catch (error) {
-      if (generation === historyGeneration) {
-        started = false;
-      }
-      throw error;
-    }
-    // A teardown while the helpers loaded relinquished this pending registration.
+    // A teardown while repository discovery ran relinquished this registration.
     if (!started || generation !== historyGeneration) {
       return;
     }

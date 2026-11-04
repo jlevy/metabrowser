@@ -300,9 +300,11 @@ async def refresh_pull_list(
     take_retry: Callable[[], bool] | None = None,
 ) -> CatalogState:
     """Warm a requested prefix, then resume all metadata; each page yields its slot."""
-    repository = await claim_source(repository)
     reader: str | None = None
+    source_claimed = False
     try:
+        repository = await claim_source(repository)
+        source_claimed = True
         login = await active_account()
         reader = f"gh:{login}"
         restarted: set[str] = set()
@@ -450,6 +452,7 @@ async def refresh_pull_list(
                     at=utc_stamp(pull_list.utc_now()),
                     reader=reader,
                 ),
+                persist=source_claimed,
             )
         )
         raise

@@ -182,10 +182,14 @@ class LaidOutElement {
       : this.children.reduce((total, child) => total + child.layoutHeight(), 0);
     // Inline minima win over height: 0; the stylesheet can override a reservation
     // supplied through its custom property when the body is collapsed.
-    const reserved = /calc\((\d+) /.exec(
-      this.style.minHeight || (!collapsed && this.style["--diff-reserved-height"]) || "",
-    );
-    return Math.max(content, reserved ? Number(reserved[1]) * ROW_PX : 0);
+    // The session uses one logical row pitch for each kind; the browser/CSS
+    // control measures their different token-based heights. Read every coefficient.
+    const reservation =
+      this.style.minHeight || (!collapsed && this.style["--diff-reserved-height"]) || "";
+    const reservedRows = [
+      ...reservation.matchAll(/(\d+) \* var\(--diff-(?:code|header|fold|notice)-row-height\)/g),
+    ].reduce((sum, match) => sum + Number(match[1]), 0);
+    return Math.max(content, reservedRows * ROW_PX);
   }
 
   getBoundingClientRect() {
@@ -1308,6 +1312,26 @@ async function main() {
       "unified",
     ],
   ].map(([what, patch, layout]) => `${what} in ${layout}: ${view.patchRows(patch, layout)} rows`);
+  assert(
+    JSON.stringify(
+      view.patchRowCounts({ truncated: true, hunks: [hunk("add"), hunk("del")] }, "unified"),
+    ) === JSON.stringify({ lines: 2, headers: 2, folds: 0, notices: 1 }),
+    "held geometry lost headers or truncated notice",
+  );
+  assert(
+    JSON.stringify(view.patchRowCounts({ hunks: [hunk(...run("add", 50))] }, "unified")) ===
+      JSON.stringify({ lines: 20, headers: 1, folds: 1, notices: 0 }),
+    "held geometry counted the fold control as a code line",
+  );
+  assert(
+    JSON.stringify(
+      view.patchRowCounts(
+        { hunks: [hunk("context", ...run("del", 3), ...run("add", 5), "context")] },
+        "split",
+      ),
+    ) === JSON.stringify({ lines: 7, headers: 1, folds: 0, notices: 0 }),
+    "split geometry lost paired or context rows",
+  );
   const firstScreens = [
     { paneHeight: 400, rootTop: 0, barPx: 30, rowPx: 20 },
     { paneHeight: 900, rootTop: 300, barPx: 30, rowPx: 20 },

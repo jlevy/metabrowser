@@ -158,6 +158,70 @@ const { pathToFileURL } = require("node:url");
   );
   assert.equal(timers.size, 0, "missing optional tooling does not create a permanent poll loop");
   hidden.dispose();
+  for (const failure of [
+    new Error("the initial stack read failed"),
+    { status: 503, body: null, etag: null },
+    { status: 200, body: { malformed: true }, etag: null },
+  ]) {
+    const coldTimers = new Map();
+    const coldCalls = [];
+    const coldSeen = [];
+    const cold = createStackController({
+      request(method, route) {
+        coldCalls.push({ method, route });
+        if (coldCalls.length <= 2) {
+          return failure instanceof Error ? Promise.reject(failure) : Promise.resolve(failure);
+        }
+        return Promise.resolve({ status: 200, body: cached, etag: "recovered" });
+      },
+      now: () => clock,
+      schedule(callback, delay) {
+        coldTimers.set(callback, delay);
+        return callback;
+      },
+      cancel(timer) {
+        coldTimers.delete(timer);
+      },
+      isVisible: () => true,
+    });
+    const reading = cold.watch((value) => coldSeen.push(value));
+    await settle();
+    assert.equal(cold.snapshot(), null);
+    assert.equal(coldCalls.length, 1);
+    assert.deepEqual([...coldTimers.values()], [30000], "initial failures retry at a bounded pace");
+    reading.setShown(false);
+    assert.equal(coldTimers.size, 0, "hiding cancels the cold retry");
+    assert.equal(coldCalls.length, 1, "a hidden reader starts no retry");
+    reading.setShown(true);
+    await settle();
+    assert.equal(coldCalls.length, 2, "showing resumes the cache read");
+    assert.deepEqual([...coldTimers.values()], [30000]);
+    const retry = coldTimers.keys().next().value;
+    coldTimers.delete(retry);
+    clock += 30000;
+    retry();
+    await settle();
+    assert.equal(coldCalls.length, 3, "the scheduled retry recovers without another reader event");
+    assert.ok(
+      coldCalls.every(
+        (call) => call.method === "GET" && call.route === "/api/plugin/github/stacks",
+      ),
+      "cold retries never start provider work",
+    );
+    assert.equal(coldSeen.at(-1).byPull.get(8)[0].number, 286);
+    assert.deepEqual([...coldTimers.values()], [30000]);
+    reading.dispose();
+    assert.equal(coldTimers.size, 0, "disposal cancels the recovered poll");
+  }
+  const noRepository = controller.watch(() => {});
+  pending.shift()({
+    status: 200,
+    etag: "not-github",
+    body: { ...cached, state: "absent", reason: "not_github", reader: null, stacks: [] },
+  });
+  await settle();
+  assert.equal(timers.size, 0, "a non-GitHub source does not poll optional stacks");
+  noRepository.dispose();
   console.log(
     JSON.stringify({
       authoritativeMembership: true,
@@ -169,6 +233,7 @@ const { pathToFileURL } = require("node:url");
       retryWindow: true,
       disposal: true,
       lateOwnerGuard: true,
+      initialFailureRetry: true,
     }),
   );
 })().catch((error) => {
