@@ -24,6 +24,7 @@ from metabrowser.cache.paths import PULL_LIST_NAMES, PullListName, source_pulls_
 from metabrowser.home import PrivateStorageError, open_private_file, write_private_file_atomic
 
 CATALOG_SCHEMA = 1
+CATALOG_PROJECTION = 1
 PAGE_SIZE = 100
 MAX_WINDOW = 1000
 
@@ -56,6 +57,8 @@ class CatalogState(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
     schema_version: Literal[1] = 1
+    # The ALL scan uses this projection; done["all"] separately records completion.
+    projection_version: int = Field(default=0, ge=0, le=CATALOG_PROJECTION)
     source: str
     repository_id: str
     reader: str

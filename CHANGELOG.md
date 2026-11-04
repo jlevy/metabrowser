@@ -497,6 +497,15 @@ GitHub URLs and HTTPS:
   PR numbers use dark text, usernames use bold gray text, and branch names use a smaller
   consistent treatment across the list and PR pages.
 
+- File change letters share muted semantic colors across Git, diffs and PR file trees:
+  additions green, deletions red, modifications ochre and renames blue.
+  Branch names share ref chips with hover/focus copy controls.
+  GitHub authors have small lazy circular avatars.
+  Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”; compact
+  navigation retains short labels.
+  Split and unified diffs use the shared monospace block size and matching reserved row
+  heights, fixing a root-font fallback that made code larger than other code views.
+
 - Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
   way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
   header line (“author wants to merge 2 commits into base from head”, and once merged

@@ -188,6 +188,7 @@ const TRUNCATED = Object.freeze({
  *   id: number,
  *   part: string,
  *   author: string,
+ *   avatar: string | null,
  *   at: string | null,
  *   text: string,
  *   truncated: boolean,
@@ -209,6 +210,7 @@ const TRUNCATED = Object.freeze({
  *   outdated: boolean,
  *   reply: boolean,
  *   author: string,
+ *   avatar: string | null,
  *   at: string,
  *   text: string,
  *   truncated: boolean,
@@ -244,6 +246,7 @@ const TRUNCATED = Object.freeze({
  *   failureHelp?: "install" | "update",
  *   pull: null | {
  *     title: string, number: number, state: string, stateLabel: string, author: string,
+ *     avatar: string | null, actorAvatar: string | null, baseRef: string, headRef: string,
  *     actor: string | null, action: string,
  *     base: string, head: string, htmlUrl: string, created: string, updated: string,
  *     closed: string | null, closedLabel: string | null, labels: string[],
@@ -395,6 +398,7 @@ function timeline(record) {
       id: comment.id,
       part: `issue_comment/${comment.id}`,
       author: who(comment.author),
+      avatar: avatarUrl(comment.author_avatar_url),
       at: text(comment.created_at) || null,
       text: text(comment.body),
       truncated: comment.body_truncated === true,
@@ -408,6 +412,7 @@ function timeline(record) {
       id: review.id,
       part: `review/${review.id}`,
       author: who(review.author),
+      avatar: avatarUrl(review.author_avatar_url),
       at: typeof review.submitted_at === "string" ? review.submitted_at : null,
       text: text(review.body),
       truncated: review.body_truncated === true,
@@ -572,6 +577,7 @@ function reviewComments(record) {
       outdated: typeof comment.line !== "number",
       reply: typeof comment.in_reply_to === "number",
       author: who(comment.author),
+      avatar: avatarUrl(comment.author_avatar_url),
       at: text(comment.created_at),
       text: text(comment.body),
       truncated: comment.body_truncated === true,
@@ -756,6 +762,10 @@ export function describePull(envelope, page) {
     state,
     stateLabel: state[0].toUpperCase() + state.slice(1),
     author: who(pull.author),
+    avatar: avatarUrl(pull.author_avatar_url),
+    actorAvatar: avatarUrl(state === "merged" ? pull.merged_by_avatar_url : pull.author_avatar_url),
+    baseRef: text(pull.base?.ref),
+    headRef: text(pull.head?.ref),
     // github.com's words: "<merger> merged 6 commits into <base> from <head>", and for
     // an open, draft, or closed pull request "<author> wants to merge 1 commit into".
     // An account GitHub deleted is its "ghost"; a record that names no merger at all
@@ -1700,6 +1710,54 @@ export function h(tag, attributes = {}, children = []) {
   return element;
 }
 
+/** Optional cached avatar URLs are revalidated before becoming browser requests.
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+export function avatarUrl(value) {
+  return typeof value === "string" &&
+    /^https:\/\/avatars\.githubusercontent\.com\/(?:u|in)\/[0-9]{1,20}\?s=40$/.test(value)
+    ? value
+    : null;
+}
+
+/** A decorative image accompanies the same visible actor, never a replacement name.
+ * @param {string} name
+ * @param {unknown} url
+ * @param {string} [className]
+ */
+export function authorLabel(name, url, className = "") {
+  const label = h("span", { class: "github-pull-identity" });
+  const safe = avatarUrl(url);
+  if (safe !== null) {
+    const image = h("img", {
+      class: "github-pull-avatar",
+      alt: "",
+      width: "18",
+      height: "18",
+      loading: "lazy",
+      decoding: "async",
+      fetchpriority: "low",
+      crossorigin: "anonymous",
+      referrerpolicy: "no-referrer",
+    });
+    // A broken image keeps its fixed slot while the name remains immediately readable.
+    image.addEventListener(
+      "error",
+      () => {
+        image.style.visibility = "hidden";
+      },
+      { once: true },
+    );
+    image.setAttribute("src", safe);
+    label.append(image);
+  }
+  label.append(
+    h("strong", { class: `github-pull-author${className ? ` ${className}` : ""}` }, [name]),
+  );
+  return label;
+}
+
 /**
  * An outside link: new tab, no opener, no referrer. Text when the URL is not http(s).
  *
@@ -1900,7 +1958,7 @@ export function mountPullPage(container, ctx, mb) {
     if (!Number.isFinite(at)) {
       return h("span", {}, [iso]);
     }
-    const { label, className } = mb.formatAge(at / 1000);
+    const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
     return h("span", { class: className, "data-tip-text": mb.formatTimestamp(at / 1000) }, [label]);
   };
 
@@ -2108,10 +2166,6 @@ export function mountPullPage(container, ctx, mb) {
       children,
     );
 
-  /** A branch, as the ref chip names one. @param {string} name */
-  const branch = (name) =>
-    h("span", { class: "git-ref git-ref-remote", "data-tip-text": name }, [name]);
-
   /** The registry's disclosure chevron, parsed once: a constant, not the pull request's text. */
   const chevronSvg = new DOMParser().parseFromString(mb.icons.toggle || "", "text/html").body
     .firstElementChild;
@@ -2200,11 +2254,11 @@ export function mountPullPage(container, ctx, mb) {
         h("div", { class: "github-pull-meta" }, [
           stateBadge(pull.state, pull.stateLabel),
           h("span", {}, [
-            pull.actor === null ? null : h("strong", { class: "github-pull-author" }, [pull.actor]),
+            pull.actor === null ? null : authorLabel(pull.actor, pull.actorAvatar),
             `${pull.actor === null ? "" : " "}${pull.action} `,
-            branch(pull.base),
+            mb.refChip(pull.baseRef, { label: pull.base, kind: "remote" }),
             " from ",
-            branch(pull.head),
+            mb.refChip(pull.headRef, { label: pull.head, kind: "remote" }),
           ]),
         ]),
         h("div", { class: "github-pull-quiet" }, [
@@ -2310,7 +2364,7 @@ export function mountPullPage(container, ctx, mb) {
     const sections = [
       h("section", { class: "github-pull-card" }, [
         h("div", { class: "github-pull-card-head" }, [
-          h("strong", { class: "github-pull-author" }, [pull.author]),
+          authorLabel(pull.author, pull.avatar),
           " opened ",
           age(pull.created),
         ]),
@@ -2319,7 +2373,7 @@ export function mountPullPage(container, ctx, mb) {
     ];
     for (const item of model.timeline) {
       const head = h("div", { class: "github-pull-card-head" }, [
-        h("strong", { class: "github-pull-author" }, [item.author]),
+        authorLabel(item.author, item.avatar),
       ]);
       if (item.review !== null) {
         head.append(" ", badge(item.review.state, item.review.label, "review"));
@@ -2343,7 +2397,7 @@ export function mountPullPage(container, ctx, mb) {
           comment.outdated ? " " : "",
           comment.outdated ? badge("outdated", "outdated", "review") : null,
           " ",
-          h("strong", { class: "github-pull-author" }, [comment.author]),
+          authorLabel(comment.author, comment.avatar),
           ` ${comment.reply ? "replied" : "commented"} `,
           age(comment.at),
         ]);

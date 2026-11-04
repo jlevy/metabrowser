@@ -424,6 +424,15 @@ Useful helpers include:
 - `render(template, data)` for auto-escaped Mustache templates;
 - `escapeHtml(value)` for carefully constructed HTML strings;
 - `wrapWithCopy(html)` for a standard copy-button frame;
+- `refChipHtml(name, options)` and `refChip(name, options)` for the shared Git ref chip
+  as escaped markup or a DOM element.
+  `name` is the complete copy value; `label` may display an owner or shortened name.
+  Options also select `kind` (`local`, `remote`, or `tag`), `trunk`, and `head`. Use
+  inline copying for a standalone chip.
+  Inside a primary link or button, choose `copy: "sibling"` and call
+  `mountRefCopies(primary, host)` to put secondary controls outside it; call the
+  returned disposer when the row unmounts or its owner closes.
+  `copy: false` renders a passive chip;
 - `ownDelegate(element)` and `delegateOwnerAttribute()` to stamp a copy control built
   without `wrapWithCopy` (SDK 0.7): the shared copy listener acts only on an element
   carrying the page’s owner mark, because a trusted folder’s Markdown can write the same
@@ -442,7 +451,9 @@ Useful helpers include:
 - `highlightSyntax(source, language, options)` for bounded DOM-free token runs when a
   custom renderer, such as a diff, must project tokens itself;
 - `formatSize`, `formatInteger`, `formatFileCount`, `formatAge`, `formatTimestamp`, and
-  `sizeHtml`;
+  `sizeHtml`. `formatAge(epochSeconds, {style: "relative"})` returns labels such as
+  `2h ago`, `just now`, or `in 2h`; its default compact style suits dense navigation.
+  Both styles return the same freshness-class vocabulary;
 - `countClass(value)` and `sizeClass(value)` for the same magnitude-driven emphasis
   classes used by core numeric readouts;
 - `fileTypeClass(pathOrName)` for the shared `ft-*` subtype and

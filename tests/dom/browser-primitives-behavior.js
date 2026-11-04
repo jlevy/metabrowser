@@ -89,6 +89,31 @@ for (const name of [
     sandbox.MetabrowserFormatters.countClass(999) === "" &&
       sandbox.MetabrowserFormatters.countClass(1000) === "count-large",
   );
+  const now = 1900000000000;
+  sandbox.Date = class extends Date {
+    static now() {
+      return now;
+    }
+  };
+  const age = sandbox.MetabrowserFormatters.age;
+  for (const [seconds, expected] of [
+    [now / 1000 - 7200, "2h ago"],
+    [now / 1000 + 7200, "in 2h"],
+    [now / 1000 - 5, "just now"],
+    [now / 1000 + 5, "just now"],
+    [0, ""],
+    [NaN, ""],
+    [now / 1000 - 60, "1m ago"],
+    [now / 1000 - 365 * 86400, "1y ago"],
+  ]) {
+    check(`relative age ${seconds}`, age(seconds, { style: "relative" }).label === expected);
+  }
+  check("compact age remains abbreviated", age(now / 1000 - 7200).label === "2h");
+  check(
+    "styles share freshness",
+    age(now / 1000 - 7200).className === age(now / 1000 - 7200, { style: "relative" }).className,
+  );
+  sandbox.Date = Date;
   const retryable = sandbox.MetabrowserRequestErrors.classifyRequestError(
     new sandbox.MetabrowserRequestErrors.RequestError("safe", { status: 503 }),
   );

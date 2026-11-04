@@ -163,7 +163,7 @@ async function run() {
               display: file,
               previous_path: null,
               previous_display: null,
-              status: "modified",
+              status: generation === 0 && /^a(?:000)?\.py$/.test(file) ? "unchanged" : "modified",
               additions: 1,
               deletions: 0,
             })),
@@ -180,6 +180,9 @@ async function run() {
     view.controller.expand();
     await settle();
     const list = view.group.children[3];
+    const survivorId = scenario.startsWith("windowed") ? "a000.py" : "a.py";
+    const survivor = list.children.find((element) => element.dataset.id === survivorId);
+    assert.equal(survivor.children[0].attributes.get("data-file-status"), "unchanged");
     const selectedId = scenario.startsWith("windowed") ? "a250.py" : "b.py";
     view.controller.focused(selectedId);
     const selected = list.children.find((element) => element.dataset.id === selectedId);
@@ -192,6 +195,15 @@ async function run() {
       timers.delete(entry[0]);
       entry[1].callback();
       await settle();
+    }
+    if (scenario !== "empty") {
+      const kept = list.children.find((element) => element.dataset.id === survivorId);
+      assert.equal(kept, survivor, "status repaint retains the row element");
+      assert.equal(
+        kept.children[0].attributes.get("data-file-status"),
+        "modified",
+        "same M glyph must repaint its semantic status",
+      );
     }
     const expected =
       scenario === "survivor"

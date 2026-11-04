@@ -30,6 +30,8 @@
 import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
+  authorLabel,
+  avatarUrl,
   FAST_POLL_MS,
   h,
   isPlainClick,
@@ -146,6 +148,10 @@ const CHECKOUT_NOT_LISTED =
  *   stateLabel: string,
  *   title: string,
  *   author: string,
+ *   avatar: string | null,
+ *   baseRef: string,
+ *   headRef: string,
+ *   headLabel: string,
  *   updatedAt: string | null,
  *   refs: string,
  *   meta: string,
@@ -199,7 +205,7 @@ export function repositoryName(source) {
  * @param {Record<string, any>} row
  * @param {string | null} repository
  */
-function rowRefs(row, repository) {
+function rowHead(row, repository) {
   const head = text(row.head_ref);
   const from =
     typeof row.head_repository !== "string"
@@ -207,7 +213,7 @@ function rowRefs(row, repository) {
       : row.head_repository.toLowerCase() === repository?.toLowerCase()
         ? head
         : `${row.head_repository.split("/")[0]}:${head}`;
-  return `${text(row.base_ref)} ← ${from}`;
+  return from;
 }
 
 /**
@@ -220,7 +226,10 @@ function rowRefs(row, repository) {
 export function describeRow(row, repository) {
   const state = displayState(row);
   const author = text(row.author) || "ghost";
-  const refs = rowRefs(row, repository);
+  const headLabel = rowHead(row, repository);
+  const baseRef = text(row.base_ref);
+  const headRef = text(row.head_ref);
+  const refs = `${baseRef} ← ${headLabel}`;
   return {
     number: row.number,
     href: `/pull/${row.number}`,
@@ -228,6 +237,10 @@ export function describeRow(row, repository) {
     stateLabel: PULL_STATES[state].label,
     title: text(row.title),
     author,
+    avatar: avatarUrl(row.author_avatar_url),
+    baseRef,
+    headRef,
+    headLabel,
     updatedAt: typeof row.updated_at === "string" ? row.updated_at : null,
     refs,
     meta: `#${row.number} · ${author} · ${refs}`,
@@ -1582,6 +1595,7 @@ export function mountPullsPanel(container, ctx, mb) {
    *   key: string,
    *   at: number | null,
    *   label: string,
+   *   releaseCopies: () => void,
    * }} PaintedRow
    */
   /** @type {Map<number, PaintedRow>} */
@@ -1816,9 +1830,13 @@ export function mountPullsPanel(container, ctx, mb) {
     const meta = h("span", { class: "github-pulls-meta" }, [
       h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
       " · ",
-      h("strong", { class: "github-pull-author github-pulls-author" }, [row.author]),
+      authorLabel(row.author, row.avatar, "github-pulls-author"),
       " · ",
-      h("span", { class: "github-pulls-refs" }, [row.refs]),
+      h("span", { class: "github-pulls-refs" }, [
+        mb.refChip(row.baseRef, { kind: "remote", copy: "sibling" }),
+        " ← ",
+        mb.refChip(row.headRef, { label: row.headLabel, kind: "remote", copy: "sibling" }),
+      ]),
       stack,
     ]);
     // The registry's chevron in the 16px box a folder's takes, since the row is a container.
@@ -1849,7 +1867,16 @@ export function mountPullsPanel(container, ctx, mb) {
     const item = h("li", { class: "github-pulls-item", role: "none" }, [anchor]);
     // Its files, kept across a row built again for what it shows.
     trees.get(row.number)?.attach(item, anchor);
-    return { item, row: anchor, age: updated, stack, key, at, label: when.label };
+    return {
+      item,
+      row: anchor,
+      age: updated,
+      stack,
+      key,
+      at,
+      label: when.label,
+      releaseCopies: mb.mountRefCopies(anchor, item),
+    };
   }
 
   /**
@@ -1937,6 +1964,7 @@ export function mountPullsPanel(container, ctx, mb) {
       }
       rowSizes?.unobserve(entry.item);
       trees.get(number)?.detach();
+      entry.releaseCopies();
       entry.item.remove();
       painted.delete(number);
     }
@@ -1966,6 +1994,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (entry === undefined || entry.key !== key) {
         if (entry !== undefined) {
           rowSizes?.unobserve(entry.item);
+          entry.releaseCopies();
           entry.item.remove();
         }
         entry = buildRow(row, key);
@@ -2071,6 +2100,7 @@ export function mountPullsPanel(container, ctx, mb) {
       list.dataset.filter = model.filter;
       for (const [number, entry] of painted) {
         rowSizes?.unobserve(entry.item);
+        entry.releaseCopies();
         trees.get(number)?.detach();
       }
       painted.clear();
@@ -2468,6 +2498,9 @@ export function mountPullsPanel(container, ctx, mb) {
         tree.dispose();
       }
       trees.clear();
+      for (const entry of painted.values()) {
+        entry.releaseCopies();
+      }
       painted.clear();
       container.classList.remove("github-pulls");
       container.replaceChildren();

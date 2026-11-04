@@ -1617,11 +1617,15 @@ address.
    Once the freshness row’s refresh brings it, scroll to the comment.
    It shows as plain paragraphs, links, and text only: **build badge** is a link to the
    image, `x` a link, and `video`, `copy`, `fake dialog`, and `styled` plain text; no
-   dialog covers the page; and the network panel shows no request to any origin but
-   `127.0.0.1`, no `/kpress-static/` script, and no iframe.
+   dialog covers the page; and the network panel shows no document-origin image request,
+   no `/kpress-static/` script, and no iframe.
+   Application-owned author avatars may request the fixed
+   `avatars.githubusercontent.com` host.
 
-**Pass:** every step as described; no console errors; no request leaves `127.0.0.1`
-except the check and status links you click, which open in a new tab.
+**Pass:** every step as described; no console errors.
+Only application-owned avatars may load from `avatars.githubusercontent.com`; check and
+status links you click open in a new tab.
+No image or resource authored in the conversation loads remotely.
 
 **Fail:** a text of the pull request rendered as HTML other than through the Markdown
 renderer; an image, stylesheet, or other resource from a comment loading, or an `id`
@@ -1703,17 +1707,42 @@ order, conditional pages without `Link`, cache-only reads and missing-tool backo
    file; normal Back and Forward still work.
    Leave the preceding tree expanded: its file highlight clears while its keyboard
    position remains. Returning through history restores the active diff’s file selection.
+
 2. Revisit with a warm snapshot.
    Cached GET/304 reads run no `gh`; no row starts its own stack fetch.
    Remove optional tooling only in the controlled test environment and confirm that core
    PR reading works, matching cached badges remain, and refreshes back off.
    An account/source mismatch must hide those badges.
+
 3. On narrow and wide screens, check dark PR numbers, normal-size bold gray usernames
    and smaller consistently colored branches in the list, header and conversation.
    Cold Conversation and Files changed show aligned gray pulsing blocks; cached refresh
    keeps content and focus.
    Check reduced motion, late stack arrival, expanded trees and scroll after the actual
    row height changes.
+
+4. Check author and merger avatars against the named username, including missing,
+   unsupported and failed images.
+   Image boxes stay fixed, requests carry no referrer or credentials, and remote images
+   authored in Markdown remain links.
+   A catalog enrichment interrupted mid-page resumes without discarding readable rows; a
+   warm completed revisit does not restart enrichment or issue per-row API requests.
+   Detail enrichment revalidates each existing representation once, then returns to
+   conditional requests; a failed attempt retains the old readable record.
+
+5. Compare A, M, D, R and type-change letters in Git, PR file trees and diff bars in
+   both themes and selected/hovered states.
+   Status names stay available without color.
+   Hover and keyboard-focus branch chips; copy the complete ref without opening the row.
+   Check fork labels and truncated names, feedback, focus and source-selector controls.
+   Past full metadata says “ago”, near-now metadata says “just now”, and future metadata
+   says “in”; condensed navigation stays short.
+
+6. Compare split and unified code with source and review hunks.
+   At default and enlarged browser root font preferences, diff code uses the shared
+   monospace block size.
+   Expand, fold, scroll, resize and remount a long diff: reserved heights match actual
+   rows, and the selected file, scroll anchor and keyboard position remain stable.
 
 Retain screenshots, provider traces and errors with the artifact pin.
 These are focused functional observations; a historical catalog profile does not measure

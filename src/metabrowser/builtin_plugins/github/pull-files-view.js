@@ -110,7 +110,14 @@ export function mountFileTree(host) {
   function contentOf(row) {
     return row.kind === "folder"
       ? row.name
-      : JSON.stringify([row.name, row.badge, row.additions, row.deletions, row.previousName]);
+      : JSON.stringify([
+          row.name,
+          row.badge,
+          row.status,
+          row.additions,
+          row.deletions,
+          row.previousName,
+        ]);
   }
 
   /**
@@ -129,7 +136,11 @@ export function mountFileTree(host) {
     }
     const badge = h(
       "span",
-      { class: "tree-container-badge github-pull-file-badge", "aria-hidden": "true" },
+      {
+        class: "tree-container-badge github-pull-file-badge file-change-status",
+        "data-file-status": row.status,
+        "aria-hidden": "true",
+      },
       [row.badge],
     );
     const parts = [badge, name];

@@ -632,7 +632,9 @@ def test_age_is_one_primitive_everywhere() -> None:
     that add positioning only."""
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     formatters = (STATIC / "formatters.js").read_text(encoding="utf-8")
-    assert "function age(epochSeconds)" in formatters, "the shared age primitive moved"
+    assert "function age(epochSeconds, options = {})" in formatters, (
+        "the shared age primitive moved"
+    )
     for name in ("git-panel.js", "app.js"):
         consumer = (STATIC / name).read_text(encoding="utf-8")
         assert "MetabrowserFormatters" in consumer and "age(" in consumer, (
@@ -757,7 +759,8 @@ def test_ref_chip_kinds_differ_in_form_not_only_hue() -> None:
     # The kind classes must reach the markup from the wire, not be guessed
     # in the browser.
     panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
-    assert "ref.is_trunk" in panel and "git-ref-trunk" in panel
+    sdk = (STATIC / "plugin-sdk.js").read_text(encoding="utf-8")
+    assert "ref.is_trunk" in panel and "git-ref-trunk" in sdk
 
 
 def test_git_history_vocabulary_is_documented() -> None:
@@ -824,12 +827,12 @@ def test_git_commit_summary_is_one_component() -> None:
         compact_subject,
         compact_meta,
         summary_age,
-        summary_refs,
         summary_lines,
     ):
         assert "font-size: var(--body-font-size)" in rule
         assert "font-size: var(--ui-small-font-size)" not in rule
         assert "font-size: var(--tooltip-detail-font-size)" not in rule
+    assert "font-size: var(--ui-small-font-size)" in summary_refs
     # The revision is the documented exception: monospace at body size
     # renders optically larger than the sans beside it, so the sha sits
     # one step down the ramp. See "Git Commit Summary" in the design
@@ -1031,11 +1034,6 @@ _FONT_SIZE_EXEMPT: dict[tuple[str, str], str] = {
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) h3"): "relative fallback heading",
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) h4"): "relative fallback heading",
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) .checkbox"): "relative to its text",
-    # Reported, not changed: --code-font-size is defined nowhere, so a diff's code reads at
-    # 0.85rem, 13.6px, and follows the browser's root size. The ramp's --mono-block-font-size
-    # is 12px. Moving to it shrinks every diff on every page, which is the owner's decision.
-    ("diff/styles.css", ".metabrowser-diff-host .diff-line"): "13.6px pending mb-ruyu",
-    ("diff/styles.css", ".metabrowser-diff-host .diff-split-side"): "13.6px pending mb-ruyu",
     # One step below the structured view's mono, in em so it follows that view's size.
     ("structured/styles.css", ".tok-meta"): "relative to the row it annotates",
 }
@@ -1380,7 +1378,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert "test_the_pull_request_page_carries_the_shells_primitives" in doc
     # Branch names and file paths are chrome: no `<code>` for either.
     assert 'h("code"' not in page
-    assert '"git-ref git-ref-remote"' in page
+    assert "mb.refChip(" in page and 'kind: "remote"' in page
     # One age, not a timestamp at each call site.
     assert "mb.formatAge(" in page
     assert page.count("mb.formatTimestamp(") == 1, "the exact time belongs in the age's tooltip"
@@ -1443,3 +1441,65 @@ def test_serif_is_only_for_documents() -> None:
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "### Serif Is for Documents" in doc
     assert "test_serif_is_only_for_documents" in doc
+
+
+def test_file_status_ink_is_shared_and_legible() -> None:
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    light, dark = _theme_blocks()
+    mapping = {
+        "added": "added",
+        "copied": "added",
+        "deleted": "deleted",
+        "removed": "deleted",
+        "modified": "modified",
+        "typechanged": "modified",
+        "type_changed": "modified",
+        "changed": "modified",
+        "renamed": "renamed",
+        "unmerged": "deleted",
+    }
+    rules = list(_rules_of(STATIC / "styles.css"))
+    for status, role in mapping.items():
+        assert any(
+            f'[data-file-status="{status}"]' in selector
+            and body.get("color") == f"var(--git-status-{role})"
+            for selector, body in rules
+        )
+    assert "color: var(--muted)" in _rule(styles, ".file-change-status[data-file-status]")
+    for block in (light, dark):
+        for role in ("added", "deleted", "modified", "renamed"):
+            color = _declared(block, f"--git-status-{role}")
+            if role == "renamed":
+                color = _declared(block, "--git-ref-local")
+                parts = color.removeprefix("oklch(").removesuffix(")").split()
+                color = f"oklch({float(parts[0]) * 100}% {parts[1]} {parts[2]})"
+            for ground in ("--bg", "--sidebar-bg", "--hover-bg"):
+                assert _contrast(color, _declared(block, ground)) >= 4.5
+    for relative in (
+        "static/git-panel.js",
+        "builtin_plugins/diff/diff-view.js",
+        "builtin_plugins/github/pull-files-view.js",
+    ):
+        source = (REPO_ROOT / "src/metabrowser" / relative).read_text(encoding="utf-8")
+        assert "file-change-status" in source and (
+            "data-file-status" in source or "fileStatus" in source
+        )
+
+
+def test_diff_text_and_reserved_geometry_use_the_dense_mono_token() -> None:
+    css = (REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css").read_text(encoding="utf-8")
+    view = (REPO_ROOT / BUILTIN_PLUGINS / "diff/diff-view.js").read_text(encoding="utf-8")
+    assert "--code-font-size" not in css + view
+    for selector in (
+        ".metabrowser-diff-host .diff-line",
+        ".metabrowser-diff-host .diff-split-side",
+    ):
+        assert "font-size: var(--mono-block-font-size)" in _rule(css, selector)
+    assert "1.5 * var(--mono-block-font-size)" in view
+
+
+def test_branch_copy_plate_has_readable_interactive_ink() -> None:
+    css = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert "color: var(--text)" in _rule(css, ".git-ref-copy:is(:hover, :focus-visible)")
+    rules = dict(_rules_of(STATIC / "styles.css"))
+    assert rules[".git-ref-copy-layer > .git-ref-copy"]["color"] == "var(--git-ref-copy-ink)"

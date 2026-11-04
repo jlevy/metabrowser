@@ -2271,3 +2271,62 @@ def test_metadata_publication_refits_after_merge_and_preserves_record_on_rename_
     assert error.value.state == "cache_unwritable"
     assert str(error.value) == "its record could not be written to the cache"
     assert stand.record(7) == merged
+
+
+def test_author_and_merger_avatars_come_from_existing_detail_responses(stand: _Stand) -> None:
+    answers = scenario(stand.origin)
+    wanted = "https://avatars.githubusercontent.com/u/123?s=40"
+    for entry in answers["api"].values():
+        body = entry.get("body")
+        records = body if isinstance(body, list) else [body]
+        for item in records:
+            if not isinstance(item, dict):
+                continue
+            if isinstance(item.get("user"), dict):
+                item["user"]["avatar_url"] = "https://avatars.githubusercontent.com/u/123?v=4"
+            if "merged_by" in item:
+                item["merged_by"] = {
+                    "login": "merger",
+                    "avatar_url": "https://avatars.githubusercontent.com/in/456?size=100",
+                }
+    stand.answer(answers)
+    record = stand.refresh(7)
+    assert record.pull.author_avatar_url == wanted
+    assert record.pull.merged_by_avatar_url == "https://avatars.githubusercontent.com/in/456?s=40"
+    assert record.issue_comments and all(
+        item.author_avatar_url == wanted for item in record.issue_comments
+    )
+    assert record.reviews and all(item.author_avatar_url == wanted for item in record.reviews)
+    assert record.review_comments and all(
+        item.author_avatar_url == wanted for item in record.review_comments
+    )
+    stand.calls()
+    path = stand.published.home / source_pull_record(stand.published.slug, 7)
+    old = json.loads(path.read_bytes())
+    del old["projection_version"]
+    actors = [old["pull"], *old["issue_comments"], *old["reviews"], *old["review_comments"]]
+    for actor in actors:
+        del actor["author_avatar_url"]
+    del old["pull"]["merged_by_avatar_url"]
+    path.write_text(json.dumps(old))
+    old_bytes = path.read_bytes()
+    cached = stand.record(7)
+    assert isinstance(cached, PullRecord) and cached.projection_version == 0
+    assert cached.pull.author_avatar_url is None and stand.calls() == []
+    stand.answer({**answers, "api_failure": {"stderr": "HTTP 503: Service Unavailable"}})
+    with pytest.raises(PullDataError):
+        stand.refresh(7)
+    assert path.read_bytes() == old_bytes
+    stand.calls()
+    stand.answer(answers)
+    upgraded = stand.refresh(7)
+    assert upgraded.projection_version == 1 and upgraded.pull.author_avatar_url == wanted
+    assert all(item.author_avatar_url == wanted for item in upgraded.issue_comments)
+    sent = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    assert sent and not any(arg.startswith("If-None-Match: ") for args in sent for arg in args)
+    assert not any("users/" in str(args) for args in sent)
+    warm = stand.refresh(7)
+    assert warm.pull.author_avatar_url == wanted and warm.projection_version == 1
+    reused = [call["args"] for call in stand.calls() if call["args"][0] == "api"]
+    assert len(reused) == len(sent) == 6
+    assert all(any(arg.startswith("If-None-Match: ") for arg in args) for args in reused)

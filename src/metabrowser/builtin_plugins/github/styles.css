@@ -650,3 +650,28 @@
 .github-pull-loading {
   margin: 0;
 }
+
+.github-pull-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+}
+.github-pull-avatar {
+  display: inline-block;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+}
+.github-pulls-refs {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+.github-pulls-refs .git-ref {
+  flex-shrink: 1;
+  font-size: var(--ui-small-font-size);
+}

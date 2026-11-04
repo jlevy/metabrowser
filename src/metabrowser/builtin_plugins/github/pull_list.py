@@ -24,6 +24,7 @@ from pydantic import (
     model_validator,
 )
 
+from metabrowser.builtin_plugins.github.avatars import AvatarUrl
 from metabrowser.builtin_plugins.github.pull_record import (
     API_PAGE_SIZE,
     MAX_LABELS,
@@ -107,6 +108,7 @@ class PullListRow(_Model):
     draft: bool
     merged_at: Timestamp | None
     author: Login | None
+    author_avatar_url: AvatarUrl = None
     created_at: Timestamp
     updated_at: Timestamp
     closed_at: Timestamp | None

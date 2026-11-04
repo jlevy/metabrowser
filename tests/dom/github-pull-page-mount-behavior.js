@@ -202,6 +202,7 @@ async function run() {
             };
           },
         }),
+        ...require("./sdk-ref-fixture.js").refHelpers(document),
         formatAge: () => ({ label: "now", className: "age" }),
         formatTimestamp: () => "now",
         navigation: { href: () => "/view/" },
@@ -315,6 +316,7 @@ async function run() {
             };
           },
         }),
+        ...require("./sdk-ref-fixture.js").refHelpers(document),
         formatAge: () => ({ label: "now", className: "age" }),
         formatTimestamp: () => "now",
         navigation: { href: () => "/view/" },
@@ -408,6 +410,7 @@ async function run() {
       getRegisteredView: () => {
         throw new Error("no comparison exists before Fetch");
       },
+      ...require("./sdk-ref-fixture.js").refHelpers(document),
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: () => "now",
       navigation: { href: () => "/view/" },
@@ -462,6 +465,7 @@ async function run() {
           ensureAsset: async () => {},
           ensureKindAssets: async () => {},
           getRegisteredView: () => diffView,
+          ...require("./sdk-ref-fixture.js").refHelpers(document),
           formatAge: () => ({ label: "now", className: "age" }),
           formatTimestamp: () => "now",
           navigation: { href: () => "/view/" },
@@ -520,6 +524,7 @@ async function run() {
         dispose() {},
       }),
     }),
+    ...require("./sdk-ref-fixture.js").refHelpers(document),
     formatAge: () => ({ label: "now", className: "age" }),
     formatTimestamp: () => "now",
     navigation: { href: () => "/view/" },

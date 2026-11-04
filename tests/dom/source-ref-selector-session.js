@@ -295,6 +295,29 @@ async function run() {
     { pin: branches.pin, ref: null },
   ].map((shown) => selectorRuntime.describe({ ...emptyState(), shown }).button);
 
+  const copies = [
+    "refs/remotes/origin/topic",
+    "refs/tags/v1",
+    `refs/remotes/origin/feature/${"long-".repeat(25)}←<literal>`,
+  ].map((ref) => {
+    const selected = selectorRuntime.describe({
+      ...emptyState(),
+      shown: { pin: branches.pin, ref },
+    }).selectedRef;
+    assert(
+      selected.name === ref.replace(/^(?:refs\/remotes\/origin\/|refs\/tags\/)/, ""),
+      "copy uses the full structured ref name",
+    );
+    return selected;
+  });
+  assert(
+    selectorRuntime.describe({
+      ...emptyState(),
+      shown: { pin: branches.pin, ref: "refs/pull/7/head" },
+    }).selectedRef === null,
+    "a pull number is not a branch chip",
+  );
+
   // Where a key moves focus in a list of three rows; -1 is the filter box.
   const keys = [];
   for (const [key, from] of [
@@ -313,7 +336,7 @@ async function run() {
   }
   keys.push(`ArrowDown from -1 in an empty list: ${selectorRuntime.moveRow("ArrowDown", -1, 0)}`);
 
-  return { steps, labels, keys };
+  return { steps, labels, copies, keys };
 }
 
 function emptyState() {

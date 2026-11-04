@@ -120,17 +120,19 @@ OKLCH structure, semantic ordering, and dark-theme surface contrast.
 
 ### Age
 
-An age is an age, wherever it appears — a file row, a commit row, a commit’s header.
-One primitive produces all of them: `MetabrowserFormatters.age()` returns the
-abbreviation (`<1m`, `5m`, `2h`, `3d`, `2w`) and the freshness class (`.age-live` …
-`.age-old`), and the `:is(...)` rule over those classes owns the hue, the weight, the
-small size, and tabular numerals.
-Call sites add positioning only, never color, weight, or their own abbreviations — the
-same discipline `.size` follows for byte counts.
-A plugin reaches it as `metabrowser.formatAge`, and puts the exact time in the age’s
-`data-tip-text`. A status sentence such as “Fetched 2 min ago by a reader” is the one
-exception: it states how long ago in words, because it is a sentence rather than a
-label. Any other exception needs a line in this document; otherwise there is one age.
+One primitive produces every age: `MetabrowserFormatters.age()` returns a label and
+freshness class (`.age-live` … `.age-old`), and the shared class rule owns its hue,
+weight, small size, and tabular numerals.
+Dense navigation uses the compact style (`<1m`, `5m`, `2h`, `3d`, `2w`). Full metadata
+and conversation cards use the relative style: `2h ago`, `just now`, or `in 2h` for a
+future timestamp. Unknown times have no age label.
+The Pulls sidebar, file tree and compact Git history remain condensed navigation; PR
+headers, comments, reviews, full commit summaries and folder headers use relative ages.
+Call sites choose the presentation style and positioning, never their own suffix,
+abbreviation, color, or weight.
+A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
+in `data-tip-text`. Freshness sentences such as “Fetched 2 min ago by a reader” retain
+their sentence formatter.
 
 ## Typography
 
@@ -272,7 +274,7 @@ Chrome (interface) sizes:
   headers, stat labels.
   Labels differ by caps treatment, not by another size.
 - `--mono-block-font-size` (= ui-small): monospaced blocks in chrome contexts — source
-  views, logs, raw JSON.
+  views, split and unified diffs, review hunks, logs, raw JSON.
 - `--micro-font-size` (10px): deliberately minimized marks — the brand line.
 - `--page-title-font-size` (24px): the title of a page no file stands behind, a pull
   request’s. It sits above the 25.5px regular first heading of the text below by its
@@ -287,7 +289,11 @@ Document (rendered prose) sizes are a single token:
 Everything else inside a rendered document — secondary text, table cells, captions,
 footnotes, and code at every tier — belongs to KPress’s ramp, which it derives from this
 one value through `--kpress-host-font-size-base` on `:root`. Chrome-context monospace is
-a separate concern and uses `--mono-block-font-size`.
+a separate concern and uses `--mono-block-font-size`. Diff row reservation uses the same
+token and line-height as the rendered rows, so deferred mounting reserves the height the
+code actually occupies.
+Browser zoom scales the whole interface; changing the browser’s root font preference
+does not selectively enlarge diff code.
 
 Do not add a host token that restates a ratio KPress already owns.
 KPress ships *graded families* — secondary text at `small`/`smaller`/`tiny` and code at
@@ -852,8 +858,9 @@ the renderer, root, child, styling, and documentation contract.
 ### Branch Chips
 
 Git ref badges (`.git-ref`) are their own vocabulary, not filter chips.
-In the dense Git history row they use `--micro-font-size`; in the commit-summary
-component and a pull request’s header they use `--body-font-size` with the same form.
+In dense Git history they use `--micro-font-size`; full commit summaries, PR headers and
+list metadata use `--ui-small-font-size`, smaller than the actor beside them.
+All share the same chip form and semantic ref colors.
 The name carries the meaning, so it is always `--weight-bold`, and the corner is
 `--radius-tag` (square-ish) so “a ref” and a “filter” never read as the same control.
 
@@ -875,6 +882,34 @@ separate from them. The three ref colors — `--git-ref-local`, `--git-ref-remot
 `--git-ref-tag` — are one lightness and three hues, so a ref’s kind is legible without a
 second signal, and the dark theme raises only their lightness so they stay the same
 three colors.
+
+Copyable branch chips reserve a tiny copy control beside the label, revealed on hover or
+keyboard focus. The control copies the complete underlying branch or ref, regardless of
+label truncation or a displayed fork owner, and reports the normal copy feedback.
+Its click does not select a different row or follow its link.
+Place copy controls beside a primary link or button rather than nesting interactive
+controls. Keep local, remote, tag, trunk and HEAD semantics when rendering a chip.
+
+### File Change Status
+
+File-summary letters share one muted semantic palette across Git history, commit
+summaries, diff headers and PR changed-file trees.
+The letter and accessible status name carry the meaning even without color.
+
+| Change | Letter | Color |
+| --- | --- | --- |
+| Added or copied | A, C | Green |
+| Deleted | D | Red |
+| Modified or type changed | M, T | Dark yellow / ochre |
+| Renamed | R | Blue |
+| Unmerged | U | Red |
+| Unchanged, untracked or unknown | Status label or ? | Neutral |
+
+These are application conventions, consistent with the
+[Primer semantic color roles](https://primer.style/product/getting-started/foundations/color-usage/),
+not a universal Git color standard.
+Theme tokens keep letters legible on normal, hovered and selected surfaces.
+They do not change addition/deletion counts or patch-line backgrounds.
 
 ## Diffs
 
@@ -1028,10 +1063,10 @@ Until its render arrives a text shows as plain text in the same face and size.
 | --- | --- | --- |
 | Title | `--page-title-font-size`, `--weight-bold`, sans | The number beside it uses normal text ink and regular weight at the same size |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome |
-| Username | `.github-pull-author`, bold and muted at the surface’s normal text size | Applies to the author, merger, comments, and reviews |
+| Username | `.github-pull-author`, bold and muted at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
 | Base and head branch | `.git-ref.git-ref-remote`, at `--ui-small-font-size` | The [ref chip](#branch-chips), smaller than the actor and action; the list uses the same remote-ref ink |
 | Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
-| Opened, updated, commented | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age). “Fetched 2 min ago” is a status sentence |
+| Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
 | Link | `--link`, underline on hover, the focus ring | As the freshness row’s link is |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
@@ -1041,6 +1076,18 @@ Until its render arrives a text shows as plain text in the same face and size.
 | A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
 | Empty state | `--muted`, sentence with a period |  |
 | Refresh, Fetch, Switch to the head | `.btn` |  |
+
+Author avatars are decorative circles beside the visible username, with fixed dimensions
+so image arrival or failure does not move the text.
+Images load lazily, asynchronously, and at low priority; only mounted catalog rows can
+create images. Missing or unsupported image URLs leave the username readable.
+Use the avatar of the named actor: a merged header naming the merger shows the merger’s
+image, while the description shows its author’s image.
+Only normalized HTTPS URLs on `avatars.githubusercontent.com` are accepted, checked
+again before assigning the browser image source.
+Anonymous CORS and a no-referrer policy omit credentials and the local page URL. The
+browser’s HTTP cache owns image bytes; PR metadata caches retain only URLs.
+Document image sanitization remains independent; see [Content Trust](../SECURITY.md).
 
 ## The Pulls Tab
 

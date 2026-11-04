@@ -18,6 +18,7 @@ from functools import partial
 from typing import Any, Literal
 
 from metabrowser.builtin_plugins.github import pull_list
+from metabrowser.builtin_plugins.github.avatars import avatar_of
 from metabrowser.builtin_plugins.github.checkout import claim_source
 from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError, gh_graphql
 from metabrowser.builtin_plugins.github.gh_lists import (
@@ -30,6 +31,7 @@ from metabrowser.builtin_plugins.github.gh_lists import (
     utc_stamp,
 )
 from metabrowser.builtin_plugins.github.pull_catalog import (
+    CATALOG_PROJECTION,
     PAGE_SIZE,
     CatalogState,
     publish_page,
@@ -68,7 +70,7 @@ _QUERY = """query Catalog($owner:String!,$name:String!,$cursor:String) {
       pageInfo { hasNextPage endCursor }
       nodes {
         number title state isDraft mergedAt createdAt updatedAt closedAt
-        author { login } baseRefName headRefName headRepository { nameWithOwner }
+        author { login avatar_url:avatarUrl(size:40) } baseRefName headRefName headRepository { nameWithOwner }
         labels(first:100) { nodes { name } pageInfo { hasNextPage } }
       }
     }
@@ -110,6 +112,7 @@ def _row(value: object) -> tuple[PullListRow, bool]:
         draft=item.get("draft") is True,
         merged_at=item.get("merged_at"),
         author=login_of(item.get("user")),
+        author_avatar_url=avatar_of(item.get("user")),
         created_at=item["created_at"],
         updated_at=item["updated_at"],
         closed_at=item.get("closed_at"),
@@ -312,6 +315,20 @@ async def refresh_pull_list(
                 and previous.source == repository.source
                 else None
             )
+            if state is not None and state.projection_version < CATALOG_PROJECTION:
+                # Enrich already cached rows once without discarding their offline view.
+                # Only ALL restarts: filtered progress and the mutable-data watermark
+                # remain useful. A losing writer rereads the accepted checkpoint.
+                upgraded = state.model_copy(
+                    update={
+                        "projection_version": CATALOG_PROJECTION,
+                        "cursors": {**state.cursors, "all": None},
+                        "covered": {**state.covered, "all": 0},
+                        "done": {**state.done, "all": False},
+                    }
+                )
+                await _publish(repository, previous, upgraded, ())
+                continue
             selected, wanted = demand() if demand else (name, target)
             force = take_retry() if take_retry else False
             scan = (
@@ -363,6 +380,7 @@ async def refresh_pull_list(
             now = utc_stamp(pull_list.utc_now())
             if state is None or state.repository_id != page.repository_id:
                 state = CatalogState(
+                    projection_version=CATALOG_PROJECTION,
                     source=repository.source,
                     repository_id=page.repository_id,
                     reader=reader,

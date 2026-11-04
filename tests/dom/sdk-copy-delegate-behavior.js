@@ -196,7 +196,7 @@ if (typeof clickHandler !== "function") {
           });
       });
     })
-    .then(() => {
+    .then(async () => {
       // Case 4: unmarked buttons are ignored entirely.
       const third = makeButton(false);
       const before = clipboardWrites.length;
@@ -220,6 +220,166 @@ if (typeof clickHandler !== "function") {
       if (!mb.delegateOwnerAttribute().startsWith(' data-mb-owner="')) {
         failures.push("delegateOwnerAttribute does not spell the owner attribute");
       }
+      // Branch chips use this exact owner/delegate and keep secondary controls outside
+      // the row's primary link. Deterministic boxes exercise only the copy state machine.
+      const assert = require("node:assert/strict");
+      const { FakeElement } = require("./pulls-test-dom.js");
+      const documentListeners = new Map();
+      const windowListeners = new Map();
+      const doc = {
+        activeElement: null,
+        createElement: (tag) => new RefElement(tag),
+        addEventListener: (type, fn) => documentListeners.set(type, fn),
+        removeEventListener: (type) => documentListeners.delete(type),
+      };
+      class RefElement extends FakeElement {
+        removeEventListener(type) {
+          this.listeners.delete(type);
+        }
+        getAttribute(name) {
+          return name.startsWith("data-")
+            ? (this.dataset[name.slice(5).replace(/-([a-z])/g, (_, x) => x.toUpperCase())] ?? null)
+            : super.getAttribute(name);
+        }
+        matchesRef(selector) {
+          if (selector.startsWith(".")) {
+            return this.classList.contains(selector.slice(1));
+          }
+          if (selector.startsWith("[")) {
+            return this.getAttribute(selector.slice(1, -1)) !== null;
+          }
+          return this.localName === selector;
+        }
+        querySelectorAll(selector) {
+          return this.childNodes.flatMap((node) =>
+            node instanceof RefElement
+              ? [...(node.matchesRef(selector) ? [node] : []), ...node.querySelectorAll(selector)]
+              : [],
+          );
+        }
+        querySelector(selector) {
+          return this.querySelectorAll(selector)[0] ?? null;
+        }
+        closest(selector) {
+          for (let node = this; node; node = node.parentNode) {
+            if (selector.split(",").some((part) => node.matchesRef?.(part.trim()))) {
+              return node;
+            }
+          }
+          return null;
+        }
+        get parentElement() {
+          return this.parentNode;
+        }
+        getBoundingClientRect() {
+          return this.box ?? { left: 0, right: 300, top: 0, width: 300, height: 22 };
+        }
+        focus() {
+          const previous = doc.activeElement;
+          doc.activeElement = this;
+          for (let node = this; node; node = node.parentNode) {
+            node.listeners?.get("focusin")?.({ target: this, relatedTarget: previous });
+          }
+        }
+      }
+      sandbox.document = doc;
+      sandbox.addEventListener = (type, fn) => windowListeners.set(type, fn);
+      sandbox.removeEventListener = (type) => windowListeners.delete(type);
+      const raw = "feature/←<literal>";
+      const html = mb.refChipHtml(raw, { label: "fork:display", kind: "remote" });
+      assert(html.includes('data-mb-copy-text="feature/←&lt;literal&gt;"'));
+      assert(html.includes("fork:display") && !html.includes("<literal>"));
+      const chip = mb.refChip(raw, { label: "fork:display", kind: "remote", copy: "sibling" });
+      chip.box = { left: 20, right: 160, top: 3, width: 140, height: 16 };
+      const primary = new RefElement("a"),
+        host = new RefElement("li");
+      primary.append(chip);
+      host.append(primary);
+      const release = mb.mountRefCopies(primary, host);
+      assert.equal(primary.querySelectorAll("button").length, 0, "no nested interactive control");
+      const copy = host.querySelector("button");
+      assert.equal(copy.tabIndex, -1);
+      primary.focus();
+      assert.equal(copy.tabIndex, 0, "copy is keyboard reachable from the primary row");
+      assert.equal(copy.style.left, "144px");
+      assert.equal(copy.style["--git-ref-copy-ink"], "var(--git-ref-remote)");
+      for (const [kind, token] of [
+        ["local", "var(--git-ref-local)"],
+        ["tag", "var(--git-ref-tag)"],
+        ["remote", "var(--git-ref-remote)"],
+      ]) {
+        chip.classList.remove("git-ref-local", "git-ref-tag", "git-ref-remote");
+        chip.classList.add(`git-ref-${kind}`);
+        primary.focus();
+        assert.equal(copy.style["--git-ref-copy-ink"], token);
+      }
+      chip.classList.add("git-ref-trunk");
+      primary.focus();
+      assert.equal(
+        copy.style["--git-ref-copy-ink"],
+        "var(--git-ref-bg)",
+        "theme changes keep inverse trunk ink live",
+      );
+      clipboardShouldReject = false;
+      clickHandler({ target: copy });
+      assert.equal(clipboardWrites.at(-1), raw, "underlying ref rather than owner-qualified label");
+      copy.focus();
+      documentListeners.get("scroll")();
+      assert.equal(doc.activeElement, primary, "hiding a focused icon returns to its row");
+      assert.equal(copy.tabIndex, -1);
+      assert.equal(windowListeners.size + documentListeners.size, 0);
+      primary.focus();
+      windowListeners.get("resize")();
+      assert.equal(copy.tabIndex, -1, "resize cannot leave an old hit target");
+      chip.box.right = 400;
+      primary.focus();
+      assert.equal(copy.hidden, true, "a clipped chip has no overlay hit target");
+      release();
+      const clippedPrimary = new RefElement("a"),
+        clippedHost = new RefElement("li"),
+        metadata = new RefElement("span"),
+        refs = new RefElement("span");
+      metadata.box = { left: 0, right: 150, top: 0, width: 150, height: 22 };
+      refs.box = { left: 0, right: 300, top: 0, width: 300, height: 22 };
+      const clippedChip = mb.refChip("topic", { copy: "sibling" });
+      clippedChip.box = { left: 20, right: 160, top: 3, width: 140, height: 16 };
+      refs.append(clippedChip);
+      metadata.append(refs);
+      clippedPrimary.append(metadata);
+      clippedHost.append(clippedPrimary);
+      const releaseClipped = mb.mountRefCopies(clippedPrimary, clippedHost);
+      clippedPrimary.focus();
+      assert.equal(
+        clippedHost.querySelector("button").hidden,
+        true,
+        "a larger ref group cannot escape a narrower metadata ancestor",
+      );
+      releaseClipped();
+      primary.focus();
+      assert.equal(windowListeners.size + documentListeners.size, 0);
+      assert.equal(host.listeners.size, 0, "eviction releases all owned listeners");
+      await Promise.resolve();
+      assert.equal(copy.dataset.tipText, "Copied!");
+      console.log(
+        JSON.stringify(
+          {
+            ref: {
+              raw,
+              label: chip.querySelector(".git-ref-label").textContent,
+              payload: clipboardWrites.at(-1),
+              feedback: copy.dataset.tipText,
+              primary: primary.localName,
+              nestedButtons: primary.querySelectorAll("button").length,
+              scrolledFocus: doc.activeElement === primary ? "primary" : "other",
+              resizedCopy: "hidden",
+              clippedCopy: copy.hidden,
+              listenersAfterDispose: windowListeners.size + documentListeners.size,
+            },
+          },
+          null,
+          2,
+        ),
+      );
       if (failures.length > 0) {
         console.error(JSON.stringify({ failures }, null, 2));
         process.exit(1);

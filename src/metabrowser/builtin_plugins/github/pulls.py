@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pydantic import BaseModel, ValidationError
 
+from metabrowser.builtin_plugins.github.avatars import avatar_of
 from metabrowser.builtin_plugins.github.checkout import claim_source
 from metabrowser.builtin_plugins.github.gh import GhResponse
 from metabrowser.builtin_plugins.github.gh_lists import (
@@ -76,6 +77,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     MAX_REVIEWS,
     MAX_STATUSES,
     MAX_TITLE_BYTES,
+    PULL_RECORD_PROJECTION,
     PULL_RECORD_SCHEMA,
     CheckRun,
     CombinedStatus,
@@ -218,6 +220,7 @@ def _pull(value: object, number: int) -> PullRequest:
         draft=item.get("draft") is True,
         merged=item.get("merged") is True,
         merged_by=login_of(item.get("merged_by")),
+        merged_by_avatar_url=avatar_of(item.get("merged_by")),
         commits=_count(item.get("commits")),
         merge_commit_sha=_sha(item.get("merge_commit_sha")),
         mergeable="mergeable"
@@ -227,6 +230,7 @@ def _pull(value: object, number: int) -> PullRequest:
         else "unknown",
         labels=tuple(name for name in names if name is not None),
         author=login_of(item.get("user")),
+        author_avatar_url=avatar_of(item.get("user")),
         created_at=item["created_at"],
         updated_at=item["updated_at"],
         merged_at=item.get("merged_at"),
@@ -243,6 +247,7 @@ def _issue_comment(value: object) -> IssueComment:
     return IssueComment(
         id=_required_int(item.get("id")),
         author=login_of(item.get("user")),
+        author_avatar_url=avatar_of(item.get("user")),
         body=body,
         body_truncated=cut,
         created_at=item["created_at"],
@@ -257,6 +262,7 @@ def _review(value: object) -> Review:
         id=_required_int(item.get("id")),
         state=_required_short(item.get("state")),
         author=login_of(item.get("user")),
+        author_avatar_url=avatar_of(item.get("user")),
         body=body,
         body_truncated=cut,
         submitted_at=item.get("submitted_at"),
@@ -290,6 +296,7 @@ def _review_comment(value: object) -> ReviewComment:
         diff_hunk=diff_hunk,
         diff_hunk_truncated=hunk_cut,
         author=login_of(item.get("user")),
+        author_avatar_url=avatar_of(item.get("user")),
         body=body,
         body_truncated=cut,
         created_at=item["created_at"],
@@ -423,6 +430,10 @@ async def _read_api(
     check-run and status paths name the head commit, so a moved head asks afresh.
     """
 
+    # A provider ETag identifies its representation, not the fields our older cache
+    # retained. Fetch those existing resources unconditionally once for new metadata.
+    if previous is not None and previous.projection_version < PULL_RECORD_PROJECTION:
+        previous = previous.model_copy(update={"etags": {}})
     base = f"repos/{owner}/{repo}"
     etags: dict[str, str] = {}
     unavailable: dict[UnavailablePart, str] = {}
@@ -565,6 +576,7 @@ async def _read_api(
     parts = (comments, reviews, review_comments, check_runs)
     return PullRecord(
         schema_version=PULL_RECORD_SCHEMA,
+        projection_version=PULL_RECORD_PROJECTION,
         source=f"https://github.com/{owner}/{repo}",
         number=number,
         fetched_at=utc_stamp(utc_now()),

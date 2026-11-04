@@ -67,7 +67,7 @@
 //
 //   Formatting:
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
-//     formatAge(secondsSinceEpoch)       — the age primitive: {label, className}
+//     formatAge(secondsSinceEpoch, opts?) — the age primitive: {label, className}
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
 //     countClass(count)                   — shared file-count emphasis class
 //     sizeClass(bytes)                    — shared byte-count emphasis class
@@ -80,6 +80,8 @@
 //   Visual:
 //     icons.<name>                       — raw SVG strings for built-in icons
 //     icons.withClass(name, cls)         — returns SVG with extra class applied
+//     refChip/refChipHtml(name, opts?)    — structured refs with owned copy controls
+//     mountRefCopies(primary, host)       — sibling controls; caller owns returned disposer
 //     filterControls                      — shared filter markup and interaction
 //                                          helpers, installed before plugins load
 //
@@ -1454,9 +1456,9 @@
 
   // The one age primitive (docs/design-system.md, "Age"): the abbreviation and the
   // freshness class that owns its hue, weight, size, and numerals.
-  /** @param {number} secondsSinceEpoch */
-  function formatAge(secondsSinceEpoch) {
-    return global.MetabrowserFormatters.age(Number(secondsSinceEpoch) || 0);
+  /** @param {number} secondsSinceEpoch @param {{style?: "compact" | "relative"}} [options] */
+  function formatAge(secondsSinceEpoch, options) {
+    return global.MetabrowserFormatters.age(Number(secondsSinceEpoch) || 0, options);
   }
 
   function formatTimestamp(secondsSinceEpoch) {
@@ -1522,6 +1524,188 @@
       return fn();
     },
   });
+
+  /** Shared branch/tag markup. `name` is the raw copy value, independent of its label.
+   * @param {string} name
+   * @param {{label?:string,kind?:string,trunk?:boolean,head?:boolean,copy?:"inline"|"sibling"|false}} [options]
+   */
+  function refChipHtml(name, options = {}) {
+    const kind = options.kind === "tag" ? "tag" : options.kind === "remote" ? "remote" : "local";
+    const classes = ["git-ref", `git-ref-${kind}`];
+    if (options.trunk) {
+      classes.push("git-ref-trunk");
+    }
+    if (options.head) {
+      classes.push("git-ref-head");
+    }
+    const copy = options.copy ?? "inline";
+    if (copy) {
+      classes.push("git-ref-copyable");
+    }
+    return (
+      `<span class="${classes.join(" ")}" data-tip-text="${escapeHtml(options.label ?? name)}"` +
+      (copy === "sibling" ? ` data-ref-copy="${escapeHtml(name)}"` : "") +
+      ">" +
+      `<span class="git-ref-label">${escapeHtml(options.label ?? name)}</span>` +
+      (copy === "inline" ? refCopyHtml(name) : "") +
+      "</span>"
+    );
+  }
+
+  /** @param {string} name */
+  function refCopyHtml(name) {
+    const label = `Copy ref ${name}`;
+    return (
+      `<button type="button" class="icon-btn git-ref-copy" data-mb-copy="text"` +
+      ` data-mb-copy-text="${escapeHtml(name)}"${delegateOwnerAttribute()}` +
+      ` data-mb-copy-label="${escapeHtml(label)}" data-tip-text="${escapeHtml(label)}"` +
+      ` aria-label="${escapeHtml(label)}">${global.MetabrowserIcons?.copy ?? ""}</button>`
+    );
+  }
+
+  /** DOM form of the same owned, escaped chip; no repository text becomes markup.
+   * @param {string} name
+   * @param {Parameters<typeof refChipHtml>[1]} [options]
+   * @returns {HTMLElement}
+   */
+  function refChip(name, options = {}) {
+    const chip = document.createElement("span");
+    const kind = options.kind === "tag" ? "tag" : options.kind === "remote" ? "remote" : "local";
+    chip.className = `git-ref git-ref-${kind}${options.trunk ? " git-ref-trunk" : ""}${options.head ? " git-ref-head" : ""}`;
+    chip.dataset.tipText = options.label ?? name;
+    const label = document.createElement("span");
+    label.className = "git-ref-label";
+    label.textContent = options.label ?? name;
+    chip.append(label);
+    const copy = options.copy ?? "inline";
+    if (copy) {
+      chip.classList.add("git-ref-copyable");
+    }
+    if (copy === "sibling") {
+      chip.dataset.refCopy = name;
+    }
+    if (copy === "inline") {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "icon-btn git-ref-copy";
+      button.setAttribute("data-mb-copy", "text");
+      button.setAttribute("data-mb-copy-text", name);
+      ownDelegate(button);
+      const tip = `Copy ref ${name}`;
+      button.setAttribute("data-mb-copy-label", tip);
+      button.setAttribute("data-tip-text", tip);
+      button.setAttribute("aria-label", tip);
+      button.innerHTML = global.MetabrowserIcons?.copy ?? "";
+      chip.append(button);
+    }
+    return chip;
+  }
+
+  /** Put secondary copy controls outside a primary row link/button. Each mounted row
+   * owns its controls and disposer; active global hide listeners are released on hide/dispose.
+   * Geometry is read only on entry. A scroll/resize while focus stays hides controls;
+   * the next pointer/focus entry positions them against the current chip boxes.
+   * @param {HTMLElement} primary
+   * @param {HTMLElement} host
+   * @returns {() => void}
+   */
+  function mountRefCopies(primary, host) {
+    const chips = [...primary.querySelectorAll("[data-ref-copy]")];
+    if (!chips.length) {
+      return () => {};
+    }
+    host.classList.add("git-ref-copy-host");
+    const layer = document.createElement("span");
+    layer.className = "git-ref-copy-layer";
+    const buttons = chips.map((chip) => {
+      const button = /** @type {HTMLButtonElement} */ (
+        refChip(chip.getAttribute("data-ref-copy") ?? "").querySelector("button")
+      );
+      layer.append(button);
+      return button;
+    });
+    host.append(layer);
+    let hiding = false;
+    function hide() {
+      hiding = true;
+      if (layer.contains(document.activeElement)) {
+        primary.focus({ preventScroll: true });
+      }
+      global.removeEventListener("resize", hide);
+      document.removeEventListener("scroll", hide, true);
+      layer.hidden = true;
+      for (const button of buttons) {
+        button.tabIndex = -1;
+      }
+      hiding = false;
+    }
+    function position() {
+      if (hiding) {
+        return;
+      }
+      const box = host.getBoundingClientRect();
+      const primaryBox = primary.getBoundingClientRect();
+      layer.hidden = false;
+      for (let index = 0; index < chips.length; index++) {
+        const rect = chips[index].getBoundingClientRect();
+        // A chip can fit its own group yet be clipped by a narrower metadata line.
+        // Keep the sibling hit target inside every containing box through the primary.
+        let left = primaryBox.left;
+        let right = primaryBox.right;
+        for (
+          let ancestor = chips[index].parentElement;
+          ancestor;
+          ancestor = ancestor.parentElement
+        ) {
+          const box = ancestor.getBoundingClientRect();
+          left = Math.max(left, box.left);
+          right = Math.min(right, box.right);
+          if (ancestor === primary) {
+            break;
+          }
+        }
+        const button = buttons[index];
+        button.hidden = rect.width < 20 || rect.right > right || rect.left < left;
+        const kind = chips[index].classList.contains("git-ref-tag")
+          ? "tag"
+          : chips[index].classList.contains("git-ref-remote")
+            ? "remote"
+            : "local";
+        button.style.setProperty(
+          "--git-ref-copy-ink",
+          chips[index].classList.contains("git-ref-trunk")
+            ? "var(--git-ref-bg)"
+            : `var(--git-ref-${kind})`,
+        );
+        button.style.left = `${rect.right - box.left - 16}px`;
+        button.style.top = `${rect.top - box.top + (rect.height - 16) / 2}px`;
+        button.tabIndex = button.hidden ? -1 : 0;
+      }
+      global.addEventListener("resize", hide);
+      document.addEventListener("scroll", hide, true);
+    }
+    function leave(event) {
+      if (
+        !host.contains(event.relatedTarget) &&
+        (event.type === "focusout" || !host.contains(document.activeElement))
+      ) {
+        hide();
+      }
+    }
+    hide();
+    host.addEventListener("pointerenter", position);
+    host.addEventListener("focusin", position);
+    host.addEventListener("pointerleave", leave);
+    host.addEventListener("focusout", leave);
+    return () => {
+      hide();
+      host.removeEventListener("pointerenter", position);
+      host.removeEventListener("focusin", position);
+      host.removeEventListener("pointerleave", leave);
+      host.removeEventListener("focusout", leave);
+      layer.remove();
+    };
+  }
 
   // Delegated click handler for copyable content and explicit identifiers.
   // Fully SDK-owned: no reference to shell globals, so paths, revisions,
@@ -1678,6 +1862,9 @@
     formatInteger: formatInteger,
     formatFileCount: formatFileCount,
     formatAge: formatAge,
+    refChipHtml,
+    refChip,
+    mountRefCopies,
     formatTimestamp: formatTimestamp,
     countClass: countClass,
     sizeClass: sizeClass,

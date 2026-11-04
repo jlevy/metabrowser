@@ -791,6 +791,7 @@ async function paintStory(panel, selection = false) {
   }
   try {
     const mb = {
+      ...require("./sdk-ref-fixture.js").refHelpers(document),
       perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
       filterControls: { groupHtml: () => "<div></div>", bind: () => () => {} },
       formatAge(seconds) {
@@ -806,6 +807,9 @@ async function paintStory(panel, selection = false) {
     // test is how a title is painted, and every title GitHub sends is a user's text.
     const first = structuredClone(recorded.more_done);
     first.body.rows[0].title = '<img src=x onerror="alert(1)"> & <b>bold</b>';
+    first.body.rows[0].base_ref = "release/←base";
+    first.body.rows[0].head_ref = "feature/←<literal>";
+    first.body.rows[0].head_repository = "fork/demo";
     const container = new FakeElement("div");
     if (selection) {
       document.body = container;
@@ -1059,7 +1063,10 @@ async function paintStory(panel, selection = false) {
     const numberLabel = metadata.childNodes.find((node) =>
       node.classList?.contains("github-pulls-number"),
     );
-    const authorLabel = metadata.childNodes.find((node) =>
+    const identity = metadata.childNodes.find((node) =>
+      node.classList?.contains("github-pull-identity"),
+    );
+    const authorLabel = identity.childNodes.find((node) =>
       node.classList?.contains("github-pulls-author"),
     );
     const branches = metadata.childNodes.find((node) =>
@@ -1072,6 +1079,17 @@ async function paintStory(panel, selection = false) {
     assert(authorLabel.localName === "strong", "username is semantically bold");
     assert(authorLabel.textContent === first.body.rows[0].author, "username stays literal text");
     assert(branches.textContent.includes(" ← "), "branches keep their own smaller semantic span");
+    const chips = branches.childNodes.filter((node) => node.classList?.contains("git-ref"));
+    assert(chips.length === 2, "exactly two structured chips, including literal arrow refs");
+    assert(chips[0].dataset.refCopy === "release/←base", "raw base ref remains intact");
+    assert(
+      chips[1].dataset.refCopy === "feature/←<literal>",
+      "copy omits fork display qualification",
+    );
+    assert(
+      chips[1].textContent === "fork:feature/←<literal>",
+      "head label is literal and owner-qualified",
+    );
 
     const status = container.childNodes.find((node) =>
       node.classList?.contains("github-pulls-status"),

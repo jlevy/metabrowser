@@ -95,14 +95,6 @@
   flex: none;
 }
 
-.metabrowser-diff-host .diff-file-kind-added {
-  color: var(--status-success);
-}
-
-.metabrowser-diff-host .diff-file-kind-deleted {
-  color: var(--status-error);
-}
-
 /* Filename styling and truncation, matching the shell's file header
    path: rows are one line, long paths ellipsize. */
 .metabrowser-diff-host .diff-file-path {
@@ -242,7 +234,7 @@
   display: grid;
   grid-template-columns: 3.5em 3.5em 1.25em 1fr;
   font-family: var(--font-mono);
-  font-size: var(--code-font-size, 0.85rem);
+  font-size: var(--mono-block-font-size);
   line-height: 1.5;
 }
 
@@ -260,7 +252,7 @@
   grid-template-columns: 3.5em 1.25em minmax(0, 1fr);
   min-width: 0;
   font-family: var(--font-mono);
-  font-size: var(--code-font-size, 0.85rem);
+  font-size: var(--mono-block-font-size);
   line-height: 1.5;
 }
 

@@ -31,6 +31,7 @@ from pydantic import (
     field_validator,
 )
 
+from metabrowser.builtin_plugins.github.avatars import AvatarUrl
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.locks import source_alias_lock
 from metabrowser.cache.paths import (
@@ -48,6 +49,7 @@ from metabrowser.home import (
 
 # 2 added the pull request's commit count and who merged it.
 PULL_RECORD_SCHEMA: Final = 2
+PULL_RECORD_PROJECTION: Final = 1
 
 # Measured on ten public pull requests (octocat/Hello-World#1, cli/cli#14462,
 # kubernetes/kubernetes#18085 and #102884, rust-lang/rust#69864, #137944, and #162519,
@@ -132,11 +134,13 @@ class PullRequest(_Model):
     draft: bool
     merged: bool
     merged_by: Login | None
+    merged_by_avatar_url: AvatarUrl = None
     commits: Annotated[int, Field(ge=0, le=MAX_PULL_COMMITS)] | None
     merge_commit_sha: Sha | None
     mergeable: Mergeable
     labels: tuple[Short, ...] = Field(max_length=MAX_LABELS)
     author: Login | None
+    author_avatar_url: AvatarUrl = None
     created_at: Timestamp
     updated_at: Timestamp
     merged_at: Timestamp | None
@@ -151,6 +155,7 @@ class IssueComment(_Model):
 
     id: int
     author: Login | None
+    author_avatar_url: AvatarUrl = None
     body: str
     body_truncated: bool
     created_at: Timestamp
@@ -163,6 +168,7 @@ class Review(_Model):
     id: int
     state: Short
     author: Login | None
+    author_avatar_url: AvatarUrl = None
     body: str
     body_truncated: bool
     submitted_at: Timestamp | None
@@ -186,6 +192,7 @@ class ReviewComment(_Model):
     diff_hunk: str
     diff_hunk_truncated: bool
     author: Login | None
+    author_avatar_url: AvatarUrl = None
     body: str
     body_truncated: bool
     created_at: Timestamp
@@ -251,6 +258,7 @@ class PullRecord(_Model):
     """Everything cached about one pull request."""
 
     schema_version: int
+    projection_version: int = Field(default=0, ge=0, le=PULL_RECORD_PROJECTION)
     source: Url
     number: int = Field(ge=1)
     fetched_at: Timestamp

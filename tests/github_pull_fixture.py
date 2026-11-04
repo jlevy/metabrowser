@@ -969,6 +969,7 @@ def seed_catalog(
 ) -> CatalogState:
     """Seed actual bounded catalog publications without a fake route envelope."""
     from metabrowser.builtin_plugins.github.pull_catalog import (
+        CATALOG_PROJECTION,
         CatalogState,
         publish_page,
         read_catalog,
@@ -983,6 +984,7 @@ def seed_catalog(
     ordered = sorted(items, key=lambda item: item["number"], reverse=True)
     for offset in range(0, max(1, len(ordered)), 100):
         proposed = CatalogState(
+            projection_version=CATALOG_PROJECTION,
             source=repository.source,
             repository_id=repository_id,
             reader=f"gh:{reader}",

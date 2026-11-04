@@ -80,6 +80,7 @@ async function story({ delaySecondMount = false } = {}) {
           };
         },
       }),
+      ...require("./sdk-ref-fixture.js").refHelpers(document),
       formatAge: () => ({ label: "now", className: "age" }),
       formatTimestamp: () => "now",
       navigation: { href: () => "/view/" },

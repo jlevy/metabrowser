@@ -114,7 +114,7 @@ def test_the_untrusted_shell_runs_only_this_servers_scripts(untrusted: None) -> 
     for directive in (
         "style-src http://testserver/static/ http://testserver/plugin-static/"
         " http://testserver/kpress-static/",
-        "img-src 'self' data:",
+        "img-src 'self' data: https://avatars.githubusercontent.com",
         "connect-src 'self'",
         "worker-src http://testserver/plugin-static/",
         "frame-src 'none'",
@@ -155,6 +155,7 @@ def test_raw_never_serves_a_browsed_file_as_code_when_untrusted(
             "/raw", params={"path": "page.html"}, headers={"sec-fetch-dest": "document"}
         )
         assert page.status_code == 200 and page.headers["content-type"].startswith("text/html")
+        assert "avatars.githubusercontent.com" not in page.headers["content-security-policy"]
 
 
 def test_a_trusted_folders_raw_scripts_are_unchanged(tmp_path: Path) -> None:
@@ -187,3 +188,25 @@ def test_the_application_writes_no_inline_handler() -> None:
         ):
             found += [f"{path.name}: {match}" for match in re.findall(pattern, source)]
     assert found == []
+
+
+def test_avatar_origin_does_not_admit_remote_document_images(
+    tmp_path: Path, untrusted: None
+) -> None:
+    (tmp_path / "README.md").write_text(
+        "![outside](https://avatars.githubusercontent.com/u/123?s=40)\n"
+    )
+    server._set_root_dir(tmp_path)
+    with TestClient(app) as client:
+        rendered = client.get(
+            "/api/kpress/render", params={"path": "README.md", "view": "document"}
+        ).json()
+        shell = client.get("/view/")
+    assert "<img" not in rendered["html"]
+    assert 'href="https://avatars.githubusercontent.com/u/123?s=40"' in rendered["html"]
+    directive = next(
+        part.strip()
+        for part in shell.headers["content-security-policy"].split(";")
+        if part.strip().startswith("img-src ")
+    )
+    assert directive == "img-src 'self' data: https://avatars.githubusercontent.com"

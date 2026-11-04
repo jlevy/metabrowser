@@ -26,6 +26,7 @@ from metabrowser.builtin_plugins.github import (
 from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError, read_list, utc_stamp
 from metabrowser.builtin_plugins.github.pull_catalog import (
+    CATALOG_PROJECTION,
     CatalogState,
     catalog_row,
     catalog_window,
@@ -159,6 +160,7 @@ def test_actual_gh_transport_keeps_only_lightweight_metadata(
 ) -> None:
     item = generated_item(7)
     item["body"] = "private body must not be retained"
+    item["user"]["avatar_url"] = "https://avatars.githubusercontent.com/u/123?v=4"
     answers = {"auth": account(), "api": catalog_entries([item]), "api_failure": None}
     for key, value in install_fake_gh(tmp_path, answers).items():
         monkeypatch.setenv(key, value)
@@ -172,12 +174,18 @@ def test_actual_gh_transport_keeps_only_lightweight_metadata(
     state = asyncio.run(refresh_pull_list(repository, "all"))
     assert not git_log.exists()
     assert state.cached["all"] == 1
+    row = catalog_row(repository.home, repository.slug, 7)
+    assert (
+        row is not None
+        and row.author_avatar_url == "https://avatars.githubusercontent.com/u/123?s=40"
+    )
     assert b"private body" not in _path(repository).read_bytes()
     log = [
         json.loads(line)["args"]
         for line in (tmp_path / "fake-gh-log.jsonl").read_text().splitlines()
     ]
     assert [args[:2] for args in log if args[0] == "api"] == [["api", "graphql"]]
+    assert any("avatar_url:avatarUrl(size:40)" in arg for args in log for arg in args)
     assert not list((repository.home / "repository-stores").iterdir())
 
 
@@ -202,10 +210,14 @@ def test_append_generation_counts_and_stale_backfill_guard(repository: ListedRep
     assert not publish_page(repository, before, before, ())
 
 
+@pytest.mark.parametrize("projection_version", [0, CATALOG_PROJECTION])
 def test_reader_change_replaces_rows_atomically(
-    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, projection_version: int
 ) -> None:
     old = _seed(repository, [generated_item(9)])
+    assert publish_page(
+        repository, old, old.model_copy(update={"projection_version": projection_version}), ()
+    )
     _provider(monkeypatch, [generated_item(2)], reader="other-reader")
     state = asyncio.run(refresh_pull_list(repository, "all"))
     assert state.reader == "gh:other-reader" and state.epoch != old.epoch
@@ -1069,3 +1081,176 @@ def test_fake_graphql_respects_repository_identity(
         with pytest.raises(PullDataError) as caught:
             asyncio.run(request)
         assert caught.value.state == "not_found_or_private"
+
+
+def test_old_projection_enriches_once_and_resumes_without_losing_offline_rows(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    items = [generated_item(n) for n in range(1, 251)]
+    _seed(repository, items)
+    # An actual pre-avatar cache has neither the checkpoint field nor the row field.
+    with sqlite3.connect(_path(repository)) as db:
+        checkpoint = json.loads(db.execute("SELECT value FROM checkpoint").fetchone()[0])
+        del checkpoint["projection_version"]
+        checkpoint["cursors"]["all"] = "all-250"
+        checkpoint["cursors"]["open"] = "open-200"
+        checkpoint["covered"]["open"] = 200
+        db.execute("UPDATE checkpoint SET value=?", (json.dumps(checkpoint),))
+        for number, body in db.execute("SELECT number,body FROM pulls").fetchall():
+            value = json.loads(body)
+            del value["author_avatar_url"]
+            db.execute("UPDATE pulls SET body=? WHERE number=?", (json.dumps(value), number))
+    old = read_catalog(repository.home, repository.slug)
+    assert old is not None and old.projection_version == 0 and old.done["all"]
+    write_list_refresh(
+        repository.home,
+        repository.slug,
+        "all",
+        PullRefreshStamp(
+            outcome="succeeded",
+            at=STAMP,
+            reader=old.reader,
+        ),
+    )
+    for item in items:
+        item["user"]["avatar_url"] = "https://avatars.githubusercontent.com/u/123?v=4"
+    calls = _provider(monkeypatch, items)
+    before = _fingerprint(repository.home)
+    view = ListView(repository, None, False)
+    envelope = pull_list_envelope(view, ListWindow("all"))
+    assert envelope["complete"] and envelope["catalog_fetched"] == 250
+    assert envelope["rows"][0]["author_avatar_url"] is None
+    assert not refresh_wanted(view, RefreshRequest("all", 500))
+    assert calls == [] and _fingerprint(repository.home) == before
+    real = pull_list_refresh._read_page
+
+    async def interrupt() -> None:
+        paused = asyncio.Event()
+
+        async def held(*args: Any, **kwargs: Any) -> Any:
+            if args[2] == "all-100":
+                paused.set()
+                await asyncio.Event().wait()
+            return await real(*args, **kwargs)
+
+        monkeypatch.setattr(pull_list_refresh, "_read_page", held)
+        task = asyncio.create_task(refresh_pull_list(repository, "all", retry=True))
+        await paused.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(interrupt())
+    partial = read_catalog(repository.home, repository.slug)
+    assert partial is not None and partial.projection_version == CATALOG_PROJECTION
+    assert not partial.done["all"] and partial.cursors["all"] == "all-100"
+    assert partial.cached == old.cached and partial.totals == old.totals
+    assert partial.epoch == old.epoch and partial.watermark == old.watermark
+    assert partial.cursors["open"] == old.cursors["open"]
+    assert partial.covered["open"] == old.covered["open"]
+    assert partial.fetched_at == old.fetched_at
+    envelope = pull_list_envelope(view, ListWindow("all"))
+    assert not envelope["complete"] and envelope["catalog_fetched"] == 250
+    assert (
+        envelope["rows"][0]["author_avatar_url"]
+        == "https://avatars.githubusercontent.com/u/123?s=40"
+    )
+    oldest = catalog_row(repository.home, repository.slug, 1)
+    assert oldest is not None and oldest.author_avatar_url is None
+    monkeypatch.setattr(pull_list_refresh, "_read_page", real)
+    calls.clear()
+    final = asyncio.run(refresh_pull_list(repository, "all"))
+    assert calls == ["graphql:all:all-100", "graphql:all:all-200"]
+    assert final.done["all"] and final.cached == old.cached
+    oldest = catalog_row(repository.home, repository.slug, 1)
+    assert oldest is not None and oldest.author_avatar_url is not None
+    calls.clear()
+    asyncio.run(refresh_pull_list(repository, "all", retry=True))
+    assert calls == ["graphql:updated:start"]
+
+
+def test_projection_reset_loser_keeps_the_winners_resume_cursor(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    items = [generated_item(n) for n in range(1, 151)]
+    old = _seed(repository, items)
+    assert publish_page(repository, old, old.model_copy(update={"projection_version": 0}), ())
+    calls = _provider(monkeypatch, items)
+    real = pull_list_refresh._publish
+    attempted = False
+
+    async def competing(
+        repo: ListedRepository,
+        previous: CatalogState | None,
+        proposed: CatalogState,
+        rows: tuple[pull_list.PullListRow, ...],
+    ) -> bool:
+        nonlocal attempted
+        if not attempted and previous is not None and previous.projection_version == 0:
+            attempted = True
+            winner = proposed.model_copy(
+                update={
+                    "cursors": {**proposed.cursors, "all": "all-100"},
+                    "covered": {**proposed.covered, "all": 100},
+                }
+            )
+            assert await real(repo, previous, winner, ())
+        return await real(repo, previous, proposed, rows)
+
+    monkeypatch.setattr(pull_list_refresh, "_publish", competing)
+    final = asyncio.run(refresh_pull_list(repository, "all"))
+    assert attempted and calls == ["graphql:all:all-100"]
+    assert final.done["all"] and final.cached == old.cached and final.epoch == old.epoch
+
+
+def test_projection_reset_preserves_an_active_delta_checkpoint_before_network(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    old = _seed(repository, [generated_item(7)])
+    proposed = old.model_copy(
+        update={
+            "projection_version": 0,
+            "delta_started": True,
+            "delta_cursor": "updated-100",
+            "delta_watermark": STAMP,
+        }
+    )
+    assert publish_page(repository, old, proposed, ())
+    old = read_catalog(repository.home, repository.slug)
+    assert old is not None
+    calls = _provider(monkeypatch, [generated_item(7)])
+
+    async def exercise() -> None:
+        entered = asyncio.Event()
+
+        async def held(*args: Any, **kwargs: Any) -> Any:
+            assert args[2] == "updated-100" and kwargs["updated"]
+            entered.set()
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(pull_list_refresh, "_read_page", held)
+        task = asyncio.create_task(refresh_pull_list(repository, "all"))
+        await entered.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(exercise())
+    current = read_catalog(repository.home, repository.slug)
+    assert current is not None and current.projection_version == CATALOG_PROJECTION
+    for key in (
+        "reader",
+        "source",
+        "repository_id",
+        "epoch",
+        "fetched_at",
+        "count_at",
+        "watermark",
+        "delta_cursor",
+        "delta_watermark",
+        "delta_started",
+        "cached",
+        "totals",
+    ):
+        assert getattr(current, key) == getattr(old, key), key
+    assert not current.done["all"] and calls == []

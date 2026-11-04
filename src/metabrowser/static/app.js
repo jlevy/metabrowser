@@ -458,7 +458,7 @@ function scheduleHighlightCode(root = document) {
   }
 }
 
-function formatAge(mtimeSec) {
+function formatAge(mtimeSec, options) {
   // Walker emits ``null`` newest-mtime while finalizing.
   // Render skeleton; applyCellPatch fills it from fs.change.
   if (mtimeSec === null) {
@@ -467,7 +467,7 @@ function formatAge(mtimeSec) {
   // One age primitive for the whole product (formatters.js): same
   // abbreviations, same freshness tiers, same colours, wherever an age
   // appears.
-  var age = window.MetabrowserFormatters.age(mtimeSec);
+  var age = window.MetabrowserFormatters.age(mtimeSec, options);
   if (!age.label) {
     return "";
   }
@@ -5586,7 +5586,7 @@ function folderHeaderSummaryHtml(dirInfo) {
   return (
     sizeHtml(dirInfo.total_size, "file-header-size") +
     countHtml(dirInfo.total_files, "folder-header-count") +
-    `<span class="folder-header-age">${formatAge(dirInfo.mtime)}</span>`
+    `<span class="folder-header-age">${formatAge(dirInfo.mtime, { style: "relative" })}</span>`
   );
 }
 

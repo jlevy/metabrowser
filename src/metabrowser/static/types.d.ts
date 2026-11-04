@@ -384,7 +384,10 @@ type MetabrowserRequestErrorRuntime = Readonly<{
 
 type MetabrowserFormatterRuntime = Readonly<{
   /** Abbreviated age and its freshness class — the one age primitive. */
-  age(epochSeconds: number): { label: string; className: string };
+  age(
+    epochSeconds: number,
+    options?: { style?: "compact" | "relative" },
+  ): { label: string; className: string };
   ageClass(epochSeconds: number): string;
   countClass(value: number): "" | "count-large";
   formatBytes(value: number): string;
@@ -1123,7 +1126,31 @@ type MetabrowserSdk = {
   fileTypes: MetabrowserFileTypeTaxonomyRuntime;
   fileTypeClass(path: string): string;
   fileTypeIcon(path: string): MetabrowserFileTypeIcon;
-  formatAge(secondsSinceEpoch: number): { label: string; className: string };
+  refChipHtml(
+    name: string,
+    options?: {
+      label?: string;
+      kind?: string;
+      trunk?: boolean;
+      head?: boolean;
+      copy?: "inline" | "sibling" | false;
+    },
+  ): string;
+  refChip(
+    name: string,
+    options?: {
+      label?: string;
+      kind?: string;
+      trunk?: boolean;
+      head?: boolean;
+      copy?: "inline" | "sibling" | false;
+    },
+  ): HTMLElement;
+  mountRefCopies(primary: HTMLElement, host: HTMLElement): () => void;
+  formatAge(
+    secondsSinceEpoch: number,
+    options?: { style?: "compact" | "relative" },
+  ): { label: string; className: string };
   formatTimestamp(secondsSinceEpoch: number): string;
   prefs: {
     get<T>(name: string, fallback: T): T;
@@ -2554,6 +2581,7 @@ declare global {
 
   /** What the ref selector shows for one state. */
   type MetabrowserSourceRefSelectorModel = {
+    selectedRef: { name: string; label: string; kind: string } | null;
     button: string;
     open: boolean;
     kind: MetabrowserSourceRefKind;
@@ -2588,6 +2616,7 @@ declare global {
 
   /** The elements the ref selector paints into. */
   type MetabrowserSourceRefSelectorParts = {
+    releaseCopies?: () => void;
     root: HTMLElement;
     toggle: HTMLButtonElement;
     label: HTMLElement;

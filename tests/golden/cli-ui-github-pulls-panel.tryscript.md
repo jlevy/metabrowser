@@ -581,6 +581,10 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "stateLabel": "Merged",
     "title": "<img src=x onerror=\"alert(1)\"> & \"quotes\"",
     "author": "ghost",
+    "avatar": null,
+    "baseRef": "main",
+    "headRef": "<b>topic</b>",
+    "headLabel": "<b>topic</b> (deleted fork)",
     "updatedAt": "2026-09-17T12:00:00Z",
     "refs": "main ← <b>topic</b> (deleted fork)",
     "meta": "#7 · ghost · main ← <b>topic</b> (deleted fork)"

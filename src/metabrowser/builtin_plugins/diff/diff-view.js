@@ -1028,7 +1028,9 @@ function renderFileBar(change, toggleId, bodyId, view) {
     chevron.textContent = "›";
   }
   toggle.append(chevron);
-  toggle.append(el("span", `diff-file-kind diff-file-kind-${String(change.kind)}`, letter));
+  const status = el("span", "diff-file-kind file-change-status", letter);
+  status.dataset.fileStatus = String(change.kind);
+  toggle.append(status);
   const pathSpan = el("span", "diff-file-path", label);
   pathSpan.dataset.tipText = label;
   toggle.append(pathSpan);
@@ -1758,7 +1760,7 @@ function reserveBody(body, rows) {
     // The rows' own height: `line-height: 1.5` at the code font's size, in styles.css.
     body.style.setProperty(
       "--diff-reserved-height",
-      `calc(${rows} * 1.5 * var(--code-font-size, 0.85rem))`,
+      `calc(${rows} * 1.5 * var(--mono-block-font-size))`,
     );
   }
 }

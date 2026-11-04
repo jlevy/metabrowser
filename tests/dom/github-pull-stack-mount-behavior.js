@@ -47,7 +47,65 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   const page = await import(
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
   );
+  const avatar = "https://avatars.githubusercontent.com/u/123?s=40";
+  for (const unsafe of [
+    null,
+    "",
+    "https://evil.example/u/123?s=40",
+    "http://avatars.githubusercontent.com/u/123?s=40",
+    "https://avatars.githubusercontent.com:443/u/123?s=40",
+    `${avatar}#x`,
+    `${avatar}&x=1`,
+    "https://avatars.githubusercontent.com/u/123456789012345678901?s=40",
+    "https://avatars.githubusercontent.com/u/123?s=40\n",
+  ]) {
+    assert.equal(page.avatarUrl(unsafe), null, `unsafe avatar ${unsafe}`);
+  }
+  assert.equal(page.avatarUrl(avatar), avatar);
+  assert.equal(
+    page.avatarUrl("https://avatars.githubusercontent.com/in/42?s=40"),
+    "https://avatars.githubusercontent.com/in/42?s=40",
+  );
+  const identity = page.authorLabel("octo", avatar);
+  const image = identity.children[0];
+  assert.equal(identity.textContent, "octo");
+  for (const [name, value] of Object.entries({
+    alt: "",
+    width: "18",
+    height: "18",
+    loading: "lazy",
+    decoding: "async",
+    fetchpriority: "low",
+    crossorigin: "anonymous",
+    referrerpolicy: "no-referrer",
+    src: avatar,
+  })) {
+    assert.equal(image.attributes.get(name), value);
+  }
+  assert.equal(
+    [...image.attributes.keys()].at(-1),
+    "src",
+    "privacy/layout attributes precede the request",
+  );
+  image.style = {};
+  image.events.get("error")();
+  assert.equal(image.style.visibility, "hidden");
+  assert.equal(identity.children.length, 2, "failed image retains its fixed slot");
+  assert.equal(page.authorLabel("ghost", "https://evil.example/track").children.length, 1);
+  const merged = structuredClone(recorded.current.body);
+  merged.record.pull.merged = true;
+  merged.record.pull.merged_by = "merger";
+  merged.record.pull.author_avatar_url = avatar;
+  merged.record.pull.merged_by_avatar_url = "https://avatars.githubusercontent.com/u/456?s=40";
+  const mergedModel = page.describePull(merged, {
+    number: 7,
+    tab: "",
+    nowMs: Date.parse(merged.fetched_at),
+  });
+  assert.equal(mergedModel.pull.actor, "merger");
+  assert.equal(mergedModel.pull.actorAvatar, merged.record.pull.merged_by_avatar_url);
   const api = {
+    ...require("./sdk-ref-fixture.js").refHelpers(document),
     perf,
     ensureAsset: async () => {},
     ensureKindAssets: async () => {},

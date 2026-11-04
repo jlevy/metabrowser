@@ -44,6 +44,14 @@ the displayed window.
 Descriptions, comments, reviews, and checks are separate: selecting a row opens its page
 and fetches that record when needed.
 Diffs are generated from the Git objects in the cache.
+Mounted content creates lazy author images; the browser controls when nearby images load
+and caches their bytes.
+Cached metadata remains readable when images cannot load.
+After a metadata projection change, the next accepted catalog refresh enriches existing
+rows through the same resumable background scan; cached rows and counts remain
+available. A detail record whose metadata projection changed revalidates its
+representations once on an accepted refresh; later refreshes reuse conditional responses
+as usual. A failed refresh retains the displayed record.
 
 Expand a row to see its changed files, grouped into folders with change counts.
 Selecting a file opens Files changed at that file.
@@ -109,7 +117,11 @@ URL opens on Conversation, because the page has no Commits tab.
 
 The header has the title, state, branches, labels, and dates.
 PR numbers use dark text, usernames use bold gray text at the surface’s normal size, and
-branch names use smaller ref styling, consistently with the Pulls list.
+branch names use smaller ref chips, consistently with the Pulls list and Git history.
+Hover or focus a copyable branch chip to reveal its copy control; it copies the full
+branch name. The author’s small circular avatar appears beside the username when
+available. Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”;
+condensed navigation keeps short ages.
 An uncached page shows gray pulsing loading blocks; a cached page keeps its content
 visible while it refreshes.
 **View on GitHub** opens the pull request on github.com.

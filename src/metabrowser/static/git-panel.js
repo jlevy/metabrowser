@@ -239,7 +239,7 @@
         return (
           `<span class="git-commit-file-status ${className}"` +
           ` aria-label="${escapeHtml(String(count))} ${label} ${fileLabel}">` +
-          `${escapeHtml(String(count))} ${code}</span>`
+          `${escapeHtml(String(count))} <span class="file-change-status" data-file-status="${label}">${code}</span></span>`
         );
       })
       .join("");
@@ -304,12 +304,12 @@
     }
     html += "</span>";
     if (commit.refs?.length) {
-      html += `<span class="git-commit-refs">${renderRefBadges(commit.refs)}</span>`;
+      html += `<span class="git-commit-refs">${renderRefBadges(commit.refs, compact ? false : "inline")}</span>`;
     }
     html += "</span>";
     html += `<span class="git-commit-author">${escapeHtml(commit.author?.name || "")}</span>`;
     html += `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}">`;
-    html += `${escapeHtml(relativeAge(commit.committed_at))}</span>`;
+    html += `${escapeHtml(relativeAge(commit.committed_at, { style: "relative" }))}</span>`;
     html += "</div>";
     html += renderCommitChangeStats(stats);
     html += "</div>";
@@ -332,12 +332,13 @@
    * Compact relative age, matching the tree's convention.
    *
    * @param {number} epochSeconds
+   * @param {{style?: "compact" | "relative"}} [options]
    * @returns {string}
    */
-  function relativeAge(epochSeconds) {
+  function relativeAge(epochSeconds, options) {
     // The shared age primitive, so a commit's age reads exactly like a
     // file's: same abbreviations, same freshness tiers.
-    return window.MetabrowserFormatters?.age(epochSeconds)?.label ?? "";
+    return window.MetabrowserFormatters?.age(epochSeconds, options)?.label ?? "";
   }
 
   /**
@@ -1016,6 +1017,15 @@
     summaryResizeObserver.observe(summary);
   }
 
+  /** Secondary controls are released before their viewport rows are replaced. */
+  const rowCopyReleases = new Set();
+  function releaseRowCopies() {
+    for (const release of rowCopyReleases) {
+      release();
+    }
+    rowCopyReleases.clear();
+  }
+
   /**
    * Preserve every logical row's fixed-height coordinate while one or more
    * evicted pages are being replayed. A placeholder is an honest loading or
@@ -1173,6 +1183,7 @@
     top.setAttribute("aria-hidden", "true");
     const host = document.createElement("div");
     host.className = "git-history-window";
+    releaseRowCopies();
     appendWindowContents(host, mounted, range.start, range.end);
     const bottom = document.createElement("div");
     bottom.className = "git-history-spacer git-history-spacer-bottom";
@@ -1596,28 +1607,29 @@
     );
     element.addEventListener("mouseenter", () => scheduleHover(element, commit.id));
     element.addEventListener("mouseleave", () => cancelHover(commit.id));
-    return element;
+    const item = document.createElement("div");
+    item.className = "git-graph-item";
+    item.appendChild(element);
+    rowCopyReleases.add(window.metabrowser.mountRefCopies(element, item));
+    return item;
   }
 
   /**
    * @param {MetabrowserGitRef[]} refs
+   * @param {"inline"|"sibling"|false} [copy]
    * @returns {string}
    */
-  function renderRefBadges(refs) {
-    if (!refs.length) {
-      return "";
-    }
+  function renderRefBadges(refs, copy = "sibling") {
     return refs
-      .map((ref) => {
-        const classes = ["git-ref", `git-ref-${escapeHtml(ref.kind)}`];
-        if (ref.is_trunk) {
-          classes.push("git-ref-trunk");
-        }
-        if (ref.is_head) {
-          classes.push("git-ref-head");
-        }
-        return `<span class="${classes.join(" ")}">${escapeHtml(ref.name)}</span>`;
-      })
+      .map((ref) =>
+        window.metabrowser.refChipHtml(ref.name, {
+          label: ref.name,
+          kind: ref.kind,
+          trunk: ref.is_trunk,
+          head: ref.is_head,
+          copy,
+        }),
+      )
       .join("");
   }
 
@@ -2000,7 +2012,10 @@
           "gitRevision:rowAnchor",
           () => {
             if (selectedRowForAnchor?.parentElement instanceof HTMLElement) {
-              setCommitRowAnchor(selectedRowForAnchor.parentElement, selectedRowForAnchor);
+              const list = panelElement()?.querySelector(".git-graph-list");
+              if (list instanceof HTMLElement) {
+                setCommitRowAnchor(list, selectedRowForAnchor);
+              }
             }
           },
           { revision },
@@ -2182,7 +2197,7 @@
 
     return (
       `<${tag} class="${classes.join(" ")}"${attrs}>` +
-      `<span class="git-file-status" data-tip-text="${escapeHtml(file.status)}">` +
+      `<span class="git-file-status file-change-status" data-file-status="${escapeHtml(file.status)}" data-tip-text="${escapeHtml(file.status)}">` +
       `${escapeHtml(file.status.charAt(0).toUpperCase())}</span>` +
       `<span class="git-file-path">${name}</span>${counts}</${tag}>`
     );
@@ -2210,6 +2225,7 @@
 
   /** @param {PanelState} current */
   function disposeHistoryState(current) {
+    releaseRowCopies();
     current.pageCache.dispose();
     current.virtualWindow.dispose();
   }

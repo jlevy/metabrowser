@@ -352,6 +352,23 @@ $ node tests/dom/source-ref-selector-session.js
     "Pull request: #7",
     "Commit: 42382ea2303b"
   ],
+  "copies": [
+    {
+      "name": "topic",
+      "label": "topic",
+      "kind": "remote"
+    },
+    {
+      "name": "v1",
+      "label": "v1",
+      "kind": "tag"
+    },
+    {
+      "name": "feature/long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-←<literal>",
+      "label": "feature/long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-long-←<literal>",
+      "kind": "remote"
+    }
+  ],
   "keys": [
     "ArrowDown from -1: 0",
     "ArrowUp from -1: null",
@@ -366,5 +383,32 @@ $ node tests/dom/source-ref-selector-session.js
     "ArrowDown from -1 in an empty list: null"
   ]
 }
+? 0
+```
+
+## Copy a Ref Without Following Its Row
+
+The production SDK renders literal labels separately from raw copy values and keeps its
+copy buttons outside primary row links.
+This session checks the same owned clipboard handler, keyboard reachability,
+scroll/resize hiding and listener disposal.
+
+```console
+$ node tests/dom/sdk-copy-delegate-behavior.js
+{
+  "ref": {
+    "raw": "feature/←<literal>",
+    "label": "fork:display",
+    "payload": "feature/←<literal>",
+    "feedback": "Copied!",
+    "primary": "a",
+    "nestedButtons": 0,
+    "scrolledFocus": "primary",
+    "resizedCopy": "hidden",
+    "clippedCopy": true,
+    "listenersAfterDispose": 0
+  }
+}
+sdk copy delegate OK
 ? 0
 ```
