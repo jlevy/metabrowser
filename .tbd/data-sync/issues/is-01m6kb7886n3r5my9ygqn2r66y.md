@@ -1,0 +1,15 @@
+---
+type: is
+id: is-01m6kb7886n3r5my9ygqn2r66y
+title: Align the acquisition state table with current policies and records
+kind: bug
+status: open
+priority: 2
+version: 1
+labels: []
+dependencies: []
+parent_id: is-01m6jhctf78vq1v7ndv43jzssy
+created_at: 2026-11-04T13:15:52.453Z
+updated_at: 2026-11-04T13:15:52.453Z
+---
+Documentation review D10: maintained repository-source state table denies a low-speed bound, assumes every staged object is locally owned, and names nonexistent strategy/object_state fields. Current origin/process policies bound transport and acquisition; admitted overlays can borrow objects; actual RepositoryStore and RepositoryStoreState use acquisition/lender and documented default-ref/time/operation fields. Correct current state rows against source while retaining clearly historical measurements. No runtime or schema change.
