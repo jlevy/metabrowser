@@ -5,12 +5,16 @@ title: Resolve four new catalog review claims on PR289
 kind: task
 status: in_progress
 priority: 1
-version: 2
+version: 3
+delegate: codex@spud10
 labels: []
 dependencies: []
 parent_id: is-01m6jhbnan8czw6c97gr5511mr
+hold: null
+hold_until: null
 created_at: 2026-11-04T05:44:29.810Z
-updated_at: 2026-11-04T06:10:04.510Z
+updated_at: 2026-11-04T13:48:40.065Z
+started_at: 2026-11-04T13:48:40.062Z
 ---
 Adjudicate4463995227 cursor exceptionexport,4463995235 firstrowemptyfiltergeneration,4463995237 providerINVALID_CURSOR_ARGUMENTS recovery,4463995244 claim_source refusal stamp. Prove realbehavior; no speculative fixes. Fixconfirmed issues inowning289 branch, focusedregressiontests/red-green and independentreview; mergeforward throughhigherlayers. PosteachdispositiononPR withactualpins/results.
 

@@ -5,12 +5,16 @@ title: Audit all open PRs and preserve the excluded reference draft
 kind: task
 status: in_progress
 priority: 1
-version: 2
+version: 3
+delegate: codex@spud10
 labels: []
 dependencies: []
 parent_id: is-01m6jhbnan8czw6c97gr5511mr
+hold: null
+hold_until: null
 created_at: 2026-11-04T05:44:30.905Z
-updated_at: 2026-11-04T06:10:04.783Z
+updated_at: 2026-11-04T13:48:40.084Z
+started_at: 2026-11-04T13:48:40.084Z
 ---
 InventoryallopenPRs, confirm20featurePR heads/bases/ancestry/reviews/currentCI/conflicts, auditdraft247preservation-only branchlanding safety. Reference247remainsexcluded perexplicitdo-not-merge; do notsilentlyrestore retiredfeatures. ReconcileanyotheropenPRfound. Allrealconflictsresolved withforwardmerges onlybeforeauthorizedfeaturestacklanding.
 
