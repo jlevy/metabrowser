@@ -644,7 +644,11 @@ export function renderFileBody(state, layout) {
       }
       if (state.patch.truncated) {
         state.body.append(
-          el("div", "diff-availability", "This patch was truncated at its bounds."),
+          el(
+            "div",
+            "diff-availability diff-patch-truncated",
+            "This patch was truncated at its bounds.",
+          ),
         );
       }
     },
@@ -1028,7 +1032,9 @@ function renderFileBar(change, toggleId, bodyId, view) {
     chevron.textContent = "›";
   }
   toggle.append(chevron);
-  toggle.append(el("span", `diff-file-kind diff-file-kind-${String(change.kind)}`, letter));
+  const status = el("span", "diff-file-kind file-change-status", letter);
+  status.dataset.fileStatus = String(change.kind);
+  toggle.append(status);
   const pathSpan = el("span", "diff-file-path", label);
   pathSpan.dataset.tipText = label;
   toggle.append(pathSpan);
@@ -1697,28 +1703,41 @@ export function reservedRows(change, layout) {
 /**
  * Rows a patch in hand draws in *layout*, before intraline pairing: a header per hunk, a row
  * per context line, and each changed run its rows, or its visible rows and the fold control
- * when it folds. Exact for what the mount would draw, so a ready file it holds back reserves
- * its own height. Pure.
+ * when it folds. These logical units estimate the initial drawing budget; the reserved
+ * height accounts for each row kind separately. Soft-wrapped code can grow. Pure.
  *
  * @param {Record<string, unknown>} patch
  * @param {"unified" | "split"} layout
  */
 export function patchRows(patch, layout) {
-  let rows = patch.truncated ? 1 : 0;
+  const { lines, headers, folds, notices } = patchRowCounts(patch, layout);
+  return lines + headers + folds + notices;
+}
+
+/**
+ * Count each differently sized row without drawing held lines. Soft-wrapped code can
+ * grow after rendering; the single-line chrome has its exact shared CSS metrics.
+ * @param {Record<string, unknown>} patch
+ * @param {"unified" | "split"} layout
+ */
+export function patchRowCounts(patch, layout) {
+  const rows = { lines: 0, headers: 0, folds: 0, notices: patch.truncated ? 1 : 0 };
   for (const hunk of /** @type {{lines?: {op?: unknown}[]}[]} */ (patch.hunks ?? [])) {
-    rows += 1;
+    rows.headers += 1;
     let adds = 0;
     let dels = 0;
     const endRun = () => {
       const run = layout === "split" ? Math.max(adds, dels) : adds + dels;
-      rows += FOLD_THRESHOLD > 0 && run > FOLD_THRESHOLD ? FOLD_VISIBLE + 1 : run;
+      const folded = FOLD_THRESHOLD > 0 && run > FOLD_THRESHOLD;
+      rows.lines += folded ? FOLD_VISIBLE : run;
+      rows.folds += folded ? 1 : 0;
       adds = 0;
       dels = 0;
     };
     for (const line of hunk.lines ?? []) {
       if (line.op === "context") {
         endRun();
-        rows += 1;
+        rows.lines += 1;
       } else if (line.op === "add") {
         adds += 1;
       } else {
@@ -1751,14 +1770,13 @@ export function firstScreenBudget(screen) {
  * difference between this estimate and the truth and not a whole file.
  *
  * @param {HTMLElement} body
- * @param {number} rows
+ * @param {{lines: number, headers: number, folds: number, notices: number}} rows
  */
 function reserveBody(body, rows) {
   if (body.style) {
-    // The rows' own height: `line-height: 1.5` at the code font's size, in styles.css.
     body.style.setProperty(
       "--diff-reserved-height",
-      `calc(${rows} * 1.5 * var(--code-font-size, 0.85rem))`,
+      `calc(${rows.lines} * var(--diff-code-row-height) + ${rows.headers} * var(--diff-header-row-height) + ${rows.folds} * var(--diff-fold-row-height) + ${rows.notices} * var(--diff-notice-row-height))`,
     );
   }
 }
@@ -1770,12 +1788,20 @@ function reserveBody(body, rows) {
  * @param {"unified" | "split"} layout
  */
 function reserveFileBody(file, layout) {
-  reserveBody(
-    file.body,
-    file.held === null
-      ? reservedRows(file.change, layout)
-      : patchRows(file.held.patches[String(file.change.id)], layout),
-  );
+  if (file.held !== null) {
+    reserveBody(file.body, patchRowCounts(file.held.patches[String(file.change.id)], layout));
+    return;
+  }
+  const adds = Number(file.change.additions ?? 0);
+  const dels = Number(file.change.deletions ?? 0);
+  const changed = layout === "split" ? Math.max(adds, dels) : adds + dels;
+  const folds = FOLD_THRESHOLD > 0 && changed > FOLD_THRESHOLD ? 1 : 0;
+  reserveBody(file.body, {
+    lines: reservedRows(file.change, layout) - 1 - folds,
+    headers: 1,
+    folds,
+    notices: 0,
+  });
 }
 
 /** @param {HTMLElement} body */
@@ -2579,8 +2605,9 @@ export function mountDiffView(container, document_, api, options = {}) {
   }
   // Rows are drawn for the files whose estimated top is within the first screen and one more;
   // every later ready file is held, with its answer, and drawn when it is reached. The bars
-  // are all here, and each held file reserves its own rows, so the page is as tall as it
-  // will be. Drawing every hydrated file at once was one task of style, layout and commit
+  // are all here, and each held file reserves its code rows and chrome before drawing.
+  // Soft wraps and arriving scrollbars can add height. Drawing every hydrated file at
+  // once was one task of style, layout and commit
   // proportional to the rows: 1,083 ms at 114,609 nodes on a 1,031-file comparison (review
   // of #284, E1). The toolbar is counted as about a bar.
   const budget = firstScreenBudget(screen);

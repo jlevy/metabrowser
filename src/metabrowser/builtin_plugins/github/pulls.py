@@ -38,17 +38,32 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pydantic import BaseModel, ValidationError
 
-from metabrowser.builtin_plugins.github.gh import (
-    GhError,
-    GhOutputTooLargeError,
-    GhResponse,
-    gh_account,
-    gh_api,
+from metabrowser.builtin_plugins.github.avatars import avatar_of
+from metabrowser.builtin_plugins.github.checkout import claim_source
+from metabrowser.builtin_plugins.github.gh import GhResponse
+from metabrowser.builtin_plugins.github.gh_lists import (
+    READ_FAILURES,
+    ListRead,
+    PageTooLargeError,
+    PullDataError,
+    PullDataState,
+    UnreadableItemError,
+    active_account,
+    as_dict,
+    get_response,
+    login_of,
+    read_list,
+    readable_items,
+    response_json,
+    unconditional_304,
+    utc_stamp,
 )
+from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_manifest import prepare_pull_manifest
 from metabrowser.builtin_plugins.github.pull_record import (
     API_PAGE_SIZE,
@@ -62,6 +77,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     MAX_REVIEWS,
     MAX_STATUSES,
     MAX_TITLE_BYTES,
+    PULL_RECORD_PROJECTION,
     PULL_RECORD_SCHEMA,
     CheckRun,
     CombinedStatus,
@@ -85,6 +101,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     write_pull_refresh,
 )
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
+from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.providers import PullRequestFetch, PullRequestPin
 from metabrowser.cache.pull_refs import (
     BaseUncertainError,
@@ -107,52 +124,13 @@ log = logging.getLogger(__name__)
 # One re-read when the head moved between the API read and the fetch; a pull request
 # pushed to faster than two full reads is reported rather than chased.
 _READ_ATTEMPTS: Final = 2
-# Page sizes a list steps down through when a page is larger than gh's output cap, each
-# a divisor of the one before, so every page starts on a page boundary of its size.
-_PAGE_SIZES: Final[tuple[int, ...]] = (API_PAGE_SIZE, 50, 25, 5, 1)
-# Requests one list may make: the full pages its cap needs, plus ten asked again smaller
-# after an oversized page. Past it the list is marked incomplete.
-_EXTRA_PAGE_REQUESTS: Final = 10
 # GitHub refusals that fail only the part asked for: 403 or 404 (a token without checks
 # access) and anything else it will not answer, such as a 422.
 _PART_FAILURES: Final = frozenset({"not_found_or_private", "gh_failed"})
 _SHORT_BYTES: Final = 1024
 _MAX_URL_CHARS: Final = 4096
 _MAX_PATH_CHARS: Final = 4096
-_LOGIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\[\]-]{0,99}$")
 _SHA = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
-
-type PullDataState = Literal[
-    "gh_missing",
-    "gh_too_old",
-    "not_logged_in",
-    "rate_limited",
-    "not_found_or_private",
-    "network_error",
-    "gh_failed",
-    "account_changed",
-    "head_mismatch",
-    "fetch_failed",
-    "refreshing_elsewhere",
-    "lender_missing",
-    "git_failed",
-    "record_too_large",
-    "cache_unwritable",
-    "not_github",
-]
-
-
-class PullDataError(Exception):
-    """A pull request could not be read or fetched; ``state`` says why.
-
-    The message is for the user: it names the pull request and never a local path, a
-    token, or gh's or Git's own text.
-    """
-
-    def __init__(self, state: PullDataState, message: str, *, reset_at: str | None = None) -> None:
-        super().__init__(message)
-        self.state: PullDataState = state
-        self.reset_at = reset_at
 
 
 def utc_now() -> datetime:
@@ -161,21 +139,7 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-def _stamp(moment: datetime) -> str:
-    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 # ── Mapping API answers onto the record ─────────────────────────
-
-
-class _UnreadableItemError(Exception):
-    """A required field is missing or not what GitHub documents."""
-
-
-def _dict(value: object) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise _UnreadableItemError
-    return value  # pyright: ignore[reportUnknownVariableType]
 
 
 def _short(value: object) -> str | None:
@@ -187,7 +151,7 @@ def _short(value: object) -> str | None:
 def _required_short(value: object) -> str:
     text = _short(value)
     if text is None:
-        raise _UnreadableItemError
+        raise UnreadableItemError
     return text
 
 
@@ -213,7 +177,7 @@ def _count(value: object) -> int | None:
 def _required_int(value: object) -> int:
     number = _int(value)
     if number is None:
-        raise _UnreadableItemError
+        raise UnreadableItemError
     return number
 
 
@@ -221,17 +185,12 @@ def _sha(value: object) -> str | None:
     return value if isinstance(value, str) and _SHA.match(value) else None
 
 
-def _login(user: object) -> str | None:
-    login = user.get("login") if isinstance(user, dict) else None  # pyright: ignore[reportUnknownMemberType]
-    return login if isinstance(login, str) and _LOGIN.match(login) else None
-
-
 def _text(value: object, limit: int = MAX_BODY_BYTES) -> tuple[str, bool]:
     return cut_text(value if isinstance(value, str) else "", limit)
 
 
 def _side(value: object) -> PullSide:
-    side = _dict(value)
+    side = as_dict(value)
     repo = side.get("repo")
     full_name = repo.get("full_name") if isinstance(repo, dict) else None  # pyright: ignore[reportUnknownMemberType]
     return PullSide(
@@ -240,14 +199,14 @@ def _side(value: object) -> PullSide:
 
 
 def _pull(value: object, number: int) -> PullRequest:
-    item = _dict(value)
+    item = as_dict(value)
     if item.get("number") != number:
-        raise _UnreadableItemError
+        raise UnreadableItemError
     body, body_cut = _text(item.get("body"))
     title, _cut = _text(item.get("title"), MAX_TITLE_BYTES)
     labels = item.get("labels")
     names = (
-        [_short(_dict(label).get("name")) for label in labels[:MAX_LABELS]]
+        [_short(as_dict(label).get("name")) for label in labels[:MAX_LABELS]]
         if isinstance(labels, list)
         else []
     )  # pyright: ignore[reportUnknownArgumentType, reportUnknownVariableType]
@@ -260,7 +219,8 @@ def _pull(value: object, number: int) -> PullRequest:
         state=item["state"],
         draft=item.get("draft") is True,
         merged=item.get("merged") is True,
-        merged_by=_login(item.get("merged_by")),
+        merged_by=login_of(item.get("merged_by")),
+        merged_by_avatar_url=avatar_of(item.get("merged_by")),
         commits=_count(item.get("commits")),
         merge_commit_sha=_sha(item.get("merge_commit_sha")),
         mergeable="mergeable"
@@ -269,7 +229,8 @@ def _pull(value: object, number: int) -> PullRequest:
         if mergeable is False
         else "unknown",
         labels=tuple(name for name in names if name is not None),
-        author=_login(item.get("user")),
+        author=login_of(item.get("user")),
+        author_avatar_url=avatar_of(item.get("user")),
         created_at=item["created_at"],
         updated_at=item["updated_at"],
         merged_at=item.get("merged_at"),
@@ -281,11 +242,12 @@ def _pull(value: object, number: int) -> PullRequest:
 
 
 def _issue_comment(value: object) -> IssueComment:
-    item = _dict(value)
+    item = as_dict(value)
     body, cut = _text(item.get("body"))
     return IssueComment(
         id=_required_int(item.get("id")),
-        author=_login(item.get("user")),
+        author=login_of(item.get("user")),
+        author_avatar_url=avatar_of(item.get("user")),
         body=body,
         body_truncated=cut,
         created_at=item["created_at"],
@@ -294,12 +256,13 @@ def _issue_comment(value: object) -> IssueComment:
 
 
 def _review(value: object) -> Review:
-    item = _dict(value)
+    item = as_dict(value)
     body, cut = _text(item.get("body"))
     return Review(
         id=_required_int(item.get("id")),
         state=_required_short(item.get("state")),
-        author=_login(item.get("user")),
+        author=login_of(item.get("user")),
+        author_avatar_url=avatar_of(item.get("user")),
         body=body,
         body_truncated=cut,
         submitted_at=item.get("submitted_at"),
@@ -308,7 +271,7 @@ def _review(value: object) -> Review:
 
 
 def _review_comment(value: object) -> ReviewComment:
-    item = _dict(value)
+    item = as_dict(value)
     body, cut = _text(item.get("body"))
     hunk = item.get("diff_hunk")
     diff_hunk, hunk_cut = cut_text(
@@ -316,7 +279,7 @@ def _review_comment(value: object) -> ReviewComment:
     )
     path = item.get("path")
     if not isinstance(path, str) or len(path) > _MAX_PATH_CHARS:
-        raise _UnreadableItemError
+        raise UnreadableItemError
     side = item.get("side")
     return ReviewComment(
         id=_required_int(item.get("id")),
@@ -332,7 +295,8 @@ def _review_comment(value: object) -> ReviewComment:
         original_commit_id=item["original_commit_id"],
         diff_hunk=diff_hunk,
         diff_hunk_truncated=hunk_cut,
-        author=_login(item.get("user")),
+        author=login_of(item.get("user")),
+        author_avatar_url=avatar_of(item.get("user")),
         body=body,
         body_truncated=cut,
         created_at=item["created_at"],
@@ -341,7 +305,7 @@ def _review_comment(value: object) -> ReviewComment:
 
 
 def _check_run(value: object) -> CheckRun:
-    item = _dict(value)
+    item = as_dict(value)
     app = item.get("app")
     return CheckRun(
         id=_required_int(item.get("id")),
@@ -354,7 +318,7 @@ def _check_run(value: object) -> CheckRun:
 
 
 def _commit_status(value: object) -> CommitStatus:
-    entry = _dict(value)
+    entry = as_dict(value)
     return CommitStatus(
         context=_required_short(entry.get("context")),
         state=_required_short(entry.get("state")),
@@ -363,28 +327,11 @@ def _commit_status(value: object) -> CommitStatus:
     )
 
 
-_READ_FAILURES: Final = (_UnreadableItemError, KeyError, TypeError, ValidationError)
-
-
-def _items[M: BaseModel](
-    values: Sequence[object], build: Callable[[object], M]
-) -> tuple[tuple[M, ...], bool]:
-    """The items that could be read, and whether any was left out."""
-
-    kept: list[M] = []
-    for value in values:
-        try:
-            kept.append(build(value))
-        except _READ_FAILURES as exc:
-            log.debug("left out an item GitHub sent that could not be read: %r", exc)
-    return tuple(kept), len(kept) < len(values)
-
-
 def _status(value: object) -> tuple[CombinedStatus, bool]:
-    item = _dict(value)
+    item = as_dict(value)
     entries = item.get("statuses")
     listed: list[object] = entries[:MAX_STATUSES] if isinstance(entries, list) else []  # pyright: ignore[reportUnknownVariableType]
-    statuses, dropped = _items(listed, _commit_status)
+    statuses, dropped = readable_items(listed, _commit_status)
     total = _int(item.get("total_count"))
     count = len(entries) if isinstance(entries, list) else 0  # pyright: ignore[reportUnknownArgumentType]
     combined = CombinedStatus(state=_required_short(item.get("state")), statuses=statuses)
@@ -398,89 +345,13 @@ def _unreadable_pull() -> PullDataError:
 # ── Reading the API ─────────────────────────────────────────────
 
 
-class _PageTooLargeError(Exception):
-    """One page was larger than gh's output cap."""
-
-
 async def _get(path: str, *, etag: str | None) -> GhResponse:
-    try:
-        return await gh_api(path, etag=etag, now=utc_now())
-    except GhOutputTooLargeError as exc:
-        raise _PageTooLargeError from exc
-    except GhError as exc:
-        raise PullDataError(exc.state, str(exc), reset_at=exc.reset_at) from exc
+    return await get_response(path, etag=etag, now=utc_now())
 
 
-def _json(response: GhResponse) -> object:
-    try:
-        return response.json()
-    except GhError as exc:
-        raise PullDataError("gh_failed", str(exc)) from exc
-
-
-def _page_items(response: GhResponse, key: str | None) -> list[object]:
-    payload = _json(response)
-    if key is not None:
-        payload = payload.get(key) if isinstance(payload, dict) else None  # pyright: ignore[reportUnknownMemberType]
-    if not isinstance(payload, list):
-        raise PullDataError("gh_failed", "GitHub answered with a list Metabrowser cannot read")
-    return payload  # pyright: ignore[reportUnknownVariableType]
-
-
-def _unconditional_304() -> PullDataError:
-    return PullDataError("gh_failed", "GitHub answered 304 to a request that was not conditional")
-
-
-@dataclass(frozen=True, slots=True)
-class _ListRead:
-    """A list read from the API: new items, or ``None`` when the previous one stands."""
-
-    items: list[object] | None
-    incomplete: bool
-    etag: str | None
-
-
-async def _read_list(path: str, *, key: str | None, cap: int, etag: str | None) -> _ListRead:
-    """Every page of *path* up to *cap* items. *etag* makes the first page conditional.
-
-    A page larger than gh's output cap is asked for again in smaller pages, down to one
-    item; an item that alone is too large is left out and the list marked incomplete.
-    """
-
-    items: list[object] = []
-    first_etag: str | None = None
-    incomplete = False
-    offset = 0
-    size = API_PAGE_SIZE
-    for _request in range(cap // API_PAGE_SIZE + _EXTRA_PAGE_REQUESTS):
-        conditional = etag if offset == 0 and size == API_PAGE_SIZE else None
-        try:
-            response = await _get(
-                f"{path}?per_page={size}&page={offset // size + 1}", etag=conditional
-            )
-        except _PageTooLargeError:
-            if size > 1:
-                size = next(smaller for smaller in _PAGE_SIZES if smaller < size)
-            else:
-                log.debug("left out item %s of %s: larger than one page may be", offset, path)
-                offset += 1
-                incomplete = True
-            continue
-        if response.status == 304:
-            if conditional is not None:
-                return _ListRead(items=None, incomplete=False, etag=etag)
-            raise _unconditional_304()
-        if offset == 0 and size == API_PAGE_SIZE:
-            first_etag = response.etag
-        batch = _page_items(response, key)
-        items.extend(batch)
-        offset += len(batch)
-        if not batch or not response.has_next_page:
-            return _ListRead(items[:cap], incomplete or len(items) > cap, first_etag)
-        if len(items) >= cap:
-            return _ListRead(items[:cap], True, first_etag)
-        size = max(candidate for candidate in _PAGE_SIZES if offset % candidate == 0)
-    return _ListRead(items[:cap], True, first_etag)
+async def _read_list(path: str, *, key: str | None, cap: int, etag: str | None) -> ListRead:
+    # A lambda, so the clock is this module's seam when the call is made.
+    return await read_list(path, key=key, cap=cap, etag=etag, now=lambda: utc_now())
 
 
 def _first_page(path: str) -> str:
@@ -534,7 +405,7 @@ async def _read_list_of[M: BaseModel](
         # Only a conditional request, which needs a previous record, is answered 304.
         assert previous is not None
         return _ListParts(getattr(previous, name), getattr(previous.truncated, name), True)
-    items, dropped = _items(listed.items, build)
+    items, dropped = readable_items(listed.items, build)
     return _ListParts(items, listed.incomplete or dropped, False)
 
 
@@ -559,6 +430,10 @@ async def _read_api(
     check-run and status paths name the head commit, so a moved head asks afresh.
     """
 
+    # A provider ETag identifies its representation, not the fields our older cache
+    # retained. Fetch those existing resources unconditionally once for new metadata.
+    if previous is not None and previous.projection_version < PULL_RECORD_PROJECTION:
+        previous = previous.model_copy(update={"etags": {}})
     base = f"repos/{owner}/{repo}"
     etags: dict[str, str] = {}
     unavailable: dict[UnavailablePart, str] = {}
@@ -566,17 +441,17 @@ async def _read_api(
     pull_etag = previous.etags.get(pull_path) if previous is not None else None
     try:
         response = await _get(pull_path, etag=pull_etag)
-    except _PageTooLargeError as exc:
+    except PageTooLargeError as exc:
         raise _unreadable_pull() from exc
     if response.status == 304:
         if previous is None or pull_etag is None:
-            raise _unconditional_304()
+            raise unconditional_304()
         pull = previous.pull
         etags[pull_path] = pull_etag
     else:
         try:
-            pull = _pull(_json(response), number)
-        except _READ_FAILURES as exc:
+            pull = _pull(response_json(response), number)
+        except READ_FAILURES as exc:
             raise _unreadable_pull() from exc
         if response.etag is not None:
             etags[pull_path] = response.etag
@@ -608,19 +483,19 @@ async def _read_api(
             response = await _get(status_path, etag=status_etag)
             if response.status == 304:
                 if previous is None or status_etag is None:
-                    raise _unconditional_304()
+                    raise unconditional_304()
                 part_etags[status_path] = status_etag
                 return previous.status, previous.truncated.statuses
             try:
-                read = _status(_json(response))
-            except _READ_FAILURES as exc:
+                read = _status(response_json(response))
+            except READ_FAILURES as exc:
                 raise PullDataError(
                     "gh_failed", "GitHub answered with a status Metabrowser cannot read"
                 ) from exc
             if response.etag is not None:
                 part_etags[status_path] = response.etag
             return read
-        except _PageTooLargeError:
+        except PageTooLargeError:
             return _Unavailable("gh_failed")
         except PullDataError as exc:
             if not _degrade(exc):
@@ -701,9 +576,10 @@ async def _read_api(
     parts = (comments, reviews, review_comments, check_runs)
     return PullRecord(
         schema_version=PULL_RECORD_SCHEMA,
+        projection_version=PULL_RECORD_PROJECTION,
         source=f"https://github.com/{owner}/{repo}",
         number=number,
-        fetched_at=_stamp(utc_now()),
+        fetched_at=utc_stamp(utc_now()),
         reader=reader,
         etags=etags,
         pull=pull,
@@ -731,14 +607,9 @@ async def _read_api(
 # ── The refresh ─────────────────────────────────────────────────
 
 
-async def _account() -> str:
-    try:
-        return await gh_account()
-    except GhError as exc:
-        raise PullDataError(exc.state, str(exc)) from exc
-
-
-def _owner_and_repo(published: PublishedSource) -> tuple[str, str]:
+def _owner_and_repo(published: PublishedSource | ListedRepository) -> tuple[str, str]:
+    if isinstance(published, ListedRepository):
+        return published.owner, published.repo
     parsed = parse_repository_url(published.source.normalized)
     if parsed is None:
         raise PullDataError(
@@ -778,11 +649,20 @@ def _comparison_of(endpoints: PullEndpoints) -> Comparison:
     )
 
 
-async def _write(published: PublishedSource, record: PullRecord) -> PullRecord:
+async def _write(published: PublishedSource | ListedRepository, record: PullRecord) -> PullRecord:
     try:
         final = fit_record(record)
-        await prepare_pull_manifest(published, final)
-        await asyncio.to_thread(write_pull_record, published.home, published.slug, final)
+        if not isinstance(published, ListedRepository):
+            await prepare_pull_manifest(published, final)
+        return await run_lock_section(
+            partial(
+                write_pull_record,
+                published.home,
+                published.slug,
+                final,
+                metadata_only=isinstance(published, ListedRepository),
+            )
+        )
     except RecordTooLargeError as exc:
         raise PullDataError("record_too_large", str(exc)) from exc
     except (PrivateStorageError, OSError) as exc:
@@ -790,7 +670,6 @@ async def _write(published: PublishedSource, record: PullRecord) -> PullRecord:
         raise PullDataError(
             "cache_unwritable", "its record could not be written to the cache"
         ) from exc
-    return final
 
 
 async def _with_comparison(published: PublishedSource, record: PullRecord) -> PullRecord:
@@ -846,20 +725,24 @@ async def _with_comparison(published: PublishedSource, record: PullRecord) -> Pu
     )
 
 
-async def _refresh(published: PublishedSource, number: int) -> PullRecord:
+async def _refresh(published: PublishedSource | ListedRepository, number: int) -> PullRecord:
     owner, repo = _owner_and_repo(published)
     cached = await asyncio.to_thread(read_pull_record, published.home, published.slug, number)
     for attempt in range(_READ_ATTEMPTS):
-        login = await _account()
+        login = await active_account()
         reader = f"gh:{login}"
         previous = cached if isinstance(cached, PullRecord) and cached.reader == reader else None
         record = await _read_api(owner, repo, number, previous=previous, reader=reader)
-        if await _account() != login:
+        if await active_account() != login:
             raise PullDataError(
                 "account_changed",
                 "the active gh account changed during the read, so what was read is "
                 "discarded; open it again",
             )
+        if isinstance(published, ListedRepository):
+            # Merge against the latest shared comparison inside the publication lock,
+            # not the cache snapshot taken before the network read.
+            return await _write(published, record)
         pull = record.pull
         try:
             fetched = await fetch_pull_head(
@@ -877,15 +760,77 @@ async def _refresh(published: PublishedSource, number: int) -> PullRecord:
     raise AssertionError("unreachable")
 
 
-async def refresh_pull_request(published: PublishedSource, number: int) -> PullRecord:
+async def _recover_comparison(
+    published: PublishedSource, number: int, pair: tuple[str, str] | None
+) -> None:
+    """An explicit retry's displayed selection, or the cached selection for number-only retry."""
+    from metabrowser.builtin_plugins.github.pull_manifest import invalidate_pull_manifest
+    from metabrowser.cache.object_recovery import recover_comparison_objects
+    from metabrowser.cache.origin import BRANCH_MIRROR_PREFIX
+    from metabrowser.cache.pull_refs import base_branch_usable, ref_commit
+    from metabrowser.git.object_failures import observed_object_failures
+    from metabrowser.git.process import repository_store_target
+
+    if pair is None:
+        cached = await asyncio.to_thread(read_pull_record, published.home, published.slug, number)
+        if not isinstance(cached, PullRecord):
+            return
+        if cached.comparison is not None:
+            pair = (cached.comparison.base, cached.comparison.head)
+        else:
+            base = cached.pull.base.sha
+            branch = cached.pull.base.ref
+            if cached.pull.state == "open" and await base_branch_usable(published, branch):
+                base = await ref_commit(published, BRANCH_MIRROR_PREFIX + branch) or base
+            pair = (base, cached.pull.head.sha)
+    target = repository_store_target(git_dir=published.git_dir)
+    failures = observed_object_failures.pending(target, pair)
+    if any(failure.state == "object_corrupt" for failure in failures):
+        try:
+            await asyncio.to_thread(invalidate_pull_manifest, published, pair)
+        except (OSError, PrivateStorageError) as exc:
+            raise PullDataError(
+                "cache_unwritable", "the comparison cache could not discard damaged metadata"
+            ) from exc
+    try:
+        await recover_comparison_objects(published, pair)
+    except PullRefError as exc:
+        state: PullDataState
+        match exc.state:
+            case "object_corrupt":
+                state = "object_corrupt"
+            case "commits_unavailable":
+                state = "commits_unavailable"
+            case "comparison_too_large":
+                state = "comparison_too_large"
+            case _:
+                state = _fetch_failure(exc).state
+        raise PullDataError(state, str(exc)) from exc
+
+
+async def refresh_pull_request(
+    published: PublishedSource | ListedRepository,
+    number: int,
+    *,
+    recover: bool = False,
+    recovery_pair: tuple[str, str] | None = None,
+) -> PullRecord:
     """Read pull request *number* of *published* from GitHub and cache it; see the module.
 
-    Raises only :class:`PullDataError`. A failure leaves any previous record in place.
-    How it ended is kept beside the record either way; see :func:`last_refresh`.
+    *published* is a mirror's source, or a checkout's repository, which has no store: its
+    source is published first if it has never been (:func:`~.checkout.claim_source`).
+    A checkout preserves a shared comparison only for the same reader and unchanged
+    comparison inputs; otherwise its record has no comparison, ``no_store``. Raises only
+    :class:`PullDataError`. A failure leaves any previous record in place. How it ended is
+    kept beside the record either way; see :func:`last_refresh`.
     """
 
     try:
         try:
+            if isinstance(published, ListedRepository):
+                published = await claim_source(published)
+            elif recover:
+                await _recover_comparison(published, number, recovery_pair)
             record = await _refresh(published, number)
         except GitError as exc:
             raise _git_failure(number, exc) from exc
@@ -894,7 +839,7 @@ async def refresh_pull_request(published: PublishedSource, number: int) -> PullR
             "outcome": exc.state,
             "message": str(exc)[:1000],
             "reset_at": exc.reset_at,
-            "at": _stamp(utc_now()),
+            "at": utc_stamp(utc_now()),
         }
         await asyncio.to_thread(_keep_stamp, published, number, stamp)
         raise
@@ -903,7 +848,9 @@ async def refresh_pull_request(published: PublishedSource, number: int) -> PullR
     return record
 
 
-def _keep_stamp(published: PublishedSource, number: int, fields: dict[str, Any]) -> None:
+def _keep_stamp(
+    published: PublishedSource | ListedRepository, number: int, fields: dict[str, Any]
+) -> None:
     try:
         stamp = PullRefreshStamp.model_validate(fields)
         write_pull_refresh(published.home, published.slug, number, stamp)
@@ -912,7 +859,9 @@ def _keep_stamp(published: PublishedSource, number: int, fields: dict[str, Any])
         log.debug("could not keep how pull request %s's refresh ended: %s", number, exc)
 
 
-def last_refresh(published: PublishedSource, number: int) -> PullRefreshStamp | None:
+def last_refresh(
+    published: PublishedSource | ListedRepository, number: int
+) -> PullRefreshStamp | None:
     """How the last refresh of pull request *number* ended, in any process. Blocking."""
 
     return read_pull_refresh(published.home, published.slug, number)

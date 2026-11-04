@@ -67,7 +67,7 @@
 //
 //   Formatting:
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
-//     formatAge(secondsSinceEpoch)       — the age primitive: {label, className}
+//     formatAge(secondsSinceEpoch, opts?) — the age primitive: {label, className}
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
 //     countClass(count)                   — shared file-count emphasis class
 //     sizeClass(bytes)                    — shared byte-count emphasis class
@@ -80,6 +80,8 @@
 //   Visual:
 //     icons.<name>                       — raw SVG strings for built-in icons
 //     icons.withClass(name, cls)         — returns SVG with extra class applied
+//     refChip/refChipHtml(name, opts?)    — structured refs with owned copy controls
+//     mountRefCopies(primary, host)       — sibling controls; caller owns returned disposer
 //     filterControls                      — shared filter markup and interaction
 //                                          helpers, installed before plugins load
 //
@@ -90,7 +92,8 @@
 //     debug                              — console-only shell troubleshooting helpers
 //
 // The helpers that build a view's markup -- renderSourceView, wrapWithCopy,
-// partialNoticeHtml, renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
+// partialNoticeHtml, refChip/refChipHtml/mountRefCopies, ageBucket/ageLabelHtml,
+// renderTextTruncationWarning, renderTextLoadMoreFooter, langForPath
 // and langForExtension -- and the syntax service, highlightSyntax and
 // isLargeTextPreview, are defined in plugin-sdk-views.js, which is not a startup
 // script. It is on this object before any plugin's code runs: see loadPluginsForKind.
@@ -773,63 +776,6 @@
       },
     });
 
-  // Age buckets shared with the shell's tree column. The thresholds
-  // mirror app.js formatAge exactly (sec <1m, min <1h, hr <1d, day
-  // <7d, wk <30d, old beyond); keep the two lists in sync so a
-  // treemap fill and a tree row never disagree about freshness.
-  /** @type {Array<[string, number]>} */
-  const AGE_BUCKET_STEPS = [
-    ["sec", 60 * 1000],
-    ["min", 60 * 60 * 1000],
-    ["hr", 24 * 60 * 60 * 1000],
-    ["day", 7 * 24 * 60 * 60 * 1000],
-    ["wk", 30 * 24 * 60 * 60 * 1000],
-  ];
-
-  function ageBucket(mtimeSeconds) {
-    if (typeof mtimeSeconds !== "number" || !Number.isFinite(mtimeSeconds) || mtimeSeconds <= 0) {
-      return null;
-    }
-    const absMs = Math.abs(Date.now() - mtimeSeconds * 1000);
-    for (const [bucket, limitMs] of AGE_BUCKET_STEPS) {
-      if (absMs < limitMs) {
-        return bucket;
-      }
-    }
-    return "old";
-  }
-
-  // Compact age text mirrors app.js formatAge ("3h", "2d", "<1m", …)
-  // so a plugin label and a tree row read identically.
-  /** @type {Array<[string, number]>} */
-  const AGE_LABEL_STEPS = [
-    ["y", 365 * 24 * 60 * 60 * 1000],
-    ["mo", 30 * 24 * 60 * 60 * 1000],
-    ["w", 7 * 24 * 60 * 60 * 1000],
-    ["d", 24 * 60 * 60 * 1000],
-    ["h", 60 * 60 * 1000],
-    ["m", 60 * 1000],
-  ];
-
-  function ageLabelHtml(mtimeSeconds) {
-    // The colored age chip the shell shows in tree rows and headers:
-    // `<span class="age-<bucket>">3h</span>` on the shared freshness
-    // tokens, or "" when there is no meaningful mtime.
-    const bucket = ageBucket(mtimeSeconds);
-    if (bucket === null) {
-      return "";
-    }
-    const absMs = Math.abs(Date.now() - /** @type {number} */ (mtimeSeconds) * 1000);
-    let text = "<1m";
-    for (const [suffix, stepMs] of AGE_LABEL_STEPS) {
-      if (absMs >= stepMs) {
-        text = `${Math.round(absMs / stepMs)}${suffix}`;
-        break;
-      }
-    }
-    return `<span class="age-${bucket}">${escapeHtml(text)}</span>`;
-  }
-
   const ROLLUP_FALLBACK_DEBOUNCE_MS = 1000;
 
   function _rollupSettings() {
@@ -1454,9 +1400,9 @@
 
   // The one age primitive (docs/design-system.md, "Age"): the abbreviation and the
   // freshness class that owns its hue, weight, size, and numerals.
-  /** @param {number} secondsSinceEpoch */
-  function formatAge(secondsSinceEpoch) {
-    return global.MetabrowserFormatters.age(Number(secondsSinceEpoch) || 0);
+  /** @param {number} secondsSinceEpoch @param {{style?: "compact" | "relative"}} [options] */
+  function formatAge(secondsSinceEpoch, options) {
+    return global.MetabrowserFormatters.age(Number(secondsSinceEpoch) || 0, options);
   }
 
   function formatTimestamp(secondsSinceEpoch) {
@@ -1658,8 +1604,6 @@
     directoryTotals: directoryTotals,
     viewState: viewState,
     setViewPrintState: global.MetabrowserViewState.setPrintState,
-    ageBucket: ageBucket,
-    ageLabelHtml: ageLabelHtml,
     tooltip: tooltip,
     fileTypeClass: fileTypeClass,
     fileTypeIcon: fileTypeIcon,

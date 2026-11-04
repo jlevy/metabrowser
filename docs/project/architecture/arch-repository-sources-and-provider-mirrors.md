@@ -677,33 +677,47 @@ cap. Every text field is budgeted on its JSON-escaped size, so a written record 
 fits the read bound.
 Check runs and statuses GitHub refuses, and a comparison whose base cannot be fetched,
 are named in the record’s `unavailable` rather than failing it.
-`GET /api/plugin/github/pull` reads the record for the served pull request and never
+`GET /api/plugin/github/pull?number=<n>` reads the record for any pull request and never
 fetches, parsing it again only when the file changed; the one-shot CLI fetches a missing
-record once, and `--no-serve` refreshes it.
+record once for the pull request its URL names, and `--no-serve` refreshes it.
 When a pull request cannot be opened, the CLI answers from a cached record, or falls
 back to the default branch or the commit URL’s commit, and says why.
 The route’s `pin` is the served commit, and the record’s head names the head it was read
-at; they differ for a commit URL inside the pull request and after a refresh finds a
-newer head, which the pull-request page offers rather than switching to.
-A server serves the pull request beside the mirror: the CLI hands it a `ServedPull`
-(`builtin_plugins/github/served_pull.py`), a `CompanionRefresh` of the mirror session.
-Its refresh is a coordinator job keyed by store key and number, so requests join it, it
-counts against the limit of two, and shutdown cancels it.
+at; they differ when the pull request was opened from a branch or another pull request,
+for a commit URL inside the pull request, and after a refresh finds a newer head, which
+the pull-request page offers rather than switching to.
+A server serves any pull request of a GitHub mirror: the CLI hands it the provider’s
+`ServedPulls` (`builtin_plugins/github/served_pull.py`), a `PullRequestSet` of the
+mirror session, which gives a `ServedPull`, a `CompanionRefresh`, for a number.
+It keeps the state of `MAX_KEPT_PULLS` in memory, since the numbers are request text,
+and reads the rest from disk.
+A refresh is a coordinator job keyed by store key and number, so requests join it, it
+counts against the limit of two, and shutdown cancels it; `MAX_PULL_JOBS` bounds how
+many may be queued or running.
+The session attends to one pull request: the one the URL named, replaced whenever a pin
+switch serves another’s head.
 Its record’s age counts toward status `stale`, and the source’s refresh starts whichever
 of the two jobs is stale, so serve mode’s refresh of a stale source at startup and the
 page’s refresh when a stale page becomes visible keep it fresh without fetching a fresh
 mirror for it (a one-shot command refreshes the mirror it asked for).
-A pin the mirror lacks fetches the mirror, and a commit pin also refreshes a served pull
-request, whose `refs/pull/<n>/head` may bring it; a branch or tag pin never runs `gh`.
-Within one server the two jobs take turns before the store’s fetch lock, so neither
-finds the other holding it and reports a refresh running elsewhere.
+A pull request with no record is fetched only by a reader’s own request, and one with a
+record refreshes when its page asks and it is due.
+A pin the mirror lacks fetches the mirror, and a commit pin also refreshes the attended
+pull request, whose `refs/pull/<n>/head` may bring it; a branch or tag pin never runs
+`gh`. Within one server these jobs take turns before the store’s fetch lock
+(`StoreTurn`), so none finds another holding it and reports a refresh running elsewhere.
+The mirror’s fetch and the attended pull request’s go first, since a page of code waits
+on them, and a job takes its network slot only once its turn has come, so a list’s
+refresh does not wait behind a queue of pull requests.
+A pin by commit ID that is the tip of a fetched pull-request head is served under that
+head and attends to it, whichever page asked: a commit page does this as View file does.
 How each refresh ended is kept beside the record in `pulls/<n>.refresh.json`, so the
 route and a later command report it, and a failed one is tried again after a window, not
-on every poll or by the next command.
-`POST /api/plugin/github/pull-refresh` starts or joins the job and returns `202` at
-once, naming `/api/plugin/github/pull` as its `status_route`; a one-shot `--api` waits
-for the job, prints that route, and exits 1 unless the refresh succeeded; one that found
-the store busy did not refresh the record.
+on every poll or by the next command, and after `rate_limited` not before `reset_at`.
+`POST /api/plugin/github/pull-refresh` with `{"number": <n>}` starts or joins the job
+and returns `202` at once, naming `/api/plugin/github/pull?number=<n>` as its
+`status_route`; a one-shot `--api` waits for the job, prints that route, and exits 1
+unless the refresh succeeded; one that found the store busy did not refresh the record.
 After the job, the session reads the pinned ref’s tip again, so a newer head behind
 `refs/pull/<n>/head` is offered as `latest`, and `resolve_pin` accepts that ref.
 One-shot modes fetch only a pull request with no usable record, or one whose commit URL
@@ -715,10 +729,11 @@ The pull-request page (`builtin_plugins/github/pull-page.js`) is the view the Gi
 plugin registers for the `pull-request` kind, which the shell mounts at `/pull/<n>` and
 `/pull/<n>/files`; a served pull-request URL opens there.
 It reads the pull route only, polling it with an entity tag while visible, and renders
-each text as Markdown through `GET /api/plugin/github/pull-markdown?part=<part>`, which
-renders one text of the cached record through KPress’s sanitized mode and then reduces
-it to an allowlist of plain markup, on the server and again in the page, so nothing in
-it loads, restyles the page, reaches the application’s handlers, or names an element.
+each text as Markdown through
+`GET /api/plugin/github/pull-markdown?number=<n>&part=<part>`, which renders one text of
+the cached record through KPress’s sanitized mode and then reduces it to an allowlist of
+plain markup, on the server and again in the page, so nothing in it loads, restyles the
+page, reaches the application’s handlers, or names an element.
 The page sets the result in a KPress article of its own making, under KPress’s
 stylesheets, so a text reads as the same Markdown in a file does.
 Files changed is the diff plugin’s view over the record’s comparison, passed as two
@@ -751,6 +766,205 @@ would be taken against the empty tree and show a whole tree as added.
 never touches, so `/api/plugin/diff/comparison?revision=` answers the typed
 `parent_unavailable` for it and `/api/git/commit/<id>` reports its `stats` as unknown,
 on a store and a served shallow checkout alike; a real root commit is unchanged.
+
+### Lists of pull requests
+
+The GitHub plugin owns one disposable SQLite metadata catalog at
+`sources/<slug>/pulls/catalog.sqlite3` (`pull_catalog.py`). Rows are keyed by PR number;
+a `(state, number)` index serves Open and Closed windows, with merged rows classified as
+closed. The checkpoint holds repository identity, account, exact provider counts, cached
+counts, scan cursors, freshness, and content generations.
+Listing takes only `ListedRepository` (home, slug, owner, repository), never a Git
+store.
+
+`refresh_pull_list` requests fixed GraphQL pages of at most 100 lightweight rows.
+Descriptions, comments, reviews, checks, patches, and repository objects are absent.
+The worker prioritizes the requested filter’s newest display prefix, then backfills all
+PRs in descending creation order.
+It resumes a committed cursor after cancellation or restart.
+A changed account or repository identity atomically replaces the catalog; a rejected
+cursor restarts that scan once without discarding already cached rows.
+GraphQL errors, including HTTP 200 with partial data, never advance a checkpoint.
+
+A catalog job checks the active GitHub account once before choosing its checkpoint.
+Every page query returns `viewer.login`; it must match that job’s reader before any rows
+or cursor are published.
+Ownership follows the account that returned the data: changing local account settings
+after a response does not relabel or discard that response.
+A later page from another account is refused, leaving the last committed checkpoint and
+its reader intact. A new job under that account replaces the catalog atomically.
+`gh auth status` performs an HTTP authentication check, so the catalog does not repeat
+it after each page.
+Cached reads retain their recorded reader and do not check the active
+account. Pull-request detail and file-list refreshes keep their own account checks.
+
+A refresh scans descending `UPDATED_AT` pages through the inclusive previous watermark.
+It captures the next watermark at scan start and advances freshness only when that scan
+finishes.
+Backfill pages never make old metadata fresh, and a row’s `updated_at` prevents
+older backfill from overwriting a newer update.
+Provider counts are dated observations, not counts derived from cached rows; the
+all/open/closed fields need not be an atomic snapshot of a changing repository.
+Rows absent from an incomplete scan are not inferred deleted.
+A deleted or newly inaccessible historical PR may remain in the disposable catalog until
+it is rebuilt.
+
+Each page commits its rows, counts, and cursor in one short transaction under the
+existing source-alias lock.
+A checkpoint revision rejects a publisher superseded by another process.
+Cached counts change from each row’s old and new state, avoiding a whole-catalog count
+or rewrite per page.
+Network and Git work never run under the lock.
+Cancellation abandons a waiting publisher before it can write.
+One job per source holds a coordinator network slot for one page at a time and yields
+between pages, so opening an individual PR can proceed during a long backfill.
+
+GET uses bounded indexed queries in a read-only transaction.
+Private-path admission checks the database and existing SQLite sidecars, and rejects
+WAL-format databases before SQLite opens them.
+The writer uses rollback journals.
+Readers and writers admit only the exact two tables and required index; extra triggers,
+views, or altered schema are refused before a checkpoint or row is used.
+The database is initialized in memory and published atomically, so an interrupted
+initialization cannot expose a half-built schema.
+Empty initialization remnants can be rebuilt by an explicit write; corrupt or unknown
+schemas receive a typed cache-write refusal requiring the affected repository cache to
+be cleared. Reads create no database, journal, source, or store and never widen
+permissions. SQLite value limits and a read instruction budget bound malformed-cache
+work.
+
+The last outcome remains in `list-all.refresh.json`. A failed refresh preserves the last
+committed page; a stamp that cannot be written is retained in process memory.
+Automatic retries wait a freshness window, and a known rate-limit reset holds every
+request. The server’s `served_repository` selects its managed store or a served
+checkout’s validated GitHub origin; neither yields a source for an unrelated folder.
+
+### Optional native stack metadata
+
+The GitHub plugin stores one bounded disposable `sources/<slug>/pulls/stacks.json`
+snapshot independently of the catalog and PR records.
+The snapshot records its source, reader, fetch time, completion flag, native stack
+numbers and ordered PR membership, plus each page’s ETag and continuation.
+Cached reads run no processes and create nothing.
+
+A separate coordinator job probes `gh stack --version` from an isolated directory, then
+reads repository-wide GitHub REST stack pages.
+It never runs `gh stack view`, checkout, sync, or tracking commands.
+Unlike the catalog’s GraphQL response, a REST page has no embedded reader; this job
+checks the active account before and after its pages.
+Changed accounts, foreign repository URLs and malformed pages cannot replace a known
+snapshot. A source-lock revision check rejects superseded publishers; cancellation
+abandons a waiting publisher.
+Network work stays outside the publication lock and yields the shared slot between
+pages. Each request checks optional and catalog rate holds after acquiring its slot;
+optional outcomes never overwrite core refresh stamps or records.
+
+An unchanged page’s `304` retains its cached continuation even when `Link` is absent.
+A refresh publishes only the pages it actually revisited, so a shorter result cannot
+retain an old tail. Multiple distinct native stacks may name the same PR; each stack
+retains its own complete bottom-to-top member order.
+The bounds are 10 pages of 100 stacks, 8 MiB of normalized cache data, 1,000 members per
+stack, and 10,000 memberships per snapshot.
+A whole page that would exceed the snapshot budget is omitted and `complete` is false;
+an oversized individual stack is refused.
+Missing membership in a partial or unavailable result never means the PR is unstacked.
+
+Successful and failed attempts have a five-minute window, with remaining freshness in
+the envelope. Explicit retry reprobes optional capability, but a known rate reset still
+holds it. Failure retains a preceding snapshot; a refused cache write records bounded
+process-local backoff.
+`403` and `404` are neutral unavailability, not proof that the repository has no stacks.
+Native stack numbers are labels, not PR numbers; the API URL is not a browser stack
+link. See the [route contract](arch-views-models-routes.md#data-routes).
+
+### Pull requests beside a checkout
+
+A folder’s pull routes resolve its checkout’s `origin` to the GitHub plugin’s canonical
+repository identity.
+Metadata reads create nothing, and metadata refreshes can publish an unattached source.
+A healthy store already attached to that source is reused without acquisition or a cache
+timestamp write.
+
+An explicit Files changed Fetch may acquire a store with the checkout as its lender.
+The pull record then uses the same store API and comparison service as a managed URL.
+The served folder root and Git tab stay unchanged; no Git process runs in the checkout,
+and the checkout is never written.
+A served subdirectory resolves to its enclosing checkout before acquisition.
+Lender paths stay inside private cache metadata.
+
+A comparison request that joins an active metadata job is retained until that job can
+acquire the store. Jobs take their turn at the store before consuming a network slot.
+An acquisition failure preserves the last pull record and reports a typed refresh
+outcome. `GET` routes never acquire or fetch.
+
+Files changed offers Refresh even while its record is fresh.
+The reader’s action sends `retry: true` and `recovery: {base, head}` for the comparison
+still displayed. Automatic refresh remains stale-only.
+Metadata updates do not replace displayed changes: a successful repair remounts that
+same comparison once and restores its scroll position; a failed or waiting job leaves it
+in place. The existing newer-changes action remains the way to select a newer head.
+A checkout with `no_store` instead offers Fetch changes.
+
+The server validates complete object IDs and a pair issued by that PR in this session
+before permitting repair.
+Each held PR retains eight issued pairs and protects its last displayed pair from
+metadata eviction. An explicit retry joining a running job is queued, even if that job
+fails; equal queued selections coalesce.
+Number-only explicit refresh continues to repair the current cached comparison.
+Old full-endpoint GET links remain readable after a restart, but an old pair that this
+session cannot associate with the PR cannot authorize network repair.
+No persistent comparison history is added.
+
+Only IDs observed missing while reading that comparison and its two endpoints are
+checked and, when absent, fetched exactly.
+A complete recovered object must match its ID before its failure is cleared.
+Detection of corrupt bytes invalidates in-memory answers and the persisted manifest;
+failure to discard that metadata is reported.
+A corrupt lender is refused without modifying its objects.
+Large partial previews retain their existing read bounds and do not claim a whole-object
+authentication.
+
+If a cached managed source loses its pinned root tree before startup, opening it reports
+a path-free pin-open error without a traceback or automatic clone.
+Live Files Refresh requires a running source; startup does not start an implicit repair
+fetch.
+
+### Changed files of a pull request
+
+A pull request’s changed files are one more file beside its record:
+`sources/<slug>/pulls/<n>.files.json`, with `<n>.files.refresh.json` for how its last
+refresh ended (`cache/paths.py: source_pull_files`). `PullFileList` in `pull_list.py`
+holds the model and its bounds with their measurements, written atomically as a private
+JSON file and read with a byte limit.
+A row keeps `path`, `previous_path`, GitHub’s `status`, and the line counts; GitHub’s
+embedded patch is dropped before anything is kept.
+The path is the row’s identity, a rename’s new path, since the diff view jumps to a file
+by its path.
+
+`refresh_pull_files` (`pull_files_refresh.py`) has two sources for one list.
+When the record’s comparison names two commits and the server has a store, it lists that
+comparison’s manifest with `GitDiffSource` (`--raw` and `--numstat`, no patch) and no
+network, as `listed_from: "comparison"` with the `head` it belongs to.
+A manifest cut at `MAX_MANIFEST_FILES`, or one Git cannot list, as on a mirror whose
+checkout is gone (`lender_missing`) or has collected the head (`commits_unavailable`),
+falls through to GitHub’s list, which runs no Git: the account, then
+`repos/<owner>/<repo>/pulls/<n>/files`, one page of a hundred at a time up to GitHub’s
+3,000 files, then the account again.
+`tests/test_github_pull_files.py` lists a source directory that has no store, with a
+`git` first on `PATH` that fails and logs.
+
+GitHub’s list is published after every page that leaves it holding more rows than the
+file does, as `complete: false` with the page count GitHub’s `Link` gave, so a reader
+sees a first list arrive and a held one never shrinks while it is reread, each page with
+its `If-None-Match` and a full last page whole; the whole list is published at the end.
+A failure leaves the file as last published, and its stamp says why.
+
+The job runs on the refresh coordinator under `<slug>:pull/<n>/files`, started outside
+the network slots, and holds a slot for each `gh` request alone, so a long list never
+holds one between pages and the mirror’s fetch waits at most for a page.
+It takes no turn at the store.
+At most `MAX_PULL_JOBS` file lists may be queued or running, since the numbers are
+request text; past it a request is refused `too_many`.
 
 ### Git path and blob semantics
 
@@ -1085,16 +1299,16 @@ in [Views, Models, and Routes](arch-views-models-routes.md).
 | Refresh and pin switching | `cache/origin.py`: `ls_remote_head_args`, `mirror_fetch_args`, `mirror_prune_args`, `classify_remote_failure`; `cache/update.py`: `update_store`, `remove_interrupted_fetch_leftovers`; `locks.py`: `store_fetch_lock`; `cache/resolve.py`: `resolve_pin`, `resolve_selection`, `ref_tip`, `list_mirror_refs`; `cache/served_mirror.py`: `StoreMirror`, `repository_name`, `display_directory`; `mirror_refresh.py`: `RefreshCoordinator`, `MirrorSession`, `serve_mirror`, `lifespan_refresh`; `source.py`: `replace_owned_subject`; `source_routes.py`: `api_source_refresh`, `api_source_pin`, `api_source_refs`, `view_on_pin`, `SourcePinGuard`; `static/source-freshness.js`, `static/source-pin-guard.js`, `static/source-ref-selector.js` | One fetch per refresh under the store’s fetch side lock, from the source’s URL, with typed outcomes, which the Git processes inherit so it stays held while any of them runs. The coordinator keeps background jobs on the application state keyed by store key, joins concurrent requests, runs at most two at once, and cancels them at shutdown; a Ctrl-C kills their process groups before it exits. Status freshness is answered from memory. One resolver serves URL opening and the pin route: exact ref names from one `for-each-ref` (branch, then tag, then commit ID). The ref selector lists the mirror’s branches or tags from one more `for-each-ref`, filtered and bounded in the route, and a switch that names the page’s `/view/` address answers where that page goes on the new pin. A pin replaces the served subject under a new generation, attaching the new subject before closing the old, so no request meets a moment with nothing served. In a server, a selection the mirror lacks starts one background fetch and answers `selection_pending`, then the switch or not found; a URL selection the mirror lacked at startup is served when that fetch brings it, under a new generation like any switch. The lifespan’s opener is left alone, so a restart serves the pin the banner announced. Serve mode refreshes a stale mirror once at startup and follows a refresh another process is running until it ends; one-shot modes never fetch unless asked. Any failure of the atomic fetch is followed by a prune of stale refs on their own and one more try, which clears a ref clash (`side` becoming `side/x`, a case-only rename) however Git words it; a clash that remains on a case-insensitive store, or a fetch that folded one ref into its case twin, puts every ref back and is `ref_case_collision`. A page on a pin names the commit it shows on its `fetch` data requests (`static/source-pin-guard.js`), and `SourcePinGuard` refuses another commit with `pin_changed`; the commit rather than the session generation is the token because a generation restarts at 1 in every server process. Back and forward bring such a page back from the browser’s caches without asking, so on a history landing the same script asks the status route once and reloads the page, at most once, when another commit is served; the page stays cacheable, so a landing with nothing switched keeps the back/forward cache and its scroll position. A commit pinned by ID is served under the ref last served, or the served pull request’s head ref, when it is that ref’s tip, so a switch away and back by ID stays on the ref |
 | Remote discovery | `repository_context.py`: `discover_repository_context` | Read a checkout’s `origin` remote and `HEAD` without running Git, so a provider candidate can be recognized before any network work |
 | Providers and GitHub URLs | `cache/providers.py`: `RepositoryProvider`, `url_reducers`, `provider_git_config`, `check_first_clone`, `repository_context_for`, `open_pull_request`; `builtin_plugins/github/`: `GithubUrlReducer`, `GithubProvider`, `run_gh`; `cache/urls.py`: `RepositorySelection`, `ReducerRejection` | Core names no provider. The GitHub reducer turns web, raw, and SSH URLs into the canonical source plus a selection, or a typed refusal; the provider supplies the `gh` credential helper, the first-clone size check, a mirror’s `repository_context`, and the head a pull-request URL pins |
-| Pull-request records | `builtin_plugins/github/gh.py`: `gh_api`, `gh_account`; `builtin_plugins/github/pulls.py`: `refresh_pull_request`, `open_pull_request`; `builtin_plugins/github/pull_record.py`: `PullRecord`, `read_pull_record`, `write_pull_record`; `builtin_plugins/github/sidekick.py`: `pull_handler`, `pull_refresh_handler`; `builtin_plugins/github/pull_route.py`: `served_pull_envelope`; `builtin_plugins/github/served_pull.py`: `ServedPull`; `mirror_refresh.py`: `CompanionRefresh`; `cache/pull_refs.py`: `fetch_pull_head`, `comparison_endpoints` | Read a pull request with bounded, conditional `gh api` pages, fetch `refs/pull/<n>/head` under the store’s fetch side lock, compute the merge-base endpoints, and keep one record per pull request; serve it from the cache alone, and refresh it in the refresh coordinator beside the mirror. See [Pull-request records](#pull-request-records) |
+| Pull-request records | `builtin_plugins/github/gh.py`: `gh_api`, `gh_account`; `builtin_plugins/github/pulls.py`: `refresh_pull_request`, `open_pull_request`; `builtin_plugins/github/pull_record.py`: `PullRecord`, `read_pull_record`, `write_pull_record`; `builtin_plugins/github/sidekick.py`: `pull_handler`, `pull_refresh_handler`; `builtin_plugins/github/pull_route.py`: `pull_envelope`, `pull_host`, `start_refresh`; `builtin_plugins/github/served_pull.py`: `ServedPull`, `ServedPulls`; `mirror_refresh.py`: `CompanionRefresh`, `PullRequestSet`, `MAX_PULL_JOBS`; `cache/pull_refs.py`: `fetch_pull_head`, `comparison_endpoints` | Read a pull request with bounded, conditional `gh api` pages, fetch `refs/pull/<n>/head` under the store’s fetch side lock, compute the merge-base endpoints, and keep one record per pull request; serve it from the cache alone, and refresh it in the refresh coordinator beside the mirror. See [Pull-request records](#pull-request-records) |
 | Ref and path resolution | `cache/resolve.py`: `ref_candidates`, `resolve_ref_and_path`, `resolve_commit_id`, `resolve_selection` | Split a URL’s ref-and-path by what the mirror has, with `show-ref --verify` per candidate and no user text in `rev-parse` revision syntax; report whether one fetch could change a miss |
 | File and raw routes | `view_routes.py`, `server.py`, `git/content_routes.py`, `plugin_api.py`; `static/navigation.js`: `displayPath` | Resolve the active content-source handle rather than assuming the global root is a `Path`; Git subjects use `GitPath` wire identities for `/view/`, file, raw, tree, KPress, patch-file containers, identity-and-content plugin kinds, structured parsed, agent-log JSONL, and image preview; Markdown and wiki links on a pin encode authored segments as `GitPath` wires; SPA path chrome decodes those wires to display names (C0 and invalid UTF-8 become U+FFFD); retain route, CLI, and golden parity for filesystem browsing |
 
 ### Planned seams
 
 Nothing below is built, and none of it is on the v0.12 path.
-The thin-mirror plan retired the provider mirror and the provider ports and deferred
-attaching a user’s checkout (`mb-cbak`); the rows stay as the design that later work
-starts from.
+The thin-mirror plan retired the provider mirror and provider ports.
+Checkout PR browsing uses the store-backed path described above; these broader provider
+abstractions remain future work.
 
 | Area | Planned boundary | Responsibility |
 | --- | --- | --- |

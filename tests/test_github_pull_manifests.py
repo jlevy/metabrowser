@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from starlette.testclient import TestClient
 
+from metabrowser import server
 from metabrowser.builtin_plugins.diff import sidekick as diff
 from metabrowser.builtin_plugins.diff.comparison_cache import ComparisonCache
 from metabrowser.builtin_plugins.github import pull_manifest
@@ -30,6 +31,22 @@ def _fresh(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(diff, "_COMPARISONS", ComparisonCache())
 
 
+def test_comparison_without_a_github_repository_is_not_github(tmp_path: Path) -> None:
+    server._set_root_dir(tmp_path)
+    with TestClient(server.app) as client:
+        response = client.get(
+            "/api/plugin/github/pull-comparison",
+            params={"number": 7, "left": "a" * 40, "right": "b" * 40, "base_policy": "merge_base"},
+        )
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": "this server serves no GitHub repository",
+        "code": "not_github",
+    }
+    assert response.headers["cache-control"] == "no-store"
+    assert "etag" not in response.headers
+
+
 def test_fetch_prepares_a_manifest_that_a_fresh_server_reuses(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -43,7 +60,7 @@ def test_fetch_prepares_a_manifest_that_a_fresh_server_reuses(
         raise AssertionError("a prepared manifest was recomputed")
 
     monkeypatch.setattr(GitDiffSource, "manifest", forbidden)
-    route = client.get("/api/plugin/github/pull").json()["comparison_route"]
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     stand.calls()
     first = client.get(route)
     assert first.status_code == 200
@@ -89,7 +106,7 @@ def test_a_damaged_manifest_is_recomputed_once_and_healed(
 
     monkeypatch.setattr(GitDiffSource, "manifest", counted)
     _fresh(monkeypatch)
-    route = client.get("/api/plugin/github/pull").json()["comparison_route"]
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     first = client.get(route)
     assert first.status_code == 200
     assert client.get(route).json() == first.json()
@@ -114,13 +131,13 @@ def test_attributes_builds_and_slot_collisions_are_cache_misses(
     monkeypatch.setattr(GitDiffSource, "manifest", counted)
     _fresh(monkeypatch)
     monkeypatch.setattr(pull_manifest, "BUILD_TAG", "another-build")
-    route = client.get("/api/plugin/github/pull").json()["comparison_route"]
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     assert client.get(route).status_code == 200
     assert calls == 1
     (stand.published.git_dir / "info").mkdir(exist_ok=True)
     (stand.published.git_dir / "info" / "attributes").write_text("* binary\n")
     _fresh(monkeypatch)
-    new_route = client.get("/api/plugin/github/pull").json()["comparison_route"]
+    new_route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     changed = client.get(new_route)
     assert changed.status_code == 200 and new_route != route
     assert calls == 2
@@ -150,7 +167,7 @@ def test_a_disk_hit_cannot_answer_for_a_missing_commit(
 ) -> None:
     _stand, client = pinned_pull
     _fresh(monkeypatch)
-    envelope = client.get("/api/plugin/github/pull").json()
+    envelope = client.get("/api/plugin/github/pull?number=7").json()
     base = envelope["record"]["comparison"]["base"]
     refused = client.get(envelope["comparison_route"].replace(f"left={base}", f"left={'0' * 40}"))
     assert refused.status_code == 404
@@ -163,7 +180,7 @@ def test_admission_is_a_cache_bound_and_never_a_serving_bound(
 ) -> None:
     _stand, client = pinned_pull
     _fresh(monkeypatch)
-    route = client.get("/api/plugin/github/pull").json()["comparison_route"]
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     expected = client.get(route).json()
     _fresh(monkeypatch)
     monkeypatch.setattr(pull_manifest, "MAX_MANIFEST_RECORD_BYTES", 1)
@@ -207,6 +224,23 @@ def test_sha256_endpoints_round_trip_through_the_manifest_bank(
         assert (adopted.resolved.left.id, adopted.resolved.right.id) == (base, head)
 
     asyncio.run(run())
+
+
+def test_another_cached_pr_comparison_does_not_switch_the_served_pin(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    stand, client = pinned_pull
+    original = client.get("/api/plugin/github/pull?number=7").json()
+    stand.refresh(10)
+    other = client.get("/api/plugin/github/pull?number=10").json()
+    assert other["record"]["comparison"] is not None
+    assert other["pin"] == original["pin"]
+    stand.calls()
+    compared = client.get(other["comparison_route"])
+    assert compared.status_code == 200
+    assert compared.json()["resolved"]["right"]["id"] == other["record"]["comparison"]["head"]
+    assert client.get("/api/plugin/github/pull?number=7").json()["pin"] == original["pin"]
+    assert stand.calls() == [], "a cached comparison read fetched the network"
 
 
 @pytest.mark.parametrize(
@@ -314,7 +348,7 @@ def test_manifest_computation_cannot_relabel_itself_after_invalidation(
     record = stand.record(7)
     assert isinstance(record, PullRecord) and record.comparison is not None
     pair = (record.comparison.base, record.comparison.head)
-    route = client.get("/api/plugin/github/pull").json()["comparison_route"]
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     directory = stand.published.home / pull_manifest._directory(stand.published)
     slot = next(directory.glob("*.json"))
     original_epoch = json.loads(slot.read_bytes())["epoch"]
@@ -354,7 +388,7 @@ def test_unusable_epoch_bypasses_persistence_without_changing_private_paths(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch, damage: str
 ) -> None:
     stand, client = pinned_pull
-    route = client.get("/api/plugin/github/pull").json()["comparison_route"]
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     expected = client.get(route).json()
     directory = stand.published.home / pull_manifest._directory(stand.published)
     slot = next(directory.glob("*.json"))
@@ -416,7 +450,7 @@ def test_invalidation_preserves_other_slots_and_their_disk_hits(
             break
     else:
         raise AssertionError("could not separate the fixture comparison slots")
-    route = client.get("/api/plugin/github/pull").json()["comparison_route"]
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
     _fresh(monkeypatch)
     expected = client.get(route).json()
     asyncio.run(pull_manifest.prepare_pull_manifest(stand.published, other))

@@ -276,6 +276,8 @@ _SHELL_ROUTES = (
     ("/raw/README.md", 200),
     ("/commit/0123abc", 200),
     ("/pull/7", 200),
+    ("/pull/7/files/src/app.py", 200),
+    ("/pulls", 200),
 )
 
 _REPORT_LOADED_AFTER_REQUEST = textwrap.dedent(

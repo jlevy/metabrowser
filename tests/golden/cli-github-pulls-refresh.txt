@@ -1,0 +1,905 @@
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": null,
+  "reader": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "total": null,
+  "repository_total": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
+  "fetched": 0,
+  "complete": false,
+  "truncated": false,
+  "limit": 100,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+--- gh ---
+gh api repos/octo/demo --jq .size
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "open",
+    "fetched_at": null,
+    "reader": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "total": null,
+    "repository_total": null,
+    "count_at": null,
+    "catalog_fetched": 0,
+    "generation": null,
+    "fetched": 0,
+    "complete": false,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+after: /api/plugin/github/pulls?state=open&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 598,
+  "repository_total": 600,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 600,
+  "generation": "<CATALOG_EPOCH_1>:0",
+  "fetched": 598,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- body ---
+{"target": 500}
+--- gh ---
+gh auth status
+gh api graphql catalog state=open cursor=start
+gh api graphql catalog state=open cursor=open-100
+gh api graphql catalog state=open cursor=open-200
+gh api graphql catalog state=open cursor=open-300
+gh api graphql catalog state=open cursor=open-400
+gh api graphql catalog state=all cursor=start
+gh api graphql catalog state=all cursor=all-100
+gh api graphql catalog state=all cursor=all-200
+gh api graphql catalog state=all cursor=all-300
+gh api graphql catalog state=all cursor=all-400
+gh api graphql catalog state=all cursor=all-500
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=2'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=2
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 598,
+  "repository_total": 600,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 600,
+  "generation": "<CATALOG_EPOCH_1>:0",
+  "fetched": 598,
+  "complete": true,
+  "truncated": false,
+  "limit": 2,
+  "next_after": 605,
+  "rows": [
+    {
+      "number": 606,
+      "title": "Work item 606",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T12:10:06Z",
+      "updated_at": "2026-09-16T12:10:06Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-606",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "merged": false
+    },
+    {
+      "number": 605,
+      "title": "Work item 605",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T12:10:05Z",
+      "updated_at": "2026-09-16T12:10:05Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-605",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "merged": false
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=2&after=605'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=2&after=605
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 598,
+  "repository_total": 600,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 600,
+  "generation": "<CATALOG_EPOCH_1>:0",
+  "fetched": 598,
+  "complete": true,
+  "truncated": false,
+  "limit": 2,
+  "next_after": 603,
+  "rows": [
+    {
+      "number": 604,
+      "title": "Work item 604",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T12:10:04Z",
+      "updated_at": "2026-09-16T12:10:04Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-604",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "merged": false
+    },
+    {
+      "number": 603,
+      "title": "Work item 603",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T12:10:03Z",
+      "updated_at": "2026-09-16T12:10:03Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-603",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "merged": false
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=2&after=10'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=2&after=10
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 598,
+  "repository_total": 600,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 600,
+  "generation": "<CATALOG_EPOCH_1>:0",
+  "fetched": 598,
+  "complete": true,
+  "truncated": false,
+  "limit": 2,
+  "next_after": null,
+  "rows": [
+    {
+      "number": 7,
+      "title": "Count to two in the app",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "forker",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "count-to-two",
+      "head_repository": "forker/demo",
+      "labels": [
+        "enhancement"
+      ],
+      "merged": false
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pulls": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "open",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "fresh_for_s": 60.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "total": 598,
+    "repository_total": 600,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 600,
+    "generation": "<CATALOG_EPOCH_1>:0",
+    "fetched": 598,
+    "complete": true,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+--- stderr ---
+--- body ---
+{"target": 1000}
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 598,
+  "repository_total": 600,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 600,
+  "generation": "<CATALOG_EPOCH_1>:0",
+  "fetched": 598,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=closed'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?state=closed
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "closed",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 2,
+  "repository_total": 600,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 600,
+  "generation": "<CATALOG_EPOCH_1>:1",
+  "fetched": 2,
+  "complete": true,
+  "truncated": false,
+  "limit": 100,
+  "next_after": null,
+  "rows": [
+    {
+      "number": 9,
+      "title": "spam",
+      "state": "closed",
+      "draft": false,
+      "merged_at": null,
+      "author": null,
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "closed_at": "2026-09-16T19:00:00Z",
+      "base_ref": "topic",
+      "head_ref": "spam",
+      "head_repository": null,
+      "labels": [
+        "invalid"
+      ],
+      "merged": false
+    },
+    {
+      "number": 8,
+      "title": "Say more in the guide",
+      "state": "closed",
+      "draft": false,
+      "merged_at": "2026-09-16T18:00:00Z",
+      "author": "maintainer",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "closed_at": "2026-09-16T18:00:00Z",
+      "base_ref": "topic",
+      "head_ref": "guide-more",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "merged": true
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=all&limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?state=all&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "all",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 600,
+  "repository_total": 600,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 600,
+  "generation": "<CATALOG_EPOCH_1>:0",
+  "fetched": 600,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+## The clock moves on 61 s, to 2026-09-17T12:01:01Z.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "stale",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "open",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "total": 598,
+    "repository_total": 600,
+    "count_at": "2026-09-17T12:00:00Z",
+    "catalog_fetched": 600,
+    "generation": "<CATALOG_EPOCH_1>:0",
+    "fetched": 598,
+    "complete": true,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+after: /api/plugin/github/pulls?state=open&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:01:01Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:01:01Z"
+  },
+  "total": 599,
+  "repository_total": 601,
+  "count_at": "2026-09-17T12:01:01Z",
+  "catalog_fetched": 601,
+  "generation": "<CATALOG_EPOCH_1>:1",
+  "fetched": 599,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+gh auth status
+gh api graphql catalog state=updated cursor=start
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=2'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=2
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:01:01Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:01:01Z"
+  },
+  "total": 599,
+  "repository_total": 601,
+  "count_at": "2026-09-17T12:01:01Z",
+  "catalog_fetched": 601,
+  "generation": "<CATALOG_EPOCH_1>:1",
+  "fetched": 599,
+  "complete": true,
+  "truncated": false,
+  "limit": 2,
+  "next_after": 606,
+  "rows": [
+    {
+      "number": 607,
+      "title": "Work item 607",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "author_avatar_url": null,
+      "created_at": "2026-09-17T12:01:01Z",
+      "updated_at": "2026-09-17T12:01:01Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-607",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "merged": false
+    },
+    {
+      "number": 606,
+      "title": "Work item 606",
+      "state": "open",
+      "draft": false,
+      "merged_at": null,
+      "author": "contributor",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T12:10:06Z",
+      "updated_at": "2026-09-16T12:10:06Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "work-606",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "merged": false
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?after=11&limit=1'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?after=11&limit=1
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:01:01Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:01:01Z"
+  },
+  "total": 599,
+  "repository_total": 601,
+  "count_at": "2026-09-17T12:01:01Z",
+  "catalog_fetched": 601,
+  "generation": "<CATALOG_EPOCH_1>:1",
+  "fetched": 599,
+  "complete": true,
+  "truncated": false,
+  "limit": 1,
+  "next_after": 10,
+  "rows": [
+    {
+      "number": 10,
+      "title": "Retitled after catalog backfill",
+      "state": "open",
+      "draft": true,
+      "merged_at": null,
+      "author": "maintainer",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-17T12:01:01Z",
+      "closed_at": null,
+      "base_ref": "topic",
+      "head_ref": "wip",
+      "head_repository": "octo/demo",
+      "labels": [],
+      "merged": false
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "open",
+    "fetched_at": "2026-09-17T12:01:01Z",
+    "reader": "gh:octo-reader",
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:01:01Z"
+    },
+    "total": 599,
+    "repository_total": 601,
+    "count_at": "2026-09-17T12:01:01Z",
+    "catalog_fetched": 601,
+    "generation": "<CATALOG_EPOCH_1>:1",
+    "fetched": 599,
+    "complete": true,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+after: /api/plugin/github/pulls?state=open&limit=0
+status: 200
+{
+  "state": "stale",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:01:01Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "network_error",
+    "message": "gh could not reach api.github.com",
+    "reset_at": null,
+    "at": "2026-09-17T12:01:01Z"
+  },
+  "total": 599,
+  "repository_total": 601,
+  "count_at": "2026-09-17T12:01:01Z",
+  "catalog_fetched": 601,
+  "generation": "<CATALOG_EPOCH_1>:1",
+  "fetched": 599,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with network_error
+--- body ---
+{"retry": true}
+--- gh ---
+gh auth status
+gh api graphql catalog state=open cursor=start
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=0
+status: 200
+{
+  "state": "stale",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:01:01Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "network_error",
+    "message": "gh could not reach api.github.com",
+    "reset_at": null,
+    "at": "2026-09-17T12:01:01Z"
+  },
+  "total": 599,
+  "repository_total": 601,
+  "count_at": "2026-09-17T12:01:01Z",
+  "catalog_fetched": 601,
+  "generation": "<CATALOG_EPOCH_1>:1",
+  "fetched": 599,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "stale",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "open",
+    "fetched_at": "2026-09-17T12:01:01Z",
+    "reader": "gh:octo-reader",
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "network_error",
+      "message": "gh could not reach api.github.com",
+      "reset_at": null,
+      "at": "2026-09-17T12:01:01Z"
+    },
+    "total": 599,
+    "repository_total": 601,
+    "count_at": "2026-09-17T12:01:01Z",
+    "catalog_fetched": 601,
+    "generation": "<CATALOG_EPOCH_1>:1",
+    "fetched": 599,
+    "complete": true,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+after: /api/plugin/github/pulls?state=open&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:01:01Z",
+  "reader": "gh:someone-else",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:01:01Z"
+  },
+  "total": 98,
+  "repository_total": 100,
+  "count_at": "2026-09-17T12:01:01Z",
+  "catalog_fetched": 100,
+  "generation": "<CATALOG_EPOCH_2>:0",
+  "fetched": 98,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- body ---
+{"retry": true}
+--- gh ---
+gh auth status
+gh api graphql catalog state=open cursor=start
+gh api graphql catalog state=all cursor=start
+# metab root --api /api/cache/source/github-com--octo--demo--46386669dc01
+exit: 0
+--- stdout ---
+api: /api/cache/source/github-com--octo--demo--46386669dc01
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "source": {
+    "slug": "github-com--octo--demo--46386669dc01",
+    "publication": "published",
+    "identity": {
+      "id": "sha256:46386669dc018f7570de90cce6b7e97fcdcf2d10c5a4949e668d38336b0fb12e",
+      "display_url": "https://github.com/octo/demo",
+      "clone_url": "https://github.com/octo/demo",
+      "transport": "https",
+      "created_at": "2026-09-17T12:00:00Z"
+    },
+    "alias": {
+      "store_id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
+      "generation": 1,
+      "updated_at": "2026-09-17T12:00:00Z"
+    },
+    "state": {
+      "last_opened_at": "2026-09-17T12:00:00Z"
+    },
+    "problems": [],
+    "store": {
+      "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
+      "publication": "published",
+      "mode": "full",
+      "lender": null,
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/topic",
+        "default_revision": "c691256511d05858850bc7684ae062fea0d41132",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        }
+      },
+      "problems": []
+    }
+  }
+}
+--- stderr ---
+--- gh ---

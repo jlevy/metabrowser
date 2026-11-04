@@ -171,7 +171,9 @@ def _command_exercises(command: str, surface: str, cli: str) -> bool:
             return True
         if surface == "/api/plugin/diff/comparison" and _route_token_matches(show_value, "/commit"):
             return True
-        if surface in {"/view", "/commit", "/pull"} and _route_token_matches(show_value, surface):
+        if surface in {"/view", "/commit", "/pull", "/pulls"} and _route_token_matches(
+            show_value, surface
+        ):
             return True
     for mode, surfaces in _INDIRECT_MODES.items():
         if mode in parts and mode in cli and surface in surfaces:

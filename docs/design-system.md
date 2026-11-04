@@ -120,17 +120,19 @@ OKLCH structure, semantic ordering, and dark-theme surface contrast.
 
 ### Age
 
-An age is an age, wherever it appears — a file row, a commit row, a commit’s header.
-One primitive produces all of them: `MetabrowserFormatters.age()` returns the
-abbreviation (`<1m`, `5m`, `2h`, `3d`, `2w`) and the freshness class (`.age-live` …
-`.age-old`), and the `:is(...)` rule over those classes owns the hue, the weight, the
-small size, and tabular numerals.
-Call sites add positioning only, never color, weight, or their own abbreviations — the
-same discipline `.size` follows for byte counts.
-A plugin reaches it as `metabrowser.formatAge`, and puts the exact time in the age’s
-`data-tip-text`. A status sentence such as “Fetched 2 min ago by a reader” is the one
-exception: it states how long ago in words, because it is a sentence rather than a
-label. Any other exception needs a line in this document; otherwise there is one age.
+One primitive produces every age: `MetabrowserFormatters.age()` returns a label and
+freshness class (`.age-live` … `.age-old`), and the shared class rule owns its hue,
+weight, small size, and tabular numerals.
+Dense navigation uses the compact style (`<1m`, `5m`, `2h`, `3d`, `2w`). Full metadata
+and conversation cards use the relative style: `2h ago`, `just now`, or `in 2h` for a
+future timestamp. Unknown times have no age label.
+The Pulls sidebar, file tree and compact Git history remain condensed navigation; PR
+headers, comments, reviews, full commit summaries and folder headers use relative ages.
+Call sites choose the presentation style and positioning, never their own suffix,
+abbreviation, color, or weight.
+A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
+in `data-tip-text`. Freshness sentences such as “Fetched 2 min ago by a reader” retain
+their sentence formatter.
 
 ## Typography
 
@@ -272,7 +274,7 @@ Chrome (interface) sizes:
   headers, stat labels.
   Labels differ by caps treatment, not by another size.
 - `--mono-block-font-size` (= ui-small): monospaced blocks in chrome contexts — source
-  views, logs, raw JSON.
+  views, split and unified diffs, review hunks, logs, raw JSON.
 - `--micro-font-size` (10px): deliberately minimized marks — the brand line.
 - `--page-title-font-size` (24px): the title of a page no file stands behind, a pull
   request’s. It sits above the 25.5px regular first heading of the text below by its
@@ -287,7 +289,11 @@ Document (rendered prose) sizes are a single token:
 Everything else inside a rendered document — secondary text, table cells, captions,
 footnotes, and code at every tier — belongs to KPress’s ramp, which it derives from this
 one value through `--kpress-host-font-size-base` on `:root`. Chrome-context monospace is
-a separate concern and uses `--mono-block-font-size`.
+a separate concern and uses `--mono-block-font-size`. Diff row reservation uses the same
+token and line-height as the rendered rows, so deferred mounting reserves the height the
+code actually occupies.
+Browser zoom scales the whole interface; changing the browser’s root font preference
+does not selectively enlarge diff code.
 
 Do not add a host token that restates a ratio KPress already owns.
 KPress ships *graded families* — secondary text at `small`/`smaller`/`tiny` and code at
@@ -429,6 +435,7 @@ Every button belongs to one role-specific primitive:
 | Menu row or segmented menu choice | `.menu-item` or `.menu-seg` |
 | Tab | `.tab-btn` |
 | Collapsible section title | `.section-disclosure-trigger` |
+| Action among links: a text action, below | The context’s text-action class, on `<a>` and `<button>` alike |
 
 These primitives share the type scale, radii, semantic colors, focus treatment, and
 motion tokens, while their shapes communicate different interaction roles.
@@ -437,6 +444,37 @@ primitive class in the markup and must not recreate the primitive’s border, fi
 typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
+
+A **text action** is an action that sits among links in a line of chrome, with no border
+or fill, because a bordered button would read as a different thing from the link beside
+it. It is a link when the page already has the address, and a real `<button>` when
+following it first switches the served pin, so that a new tab or a copied address never
+opens something a click would not.
+Both forms look the same in their context, a tooltip and accessible name say which
+commit opens and whether the pin switches, and keyboard and screen-reader users still
+get the element they expect.
+The diff file bar’s [View file](#diff-file-bar), and
+[Browse code and a review comment’s file](#chrome) on a pull request’s page, are text
+actions. Each context sets one look for the `<a>` and the `<button>`, box included: a
+`<button>` is always an atomic inline box, so where a label can wrap, the `<a>` is one
+too, and what follows a wrapped label starts on the next line in both forms.
+
+### External GitHub Links
+
+External GitHub destinations share a small inline icon beside the link label.
+General GitHub, CLI, documentation, gist and API links use the GitHub mark.
+Canonical issue and pull-request addresses use a neutral entity icon when their state is
+unknown. Matching PR metadata supplies the existing open, closed, draft or merged icon;
+the address alone never establishes a state.
+Icons preserve the link’s text, wrapping, focus and safe external-navigation attributes.
+
+Use the shared `decorateExternalLink` view helper after source-link localization and
+sanitization. A link localized to a served file stays internal.
+The decorator adds no metadata request, remote image or SVG fetch, observer, or
+document-wide scan. It uses the existing on-demand SDK view bundle and app-owned icon
+markup; document sanitization keeps its allowlist.
+Rendered Markdown retains its existing enhancement budget; links beyond the admitted
+prefix keep their authored form.
 
 ### Choosing Among Values
 
@@ -566,6 +604,7 @@ unsettled rather than consistently offset.
 | File tree row, in Files and Recent | Name, age, size, and a container child’s change letter | Icon, chevron, activity spinner, loading skeletons |
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | File and folder header | Path, file size, and folder summary | Parent button, badges, copy and print buttons, a summary still loading |
+| Pull request row, in [the Pulls tab](#the-pulls-tab) | Title and age | State icon |
 | Diff file bar | Change letter, path, change stats, and notes | Chevron, View file controls, copy button |
 
 The row keeps `align-items: center`, and each text child opts in with
@@ -836,8 +875,9 @@ the renderer, root, child, styling, and documentation contract.
 ### Branch Chips
 
 Git ref badges (`.git-ref`) are their own vocabulary, not filter chips.
-In the dense Git history row they use `--micro-font-size`; in the commit-summary
-component and a pull request’s header they use `--body-font-size` with the same form.
+In dense Git history they use `--micro-font-size`; full commit summaries, PR headers and
+list metadata use `--ui-small-font-size`, smaller than the actor beside them.
+All share the same chip form and semantic ref colors.
 The name carries the meaning, so it is always `--weight-bold`, and the corner is
 `--radius-tag` (square-ish) so “a ref” and a “filter” never read as the same control.
 
@@ -859,6 +899,36 @@ separate from them. The three ref colors — `--git-ref-local`, `--git-ref-remot
 `--git-ref-tag` — are one lightness and three hues, so a ref’s kind is legible without a
 second signal, and the dark theme raises only their lightness so they stay the same
 three colors.
+
+Copyable branch chips reserve a tiny copy control beside the label, revealed on hover or
+keyboard focus. The control copies the complete underlying branch or ref, regardless of
+label truncation or a displayed fork owner, and reports the normal copy feedback.
+Its click does not select a different row or follow its link.
+An outside pointer interaction hides active copy controls and restores the primary row’s
+focus before a pane drag can clip its focused button.
+Place copy controls beside a primary link or button rather than nesting interactive
+controls. Keep local, remote, tag, trunk and HEAD semantics when rendering a chip.
+
+### File Change Status
+
+File-summary letters share one muted semantic palette across Git history, commit
+summaries, diff headers and PR changed-file trees.
+The letter and accessible status name carry the meaning even without color.
+
+| Change | Letter | Color |
+| --- | --- | --- |
+| Added or copied | A, C | Green |
+| Deleted | D | Red |
+| Modified or type changed | M, T | Dark yellow / ochre |
+| Renamed | R | Blue |
+| Unmerged | U | Red |
+| Unchanged, untracked or unknown | Status label or ? | Neutral |
+
+These are application conventions, consistent with the
+[Primer semantic color roles](https://primer.style/product/getting-started/foundations/color-usage/),
+not a universal Git color standard.
+Theme tokens keep letters legible on normal, hovered and selected surfaces.
+They do not change addition/deletion counts or patch-line backgrounds.
 
 ## Diffs
 
@@ -893,9 +963,8 @@ the file at a side of the change: **View file**, and **View at parent** or **Vie
 base** where the old side exists.
 They stay visible rather than revealing on hover, because they are how a reader leaves
 the diff for the file.
-An action is a link when the page already has the file’s address and a button when
-following it first switches the served pin; both look the same, and the tooltip says
-which commit opens and whether the pin switches.
+They are [text actions](#control-families), so each is a link or a button by whether it
+first switches the served pin, and looks the same either way.
 A collapsed section keeps the section’s own border as its single line.
 
 ### Diff Change Surfaces
@@ -963,12 +1032,26 @@ tests named beside each primitive.
 
 ### Layout
 
-The page is a header, a [tab bar](#the-tab-bar), and a body, in that order.
+The page is a header, optional native stack navigation, a [tab bar](#the-tab-bar), and a
+body, in that order.
 The header and the conversation share a **reading column**: `--doc-measure` plus two
 card insets, centered in a wider pane as a Markdown file’s card and Overview’s stack
 are. So a card’s text box is the one a file’s text has, and the title lines up with the
-cards under it. The tab bar and Files changed are as wide as the pane: a diff is not
-prose, and Split needs the room.
+cards under it. The Conversation and Files changed tabs follow that same column, so the
+first tab aligns with the content on both narrow and wide screens.
+The Files changed body keeps the full pane: a diff needs room for Split.
+A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
+reading column even when Files changed is selected.
+Its reveal wrapper and skeleton are separate nodes, so the shared loading delay does not
+replace the pulse or reduced-motion rule.
+A cached page stays readable during refresh.
+
+Native stack navigation uses the repository snapshot’s verified membership and order.
+The quiet Stack #N disclosure, position, and Previous PR / Next PR links share the
+reading column. The disclosure creates its ordered member links when opened.
+A member selection preserves Conversation or Files changed and clears the previous file
+selection. Unknown membership and unavailable optional tooling add no placeholder or
+setup notice; known cached membership remains visible during refresh or failure.
 
 ### Text
 
@@ -997,19 +1080,130 @@ Until its render arrives a text shows as plain text in the same face and size.
 
 | Element | Primitive | Why |
 | --- | --- | --- |
-| Title | `--page-title-font-size`, `--weight-bold`, sans | The number beside it is muted and regular |
+| Title | `--page-title-font-size`, `--weight-bold`, sans | The number beside it uses normal text ink and regular weight at the same size |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome |
-| Base and head branch | `.git-ref.git-ref-remote`, at this line’s size | A branch is a ref, so it takes the [ref chip](#branch-chips) and is sans, not `<code>` |
+| Username | `.github-pull-author`, bold and muted at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
+| Base and head branch | `.git-ref.git-ref-remote`, at `--ui-small-font-size` | The [ref chip](#branch-chips), smaller than the actor and action; the list uses the same remote-ref ink |
 | Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
-| Opened, updated, commented | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age). “Fetched 2 min ago” is a status sentence |
+| Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
 | Link | `--link`, underline on hover, the focus ring | As the freshness row’s link is |
+| Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
 | Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Files changed cannot be drawn; no severity for the offer of newer changes, which carries its own control |
 | A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |
 | A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
 | Empty state | `--muted`, sentence with a period |  |
 | Refresh, Fetch, Switch to the head | `.btn` |  |
+
+Author avatars are decorative circles beside the visible username, with fixed dimensions
+so image arrival or failure does not move the text.
+Images load lazily, asynchronously, and at low priority; only mounted catalog rows can
+create images. Missing or unsupported image URLs leave the username readable.
+Use the avatar of the named actor: a merged header naming the merger shows the merger’s
+image, while the description shows its author’s image.
+Only normalized HTTPS URLs on `avatars.githubusercontent.com` are accepted, checked
+again before assigning the browser image source.
+Anonymous CORS and a no-referrer policy omit credentials and the local page URL. The
+browser’s HTTP cache owns image bytes; PR metadata caches retain only URLs.
+Document image sanitization remains independent; see [Content Trust](../SECURITY.md).
+
+## The Pulls Tab
+
+The list beside Files and Git, on a GitHub repository, shows every pull request newest
+first. Like the page it opens, it has almost no vocabulary of its own.
+`test_the_pulls_tab_carries_the_shells_primitives` holds what follows.
+
+A pull request’s row is a container: its chevron opens a changed-files tree under the
+row, connected by `aria-owns`. Clicking the row opens the page and toggles the tree;
+Right expands or enters it, and Left collapses it.
+The shown page’s row opens automatically and closes when the page moves, unless a reader
+opened it.
+
+The metadata line gives the PR number normal row size and text ink.
+The username is the same size, bold and muted; the branch names are smaller in the
+shared remote-ref color.
+Known native stack numbers use quiet text on that line.
+Their shared repository snapshot is indexed once by PR number; rows make no stack
+requests, and enrichment updates retain the row and any focused changed-file tree.
+
+Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
+A one-letter change badge replaces the file icon.
+A folder chain is one row.
+Up, Down, J, and K move through the visible rows, with one Tab anchor per file tree.
+A file step calls the diff’s public jump API; a held key replaces the address once it
+stops, while Enter and a click push it.
+A hand-scrolled diff reports its current file through the same public page handle, so
+the tree follows without moving the address.
+Only the active PR’s file carries the page-selection mark.
+Leaving a PR clears that mark while preserving its reader-expanded tree and roving
+keyboard anchor. Repeated notices for the same page retain the observed diff file;
+explicit file addresses remain selected while their jump is temporarily unavailable.
+
+The tree draws a viewport window, keeping its focused anchor mounted.
+Counts name the files fetched and say when the list is partial or capped; the rows do
+not depend on hydrated diff documents.
+The measured expansion and overscan choices are beside `AUTO_EXPAND_FILES` and
+`FILE_ROWS_OVERSCAN` in the GitHub plugin.
+
+### A Pull Request’s State
+
+Four states, each with the shape GitHub gives it and a color token in GitHub’s hue:
+
+| State | Glyph | Token | Hue |
+| --- | --- | --- | --- |
+| Open | Lucide `git-pull-request` | `--github-pull-open` | Green |
+| Draft | Lucide `git-pull-request-draft` | `--github-pull-draft` | Gray |
+| Merged | Lucide `git-merge` | `--github-pull-merged` | Purple |
+| Closed | Lucide `git-pull-request-closed` | `--github-pull-closed` | Red |
+
+The tokens are the plugin’s, in its stylesheet, as a domain’s tokens are, and each is
+one color seen against two backgrounds: the hue is GitHub’s and the same in both themes.
+Color is never the only signal: the shapes differ, the icon’s accessible name and
+tooltip say the state in the page header’s words, and the page’s state badge is the same
+icon beside its word.
+Everything goes through `pullStateIcon` and `displayState` in
+`builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree.
+`test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` holds the hue and a
+4.5:1 contrast on both grounds, because a badge sets its word in that color.
+
+### Rows
+
+| Part | Primitive | Why |
+| --- | --- | --- |
+| Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
+| Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current | [One Row Contract](#one-chevron-one-row-contract) |
+| State icon | The 16px alignment box around `--icon-glyph` | [One Glyph Size](#one-glyph-size) |
+| Title | `--nav-font-size`, full contrast, cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity |
+| Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
+| PR number and username | `--nav-font-size`; number uses text ink, username uses `.github-pull-author` | Both are readable context; usernames stay bold and muted across PR surfaces |
+| Base and head | `--ui-small-font-size`, remote-ref ink | Ref context is smaller than the number and username |
+| Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | [Choosing Among Values](#choosing-among-values) |
+| Count and freshness | Bold numeric total with “PRs on owner/repo”; a separate “Showing last 500” line when the display is partial, followed by muted freshness | A status sentence is the [Age](#age) exception |
+| A refresh’s failure, cut rows | [`.notice`](#notices), `warning`, with **Retry** in it when a reader can act | A cached list still shows under it |
+| No rows yet | The `.recent-loading` shape under `.mb-delayed-loading` | [Loading States Are Shapes](#loading-states-are-shapes-not-sentences) |
+| Fetch more, Retry | `.btn` | [Control Families](#control-families) |
+
+A row is two lines and one target, because a pane is narrower than its parts: the state
+icon and the title with the age beside it, sharing a baseline, then the metadata line
+under them. It is one link, so a new tab and a copied address are the browser’s own, and
+all of its text is text: GitHub’s users write it, and none of it reaches markup or a
+style.
+
+### Keys
+
+The rows are a [Navigational Row Collection](#navigational-row-collections), with this
+one difference from what the file tree does.
+Moving is immediate and opening waits for a key to stop, because a pull request’s page
+can cost a fetch where a file cannot: each move changes two rows, a press opens at once,
+and a key held down opens only the row it stops on.
+History follows the rule all three collections share: a key’s open replaces the entry,
+as the file tree’s arrow keys and Git’s K and J do.
+A click, Enter, or Space on a row that is not the one open pushes one, as a click in the
+file tree does; what each collection does with a click and Enter is in
+[Navigational Row Collections](#navigational-row-collections).
+Help reads the `pull-requests` group of the shortcut registry, and no surface here names
+a key.
 
 ## Keyboard Commands and Help
 
@@ -1050,6 +1244,23 @@ Movement clamps at the first and last row, prevents page scrolling, and does not
 the row at a clamped edge.
 Activation updates the roving anchor without stealing focus.
 Enter, Space, and pointer activation retain the control’s ordinary behavior.
+A key’s move replaces the history entry in all three collections, so a skim through the
+file tree, Git history, or the Pulls tab leaves its rows with one Back however many rows
+it passed. The collections differ in the rest:
+
+- **A pointer click** pushes an entry in the file tree, and in the Pulls tab for a row
+  that is not the one open.
+  In Git it replaces the entry, as every selection there does that does not come from
+  the address: a commit is a selection that holds the address while it is shown
+  (`static/git-panel.js`, `selectCommit`).
+- **Enter and Space** open only in the Pulls tab, and push an entry only for a row that
+  is not the one open.
+  On a file tree row they are action keys, which toggle a folder or a container file or
+  show the next page, and leave history alone.
+  On a commit they select it again, replacing the entry.
+
+The file tree and Git do here what they did in `v0.11.0`, so a change that makes one
+conform to another changes a plain folder’s Back.
 
 Interaction work is proportional to the change, not the collection size.
 Moving or selecting mutates only the prior and next anchor or selected row; a mounted
@@ -1064,11 +1275,11 @@ acknowledgement.
 
 The component owns this focused behavior; it is not a document-level application
 shortcut. The maintained registry in
-`test_nav_like_row_sets_share_the_vertical_keyboard_contract` covers the file tree and
-Git history. The adjacent `test_git_row_selection_avoids_full_collection_mutation` pins
-Git’s interaction cost.
-Register every new navigational row collection in the shared check so its Tab order and
-vertical navigation cannot silently fork this contract.
+`test_nav_like_row_sets_share_the_vertical_keyboard_contract` covers the file tree, Git
+history, pull-request rows, and their changed-file trees.
+The adjacent `test_git_row_selection_avoids_full_collection_mutation` pins Git’s
+interaction cost. Register every new navigational row collection in the shared check so
+its Tab order and vertical navigation cannot silently fork this contract.
 
 ### Descriptor Contract
 
@@ -1139,6 +1350,10 @@ prerequisite for opening it.
 
 Icons come from one Lucide-derived set in `static/icons.js`, rendered as inline SVG that
 inherits `currentColor`. An icon never carries its own color.
+A plugin’s own domain marks, which no other surface draws, are Lucide-derived the same
+way and live with the plugin’s code, so a page that never shows them does not load them:
+the GitHub plugin’s four pull-request states are in
+`builtin_plugins/github/pull-state.js`.
 
 ### One Glyph Size
 

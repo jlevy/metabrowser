@@ -1,4 +1,4 @@
-"""The served pull request's page: its route, its shell, and what its paint may parse.
+"""A pull request's page: its route, its shell, and what its paint may parse.
 
 The page's decisions run browserless in ``tests/dom/github-pull-page-session.js``. What is
 left to the browser is the shell's route glue and the page's paint; this file pins what
@@ -31,31 +31,60 @@ STYLES_CSS = PAGE_JS.parent / "styles.css"
 @pytest.mark.parametrize(
     ("raw", "decoded"),
     [
-        (b"/pull/7", (7, "")),
-        (b"/pull/7/", (7, "")),
-        (b"/pull/7/files", (7, "files")),
-        (b"/pull/7/files/", (7, "files")),
-        (b"/pull/9999999999", (9999999999, "")),
+        (b"/pull/7", (7, "", "")),
+        (b"/pull/7/", (7, "", "")),
+        (b"/pull/7/files", (7, "files", "")),
+        (b"/pull/7/files/", (7, "files", "")),
+        (b"/pull/9999999999", (9999999999, "", "")),
+        # One changed file: a path in the comparison, decoded one segment at a time.
+        (b"/pull/7/files/x", (7, "files", "x")),
+        (b"/pull/7/files/src/app.py", (7, "files", "src/app.py")),
+        (b"/pull/7/files/docs/a%20b/%E9%9B%AA.md", (7, "files", "docs/a b/雪.md")),
+        (b"/pull/7/files/a%25b", (7, "files", "a%b")),
+        (b"/pull/7/files/.github/workflows/ci.yml", (7, "files", ".github/workflows/ci.yml")),
         (b"/pull/0", None),
         (b"/pull/07", None),
         (b"/pull/7/commits", None),
-        (b"/pull/7/files/x", None),
+        (b"/pull/7/commits/x", None),
+        (b"/pull/7/x", None),
         (b"/pull/7//", None),
         (b"/pull/%37", None),
         (b"/pull/", None),
         (b"/pulls/7", None),
+        # A file has no trailing slash, and its path is normalized: nothing that is not one.
+        (b"/pull/7/files/src/", None),
+        (b"/pull/7/files//x", None),
+        (b"/pull/7/files/../x", None),
+        (b"/pull/7/files/%2E%2E/x", None),
+        (b"/pull/7/files/a/./b", None),
+        (b"/pull/7/files/a%2Fb", None),
+        (b"/pull/7/files/a%5Cb", None),
+        (b"/pull/7/files/a%00b", None),
+        (b"/pull/7/files/a%ZZ", None),
+        (b"/pull/7/files/%FF", None),
+        (b"/pull/7/%66iles/x", None),
     ],
 )
-def test_the_pull_route_grammar(raw: bytes, decoded: tuple[int, str] | None) -> None:
+def test_the_pull_route_grammar(raw: bytes, decoded: tuple[int, str, str] | None) -> None:
     assert decode_safe_pull_route(raw) == decoded
     if decoded is not None:
         assert decode_safe_pull_route(format_pull_href(*decoded).encode()) == decoded
 
 
 def test_format_pull_href_refuses_what_the_route_does_not_parse() -> None:
-    for number, tab in ((0, ""), (7, "commits"), (10**10, "")):
+    for number, tab, file in (
+        (0, "", ""),
+        (7, "commits", ""),
+        (10**10, "", ""),
+        (7, "", "src/app.py"),
+        (7, "files", "src/"),
+        (7, "files", "../x"),
+        (7, "files", "a\\b"),
+        (7, "files", "a\0b"),
+        (7, "files", "\ud800"),
+    ):
         with pytest.raises(ValueError, match="pull route"):
-            format_pull_href(number, tab)
+            format_pull_href(number, tab, file)
 
 
 def test_the_pull_route_serves_the_shell_and_the_plugin_for_its_kind() -> None:
@@ -63,10 +92,19 @@ def test_the_pull_route_serves_the_shell_and_the_plugin_for_its_kind() -> None:
         shell = client.get("/pull/7/files")
         assert shell.status_code == 200
         assert 'id="preview-pane"' in shell.text
+        preview = shell.text.split('id="preview-pane"', 1)[1].split("</main>", 1)[0]
+        assert 'aria-label="Loading pull request"' in preview
+        assert 'class="recent-loading"' in preview
+        assert 'class="spinner"' not in preview
+        ordinary = client.get("/view/").text.split('id="preview-pane"', 1)[1]
+        assert 'class="spinner"' in ordinary.split("</main>", 1)[0]
+
         # The shell loads a plugin's assets by the kinds its views consume.
         config = re.search(r"configureAssets\((\{.*?\})\);", shell.text)
         assert config is not None and '"pull-request": [{"name": "github"' in config.group(1)
-        for refused in ("/pull/0", "/pull/7/commits"):
+        # One changed file's address is the same page, and its path is never looked up.
+        assert client.get("/pull/7/files/no/such/file.py").status_code == 200
+        for refused in ("/pull/0", "/pull/7/commits", "/pull/7/files/src/", "/pull/7/files/%2E%2E"):
             answer = client.get(refused)
             assert (answer.status_code, answer.text) == (400, "Invalid pull-request route.")
 
@@ -144,7 +182,7 @@ def test_a_readers_place_is_kept_in_the_entry_and_disposed_with_the_page() -> No
 
     source = PAGE_JS.read_text(encoding="utf-8")
     glue = source[source.index("function keepPlace(") :]
-    assert 'pane.addEventListener("click", keeper.flush, { capture: true, signal });' in glue
+    assert 'document.addEventListener("click", keeper.flush, { capture: true, signal });' in glue
     assert 'for (const type of ["wheel", "touchstart", "pointerdown"]) {' in glue
     # Only a key that can move the pane, which the session lists.
     listener = glue[glue.index('window.addEventListener(\n    "keydown",') :]
@@ -181,7 +219,10 @@ def test_a_hunk_is_painted_as_text_in_a_native_disclosure() -> None:
     # The browser opens it. The page listens to that event in one place, the function the
     # session drives, and remembers nothing: a repaint replaces the disclosure.
     assert 'h("details", { class: "github-pull-hunk-earlier" }' in source
-    assert source.count('"toggle"') == 1
+    assert (
+        source.split("export function tintOnFirstOpen(", 1)[1].split("\n}", 1)[0].count('"toggle"')
+        == 1
+    )
     assert "tintOnFirstOpen(disclosure, plain, earlier, hunkLines);" in source
 
 
@@ -228,8 +269,17 @@ def test_a_later_margin_is_the_one_read() -> None:
 
 
 def test_nothing_in_the_pages_stylesheet_can_reach_another_page() -> None:
+    rules = _style_rules()
+    # A state's color tokens, in the two blocks a theme's tokens are declared in. Each names
+    # only those, so it styles nothing itself.
+    themes = (":root", '[data-theme="dark"]')
+    for theme in themes:
+        for declaration in rules[theme].split(";"):
+            assert declaration.strip() == "" or declaration.strip().startswith("--github-pull-")
     assert [
-        selector for selector in _style_rules() if not selector.startswith(".github-pull")
+        selector
+        for selector in rules
+        if not selector.startswith(".github-pull") and selector not in themes
     ] == []
 
 
@@ -242,9 +292,10 @@ def test_a_text_is_set_in_a_kpress_article_the_page_makes() -> None:
     """
 
     source = PAGE_JS.read_text(encoding="utf-8")
-    assert (
-        'h("article", { class: "kpress kpress-inert" }, [inert.kpressProse(nodes, document)])'
-        in (" ".join(source.split()).replace("[ ", "[").replace(" ]", "]"))
+    assert re.search(
+        r'h\("article", \{ class: "kpress kpress-inert" \}, \[\s*'
+        r"inert\.kpressProse\(nodes, document\),?\s*\]\)",
+        source,
     )
     assert '{ class: "metabrowser-kpress-host" }' in source
     # Nothing but the card's own edges is left to this stylesheet.

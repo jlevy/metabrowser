@@ -147,6 +147,10 @@
   /** @type {number | null} */
   let pendingPreviewClaim = null;
   let started = false;
+  let viewHelpersReady = false;
+  let viewHelpersFailed = false;
+  /** @type {Promise<boolean> | null} */
+  let viewHelpersPending = null;
   let refreshing = false;
   let recoveringSession = false;
   /** @type {{start: number, end: number} | null} */
@@ -239,7 +243,7 @@
         return (
           `<span class="git-commit-file-status ${className}"` +
           ` aria-label="${escapeHtml(String(count))} ${label} ${fileLabel}">` +
-          `${escapeHtml(String(count))} ${code}</span>`
+          `${escapeHtml(String(count))} <span class="file-change-status" data-file-status="${label}">${code}</span></span>`
         );
       })
       .join("");
@@ -304,12 +308,12 @@
     }
     html += "</span>";
     if (commit.refs?.length) {
-      html += `<span class="git-commit-refs">${renderRefBadges(commit.refs)}</span>`;
+      html += `<span class="git-commit-refs">${renderRefBadges(commit.refs, compact ? false : "inline")}</span>`;
     }
     html += "</span>";
     html += `<span class="git-commit-author">${escapeHtml(commit.author?.name || "")}</span>`;
     html += `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}">`;
-    html += `${escapeHtml(relativeAge(commit.committed_at))}</span>`;
+    html += `${escapeHtml(relativeAge(commit.committed_at, { style: "relative" }))}</span>`;
     html += "</div>";
     html += renderCommitChangeStats(stats);
     html += "</div>";
@@ -332,12 +336,13 @@
    * Compact relative age, matching the tree's convention.
    *
    * @param {number} epochSeconds
+   * @param {{style?: "compact" | "relative"}} [options]
    * @returns {string}
    */
-  function relativeAge(epochSeconds) {
+  function relativeAge(epochSeconds, options) {
     // The shared age primitive, so a commit's age reads exactly like a
     // file's: same abbreviations, same freshness tiers.
-    return window.MetabrowserFormatters?.age(epochSeconds)?.label ?? "";
+    return window.MetabrowserFormatters?.age(epochSeconds, options)?.label ?? "";
   }
 
   /**
@@ -1016,6 +1021,15 @@
     summaryResizeObserver.observe(summary);
   }
 
+  /** Secondary controls are released before their viewport rows are replaced. */
+  const rowCopyReleases = new Set();
+  function releaseRowCopies() {
+    for (const release of rowCopyReleases) {
+      release();
+    }
+    rowCopyReleases.clear();
+  }
+
   /**
    * Preserve every logical row's fixed-height coordinate while one or more
    * evicted pages are being replayed. A placeholder is an honest loading or
@@ -1173,6 +1187,7 @@
     top.setAttribute("aria-hidden", "true");
     const host = document.createElement("div");
     host.className = "git-history-window";
+    releaseRowCopies();
     appendWindowContents(host, mounted, range.start, range.end);
     const bottom = document.createElement("div");
     bottom.className = "git-history-spacer git-history-spacer-bottom";
@@ -1349,7 +1364,7 @@
       return;
     }
 
-    if (state.rowCount === 0 && state.loading) {
+    if (state.rowCount === 0 && (state.loading || viewHelpersPending !== null)) {
       // The first paint of the Git tab: the row geometry is known before
       // the data, so it is drawn as skeleton rows rather than announced.
       const skeleton = document.createElement("div");
@@ -1361,8 +1376,13 @@
       panel.replaceChildren(skeleton);
       return;
     }
-    if (state.rowCount === 0 && state.failed) {
-      renderRefreshState(panel, "Could not read repository history.");
+    if (state.rowCount === 0 && (state.failed || viewHelpersFailed)) {
+      renderRefreshState(
+        panel,
+        viewHelpersFailed
+          ? "Could not load Git view controls. Refresh to try again."
+          : "Could not read repository history.",
+      );
       return;
     }
     if (state.rowCount === 0) {
@@ -1596,28 +1616,29 @@
     );
     element.addEventListener("mouseenter", () => scheduleHover(element, commit.id));
     element.addEventListener("mouseleave", () => cancelHover(commit.id));
-    return element;
+    const item = document.createElement("div");
+    item.className = "git-graph-item";
+    item.appendChild(element);
+    rowCopyReleases.add(window.metabrowser.mountRefCopies(element, item));
+    return item;
   }
 
   /**
    * @param {MetabrowserGitRef[]} refs
+   * @param {"inline"|"sibling"|false} [copy]
    * @returns {string}
    */
-  function renderRefBadges(refs) {
-    if (!refs.length) {
-      return "";
-    }
+  function renderRefBadges(refs, copy = "sibling") {
     return refs
-      .map((ref) => {
-        const classes = ["git-ref", `git-ref-${escapeHtml(ref.kind)}`];
-        if (ref.is_trunk) {
-          classes.push("git-ref-trunk");
-        }
-        if (ref.is_head) {
-          classes.push("git-ref-head");
-        }
-        return `<span class="${classes.join(" ")}">${escapeHtml(ref.name)}</span>`;
-      })
+      .map((ref) =>
+        window.metabrowser.refChipHtml(ref.name, {
+          label: ref.name,
+          kind: ref.kind,
+          trunk: ref.is_trunk,
+          head: ref.is_head,
+          copy,
+        }),
+      )
       .join("");
   }
 
@@ -2000,7 +2021,10 @@
           "gitRevision:rowAnchor",
           () => {
             if (selectedRowForAnchor?.parentElement instanceof HTMLElement) {
-              setCommitRowAnchor(selectedRowForAnchor.parentElement, selectedRowForAnchor);
+              const list = panelElement()?.querySelector(".git-graph-list");
+              if (list instanceof HTMLElement) {
+                setCommitRowAnchor(list, selectedRowForAnchor);
+              }
             }
           },
           { revision },
@@ -2182,7 +2206,7 @@
 
     return (
       `<${tag} class="${classes.join(" ")}"${attrs}>` +
-      `<span class="git-file-status" data-tip-text="${escapeHtml(file.status)}">` +
+      `<span class="git-file-status file-change-status" data-file-status="${escapeHtml(file.status)}" data-tip-text="${escapeHtml(file.status)}">` +
       `${escapeHtml(file.status.charAt(0).toUpperCase())}</span>` +
       `<span class="git-file-path">${name}</span>${counts}</${tag}>`
     );
@@ -2210,6 +2234,7 @@
 
   /** @param {PanelState} current */
   function disposeHistoryState(current) {
+    releaseRowCopies();
     current.pageCache.dispose();
     current.virtualWindow.dispose();
   }
@@ -2271,10 +2296,52 @@
   }
 
   /**
+   * Load the required views once, retaining a visible, retryable Git panel on failure.
+   * @returns {Promise<boolean>}
+   */
+  async function ensureViewHelpers() {
+    if (viewHelpersReady) {
+      return true;
+    }
+    if (viewHelpersPending !== null) {
+      return viewHelpersPending;
+    }
+    const generation = historyGeneration;
+    viewHelpersFailed = false;
+    /** @type {Promise<boolean>} */
+    const pending = window.metabrowser.ensureAsset("sdk-views").then(
+      () => {
+        if (viewHelpersPending !== pending || generation !== historyGeneration) {
+          return false;
+        }
+        viewHelpersPending = null;
+        viewHelpersReady = true;
+        return true;
+      },
+      () => {
+        if (viewHelpersPending === pending && generation === historyGeneration) {
+          viewHelpersPending = null;
+          viewHelpersFailed = true;
+          renderPanel();
+        }
+        return false;
+      },
+    );
+    viewHelpersPending = pending;
+    renderPanel();
+    return pending;
+  }
+
+  /**
    * @param {{preserveDetail?: boolean, selectedId?: string | null}} [options]
    * @returns {Promise<void>}
    */
   async function refreshHistory(options = {}) {
+    const restoreLanding = viewHelpersFailed;
+    const generation = historyGeneration;
+    if ((!viewHelpersReady && !(await ensureViewHelpers())) || generation !== historyGeneration) {
+      return;
+    }
     if (state.loading || refreshing) {
       return;
     }
@@ -2319,10 +2386,17 @@
     } finally {
       refreshing = false;
     }
+    if (restoreLanding) {
+      await restoreCommitLanding();
+    }
   }
 
   /** @returns {Promise<void>} */
   async function ensureHistory() {
+    const generation = historyGeneration;
+    if ((!viewHelpersReady && !(await ensureViewHelpers())) || generation !== historyGeneration) {
+      return;
+    }
     if (state.loading) {
       return;
     }
@@ -2392,6 +2466,9 @@
     lastSelection = null;
     refColors = new Map();
     started = false;
+    viewHelpersReady = false;
+    viewHelpersFailed = false;
+    viewHelpersPending = null;
     window.removeEventListener("popstate", restoreCommitLanding);
     shell()?.removeNavPanel("git");
   }
@@ -2419,9 +2496,16 @@
     }
     try {
       bridge.activateNavPanel("git");
+      if (!viewHelpersReady && !(await ensureViewHelpers())) {
+        return;
+      }
       await ensureHistory();
       // The panel may have gone, or the reader stepped on, while it caught up.
-      if (started && routes.parseCommit(window.location.pathname)?.revision === wanted) {
+      if (
+        started &&
+        viewHelpersReady &&
+        routes.parseCommit(window.location.pathname)?.revision === wanted
+      ) {
         await selectCommit(wanted, { fromRoute: true });
       }
     } catch (error) {
@@ -2436,9 +2520,9 @@
   /**
    * Register the Git tab if the served root is a repository.
    *
-   * Called once at startup and never awaited by the shell: whether this
-   * is a repository has no bearing on first paint, and a directory that
-   * is not one should not pay for the feature at all.
+   * The deferred shell awaits registration. The required view helpers load when
+   * Git is shown (including a commit landing), with an in-panel retry on failure.
+   * A directory outside a repository never asks for those helpers.
    *
    * @returns {Promise<void>}
    */
@@ -2448,10 +2532,17 @@
       return;
     }
     started = true;
+    const generation = historyGeneration;
 
     const info = await fetchRepoInfo();
     if (!info) {
-      started = false;
+      if (generation === historyGeneration) {
+        started = false;
+      }
+      return;
+    }
+    // A teardown while repository discovery ran relinquished this registration.
+    if (!started || generation !== historyGeneration) {
       return;
     }
     state.headRevision = info.head?.revision ?? null;
@@ -2480,6 +2571,7 @@
     // Exposed for tests, which drive the panel without a network.
     _internals: {
       appendPage,
+      teardown,
       ensurePageLoaded,
       emptyState,
       ageClass,

@@ -26,7 +26,8 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Final, Literal
+from pathlib import Path
+from typing import Any, Final, Literal
 
 from metabrowser.git.process import (
     forget_process_group,
@@ -47,8 +48,6 @@ GH_MAX_BYTES: Final[int] = 256 * 1024
 # the deadline about fifteen times its slowest read.
 GH_API_TIMEOUT_S: Final[float] = 30.0
 GH_API_MAX_BYTES: Final[int] = 8 * 1024 * 1024
-# The first gh release with ``gh auth status --json`` (release notes, 2025-10-01).
-GH_MIN_VERSION: Final = "2.81.0"
 GH_HOSTNAME: Final = "github.com"
 GITHUB_API_VERSION: Final = "2022-11-28"
 _READ_CHUNK_BYTES: Final[int] = 64 * 1024
@@ -72,6 +71,8 @@ _API_PATH = re.compile(r"^repos/[A-Za-z0-9._/-]+(?:\?[A-Za-z0-9_=&.-]*)?$")
 _ETAG = re.compile(r'^(?:W/)?"[\x21\x23-\x7e]{1,256}"$')
 _LOGIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")
 _STATUS_LINE = re.compile(rb"^HTTP/[0-9.]+ ([0-9]{3})(?: [^\r\n]*)?$")
+# The page ``rel="last"`` names: ``<https://api.github.com/...&page=12>; rel="last"``.
+_LAST_PAGE = re.compile(r'[?&]page=([1-9][0-9]{0,5})(?:&[^>]*)?>; rel="last"')
 
 type GhFailureState = Literal[
     "gh_missing",
@@ -115,8 +116,18 @@ class GhError(Exception):
 class GhUnavailableError(GhError):
     """No ``gh`` executable on ``PATH``."""
 
-    def __init__(self, message: str = "GitHub CLI (gh) is not on PATH") -> None:
+    def __init__(
+        self,
+        message: str = (
+            "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, "
+            "then run gh auth login --hostname github.com."
+        ),
+    ) -> None:
         super().__init__(message, state="gh_missing")
+
+
+class GhCursorError(GhError):
+    """A provider cursor expired or is invalid; its bounded scan can restart."""
 
 
 class GhOutputTooLargeError(GhError):
@@ -147,6 +158,16 @@ class GhResponse:
     def has_next_page(self) -> bool:
         return 'rel="next"' in self.headers.get("link", "")
 
+    @property
+    def last_page(self) -> int | None:
+        """The page number ``rel="last"`` names in the ``Link`` header, or ``None``.
+
+        GitHub sends it on every page but the last, so it counts pages and not items.
+        """
+
+        found = _LAST_PAGE.search(self.headers.get("link", ""))
+        return int(found.group(1)) if found is not None else None
+
     def json(self) -> object:
         try:
             return json.loads(self.body)
@@ -169,6 +190,7 @@ def gh_environment() -> dict[str, str]:
         {
             "GH_PROMPT_DISABLED": "1",
             "GH_NO_UPDATE_NOTIFIER": "1",
+            "GH_STACK_NO_UPDATE_NOTIFIER": "1",
             "GH_SPINNER_DISABLED": "1",
             "NO_COLOR": "1",
             "CLICOLOR": "0",
@@ -192,7 +214,9 @@ async def _read_capped(stream: asyncio.StreamReader | None, limit: int) -> tuple
     return b"".join(chunks), overflowed
 
 
-async def _run(args: Sequence[str], *, timeout_s: float, max_bytes: int) -> _Completed:
+async def _run(
+    args: Sequence[str], *, timeout_s: float, max_bytes: int, cwd: Path | None = None
+) -> _Completed:
     """Run ``gh`` once. Raises only for a missing gh, a deadline, or too much output."""
 
     exe = gh_executable()
@@ -206,6 +230,7 @@ async def _run(args: Sequence[str], *, timeout_s: float, max_bytes: int) -> _Com
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=gh_environment(),
+            cwd=cwd,
             start_new_session=os.name == "posix",
         )
     except OSError as exc:
@@ -245,6 +270,19 @@ async def _finish(
     return _Completed(returncode, stdout, stderr)
 
 
+async def gh_stack_available() -> bool:
+    """Probe the optional extension without resolving or writing local stack state.
+
+    The official version command only prints its version. In contrast, even
+    ``view --json`` saves local tracking state and must never run here.
+    """
+    result = await _run(["stack", "--version"], timeout_s=5.0, max_bytes=4096, cwd=Path("/"))
+    return (
+        result.returncode == 0
+        and re.fullmatch(rb"gh stack version [^\r\n]{1,80}\r?\n?", result.stdout) is not None
+    )
+
+
 async def run_gh(
     args: Sequence[str], *, timeout_s: float = GH_TIMEOUT_S, max_bytes: int = GH_MAX_BYTES
 ) -> bytes:
@@ -262,7 +300,8 @@ def _failure_without_response(completed: _Completed) -> GhError:
     text = completed.stderr.decode("utf-8", errors="replace").lower()
     if completed.returncode == _GH_EXIT_AUTH or any(needle in text for needle in _LOGIN_TEXT):
         return GhError(
-            "gh is not signed in to github.com; run gh auth login", state="not_logged_in"
+            "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
+            state="not_logged_in",
         )
     if any(needle in text for needle in _NETWORK_TEXT):
         return GhError("gh could not reach api.github.com", state="network_error")
@@ -300,17 +339,21 @@ def rate_limit_reset(response: GhResponse, *, now: datetime) -> str | None:
     """When GitHub will answer again, if *response* is a rate-limit refusal, else ``None``.
 
     ``Retry-After`` (a secondary limit) wins; otherwise an exhausted primary limit
-    resets at ``x-ratelimit-reset``, in epoch seconds.
+    resets at ``x-ratelimit-reset``, in epoch seconds. A time no clock can hold is header
+    text saying there is a limit and not when, so it is ``"unknown"``.
     """
 
     if response.status not in {403, 429}:
         return None
     retry_after = response.headers.get("retry-after", "")
-    if retry_after.isdigit():
-        return (now + timedelta(seconds=int(retry_after))).strftime("%Y-%m-%dT%H:%M:%SZ")
-    if response.headers.get("x-ratelimit-remaining") == "0":
-        reset = response.headers.get("x-ratelimit-reset", "")
-        return _epoch_text(int(reset)) if reset.isdigit() else "unknown"
+    try:
+        if retry_after.isdigit():
+            return (now + timedelta(seconds=int(retry_after))).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if response.headers.get("x-ratelimit-remaining") == "0":
+            reset = response.headers.get("x-ratelimit-reset", "")
+            return _epoch_text(int(reset)) if reset.isdigit() else "unknown"
+    except (OverflowError, ValueError, OSError):
+        return "unknown"
     if response.status == 429 or _mentions_rate_limit(response.body):
         return "unknown"
     return None
@@ -395,6 +438,83 @@ async def gh_api(path: str, *, etag: str | None = None, now: datetime | None = N
     return response
 
 
+async def gh_graphql(
+    query: str,
+    variables: Mapping[str, str | int | bool | None],
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Execute an internal fixed read-only query with separately encoded variables.
+
+    GraphQL can return HTTP 200 with errors and partial data. No caller receives that
+    partial data, especially a cursor it could mistakenly persist as completed work.
+    """
+    if not query.lstrip().startswith("query"):
+        raise ValueError("only a fixed GraphQL query is supported")
+    args = ["api", "graphql", "--hostname", GH_HOSTNAME, "--method", "POST", "--include"]
+    args.extend(("-f", f"query={query}"))
+    for name, value in variables.items():
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+            raise ValueError("invalid GraphQL variable name")
+        if value is None:
+            continue
+        if isinstance(value, str):
+            args.extend(("-f", f"{name}={value}"))
+        else:
+            args.extend(("-F", f"{name}={json.dumps(value)}"))
+    completed = await _run(args, timeout_s=GH_API_TIMEOUT_S, max_bytes=GH_API_MAX_BYTES)
+    response = parse_included_response(completed.stdout)
+    if response is None:
+        raise _failure_without_response(completed)
+    moment = now or datetime.now(UTC)
+    refused = _refusal(response, now=moment)
+    if refused is not None:
+        raise refused
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise GhError("GitHub answered with an unreadable GraphQL response")
+    errors = payload.get("errors")
+    if errors:
+        failures = errors if isinstance(errors, list) else []
+        limited = any(
+            isinstance(error, dict)
+            and (
+                error.get("type") == "RATE_LIMITED"
+                or "rate limit" in str(error.get("message", "")).lower()
+            )
+            for error in failures
+        )
+        if limited:
+            reset = rate_limit_reset(GhResponse(429, response.headers, response.body), now=moment)
+            raise GhError(
+                "GitHub's API rate limit is exhausted",
+                state="rate_limited",
+                reset_at=None if reset == "unknown" else reset,
+            )
+        if any(
+            isinstance(error, dict)
+            and (
+                error.get("type") == "INVALID_CURSOR_ARGUMENTS"
+                or (
+                    "cursor" in str(error.get("message", "")).lower()
+                    and any(
+                        word in str(error.get("message", "")).lower()
+                        for word in ("invalid", "exist", "expired")
+                    )
+                )
+            )
+            for error in failures
+        ):
+            raise GhCursorError("GitHub could not resume the metadata cursor")
+        if any(isinstance(error, dict) and error.get("type") == "NOT_FOUND" for error in failures):
+            raise GhError("GitHub has no readable repository here", state="not_found_or_private")
+        raise GhError("GitHub could not complete the metadata query")
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise GhError("GitHub answered without query data")
+    return data
+
+
 def parse_account(stdout: bytes) -> str | None:
     """The active github.com login from ``gh auth status --json hosts``, or ``None``.
 
@@ -432,12 +552,14 @@ async def gh_account() -> str:
         login = parse_account(completed.stdout)
         if login is None:
             raise GhError(
-                "gh is not signed in to github.com; run gh auth login", state="not_logged_in"
+                "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
+                state="not_logged_in",
             )
         return login
     if b"unknown flag" in completed.stderr:
         raise GhError(
-            f"this gh is too old to report its account; install gh {GH_MIN_VERSION} or newer",
+            "This GitHub CLI cannot report the active account. Update gh from "
+            "https://cli.github.com/, then run gh auth status --hostname github.com.",
             state="gh_too_old",
         )
     raise _failure_without_response(completed)
@@ -447,14 +569,15 @@ __all__ = [
     "GH_API_MAX_BYTES",
     "GH_API_TIMEOUT_S",
     "GH_MAX_BYTES",
-    "GH_MIN_VERSION",
     "GH_TIMEOUT_S",
+    "GhCursorError",
     "GhError",
     "GhFailureState",
     "GhResponse",
     "GhUnavailableError",
     "gh_account",
     "gh_api",
+    "gh_graphql",
     "gh_environment",
     "gh_executable",
     "parse_account",

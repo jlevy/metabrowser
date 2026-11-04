@@ -42,6 +42,14 @@ the page announced, and whether it reloaded.
 A page that stayed open while another tab switched does not reload itself: the row
 offers it.
 
+When the queue of pull requests a reader asked for has no room for the attended one’s
+refresh, the server refuses a refresh that would refresh only that one (`429`,
+`too_many`). The page’s own ask says nothing of it, as the pull request’s page does, and
+a reader’s press says why in the server’s words.
+A commit’s fetch in that state fetches the mirror and answers `pull_refresh` `too_many`,
+and since only that refresh brings a newer head of the pull request, the commit view
+says it did not run rather than that the origin lacks the commit.
+
 This browserless session loads the production `static/source-freshness.js`,
 `static/source-pin-guard.js`, and `static/git-history-window.js` and plays the server’s
 side from `tests/fixtures/source-freshness-responses.json`: what the in-process
@@ -597,6 +605,30 @@ $ node tests/dom/source-freshness-session.js
       }
     },
     {
+      "step": "the queue had no room for the pull request's refresh",
+      "requests": [
+        "GET /api/source/status",
+        "GET /api/git/commit/0123456789abcdef0123456789abcdef01234567"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "stale",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": "topic is now at 92b31b078548 [Switch] → refs/remotes/origin/topic",
+        "error": null
+      },
+      "commit": {
+        "repaints": 1,
+        "state": "fetch_failed",
+        "title": "Commit not fetched · fetched 5 min ago",
+        "detail": "This commit is not in the mirror, and it could not be fetched. The pull request's refresh, which brings its newer commits, was not queued: too many pull requests are being fetched; try again when one has finished.",
+        "offer": "[Retry]"
+      }
+    },
+    {
       "step": "the server stopped answering while the fetch ran",
       "requests": [
         "GET /api/source/status"
@@ -716,6 +748,39 @@ $ node tests/dom/source-freshness-session.js
         "detail": "Fetching from the origin. The mirror was last fetched 6 d ago.",
         "offer": "topic is now at 66f65bf1e89d [Switch] → refs/remotes/origin/topic",
         "error": null
+      }
+    },
+    {
+      "step": "a page's own refresh with no room in the queue says nothing",
+      "requests": [
+        "GET /api/source/status",
+        "POST /api/source/refresh {}"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "stale",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": "topic is now at 92b31b078548 [Switch] → refs/remotes/origin/topic",
+        "error": null
+      }
+    },
+    {
+      "step": "a press with no room in the queue says why",
+      "requests": [
+        "POST /api/source/refresh {}"
+      ],
+      "timer": "slow",
+      "reloads": 0,
+      "repaints": 1,
+      "paint": {
+        "label": "Fetched 5 min ago",
+        "tone": "stale",
+        "detail": "The mirror was last fetched from its origin 5 min ago.",
+        "offer": "topic is now at 92b31b078548 [Switch] → refs/remotes/origin/topic",
+        "error": "Refresh refused: too many pull requests are being fetched; try again when one has finished"
       }
     }
   ],

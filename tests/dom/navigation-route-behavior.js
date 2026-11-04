@@ -53,6 +53,7 @@ const sandbox = {
   TextDecoder,
   TextEncoder,
   Uint8Array,
+  URLSearchParams,
 };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
@@ -113,7 +114,20 @@ observe("pull-request page href", pullRoute.pullHref(7));
 observe("pull-request Files changed href", pullRoute.pullHref(7, "files"));
 observe("pull-request page parses", pullRoute.parsePull("/pull/7"));
 observe("pull-request tab parses with a trailing slash", pullRoute.parsePull("/pull/7/files/"));
-for (const pathname of ["/pull/0", "/pull/07", "/pull/7/commits", "/pull/7/files/x", "/pull/x"]) {
+for (const pathname of [
+  "/pull/0",
+  "/pull/07",
+  "/pull/7/commits",
+  "/pull/7/commits/x",
+  "/pull/x",
+  "/pull/7/files/src/",
+  "/pull/7/files//x",
+  "/pull/7/files/%2E%2E/x",
+  "/pull/7/files/a%2Fb",
+  "/pull/7/files/a%5Cb",
+  "/pull/7/files/a%00b",
+  "/pull/7/files/%FF",
+]) {
   observe(`reject pull-request route ${pathname}`, pullRoute.parsePull(pathname));
 }
 for (const [number, tab] of [
@@ -125,6 +139,25 @@ for (const [number, tab] of [
     refusal(() => pullRoute.pullHref(number, tab)),
   );
 }
+// One changed file: its path is the pull request's text, and reaches the address only
+// through this encoder, a segment at a time, as view_routes.format_pull_href spells it.
+observe("a changed file's href", [
+  pullRoute.pullHref(7, "files", "src/app.py"),
+  pullRoute.pullHref(7, "files", "docs/a b/雪.md"),
+  pullRoute.pullHref(7, "files", "a%b?#c"),
+]);
+observe("a changed file's route parses back", [
+  pullRoute.parsePull("/pull/7/files/src/app.py"),
+  pullRoute.parsePull(pullRoute.pullHref(7, "files", "docs/a b/雪.md")),
+  pullRoute.parsePull(pullRoute.pullHref(7, "files", "a%b?#c")),
+]);
+observe("a changed file's href refuses what is not a normalized path", [
+  refusal(() => pullRoute.pullHref(7, "", "src/app.py")),
+  refusal(() => pullRoute.pullHref(7, "files", "src/")),
+  refusal(() => pullRoute.pullHref(7, "files", "a/../b")),
+  refusal(() => pullRoute.pullHref(7, "files", "a\\b")),
+  refusal(() => pullRoute.pullHref(7, "files", "\ud800")),
+]);
 
 // History landing on a pull-request route: the shown page switches its tab; a page a
 // commit or file replaced in the meantime is mounted again; a landing the navigation
@@ -146,6 +179,31 @@ observe(
   pullRoute.pullHistoryAction("/pull/7", null, true),
 );
 observe("back onto a view route is not a page's", pullRoute.pullHistoryAction("/view/", 7, false));
+observe("history onto a changed file's address names the file", [
+  pullRoute.pullHistoryAction("/pull/7/files/src/app.py", 7, false),
+  pullRoute.pullHistoryAction("/pull/7/files/src/app.py", 8, false),
+  pullRoute.pullHistoryAction("/pull/7/files/src/app.py", 7, true),
+]);
+
+// The list's address: its filter, and what history does with it.
+observe("the list's addresses", [
+  pullRoute.parsePulls("/pulls", ""),
+  pullRoute.parsePulls("/pulls", "?state=closed"),
+  pullRoute.parsePulls("/pulls", "?state=merged"),
+  pullRoute.parsePulls("/pulls/", ""),
+  pullRoute.parsePull("/pulls"),
+  pullRoute.pullsHref(),
+  pullRoute.pullsHref("open"),
+  pullRoute.pullsHref("all"),
+  refusal(() => pullRoute.pullsHref("merged")),
+]);
+observe("history and the list's address", [
+  pullRoute.pullHistoryAction("/pulls", 7, false),
+  pullRoute.pullHistoryAction("/pulls", null, false),
+  pullRoute.pullHistoryAction("/pulls", "list", false),
+  pullRoute.pullHistoryAction("/pulls", 7, true),
+  pullRoute.pullHistoryAction("/pull/7", "list", false),
+]);
 
 observe("root href", route.href({ path: "" }));
 observe("folder href keeps its slash", route.href({ path: "docs/" }));
@@ -384,14 +442,35 @@ function makePullShell(pathname) {
       mounts.push({ claim, open, resolve });
       return rendered;
     },
+    mountList(claim) {
+      log.push("mount the list's address");
+      let resolve;
+      const rendered = new Promise((settle) => {
+        resolve = settle;
+      });
+      mounts.push({ claim, resolve });
+      return rendered;
+    },
     pathname: () => location.pathname,
     pushHref(href) {
       location.pathname = href;
       log.push(`push ${href}`);
     },
+    replaceHref(href) {
+      location.pathname = href;
+      log.push(`replace ${href}`);
+    },
   });
   const page = (number) => ({
+    land: (route) =>
+      log.push(
+        route.file
+          ? `#${number} restores the file ${route.file}`
+          : `#${number} restores tab "${route.tab}"`,
+      ),
     setTab: (tab) => log.push(`#${number} tab "${tab}"`),
+    showFile: (path) => log.push(`#${number} shows the file ${path}`),
+    flush: () => log.push(`#${number} writes its place`),
     dispose: () => log.push(`#${number} disposed`),
   });
   const tick = () => new Promise((resolve) => setImmediate(resolve));
@@ -403,6 +482,8 @@ function makePullShell(pathname) {
     // A landing mounts the page; its tabs and back and forward switch the tab of the
     // page that holds the pane without claiming it again.
     const shell = makePullShell("/pull/7");
+    const pages = [];
+    const unwatch = pullRoute.onPageChange(() => pages.push(shell.host.pageFor(7) !== null));
     const shown = shell.host.show({ number: 7, tab: "" });
     observe("a page is not shown while it mounts", shell.host.shown());
     shell.mounts[0].resolve(shell.page(7));
@@ -420,6 +501,86 @@ function makePullShell(pathname) {
       shell.host.onHistory("/pull/7/files", true),
     );
     observe("a tab keeps the page and puts the tab in the URL", shell.log);
+    observe("page availability reports mounting then the ready handle", pages);
+    unwatch();
+    shell.host.dispose();
+    observe("a removed page watcher gets no disposal notification", pages);
+  }
+
+  {
+    // The list's address holds the pane as a page does, and a row's open from it, or from a
+    // page, tells what it leaves to write its place into its own history entry first.
+    const shell = makePullShell("/pulls");
+    const listed = shell.host.showList();
+    shell.mounts[0].resolve(shell.page("list"));
+    await listed;
+    observe("the list's address holds the pane", shell.host.shown());
+    await shell.host.showList();
+    shell.host.onHistory("/pulls", false);
+    const first = shell.host.open({ number: 7, tab: "", reader: "the selection" });
+    shell.mounts[1].resolve(shell.page(7));
+    await first;
+    const second = shell.host.open({ number: 8, tab: "" });
+    shell.mounts[2].resolve(shell.page(8));
+    await second;
+    observe("the list's address, then two rows", shell.log);
+    const back = shell.host.onHistory("/pulls", false);
+    shell.mounts[3].resolve(shell.page("list"));
+    await shell.tick();
+    observe("back onto the list's address", [back, shell.host.shown()]);
+  }
+
+  {
+    // A key's skim through the rows replaces the entry, as the file tree's and Git's keys
+    // do, so one Back leaves however many rows were passed; a click or Enter pushes.
+    const shell = makePullShell("/pull/7");
+    const shown = shell.host.show({ number: 7, tab: "" });
+    shell.mounts[0].resolve(shell.page(7));
+    await shown;
+    const skim = shell.host.open({ number: 8, tab: "", replace: true });
+    shell.mounts[1].resolve(shell.page(8));
+    await skim;
+    const again = shell.host.open({ number: 9, tab: "", replace: true });
+    shell.mounts[2].resolve(shell.page(9));
+    await again;
+    const click = shell.host.open({ number: 10, tab: "" });
+    shell.mounts[3].resolve(shell.page(10));
+    await click;
+    observe("two keys' opens replace the entry, and a click's pushes", shell.log);
+  }
+
+  {
+    // One changed file's address: a page that mounts for it lands on the file once it holds
+    // the pane, whatever the shell passes the view, and the page shown goes to a file in
+    // place. A key's open replaces and a click's pushes, as for a row; history onto a file of
+    // the page shown goes to it, and the host hands the shown page only to that number.
+    const shell = makePullShell("/pull/7/files/src/app.py");
+    const landed = shell.host.show({ number: 7, tab: "files", file: "src/app.py" });
+    observe("a file's page is no page until it mounts", shell.host.pageFor(7));
+    shell.mounts[0].resolve(shell.page(7));
+    await landed;
+    await shell.host.open({ number: 7, tab: "files", file: "src/b.py", replace: true });
+    await shell.host.open({ number: 7, tab: "files", file: "docs/a b.md" });
+    shell.location.pathname = "/pull/7/files/src/b.py";
+    shell.host.onHistory("/pull/7/files/src/b.py", false);
+    // A walk of the files jumped the page itself: only the address moves when it stops.
+    await shell.host.open({
+      number: 7,
+      tab: "files",
+      file: "src/c.py",
+      replace: true,
+      jumped: true,
+    });
+    await shell.host.open({ number: 7, tab: "" });
+    const other = shell.host.open({ number: 8, tab: "files", file: "x.py", replace: true });
+    shell.mounts[1].resolve(shell.page(8));
+    await other;
+    observe("the shown page is handed to its own number only", [
+      shell.host.pageFor(7) === null,
+      shell.host.pageFor(8) !== null,
+      pullRoute.attachedHost() === shell.host,
+    ]);
+    observe("a file's address lands on the file", shell.log);
   }
 
   {

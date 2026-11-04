@@ -1291,11 +1291,14 @@ def _startup_script_tags(names: tuple[str, ...]) -> str:
     return "".join(f'\n  <script src="{_static_asset_url(name)}"></script>' for name in names)
 
 
-async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
+async def index(
+    request: Request, *, pull_page: bool = False, pull_list: bool = False
+) -> HTMLResponse:
     """Serve the SPA page with linked assets and one pre-paint state machine.
 
     *pull_page* is set by the pull-request route: its shell carries that page's routes
-    as a startup script.
+    as a startup script. *pull_list* is set by the list's route. At either address a
+    repository's shell draws the Pulls tab in front, so its first paint is not the Files tree.
     """
 
     pin = as_git_revision_subject(get_source_session().subject)
@@ -1414,6 +1417,41 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
         '\n      <div class="source-ref-selector" id="source-ref-selector" hidden></div>'
         if git_pin and mirror_session(request.app) is not None
         else ""
+    )
+    # The Pulls tab is decided here, from what the page already knows: a pin whose mirror is a
+    # hosted repository, or a checkout, a subdirectory of one too, whose `origin` is on
+    # github.com. It costs a plain folder nothing, not even a script in a bundle, and a page
+    # that has it draws it at first paint, so the tabs never shift when it arrives.
+    pulls_tab = repository_context is not None
+    pulls_in_front = pulls_tab and (pull_page or pull_list)
+    files_active = "" if pulls_in_front else " active"
+    files_selected = "false" if pulls_in_front else "true"
+    behind_pulls = ' style="display: none"' if pulls_in_front else ""
+    pulls_button = (
+        f'\n        <button class="tab-btn{" active" if pulls_in_front else ""}" type="button"'
+        f' role="tab" data-tab="pulls" aria-selected="{"true" if pulls_in_front else "false"}">'
+        "Pulls</button>"
+        if pulls_tab
+        else ""
+    )
+    pulls_container = ""
+    if pulls_tab:
+        pulls_container = (
+            '\n        <div id="tab-pulls" data-tab-content="pulls">'
+            '<div class="recent-loading mb-delayed-loading" role="status"'
+            ' aria-label="Loading pull requests"></div></div>'
+            if pulls_in_front
+            else '\n        <div id="tab-pulls" data-tab-content="pulls"'
+            ' style="display: none"></div>'
+        )
+    # The PR route knows it will show text. Its cold shell uses the same row skeleton
+    # as the plugin, while unrelated previews keep their indeterminate placeholder.
+    preview_loading = (
+        '<div class="pull-request-placeholder mb-delayed-loading" role="status" aria-label="Loading pull request">'
+        '<div class="recent-loading" aria-hidden="true"></div></div>'
+        if pull_page
+        else '<div class="loading mb-delayed-loading"><div class="spinner"></div>'
+        '<span class="sr-only">Loading preview…</span></div>'
     )
     source_kind_json = _json.dumps("git_revision" if git_pin else "filesystem")
     # The tree's first rows, inlined. Without this the reader waits for a round
@@ -1564,6 +1602,8 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
             {"src": git_graph_url},
             {"src": git_history_window_url},
             {"src": git_panel_url},
+            # Only a shell that drew the Pulls tab has it, so a folder fetches nothing new.
+            *([{"src": _static_asset_url("pulls-nav.js")}] if pulls_tab else []),
         ],
         # The compositor is needed only once file navigation begins, after the
         # first tree is usable. renderFile awaits this bundle and rechecks its
@@ -1787,17 +1827,17 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
         </div>
       </header>{source_ref_selector_row}
       <div class="tab-bar nav-tab-bar" role="tablist">
-        <button class="tab-btn active" type="button" role="tab" data-tab="files" aria-selected="true">Files</button>
+        <button class="tab-btn{files_active}" type="button" role="tab" data-tab="files" aria-selected="{files_selected}">Files</button>{pulls_button}
       </div>
       <!-- Filter bar lives outside #tab-files: a tree reload replaces
            that container's contents wholesale, and the bar must also
            stay put while .tree-content scrolls. app.js fills it. -->
-      <div class="nav-filter-bar" id="nav-filter-bar"></div>
+      <div class="nav-filter-bar" id="nav-filter-bar"{behind_pulls}></div>
       <div class="tree-content" id="tree-content">
-        <div id="tab-files" data-tab-content="files">
+        <div id="tab-files" data-tab-content="files"{behind_pulls}>
           <div class="loading mb-delayed-loading"><div class="spinner"></div><span
             class="sr-only">Loading files…</span></div>
-        </div>
+        </div>{pulls_container}
       </div>
       <!-- role="group" carries the accessible name: ARIA forbids naming a
            generic element, so a bare div would drop the label and announce
@@ -1814,14 +1854,13 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
     <div class="resize-handle" id="tree-resize"></div>
     <!-- Every route that serves this shell selects something: /view/ names a
          file or folder (the bare origin redirects to the served root),
-         /commit/ names a revision, and /pull/ the served pull request. So the
-         pane ships loading, never a prompt to select a file. It is
+         /commit/ names a revision, /pull/ a pull request, and /pulls their
+         list. So the pane ships loading, never a prompt to select a file. It is
          navigation.js's starting placeholder. The frame around it does not
          scroll, so KPress's floating UI pins to it (see .preview-frame). -->
     <div class="preview-frame kpress-frame">
       <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
-        <div class="loading mb-delayed-loading"><div class="spinner"></div><span
-          class="sr-only">Loading preview…</span></div>
+        {preview_loading}
       </div>
     </div>
   </main>
@@ -1907,17 +1946,28 @@ async def commit_shell(request: Request) -> Response:
 
 
 async def pull_shell(request: Request) -> Response:
-    """Serve the SPA shell for ``/pull/<n>[/files]``, the served pull request's page.
+    """Serve the SPA shell for ``/pull/<n>[/files[/<path>]]``, a pull request's page.
 
     A pull request is its own address space, like a commit: the page is not a path in
-    the served tree. The view that renders it is the one a plugin registers for the
-    `pull-request` kind; the pull route says whether this server serves that number.
+    the served tree, and a changed file's path is one in its comparison, never on disk.
+    The view that renders it is the one a plugin registers for the `pull-request` kind;
+    the pull route says what this server has of that number.
     """
 
     raw_path = request.scope.get("raw_path")
     if not isinstance(raw_path, bytes) or decode_safe_pull_route(raw_path) is None:
         return PlainTextResponse("Invalid pull-request route.", status_code=400)
     return await index(request, pull_page=True)
+
+
+async def pulls_shell(request: Request) -> Response:
+    """Serve the SPA shell for ``/pulls``, a repository's list of pull requests.
+
+    It belongs to the pull-request address space and adds no startup script. The list route
+    says what this server has to list, which on a folder is nothing.
+    """
+
+    return await index(request, pull_list=True)
 
 
 async def root_redirect(_request: Request) -> Response:
@@ -4141,6 +4191,7 @@ routes = [
     Route("/view/{path:path}", view_shell),
     Route("/commit/{rest:path}", commit_shell),
     Route("/pull/{rest:path}", pull_shell),
+    Route("/pulls", pulls_shell),
     Route("/api/tree", api_tree),
     Route("/api/rollup", api_rollup),
     Route("/api/recent", api_recent),

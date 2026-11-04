@@ -4,7 +4,8 @@
 // tree paints. Two things are here instead, in one file because nothing uses either
 // without the other: a Source view's line gutter and `#L` anchors
 // (`window.MetabrowserSourceLineAnchors`), and the SDK helpers that build a view's
-// markup -- the Source surface, the copy wrapper, the partial-content notice -- with
+// markup -- the Source surface, ref chips and their sibling copy controls, the copy
+// wrapper, age labels and the partial-content notice -- with
 // the syntax service, since nothing asks for a token until a view shows code.
 //
 // It is the `sdk-views` on-demand bundle. `loadViewComposition` fetches it beside the
@@ -749,7 +750,260 @@
     throw new Error("plugin-sdk-views.js did not define the line anchors");
   }
   const lineAnchors = definedLineAnchors;
-  const { delegateOwnerAttribute, escapeHtml, formatSize } = mb;
+  const { delegateOwnerAttribute, ownDelegate, escapeHtml, formatSize } = mb;
+
+  /** Shared branch/tag markup. `name` is the raw copy value, independent of its label.
+   * @param {string} name
+   * @param {{label?:string,kind?:string,trunk?:boolean,head?:boolean,copy?:"inline"|"sibling"|false}} [options]
+   */
+  function refChipHtml(name, options = {}) {
+    const kind = options.kind === "tag" ? "tag" : options.kind === "remote" ? "remote" : "local";
+    const classes = ["git-ref", `git-ref-${kind}`];
+    if (options.trunk) {
+      classes.push("git-ref-trunk");
+    }
+    if (options.head) {
+      classes.push("git-ref-head");
+    }
+    const copy = options.copy ?? "inline";
+    if (copy) {
+      classes.push("git-ref-copyable");
+    }
+    return (
+      `<span class="${classes.join(" ")}" data-tip-text="${escapeHtml(options.label ?? name)}"` +
+      (copy === "sibling" ? ` data-ref-copy="${escapeHtml(name)}"` : "") +
+      ">" +
+      `<span class="git-ref-label">${escapeHtml(options.label ?? name)}</span>` +
+      (copy === "inline" ? refCopyHtml(name) : "") +
+      "</span>"
+    );
+  }
+
+  /** @param {string} name */
+  function refCopyHtml(name) {
+    const label = `Copy ref ${name}`;
+    return (
+      `<button type="button" class="icon-btn git-ref-copy" data-mb-copy="text"` +
+      ` data-mb-copy-text="${escapeHtml(name)}"${delegateOwnerAttribute()}` +
+      ` data-mb-copy-label="${escapeHtml(label)}" data-tip-text="${escapeHtml(label)}"` +
+      ` aria-label="${escapeHtml(label)}">${global.MetabrowserIcons?.copy ?? ""}</button>`
+    );
+  }
+
+  /** DOM form of the same owned, escaped chip; no repository text becomes markup.
+   * @param {string} name
+   * @param {Parameters<typeof refChipHtml>[1]} [options]
+   * @returns {HTMLElement}
+   */
+  function refChip(name, options = {}) {
+    const chip = document.createElement("span");
+    const kind = options.kind === "tag" ? "tag" : options.kind === "remote" ? "remote" : "local";
+    chip.className = `git-ref git-ref-${kind}${options.trunk ? " git-ref-trunk" : ""}${options.head ? " git-ref-head" : ""}`;
+    chip.dataset.tipText = options.label ?? name;
+    const label = document.createElement("span");
+    label.className = "git-ref-label";
+    label.textContent = options.label ?? name;
+    chip.append(label);
+    const copy = options.copy ?? "inline";
+    if (copy) {
+      chip.classList.add("git-ref-copyable");
+    }
+    if (copy === "sibling") {
+      chip.dataset.refCopy = name;
+    }
+    if (copy === "inline") {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "icon-btn git-ref-copy";
+      button.setAttribute("data-mb-copy", "text");
+      button.setAttribute("data-mb-copy-text", name);
+      ownDelegate(button);
+      const tip = `Copy ref ${name}`;
+      button.setAttribute("data-mb-copy-label", tip);
+      button.setAttribute("data-tip-text", tip);
+      button.setAttribute("aria-label", tip);
+      button.innerHTML = global.MetabrowserIcons?.copy ?? "";
+      chip.append(button);
+    }
+    return chip;
+  }
+
+  /** Put secondary copy controls outside a primary row link/button. Each mounted row
+   * owns its controls and disposer; active global hide listeners are released on hide/dispose.
+   * Geometry is read only on entry. A scroll/resize while focus stays hides controls;
+   * the next pointer/focus entry positions them against the current chip boxes.
+   * @param {HTMLElement} primary
+   * @param {HTMLElement} host
+   * @returns {() => void}
+   */
+  function mountRefCopies(primary, host) {
+    const chips = [...primary.querySelectorAll("[data-ref-copy]")];
+    if (!chips.length) {
+      return () => {};
+    }
+    host.classList.add("git-ref-copy-host");
+    const layer = document.createElement("span");
+    layer.className = "git-ref-copy-layer";
+    const buttons = chips.map((chip) => {
+      const button = /** @type {HTMLButtonElement} */ (
+        refChip(chip.getAttribute("data-ref-copy") ?? "").querySelector("button")
+      );
+      layer.append(button);
+      return button;
+    });
+    host.append(layer);
+    let hiding = false;
+    function hide() {
+      hiding = true;
+      if (layer.contains(document.activeElement)) {
+        primary.focus({ preventScroll: true });
+      }
+      global.removeEventListener("resize", hide);
+      document.removeEventListener("scroll", hide, true);
+      document.removeEventListener("pointerdown", outsidePointer, true);
+      layer.hidden = true;
+      for (const button of buttons) {
+        button.tabIndex = -1;
+      }
+      hiding = false;
+    }
+    /** A pane splitter may prevent focus movement while changing the clipping box.
+     * Release an active copy before that drag; a pointer on the copy itself still works.
+     * @param {PointerEvent} event
+     */
+    function outsidePointer(event) {
+      if (!host.contains(/** @type {Node | null} */ (event.target))) {
+        hide();
+      }
+    }
+    function position() {
+      if (hiding) {
+        return;
+      }
+      const box = host.getBoundingClientRect();
+      const primaryBox = primary.getBoundingClientRect();
+      layer.hidden = false;
+      for (let index = 0; index < chips.length; index++) {
+        const rect = chips[index].getBoundingClientRect();
+        // A chip can fit its own group yet be clipped by a narrower metadata line.
+        // Keep the sibling hit target inside every containing box through the primary.
+        let left = primaryBox.left;
+        let right = primaryBox.right;
+        for (
+          let ancestor = chips[index].parentElement;
+          ancestor;
+          ancestor = ancestor.parentElement
+        ) {
+          const box = ancestor.getBoundingClientRect();
+          left = Math.max(left, box.left);
+          right = Math.min(right, box.right);
+          if (ancestor === primary) {
+            break;
+          }
+        }
+        const button = buttons[index];
+        button.hidden = rect.width < 20 || rect.right > right || rect.left < left;
+        const kind = chips[index].classList.contains("git-ref-tag")
+          ? "tag"
+          : chips[index].classList.contains("git-ref-remote")
+            ? "remote"
+            : "local";
+        button.style.setProperty(
+          "--git-ref-copy-ink",
+          chips[index].classList.contains("git-ref-trunk")
+            ? "var(--git-ref-bg)"
+            : `var(--git-ref-${kind})`,
+        );
+        button.style.left = `${rect.right - box.left - 16}px`;
+        button.style.top = `${rect.top - box.top + (rect.height - 16) / 2}px`;
+        button.tabIndex = button.hidden ? -1 : 0;
+      }
+      global.addEventListener("resize", hide);
+      document.addEventListener("scroll", hide, true);
+      document.addEventListener("pointerdown", outsidePointer, true);
+    }
+    /** @param {FocusEvent | PointerEvent} event */
+    function leave(event) {
+      if (
+        !host.contains(/** @type {Node | null} */ (event.relatedTarget)) &&
+        (event.type === "focusout" || !host.contains(document.activeElement))
+      ) {
+        hide();
+      }
+    }
+    hide();
+    host.addEventListener("pointerenter", position);
+    host.addEventListener("focusin", position);
+    host.addEventListener("pointerleave", leave);
+    host.addEventListener("focusout", leave);
+    return () => {
+      hide();
+      host.removeEventListener("pointerenter", position);
+      host.removeEventListener("focusin", position);
+      host.removeEventListener("pointerleave", leave);
+      host.removeEventListener("focusout", leave);
+      layer.remove();
+    };
+  }
+
+  // Age buckets shared with the shell's tree column. The thresholds
+  // mirror app.js formatAge exactly (sec <1m, min <1h, hr <1d, day
+  // <7d, wk <30d, old beyond); keep the two lists in sync so a
+  // treemap fill and a tree row never disagree about freshness.
+  /** @type {Array<[string, number]>} */
+  const AGE_BUCKET_STEPS = [
+    ["sec", 60 * 1000],
+    ["min", 60 * 60 * 1000],
+    ["hr", 24 * 60 * 60 * 1000],
+    ["day", 7 * 24 * 60 * 60 * 1000],
+    ["wk", 30 * 24 * 60 * 60 * 1000],
+  ];
+
+  /** @param {unknown} mtimeSeconds */
+  function ageBucket(mtimeSeconds) {
+    if (typeof mtimeSeconds !== "number" || !Number.isFinite(mtimeSeconds) || mtimeSeconds <= 0) {
+      return null;
+    }
+    const absMs = Math.abs(Date.now() - mtimeSeconds * 1000);
+    for (const [bucket, limitMs] of AGE_BUCKET_STEPS) {
+      if (absMs < limitMs) {
+        return bucket;
+      }
+    }
+    return "old";
+  }
+
+  // Compact age text mirrors app.js formatAge ("3h", "2d", "<1m", …)
+  // so a plugin label and a tree row read identically.
+  /** @type {Array<[string, number]>} */
+  const AGE_LABEL_STEPS = [
+    ["y", 365 * 24 * 60 * 60 * 1000],
+    ["mo", 30 * 24 * 60 * 60 * 1000],
+    ["w", 7 * 24 * 60 * 60 * 1000],
+    ["d", 24 * 60 * 60 * 1000],
+    ["h", 60 * 60 * 1000],
+    ["m", 60 * 1000],
+  ];
+
+  /** @param {unknown} mtimeSeconds */
+  function ageLabelHtml(mtimeSeconds) {
+    // The colored age chip the shell shows in tree rows and headers:
+    // `<span class="age-<bucket>">3h</span>` on the shared freshness
+    // tokens, or "" when there is no meaningful mtime.
+    const bucket = ageBucket(mtimeSeconds);
+    if (bucket === null) {
+      return "";
+    }
+    const absMs = Math.abs(Date.now() - /** @type {number} */ (mtimeSeconds) * 1000);
+    let text = "<1m";
+    for (const [suffix, stepMs] of AGE_LABEL_STEPS) {
+      if (absMs >= stepMs) {
+        text = `${Math.round(absMs / stepMs)}${suffix}`;
+        break;
+      }
+    }
+    return `<span class="age-${bucket}">${escapeHtml(text)}</span>`;
+  }
 
   const HIGHLIGHT_TOKEN_CLASS_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
   /** @type {Readonly<Record<string, string>>} */
@@ -1281,7 +1535,132 @@
     });
   }
 
+  // Destination marks are view-phase presentation only: they grant no trust or URL
+  // privileges. PR state stays with its plugin, which may supply a known icon.
+  const githubHosts = new Set([
+    "github.com",
+    "www.github.com",
+    "cli.github.com",
+    "docs.github.com",
+    "gist.github.com",
+    "api.github.com",
+  ]);
+  const entityPath =
+    /^\/[A-Za-z\d](?:[A-Za-z\d-]*[A-Za-z\d])?\/[A-Za-z\d_.-]+\/(issues|pull)\/[1-9]\d*(?:\/|$)/;
+  /** @param {string | null} href @returns {"github" | "issue" | "pull" | null} */
+  function githubDestination(href) {
+    if (!href || /[\s\\]|\p{Cc}/u.test(href)) {
+      return null;
+    }
+    let url;
+    try {
+      url = new URL(href, global.location.origin);
+    } catch {
+      return null;
+    }
+    if (
+      !/^(https?:)$/.test(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.port ||
+      !githubHosts.has(url.hostname)
+    ) {
+      return null;
+    }
+    const entity = url.hostname === "github.com" ? entityPath.exec(url.pathname) : null;
+    return entity ? (entity[1].toLowerCase() === "issues" ? "issue" : "pull") : "github";
+  }
+
+  /* GitHub mark: Primer Octicons mark-github-16.svg, unchanged path, at
+   * ea8e6bb79894cc7e85564ee9b53d86b418738d04 (2026-03-18).
+   * https://github.com/primer/octicons/blob/ea8e6bb79894cc7e85564ee9b53d86b418738d04/icons/mark-github-16.svg
+   * MIT License
+   * Copyright (c) 2026 GitHub Inc.
+   * Permission is hereby granted, free of charge, to any person obtaining a copy
+   * of this software and associated documentation files (the "Software"), to deal
+   * in the Software without restriction, including without limitation the rights
+   * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   * copies of the Software, and to permit persons to whom the Software is
+   * furnished to do so, subject to the following conditions:
+   * The above copyright notice and this permission notice shall be included in all
+   * copies or substantial portions of the Software.
+   * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   * SOFTWARE.
+   */
+  const destinationGlyphs = {
+    github:
+      '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656"/></svg>',
+    /* Lucide 1.17.0: circle-dot.svg and git-pull-request.svg, neutral entity marks.
+     * https://github.com/lucide-icons/lucide/tree/896aba0d195a4fec38ad7c4a90d00cb3389ebfea/icons
+     * ISC License
+     * Copyright (c) 2026 Lucide Icons and Contributors
+     * Permission to use, copy, modify, and/or distribute this software for any
+     * purpose with or without fee is hereby granted, provided that the above
+     * copyright notice and this permission notice appear in all copies.
+     * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+     * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+     * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+     * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+     * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+     * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+     * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+     */
+    issue:
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/></svg>',
+    pull: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg>',
+  };
+  /** @type {WeakMap<HTMLElement, {node: HTMLElement, kind: string, supplied: Element | undefined}>} */
+  const linkMarks = new WeakMap();
+
+  /** Decorate a final external destination without changing authored content or navigation.
+   * Only the calling view may supply a state icon; document attributes are never read.
+   * @template {HTMLElement} T
+   * @param {T} anchor
+   * @param {{icon?: Element}} [options]
+   * @returns {T}
+   */
+  function decorateExternalLink(anchor, options = {}) {
+    const kind = anchor.tagName === "A" ? githubDestination(anchor.getAttribute("href")) : null;
+    let mark = linkMarks.get(anchor);
+    if (kind === null) {
+      mark?.node.remove();
+      linkMarks.delete(anchor);
+      return anchor;
+    }
+    const supplied = kind === "github" ? undefined : options.icon;
+    if (!mark || mark.node.parentNode !== anchor) {
+      const node = anchor.ownerDocument.createElement("span");
+      node.className = "external-link-icon";
+      node.setAttribute("aria-hidden", "true");
+      mark = { node, kind: "", supplied: undefined };
+      linkMarks.set(anchor, mark);
+      anchor.append(node);
+    }
+    if (mark.kind !== kind || mark.supplied !== supplied) {
+      if (supplied) {
+        mark.node.replaceChildren(supplied);
+      } else {
+        mark.node.innerHTML = destinationGlyphs[kind];
+      }
+      mark.node.setAttribute("data-external-kind", kind);
+      mark.kind = kind;
+      mark.supplied = supplied;
+    }
+    return anchor;
+  }
+
   Object.assign(mb, {
+    decorateExternalLink,
+    refChipHtml,
+    refChip,
+    mountRefCopies,
+    ageBucket,
+    ageLabelHtml,
     highlightSyntax: highlightSyntax,
     isLargeTextPreview: isLargeTextPreview,
     langForExtension: langForExtension,

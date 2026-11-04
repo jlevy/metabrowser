@@ -34,6 +34,8 @@ KNOWN_VISIBLE_LOADING_TEXT: dict[str, int] = {}
 _SR_ONLY_SPAN = re.compile(r'<span class="sr-only">[^<]*</span>')
 _ARIA_LABEL = re.compile(r'aria-label="[^"]*"')
 _ARIA_LABEL_CALL = re.compile(r'setAttribute\(\s*"aria-label"\s*,\s*"[^"]*"\s*\)')
+# The same name as a property of the attributes an element is built with, `{"aria-label": …}`.
+_ARIA_LABEL_PROPERTY = re.compile(r'"aria-label"\s*:\s*"[^"]*"')
 # The DOM-built form of the same accessible name:
 #     node.className = "sr-only";
 #     node.textContent = "Loading …";
@@ -59,8 +61,25 @@ def _visible_loading_hits(text: str) -> list[str]:
     stripped = _SR_ONLY_SPAN.sub("", stripped)
     stripped = _ARIA_LABEL.sub("", stripped)
     stripped = _ARIA_LABEL_CALL.sub("", stripped)
+    stripped = _ARIA_LABEL_PROPERTY.sub("", stripped)
     stripped = _SR_ONLY_ASSIGNED.sub("", stripped)
     return _LOADING_TEXT.findall(stripped)
+
+
+def test_an_accessible_name_is_not_visible_text_in_any_form() -> None:
+    """The rule allows the name a screen reader reads, however an element is given it.
+
+    Each form below names a loading state and shows nothing, and the last one shows the words.
+    """
+
+    for named in (
+        '<div role="status" aria-label="Loading pull requests"></div>',
+        'node.setAttribute("aria-label", "Loading pull requests");',
+        'h("div", { role: "status", "aria-label": "Loading pull requests" });',
+        '<span class="sr-only">Loading pull requests</span>',
+    ):
+        assert not _visible_loading_hits(named), named
+    assert _visible_loading_hits('h("span", {}, ["Loading pull requests"]);')
 
 
 def test_no_new_visible_loading_text() -> None:

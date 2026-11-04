@@ -8,13 +8,15 @@ check runs with no network and no GitHub account.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import stat
-import time
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
+from metabrowser.builtin_plugins.github import gh as gh_module
 from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
 from metabrowser.builtin_plugins.github.provider import (
     MAX_FIRST_CLONE_ENV,
@@ -29,7 +31,7 @@ from metabrowser.cache.providers import (
     repository_context_for,
 )
 from metabrowser.cache.urls import GitSource
-from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
+from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S, terminate_git_process
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="the fake gh is a POSIX shell script")
 
@@ -40,7 +42,12 @@ if [ -t 0 ]; then echo tty > "$FAKE_GH_LOG.stdin"; else cat > "$FAKE_GH_LOG.stdi
 case "$FAKE_GH_MODE" in
   size) printf '%s\\n' "$FAKE_GH_SIZE" ;;
   fail) echo 'HTTP 404: Not Found' >&2; exit 1 ;;
-  hang) sleep 30 & echo $! > "$FAKE_GH_LOG.child"; wait ;;
+  hang)
+    sleep "${FAKE_GH_STARTUP_DELAY:-0}"
+    sleep 30 & echo $! > "$FAKE_GH_LOG.child"
+    echo $$ > "$FAKE_GH_LOG.parent"
+    echo ready
+    wait ;;
   flood) yes x | head -c 100000 ;;
 esac
 """
@@ -175,22 +182,64 @@ def test_no_gh_and_other_hosts_skip_the_check(
     asyncio.run(GithubProvider().check_first_clone(other))
 
 
+@pytest.mark.parametrize("startup_delay", ["0", "1.25"])
 def test_a_hung_gh_is_killed_with_its_children(
-    fake_gh: Path, monkeypatch: pytest.MonkeyPatch
+    fake_gh: Path, monkeypatch: pytest.MonkeyPatch, startup_delay: str
 ) -> None:
     monkeypatch.setenv("FAKE_GH_MODE", "hang")
-    with pytest.raises(GhError, match="did not answer"):
-        asyncio.run(run_gh(["api", "x"], timeout_s=1))
-    child = int((fake_gh.parent / "gh-log.child").read_text())
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
+    monkeypatch.setenv("FAKE_GH_STARTUP_DELAY", startup_delay)
+    finish = gh_module._finish
+    process: asyncio.subprocess.Process | None = None
+    pids: set[int] = set()
+
+    async def after_ready(
+        proc: asyncio.subprocess.Process,
+        args: Sequence[str],
+        *,
+        timeout_s: float,
+        max_bytes: int,
+    ) -> gh_module._Completed:
+        nonlocal process
+        process = proc
+        # The fixture must have a child before testing child cleanup. Its startup can
+        # exceed the real one-second deadline on a loaded filesystem; do not lengthen
+        # that deadline or accept a child which never existed.
+        assert proc.stdout is not None
+        async with asyncio.timeout(10):
+            assert await proc.stdout.readline() == b"ready\n"
+        assert int(fake_gh.with_suffix(".parent").read_text()) == proc.pid
+        pids.update((proc.pid, int(fake_gh.with_suffix(".child").read_text())))
+        assert len(pids) == 2
+        for pid in pids:
+            os.kill(pid, 0)
+        return await finish(proc, args, timeout_s=timeout_s, max_bytes=max_bytes)
+
+    monkeypatch.setattr(gh_module, "_finish", after_ready)
+
+    async def check() -> None:
         try:
-            os.kill(child, 0)
-        except ProcessLookupError:
-            return
-        time.sleep(0.02)
-    os.kill(child, 9)
-    pytest.fail("the hung gh's child outlived the timeout")
+            with pytest.raises(GhError, match="did not answer within 1 s") as failed:
+                await run_gh(["api", "x"], timeout_s=1)
+            assert failed.value.state == "network_error"
+            assert process is not None and process.returncode is not None
+            async with asyncio.timeout(5):
+                while pids:
+                    for pid in tuple(pids):
+                        try:
+                            os.kill(pid, 0)
+                        except ProcessLookupError:
+                            pids.remove(pid)
+                    if pids:
+                        await asyncio.sleep(0.02)
+        finally:
+            # Cleanup follows the assertions, including readiness/cleanup failures.
+            if process is not None:
+                await terminate_git_process(process)
+            for pid in pids:
+                with contextlib.suppress(ProcessLookupError):
+                    os.kill(pid, 9)
+
+    asyncio.run(check())
 
 
 def test_gh_output_is_capped(fake_gh: Path, monkeypatch: pytest.MonkeyPatch) -> None:

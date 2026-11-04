@@ -3,6 +3,9 @@ const path = require("node:path");
 
 const repoRoot = path.resolve(process.argv[2]);
 const failures = [];
+const sdk = require("./sdk-sandbox.js").createSdkSandbox();
+const linkDocument = { createElement: (tag) => new FakeElement(tag) };
+sdk.document = linkDocument;
 
 function check(name, condition, detail = "failed") {
   if (!condition) {
@@ -18,11 +21,30 @@ class FakeElement extends ElementShim {
     super();
     this.tagName = tagName.toUpperCase();
     this.parentElement = null;
+    this.parentNode = null;
+    this.ownerDocument = linkDocument;
+    this.children = [];
     this.attributes = new Map(Object.entries(attributes));
     this.id = attributes.id || "";
     this.scrolled = false;
   }
 
+  append(...nodes) {
+    for (const node of nodes) {
+      node.parentNode = this;
+      this.children.push(node);
+    }
+  }
+  remove() {
+    if (this.parentNode) {
+      this.parentNode.children = this.parentNode.children.filter((n) => n !== this);
+    }
+    this.parentNode = null;
+  }
+  replaceChildren(...nodes) {
+    this.children = [];
+    this.append(...nodes);
+  }
   getAttribute(name) {
     return this.attributes.has(name) ? this.attributes.get(name) : null;
   }
@@ -256,6 +278,7 @@ async function loadModule() {
   const github = new FakeElement("a", {
     href: `https://github.com/example/docs/blob/${revision}/docs/guide.md#Install`,
   });
+  const externalIssue = new FakeElement("a", { href: "//github.com/another/repo/issues/23" });
   const unsafe = new FakeElement("a", { href: "javascript:alert(1)" });
   const download = new FakeElement("a", { download: "", href: "files/archive.zip" });
   const newTab = new FakeElement("a", { href: "other.md", target: "_blank" });
@@ -270,6 +293,7 @@ async function loadModule() {
     internal,
     published,
     external,
+    externalIssue,
     github,
     unsafe,
     download,
@@ -287,6 +311,7 @@ async function loadModule() {
   const opened = [];
   let current = { path: "docs/readme.md", fragment: "Install" };
   const mb = {
+    decorateExternalLink: sdk.metabrowser.decorateExternalLink,
     repository: {
       branch: "main",
       host: "github.com",
@@ -345,6 +370,12 @@ async function loadModule() {
     "GitHub localization disclosed",
     github.getAttribute("data-metabrowser-github-localization") === "revision",
   );
+  check(
+    "external issue has neutral mark",
+    externalIssue.children[0]?.getAttribute("data-external-kind") === "issue",
+  );
+  check("localized GitHub link has no external mark", github.children.length === 0);
+  check("unrelated destination has no GitHub mark", external.children.length === 0);
   check("unsafe href removed", !unsafe.hasAttribute("href"));
   check("unsafe link keyboard reachable", unsafe.getAttribute("tabindex") === "0");
   check("unsafe link explained", unsafe.getAttribute("aria-disabled") === "true");

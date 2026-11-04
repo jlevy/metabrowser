@@ -20,7 +20,7 @@ restores them so `make golden-update` is a single reviewable step:
 * `[CLOCK]` for the logger's time of day on the pending-tally diagnostic line
 * `[TIMESTAMP]` for a time taken from the wall clock while the transcript or its
   fixture ran: when a one-shot refresh found another process refreshing, when a
-  pull request's refresh failed, and when a fixture fetched its mirror. A time a
+  pull request's refresh failed, a local file list refreshed, and a fixture fetched its mirror. A time a
   fixture pins stays literal, and a time that is neither stops the update
 * the watcher's mode, state, and reason, which are host facts and startup
   transients -- the filesystem the served root sits on, the backend that made
@@ -166,6 +166,9 @@ WALL_CLOCK_SITES: list[str] = [
     # When a pull request's refresh failed in the transcript itself. A refresh the
     # fixture ran keeps the fixture's time.
     rf'(^\s+"reset_at": null,\n\s+"at": )"({_TIME})"',
+    # A local file-list refresh in the transcript uses the process clock. Initial fixture
+    # lists have the same envelope shape but their pinned fetch time stays literal.
+    rf'(^\s+"listed_from": "comparison",\n\s+"fetched_at": )"({_TIME})"',
     # When a fixture fetched its mirror while it was being built, and did not then set
     # the recorded fetch to a fixed time: the fixture process's clock.
     rf'(^\s+"last_fetch_at": )"({_TIME})"',

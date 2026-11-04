@@ -6,37 +6,77 @@ sdk_version = "0.7"
 
 # GitHub support: the URL reducer, the gh credential helper, and pull-request records
 # reach core through metabrowser.cache.providers, not this manifest. The manifest mounts
-# the pull-request routes and the pull-request page's view, which is all the shell loads
-# index.js for.
+# the pull-request routes and the two views the shell loads index.js for.
 
-# The served pull request's cached record, with a typed absent, pending, current, or
-# stale state. Answers from the cache alone; only a refresh fetches.
+# One pull request's cached record, by number, with a typed absent, pending, current,
+# or stale state. Answers from the cache alone; only a refresh fetches.
 [[data_hook]]
 route = "pull"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_handler"
 methods = ["GET"]
 
-# A comparison from the selected PR's store, reusing its persisted manifest.
-[[data_hook]]
-route = "pull-comparison"
-sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_comparison_handler"
-methods = ["GET"]
-
-# Start or join the served pull request's refresh in the refresh coordinator. A POST
-# with a JSON object body, behind the same-origin guard; it returns at once.
+# Start or join one pull request's refresh in the refresh coordinator. A POST with a
+# JSON object body naming its number, behind the same-origin guard; it returns at once.
 [[data_hook]]
 route = "pull-refresh"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_refresh_handler"
 methods = ["POST"]
 
-# One text of the served pull request's cached record -- its description or one
-# comment or review -- rendered as Markdown through KPress in its sanitized mode.
+# A pinned comparison from an acquired checkout store. GET never starts acquisition.
+[[data_hook]]
+route = "pull-comparison"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_comparison_handler"
+methods = ["GET"]
+
+# One text of a pull request's cached record -- its description or one comment or
+# review -- rendered as Markdown through KPress in its sanitized mode.
 [[data_hook]]
 route = "pull-markdown"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_markdown_handler"
 methods = ["GET"]
 
-# The served pull request's page at /pull/<n>[/files]. No file is ever this kind: the
+# A filtered window of the repository's shared PR catalog (open, closed, or all), with
+# exact remote totals, cached coverage, and typed freshness. GET is cache-only and runs
+# no Git; catalog background work is started separately.
+[[data_hook]]
+route = "pulls"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pulls_handler"
+methods = ["GET"]
+
+# Start or join resumable catalog warming, prioritizing the requested display target
+# before backfilling all metadata. Same-origin POST returns before background work.
+[[data_hook]]
+route = "pulls-refresh"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pulls_refresh_handler"
+methods = ["POST"]
+
+# Optional native stack membership. Reads never discover tooling or contact GitHub.
+[[data_hook]]
+route = "stacks"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:stacks_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "stacks-refresh"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:stacks_refresh_handler"
+methods = ["POST"]
+
+# One pull request's changed files, from the local comparison or GitHub's list, with a
+# typed absent, pending, current, or stale state and an honest count while it fills.
+# Answers from the cache alone; only a refresh lists them.
+[[data_hook]]
+route = "pull-files"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_handler"
+methods = ["GET"]
+
+# Start or join that list's refresh in the refresh coordinator. A POST with a JSON object
+# body naming its number, behind the same-origin guard; it returns at once.
+[[data_hook]]
+route = "pull-files-refresh"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_refresh_handler"
+methods = ["POST"]
+
+# A pull request's page at /pull/<n>[/files]. No file is ever this kind: the
 # shell selects it for the pull-request route and mounts this view there.
 [[view]]
 kind = "pull-request"
@@ -44,4 +84,14 @@ id = "pull-request"
 label = "Pull request"
 default = true
 container_class = "content-body github-pull-host"
+render_runtime = "client"
+
+# The repository's pull requests, in the Pulls tab and at /pulls. No file is ever this kind:
+# the shell mounts it for that tab and that route, in a host of its own, so it names no
+# container class.
+[[view]]
+kind = "pull-request-list"
+id = "pull-request-list"
+label = "Pull requests"
+default = true
 render_runtime = "client"

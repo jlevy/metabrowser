@@ -487,6 +487,21 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-files",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/pull-files-refresh",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-markdown",
       "methods": [
         "GET",
@@ -496,6 +511,36 @@ status: 200
     },
     {
       "path": "/api/plugin/github/pull-refresh",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/pulls",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/pulls-refresh",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/stacks",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/stacks-refresh",
       "methods": [
         "POST"
       ],
@@ -641,6 +686,14 @@ status: 200
       "kind": "browser"
     },
     {
+      "path": "/pulls",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "browser"
+    },
+    {
       "path": "/view/{path:path}",
       "methods": [
         "GET",
@@ -665,7 +718,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 49
+  "count": 56
 }
 ? 0
 ```

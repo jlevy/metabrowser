@@ -102,6 +102,14 @@
     }
     return {
       button: label.name === "" ? label.kind : `${label.kind}: ${label.name}`,
+      selectedRef:
+        label.kind === "Branch" || label.kind === "Tag"
+          ? {
+              name: label.name,
+              label: label.name,
+              kind: label.kind === "Tag" ? "tag" : "remote",
+            }
+          : null,
       open: state.open,
       kind: state.kind,
       query: state.query,
@@ -406,7 +414,24 @@
    * @param {(ref: string) => void} choose
    */
   function paint(parts, model, choose) {
-    parts.label.textContent = model.button;
+    const refKey = JSON.stringify(model.selectedRef);
+    if (parts.label.dataset.refKey !== refKey) {
+      parts.releaseCopies?.();
+      parts.label.dataset.refKey = refKey;
+      parts.label.replaceChildren();
+      if (model.selectedRef !== null) {
+        parts.label.appendChild(
+          window.metabrowser.refChip(model.selectedRef.name, {
+            label: model.selectedRef.label,
+            kind: model.selectedRef.kind,
+            copy: "sibling",
+          }),
+        );
+      } else {
+        parts.label.textContent = model.button;
+      }
+      parts.releaseCopies = window.metabrowser.mountRefCopies(parts.toggle, parts.root);
+    }
     parts.toggle.setAttribute("aria-expanded", String(model.open));
     parts.panel.hidden = !model.open;
     parts.root.dataset.open = String(model.open);
@@ -440,7 +465,14 @@
       }
       const name = document.createElement("span");
       name.className = "source-ref-selector-name";
-      name.textContent = row.name;
+      name.appendChild(
+        window.metabrowser.refChip(row.ref, {
+          label: row.name,
+          kind: model.kind === "tag" ? "tag" : "remote",
+          copy: false,
+          trunk: row.default,
+        }),
+      );
       button.append(name);
       if (row.default) {
         const badge = document.createElement("span");
@@ -684,6 +716,7 @@
         listening.abort();
         unbindKinds();
         mounted.dispose();
+        parts.releaseCopies?.();
         element.replaceChildren();
         element.hidden = true;
       },

@@ -4,9 +4,9 @@ A record holds what ``gh api`` said about one pull request, as the reader it nam
 it at ``fetched_at``: the pull request, its issue comments, reviews, review comments,
 check runs, and combined status, plus the comparison endpoints Git computed from it.
 It lives at ``sources/<slug>/pulls/<n>.json``, written by the home's private
-atomic file write and read with a size bound. Pydantic validates it on write and parses
-it on read; a record whose ``schema_version`` is not :data:`PULL_RECORD_SCHEMA` is
-refetched, never migrated.
+atomic file write under the source-alias lock and read lock-free with a size bound.
+Pydantic validates it on write and parses it on read; a record whose ``schema_version``
+is not :data:`PULL_RECORD_SCHEMA` is refetched, never migrated.
 
 Every list and every free-text field is bounded, and a bound that cut something says so
 in ``truncated`` or in the item's own ``*_truncated`` flag. The bounds are measured
@@ -16,6 +16,8 @@ below, on public pull requests read with ``gh api`` on 2026-09-23.
 from __future__ import annotations
 
 import json
+import os
+import stat
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal
@@ -29,11 +31,14 @@ from pydantic import (
     field_validator,
 )
 
+from metabrowser.builtin_plugins.github.avatars import AvatarUrl
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
+from metabrowser.cache.locks import source_alias_lock
 from metabrowser.cache.paths import (
     source_pull_record,
     source_pull_refresh,
     source_pulls_directory,
+    source_record,
 )
 from metabrowser.home import (
     PrivateStorageError,
@@ -44,6 +49,7 @@ from metabrowser.home import (
 
 # 2 added the pull request's commit count and who merged it.
 PULL_RECORD_SCHEMA: Final = 2
+PULL_RECORD_PROJECTION: Final = 1
 
 # Measured on ten public pull requests (octocat/Hello-World#1, cli/cli#14462,
 # kubernetes/kubernetes#18085 and #102884, rust-lang/rust#69864, #137944, and #162519,
@@ -92,6 +98,7 @@ type Timestamp = Annotated[str, StringConstraints(pattern=r"^\d{4}-\d\d-\d\dT\d\
 type Login = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_\[\]-]{0,99}$")]
 type Short = Annotated[str, StringConstraints(max_length=1024)]
 type Url = Annotated[str, StringConstraints(pattern=r"^https://", max_length=4096)]
+type Reader = Annotated[str, StringConstraints(pattern=r"^gh:[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")]
 type Mergeable = Literal["mergeable", "conflicting", "unknown"]
 type UnavailablePart = Literal["check_runs", "status", "comparison"]
 
@@ -127,11 +134,13 @@ class PullRequest(_Model):
     draft: bool
     merged: bool
     merged_by: Login | None
+    merged_by_avatar_url: AvatarUrl = None
     commits: Annotated[int, Field(ge=0, le=MAX_PULL_COMMITS)] | None
     merge_commit_sha: Sha | None
     mergeable: Mergeable
     labels: tuple[Short, ...] = Field(max_length=MAX_LABELS)
     author: Login | None
+    author_avatar_url: AvatarUrl = None
     created_at: Timestamp
     updated_at: Timestamp
     merged_at: Timestamp | None
@@ -146,6 +155,7 @@ class IssueComment(_Model):
 
     id: int
     author: Login | None
+    author_avatar_url: AvatarUrl = None
     body: str
     body_truncated: bool
     created_at: Timestamp
@@ -158,6 +168,7 @@ class Review(_Model):
     id: int
     state: Short
     author: Login | None
+    author_avatar_url: AvatarUrl = None
     body: str
     body_truncated: bool
     submitted_at: Timestamp | None
@@ -181,6 +192,7 @@ class ReviewComment(_Model):
     diff_hunk: str
     diff_hunk_truncated: bool
     author: Login | None
+    author_avatar_url: AvatarUrl = None
     body: str
     body_truncated: bool
     created_at: Timestamp
@@ -246,10 +258,11 @@ class PullRecord(_Model):
     """Everything cached about one pull request."""
 
     schema_version: int
+    projection_version: int = Field(default=0, ge=0, le=PULL_RECORD_PROJECTION)
     source: Url
     number: int = Field(ge=1)
     fetched_at: Timestamp
-    reader: Annotated[str, StringConstraints(pattern=r"^gh:[A-Za-z0-9][A-Za-z0-9_-]{0,99}$")]
+    reader: Reader
     etags: dict[
         Annotated[str, StringConstraints(max_length=512)],
         Annotated[str, StringConstraints(max_length=300)],
@@ -427,16 +440,76 @@ def serialize_pull_record(record: PullRecord) -> bytes:
     return data
 
 
-def write_pull_record(home: Path, slug: str, record: PullRecord) -> None:
-    """Publish *record* atomically under its source. Blocking; run it off the event loop.
+def ensure_pulls_directory(home: Path, slug: str) -> None:
+    """Create or verify the source's ``pulls`` directory, inside a published source only.
 
-    Raises :class:`RecordTooLargeError`, or the home's ``PrivateStorageError`` or an
-    ``OSError`` when the cache cannot take it.
+    A source directory is published whole, with its ``source.yml``, by a mirror's
+    acquisition or a checkout's first write (:mod:`.checkout`). So a write under a slug no
+    source holds raises ``FileNotFoundError`` and creates nothing: not the home, and not a
+    directory the cache would report as a damaged source. Blocking.
     """
 
-    data = serialize_pull_record(record)
+    _require_published_source(home, slug)
     ensure_private_directory(home, source_pulls_directory(slug))
-    write_private_file_atomic(home, source_pull_record(slug, record.number), data)
+
+
+def _require_published_source(home: Path, slug: str) -> None:
+    try:
+        status = os.lstat(home / source_record(slug, "source.yml"))
+    except FileNotFoundError:
+        raise FileNotFoundError("no source is published under this slug") from None
+    if not stat.S_ISREG(status.st_mode):
+        raise FileNotFoundError("no source is published under this slug")
+
+
+def _metadata_record(record: PullRecord, current: PullRecord | RecordAbsence) -> PullRecord:
+    """Retain only the latest shared comparison whose reader and inputs still match."""
+    comparison = None
+    if (
+        isinstance(current, PullRecord)
+        and current.comparison is not None
+        and current.source == record.source
+        and current.reader == record.reader
+        and current.pull.head.sha == record.pull.head.sha
+        and current.comparison.head == record.pull.head.sha
+        and current.pull.base.sha == record.pull.base.sha
+        and current.pull.base.ref == record.pull.base.ref
+        and current.pull.state == record.pull.state
+    ):
+        comparison = current.comparison
+    unavailable = dict(record.unavailable)
+    if comparison is None:
+        unavailable["comparison"] = "no_store"
+    else:
+        unavailable.pop("comparison", None)
+    return record.model_copy(update={"comparison": comparison, "unavailable": unavailable})
+
+
+def write_pull_record(
+    home: Path, slug: str, record: PullRecord, *, metadata_only: bool = False
+) -> PullRecord:
+    """Publish and return *record* under its source's alias lock. Blocking.
+
+    Every writer takes the same lock. A metadata-only writer merges a compatible
+    comparison from the latest shared record inside that publication boundary. Readers
+    remain lock-free and see the old or the complete new record. Async callers use
+    ``run_lock_section`` so cancellation abandons a queued lock wait.
+
+    Raises :class:`RecordTooLargeError`, or the home's ``PrivateStorageError`` or an
+    ``OSError`` when the cache cannot take it, a slug no source holds among them.
+    """
+    data = serialize_pull_record(record)
+    # Do not create a lock or any source path for an unclaimed source. Check again
+    # under the lock before creating the pulls directory or publishing the record.
+    _require_published_source(home, slug)
+    with source_alias_lock(home, slug):
+        ensure_pulls_directory(home, slug)
+        if metadata_only:
+            current = read_pull_record(home, slug, record.number)
+            record = fit_record(_metadata_record(record, current))
+            data = serialize_pull_record(record)
+        write_private_file_atomic(home, source_pull_record(slug, record.number), data)
+    return record
 
 
 def read_pull_record(
@@ -472,19 +545,27 @@ def read_pull_record(
     return record
 
 
-# How a pull request's last refresh ended, kept beside its record so a later command
-# can report it and not ask gh again within the freshness window. One small object;
-# the message is the user-facing one, which names no path, token, or gh output.
+# How a refresh last ended, kept beside what it refreshes (a pull request's record, or a
+# list of pull requests) so a later command can report it and not ask gh again within
+# the freshness window. One small object; the message is the user-facing one, which names
+# no path, token, or gh output.
 MAX_PULL_REFRESH_BYTES: Final = 4096
 
 
 class PullRefreshStamp(_Model):
-    """``succeeded`` or a failure state, why, when GitHub's limit lifts, and when."""
+    """``succeeded`` or a failure state, why, when GitHub's limit lifts, and when.
+
+    ``reader`` is the account it ran as, when it got as far as asking; a list says by it
+    that the account has changed since the list was fetched. ``reset_at`` is the network
+    hold, independent of the latest outcome: a local-only file refresh can succeed
+    without lifting GitHub's limit.
+    """
 
     outcome: Annotated[str, StringConstraints(pattern=r"^[a-z_]{1,40}$")]
     message: Annotated[str, StringConstraints(max_length=1000)] | None = None
     reset_at: Timestamp | None = None
     at: Timestamp
+    reader: Reader | None = None
 
     @field_validator("reset_at", "at")
     @classmethod
@@ -495,26 +576,37 @@ class PullRefreshStamp(_Model):
         return value
 
 
+def write_refresh_stamp(home: Path, slug: str, relative: str, stamp: PullRefreshStamp) -> None:
+    """Publish *stamp* atomically at *relative*, under the source's ``pulls`` directory.
+
+    Blocking; run it off the event loop.
+    """
+
+    ensure_pulls_directory(home, slug)
+    write_private_file_atomic(home, relative, stamp.model_dump_json().encode("utf-8"))
+
+
+def read_refresh_stamp(home: Path, relative: str) -> PullRefreshStamp | None:
+    """The stamp at *relative*, or ``None`` when there is no usable one. Blocking."""
+
+    try:
+        data = read_bytes_bounded(home, relative, max_bytes=MAX_PULL_REFRESH_BYTES)
+        return PullRefreshStamp.model_validate_json(data)
+    except (FileNotFoundError, RecordError, PrivateStorageError, OSError, ValueError):
+        # ValueError covers pydantic's ValidationError: anything unusable is no stamp.
+        return None
+
+
 def write_pull_refresh(home: Path, slug: str, number: int, stamp: PullRefreshStamp) -> None:
     """Publish *stamp* atomically beside the record. Blocking; run it off the event loop."""
 
-    ensure_private_directory(home, source_pulls_directory(slug))
-    write_private_file_atomic(
-        home, source_pull_refresh(slug, number), stamp.model_dump_json().encode("utf-8")
-    )
+    write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
 
 
 def read_pull_refresh(home: Path, slug: str, number: int) -> PullRefreshStamp | None:
     """The last refresh's stamp, or ``None`` when there is no usable one. Blocking."""
 
-    try:
-        data = read_bytes_bounded(
-            home, source_pull_refresh(slug, number), max_bytes=MAX_PULL_REFRESH_BYTES
-        )
-        return PullRefreshStamp.model_validate_json(data)
-    except (FileNotFoundError, RecordError, PrivateStorageError, OSError, ValueError):
-        # ValueError covers pydantic's ValidationError: anything unusable is no stamp.
-        return None
+    return read_refresh_stamp(home, source_pull_refresh(slug, number))
 
 
 __all__ = [
@@ -533,6 +625,7 @@ __all__ = [
     "MAX_TITLE_BYTES",
     "PULL_RECORD_SCHEMA",
     "PullRefreshStamp",
+    "Reader",
     "CheckRun",
     "CombinedStatus",
     "CommitStatus",
@@ -550,11 +643,14 @@ __all__ = [
     "apply_text_budget",
     "cut_escaped",
     "cut_text",
+    "ensure_pulls_directory",
     "escaped_size",
     "fit_record",
     "read_pull_record",
     "read_pull_refresh",
+    "read_refresh_stamp",
     "serialize_pull_record",
     "write_pull_record",
     "write_pull_refresh",
+    "write_refresh_stamp",
 ]

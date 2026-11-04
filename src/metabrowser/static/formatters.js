@@ -57,23 +57,30 @@
   ]);
 
   /**
-   * Abbreviated age and its tier class for an epoch-seconds timestamp.
+   * Compact or relative age and its tier class for an epoch-seconds timestamp.
    *
    * @param {number} epochSeconds
+   * @param {{style?: "compact" | "relative"}} [options]
    * @returns {{label: string, className: string}}
    */
-  function age(epochSeconds) {
+  function age(epochSeconds, options = {}) {
     const value = Number(epochSeconds);
     if (!Number.isFinite(value) || value <= 0) {
       return { label: "", className: "" };
     }
-    const elapsed = Math.abs(Date.now() - value * 1000);
+    const delta = Date.now() - value * 1000;
+    const elapsed = Math.abs(delta);
+    const relative = options.style === "relative";
     for (const [suffix, span, className] of AGE_TIERS) {
       if (elapsed >= span) {
-        return { label: `${Math.round(elapsed / span)}${suffix}`, className };
+        const amount = `${Math.round(elapsed / span)}${suffix}`;
+        return {
+          label: relative ? (delta < 0 ? `in ${amount}` : `${amount} ago`) : amount,
+          className,
+        };
       }
     }
-    return { label: "<1m", className: "age-sec" };
+    return { label: relative ? "just now" : "<1m", className: "age-sec" };
   }
 
   /** @param {number} epochSeconds @returns {string} */

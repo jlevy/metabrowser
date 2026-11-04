@@ -2,6 +2,7 @@
 
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { createSdkSandbox } = require("./sdk-sandbox.js");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const markdownRoot = path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown");
@@ -414,6 +415,7 @@ function parseFakeHtml(html, document) {
     rootContainer,
     { path: "root.md", raw: { content: "![[Embedded]]", content_truncated: false } },
     {
+      decorateExternalLink: createSdkSandbox().metabrowser.decorateExternalLink,
       errors: { isAbortError: (error) => error?.name === "AbortError" },
       escapeHtml: String,
       fetchKpressRender: async (ctx) => ({

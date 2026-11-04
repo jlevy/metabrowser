@@ -26,9 +26,11 @@ and validate plugins on your behalf.
 npx skills add jlevy/metabrowser --skill metabrowser
 ```
 
-**Nothing else to install.** The skill prefers a locally installed `metab` and otherwise
-falls back to `uvx metabrowser@latest`, so it needs no persistent Metabrowser
-installation. It uses `--help` on the CLI as the source of truth.
+The skill prefers a locally installed `metab` and otherwise falls back to
+`uvx metabrowser@latest`, so it needs no persistent Metabrowser installation.
+Install [uv](docs/installation.md) first; Git and GitHub features have
+[separate tool requirements](docs/installation.md#git-and-github-setup).
+The skill uses `--help` on the CLI as the source of truth.
 Release cool-off stays a uv configuration concern rather than a version frozen in the
 skill; see the [installation guide](docs/installation.md).
 
@@ -164,11 +166,15 @@ metab .
 The `metabrowser` compatibility command matches the package name, which is why the short
 `uvx metabrowser@latest ...` form works.
 
-To review a GitHub pull request, give `metab` its URL. This needs
-[`gh`](https://cli.github.com/) signed in;
-[reviewing pull requests](docs/reviewing-pull-requests.md) has the rest.
+To review GitHub pull requests, open a repository URL or an existing checkout and choose
+**Pulls**, or open a pull-request URL directly.
+Reading GitHub data needs [`gh`](https://cli.github.com/) signed in;
+[reviewing pull requests](docs/reviewing-pull-requests.md) explains Fetch changes,
+refreshing, and the difference between a working folder and cached code.
 
 ```shell
+metab https://github.com/owner/repo
+metab ~/src/repo
 metab https://github.com/owner/repo/pull/123
 ```
 
@@ -237,7 +243,7 @@ metab --remote example-host --path /srv/shared-files
 
 # Review a GitHub pull request, or read its data without a browser.
 metab https://github.com/owner/repo/pull/123
-metab https://github.com/owner/repo/pull/123 --api /api/plugin/github/pull
+metab https://github.com/owner/repo/pull/123 --api '/api/plugin/github/pull?number=123'
 
 # Print a machine-readable inventory without starting the web UI.
 metab ./path/to/directory --walk --format json

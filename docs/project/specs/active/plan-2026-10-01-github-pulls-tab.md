@@ -1,11 +1,11 @@
 # Plan: GitHub Pulls Tab for Mirrors and Local Checkouts
 
-**Status:** Planned, not started.
-Nothing this plan designs exists yet: no route, model, tab, or test.
-The v0.12 stack has landed, and the work waits for 0.12.0 to be tagged (`mb-4bd2`). It
-then starts as a new stack of pull requests, each merged to `main` before the next one
-starts. [Delivery](#delivery) lists the steps, and
-[Open Decisions for the User](#open-decisions-for-the-user) lists what is settled first.
+**Status:** In progress, as a native stack above the v0.12 stack.
+The user decided on 2026-11-02 to build it now and not after 0.12.0 is tagged (see
+[Decisions Already Made](#decisions-already-made)). [Delivery](#delivery) lists the
+steps, and each step’s bead says how far it has got.
+A statement below about what does not exist yet is true of the stack’s base; run
+`tbd list --spec plan-2026-10-01-github-pulls-tab.md` for the current state.
 
 This plan builds on the [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), which
 stays the authority for the mirror, `gh`, and pull-request records.
@@ -14,12 +14,54 @@ It replaces the list, panel, and checkout-attachment designs in
 which predate the thin mirror (beads `mb-lnkl`, `mb-iw1v`, `mb-cbak`; this plan is
 `mb-qftx`).
 
+## Catalog Revision
+
+Owner testing on 2026-11-03 supersedes the original list-paging design below (bead
+`mb-m13a`). The current design uses one lightweight catalog, automatically backfilled
+and incrementally refreshed, with exact totals and resumable page cursors.
+The displayed list starts at 500 matching PRs and grows through **Fetch more**; that
+display window does not cap the catalog.
+Filters are **Open**, **Closed**, and **All**, with Open selected initially.
+Heavy PR records and Git comparisons remain separate from catalog metadata.
+The Conversation and Files changed tabs align with the reading column.
+
+The earlier page caps, All default, whole-list files, and `more` request fields below
+record the original design.
+The current route and storage contracts are in
+[Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
+
+## Optional Stacks and Presentation Revision
+
+The owner’s follow-up requests are delivered as a separate layer above the catalog,
+setup and performance work.
+Native GitHub stack membership is optional enrichment, shared by the list and PR page;
+it is never inferred from a branch-base chain.
+The local-only `gh stack --version` probe gates reads through `gh api`; runtime browsing
+never invokes state-writing stack commands.
+Separate private snapshots, conditional pages, account/source checks and bounded
+background jobs keep ordinary PR reading independent of optional tooling or API
+failures.
+
+A known member shows its stack number and ordered member navigation, preserving the
+selected tab while clearing a preceding file selection.
+Unknown membership in a partial or unavailable snapshot is not an assertion that the PR
+has no stack. Cold PR pages use the existing gray pulse in their reading column; cached
+refreshes keep content visible.
+The shared [design system](../../../design-system.md#the-pulls-tab) uses dark PR
+numbers, normal-size bold gray usernames, and smaller branch refs.
+The
+[focused QA session](../../../qa-v012-repository-library.md#57b-optional-stacks-and-pr-presentation)
+records the final artifact and cache conditions without a new testing framework.
+
 ## Goal
 
 Open a GitHub repository and find its pull requests in a **Pulls** tab beside Files and
-Git.
-Select one and read it in the same page: description, conversation, reviews, checks,
-and Files changed.
+Git. The tab lists every pull request, newest first, each with a state icon like
+GitHub’s. Expand a pull request in place to see its changed files as a tree, the way a
+folder expands in the Files tab.
+Select one and read it in the same page: description, conversation, reviews, checks, and
+Files changed. While a pull request is showing, the navigation pane shows the Pulls tab
+and not the Files tree.
 
 This works for a repository opened from a GitHub URL, which is a mirror in Metabrowser’s
 cache, and for a checkout the user already has on disk.
@@ -30,7 +72,7 @@ background, and keeps working offline.
 
 - Issues, Actions, and releases.
 - Review submission, comments, merging, or any other write to GitHub.
-  Every request this plan adds is a `GET` through `gh api`.
+  GitHub operations remain read-only through `gh api`; catalog queries use GraphQL.
 - GitHub Enterprise hosts, and SSH as a transport.
   A checkout whose remote is an SSH address on github.com is still identified, because
   identity is read from configuration and nothing is fetched over SSH.
@@ -248,7 +290,7 @@ constant, as `pull_record.py` does:
 - the file size at that cap, for the read bound.
 
 The starting hypothesis is ten pages per state, the shape `MAX_ISSUE_COMMENTS` took.
-The measurement decides; [Open Decisions](#open-decisions-for-the-user) item 6 is the
+The measurement decides; [Decisions](#decisions-and-their-alternatives) item 6 is the
 user’s part of it.
 
 **Honest counts.** GitHub’s list gives no total.
@@ -259,15 +301,19 @@ user’s part of it.
 - `truncated` is true when a bound cut a row’s text or dropped an item that could not be
   read, and the tab says so.
 
-**States.** `open`, `closed`, and `all` are three lists.
-Only the list the reader is looking at is fetched.
+**States.** `all`, `open`, and `closed` are three lists.
+Only the list the reader is looking at is fetched, and `all` is the default: one request
+for the newest hundred, whatever their states, so the default costs no more than `open`
+would.
 
 **Paging.** There are two levels:
 
 - The route answers a window of the cached rows, by `limit` and `after` (a row’s
   number), so a transcript stays small and the browser appends pages of plain rows.
-- When the cached rows run out and the list is incomplete, a reader’s **Load more**
+- When the cached rows run out and the list is incomplete, reaching the end of the list
   fetches the next GitHub page.
+  Scrolling there is a reader’s action, as pressing **Load more** is, and the button
+  stays for the keyboard and for a retry.
 
 **Staleness and background refresh.** The list uses `FRESHNESS_WINDOW_S` and the
 existing `RefreshCoordinator`, under a key of its own per source and state.
@@ -276,12 +322,20 @@ existing `RefreshCoordinator`, under a key of its own per source and state.
   `If-None-Match`. A `304` reuses that page’s rows, and GitHub documents that it does
   not count against the primary rate limit
   ([best practices](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)).
+- A `304` carries no `Link`, and a pull request that closes or reopens goes into
+  `closed` or `open` at its created rank, so under a full last page it starts a new page
+  and leaves that page’s body as it was.
+  A complete list’s last page is therefore read whole when it may be full.
+  That is one counted request a refresh, for a list whose rows are a multiple of a
+  hundred.
 - The list is assembled over the job’s duration and is not atomic.
   A pull request that opens or closes between two page reads can appear twice, which the
   number dedupes, or be missed until the next refresh.
 - A failed refresh leaves the file as it was.
-  The next automatic attempt waits a window, and after `rate_limited` it waits for
-  `reset_at`. The same rule is applied to `ServedPull` in step 2.
+  The next automatic attempt waits a window, and after `rate_limited` nothing runs
+  before `reset_at`, a reader’s own action included, since each request GitHub refuses
+  moves that time on. The route cannot ask `gh` who is active, so an account that was not
+  limited waits too. The same rule is applied to `ServedPull` in step 2.
 - A list job never touches a store, so it does not take the mirror’s fetch turn.
 
 **Typed failures.** The stamp carries the states `gh.py` already names, plus
@@ -290,8 +344,10 @@ existing `RefreshCoordinator`, under a key of its own per source and state.
 **Another reader.** The file names its reader, `gh:<login>`.
 
 - A list fetched by another account is shown as it is, labelled with that reader, and
-  treated as stale. This matches the thin-mirror rule that cached private content stays
-  viewable after a logout or an account switch; the cache is owner-only.
+  treated as stale, as is a list whose last refresh ended `account_changed`, whichever
+  account that stamp names.
+  This matches the thin-mirror rule that cached private content stays viewable after a
+  logout or an account switch; the cache is owner-only.
 - The next successful refresh replaces the whole file.
   Pages from two readers are never joined, and ETags are reused only for the same
   reader, so **Load more** under a new account starts again from the first page.
@@ -304,8 +360,10 @@ handlers in `sidekick.py` that import the rest only when called:
 
 | Route | Answer |
 | --- | --- |
-| `GET /api/plugin/github/pulls?state=&limit=&after=` | From the cache alone: `state` (`absent`, `pending`, `current`, `stale`), `reason`, `source`, `list`, `fetched_at`, `reader`, `fresh_for_s`, `refreshing`, `last_refresh`, `fetched`, `complete`, `truncated`, `limit`, `next_after`, and `rows`. It carries an entity tag, as the pull route does |
-| `POST /api/plugin/github/pulls-refresh` with `{"state": …, "more": false}` | Starts or joins the list’s refresh and answers `202` at once with the envelope and its `status_route`. `"more": true` extends the list by one GitHub page |
+| `GET /api/plugin/github/pulls?state=&limit=&after=` | From the cache alone: `state` (`absent`, `pending`, `current`, `stale`), `reason`, `source`, `list`, `fetched_at`, `reader`, `fresh_for_s`, `refreshing`, `last_refresh`, `fetched`, `complete`, `truncated`, `at_cap` (no more may be held), `limit` (0 for the envelope alone), `next_after`, and `rows`. It carries an entity tag, as the pull route does |
+| `POST /api/plugin/github/pulls-refresh` with `{"state": …, "more": false, "retry": false}` | Starts or joins the list’s refresh and answers `202` at once with the envelope and its `status_route`. `"more": true` extends the list by one GitHub page; one that joins a refresh is read after it, in the same job, so `refreshing` stays true until the page is in the list. `"retry": true`, and a `more` with a page to read, are a reader’s action. Anything else, an automatic request or a `more` on a complete list or one at its cap, waits for one attempt a window. Nothing runs before `reset_at` after `rate_limited`, whoever asked. A request held by either rule answers `200` with `refresh: "not_due"` and starts nothing |
+| `GET /api/plugin/github/pull-files?number=<n>` | One pull request’s changed files, from the cache alone, with the same state fields. See [Changed Files in a Row](#changed-files-in-a-row) |
+| `POST /api/plugin/github/pull-files-refresh` with `{"number": n}` | Starts or joins that list’s refresh |
 
 ### Opening Any Pull Request from a Repository Server
 
@@ -321,7 +379,9 @@ so it is its own pull request with its own independent review.
   These are internal contracts that ship as one artifact, so the page, the CLI, and
   every transcript change in the same commit, with no fallback to “the served one”.
 - `no_pull_request` and the page’s `other_number` state go away.
-  A valid number with no record answers `absent` with `not_cached`.
+  A valid number with no record answers `absent` with `not_cached`, and a server with no
+  GitHub repository answers `not_github`, as the list route does.
+- `"retry": true` in the `POST` body marks a reader’s own action, as on the list route.
 - `--show /pull/<n>` reads the same route, and `_require_served_pull` is removed.
 
 **A provider-kept set replaces the single companion.**
@@ -336,8 +396,8 @@ so it is its own pull request with its own independent review.
   `served_pull` does today.
   The bound is needed because the numbers are request text, which is why
   `MAX_REMEMBERED_MISSES` bounds the selections it remembers.
-- `MirrorSession` runs any companion’s refresh as a coordinator job under `_fetch_turn`,
-  which is the body of `_companion_job` given the companion.
+- `MirrorSession` runs any companion’s refresh as a coordinator job under its turn at
+  the store, which is the body of `_companion_job` given the companion.
 - The job is `refresh_pull_request`, unchanged: the record and `refs/pull/<n>/head`
   together, under the key `<store key>:pull/<n>`, so concurrent requests join it.
 
@@ -357,25 +417,39 @@ bounded set, plus a direct start of any number’s refresh by the plugin’s `PO
 **What starts a fetch.**
 
 - A pull request with no record is fetched only by a reader’s action in the shell’s own
-  chrome: selecting a row in the Pulls tab, or pressing **Fetch** on its page.
+  chrome: selecting a row in the Pulls tab, pressing **Fetch** on its page, or opening a
+  file from an expanded row.
+  Expanding a row fetches that pull request’s file list and not its record.
   An address alone shows what is cached, whether it was typed, followed from rendered
   content, or reached by Back.
   So nothing a link can do adds to the cache.
 - A pull request with a record refreshes in the background when its page is visible and
   the record is stale, as a stale mirror does.
-  The page’s controller asks for it, and the server holds each number to one attempt per
-  window.
+  The page’s controller asks for it, once a reader has stayed on the page
+  (`REFRESH_ASK_MS`), and the server holds each number to one attempt per window.
 
 **How many refreshes run at once.**
 
 - `MAX_CONCURRENT_REFRESHES` bounds network jobs across the mirror, the lists, and every
   pull request.
 - Pull-request jobs and the mirror’s own fetch take turns at the store through
-  `_fetch_turn`.
+  `StoreTurn`, and take a network slot only once their turn has come.
+  A job that is only waiting holds nothing, so a list’s refresh, which needs no turn,
+  does not wait behind a queue.
+- The mirror’s fetch and the attended pull request’s go first, because a page of code
+  waits on them, and in the order they asked, so neither starves the other.
+  At most `MAX_FIRST_IN_A_ROW`, one of each, go ahead of a waiting pull request, so
+  nothing waits for ever however often those two are asked for again.
+  Each waits for at most the job running, the other, and one more: 21 s at the slowest
+  measured refresh, where a plain queue would be 56 s.
 - A new bound limits how many distinct pull-request jobs may be queued or running.
-  A request past it is refused with a typed state and starts nothing.
-  The bound is set from the measured duration of one refresh, which is at least eight
-  `gh` processes and one `git fetch`.
+  A request past it is refused with a typed state, `429` with `too_many`, and starts
+  nothing. The bound, `MAX_PULL_JOBS`, is set from the measured duration of one refresh,
+  which is at least eight `gh` processes and one `git fetch`. The attended pull request
+  may run one over it, through any route, so other numbers filling the queue do not
+  refuse its refresh. It is one over and not one per attended switch: once a job of an
+  earlier attended number holds that place, the new number is refused too until a job
+  ends.
 
 **Status, freshness row, and ref selector.**
 
@@ -396,6 +470,20 @@ The pull envelope gains the pin’s ref, and the page has three cases:
 | Is on this pull request’s head ref and behind the record’s head | The existing offer to switch to the newer head |
 | Is anything else: a branch, a tag, another pull request | **Browse code** is a button that posts this pull request’s head ref to `/api/source/pin` and then opens the root. No warning is shown, because nothing is wrong |
 
+The third row also covers a pull-request URL whose head could not be served when the
+server opened, which pins the default branch and fetches the record later on Fetch.
+Before this step the page said its code was not the pull request’s head and Files
+changed said the head moved.
+Now it says nothing, deliberately: the page reads the same either way, Files changed
+compares the record’s own commits, and Browse code reaches the head.
+Only the second row’s offer says anything.
+
+A review comment’s file takes the same form as Browse code: a link where that is a link,
+and a button that serves the head and then opens the file where that is a button, so
+what moves the pin is never a link that a modified click would open without moving it.
+A button is a real `<button>` for keyboards and screen readers and looks the same as the
+link, as the [design system](../../../design-system.md#control-families) says.
+
 **View file.** View file switches the pin by commit ID. `resolve_pin` then serves a
 commit under a pull request’s head ref when it is that ref’s tip, for any pull request
 the mirror holds and not only the attended one, and the switch makes that pull request
@@ -404,8 +492,12 @@ cost step 2 measures on a mirror with many fetched heads.
 
 **Back and Forward.**
 
-- Selecting rows mounts pages through the page host, which pushes `/pull/<n>`. Back and
-  Forward between them use the existing `pullHistoryAction`. No pin moves.
+- Selecting a row mounts its page through the page host.
+  A pointer click or Enter pushes `/pull/<n>`, and a key’s move replaces the history
+  entry instead. That is the skim rule of all three Navigational Row Collections: the
+  file tree’s arrow keys and Git’s K and J replace too, so a reader who passed ten rows
+  leaves them with one Back.
+  Back and Forward between pages use the existing `pullHistoryAction`. No pin moves.
 - **Browse code** from a pull request’s page switches the pin and loads a new document.
   Back then lands on a page rendered for the earlier pin.
   The history guard in `static/source-pin-guard.js` asks the status route once and
@@ -443,6 +535,11 @@ pull-request page.
 - No new public SDK surface is added.
   The shell holds no GitHub code, and the plugin reaches no private global.
 
+**Which tab shows.** The Files tab stays for code at the pin.
+At a pull request’s address the navigation pane shows the Pulls tab, with that pull
+request’s row current and expanded, including on the page `metab <pull-request-url>`
+opens with. Today that page leaves the Files tree showing, which is what this corrects.
+
 **The list’s address.** `/pulls`, with `?state=` for a filter, is the list with no pull
 request selected, as on GitHub.
 
@@ -468,7 +565,7 @@ request selected, as on GitHub.
 | State | What the tab says |
 | --- | --- |
 | `gh_missing` | Install GitHub CLI and sign in. A cached list still shows |
-| `gh_too_old` | The installed `gh` is older than `GH_MIN_VERSION`; update it |
+| `gh_too_old` | This GitHub CLI cannot report its active account; update it to a current release |
 | `not_logged_in` | Run `gh auth login` |
 | `rate_limited` | GitHub’s limit lifts at `reset_at`; no automatic attempt runs before then |
 | `network_error` | Offline or GitHub unreachable; the list is as fetched at its time |
@@ -478,23 +575,53 @@ request selected, as on GitHub.
 **Rows.** Each row is a link to `/pull/<n>`, so a new tab and a copied address are the
 browser’s own.
 
-- It shows the number, the title, a state badge (open, draft, merged, closed, in the
-  page header’s words), the author, the updated time, and the head and base names.
+- It shows a state icon, the number, the title, the author, the updated time, and the
+  head and base names.
 - The row for the page that holds the pane is marked current.
 - All of it is written as text, never parsed as markup.
 - Rows follow the design system’s row contract and tooltip rules.
 
-**Filters.** Open, Closed, and All.
-Each is its own cached list, and Open is the default.
+**State icons.** The four states are Lucide icons, `git-pull-request` (open),
+`git-pull-request-draft` (draft), `git-merge` (merged), and `git-pull-request-closed`
+(closed), held in the plugin’s `pull-state.js` and not in `static/icons.js`, whose
+startup bytes every folder pays.
+They have the shapes GitHub uses for the same states.
 
-**Keyboard and accessibility.**
+- New tokens carry the colors, in GitHub’s hues: green, gray, purple, and red, each
+  legible in both themes.
+- Color is never the only signal: the shapes differ, and the tooltip and the accessible
+  name say the state in the page header’s words.
+- The page header’s badge leads with the same icon, so a list row and its page match.
 
-- The tab is a `role="tab"` button like the others.
-- The list has roving focus: Up, Down, Home, and End move, and Enter opens, as in the
-  Git tab. **Load more** is a button after the last row.
+**Filters.** All, Open, and Closed.
+Each is its own cached list, and All is the default.
+
+**Order.** Newest first, by the order GitHub lists them, `sort=created&direction=desc`.
+The other orders stay a non-goal.
+
+**Keyboard and accessibility.** The user’s words, on 2026-11-02: keyboard shortcuts work
+to navigate the left-hand nav “so it’s easy to scroll through PRs and scroll through
+files within a PR.”
+
+- The tab is a `.tab-btn` like the others, in the existing `.tab-bar`.
+- The rows are a Navigational Row Collection
+  ([design system](../../../design-system.md)): one Tab stop, Arrow Up and Down and K
+  and J move and open, key repeat stays on, clamped at the ends, and no page scroll.
+  They are registered in the test that holds every such collection to one contract.
+- Help and hint text comes from the command registry, not new key text.
+- Moving between pull requests is in-page, with no document load and no new server, so
+  holding a key walks the list.
+  Interaction work stays proportional to the change and not to the size of the list.
+- Holding a key queues no request per row: the latest wins and older ones are cancelled.
+- **Load more** is a button after the last row.
 - The list’s accessible name carries the honest count.
 - Refresh states are announced in a polite live region, as the freshness row’s are.
-- The contextual keyboard help gains the panel’s keys.
+
+**Design system.** The panel follows `docs/design-system.md` rigorously: One Chevron and
+One Row Contract for rows (`--ui-row-height`, `--hover-bg`), Age for dates, Icons for
+glyphs (Lucide from `static/icons.js`, `currentColor`, `--icon-glyph`), and the type
+scale, with no literal `font-size` in a plugin stylesheet.
+The state icons get a line in that document.
 
 **Loading tier and the startup budget.**
 
@@ -520,11 +647,186 @@ module.
   Even the cached read would load the cache into a folder’s server.
 - A cached record is read when its row takes focus or the pointer, which is a local
   `GET` that runs no `gh`.
-- The network refresh starts when the tab is first opened, on a mirror and a checkout
-  alike. Step 3 also measures starting it at a mirror’s open, which is what “prefetch by
-  default” asks for; [Performance](#performance) gives the accept rule.
+- The network refresh starts when the tab is first opened on a checkout.
+  On a mirror it starts with that read ahead, once the first tree has settled, which is
+  what “prefetch by default” asks for.
+  Step 3 measured it by [Performance](#performance)’s rule, nine back-to-back pairs on
+  pallets/click: first row 1.001x and the mirror’s own refresh 0.998x. Started as the
+  page starts it was 1.09x to 1.14x on the first row, past the rule, so it does not
+  start there.
 - No spinner appears before the `--loading-state-delay` token, through the existing
   `mb-delayed-loading` class.
+
+### Changed Files in a Row
+
+A row is a container in the sense of
+[Nav Containers](../../architecture/arch-nav-containers.md): item-like, because
+selecting it opens the pull request, and folder-like, because it expands to its changed
+files. That document’s Collection panels section promised this.
+It predates the thin mirror, so its `ChangeRequestIndex` wording is corrected in step 4.
+
+**What a reader sees.** Expanding a row shows the changed files as a tree, with folders
+that expand and collapse exactly as they do in the Files tab.
+
+- Rows use the tree’s own contract: `.tree-item`, the 16 px chevron box, one adjacent
+  `.tree-children[role="group"]`, the indent, and the row height
+  ([Container Rows](../../../design-system.md#container-rows)).
+- The list’s roles are already a tree’s, from step 3: the list is `role="tree"`, each
+  pull request’s anchor is a `treeitem` at `aria-level="1"` with its `aria-posinset` and
+  `aria-setsize`, in a list item of role `none`, and the Files tree’s keyboard handler
+  is scoped to the Files tab, so it never claims these rows.
+  The “two trees” story of `tests/dom/pulls-nav-session.js` pins that scope and the
+  focus fallback below.
+  This step adds a `.tree-children[role="group"]` after a row’s anchor, the chevron box,
+  and `aria-expanded` on a row that has files, and each of these keys on a row’s shape
+  today, so each needs work too (review C6 of
+  [the Pulls tab’s pull request](https://github.com/jlevy/metabrowser/pull/285)):
+  - **`aria-owns` from the anchor to its group.** The group is the anchor’s sibling,
+    since an `<a>` cannot hold rows, so nothing else makes it the pull request’s and not
+    the tree’s. Files rows carry `aria-owns` for the same sibling group
+    (`static/tree-keyboard-navigation.js#synchronizeBranch`).
+  - **`app.js`’s listeners on the whole `#tree-pane`**, which reach any `.tree-item`, as
+    these file rows are.
+    A click runs `activateTreeRow`, which pushes `/view/<data-path>` for a `select` row.
+    `mouseenter` shows the file tooltip for `data-tip-type` and starts the hover
+    prefetch of a `.tree-item.tree-file[data-path]`. `setSelectedPath` marks every
+    `.tree-item` with the open path as selected, in any panel.
+    Scope them to `#tab-files`, or have the panel’s own handlers stop the event.
+    `app.js` is in the shell’s eager path, whose budget `make lint-check` holds.
+  - **The focus fallback’s `[data-tree-id]`**
+    (`app.js#resolveApplicationFocusFallback`). A file row here must not carry it, or
+    the check must be scoped to `#tab-files`.
+  - **The row keys’ scope** (`static/pulls-nav.js`, `isRow`). It is on only while focus
+    is on `a.github-pulls-row`, so a file row has no keys.
+    The walk goes by the controller’s `rows`, so Up and Down would skip the visible file
+    rows that the Files tab visits.
+  - **The paint’s keyed reuse** (`pulls-panel.js#paintRows` and `#placeRows`). A row
+    rebuilt because its described row changed must keep the children hung off its item,
+    and a file row’s place is in its group, not in the list.
+  - **The row’s grid**, `16px minmax(0, 1fr) auto` with the muted line at
+    `grid-column: 2 / -1` (`builtin_plugins/github/styles.css`, `.github-pulls-row`),
+    gains the chevron’s column.
+- A file row carries the one-letter change badge a patch’s children carry (A, M, D, R)
+  in place of the file icon, and
+  [inline change stats](../../../design-system.md#inline-change-stats).
+- A folder whose only child is a folder is drawn as one row, `src/metabrowser`, as
+  GitHub’s file tree draws it.
+- Folders start expanded through the measured 3,000-file list cap.
+  A larger page-count estimate starts at the top level.
+  The tree paints a viewport window; the measurements are beside `AUTO_EXPAND_FILES` and
+  `FILE_ROWS_OVERSCAN` in the GitHub plugin.
+
+**The gesture.** As with a folder, clicking a row is one gesture: it opens the pull
+request and toggles its files.
+The keyboard splits them: Enter opens, Right expands, and Left collapses, as
+`static/tree-keyboard-navigation.js` does for the Files tree, and the host hands the
+view that module, so the plugin reaches no private global.
+The row of the pull request the page shows is expanded automatically, and the file it
+shows is marked current.
+
+**Walking files with the keyboard.** The user: “It may require rapid scrolling up the
+diff view to the relevant file when we navigate between particular files in a diff.”
+So changed file rows are a Navigational Row Collection too, and walking them drives the
+diff:
+
+- Moving to a file jumps the diff straight to that file’s bar, not smooth scrolling,
+  with focus staying in the nav.
+- The diff view does the jump, and this step does not reimplement it.
+  The panel calls `scrollToFile(path)` on the page host’s page, from the
+  large-pull-request work, which hydrates the target first, cancels what a later key
+  supersedes, and holds the target still while neighbours above it hydrate.
+  It answers at once with a typed kind: `jumped`, `not_in_comparison` (nothing moves),
+  `no_diff`, or `disposed`. From Conversation, the panel switches to Files changed and
+  waits for `whenFilesReady()` first.
+  That work’s `docs/large-content-rendering.md` and its file-jump session are the
+  contract’s authority, so this plan does not restate it.
+- The panel calls it on every key repeat, with no debounce of its own, and never drives
+  a jump by scrolling to markup it then hydrates: in the study, neighbours hydrating
+  above a target pushed it 53,661 px off screen.
+- Holding a key queues no request per row: the latest wins and older ones are cancelled.
+- The path a row hands over is the file’s path in the pull request, a rename’s new path
+  being the row’s identity.
+- Back’s `history.state.pullPlace` restore is kept.
+- The selection follows a reader who scrolls the diff by hand, without stealing focus.
+- The budgets are the large-pull-request study’s, on a real pull request of 1,183 files
+  and +281,131 lines: the file’s bar on screen within 50 ms and its first lines within
+  150 ms, for any file; 0 px drift; keys delivered at 33 ms per step, 30 a second; at
+  most one request in flight, for the file the walk rests on; the queue empty within 300
+  ms of key-up; and no task over 50 ms.
+  So the tree is bounded or windowed at that size.
+
+**The data.** The tree is built from a list of files, never from hydrated documents.
+The list has two sources:
+
+- When the store has both of the pull request’s commits, for example for a pull request
+  the mirror has already fetched, it is the local comparison’s manifest, which needs no
+  network and is far faster.
+  The tree adds no second fetch of a comparison the page has already asked for.
+- Otherwise it is GitHub’s list, one `gh api` request per 100 files:
+
+```
+repos/<owner>/<repo>/pulls/<n>/files?per_page=100&page=<m>
+```
+
+GitHub’s list is one small read only for a small pull request: the 1,183-file one took
+12 pages at 1.2 to 1.6 s each, 15 to 20 s in all.
+So it is read progressively, and each page is published to the tree as it arrives.
+While it fills, the panel says how much it has: N of M files where the record gives M
+(`changed_files`), and otherwise N files with the page count from the `Link` header,
+since that gives pages and not files.
+
+- A row keeps `path`, `previous_path`, `status`, `additions`, and `deletions`. The patch
+  GitHub embeds is dropped.
+- The model is `PullFileList` in `builtin_plugins/github/pull_list.py`, in the file
+  `sources/<slug>/pulls/<n>.files.json`, written and bounded like the list file.
+- GitHub returns at most 3,000 files for a pull request.
+  A cut list says so, with the count GitHub reported, and the bound is measured as the
+  list’s are.
+
+GitHub’s list is what lets the tree work without the record’s comparison.
+A comparison needs the record and both commits in a store, which is a `git fetch` per
+expansion and is impossible on a checkout without them; GitHub’s list needs no Git, for
+a pull request never opened, on a mirror and a checkout alike.
+The page’s Files changed stays the diff’s authority, and both sources list the same
+comparison.
+
+**Freshness.** A local list belongs to both resolved comparison endpoints, `base` and
+`head`, and is current only while the record names that exact comparison.
+Older cached local lists without a saved base are stale; a comparison that becomes
+unavailable also makes its local list stale.
+The browser treats a changed base as another list.
+A GitHub list uses the provider’s `updated_at` and account freshness rules, including
+when a local comparison becomes known later.
+It is current while the newest cached provider update is no newer than the list’s fetch
+time, because pushes and retargeting update that field; a refresh that observes another
+account makes it stale.
+Reading a cached list starts no Git or network.
+The refresh coordinator holds repeated attempts to its freshness window; conditional
+GitHub page reads reuse unchanged rows.
+
+**What starts a fetch.** Expanding a row is a reader’s action in the shell’s chrome,
+behind the same `POST` rule.
+The pointer or focus on a row reads the cached list only, so a cached tree opens with no
+wait.
+
+**Opening a file.** A file row is a link to `/pull/<n>/files/<path>`, extending the
+container’s address the way `/commit/<rev>/<path>` does
+([Browser URL Grammar](../../../architecture.md#browser-url-grammar)).
+
+- The page opens on Files changed, narrowed to that file as a patch’s child is, with
+  Back and Forward through the page host.
+  Fragments keep meaning a place in the document.
+- A pull request with no record starts its fetch, since opening a file is a reader’s
+  action, and shows its usual pending state.
+- On a checkout, the diff comes from step 6’s overlay.
+- `--show /pull/<n>/files/<path>` reports it, as `--show /pull/<n>/files` does.
+
+**Untrusted names.** A path is text written by whoever opened the pull request.
+It is painted as text, through the same display rule a pinned tree’s names use (control
+and invisible characters shown as U+FFFD), and it reaches an address only through the
+path encoder.
+It never reaches a filesystem call: a file row names a path inside the pull
+request’s comparison and nothing else.
 
 ### Local Checkouts
 
@@ -536,7 +838,7 @@ module.
   one a mirror of that repository has.
 - On a fork, `origin` is usually the fork, whose list is often empty.
   The tab names the repository it lists, so this is visible.
-  [Open Decisions](#open-decisions-for-the-user) item 1 covers the alternatives.
+  [Decisions](#decisions-and-their-alternatives) item 1 covers the alternatives.
 
 **Shared records in the cache.** Lists and records are keyed by that identity and live
 under `sources/<slug>/pulls/`, shared by a checkout and a mirror of the same repository.
@@ -574,46 +876,32 @@ Jobs run on the server’s `RefreshCoordinator`, keyed by the slug.
 - When the checkout’s `HEAD` is the pull request’s head, the page says so and links the
   root.
 
-**Files changed.** Step 5 has two cases.
-Both are decided differently by
+**Files changed.** Decided by
 [Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
-(2026-11-02): Files changed on a folder server reads an overlay store that borrows the
-served checkout’s objects, never the checkout directly, because the diff commands honor
-a checkout’s `diff.external` and textconv drivers and a direct read cannot bring missing
-commits. The text below stands until that plan’s step 4 rewrites it.
+(2026-11-02), and built in step 6: Files changed on a folder server reads an overlay
+store that borrows the served checkout’s objects, never the checkout directly.
 
-- **The commits are in the checkout.** The page checks for the base and head commits
-  with a read-only Git command and shows the diff through the existing comparison route,
-  from the merge base of the API’s `base.sha` and the head.
-  That is the rule a mirror uses for closed and merged pull requests; for an open one it
-  can differ from GitHub’s when the base branch has moved, and the page names the base
-  it used. The comparison route requires the served folder to be the working tree’s root,
-  and the page says so otherwise.
-- **The commits are missing.** The page says so and writes nothing.
-  It gives the command that opens the pull request from a mirror,
-  `metab https://github.com/<owner>/<repo>/pull/<n>/files`, and the command that brings
-  the commits into the user’s own repository, `git fetch origin pull/<n>/head`, for the
-  user to run if they choose.
-- **An in-page fetch into Metabrowser’s mirror** is the fuller form of that offer: a
-  button that acquires the repository into the cache, fetches the head, and serves the
-  diff from the mirror’s store.
-  It needs two things nothing has today: acquisition inside a running folder server, and
-  a diff served from a store that is not the served subject.
-  It is a full clone, so it is always the user’s explicit choice, with the size shown
-  first as `check_first_clone` reads it.
-  [Open Decisions](#open-decisions-for-the-user) item 4 decides whether it is built.
+- A direct read is withdrawn, because the diff commands honor a checkout’s
+  `diff.external` and textconv drivers and a direct read could not bring missing
+  commits. The full clone is withdrawn, because it is no longer needed.
+- Opening a pull request’s Files changed is the reader’s action that creates the
+  overlay, the first time, through the acquisition `--checkout` uses, inside the running
+  folder server. When the commits are already in the checkout the fetch brings nothing;
+  when they are missing it brings kilobytes.
+- The checkout the reader is serving is the one named, as the Served row of that plan’s
+  [Finding the Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#finding-the-checkout)
+  says, and the store remembers it from then on.
+- Nothing is written to the checkout, and no Git process runs with the checkout as its
+  repository: the overlay’s fetch runs in the cache’s store.
+- The page names the base it used, and that plan’s typed states reach the page as they
+  do on a mirror: `base_uncertain`, `commits_unavailable`, `parent_unavailable`, and
+  `lender_missing`.
+- The served checkout stays trusted, and the diff is text, as on a mirror.
 
-**The alternates option.** A cache-side store could borrow the checkout’s objects
-through `objects/info/alternates` and fetch only what is missing.
-It was left out at first: a `gc`, a repack, or a move of the user’s repository can
-remove objects the borrowing store depends on, which breaks the rule that no object
-Metabrowser showed is ever lost.
-That decision is revised by
-[Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md)
-(2026-11-02), which measured each of those failures and proposes an overlay store with a
-typed state and a healing fetch; its
-[Open Decisions](plan-2026-11-02-pr-review-mirror-and-checkout.md#open-decisions-for-the-user)
-item 1 is the user’s call on the rule.
+**The alternates option** is that overlay store, decided on 2026-11-02. The rule that no
+object Metabrowser showed is ever lost is relaxed for an overlay, with typed states and
+a healing fetch, in that plan’s
+[Failure and Recovery](plan-2026-11-02-pr-review-mirror-and-checkout.md#failure-and-recovery).
 
 **Network only when the user opens the tab.** Opening a folder makes no request today,
 and that stays true.
@@ -634,14 +922,14 @@ profile by default, and a pull request’s text is written by anyone.
   On a mirror that policy is the second line behind the allowlist.
   On a checkout there is none, and a hole in the allowlist would run script in a page
   that can read the user’s files and, where editing is on, write them.
-- So step 4 runs the hostile-content corpus under both profiles, with mutation checks,
+- So step 5 runs the hostile-content corpus under both profiles, with mutation checks,
   and has its own security review.
   [Risks](#risks) records the stronger alternative.
 
 ### Security and Privacy
 
-- **Untrusted content.** Titles, names, labels, and bodies are GitHub’s users’ text.
-  The list paints text only.
+- **Untrusted content.** Titles, names, labels, file paths, and bodies are GitHub’s
+  users’ text. The list paints text only.
   Bodies go through the inert layers.
   Label colors are not used, so no value from GitHub reaches a style.
 - **Credentials.** `gh` holds them.
@@ -655,8 +943,10 @@ profile by default, and a pull request’s text is written by anyone.
   - On a checkout: nothing until the Pulls tab is opened.
     Then `gh` asks api.github.com for the list of the repository named by `origin`, and
     for each pull request the reader opens.
-  - On a mirror: the same, plus the Git fetch of `refs/pull/<n>/head` for a pull request
-    the reader opens.
+  - On a mirror: `gh` asks api.github.com for the list of the mirrored repository as the
+    page opens, once the first tree has settled, whether or not the Pulls tab is opened,
+    and at most once per freshness window ([What is prefetched](#the-tab)); then for
+    each pull request the reader opens, with the Git fetch of `refs/pull/<n>/head`.
   - The requests name the repository and the pull request, and carry `gh`’s own
     authentication. Nothing about local files, paths, or branches is sent.
 - **Route safety.** Every route that starts network work is a `POST` with a JSON body
@@ -678,6 +968,8 @@ Each route and state has a `metab` equivalent and a golden, per AGENTS.md.
 | --- | --- | --- |
 | `GET pulls`: `absent`, `stale`, `current`, the window, an incomplete list, another reader | `metab <repo-url> --api '/api/plugin/github/pulls?state=open'` | A new tryscript transcript over a prebuilt home, which the parity gate counts |
 | `POST pulls-refresh`: started, joined, `more`, and each typed failure | `--api … --data` | An in-process transcript with the fake `gh`, listing the `gh` calls made; and the failing one-shot shape in the tryscript, as `pull-refresh` has |
+| `GET pull-files`: `absent`, `current`, `stale`, a cut list, each typed failure | `--api '/api/plugin/github/pull-files?number=<n>'` | The list’s tryscript transcript, and `--api … --data` for the refresh with the fake `gh` |
+| `/pull/<n>/files/<path>`, one file of a pull request | `--show` | The pull transcripts, regenerated |
 | `/pulls`, the list’s address and kind | `--show /pulls` | The list’s tryscript transcript. `_SHELL_ROUTES` in `tests/test_plugin_public_api.py` gains the address, so a plain folder’s page there loads nothing new |
 | `GET pull?number=`, `POST pull-refresh`, `GET pull-markdown?number=` | `--api`, and `--show /pull/<n>` for any number | The existing pull transcripts, regenerated |
 | The same routes on a checkout | `metab <folder> --api …` | A new tryscript transcript over a checkout fixture and a prebuilt home |
@@ -690,8 +982,10 @@ has a golden and a row in the functional-aspect table:
 - the Pulls panel: `describe` and the controller in `pulls-panel.js`, covering the
   filters, the window, **Load more**, each `gh` state, polling while shown and none
   while hidden, and the open action;
-- the panel host in `pulls-nav.js`: when the tab is registered, lazy mounting,
-  replacement, and disposal;
+- the panel host in `pulls-nav.js`: when the tab is registered, which tab an address
+  shows, lazy mounting, replacement, and disposal;
+- the changed-files tree: building it from a list, folder chains, expansion, the gesture
+  and its keyboard split, the current file, a cut list, and each `gh` state;
 - the page with numbered routes: the three Browse code cases, a not-cached page, and a
   page on a checkout.
 
@@ -743,6 +1037,8 @@ comparison here may use, and 2x is never one.
 | A mirror’s open with the local prefetch | The step’s base on the same mirror | First tree and the mirror’s own refresh within 1.1x |
 | A mirror’s open with the network refresh started at open | The same build with it lazy | Adopted only if first tree and the mirror’s refresh stay within 1.1x; otherwise it stays lazy |
 | Opening the tab on a cached list | The spinner delay | Rows painted before `--loading-state-delay`, so no spinner shows; measured in a real browser at one page and at the cap |
+| Expanding a row with a cached file list | The spinner delay | Rows painted before `--loading-state-delay`, at one file and at the measured cap |
+| Walking a 1,183-file pull request’s files with a held key | The study’s budgets, under [Changed Files in a Row](#changed-files-in-a-row) | Bar within 50 ms and first lines within 150 ms, 0 px drift, one request in flight, the queue empty 300 ms after key-up, no task over 50 ms |
 | The pull-request page’s open after step 2 | The v0.12 page on the same record | Within 1.1x |
 | The list route’s answer at the cap | Its answer at one page | Recorded beside the bound; the parsed list is memoized by file stamp, as `cached_pull_record` does |
 
@@ -751,18 +1047,30 @@ measure GitHub.
 
 ## Delivery
 
-Each step is one pull request against `main`, implemented and reviewed by separate
-agents, with `make verify` and green CI, and merged before the next starts.
-Each updates [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
-and `CHANGELOG.md` in the same change.
+Each step is one pull request and one layer of a native stack, whose base is the top of
+the v0.12 stack, implemented and reviewed by separate agents, with green CI. Nothing
+merges by itself: the stack lands when the user says so, after the stack below it
+(`tbd shortcut stacked-prs`).
+
+This stack sits on the stack below’s top, which holds the large-pull-request work and
+the first step of
+[PR Review on a Mirror and a Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md),
+both reviewed and addressed.
+Step 4’s jump to a file calls the large-pull-request work’s `scrollToFile`. Steps 5 and
+6 follow the owner’s decision on the overlay store in that plan, which revises this
+plan’s alternates rejection and in-page fetch, and step 6 builds on its overlay
+acquisition. Each updates
+[Views, Models, and Routes](../../architecture/arch-views-models-routes.md) and
+`CHANGELOG.md` in the same change.
 
 | Step | Scope | Checkpoint a person can see | Ships alone |
 | --- | --- | --- | --- |
-| 1. List data | The model, file, bounds with measurements, the job, both list routes, and the fake `gh` pages | `metab <repo-url> --api '/api/plugin/github/pulls?state=open'` lists pull requests, and again offline | Yes |
+| 1. List data | The model, file, bounds with measurements, the job, both list routes, and the fake `gh` pages | `--api /api/plugin/github/pulls-refresh --data …` then `--api '/api/plugin/github/pulls?state=all'` lists pull requests, and the second works offline, since a read never fetches | Yes |
 | 2. On-demand open | Numbered routes, the provider’s set, the attended pull request, the job bound, the Browse code cases, and View file under any head ref | On a server opened from a repository URL, `/pull/<n>` for any number offers **Fetch** and then shows the page | Yes |
-| 3. The tab on a mirror | The panel host, the view and its `/pulls` address, filters, states, keyboard, prefetch, and the sessions | Paste a repository URL, open Pulls, select a pull request, and read it | Needs 1 and 2 |
-| 4. The tab and pages on a checkout | Identity, the source without a store, records without a comparison, network on use, and both profiles | Open a checkout, open Pulls, and read a conversation, with nothing written to the repository | Needs 3 |
-| 5. Files changed on a checkout | The local comparison and what the page says when commits are missing | Files changed for a pull request whose commits are local | Needs 4 |
+| 3. The tab on a mirror | The panel host, which tab an address shows, the view and its `/pulls` address, state icons, filters, states, keyboard, prefetch, and the sessions | Paste a repository URL, see Pulls beside Files and Git with every pull request and its icon, select one, and read it | Needs 1 and 2 |
+| 4. Changed files in a row | The file-list job, model, and routes, the tree, the gesture, `/pull/<n>/files/<path>`, and its session | Expand a pull request in the list, expand a folder, and open a file | Needs 3 |
+| 5. The tab and pages on a checkout | Identity, the source without a store, records without a comparison, network on use, and both profiles | Open a checkout, open Pulls, expand a pull request, and read a conversation, with nothing written to the repository | Needs 4 |
+| 6. Files changed on a checkout | An overlay of the served checkout, acquired from a running folder server when Files changed opens, the comparison from its store, and the typed states on the page | Open a checkout, open a pull request whose commits are not local, and read Files changed from the overlay | Needs 5 |
 
 **Step 1: list data.**
 
@@ -788,19 +1096,38 @@ and `CHANGELOG.md` in the same change.
 - *Leaves out:* checkouts.
   The tab is registered only when a pin is served.
 
-**Step 4: the tab and pages on a checkout.**
+**Step 4: changed files in a row.**
+
+The browser checkpoint includes the file address and host, progressive file-list
+controller, windowed tree, keyboard, and scroll-follow subscription.
+Its production controller runs in `github-pull-files-tree-session.js`;
+`navigation-route-behavior.js` pins the file-address and page-availability lifecycle.
+Chrome 152 measured navigation paint with 1,183 and 2,003 public filenames and a
+3,000-file stress list; this does not replace the large-diff work’s hydration and drift
+measurements.
+
+- *Reviewed:* that a list is read progressively with an honest count and no Git, or from
+  the local comparison when both commits are in the store; that a path is only ever text
+  or an encoded address; the freshness rule on a force-push; the tree’s row contract
+  against the Files tree’s, and its keyboard; the measured expansion and render bounds;
+  and the walking budgets on the 1,183-file pull request.
+- *Leaves out:* review comments in the tree, and checkouts.
+
+**Step 5: the tab and pages on a checkout.**
 
 - *Reviewed:* the four tests under [Parity and Tests](#parity-and-tests) that guard the
   rules; the security review of untrusted text in a trusted page; the `unattached` state
   across acquisition, listing, and the cache routes; the fork wording.
 - *Leaves out:* Files changed, which shows as unavailable with the reason.
 
-**Step 5: Files changed on a checkout.**
+**Step 6: Files changed on a checkout.**
 
-- *Reviewed:* that only reads run in the user’s repository; the base the page names; the
-  wording when commits are missing.
-- *Leaves out:* the in-page fetch into a mirror, unless the user chooses it in item 4,
-  in which case it is a sixth step with its own design review.
+- *Reviewed:* that nothing is written to the checkout and no Git runs in it, byte for
+  byte with the directory read-only; that the overlay is created only by an explicit
+  Files changed Fetch; the base the page names; each typed state; and that the
+  hostile-configuration replica leaves no marker.
+- *Leaves out:* healing, blob verification, conversions, and deepening, which are steps
+  2, 3, and 5 of the review-mirror plan.
 
 ## Risks
 
@@ -821,7 +1148,7 @@ and `CHANGELOG.md` in the same change.
   layers alone is to load every pull-request page on a trusted folder as its own
   document under the untrusted policy.
   That costs a full page load per pull request and gives up the in-place open.
-  It is adopted if step 4’s security review asks for it.
+  It is adopted if step 5’s security review asks for it.
 - **Identity on a checkout is read by looser rules than the plugin’s**, and from a
   `.git` that Git itself might refuse, such as one owned by another user.
   It is used only to name a repository in a `GET` to GitHub after the user opens the
@@ -831,9 +1158,12 @@ and `CHANGELOG.md` in the same change.
 - **The cache grows.** Each opened pull request adds a record, bounded by
   `MAX_PULL_RECORD_BYTES`, and on a mirror its commits.
   Nothing deletes either in the first version; cache management (`mb-0ybg`) owns that.
-- **Two servers can refresh one repository’s records at once**, a checkout’s and a
-  mirror’s. Writes are atomic replacements, so the later one wins and neither file is
-  torn.
+- **Two servers can refresh one repository’s records or lists at once**, a checkout’s
+  and a mirror’s. Writes are atomic replacements, so the later one wins and neither file
+  is torn. A list’s job writes rows and marks from the one file it read, so what is left
+  is one reader’s self-consistent list.
+  A late `more` can put back an older first page, and its older `fetched_at` goes with
+  it, so the list is `stale` within a window and the next refresh replaces it.
 - **`gh` changes its text.** The runner classifies some failures by `gh`’s messages,
   recorded from one version.
   A changed message degrades to `gh_failed`, which the tab shows with **Retry**.
@@ -844,9 +1174,11 @@ shell’s host is as neutral as intended; and demand from an external plugin for
 navigation panels, which would reopen the public SDK question the thin-mirror plan
 closed.
 
-## Open Decisions for the User
+## Decisions and Their Alternatives
 
-Each has a recommended default, which the plan above assumes.
+On 2026-11-02 the user asked to implement everything, so each item below is settled on
+its recommended default, except item 5, which the user changed.
+They are kept because each is cheap to change later.
 
 1. **Which remote identifies the repository on a fork.**
    - *Recommended:* `origin`, with the tab naming the repository it lists.
@@ -881,16 +1213,19 @@ Each has a recommended default, which the plan above assumes.
      head, which a checkout’s server cannot show.
    - *Alternative:* the in-page fetch into Metabrowser’s mirror, as a sixth step.
    - *Affects:* whether a folder’s server ever clones, and one more step.
-   - *Revised 2026-11-02:* the in-page fetch no longer means a clone.
+   - *Decided 2026-11-02:* the in-page fetch no longer means a clone.
      [Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
      makes it an overlay store that borrows the served checkout’s objects, measured at
-     seconds and kilobytes; step 5 here is rewritten when that plan’s step 4 starts.
+     seconds and kilobytes, created when the reader opens Files changed; the owner
+     decided that plan’s open decisions as recommended.
+     Step 6 builds it.
 
 5. **Whether closed pull requests are listed by default.**
-   - *Recommended:* no. Open is the default filter, as on GitHub; Closed and All are
-     fetched when chosen.
-   - *Affects:* requests per open, and the cache’s size on a repository with a long
-     history.
+   - *Decided by the user:* yes.
+     “a list of all the PRs in reverse chronological order, with icons indicating open,
+     merged, etc”. All is the default filter.
+   - *Affects:* nothing per open, since it is one request either way, and a repository
+     with a long history reaches its cap sooner.
 
 6. **How many pull requests are kept per repository.**
    - *Recommended:* for a list, the first page of a state automatically and more on the
@@ -903,6 +1238,22 @@ Each has a recommended default, which the plan above assumes.
 ## Decisions Already Made
 
 By the user, in their words where quoted.
+
+**2026-11-02**
+
+- “it appears that the left-hand nav on Metabrowser is showing the file view even when
+  we’re looking at a PR. what we want is for there to be another tab which is
+  specifically for PRs.
+  It would only appear if it’s relevant and it’s a GitHub repo we are looking at.”
+  The Pulls tab shows at a pull request’s address, and only for a GitHub repository.
+- “if we are viewing a PR, we would be seeing a list of all the PRs in reverse
+  chronological order, with icons indicating open, merged, etc just like the icons in
+  github”. All is the default filter, newest first, with state icons.
+- “within each one would be a list of the files that can be expanded, just like a folder
+  view.” See [Changed Files in a Row](#changed-files-in-a-row).
+- “let’s improve the plan as well, then map out the details as beads and implement
+  everything.” This replaces the 2026-10-01 order below: the work starts now, above the
+  v0.12 stack, and all of the steps are in scope.
 
 **2026-10-01**
 

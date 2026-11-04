@@ -231,6 +231,9 @@ async function createPage(start, options = {}) {
     setTimeout,
     metabrowser: {
       delegateOwnerAttribute: () => "",
+      ensureAsset: async (name) => {
+        assert(name === "sdk-views", "Git waits for the shared view helper bundle");
+      },
       ensureKindAssets: async () => {},
       fetchPluginData: async () => ({}),
       getRegisteredView: () => ({ render: async () => ({ dispose() {} }) }),
@@ -318,6 +321,8 @@ async function createPage(start, options = {}) {
   vm.runInContext(
     `
     var PULL_ROUTE_PREFIX = "/pull/";
+    var PULLS_ROUTE = "/pulls";
+    function isPullAddress(pathname) { return pathname.startsWith(PULL_ROUTE_PREFIX) || pathname === PULLS_ROUTE; }
     var previewPane = __previewPane;
     var navigationController = null;
     function beginViewCompositionLoad() { return null; }

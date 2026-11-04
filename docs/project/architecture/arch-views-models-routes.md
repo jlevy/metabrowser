@@ -69,7 +69,8 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | `unknown-jsonl` | Other `.jsonl` | Log, Raw JSON | File envelope |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | Bounded byte-chunk hook |
-| `pull-request` | No file; the shell selects it for `/pull/<n>[/files]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `diff/comparison` for Files changed |
+| `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `github/pull-comparison` for Files changed, at one changed file for `/pull/<n>/files/<path>` |
+| `pull-request-list` | No file; the shell mounts it in the Pulls tab, and in the pane at `/pulls` | Pull requests | `github/pulls` envelope; `github/pulls-refresh` for resumable catalog warming; `github/pull` for a row’s record |
 
 Two kinds are also **containers** — folder-like entries whose children are addressable
 (see [nav containers](arch-nav-containers.md)): `folder` (children are files and
@@ -130,7 +131,9 @@ the sources that produce them.
 | `/view/<container>/<inner>` | One entry inside a container file | Implemented. On a Git pin the container address is a `GitPath` prefix and the inner is a host path |
 | `/commit/<rev>` | A commit’s change set against its first parent | Implemented, for a full commit ID; anything else says it needs one (`revision_not_full`). Back or Forward onto the entry restores the commit |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | Route parses; the panel restores the commit, not yet the file |
-| `/pull/<n>[/files]` | The served pull request’s page: its conversation, or its Files changed | Implemented. The shell mounts the view a plugin registers for the `pull-request` kind (the GitHub plugin’s); a number other than the served pull request’s shows why it has nothing |
+| `/pull/<n>[/files]` | A pull request’s page: its conversation, or its Files changed | Implemented. The shell mounts the view a plugin registers for the `pull-request` kind (the GitHub plugin’s), for any number of the repository; one with no record offers **Fetch**, and an address alone fetches nothing |
+| `/pull/<n>/files/<path>` | One changed file of that page: Files changed, with the diff at that file | Implemented. The path is one in the pull request’s comparison, a segment at a time, never looked up on disk. A file row in the Pulls tab links to it; `--show` reports the page and whether the cached list of changed files holds the path |
+| `/pulls` | A repository’s list of pull requests with none selected; `?state=` names its filter | Implemented. The pane says what is listed, and the Pulls tab shows the list. A server with no GitHub repository answers the shell, and the page’s own request says there is nothing to list |
 | `/compare/<base>..<head>[/<inner>]` | An explicit comparison (`...` for merge base) | Specified, not built |
 
 The shape after the route is always `<container address>/<inner path>`, which is the
@@ -151,10 +154,10 @@ reservation and its invariants, is in
 | `/api/activity`, `/api/stream` | Live inventory and JSONL tail for sources with a filesystem root; unavailable for immutable Git trees rather than the lifespan folder |
 | `/api/git/repo`, `/api/git/refs`, `/api/git/summary`, `/api/git/log`, `/api/git/commit/<rev>` | Read-only Git history for the Git panel; log pages use bounded, replayable server sessions, opaque page cursors, and versioned graph-boundary checkpoints. The boundary and its rules are in [Git and comparison sources](arch-git-and-comparison-sources.md) |
 | `/api/cache/layout`, `/api/cache/sources`, `/api/cache/source/<slug>`, `/api/cache/stores` | Read-only logical state of the repository cache: layout and config formats, abandoned staging entries, source identity with alias generation and publication, and store records with the aliases that name them, including a store’s `mode` (`full`, or `overlay` when it borrows from a checkout) and `lender` (`present` or `lender_missing`, and no path). They resolve cache and configuration independently per request using the storage precedence rules without creating either root, read without locks and without repairing a shared entry, page in key order, and never report a cache path, pack file, or Git internal. Wire shapes are in `cache/wire.py`. A server serving a Git pin answers them with `unsupported_for_subject` (409), so nothing about other cached sources is served beside acquired content |
-| `/api/source/status` | What this server serves: the subject kind and session generation, and on a `GitRevisionSubject` the full commit it is pinned to (`pin`), the store ref that commit was resolved from (`ref`), and the name the origin knows that ref by (`ref_name`); all three are null on a folder. On a served mirror it names what the page is headed by: the repository’s `name` as a checkout would have it, the `origin` it mirrors, and the `location` of the mirror, the store’s bare repository; a `file://` origin and the location have the home directory as `~` when they are under it, and all three are null for a folder and for a pin with no mirror. `location` is the one field of any route’s answer that names a path in the cache, and [What a mirror’s page is called](arch-repository-sources-and-provider-mirrors.md#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept) holds its bounds; `--api` prints it as answered, the one field a pin’s output does not rewrite to `<ROOT>`. Beside it, under the same exception, `borrows` is the checkout an overlay store borrows objects from, null for a store that holds its own, and `shallow` is whether the store’s history stops at a shallow boundary. On a served mirror it also reports freshness from server memory, so polling it runs no Git and reads no store: `refreshable`, the commit the pinned ref names in the mirror now (`latest`), whether the origin still had that ref at the last fetch (`ref_on_origin`: false when it deleted it, null for a pin by commit ID, a ref not yet observed, or a ref the store swept because the checkout it borrows from collected its commits, until a fetch names it again), `last_fetch_at`, `last_outcome` (operation, typed outcome by name, time, from this process or the store’s record, whichever is newer), `refreshing`, and `stale` (older than the one-minute freshness window), both of which cover a served pull request’s record as well as the mirror, plus `pull_request`, the number a served pull-request URL named, `selection_state`, which follows a URL selection the mirror lacked when serving began (`pending` until a fetch for it ends, then `found` and served, `not_found`, or `fetch_failed` when that fetch did not run; `superseded` after a pin switch), and `selection_href`, where a found selection opens. `cli-github-url-waits.txt` pins the pending, found, not-found, and fetch-failed sequence through `metab <url> --api /api/source/refresh --data …`, the one-shot request that fetches; `tests/test_github_serve.py` covers a server, a superseding switch, and the retry after a failed fetch. It sends an ETag and answers `If-None-Match` with 304. The navigation heading on a pin renders from the same envelope. Its checked evidence includes a pin: `cli-api-source.tryscript.md` opens a cached mirror, which needs no acquisition floor, so it runs on any Git; acquiring and serving one are pinned in-process by `cli-git-pin-index.txt` and `tests/test_serve_pin.py` |
-| `/api/source/refresh` | `POST` with a JSON body: start a background refresh of the served mirror, or join the one running, and answer 202 at once with `refresh` (`started` or `joined`) and the status. The refresh is one `fetch --prune --atomic` under the store’s fetch side lock; its typed outcome appears in the status, never as a request error. A body of `{"for": "commit"}` asks for the fetch a commit the mirror lacks waits for: the mirror’s branches and tags, as a pin by commit ID asks for, and the refresh of the data served beside it. A page sends it by itself when it opens a commit’s address, which a link in served content can cause, so it fetches the mirror only when the last fetch is older than the freshness window and joins a fetch that is running; inside the window `refresh` is `fresh`, no mirror fetch starts, and the answer is 200 unless the data beside the mirror is refreshing. `"retry": true` is a reader’s own click and always fetches. Any other key is `invalid_request` (400). `tests/test_mirror_companion.py` and `tests/test_source_refresh.py` cover both sides of the window; `cli-api-source.tryscript.md` pins the request on a stale mirror and `cli-git-refresh.txt` on a fresh one, with the retry. A folder, or a pin with no mirror, answers `unsupported_for_subject` (409). A one-shot `--api` waits for the refresh it started, prints the status after it, and exits 1 unless the fetch ran or another process’s refresh is running; nothing else in a one-shot command fetches. A page on a pin sends the commit it shows in `x-metabrowser-pin` on every other `/api/` request, and a request for a commit the server does not serve, after a switch or a restart onto another pin, answers `pin_changed` (409); loads that are not `fetch` calls, such as `/raw` images, are not checked |
+| `/api/source/status` | What this server serves: the subject kind and session generation, and on a `GitRevisionSubject` the full commit it is pinned to (`pin`), the store ref that commit was resolved from (`ref`), and the name the origin knows that ref by (`ref_name`); all three are null on a folder. On a served mirror it names what the page is headed by: the repository’s `name` as a checkout would have it, the `origin` it mirrors, and the `location` of the mirror, the store’s bare repository; a `file://` origin and the location have the home directory as `~` when they are under it, and all three are null for a folder and for a pin with no mirror. `location` is the one field of any route’s answer that names a path in the cache, and [What a mirror’s page is called](arch-repository-sources-and-provider-mirrors.md#what-a-mirrors-page-is-called-and-where-it-says-it-is-kept) holds its bounds; `--api` prints it as answered, the one field a pin’s output does not rewrite to `<ROOT>`. Beside it, under the same exception, `borrows` is the checkout an overlay store borrows objects from, null for a store that holds its own, and `shallow` is whether the store’s history stops at a shallow boundary. On a served mirror it also reports freshness from server memory, so polling it runs no Git and reads no store: `refreshable`, the commit the pinned ref names in the mirror now (`latest`), whether the origin still had that ref at the last fetch (`ref_on_origin`: false when it deleted it, null for a pin by commit ID, a ref not yet observed, or a ref the store swept because the checkout it borrows from collected its commits, until a fetch names it again), `last_fetch_at`, `last_outcome` (operation, typed outcome by name, time, from this process or the store’s record, whichever is newer), `refreshing`, and `stale` (older than the one-minute freshness window), both of which cover the attended pull request’s record as well as the mirror, plus `pull_request`, the attended pull request: the number a URL named, replaced whenever a pin switch serves another’s `refs/pull/<n>/head`, `selection_state`, which follows a URL selection the mirror lacked when serving began (`pending` until a fetch for it ends, then `found` and served, `not_found`, or `fetch_failed` when that fetch did not run; `superseded` after a pin switch), and `selection_href`, where a found selection opens. `cli-github-url-waits.txt` pins the pending, found, not-found, and fetch-failed sequence through `metab <url> --api /api/source/refresh --data …`, the one-shot request that fetches; `tests/test_github_serve.py` covers a server, a superseding switch, and the retry after a failed fetch. It sends an ETag and answers `If-None-Match` with 304. The navigation heading on a pin renders from the same envelope. Its checked evidence includes a pin: `cli-api-source.tryscript.md` opens a cached mirror, which needs no acquisition floor, so it runs on any Git; acquiring and serving one are pinned in-process by `cli-git-pin-index.txt` and `tests/test_serve_pin.py` |
+| `/api/source/refresh` | `POST` with a JSON body: start a background refresh of the served mirror, or join the one running, and answer 202 at once with `refresh` (`started` or `joined`) and the status, or 429 `too_many` when only the attended pull request is stale and the pull-request queue has no room. The refresh is one `fetch --prune --atomic` under the store’s fetch side lock; its typed outcome appears in the status, never as a request error. A body of `{"for": "commit"}` asks for the fetch a commit the mirror lacks waits for: the mirror’s branches and tags, as a pin by commit ID asks for, and the refresh of the data served beside it. A page sends it by itself when it opens a commit’s address, which a link in served content can cause, so it fetches the mirror only when the last fetch is older than the freshness window and joins a fetch that is running; inside the window `refresh` is `fresh`, no mirror fetch starts, and the answer is 200 unless the data beside the mirror is refreshing. `"retry": true` is a reader’s own click and always fetches. That answer also carries `pull_refresh`, how the attended pull request’s refresh was answered (`started`, `joined`, or `too_many` when the queue had no room for it) or null when none was asked for, so a commit page does not say the origin lacks a commit only that refresh would bring; `cli-ui-source-freshness.tryscript.md` pins the refusal. Any other key is `invalid_request` (400). `tests/test_mirror_companion.py` and `tests/test_source_refresh.py` cover both sides of the window; `cli-api-source.tryscript.md` pins the request on a stale mirror and `cli-git-refresh.txt` on a fresh one, with the retry. A folder, or a pin with no mirror, answers `unsupported_for_subject` (409). A one-shot `--api` waits for the refresh it started, prints the status after it, and exits 1 unless the fetch ran or another process’s refresh is running; nothing else in a one-shot command fetches. A page on a pin sends the commit it shows in `x-metabrowser-pin` on every other `/api/` request, and a request for a commit the server does not serve, after a switch or a restart onto another pin, answers `pin_changed` (409); loads that are not `fetch` calls, such as `/raw` images, are not checked |
 | `/api/source/refs` | `GET` with `kind` (`branch` or `tag`), `q`, and `limit`: the served mirror’s branches or tags, for the ref selector, read from the mirror alone with one `for-each-ref`. Branches list the default first, then by name; tags newest first. Each row has `name`, the store `ref` a pin request names it with, the `commit` it names (an annotated tag peeled), `default`, and `current`, which marks the ref the server serves now. `q` is a case-insensitive name fragment of at most 256 characters; `limit` is clamped to 1–1000 (default 100), and `total` and `truncated` say how many matched. A tag is listed when it names a commit, directly or as an annotated tag whose own target (`%(object)`, one level on every Git version) is a commit; a tag of a tree, a blob, or another tag is not listed and still pins by name. An unknown `kind` or an overlong `q` answers `invalid_request` (400); a folder, or a pin with no mirror, `unsupported_for_subject` (409) |
-| `/api/source/pin` | `POST` with `{"ref": …}` or `{"oid": …}`: resolve a branch, then a tag, then a commit ID in the mirror alone, never through revision syntax, and serve it: the old tree source is closed and the new one attached under a new generation. Answers `changed` and the new status, and, when the body also names the page’s `/view/` address as `view`, `view_href`: that entry’s canonical address when the new pin has it, an inner address kept when the new pin has its container file, else `/view/`; `view` is checked before the switch, so one that is not percent-encoded ASCII is `invalid_selection` with nothing changed, and a query or fragment is dropped; `invalid_selection` (400), `selection_not_found` (404), `ambiguous_selection` (409), or `unsupported_for_subject` (409) otherwise. `HEAD` is the default branch, and a name the mirror holds that is not a commit answers `not_a_commit` (409) at once, as URL opening does. A commit pinned by `oid` has no ref, unless it is the tip, in the mirror now, of the ref this server last served or of the served pull request’s `refs/pull/<n>/head`: it is then served under that ref, so a reader who went to another commit and came back by ID, as View file on a diff does, is on the branch or the pull request again. In a server, a selection the mirror lacks answers `selection_pending` (202) with `refresh` and the status, and starts one background fetch; asked again after it ends, it switches, answers 404, or answers `selection_fetch_failed` (502) when that fetch did not run. `--api` never fetches for it, so the transcripts pin the 404; the 202 path is asserted by `tests/test_source_refresh.py` |
+| `/api/source/pin` | `POST` with `{"ref": …}` or `{"oid": …}`: resolve a branch, then a tag, then a commit ID in the mirror alone, never through revision syntax, and serve it: the old tree source is closed and the new one attached under a new generation. Answers `changed` and the new status, and, when the body also names the page’s `/view/` address as `view`, `view_href`: that entry’s canonical address when the new pin has it, an inner address kept when the new pin has its container file, else `/view/`; `view` is checked before the switch, so one that is not percent-encoded ASCII is `invalid_selection` with nothing changed, and a query or fragment is dropped; `invalid_selection` (400), `selection_not_found` (404), `ambiguous_selection` (409), or `unsupported_for_subject` (409) otherwise. `HEAD` is the default branch, and a name the mirror holds that is not a commit answers `not_a_commit` (409) at once, as URL opening does. A commit pinned by `oid` has no ref, unless it is the tip, in the mirror now, of the ref this server last served or of the attended pull request’s `refs/pull/<n>/head`: it is then served under that ref, so a reader who went to another commit and came back by ID, as View file on a diff does, is on the branch or the pull request again. Otherwise a commit that is the tip of any fetched `refs/pull/<n>/head` is served under it, the highest number when it heads several, which makes that pull request the attended one. In a server, a selection the mirror lacks answers `selection_pending` (202) with `refresh` and the status, and starts one background fetch; asked again after it ends, it switches, answers 404, or answers `selection_fetch_failed` (502) when that fetch did not run. `--api` never fetches for it, so the transcripts pin the 404; the 202 path is asserted by `tests/test_source_refresh.py` |
 | `/api/kpress/render`, `/api/kpress/export` | Document rendering and export. On a `GitRevisionSubject`, render reads a `GitPath` blob, uses the object id as the cache key, and passes the GitPath wire as `source_path`; export stays mutation-gated and unavailable. With active content off (every served mirror, and a folder served with `--untrusted`), render answers the HTML reduced to the inert allowlist of `src/metabrowser/inert_html.py`, with GitHub’s `user-content-` heading anchors, marks it `inert`, and keeps only stylesheets in its assets; KPress’s table of contents leaves the HTML, `toc` says whether KPress drew one, and the model’s `headings` point at the anchors |
 | `/api/plugin/<plugin>/<route>` | Plugin data hooks (`[[data_hook]]`). On a `GitRevisionSubject`, diff document/children, binary chunk, structured parsed, and agent-log charts honor `GitPath` and follow in-tree relative symlink blobs using the leaf kind |
 | `/raw`, `/raw/<path>` | Bounded raw bytes through the active source’s content reader, and the document the sandboxed html Preview frames; oversized content is refused before an unbounded object read. Both shapes share one resolver and send the same sandbox headers; the path form exists so relative references inside a browsed document resolve. A Git subject reads blobs by `GitPath` and follows in-tree relative symlink blobs. Image blobs use an image media type from the leaf display name. LFS pointers are stored pointer bytes; a missing blob is 404. On a Git subject only the query form answers: the path form’s one consumer, the HTML preview frame, is never offered under the forced untrusted profile, so it answers `unsupported_for_subject` (409) rather than a 404 that would misreport a present file, and Markdown images resolve to `GitPath` wires through the query form |
@@ -163,11 +166,12 @@ reservation and its invariants, is in
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
-`github/pull-comparison`, `github/pull-refresh`, `github/pull-markdown`. On a
-`GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
-`GitDiffSource.content` reads blobs through the shared cat-file pool; patch
-`document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
-`GitPath` and follow in-tree relative symlink blobs.
+`github/pull-refresh`, `github/pull-markdown`, `github/pull-comparison`, `github/pulls`,
+`github/pulls-refresh`, `github/stacks`, `github/stacks-refresh`, `github/pull-files`,
+`github/pull-files-refresh`. On a `GitRevisionSubject`, `diff/comparison` honors the pin
+through `GitLocation` and `GitDiffSource.content` reads blobs through the shared
+cat-file pool; patch `document`/`children`, `binary/chunk`, `structured/parsed`, and
+`agent-log/charts` honor `GitPath` and follow in-tree relative symlink blobs.
 `diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
 and reports it in the document.
 
@@ -207,19 +211,41 @@ while another tab switched is left to the freshness row’s offer.
 A landing on an unchanged pin costs one status request and keeps its scroll position;
 `explorations/history-landing/README.md` records the measurement in Chrome.
 
-`github/pull` answers the served pull request’s cached record from the cache alone:
-`absent` (with `no_pull_request`, `not_cached`, `schema_mismatch`, or `unreadable`),
-`pending` (no record yet, and a refresh is running), `current`, or `stale`, plus the
-pin, `refreshing`, how this server’s last refresh of it ended (`last_refresh`), and
-`comparison_route`, the `diff/comparison` of the record’s merge-base endpoints.
-The pin is the served commit and can differ from the record’s head: a commit URL inside
-the pull request pins that commit, and a refresh can find a newer head than the pin.
+`github/pull?number=<n>` answers any pull request’s cached record from the cache alone,
+and the number is required: `absent` (with `not_github` on a server with no GitHub
+repository, or `not_cached`, `schema_mismatch`, or `unreadable`), `pending` (no record
+yet, and a refresh is running), `current`, or `stale`, plus the pin and the ref it came
+from (`pin_ref`), `refreshing`, how its last refresh ended (`last_refresh`), and
+`comparison_route`, the `github/pull-comparison` of the record’s merge-base endpoints.
+That route names a cached pull request and requires two full commit IDs with
+`merge_base`, then forwards to the diff comparison implementation with the PR’s prepared
+manifest. It acquires nothing; its build and store parameters identify the same answer
+for the page’s prefetch, mount, and deferred-file reads.
+The pin is the served commit and can differ from the record’s head: a pull request
+opened from a branch moves no pin, a commit URL inside the pull request pins that
+commit, and a refresh can find a newer head than the pin.
 A record is fetched only by a refresh.
-`POST github/pull-refresh` starts or joins that refresh in the refresh coordinator and
-answers `202` at once, naming `github/pull` as its `status_route`, which a one-shot
-`--api` prints after the refresh ends, exiting 1 when it failed; it is a POST with a
-JSON object body for the same reason `/api/source/refresh` is, and plugin data routes
-are one path segment, hence the name.
+`POST github/pull-refresh` with `{"number": n}` starts or joins that refresh in the
+refresh coordinator and answers `202` at once, naming `github/pull?number=<n>` as its
+`status_route`, which a one-shot `--api` prints after the refresh ends, exiting 1 when
+it failed; it is a POST with a JSON object body for the same reason
+`/api/source/refresh` is, and plugin data routes are one path segment, hence the name.
+On a served checkout, `{"number": n, "retry": true, "comparison": true}` also acquires
+the store its Files changed needs.
+`comparison: true` without `retry: true` is refused.
+Acquisition leaves the source folder and its pin unchanged, and a request joining a
+metadata refresh retains the comparison action for that job.
+The envelope’s `comparison_route` names `GET github/pull-comparison` with the pull
+number, immutable endpoints, and build and store tokens.
+This route reads only the managed store and uses the diff plugin’s comparison service;
+it never acquires one.
+A request with `"retry": true` is a reader’s own action, a press of **Fetch** or
+**Refresh**, and only that can add a pull request to the cache.
+Any other is the page’s own, sent when it is visible and its record is stale: with no
+record it answers `200` with `refresh: "not_cached"`, inside the window or before a rate
+limit’s `reset_at` it answers `200` with `not_due`, and each starts nothing.
+Past `MAX_PULL_JOBS` queued or running, a request is refused `429` with `refresh` and
+`code` of `too_many`, and starts nothing; the attended pull request may run one over.
 `github/pull` also sends an entity tag over everything but the record, which changes
 only with `fetched_at`, and answers a matching `If-None-Match` with `304`, so the
 pull-request page polls it as cheaply as the status route.
@@ -247,11 +273,11 @@ drivers among them, as `git diff` in that folder would: a folder is the reader�
 its answer is not kept.
 `builtin_plugins/diff/comparison_cache.py` says what an answer depends on besides the
 two commit IDs, and `cli-diff-comparison-cache.txt` pins each case.
-`github/pull-markdown?part=<part>` renders one text of the cached record through KPress
-in its sanitized mode and answers the resulting HTML, with the record’s `fetched_at` and
-the part: `body`, or `issue_comment/<id>`, `review/<id>`, or `review_comment/<id>`. It
-also answers the manifest of KPress’s stylesheets, the same for every text, so the page
-sets a text in the rules a Markdown file reads under.
+`github/pull-markdown?number=<n>&part=<part>` renders one text of the cached record
+through KPress in its sanitized mode and answers the resulting HTML, with the record’s
+`fetched_at` and the part: `body`, or `issue_comment/<id>`, `review/<id>`, or
+`review_comment/<id>`. It also answers the manifest of KPress’s stylesheets, the same
+for every text, so the page sets a text in the rules a Markdown file reads under.
 It never fetches; a part the record lacks is `unknown_part`. KPress keeps what a
 document of its own may use, so the hook reduces that HTML to an allowlist
 (`src/metabrowser/inert_html.py`, with links made absolute against the pull request’s
@@ -265,6 +291,80 @@ KPress’s asset list is not sent, so no script KPress adds for a text’s conte
 The page applies the same allowlist again, rebuilding the nodes it inserts.
 See
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
+
+`github/pulls?state=&limit=&after=` reads an indexed window of the served repository’s
+metadata catalog. `state` is `open` by default, `closed` (including merged), or `all`.
+The envelope is `absent` (`not_github` or `not_cached`), `pending`, `current`, or
+`stale`, with the labelled `reader`, `refreshing`, and `last_refresh`. `total` and
+`repository_total` are GitHub’s selected-filter and all-PR counts, nullable before a
+page arrives; `count_at` dates them.
+`fetched` and `catalog_fetched` count cached matching and all rows independently.
+`complete` means the all-PR backfill reached its end; `truncated` says a row field was
+bounded.
+
+`rows` is newest first by number, with at most `limit` rows (default 100, maximum 1,000,
+zero for status alone), below `after`. `next_after` continues cached rows only.
+A per-filter `generation` changes when existing content or the leading prefix changes;
+older appends and count-only changes preserve it.
+A client replaces a held window only after it has collected that window under one
+source, reader, and generation.
+The ETag covers the bounded envelope and rows.
+GET opens SQLite read-only and runs neither Git nor `gh`.
+
+`POST github/pulls-refresh` takes `state`, `target` (default 500), and `retry`. It
+starts or joins one repository catalog job, returning `202` with a filter-specific
+`status_route`; the one-shot CLI waits for its outcome.
+`target` prioritizes a display prefix, while background work continues through all
+lightweight metadata.
+A higher target on a complete, fresh catalog needs no provider request.
+Joining a job updates its requested filter and target; an explicit retry is retained
+until the worker consumes it.
+Automatic refresh waits one freshness window after completion or failure.
+Explicit retry checks changed metadata even while fresh, but neither bypasses a known
+`rate_limited` reset.
+A held request returns `200` with `refresh: "not_due"`. Unknown fields or invalid values
+return `invalid_request` (400); no GitHub repository returns `not_github` (409). See
+[Lists of pull requests](arch-repository-sources-and-provider-mirrors.md#lists-of-pull-requests).
+
+`GET github/stacks` reads one optional repository stack snapshot with no query
+parameters. Its envelope has `state` (`absent`, `current`, `stale`), `reason`, `source`,
+`reader`, `fetched_at`, remaining `fresh_for_s`, `refreshing`, `last_refresh`,
+`complete`, and `stacks`. Each stack has its native `number`, `base_ref`, `open`, and
+ordered bottom-to-top PR numbers in `pulls`. Only matching source/reader membership
+enriches a PR. An incomplete snapshot supports positive membership only.
+The entity tag excludes the ticking freshness countdown; expiry still changes `state`
+and the tag. `POST github/stacks-refresh` accepts only optional boolean `retry`, and
+returns `refresh`, `stacks`, and `status_route`; `202` starts/joins a job and `200` is
+`not_due`. GET remains cache-only.
+Optional failure retains known metadata without changing core PR/catalog outcomes.
+See
+[optional native stack metadata](arch-repository-sources-and-provider-mirrors.md#optional-native-stack-metadata).
+
+`GET github/pull-files?number=<n>&offset=&limit=` answers one pull request’s changed
+files from the cache alone, with the same `state` values.
+A list is from the local comparison (`listed_from: "comparison"`, current while the
+record’s head is its `head`) when the store holds both of the record’s comparison
+commits, and otherwise from GitHub’s list (`"github"`, current while the pull request’s
+`updated_at`, from its record or a cached list row, is no newer than `fetched_at`, or
+within the window when neither knows).
+`fetched` is the rows held; `complete` is false while GitHub’s list fills or after it
+stopped part-way, `last_page` is the page count GitHub’s `Link` gave, `capped` says
+GitHub stopped at its 3,000 files, and `truncated` that an item was left out.
+A row keeps `path`, its identity, `previous_path`, GitHub’s `status`, and the line
+counts, with `display` and `previous_display` through the pinned tree’s display rule;
+`rows` is the window from `offset`, all by default and none with `limit=0`. It sends an
+entity tag over everything but the rows.
+`POST github/pull-files-refresh` with `{"number": n, "retry": false}` starts or joins
+that list’s refresh and answers `202`, naming `github/pull-files` with `limit=0` as its
+`status_route`. GitHub’s pages are published one by one as they arrive, never as fewer
+rows than the file holds, and a held list is reread conditionally.
+`"retry": true` is a reader’s own action; any other request starts a list that is not
+held, not complete, or stale, and not tried within the window.
+Past `rate_limited` nothing reads GitHub until `reset_at`, though the local comparison
+may still list. A request held answers `not_due` with `200`. A file-list job takes no
+turn at the store and holds a network slot for each `gh` request alone; past
+`MAX_PULL_JOBS` of them queued or running, a request is refused 429 `too_many`. See
+[Changed files of a pull request](arch-repository-sources-and-provider-mirrors.md#changed-files-of-a-pull-request).
 
 ### Planned plugin registration surfaces
 
@@ -336,13 +436,20 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-diff-no-hunks.tryscript.md` |
 | `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md`, `cli-api-diff-view-file.tryscript.md`, `cli-api-diff-no-hunks.tryscript.md`, `cli-checkout-overlay.txt` |
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-checkout-overlay.txt` |
-| `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
+| `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-checkout.txt` |
+| `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt` |
+| `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
+| `/api/plugin/github/stacks` | covered | `--api` | `cli-github-stacks.txt` |
+| `/api/plugin/github/stacks-refresh` | covered | `--api` | `cli-github-stacks.txt` |
+| `/api/plugin/github/pull-files` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt` |
+| `/api/plugin/github/pull-files-refresh` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt`, `cli-github-pull-files-failures.txt` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
-| `/pull` | covered | `--show /pull/<n>[/files]` | `cli-github-pull.tryscript.md` |
+| `/pull` | covered | `--show /pull/<n>[/files[/<path>]]` | `cli-github-pull.tryscript.md`, `cli-github-pull-files.tryscript.md` |
+| `/pulls` | covered | `--show /pulls` | `cli-github-pulls.tryscript.md` |
 | `/api/events` | exempt | — | streaming; the response never terminates, so there is no envelope to pin |
 | `/raw` | exempt | — | asset serving; the query form and `/raw/{path}` share one resolver and send the file’s bytes plus sandbox headers, covered by `tests/test_raw_passthrough.py`, `tests/test_content_trust.py`, `tests/test_raw_path_route.py`, and, on a served Git pin, `tests/test_serve_pin.py` |
 | `/_debug/tasks` | exempt | — | opt-in diagnostic, not a surface the browser reads |
@@ -392,12 +499,19 @@ applies the same exact-route and exit-status rules to its `# command` and `exit:
 command that ran. `/api/plugin/github/pull-refresh` needs this: a refresh that completes
 needs `gh` and a fetch from the origin, and a subprocess transcript has neither.
 `cli-github-pull-refresh.txt` records
-`metab …/pull/7 --api /api/plugin/github/pull-refresh --data refresh.json` exiting 0,
+`metab …/pull/7 --api /api/plugin/github/pull-refresh --data reader.json` exiting 0,
 with the `202`, the `current` record after it, and the `gh` calls it made.
 `cli-github-pull.tryscript.md` pins the same route with no `gh`: the `202`, the
 `gh_failed` status after it, and the exit status 1.
 `cli-ui-github-pull-page.tryscript.md` replays the route’s recorded answers through a
 refresh that completes.
+`/api/plugin/github/pulls-refresh` is the same: `cli-github-pulls-refresh.txt` records
+refreshes that complete with the `gh` calls each made, `cli-github-pulls-failures.txt`
+each typed failure, and `cli-github-pulls.tryscript.md` the same route with no `gh`.
+`/api/plugin/github/pull-files-refresh` is too: `cli-github-pull-files-refresh.txt`
+records lists that complete, from GitHub’s pages and from the local comparison, and a
+force-push; `cli-github-pull-files-failures.txt` each typed failure and a list that
+stopped part-way; and `cli-github-pull-files.tryscript.md` the route with no `gh`.
 
 The exempt rows are the honest boundary.
 A server-sent-event response has no terminating envelope, so `--api` bounds the request
@@ -489,19 +603,29 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `git.history-stale-cursor` | interaction | `static/git-history-window.js#classifyPageFailure` | `/api/git/log` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `git.unfetched-commit` | interaction | `static/source-freshness.js#openMissingCommit`, `static/source-freshness.js#describeMissingCommit`, `static/source-freshness.js#fetchMissing` | `/api/git/commit`, `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `github.pull-page` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#hunkView`, `builtin_plugins/github/pull-page.js#tintOnFirstOpen`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh`, `/api/plugin/github/pull-markdown`, `/api/source/pin` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.checkout-comparison-fetch` | interaction | `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-checkout-comparison-session.js` | `cli-ui-github-checkout-comparison.tryscript.md` |
+| `github.displayed-comparison-repair` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-prefetch` | interaction | `builtin_plugins/github/comparison-prefetch.js#createComparisonPrefetch` | `/api/plugin/diff/comparison` | `node tests/dom/github-pull-prefetch-session.js` | `cli-ui-github-pull-prefetch.tryscript.md` |
 | `github.pull-page-inert-markup` | interaction | `static/inert-html.js#sanitizeNodes`, `static/inert-html.js#allowedAttributes`, `static/inert-html.js#imageLink`, `builtin_plugins/github/pull-page.js#safeLink`, `builtin_plugins/github/pull-page.js#gitPathWire` | `/api/plugin/github/pull-markdown` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `source.checkout-overlay` | data | `/api/source/status` | `owned-route` | `metab --cache-dir home --config-dir config https://github.com/octo/demo/pull/1 --api /api/source/status` | `cli-checkout-overlay.tryscript.md` |
 | `cache.store-borrowing` | data | `/api/cache/stores` | `owned-route` | `metab --cache-dir home --config-dir config root --api /api/cache/stores` | `cli-checkout-overlay.tryscript.md` |
-| `github.pull-base-uncertain` | data | `/api/plugin/github/pull` | `owned-route` | `metab --cache-dir home-shallow --config-dir config https://github.com/octo/demo/pull/1 --api /api/plugin/github/pull` | `cli-checkout-overlay.tryscript.md` |
+| `github.pull-base-uncertain` | data | `/api/plugin/github/pull` | `owned-route` | `metab --cache-dir home-shallow --config-dir config https://github.com/octo/demo/pull/1 --api '/api/plugin/github/pull?number=1'` | `cli-checkout-overlay.tryscript.md` |
 | `github.pull-page-paint-decisions` | interaction | `builtin_plugins/github/pull-page.js#conversationAction`, `builtin_plugins/github/pull-page.js#conversationKey`, `builtin_plugins/github/pull-page.js#filesAction`, `builtin_plugins/github/pull-page.js#filesUnavailableText` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-second-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-page-place` | interaction | `builtin_plugins/github/pull-page.js#createScrollKeeper`, `builtin_plugins/github/pull-page.js#placeAt`, `builtin_plugins/github/pull-page.js#scrollTopOf`, `builtin_plugins/github/pull-page.js#keyMovesPane` | `local-only` | `node tests/dom/github-pull-page-second-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `diff.layout-fit` | interaction | `builtin_plugins/diff/diff-view.js#tooNarrowForSplit`, `builtin_plugins/diff/diff-view.js#opensTooNarrowForSplit`, `builtin_plugins/diff/diff-view.js#drawnLayout`, `builtin_plugins/diff/diff-view.js#setLayout`, `builtin_plugins/diff/diff-view.js#mountDiffView` | `local-only` | `node tests/dom/diff-layout-fit-session.js` | `cli-ui-diff-layout-fit.tryscript.md` |
 | `diff.file-jump` | interaction | `builtin_plugins/diff/diff-view.js#jumpToFile`, `builtin_plugins/diff/diff-view.js#jumpPlacement`, `builtin_plugins/diff/diff-view.js#reservedRows`, `builtin_plugins/diff/diff-view.js#partialNote`, `builtin_plugins/diff/diff-view.js#createHydrationScheduler`, `builtin_plugins/diff/diff-view.js#patchRows`, `builtin_plugins/diff/diff-view.js#firstScreenBudget` | `/api/plugin/diff/comparison` | `node tests/dom/diff-file-jump-session.js` | `cli-ui-diff-file-jump.tryscript.md` |
 | `diff.view-file-sides` | data | `/api/plugin/diff/comparison` | `owned-route` | `metab changesroot --api '/api/plugin/diff/comparison?revision=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&file=src/new_name.py'` | `cli-api-diff-view-file.tryscript.md` |
 | `diff.view-file` | interaction | `builtin_plugins/diff/diff-view-file.js#viewFileSides`, `builtin_plugins/diff/diff-view-file.js#sidePathForAddress`, `builtin_plugins/diff/diff-view-file.js#describeViewFile`, `builtin_plugins/diff/diff-view-file.js#createViewFileOpener`, `builtin_plugins/diff/diff-view-file.js#switchRefusal`, `builtin_plugins/diff/diff-view.js#renderViewFileControl`, `builtin_plugins/diff/index.js#viewFileHost`, `builtin_plugins/diff/index.js#viewFileOpener`, `static/git-path.js#gitPathWire` | `/api/plugin/diff/comparison`, `/api/plugin/diff/document`, `/api/source/pin` | `node tests/dom/diff-view-file-session.js` | `cli-ui-diff-view-file.tryscript.md` |
-| `navigation.pull-page-history` | interaction | `static/pull-route.js#pullHistoryAction`, `static/pull-route.js#createPullPageHost` | `local-only` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
+| `navigation.pull-page-history` | interaction | `static/pull-route.js#pullHistoryAction`, `static/pull-route.js#createPullPageHost`, `static/pull-route.js#parsePulls`, `static/pull-route.js#pullsHref` | `local-only` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
+| `github.pulls-tab-host` | interaction | `static/pulls-nav.js#createPullsNav`, `static/pulls-nav.js#tabForAddress`, `static/pulls-nav.js#pullAddress`, `static/pulls-nav.js#registerKeys` | `local-only` | `node tests/dom/pulls-nav-session.js` | `cli-ui-pulls-nav.tryscript.md` |
+| `github.pulls-panel` | interaction | `builtin_plugins/github/pulls-panel.js#describePulls`, `builtin_plugins/github/pulls-panel.js#describeRow`, `builtin_plugins/github/pulls-panel.js#refreshFailure`, `builtin_plugins/github/pulls-panel.js#describeLanding`, `builtin_plugins/github/pulls-panel.js#followLanding`, `builtin_plugins/github/pulls-panel.js#createPullsController`, `builtin_plugins/github/pull-state.js#displayState` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-refresh`, `/api/plugin/github/pull` | `node tests/dom/github-pulls-panel-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
+| `github.pulls-file-selection` | interaction | `builtin_plugins/github/pulls-panel.js#mountPullsPanel` | `/api/plugin/github/pulls`, `/api/plugin/github/pull-files` | `node tests/dom/github-pulls-file-selection-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
+| `github.native-stack-ui` | interaction | `builtin_plugins/github/pull-stacks.js#createStackController`, `builtin_plugins/github/pull-stacks.js#createStackIndex`, `builtin_plugins/github/pull-stacks.js#stackMembership`, `builtin_plugins/github/pull-stacks.js#memberRoute` | `/api/plugin/github/stacks`, `/api/plugin/github/stacks-refresh` | `node tests/dom/github-pull-stacks-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
+| `github.pull-stack-loading` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage` | `/api/plugin/github/pull`, `/api/plugin/github/stacks` | `node tests/dom/github-pull-stack-mount-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
+| `github.pull-files-tree` | interaction | `builtin_plugins/github/pull-files-tree.js#buildFileTree`, `builtin_plugins/github/pull-files-tree.js#visibleRows`, `builtin_plugins/github/pull-files-tree.js#initialExpansion`, `builtin_plugins/github/pull-files-tree.js#toggleFolder`, `builtin_plugins/github/pull-files-tree.js#revealPath`, `builtin_plugins/github/pull-files-tree.js#holdFileList`, `builtin_plugins/github/pull-files-tree.js#describeFileList`, `builtin_plugins/github/pull-files-tree.js#createFileTreeController`, `builtin_plugins/github/pull-files-tree.js#createRowExpansion`, `builtin_plugins/github/pull-files-tree.js#windowRange`, `builtin_plugins/github/pull-files-tree.js#describeFileTree` | `/api/plugin/github/pull-files`, `/api/plugin/github/pull-files-refresh` | `node tests/dom/github-pull-files-tree-session.js` | `cli-ui-github-pull-files-tree.tryscript.md` |
+| `github.pulls-reader-fetch` | interaction | `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pulls-panel-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `assets.on-demand-load-recovery` | interaction | `static/asset-loader.js#ensureAsset`, `static/asset-loader.js#ensureScript` | `local-only` | `node tests/dom/asset-loader-behavior.js` | `cli-ui-navigation.tryscript.md` |
+| `links.external-github` | interaction | `static/plugin-sdk-views.js#decorateExternalLink` | `local-only` | `node tests/dom/external-links-session.js` | `cli-ui-external-links.tryscript.md` |
 | `plugins.view-helpers-before-plugin-code` | interaction | `static/plugin-sdk.js#loadPluginsForKind`, `static/plugin-sdk.js#_ensureViewHelpers`, `static/plugin-sdk.js#_startPluginAssets`, `static/plugin-sdk-views.js#renderSourceView`, `static/asset-loader.js#ensureAsset` | `local-only` | `node tests/dom/plugin-view-helpers-session.js` | `cli-ui-plugin-view-helpers.tryscript.md` |
 | `source.incremental-cache-transaction` | interaction | `static/source-append.js#requestOwnsPreview`, `static/source-append.js#commitChunkCache` | `/api/file` | `node tests/dom/source-append-navigation-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `source.line-anchors` | interaction | `static/plugin-sdk-views.js#describe`, `static/plugin-sdk-views.js#nextFragment`, `static/plugin-sdk-views.js#keyStep`, `static/plugin-sdk-views.js#preferredView`, `static/plugin-sdk-views.js#mount`, `static/plugin-sdk-views.js#refresh`, `static/plugin-sdk-views.js#renderSourceView`, `builtin_plugins/markdown/source.js#renderMarkdownSource` | `/api/file` | `node tests/dom/source-line-anchors-session.js` | `cli-ui-source-line-anchors.tryscript.md` |
@@ -536,6 +660,9 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `source.history-landing-browser` | paint-exempt | `static/source-pin-guard.js` | `local-only` | — | Whether Back restores a page from the back/forward cache or loads it again, when `pageshow` fires and with what `persisted`, the navigation type a document reports, and what a reload fetches are the browser’s. The decision made on them is a session owner above (`source.history-landing`), which also loads the module as the server writes it into a page. `tests/test_source_freshness_session.py` pins the statuses that decision reads against a real server, and `explorations/history-landing/README.md` records the Chrome run: a restore with `persisted` true that keeps its scroll position when nothing switched, and one reload after a switch |
 | `github.pull-page-hunk-paint` | paint-exempt | `builtin_plugins/github/styles.css` | `local-only` | — | Opening and closing the native `details` that holds a review comment’s earlier hunk lines, and firing `toggle`, are the browser’s, and how far a line’s tint reaches in a hunk scrolled sideways, and that its label stays put, are layout. Which lines are shown, what each line is, and that a first open makes them a line each, once, are a session owner above (`github.pull-page`). That the tints are the diff view’s, that a hunk’s lines are painted as text, that the disclosure is native, and that one box scrolls all of a hunk are pinned in `tests/test_pull_page_route.py`; how it looks is judged in a browser |
 | `github.pull-page-text-spacing` | paint-exempt | `builtin_plugins/github/styles.css` | `local-only` | — | The active system sans’s measured advance and resulting message width, and how much space a text’s paragraphs, headings, lists, code, quotes, tables, and details take in their card, and where a list’s markers fall, is layout: margins collapsing through KPress’s wrappers under the shell’s reset, in a browser’s line boxes, with nothing but the stylesheet’s text for a browserless session to run. Whether a table overflows its text and how it scrolls, and where a long word breaks, are layout too. That every block of the allowlist has a margin, that lists have room for their markers, that a wide table scrolls inside its text, that a long word breaks by the rule that leaves that table scrolling, that the first and last block are trimmed as deep as the Markdown route’s answer nests, and that no selector reaches outside the page are pinned in `tests/test_pull_page_route.py`; how it looks is judged in a browser |
+| `github.pull-files-tree-paint` | paint-exempt | `builtin_plugins/github/pull-files-view.js#mountFileTree` | `local-only` | — | DOM geometry, actual focus, and the viewport window need a browser. The exact controller and window calculation run in `github.pull-files-tree`; its session covers keys, progressive windows, retries, selection, and disposal. Chrome 152 measured the production tree on the first 1,183 and all 2,003 filenames of django/django#15387 and 3,000 stress files: 67 rows at the top, 111 mid-list, one tabbable anchor, and a 4.1 ms maximum key update. The keyboard registry and roving anchor are pinned by `tests/test_design_vocabulary.py` and `tests/dom/github-pull-files-tree-session.js`. These are navigation-paint measurements; diff hydration is the diff view’s separate evidence. |
+| `github.pulls-panel-paint` | paint-exempt | `builtin_plugins/github/pulls-panel.js#mountPullsPanel`, `builtin_plugins/github/pulls-panel.js#mountPullsLanding`, `builtin_plugins/github/pull-state.js#pullStateIcon` | `local-only` | — | Building the list’s DOM, moving focus, bringing a row into view, what a sticky header covers, truncating a title, and when an `IntersectionObserver` says the list’s end is near need a rendered page. Every decision they act on is a session owner above: which rows, marks, and notices (`github.pulls-panel`), which tab and when the view is told (`github.pulls-tab-host`), and what a row’s open asks for (`github.pulls-reader-fetch`). The panel session builds the list in a stand-in for the DOM and pins its tree roles with each row’s place and the list’s size, a title written as markup painted as one text node, an append that builds and keys only the rows it adds, and ages told again as time passes (`tests/dom/github-pulls-panel-session.js`, its `paint`); `tests/test_pulls_nav.py` pins that a folder’s shell draws nothing, and `tests/test_design_vocabulary.py` the design system’s primitives in the markup. The list at its cap, a held key, and how it looks in both themes were measured and judged in Chrome; the numbers are beside `WINDOW_ROWS` in `builtin_plugins/github/pulls-panel.js` |
+| `shell.nav-panel-scroll` | paint-exempt | `static/app.js#activateNavPanel` | `local-only` | — | Where each navigation panel’s list was scrolled to is the scroller’s own state, which only a rendered page has: all the panels share one, so `activateNavPanel` keeps each panel’s offset and tells the one that leaves, on a plain folder’s Files and Git tabs as on a mirror’s three. That the tab’s host stops the list when it is told is a session owner above (`github.pulls-tab-host`), and `tests/dom/preview-pane-state-session.js` runs the production `activateNavPanel` with a stand-in scroller and pins that a switch saves the offset it leaves, restores the next panel’s or the top, and tells the panel that leaves (`navPanelsKeepTheirPlace`, in `cli-ui-file-lifecycle.tryscript.md`). Seen in Chrome: Files, Git, and Pulls each keep their place |
 | `github.pull-page-paint` | paint-exempt | `builtin_plugins/github/pull-page.js#mountPullPage` | `local-only` | — | Building the page’s DOM, observing which texts scroll into view, reading where a block sits and setting the pane’s scroll, loading the diff plugin and mounting its view, and the shell’s `app.js` callbacks the page host calls (load the plugin, render into the pane, `history.pushState`) need a rendered page. Every decision they act on is a session owner above: what a route, a tab link, the link to the served pull request, or a history landing does to the pane, and which superseded page is disposed (`navigation.pull-page-history`), whether the conversation repaints or asks again and what Files changed keeps (`github.pull-page-paint-decisions`), what of a text’s HTML is inserted (`github.pull-page-inert-markup`), and where a landing puts the pane and for how long (`github.pull-page-place`). The route grammar, the shell and plugin wiring for the `pull-request` kind, that only an inert template is parsed, that a text is asked for one pane ahead of the pane that scrolls, and what a reader’s place is wired to are pinned in `tests/test_pull_page_route.py`; the browser walkthrough is in the v0.12 QA runbook |
 
 ## Adding something

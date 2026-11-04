@@ -1198,20 +1198,21 @@ In `cli-github-url-open.txt`, `/pull/7` pins the default branch and
 In `cli-github-pull.tryscript.md`, pull requests 12, 13, and 14 answer `absent` with
 `schema_mismatch`, `unreadable`, and `not_cached`. `/api/source/status` on `/pull/7`
 names `refs/pull/7/head` and `pull_request: 7`; `pull-refresh` answers `202` with
-`refreshing: true` and `pending` for 14, `409 no_pull_request` for a repository URL, and
-`405` for a GET. In `tests/test_github_pulls.py`, a served `/pull/7` pins its head, a
-refresh through `pull-refresh` runs as one coordinator job that a second request joins,
-a newer head behind `refs/pull/7/head` is offered as `latest` and taken through
+`refreshing: true` and `pending` for 14, the same for a repository URL when a reader
+asks, `not_cached` when the page itself does, `409 not_github` for a folder, and `405`
+for a GET. In `tests/test_github_pulls.py`, a served `/pull/7` pins its head, a refresh
+through `pull-refresh` runs as one coordinator job that a second request joins, a newer
+head behind `refs/pull/7/head` is offered as `latest` and taken through
 `/api/source/pin`, and a held fetch lock ends in `refreshing_elsewhere`.
 
-With the network, a signed-in `gh` 2.81.0 or newer, and a Git the floor admits
-(read-only; nothing is written to GitHub):
+With the network, a signed-in current maintained GitHub CLI release, and a Git the floor
+admits (read-only; nothing is written to GitHub):
 
 ```shell
 METABROWSER_LIVE_GITHUB=1 uv --config-file uv.toml run --frozen pytest -rs \
   tests/test_github_pull_live_smoke.py
 uv --config-file uv.toml run --frozen metab \
-  https://github.com/pallets/markupsafe/pull/507 --api /api/plugin/github/pull
+  https://github.com/pallets/markupsafe/pull/507 --api '/api/plugin/github/pull?number=507'
 ```
 
 **Pass:** The smoke test’s Files changed matches GitHub’s file list for merged fork pull
@@ -1592,16 +1593,14 @@ address.
 6. Click **Refresh** while the record is stale.
    The status line reads `Refreshing…` and then `Fetched just now by octo-reader`; the
    conversation does not flicker or jump.
-7. Open `/pull/8/files`. The page says `This server serves pull request #7.` with **Open
-   pull request #7**; click it.
-   The address becomes `/pull/7/files` without a reload and the page shows pull request
-   7’s Files changed; Back returns to `/pull/8/files`. When the pin is not the head the
-   record names, as when the pull request could not be opened at startup and serving
-   fell back to the default branch, the status line says
-   `This page's code is …, not the pull request's head …` with **Switch to the head**,
-   which reloads the page on `refs/pull/7/head`. The stand-in opens the pull request at
-   startup, so this case is played by
-   `tests/golden/cli-ui-github-pull-page.tryscript.md` rather than by hand.
+7. Open `/pull/8/files`. The same server shows pull request 8’s cached comparison;
+   browsing it does not change the served code pin.
+   Confirm the code banner is unchanged.
+   Back returns to pull request 7. **Browse code** on another PR explicitly switches to
+   that PR’s head before opening its code.
+   If a refresh finds a newer head for the served PR, the page retains the displayed
+   head and offers **Switch to the head**. The startup fallback and explicit switch
+   cases are also exercised by `tests/golden/cli-ui-github-pull-page.tryscript.md`.
 8. Stop the server and serve pull request 9 (`--serve 9 8475`): **spam** is **Closed**,
    and the header reads
    `ghost wants to merge 1 commit into octo:topic from spam (deleted fork)`, as
@@ -1618,11 +1617,15 @@ address.
    Once the freshness row’s refresh brings it, scroll to the comment.
    It shows as plain paragraphs, links, and text only: **build badge** is a link to the
    image, `x` a link, and `video`, `copy`, `fake dialog`, and `styled` plain text; no
-   dialog covers the page; and the network panel shows no request to any origin but
-   `127.0.0.1`, no `/kpress-static/` script, and no iframe.
+   dialog covers the page; and the network panel shows no document-origin image request,
+   no `/kpress-static/` script, and no iframe.
+   Application-owned author avatars may request the fixed
+   `avatars.githubusercontent.com` host.
 
-**Pass:** every step as described; no console errors; no request leaves `127.0.0.1`
-except the check and status links you click, which open in a new tab.
+**Pass:** every step as described; no console errors.
+Only application-owned avatars may load from `avatars.githubusercontent.com`; check and
+status links you click open in a new tab.
+No image or resource authored in the conversation loads remotely.
 
 **Fail:** a text of the pull request rendered as HTML other than through the Markdown
 renderer; an image, stylesheet, or other resource from a comment loading, or an `id`
@@ -1640,6 +1643,121 @@ uv --config-file uv.toml run --frozen metab https://github.com/pallets/markupsaf
 **Pass:** the page matches the pull request on github.com: title, **Merged** badge,
 description, conversation, review comments, checks, and the Files changed file list.
 Nothing is written to GitHub.
+
+### 5.7a Pull-request performance and cache session
+
+Use the navigation-time `metabrowser.perf` profile and the existing fixture from
+`tests/github_pull_fixture.py`. Record the commit, wheel hash, corpus, browser version,
+viewport and host load.
+Name the Git store, catalog, PR detail, server-process and browser HTTP cache conditions
+separately. A seeded complete catalog measures rendering and navigation; it does not
+measure metadata ingestion.
+
+1. **Cold metadata.** Acquire the fixture repository without seeding its catalog or PR
+   details. Generate a fixed 5,000-row catalog with distinct, ordered `updatedAt` values.
+   Keep the Git store warm.
+   Open Pulls with Open selected and capture the first observed visible row, the exact
+   repository total and count timestamp, and completion with
+   `catalog_fetched === repository_total`. Metadata continues beyond the initial 500
+   displayed rows. During backfill, use trusted input and open the fixture’s pull request
+   7; its detail job must make progress while catalog pages continue.
+2. **Warm revisit and restart.** Reopen within the freshness window, then restart only
+   the server with the same persisted cache.
+   Record whether the browser cache is retained.
+   Cached metadata GETs make no provider calls, and a fresh complete catalog does not
+   restart backfill. Verify the selected PR and cached conversation, Open/Closed/All, and
+   Fetch more without losing the count or selection.
+3. **One incremental revalidation.** Change one old PR’s timestamp and title in the
+   fixture, then explicitly Retry or wait until due.
+   Observe the UPDATED_AT prefix scan, the changed row, and unchanged unrelated rows.
+   Equal timestamps may require more pages; do not promise a one-page scan without the
+   ordered fixture. Save the final envelope and provider trace.
+
+Export `metabrowser.perf.snapshot()` after each phase.
+Report the first-row DOM/frame observation and catalog completion separately; neither is
+a browser paint timestamp.
+The fixed `githubPulls:*` and `githubPull:*` labels attribute decoding, rendering and
+DOM readiness. Readiness markers use `first_end_ms`; their near-zero durations are not
+load latency. Compare GraphQL, REST and authentication call counts and decoded response
+bytes separately from local API requests and browser transfer bytes.
+Record runtime errors and the profiler’s observer support, visibility, overflow, Long
+Tasks and trusted-input coverage.
+A single session is a diagnostic, not a speed claim or a performance-budget pass; use
+the [performance framework](web-performance-framework.md) for comparisons.
+
+The existing [focused tests](#11-the-focused-selection),
+[PR-data checks](#410-pull-request-data) and
+[checkout checks](#411-a-pull-request-beside-a-checkout) cover account changes, rate
+holds, missing GitHub CLI, cancellation and cache ownership.
+The browser steps above and the [UI test guidance](e2e-testing.md) cover held keys,
+expanded trees, resize and remounts.
+The generic capture’s filesystem inventory completion does not establish catalog
+completion; verify the catalog envelope before exporting the profile.
+
+### 5.7b Optional stacks and PR presentation
+
+Use the same final wheel and record stack-cache conditions separately from catalog and
+PR-detail caches. The concise `cli-github-stacks.txt` session records provider command
+order, conditional pages without `Link`, cache-only reads and missing-tool backoff.
+
+1. With `gh stack` available, open a known native-stack member from both a repository
+   URL and a served checkout.
+   Check its stack number, bottom-to-top member order, position and neighbors against
+   GitHub. Member navigation preserves the selected tab and clears the preceding PR’s
+   file; normal Back and Forward still work.
+   Leave the preceding tree expanded: its file highlight clears while its keyboard
+   position remains. Returning through history restores the active diff’s file selection.
+
+2. Revisit with a warm snapshot.
+   Cached GET/304 reads run no `gh`; no row starts its own stack fetch.
+   Remove optional tooling only in the controlled test environment and confirm that core
+   PR reading works, matching cached badges remain, and refreshes back off.
+   An account/source mismatch must hide those badges.
+
+3. On narrow and wide screens, check dark PR numbers, normal-size bold gray usernames
+   and smaller consistently colored branches in the list, header and conversation.
+   Cold Conversation and Files changed show aligned gray pulsing blocks; cached refresh
+   keeps content and focus.
+   Check reduced motion, late stack arrival, expanded trees and scroll after the actual
+   row height changes.
+
+4. Check author and merger avatars against the named username, including missing,
+   unsupported and failed images.
+   Image boxes stay fixed, requests carry no referrer or credentials, and remote images
+   authored in Markdown remain links.
+   A catalog enrichment interrupted mid-page resumes without discarding readable rows; a
+   warm completed revisit does not restart enrichment or issue per-row API requests.
+   Detail enrichment revalidates each existing representation once, then returns to
+   conditional requests; a failed attempt retains the old readable record.
+
+5. Compare A, M, D, R and type-change letters in Git, PR file trees and diff bars in
+   both themes and selected/hovered states.
+   Status names stay available without color.
+   Hover and keyboard-focus branch chips; copy the complete ref without opening the row.
+   Check fork labels and truncated names, feedback, focus and source-selector controls.
+   Past full metadata says “ago”, near-now metadata says “just now”, and future metadata
+   says “in”; condensed navigation stays short.
+
+6. Compare split and unified code with source and review hunks.
+   At default and enlarged browser root font preferences, diff code uses the shared
+   monospace block size.
+   Expand, fold, scroll, resize and remount a long diff: reserved heights match actual
+   rows, and the selected file, scroll anchor and keyboard position remain stable.
+
+7. Check external GitHub destinations in Markdown, conversation text, setup guidance and
+   application controls.
+   General destinations show the GitHub mark; issue/PR links show neutral entity icons
+   when state is unknown, and the selected PR’s GitHub link shows its known state.
+   A localized file link has no external icon.
+   Repeated decoration, long wrapping labels and keyboard focus preserve the text and
+   link attributes. No metadata request or remote SVG fetch occurs for an icon.
+   Check protocol-relative GitHub links and the existing Markdown enhancement-limit
+   fallback. Focus a branch-copy control with Tab, then drag the pane splitter narrower:
+   focus returns to its visible primary row and no invisible copy control remains.
+
+Retain screenshots, provider traces and errors with the artifact pin.
+These are focused functional observations; a historical catalog profile does not measure
+this layer.
 
 ### 5.8 A hostile README on a mirror (no network)
 

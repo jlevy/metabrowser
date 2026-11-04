@@ -34,6 +34,12 @@ process.emitWarning = (warning, ...rest) => {
 };
 
 const HELPERS = [
+  "decorateExternalLink",
+  "refChipHtml",
+  "refChip",
+  "mountRefCopies",
+  "ageBucket",
+  "ageLabelHtml",
   "highlightSyntax",
   "isLargeTextPreview",
   "langForExtension",
@@ -298,10 +304,91 @@ async function whenTheHelpersCannotBeFetched() {
   };
 }
 
+// The exact shell boundary, with only its platform/asset promises controlled. The
+// renderer itself must not run until both already-defined on-demand bundles are ready.
+async function sourceHeaderReadiness() {
+  const app = fs.readFileSync(path.join(staticDir, "app.js"), "utf8");
+  const begin = app.indexOf("async function startSourceRefSelector() {");
+  const end = app.indexOf("// app.js is the last core script", begin);
+  if (begin < 0 || end < 0) {
+    throw new Error("source header boundary moved");
+  }
+  function header(managed) {
+    const requested = [],
+      jobs = new Map(),
+      mounted = [];
+    let helpersReady = false;
+    const element = {};
+    const context = {
+      Promise,
+      isGitRevisionSource: () => managed,
+      document: { getElementById: () => element },
+      window: {
+        MetabrowserAssets: {
+          ensureAsset(name) {
+            requested.push(name);
+            return new Promise((resolve, reject) =>
+              jobs.set(name, {
+                resolve() {
+                  if (name === "sdk-views") {
+                    helpersReady = true;
+                  }
+                  resolve();
+                },
+                reject,
+              }),
+            );
+          },
+        },
+        MetabrowserSourceRefSelector: {
+          mount(target) {
+            if (!helpersReady || target !== element) {
+              throw new Error("header mounted before its helpers");
+            }
+            mounted.push("source header");
+          },
+        },
+      },
+    };
+    vm.createContext(context);
+    vm.runInContext(app.slice(begin, end), context, { filename: "app.js:startSourceRefSelector" });
+    return { requested, jobs, mounted, start: () => fate(context.startSourceRefSelector()) };
+  }
+  const folder = header(false),
+    folderLoad = folder.start();
+  await turn();
+  const managed = header(true),
+    loading = managed.start();
+  const requestedTogether = [...managed.requested];
+  managed.jobs.get("source-ref-selector").resolve();
+  await turn();
+  const afterSelector = { loading: loading.settled, mounted: [...managed.mounted] };
+  managed.jobs.get("sdk-views").resolve();
+  await turn();
+  const failed = header(true),
+    failure = failed.start();
+  failed.jobs.get("sdk-views").reject(new Error("helpers unavailable"));
+  await turn();
+  const afterFailure = { loading: failure.settled, mounted: [...failed.mounted] };
+  const retry = failed.start();
+  failed.jobs.get("source-ref-selector").resolve();
+  failed.jobs.get("sdk-views").resolve();
+  await turn();
+  return {
+    folder: { requested: folder.requested, loading: folderLoad.settled },
+    requestedTogether,
+    afterSelector,
+    loaded: { loading: loading.settled, mounted: managed.mounted },
+    afterFailure,
+    retry: { loading: retry.settled, mounted: failed.mounted },
+  };
+}
+
 async function main() {
   const report = {
     withoutACompositor: await withoutACompositor(),
     whenTheHelpersCannotBeFetched: await whenTheHelpersCannotBeFetched(),
+    sourceHeaderReadiness: await sourceHeaderReadiness(),
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 }

@@ -41,6 +41,24 @@ function assertNotContains(label, haystack, needle) {
   }
 }
 
+// Counts are accessible labels; status identity and visible letters are separate
+// semantics. Attribute order and incidental span whitespace are not the contract.
+function assertFileStatus(label, html, status, count) {
+  const token = `data-file-status="${status}"`;
+  if (count === 0) {
+    assertNotContains(label, html, token);
+    return;
+  }
+  const unit = count === 1 ? "file" : "files";
+  assertContains(`${label}: accessible count`, html, `aria-label="${count} ${status} ${unit}"`);
+  assertContains(`${label}: status identity`, html, token);
+  const letter = { modified: "M", added: "A", deleted: "D" }[status];
+  const text = String(html)
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ");
+  assertContains(`${label}: visible count and letter`, text, `${count} ${letter}`);
+}
+
 // ── Fake DOM ─────────────────────────────────────────────────
 
 class FakeClassList {
@@ -456,6 +474,7 @@ const measuredLabels = [];
 let tooltipHideCount = 0;
 let comparisonResponder = async (revision) => ({ comparison_id: revision });
 sandbox.metabrowser = {
+  ...require("./sdk-ref-fixture.js").refHelpers(document),
   icons: { copy: '<svg data-icon="copy"></svg>' },
   delegateOwnerAttribute: () => ' data-mb-owner="page-owner"',
   tooltip: {
@@ -464,6 +483,7 @@ sandbox.metabrowser = {
       tooltipHideCount += 1;
     },
   },
+  ensureAsset: async () => {},
   ensureKindAssets: async (kind) => {
     ensuredKinds.push(kind);
     diffAssetsLoaded = true;
@@ -663,6 +683,27 @@ async function run() {
     assertContains("badges: head branch is marked", html, "git-ref-head");
     assertContains("badges: remote kind class", html, "git-ref-remote");
     assertContains("badges: tag kind class", html, "git-ref-tag");
+    assertContains("badges: local copy names the branch", html, 'data-ref-copy="main"');
+    assertContains(
+      "badges: remote copy preserves its prefix",
+      html,
+      'data-ref-copy="upstream/trunk"',
+    );
+    assertContains("badges: tag copy names the tag", html, 'data-ref-copy="v1"');
+    assertNotContains(
+      "badges: canonical namespace is not a branch name",
+      html,
+      'data-ref-copy="refs/',
+    );
+    const longName = `feature/${"long-name-".repeat(30)}←<literal>`;
+    const longChip = internals.renderRefBadges([
+      { id: `refs/heads/${longName}`, name: longName, kind: "branch" },
+    ]);
+    assertContains(
+      "badges: visual clipping never truncates the payload",
+      longChip,
+      `data-ref-copy="${longName.replace(/</g, "&lt;").replace(/>/g, "&gt;")}"`,
+    );
     assertEqual("badges: none renders nothing", internals.renderRefBadges([]), "");
   }
 
@@ -768,7 +809,7 @@ async function run() {
     assertContains("tooltip: author", html, "Author");
     assertContains("tooltip: short revision", html, SHA_A.slice(0, 7));
     assertContains("tooltip: copy identity glyph", html, 'data-icon="copy"');
-    assertContains("tooltip: refs use the history badge", html, "git-ref-branch");
+    assertContains("tooltip: refs use the history badge", html, "git-ref-local");
     assertContains("tooltip: tags use the history badge", html, "git-ref-tag");
     assertContains("tooltip: refs stay beside the revision", html, "main");
     const identityStart = html.indexOf('<span class="git-commit-identity">');
@@ -779,9 +820,9 @@ async function run() {
         html.indexOf("git-commit-revision", identityStart) < identityEnd &&
         html.indexOf("git-commit-refs", identityStart) < identityEnd,
     );
-    assertContains("tooltip: modified files", html, "28 M");
-    assertContains("tooltip: added files", html, "4 A");
-    assertNotContains("tooltip: zero deleted files are omitted", html, "0 D");
+    assertFileStatus("tooltip: modified files", html, "modified", 28);
+    assertFileStatus("tooltip: added files", html, "added", 4);
+    assertFileStatus("tooltip: zero deleted files are omitted", html, "deleted", 0);
     assertContains("tooltip: file unit", html, 'git-commit-stat-unit">files');
     assertContains("tooltip: additions", html, "+1921");
     assertContains("tooltip: deletions", html, "−160");
@@ -808,9 +849,9 @@ async function run() {
       stats: {},
       files_truncated: true,
     });
-    assertContains("tooltip: unknown modified count stays unknown", unknown, "? M");
-    assertContains("tooltip: unknown added count stays unknown", unknown, "? A");
-    assertContains("tooltip: unknown deleted count stays unknown", unknown, "? D");
+    assertFileStatus("tooltip: unknown modified count stays unknown", unknown, "modified", "?");
+    assertFileStatus("tooltip: unknown added count stays unknown", unknown, "added", "?");
+    assertFileStatus("tooltip: unknown deleted count stays unknown", unknown, "deleted", "?");
     assertContains("tooltip: unknown additions stay unknown", unknown, "+?");
     assertContains("tooltip: unknown deletions stay unknown", unknown, "−?");
   }
@@ -880,9 +921,9 @@ async function run() {
     previewHtml,
     "git-commit-change-stats",
   );
-  assertContains("detail: summary counts modified files", previewHtml, "1 M");
-  assertContains("detail: summary counts added files", previewHtml, "1 A");
-  assertNotContains("detail: summary omits zero deleted files", previewHtml, "0 D");
+  assertFileStatus("detail: summary counts modified files", previewHtml, "modified", 1);
+  assertFileStatus("detail: summary counts added files", previewHtml, "added", 1);
+  assertFileStatus("detail: summary omits zero deleted files", previewHtml, "deleted", 0);
   assertContains("detail: summary counts additions", previewHtml, "+5");
   assertContains("detail: summary counts deletions", previewHtml, "−1");
   const summaryStart = previewHtml.indexOf('<section class="git-commit-summary"');
@@ -1775,12 +1816,20 @@ async function run() {
     row.dispatch("click");
     assertEqual("navigation: opens through the shell event", openedPaths, ["one.js"]);
   }
+  internals.teardown();
   responses.clear();
   registeredPanel = null;
   // /api/git/repo answers is_repo:false, so nothing is registered, but
   // a later init can retry after that transient/negative result.
+  const viewAssets = [];
+  const assetWaits = [];
+  sandbox.metabrowser.ensureAsset = (name) => {
+    viewAssets.push(name);
+    return new Promise((resolve, reject) => assetWaits.push({ resolve, reject }));
+  };
   responses.set("/api/git/repo", { is_repo: false, reason: "not_a_repo" });
   await panel.init();
+  assertEqual("gate: a plain folder never asks for view helpers", viewAssets, []);
   assertEqual("gate: no tab outside a repository", registeredPanel, null);
 
   responses.set("/api/git/repo", {
@@ -1790,7 +1839,156 @@ async function run() {
   });
   responses.set("/api/git/refs", { is_repo: true, refs: [] });
   await panel.init();
-  assertTrue("gate: init retries and registers", registeredPanel !== null);
+  assertTrue(
+    "gate: a repository registers its real Git tab before helper loading",
+    registeredPanel !== null,
+  );
+  assertEqual("gate: an unopened Git tab does not load the view helpers", viewAssets, []);
+  registeredPanel.onShow();
+  await new Promise(setImmediate);
+  assertEqual("gate: opening Git requests the one helper bundle", viewAssets, ["sdk-views"]);
+  assertTrue(
+    "gate: pending helper shows history loading",
+    document.getElementById("tab-git").querySelector(".git-history-skeleton") !== null,
+  );
+  assetWaits.shift().reject(new Error("view helpers unavailable"));
+  await new Promise(setImmediate);
+  assertTrue("gate: failed helpers retain the real Git tab", registeredPanel !== null);
+  assertContains(
+    "gate: helper failure has an actionable explanation",
+    document.getElementById("tab-git").textContent,
+    "Could not load Git view controls. Refresh to try again.",
+  );
+  const retry = document.getElementById("tab-git").querySelector(".git-panel-refresh");
+  assertTrue("gate: helper failure exposes a real retry button", retry !== null);
+  retry.dispatch("click");
+  await new Promise(setImmediate);
+  assertEqual("gate: retry asks the same required bundle", viewAssets, ["sdk-views", "sdk-views"]);
+  responses.set("/api/git/log", historyPage(0, [commit(SHA_A, [], "recovered history")], 1, SHA_A));
+  assetWaits.shift().resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEqual("gate: visible retry restores real history", internals.stateForTests().rowCount, 1);
+  assertNotContains(
+    "gate: successful retry clears the helper failure",
+    document.getElementById("tab-git").textContent,
+    "Could not load Git view controls",
+  );
+  internals.teardown();
+  await panel.init();
+  registeredPanel.onShow();
+  await new Promise(setImmediate);
+  internals.teardown();
+  await panel.init();
+  const replacementPanel = registeredPanel;
+  registeredPanel.onShow();
+  await new Promise(setImmediate);
+  assetWaits.shift().reject(new Error("abandoned helpers failed late"));
+  await new Promise(setImmediate);
+  assertTrue(
+    "gate: abandoned failure cannot remove the replacement tab",
+    registeredPanel === replacementPanel,
+  );
+  assertTrue(
+    "gate: abandoned failure cannot replace newer loading state",
+    document.getElementById("tab-git").querySelector(".git-history-skeleton") !== null,
+  );
+  assetWaits.shift().resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEqual(
+    "gate: replacement completion restores history",
+    internals.stateForTests().rowCount,
+    1,
+  );
+  assertEqual("gate: helper retries preserve the one bundle identity", viewAssets, [
+    "sdk-views",
+    "sdk-views",
+    "sdk-views",
+    "sdk-views",
+  ]);
+  internals.teardown();
+  await panel.init();
+  registeredPanel.onShow();
+  await new Promise(setImmediate);
+  internals.teardown();
+  await panel.init();
+  const latestPanel = registeredPanel;
+  registeredPanel.onShow();
+  await new Promise(setImmediate);
+  const beforeAbandonedSuccess = fetchCount;
+  assetWaits.shift().resolve();
+  await new Promise(setImmediate);
+  assertTrue(
+    "gate: abandoned success keeps the latest registration",
+    registeredPanel === latestPanel,
+  );
+  assertEqual(
+    "gate: abandoned success cannot start a history read",
+    fetchCount,
+    beforeAbandonedSuccess,
+  );
+  assertTrue(
+    "gate: abandoned success cannot settle newer loading state",
+    document.getElementById("tab-git").querySelector(".git-history-skeleton") !== null,
+  );
+  assetWaits.shift().resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEqual(
+    "gate: latest helper owner alone restores history",
+    internals.stateForTests().rowCount,
+    1,
+  );
+  internals.teardown();
+  const previousLocation = sandbox.location;
+  const previousParseCommit = sandbox.MetabrowserNavigationRoute.parseCommit;
+  sandbox.location = { pathname: `/commit/${SHA_A}` };
+  sandbox.MetabrowserNavigationRoute.parseCommit = (pathname) =>
+    pathname === `/commit/${SHA_A}` ? { revision: SHA_A } : null;
+  responses.set(`/api/git/commit/${SHA_A}`, {
+    is_repo: true,
+    commit: commit(SHA_A, [], "recovered landing"),
+    body: "",
+    stats: { files_changed: 0, additions: 0, deletions: 0 },
+    files: [],
+    files_truncated: false,
+  });
+  const renderedBeforeLanding = renderedDiffRevisions.length;
+  const landingInit = panel.init();
+  await new Promise(setImmediate);
+  assetWaits.shift().reject(new Error("landing helpers unavailable"));
+  await landingInit;
+  assertEqual(
+    "gate: failed landing does not invoke unavailable view helpers",
+    renderedDiffRevisions.length,
+    renderedBeforeLanding,
+  );
+  document.getElementById("tab-git").querySelector(".git-panel-refresh").dispatch("click");
+  await new Promise(setImmediate);
+  assetWaits.shift().resolve();
+  for (
+    let turn = 0;
+    turn < 50 && renderedDiffRevisions.length === renderedBeforeLanding;
+    turn += 1
+  ) {
+    await new Promise(setImmediate);
+  }
+  assertEqual(
+    "gate: retry restores the addressed commit",
+    renderedDiffRevisions.length,
+    renderedBeforeLanding + 1,
+  );
+  assertEqual(
+    "gate: recovered landing retains its route",
+    sandbox.location.pathname,
+    `/commit/${SHA_A}`,
+  );
+  assertEqual(
+    "gate: recovered landing selects its exact commit",
+    internals.stateForTests().selectedId,
+    SHA_A,
+  );
+  sandbox.location = previousLocation;
+  sandbox.MetabrowserNavigationRoute.parseCommit = previousParseCommit;
+  sandbox.metabrowser.ensureAsset = async () => {};
 
   internals.setStateForTests(internals.emptyState());
   responses.delete("/api/git/log");

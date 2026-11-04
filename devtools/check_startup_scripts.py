@@ -40,7 +40,7 @@ probe's own selection and rounding give this check's count and kilobytes.
 shells carry one startup script more, and the summary reports each beside the budget
 without failing on it: the page at a pull-request address (``pull-route.js``, rendered
 here from the same folder server, whose answer at such an address is the page that says
-it serves no pull request) and a pinned revision's page (``git-path.js``, which the
+it serves no GitHub repository) and a pinned revision's page (``git-path.js``, which the
 server names in ``PIN_STARTUP_SCRIPTS``; ``tests/test_serve_pin.py`` holds a real pin's
 shell to that list). The session runs on the pull-request shell too, so a
 script-initiated request there fails the check as well.

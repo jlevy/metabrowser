@@ -79,7 +79,7 @@ pytestmark = [
 PULL = f"{CANONICAL}/pull/1"
 SOURCE = GitSource(transport="https", form="url", normalized=CANONICAL)
 STATUS = "/api/source/status"
-PULL_ROUTE = "/api/plugin/github/pull"
+PULL_ROUTE = "/api/plugin/github/pull?number=1"
 FIFO_SECONDS = 20.0
 
 

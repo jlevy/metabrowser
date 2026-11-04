@@ -418,10 +418,13 @@ the mirror for it only outside the window.
 Inside the window the view says the commit is not in the mirror as fetched and offers
 Retry, which is the reader’s own click and always fetches.
 While a fetch runs the view says so; afterwards it opens the commit, says the origin’s
-branches and tags do not reach it, or says the fetch could not run.
-It claims a fetch of branches and tags only when the server started or joined one, and a
-request that fails when the commit is asked for again is a load failure, not an answer
-about the commit. Those are the states a URL selection passes through, described in the
+branches and tags do not reach it, or says the fetch could not run, as it does when a
+full queue refused the attended pull request’s refresh, which alone brings a newer head
+of it.
+It claims a fetch of branches and tags only when the server started or joined one,
+and a request that fails when the commit is asked for again is a load failure, not an
+answer about the commit.
+Those are the states a URL selection passes through, described in the
 [views/models/routes map](arch-views-models-routes.md) under `/api/source/status`; the
 functional row `git.unfetched-commit` there pins the sequence.
 

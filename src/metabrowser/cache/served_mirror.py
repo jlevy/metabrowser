@@ -148,6 +148,7 @@ class StoreMirror:
     """One published store: the home it lives in, its key, its identity, and its source.
 
     *source* is the source the store was acquired for; a refresh fetches from its URL.
+    *slug* names that source's directory, where a provider keeps what it reads about it.
     *lender* is what an overlay store borrows from, for the page to say so.
     """
 
@@ -155,6 +156,7 @@ class StoreMirror:
     store_key: str
     store_id: str
     source: GitSource
+    slug: str
     lender: StoreLender | None = None
 
     @classmethod
@@ -164,6 +166,7 @@ class StoreMirror:
             store_key=published.store_key,
             store_id=published.store_id,
             source=published.source,
+            slug=published.slug,
             lender=published.lender,
         )
 

@@ -240,7 +240,7 @@
     groups.className = "help-shortcut-groups";
     shortcutsSection.append(shortcutsHeading, groups);
     modalBody.append(description, project, shortcutsSection);
-    return groups;
+    return { groups, projectLink };
   }
 
   /**
@@ -289,7 +289,28 @@
       shortcuts: options.shortcuts,
       title: "Help",
     });
-    const groupsHost = buildHelpContent(hostDocument, modal.body);
+    const { groups: groupsHost, projectLink } = buildHelpContent(hostDocument, modal.body);
+    let disposed = false;
+    /** @type {Promise<void> | null} */
+    let decoration = null;
+    /** Opening Help does not require a file view or make its helper an eager asset.
+     * @param {HTMLElement | null} [trigger]
+     */
+    function open(trigger = null) {
+      modal?.open(trigger);
+      if (decoration === null && !disposed) {
+        decoration = window.metabrowser
+          .ensureAsset("sdk-views")
+          .then(() => {
+            if (!disposed) {
+              window.metabrowser.decorateExternalLink(projectLink);
+            }
+          })
+          .catch(() => {
+            decoration = null;
+          });
+      }
+    }
     const unregisterOpen = options.shortcuts.register({
       bindings: [{ key: "?", modifiers: { shift: "allow" } }],
       control: modal.control,
@@ -301,9 +322,7 @@
       group: "anywhere",
       handler: (context) => {
         const trigger = context.trigger;
-        modal?.open(
-          trigger && typeof trigger === "object" ? /** @type {HTMLElement} */ (trigger) : null,
-        );
+        open(trigger && typeof trigger === "object" ? /** @type {HTMLElement} */ (trigger) : null);
         return true;
       },
       id: "help.open",
@@ -339,6 +358,7 @@
     });
 
     function dispose() {
+      disposed = true;
       unsubscribe();
       clearHintStrip(options.hintHost);
       unregisterOpen();
@@ -350,7 +370,7 @@
     return Object.freeze({
       close: () => modal?.close(),
       dispose,
-      open: (trigger = null) => modal?.open(trigger),
+      open,
     });
   }
 

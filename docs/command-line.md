@@ -176,6 +176,8 @@ once.
 With the body `{"for": "commit"}` it is the fetch a missing commit waits for, which
 starts a fetch of the mirror only outside the freshness window and otherwise answers
 `fresh`; adding `"retry": true` always fetches.
+Its answer’s `pull_refresh` says how the attended pull request’s refresh was answered,
+`too_many` when the queue had no room for it, or null when none was asked for.
 `POST /api/source/pin` switches the served commit to a branch, a tag, or a commit ID in
 the mirror, with a JSON body such as `{"ref": "feature"}` or `{"oid": "3f2a9c1"}`. In a
 server, one the mirror lacks answers `202` with `selection_pending` and fetches once;
@@ -369,6 +371,32 @@ A first clone reports where it goes and how far it has got; see
 This is the reference for the commands; for the workflow in a browser, see
 [Reviewing pull requests](reviewing-pull-requests.md).
 
+`metab https://github.com/owner/repo` and `metab ~/src/repo` both offer Pulls.
+A local checkout is identified by its github.com `origin` and readable `HEAD`; linked
+worktrees and served subdirectories work too.
+The local path keeps serving the working folder.
+Its **Fetch changes** action acquires a comparison store only when requested, without
+writing to the checkout or falling back to a full clone if borrowing is refused.
+The URL-based [`--checkout` option](#beside-a-checkout) instead serves a managed pin and
+retains the fallback cases documented below.
+
+With the optional [gh-stack extension](installation.md#git-and-github-setup), native
+stack membership is shared by the Pulls list and opened PRs.
+Stack metadata is separate from PR details and refreshed as one shared repository
+snapshot, not once per row.
+These routes read the cached snapshot or explicitly refresh it (`stack-refresh.json`
+contains `{}` or `{"retry": true}`):
+
+```shell
+metab https://github.com/owner/repo --api /api/plugin/github/stacks
+metab https://github.com/owner/repo --api /api/plugin/github/stacks-refresh --data stack-refresh.json
+```
+
+The refresh body accepts only an optional boolean `retry`. A known provider rate reset
+still holds a retry.
+Failed optional work retains cached membership and leaves the PR catalog and details
+usable.
+
 A pull-request URL pins the pull request’s head commit and reads its data:
 
 ```shell
@@ -376,7 +404,8 @@ metab https://github.com/owner/repo/pull/123 --no-serve
 metab https://github.com/owner/repo/pull/123 --show /pull/123
 metab https://github.com/owner/repo/pull/123 --show /pull/123/files
 metab https://github.com/owner/repo/pull/123 --show README.md
-metab https://github.com/owner/repo/pull/123 --api /api/plugin/github/pull
+metab https://github.com/owner/repo/pull/123 --api '/api/plugin/github/pull?number=123'
+metab https://github.com/owner/repo/pull/123 --api '/api/plugin/github/pull-markdown?number=123&part=body'
 ```
 
 The first `--show` or `--api` of a pull request reads it with `gh api` (the description,
@@ -385,8 +414,13 @@ through GitHub’s `refs/pull/<n>/head`, a fork’s included, and caches the rec
 Later ones answer from that cache without running `gh` or reaching the network, so they
 work offline. `--no-serve` refreshes the record, sending the ETags it holds so an
 unchanged part costs GitHub nothing against the rate limit.
-A one-shot `--api /api/plugin/github/pull-refresh --data <file with {}>` also refreshes
-it, waits, prints the record under `after:`, and exits 1 when the refresh failed.
+A one-shot `--api /api/plugin/github/pull-refresh` with
+`--data <file with {"number": 123, "retry": true}>` also refreshes it, waits, prints the
+record under `after:`, and exits 1 when the refresh failed.
+The `pull` and `pull-markdown` routes and the `pull-refresh` body all require the
+number. `"retry": true` is a reader’s own request: without it, a number with no record
+answers `not_cached`, one refreshed inside its window answers `not_due`, and neither
+starts anything.
 
 A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s, and a server
 opens at the top of the repository.
@@ -398,9 +432,10 @@ they are given, so `--show /pull/<n>/files` is the way to ask for Files changed 
 a browser. A `/pull/<n>/commits` URL is the same as `/pull/<n>`, because the page has no
 Commits tab. Other pull-request pages, such as `/pull/<n>/checks`, and a repository’s
 `/pulls` list are refused.
-Each command opens one pull request: `--show /pull/<other>` answers
-`this source serves pull request <n>`, and a folder or a checkout answers
-`this source serves no pull request`.
+A URL selects one pull request, and `--show` and `--api` answer for any number:
+`--show /pull/<other>` reports what the cache holds of it and fetches nothing, `absent`
+with the reason `not_cached` when that is nothing, and a folder with no GitHub
+repository answers the reason `not_github`.
 
 `--show /pull/<n>` reports the page’s kind and a summary of its record, after the
 selection lines that `--show` and `--api` print on stderr:
@@ -417,8 +452,8 @@ views: pull-request (default)
 model: pull envelope; state=current pull_state=merged fetched_at=2026-11-02T21:49:31Z reader=gh:your-login issue_comments=6 reviews=1 review_comments=0 check_runs=11 statuses=1 tab=conversation
 ```
 
-`/api/plugin/github/pull` reports the record with a state: `current` within a minute of
-its fetch, `stale` after, or `absent` with a reason.
+`/api/plugin/github/pull?number=<n>` reports the record with a state: `current` within a
+minute of its fetch, `stale` after, or `absent` with a reason.
 Its `comparison_route` is Files changed, the merge base of the base branch and the head
 to the head, as GitHub shows it; issue it with `--api` to get the diff.
 `--diff` does not open an `https://` source, so this route is the way to read one.
@@ -426,7 +461,8 @@ to the head, as GitHub shows it; issue it with `--api` to get the diff.
 
 ```shell
 URL=https://github.com/owner/repo/pull/123
-ROUTE=$(metab "$URL" --api /api/plugin/github/pull --format json | jq -r .comparison_route)
+ROUTE=$(metab "$URL" --api '/api/plugin/github/pull?number=123' --format json |
+  jq -r .comparison_route)
 metab "$URL" --api "$ROUTE" --format json |
   jq -r '.manifest.files[] | "\(.kind) \(.new.path // .old.path) +\(.additions) -\(.deletions)"'
 ```
@@ -446,16 +482,48 @@ git -C <location> show <pin>:README.md
 
 `metab <pull-request URL>` without `--no-serve` serves the head and keeps the record
 fresh beside the mirror: a stale one is refreshed when serving starts and when a stale
-page becomes visible, and `POST /api/plugin/github/pull-refresh` (a JSON object body)
-refreshes it on request and returns at once, with `pending` while no record exists yet.
-A newer head is offered as the source’s `latest` rather than switched to.
-The server serves that one pull request on the port its `Serving` line reports, so
-several run side by side from one cache, one process for each.
+page becomes visible, and `POST /api/plugin/github/pull-refresh` (a JSON object body
+naming `number`) refreshes it on request and returns at once, with `pending` while no
+record exists yet. A newer head is offered as the source’s `latest` rather than switched
+to. The server pins that pull request’s head on the port its `Serving` line reports, and
+opens any other of the repository’s at `/pull/<n>` without moving the pin; several run
+side by side from one cache, one process for each.
 
-Reading pull requests needs `gh` 2.81.0 or newer, signed in with `gh auth login`,
-because `gh api` refuses requests while signed out.
-A pull request that cannot be read does not fail the command, so a script reads the
-`pull_request` line or the route’s `state` rather than the exit status.
+A repository’s pull-request catalog is available from any URL of it:
+
+```shell
+echo '{"state": "open", "target": 500}' > refresh.json
+metab https://github.com/owner/repo --api /api/plugin/github/pulls-refresh --data refresh.json
+metab https://github.com/owner/repo --api '/api/plugin/github/pulls?state=open&limit=100'
+```
+
+The first command starts or joins a resumable metadata job and waits for its outcome; it
+exits 1 if the job fails.
+The job prioritizes the newest 500 matching pull requests, then continues through all
+repository metadata.
+The second command reads a cached window, offline too, with no `gh` and no Git.
+`state` is `open` by default, `closed` (including merged), or `all`. `limit` is 0 to
+1,000, and `after` is the last PR number from the preceding window.
+`next_after` names another cached window, not a remote page.
+
+`total` is GitHub’s exact count for the selected filter, `repository_total` its count
+for all pull requests, and `count_at` says when those counts were read.
+`fetched` counts cached matching rows; `catalog_fetched` counts all cached rows.
+`complete` becomes true when the background catalog reaches the end.
+Displaying another 500 rows does not cap or restart that catalog.
+A refresh reads metadata changed since its last checkpoint;
+`{"state": "open", "retry": true}` requests that check even while the cache is fresh,
+subject to a reported rate-limit reset.
+Descriptions, comments, reviews, checks, and comparison objects are separate per-PR
+reads.
+
+Fetching new pull-request data needs GitHub CLI (`gh`), signed in to github.com.
+Use a current maintained release and verify the active account with
+`gh auth status --active --hostname github.com`; see
+[Git and GitHub setup](installation.md#git-and-github-setup).
+Cached PR metadata remains readable without `gh`. A pull request that cannot be read
+does not fail the command, so a script reads the `pull_request` line or the route’s
+`state` rather than the exit status.
 With a record cached, the pin stays at the record’s head and the `pull_request` line
 adds why the refresh failed.
 Without one, `/pull/<n>` pins the default branch and `/pull/<n>/commits/<id>` pins that
@@ -464,7 +532,7 @@ commit if the mirror has it, and the `pull_request` line says why:
 | Name | Meaning |
 | --- | --- |
 | `gh_missing` | `gh` is not on `PATH` |
-| `gh_too_old` | `gh` is older than the version above |
+| `gh_too_old` | This `gh` cannot report its active account; update GitHub CLI |
 | `not_logged_in` | `gh` is not signed in to github.com |
 | `rate_limited` | GitHub’s rate limit, with the time it resets when GitHub gives one |
 | `not_found_or_private` | The pull request does not exist, or the account cannot read it |

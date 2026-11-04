@@ -10,13 +10,75 @@ type MetabrowserRenderContext = {
     base_policy: "direct" | "merge_base";
     route?: string;
   };
-  /** The served pull request's page: its number, the tab its route names, and how it
+  /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
   tab?: string;
-  open?: (route: { number: number; tab: string }) => unknown;
+  open?: (route: MetabrowserPullRoute) => unknown;
+  /** A pull request's page opened by a reader's selection in the Pulls tab: what the tab read
+   *  of its record, and how long the page waits before it fetches one the cache lacks. */
+  reader?: MetabrowserPullReader | null;
+  /** The Pulls tab's host, when the shell mounts the list in the tab. */
+  pullsNav?: MetabrowserPullsNavHost;
   raw?: unknown;
 };
+
+type MetabrowserPullReader = {
+  fetchAfterMs: number;
+  initial: { etag: string | null; body: unknown } | null;
+  /** Whether the key that opened the page is still held, so the page waits to ask. */
+  walking?: () => boolean;
+};
+
+/** *replace* is a key's skim through the Pulls tab: the history entry is replaced, not pushed.
+ *  *file* is one changed file, whose address is `/pull/<n>/files/<path>`. */
+type MetabrowserPullRoute = {
+  number: number;
+  tab: string;
+  file?: string;
+  /** The page of that number shows the file already: only the address moves. */
+  jumped?: boolean;
+  reader?: unknown;
+  replace?: boolean;
+};
+
+type MetabrowserPullsNavHost = Readonly<{
+  filter: string;
+  current: number | null;
+  /** The changed file the address names, or null. */
+  file: string | null;
+  shown: boolean;
+  refreshAhead: boolean;
+  /** A checkout served as a folder: its list is of its `origin`, read only once shown. */
+  checkout: boolean;
+  scrollRoot: HTMLElement | null;
+  open(route: MetabrowserPullRoute): unknown;
+  /** A changed file's address, through the route's encoder; null where a path is not one. */
+  fileHref(number: number, path: string): string | null;
+  /** The page of that pull request while it holds the pane, else null. */
+  pageFor(number: number): unknown;
+  onPageChange(listener: () => void): () => void;
+  filterChanged(state: string): void;
+}>;
+
+/** What the list's view hands the Pulls tab's host. */
+type MetabrowserPullsPanelHandle = Readonly<{
+  setShown(shown: boolean): void;
+  setCurrent(number: number | null, file?: string | null): void;
+  setFilter(state: string): void;
+  move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
+  released(): void;
+  activateAnchor(): boolean;
+  /** Right and Left on a pull request's row: its changed files open, or close. */
+  expand(): boolean;
+  collapse(): boolean;
+  /** The keys of a changed file's row. */
+  moveFile(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
+  fileLeft(): boolean;
+  fileRight(): boolean;
+  activateFile(): boolean;
+  dispose(): void;
+}>;
 
 type MetabrowserViewSpec = {
   render: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
@@ -322,7 +384,10 @@ type MetabrowserRequestErrorRuntime = Readonly<{
 
 type MetabrowserFormatterRuntime = Readonly<{
   /** Abbreviated age and its freshness class — the one age primitive. */
-  age(epochSeconds: number): { label: string; className: string };
+  age(
+    epochSeconds: number,
+    options?: { style?: "compact" | "relative" },
+  ): { label: string; className: string };
   ageClass(epochSeconds: number): string;
   countClass(value: number): "" | "count-large";
   formatBytes(value: number): string;
@@ -457,40 +522,72 @@ type MetabrowserSourceLineAnchorState = Readonly<{
 }>;
 
 type MetabrowserPullRouteRuntime = Readonly<{
-  createPullPageHost<Handle extends { setTab?(tab: string): void; dispose?(): void }>(deps: {
+  createPullPageHost<
+    Handle extends {
+      land?(route: { tab: string; file?: string }): void;
+      setTab?(tab: string): void;
+      showFile?(path: string): unknown;
+      flush?(): void;
+      dispose?(): void;
+    },
+  >(deps: {
     claim(): number;
     isCurrent(claim: number): boolean;
     mount(
       claim: number,
-      route: Readonly<{ number: number; tab: string }>,
-      open: (route: { number: number; tab: string }) => Promise<{ status: string }>,
+      route: Readonly<MetabrowserPullRoute>,
+      open: (route: MetabrowserPullRoute) => Promise<{ status: string }>,
     ): Promise<Handle | null | undefined>;
+    mountList(claim: number): Promise<Handle | null | undefined>;
     pathname(): string;
     pushHref(href: string): void;
+    replaceHref(href: string): void;
   }): Readonly<{
     dispose(): void;
     onHistory(
       pathname: string,
       heldTarget: boolean,
     ): Readonly<
-      { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
+      | { action: "tab"; tab: string; file?: string }
+      | { action: "mount"; number: number; tab: string; file?: string }
+      | { action: "list" }
     > | null;
-    open(route: { number: number; tab: string }): Promise<{ status: "opened" | "cancelled" }>;
-    show(
-      route: Readonly<{ number: number; tab: string }>,
-    ): Promise<{ status: "opened" | "cancelled" }>;
+    open(route: MetabrowserPullRoute): Promise<{ status: "opened" | "cancelled" }>;
+    show(route: Readonly<MetabrowserPullRoute>): Promise<{ status: "opened" | "cancelled" }>;
+    showList(): Promise<{ status: "opened" | "cancelled" }>;
+    /** The handle of the pull request's page holding the pane; null for the list or none. */
     page(): Handle | null;
-    shown(): number | null;
+    /** The page of that pull request when it holds the pane, else null. */
+    pageFor(number: number): Handle | null;
+    shown(): number | "list" | null;
   }>;
-  parsePull(pathname: string): Readonly<{ number: number; tab: string }> | null;
+  createViewMount(shell: {
+    sdk: MetabrowserSdk;
+    isCurrent(claim: number): boolean;
+    renderHtml(html: string, claim: number): unknown;
+    renderNode(node: HTMLElement, claim: number): unknown;
+    showLoadFailure(claim: number, what: string): void;
+  }): (
+    claim: number,
+    kind: string,
+    context: Record<string, unknown>,
+  ) => Promise<{ setTab?(tab: string): void; flush?(): void; dispose?(): void } | null>;
+  /** The host the shell made, for the Pulls tab beside the pane; null until one is made. */
+  attachedHost(): { pageFor(number: number): unknown } | null;
+  onPageChange(listener: () => void): () => void;
+  parsePull(pathname: string): Readonly<{ number: number; tab: string; file: string }> | null;
+  parsePulls(pathname: string, search?: string): Readonly<{ state: string }> | null;
   pullHistoryAction(
     pathname: string,
-    shown: number | null,
+    shown: number | "list" | null,
     heldTarget: boolean,
   ): Readonly<
-    { action: "tab"; tab: string } | { action: "mount"; number: number; tab: string }
+    | { action: "tab"; tab: string; file?: string }
+    | { action: "mount"; number: number; tab: string; file?: string }
+    | { action: "list" }
   > | null;
-  pullHref(number: number, tab?: string): string;
+  pullHref(number: number, tab?: string, file?: string): string;
+  pullsHref(state?: string): string;
 }>;
 
 type MetabrowserSourceLineAnchorsRuntime = Readonly<{
@@ -1029,7 +1126,33 @@ type MetabrowserSdk = {
   fileTypes: MetabrowserFileTypeTaxonomyRuntime;
   fileTypeClass(path: string): string;
   fileTypeIcon(path: string): MetabrowserFileTypeIcon;
-  formatAge(secondsSinceEpoch: number): { label: string; className: string };
+  refChipHtml(
+    name: string,
+    options?: {
+      label?: string;
+      kind?: string;
+      trunk?: boolean;
+      head?: boolean;
+      copy?: "inline" | "sibling" | false;
+    },
+  ): string;
+  refChip(
+    name: string,
+    options?: {
+      label?: string;
+      kind?: string;
+      trunk?: boolean;
+      head?: boolean;
+      copy?: "inline" | "sibling" | false;
+    },
+  ): HTMLElement;
+  mountRefCopies(primary: HTMLElement, host: HTMLElement): () => void;
+  /** View-phase destination mark; a state icon may come only from trusted view metadata. */
+  decorateExternalLink<T extends HTMLElement>(anchor: T, options?: { icon?: Element }): T;
+  formatAge(
+    secondsSinceEpoch: number,
+    options?: { style?: "compact" | "relative" },
+  ): { label: string; className: string };
   formatTimestamp(secondsSinceEpoch: number): string;
   prefs: {
     get<T>(name: string, fallback: T): T;
@@ -2309,7 +2432,7 @@ declare global {
     detail: string;
     offer: MetabrowserSourceOffer | null;
     error: string | null;
-    /** The served pull request's page, when the served URL named one. */
+    /** The attended pull request's page, when there is one. */
     pull: { href: string; text: string } | null;
   };
 
@@ -2327,14 +2450,16 @@ declare global {
 
   /**
    * How asking for a missing commit's fetch ended: the status then, why it could not be
-   * asked for or followed, whether a fetch of the mirror's branches and tags ran, and
-   * whether anything ran that could have brought the commit.
+   * asked for or followed, whether a fetch of the mirror's branches and tags ran,
+   * whether anything ran that could have brought the commit, and whether a full queue
+   * refused the attended pull request's refresh, which alone brings a newer head of it.
    */
   type MetabrowserSourceFetchEnd = {
     status: MetabrowserSourceStatus | null;
     error: string | null;
     fetched: boolean;
     waited: boolean;
+    pullRefused: boolean;
   };
 
   /** The commit view's side of opening a commit the mirror lacks. */
@@ -2405,6 +2530,7 @@ declare global {
         nowMs: number;
         error?: string | null;
         fetched?: boolean;
+        pullRefused?: boolean;
       },
     ): MetabrowserMissingCommitModel;
     mount(element: HTMLElement): MetabrowserSourceFreshnessController;
@@ -2457,6 +2583,7 @@ declare global {
 
   /** What the ref selector shows for one state. */
   type MetabrowserSourceRefSelectorModel = {
+    selectedRef: { name: string; label: string; kind: string } | null;
     button: string;
     open: boolean;
     kind: MetabrowserSourceRefKind;
@@ -2491,6 +2618,7 @@ declare global {
 
   /** The elements the ref selector paints into. */
   type MetabrowserSourceRefSelectorParts = {
+    releaseCopies?: () => void;
     root: HTMLElement;
     toggle: HTMLButtonElement;
     label: HTMLElement;
@@ -2644,6 +2772,7 @@ declare global {
     label: string;
     onFirstShow: (() => void) | null;
     onShow?: (() => void) | null;
+    onHide?: (() => void) | null;
   };
 
   type MetabrowserPreviewClaim = number;
@@ -2659,14 +2788,18 @@ declare global {
     claimPreview(owner: string): MetabrowserPreviewClaim;
     endPreviewNavigation(claim: MetabrowserPreviewClaim): void;
     isPreviewClaimCurrent(claim: MetabrowserPreviewClaim): boolean;
+    openPullRequest(route: MetabrowserPullRoute): Promise<{ status: string }>;
     registerNavPanel(panel: MetabrowserNavPanel): void;
     removeNavPanel(panelId: string): void;
     renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
     renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
+    shortcuts(): ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null;
     /** The page's freshness controller once it is mounted; null when a folder is served. */
     sourceFreshness(): Promise<MetabrowserSourceFreshnessController | null>;
   };
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
+  type MetabrowserPublicPullRouteRuntime = MetabrowserPullRouteRuntime;
+  type MetabrowserPublicPullsPanelHandle = MetabrowserPullsPanelHandle;
   type MetabrowserPublicPreparedViewComposition = MetabrowserPreparedViewComposition;
   type MetabrowserPublicRenderContext = MetabrowserRenderContext;
   type MetabrowserPublicSdk = MetabrowserSdk;
@@ -2757,6 +2890,15 @@ declare global {
     }>;
     /** static/pull-route.js, the `pull-route` on-demand bundle. */
     MetabrowserPullRoute?: MetabrowserPullRouteRuntime;
+    /** static/pulls-nav.js, which only a shell that drew the Pulls tab has. */
+    MetabrowserPullsNav?: Readonly<{
+      bindShortcuts(
+        shortcuts: ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null,
+      ): void;
+      dispose(): void;
+      init(): Promise<void>;
+      routeChanged(): void;
+    }>;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;
     MetabrowserInertHtml?: MetabrowserInertHtmlRuntime;

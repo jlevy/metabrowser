@@ -302,11 +302,11 @@ Its fixture allowed no rounds of deepening, as when offline, so the record says
 deepening does is in `tests/golden/cli-checkout-overlay.txt`.
 
 ```console
-$ metab --cache-dir home-shallow --config-dir config https://github.com/octo/demo/pull/1 --api /api/plugin/github/pull
+$ metab --cache-dir home-shallow --config-dir config https://github.com/octo/demo/pull/1 --api '/api/plugin/github/pull?number=1'
 selection: pull_request
 pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
 pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/github/pull
+api: /api/plugin/github/pull?number=1
 status: 200
 {
   "state": "stale",
@@ -314,7 +314,9 @@ status: 200
   "source": "https://github.com/octo/demo",
   "number": 1,
   "pin": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
+  "pin_ref": "refs/pull/1/head",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "ea0fa3cbb88d81b8a290275b28e1ae59117b955f960a2d8d66975cfb2cd06bed",
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -326,6 +328,7 @@ status: 200
   "comparison_route": null,
   "record": {
     "schema_version": 2,
+    "projection_version": 1,
     "source": "https://github.com/octo/demo",
     "number": 1,
     "fetched_at": "2026-09-17T12:00:00Z",
@@ -347,6 +350,7 @@ status: 200
       "draft": false,
       "merged": false,
       "merged_by": null,
+      "merged_by_avatar_url": null,
       "commits": 2,
       "merge_commit_sha": null,
       "mergeable": "mergeable",
@@ -354,6 +358,7 @@ status: 200
         "enhancement"
       ],
       "author": "forker",
+      "author_avatar_url": null,
       "created_at": "2026-09-16T10:57:23Z",
       "updated_at": "2026-09-16T17:39:01Z",
       "merged_at": null,
@@ -374,6 +379,7 @@ status: 200
       {
         "id": 3341937855,
         "author": "maintainer",
+        "author_avatar_url": null,
         "body": "Thanks. CI is green; one question inline.",
         "body_truncated": false,
         "created_at": "2026-09-16T17:34:17Z",
@@ -385,6 +391,7 @@ status: 200
         "id": 3274109685,
         "state": "COMMENTED",
         "author": "maintainer",
+        "author_avatar_url": null,
         "body": "",
         "body_truncated": false,
         "submitted_at": "2026-09-16T12:32:50Z",
@@ -394,6 +401,7 @@ status: 200
         "id": 3279967139,
         "state": "APPROVED",
         "author": "maintainer",
+        "author_avatar_url": null,
         "body": "Looks right.",
         "body_truncated": false,
         "submitted_at": "2026-09-16T17:36:02Z",
@@ -416,6 +424,7 @@ status: 200
         "diff_hunk": "@@ -1 +1 @@\n-one\n+one",
         "diff_hunk_truncated": false,
         "author": "maintainer",
+        "author_avatar_url": null,
         "body": "Why does this line change?",
         "body_truncated": false,
         "created_at": "2026-09-16T12:32:50Z",
@@ -436,6 +445,7 @@ status: 200
         "diff_hunk": "@@ -1 +1,2 @@\n one\n+two",
         "diff_hunk_truncated": false,
         "author": "forker",
+        "author_avatar_url": null,
         "body": "It no longer does; the second line is new.",
         "body_truncated": false,
         "created_at": "2026-09-16T17:30:11Z",

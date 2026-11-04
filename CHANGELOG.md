@@ -111,6 +111,22 @@ Plugin SDK:
 
 Reviewing beside a checkout:
 
+- A folder served from a GitHub checkout can show a pull request’s Files changed.
+  Its explicit **Fetch changes** attaches a cached store, borrowing the checkout’s
+  objects when one is needed.
+  The folder and its Git tab stay on the checkout; Git and writes run only in the
+  managed store. Reading a cached comparison starts no network work.
+  `POST /api/plugin/github/pull-refresh` accepts
+  `{"number": n, "retry": true, "comparison": true}` for the same action, and the pull
+  envelope names the comparison route to read after the job finishes.
+
+- Files changed offers **Refresh** even for a current record.
+  An explicit refresh can recover objects observed missing from the displayed
+  comparison, then reload that same comparison and restore the reading position.
+  A newer PR head remains an offer; a failed repair preserves the cached record and
+  selection. Corrupt objects are refused, and the checkout is never modified to repair
+  them.
+
 - `--checkout <path>` serves a repository or pull-request URL by borrowing objects from
   a checkout you already have instead of cloning it: a 1.2 GB repository that took 185 s
   and 1.2 GB as a full mirror took 5 s and about 1 MB.
@@ -357,15 +373,16 @@ GitHub URLs and HTTPS:
   So it is listed for a plain folder too: `metab --plugins` has a `github` row, the
   `Plugins:` line a server prints when it starts names it, and `metab --doctor` counts
   one plugin more than 0.11.0 did.
-  On a folder it serves nothing: `/api/plugin/github/pull` answers `state: "absent"`
-  with `reason: "no_pull_request"`, `/api/plugin/github/pull-markdown?part=body` answers
-  409 `no_pull_request`, and `--show /pull/<n>` says the source serves no pull request.
-  Without a valid `part`, `pull-markdown` answers 400 `invalid_part` on any source.
+  On a folder it serves nothing: `/api/plugin/github/pull?number=<n>` answers
+  `state: "absent"` with `reason: "not_github"`,
+  `/api/plugin/github/pull-markdown?number=<n>&part=body` answers 409 `not_github`, and
+  `--show /pull/<n>` reports that state.
+  Without a valid `number` or `part`, each answers 400 on any source.
 
 - Pull-request data:
-  `metab https://github.com/owner/repo/pull/<n> --api /api/plugin/github/pull` reads the
-  pull request with `gh api` (its description, labels, state, merge status, commit
-  count, who merged it, conversation, reviews, review comments, check runs, and
+  `metab https://github.com/owner/repo/pull/<n> --api '/api/plugin/github/pull?number=<n>'`
+  reads the pull request with `gh api` (its description, labels, state, merge status,
+  commit count, who merged it, conversation, reviews, review comments, check runs, and
   statuses), fetches its commits through GitHub’s `refs/pull/<n>/head`, a fork’s
   included, pins the head commit, and prints the record.
   The record is cached as one JSON file per pull request, so later `--show` and `--api`
@@ -388,9 +405,20 @@ GitHub URLs and HTTPS:
   Serving a pull-request URL serves its head and keeps the record fresh beside the
   mirror, in the same refresh jobs: a stale record makes the source `stale`, so it is
   refreshed when serving starts and when a stale page becomes visible, and
-  `POST /api/plugin/github/pull-refresh` starts or joins its refresh and returns at
-  once. `/api/plugin/github/pull` adds `refreshing` and `last_refresh`, and answers
-  `pending` while the first record is being read.
+  `POST /api/plugin/github/pull-refresh` with `{"number": n}` starts or joins its
+  refresh and returns at once.
+  `/api/plugin/github/pull` adds `refreshing` and `last_refresh`, and answers `pending`
+  while the first record is being read.
+  Any server of a GitHub repository answers for any number, not only one its URL named.
+  The pull and Markdown routes and the refresh body require an explicit pull-request
+  number. Only `"retry": true`, a reader’s own action, can add a pull request to the
+  cache: without it a number with no record answers `not_cached`, a record inside the
+  window or before a rate limit lifts answers `not_due`, and neither starts anything.
+  Past eight pull requests queued or running, a request is refused 429 `too_many`. The
+  mirror’s fetch and the pull request whose head is served go ahead of that queue, and a
+  list’s refresh does not wait for it.
+  The served one may run one over the bound; past that, `/api/source/refresh` answers
+  429 `too_many` too when that pull request is all it would refresh.
   A newer head is offered as the source’s `latest`, and `/api/source/pin` accepts
   `refs/pull/<n>/head` to take it.
   Only the stale one of the mirror and the record is refreshed, a pin the mirror lacks
@@ -409,6 +437,80 @@ GitHub URLs and HTTPS:
   `unavailable`; an item that cannot be read or is too large for one page is left out,
   an `http://` link is left empty, and the list is marked incomplete.
   Lists and text are bounded per pull request, and a cut is reported, never silent.
+  A repository’s pull-request catalog fills incrementally in the background using
+  lightweight GraphQL metadata pages, with exact counts and resumable backfill.
+  `POST /api/plugin/github/pulls-refresh` starts or joins that work and accepts a
+  display `target`; `/api/plugin/github/pulls` answers filtered windows from the cache
+  alone, including offline.
+  Descriptions, conversations, reviews, checks, and Git comparisons remain separate from
+  catalog loading. A pull request’s changed files are new too:
+  `POST /api/plugin/github/pull-files-refresh` with `{"number": n}` lists them from the
+  mirror’s own comparison when the store holds both commits, with no network, and
+  otherwise from GitHub’s list with `gh` and no Git, publishing each page as it arrives;
+  `/api/plugin/github/pull-files?number=<n>` answers what is held, offline too, while it
+  fills, and says when GitHub stopped at 3,000 files.
+
+- Pulls tab: a GitHub repository opened from its URL has a **Pulls** tab beside Files
+  and Git, listing every pull request newest first, with GitHub’s icon for open, draft,
+  merged, and closed, Open, Closed, and All filters (defaulting to Open), and what to do
+  when `gh` cannot read them.
+  It is in front whenever a pull request’s page is, and at the list’s own address,
+  `/pulls`. Selecting a row reads the pull request in the same page, fetching it if it
+  has no record; holding K, J, or an arrow walks the rows and opens the one it stops on,
+  and one Back leaves the rows however many were passed.
+  The status shows a bold numeric total and repository name.
+  Initially up to 500 matching PRs are displayed; **Fetch more** expands that window
+  while catalog metadata continues filling independently.
+  Rows expand into a windowed changed-files tree with folder navigation and inline
+  change counts. Selecting a file opens `/pull/<n>/files/<path>` and jumps Files changed
+  in place; keyboard walks keep focus in the tree and replace one history entry when
+  they stop. The selected file follows a reader’s diff scroll.
+  Opening a GitHub repository now runs `gh` for its list of pull requests once the first
+  file tree has painted, at most once a minute, whether or not the tab is opened; the
+  request names the repository and carries `gh`’s own sign-in.
+
+- The Conversation and Files changed tabs align with the PR reading column on narrow and
+  wide screens; the diff itself retains the full pane width.
+
+- GitHub CLI setup messages provide installation and sign-in steps, with official
+  download links when `gh` is missing or needs updating.
+  The [installation guide](docs/installation.md#git-and-github-setup) explains which
+  features need Git or `gh`; local files and cached PR metadata remain readable without
+  `gh`.
+
+- Pull-request profiles include JSON decoding, rendering, and DOM-readiness stages
+  through the existing performance recorder.
+  Catalog jobs check the account once and validate the viewer returned with every page,
+  avoiding repeated account-status requests during backfill.
+
+- When the optional `gh stack` extension is installed, pull-request rows and pages show
+  native GitHub stack numbers and ordered member links.
+  Stack metadata refreshes separately from PR content; unavailable tooling leaves the
+  normal PR views usable.
+
+- Moving between pull requests clears the previous file tree’s current-file highlight
+  while retaining its expansion and keyboard position.
+  Repeated route notifications preserve the active diff’s file selection.
+
+- An uncached pull-request page shows pulsing gray loading blocks in the reading column.
+  Cached content stays visible while it refreshes.
+  PR numbers use dark text, usernames use bold gray text, and branch names use a smaller
+  consistent treatment across the list and PR pages.
+
+- External GitHub links show a shared destination icon in rendered text and application
+  controls. Issue and PR links use neutral entity icons when state is unknown; matching
+  PR metadata supplies the state icon.
+  Localized file links remain internal, and decoration makes no additional API requests.
+  Branch-copy controls also restore visible row focus before dragging a pane splitter.
+
+- File change letters share muted semantic colors across Git, diffs and PR file trees:
+  additions green, deletions red, modifications ochre and renames blue.
+  Branch names share ref chips with hover/focus copy controls.
+  GitHub authors have small lazy circular avatars.
+  Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”; compact
+  navigation retains short labels.
+  Split and unified diffs use the shared monospace block size and matching reserved row
+  heights, fixing a root-font fallback that made code larger than other code views.
 
 - Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
   way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
@@ -459,13 +561,15 @@ GitHub URLs and HTTPS:
   were in rather than by pixels, because what has rendered above it differs when the
   page loads again; a new entry starts at the top, and a fragment in the address or a
   reader who has started scrolling with a wheel, a finger, the scrollbar, or a key is
-  never overridden. The page for a number the server does not serve links to the served
-  pull request’s page, on the same tab.
-  `metab <pr-url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
-  record, and `/api/plugin/github/pull-markdown?part=…` answers the allowlisted HTML of
-  the description (`body`) or one comment, review, or review comment, and nothing else
-  of KPress’s render. `/api/plugin/github/pull` answers with an entity tag and a `304`
-  when nothing changed.
+  never overridden. `/pull/<n>` opens any number on a server of its repository: with no
+  record it offers **Fetch**, and an address alone fetches nothing.
+  **Browse code** moves the pin to the pull request’s head first when something else is
+  served, and View file serves a commit under the head of any pull request it is the tip
+  of. `metab <url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
+  record, and `/api/plugin/github/pull-markdown?number=<n>&part=…` answers the
+  allowlisted HTML of the description (`body`) or one comment, review, or review
+  comment, and nothing else of KPress’s render.
+  `/api/plugin/github/pull` answers with an entity tag and a `304` when nothing changed.
   The description and every comment and review read in the interface sans at a Markdown
   file’s size and “Max text width”, whichever reading font is chosen, because serif is
   kept for committed documents.
@@ -1338,6 +1442,10 @@ Fixes:
   index, and `/api/tree` and `/api/recent` answered `tally_cache_status: "idle"`, as
   0.11.0 did. They now answer `truncated`, as `/api/index/progress` and `--walk` already
   did.
+
+- Switching between the Files and Git tabs no longer carries one list’s scroll offset
+  into the other: the two share one scroller, and each now keeps its own place in it,
+  where 0.11.0 carried the offset of the list last shown into the other.
 
 ## 0.11.0
 

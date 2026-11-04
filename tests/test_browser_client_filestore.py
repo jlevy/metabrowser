@@ -78,7 +78,7 @@ def test_count_html_renders_tally_pending_for_null() -> None:
 
 def test_format_age_renders_tally_pending_for_null() -> None:
     js = _read_app_js()
-    fn_start = js.index("function formatAge(mtimeSec)")
+    fn_start = js.index("function formatAge(")
     fn_block = js[fn_start : fn_start + 600]
     assert "if (mtimeSec === null)" in fn_block
     assert "tally-pending tally-pending-narrow" in fn_block

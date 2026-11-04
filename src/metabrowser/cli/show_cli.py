@@ -40,12 +40,15 @@ from metabrowser.view_routes import (
     COMMIT_ROUTE_PREFIX,
     PULL_ROUTE_PREFIX,
     VIEW_ROUTE_PREFIX,
+    PullRoute,
     decode_safe_commit_route,
     decode_safe_pull_route,
     decode_safe_view_path,
     format_commit_href,
     format_inventory_view_href,
     format_pull_href,
+    format_pulls_href,
+    parse_pulls_selection,
 )
 
 if TYPE_CHECKING:
@@ -137,19 +140,6 @@ def _describe_comparison(payload: dict[str, Any], inner: str) -> str:
     return f"comparison envelope; {detail}"
 
 
-def _require_served_pull(payload: dict[str, Any], number: int, display_path: str) -> None:
-    """Refuse a pull-request page for a number this server does not serve.
-
-    The page says the same: it shows only the served pull request's record.
-    """
-
-    served = payload.get("number")
-    if served is None:
-        raise CLIError(f"{display_path}: this source serves no pull request")
-    if served != number:
-        raise CLIError(f"{display_path}: this source serves pull request {served}")
-
-
 def _describe_pull(payload: dict[str, Any], tab: str) -> str:
     """Summarize the pull envelope the page renders: its state and what the record holds."""
 
@@ -176,6 +166,77 @@ def _describe_pull(payload: dict[str, Any], tab: str) -> str:
     if tab == "files":
         parts.append(f"comparison_route={payload.get('comparison_route')}")
     return "pull envelope; " + " ".join(parts)
+
+
+async def _pull_files_of(app: Any, number: int, index_timeout_s: float) -> dict[str, Any] | None:
+    """The cached list of a pull request's changed files, as the Pulls tab reads it, or
+    ``None`` when the route does not answer one. Reads the cache and runs no ``gh``."""
+
+    response = await _fetch(
+        app,
+        "/api/plugin/github/pull-files",
+        {"number": str(number)},
+        index_timeout_s=index_timeout_s,
+        needs_index=False,
+    )
+    if response.incomplete or response.status_code != 200:
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _describe_pull_file(files: dict[str, Any] | None, file: str) -> str:
+    """What the cached list of changed files says of the one file an address names.
+
+    The path is the pull request's author's text, so it is printed through the display rule
+    a pinned tree's names use, control and invisible characters as U+FFFD. It is never looked
+    up on disk: the list is the only thing asked.
+    """
+
+    from metabrowser.git.tree_source import display_segment
+
+    shown = "/".join(
+        display_segment(segment.encode("utf-8", "surrogatepass")) for segment in file.split("/")
+    )
+    if files is None:
+        return f"file={shown} file_list=unavailable"
+    parts = [f"file={shown}", f"file_list={files.get('state')}"]
+    if files.get("reason") is not None:
+        parts.append(f"file_list_reason={files['reason']}")
+    rows = files.get("rows")
+    if files.get("listed_from") is not None and isinstance(rows, list):
+        row = next(
+            (row for row in rows if isinstance(row, dict) and row.get("path") == file),
+            None,
+        )
+        parts.append("listed=no" if row is None else f"listed={row.get('status')}")
+        parts.append(f"complete={files.get('complete')}")
+    return " ".join(parts)
+
+
+def _describe_pull_list(payload: dict[str, Any]) -> str:
+    """Summarize the list envelope the tab renders: its state and its honest count."""
+
+    parts = [f"state={payload.get('state')}", f"list={payload.get('list')}"]
+    if payload.get("reason") is not None:
+        parts.append(f"reason={payload['reason']}")
+    for name in (
+        "total",
+        "repository_total",
+        "catalog_fetched",
+        "fetched",
+        "complete",
+        "truncated",
+        "refreshing",
+    ):
+        parts.append(f"{name}={payload.get(name)}")
+    if payload.get("reader") is not None:
+        parts.append(f"reader={payload['reader']}")
+        parts.append(f"fetched_at={payload.get('fetched_at')}")
+    return "pull-request list envelope; " + " ".join(parts)
 
 
 def _pull_display_state(pull: dict[str, Any]) -> str:
@@ -360,7 +421,8 @@ async def _ashow_prepared(
     from metabrowser import server
 
     commit = None
-    pull: tuple[int, str] | None = None
+    pull: PullRoute | None = None
+    pull_list = parse_pulls_selection(path)
     native_selection: str | None = None
     git_wire: str | None = None
     git_candidates: list[str] = []
@@ -381,9 +443,14 @@ async def _ashow_prepared(
         route = "/api/plugin/diff/comparison"
         needs_index = False
     elif pull is not None:
-        # The page renders the served pull request's cached record, which the GitHub
-        # plugin's pull route answers; Files changed is the comparison it names.
-        route, params = "/api/plugin/github/pull", {}
+        # The page renders the pull request's cached record, which the GitHub plugin's
+        # pull route answers for any number; Files changed is the comparison it names.
+        route, params = "/api/plugin/github/pull", {"number": str(pull.number)}
+        needs_index = False
+    elif pull_list is not False:
+        # The list's address: what the tab shows, from the cache alone, without its rows.
+        route = "/api/plugin/github/pulls"
+        params = {"limit": "0", **({} if pull_list is None else {"state": pull_list})}
         needs_index = False
     elif filesystem_root is None:
         from metabrowser.git.content_routes import decode_git_view_path
@@ -465,12 +532,20 @@ async def _ashow_prepared(
         views: Any = server._views_for_kind("diff")
         model = _describe_comparison(payload, inner)
     elif pull is not None:
-        number, tab = pull
-        _require_served_pull(payload, number, display_path)
-        shown_route = format_pull_href(number, tab)
+        number, tab, file = pull
+        shown_route = format_pull_href(number, tab, file)
         kind = "pull-request"
         views = server._views_for_kind(kind)
         model = _describe_pull(payload, tab)
+        if file:
+            model += "; " + _describe_pull_file(
+                await _pull_files_of(server.app, number, index_timeout_s), file
+            )
+    elif pull_list is not False:
+        shown_route = format_pulls_href(pull_list)
+        kind = "pull-request-list"
+        views = server._views_for_kind(kind)
+        model = _describe_pull_list(payload)
     elif git_wire is not None:
         identity = payload.get("path", git_wire)
         if not isinstance(identity, str):

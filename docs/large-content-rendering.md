@@ -398,6 +398,7 @@ window that never existed on disk.
 | `JUMP_QUIET_MS` | 50 ms | How long a burst of jumps stops before its last file is asked for |
 | `MAX_CACHED_MANIFESTS` | 16 comparisons | Server memory for manifests kept by commit ID: up to 131 MB at the manifest cap, and about 190 MB of RSS, by the measurements beside the constant |
 | `MAX_CACHED_BODY_BYTES` | 64 MiB | Server memory for encoded comparison answers |
+| `WINDOW_ROWS` | 100 rows | One append of the Pulls tab’s plain rows. `MAX_LIST_ROWS`, 1,000, stays under the budget with `content-visibility: auto` and needs no windowing; the measurements are beside the constant in `builtin_plugins/github/pulls-panel.js` |
 
 A budget that degrades what the reader sees has a second requirement beyond bounding the
 resource: the degradation has to apply uniformly to everything on screen.

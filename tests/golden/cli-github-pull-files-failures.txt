@@ -1,0 +1,793 @@
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 106,
+    "listed_from": null,
+    "fetched_at": null,
+    "generation": null,
+    "reader": null,
+    "head": null,
+    "base": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "fetched": 0,
+    "pages": 0,
+    "last_page": null,
+    "complete": false,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=106&limit=0"
+}
+after: /api/plugin/github/pull-files?number=106&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 106,
+  "listed_from": "github",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": "gh:octo-reader",
+  "head": null,
+  "base": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 249,
+  "pages": 3,
+  "last_page": 3,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+--- body ---
+{"number": 106}
+--- gh ---
+gh api repos/octo/demo --jq .size
+gh auth status
+gh api repos/octo/demo/pulls/106/files?per_page=100&page=1
+gh api repos/octo/demo/pulls/106/files?per_page=100&page=2
+gh api repos/octo/demo/pulls/106/files?per_page=100&page=3
+gh auth status
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 106,
+    "listed_from": "github",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "generation": "00000000000000000000000000000001",
+    "reader": "gh:octo-reader",
+    "head": null,
+    "base": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "fetched": 249,
+    "pages": 3,
+    "last_page": 3,
+    "complete": true,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=106&limit=0"
+}
+after: /api/plugin/github/pull-files?number=106&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 106,
+  "listed_from": "github",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": "gh:octo-reader",
+  "head": null,
+  "base": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "not_logged_in",
+    "message": "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 249,
+  "pages": 3,
+  "last_page": 3,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with not_logged_in
+--- body ---
+{"number": 106, "retry": true}
+--- gh ---
+gh auth status
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 106,
+    "listed_from": "github",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "generation": "00000000000000000000000000000001",
+    "reader": "gh:octo-reader",
+    "head": null,
+    "base": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "not_logged_in",
+      "message": "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "fetched": 249,
+    "pages": 3,
+    "last_page": 3,
+    "complete": true,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=106&limit=0"
+}
+after: /api/plugin/github/pull-files?number=106&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 106,
+  "listed_from": "github",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": "gh:octo-reader",
+  "head": null,
+  "base": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "gh_too_old",
+    "message": "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 249,
+  "pages": 3,
+  "last_page": 3,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with gh_too_old
+--- body ---
+{"number": 106, "retry": true}
+--- gh ---
+gh auth status
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 106,
+    "listed_from": "github",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "generation": "00000000000000000000000000000001",
+    "reader": "gh:octo-reader",
+    "head": null,
+    "base": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "gh_too_old",
+      "message": "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "fetched": 249,
+    "pages": 3,
+    "last_page": 3,
+    "complete": true,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=106&limit=0"
+}
+after: /api/plugin/github/pull-files?number=106&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 106,
+  "listed_from": "github",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": "gh:octo-reader",
+  "head": null,
+  "base": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "not_found_or_private",
+    "message": "GitHub has no such pull request, or the repository is private and the gh account cannot read it",
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 249,
+  "pages": 3,
+  "last_page": 3,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with not_found_or_private
+--- body ---
+{"number": 106, "retry": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/106/files?per_page=100&page=1 (If-None-Match)
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 106,
+    "listed_from": "github",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "generation": "00000000000000000000000000000001",
+    "reader": "gh:octo-reader",
+    "head": null,
+    "base": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "not_found_or_private",
+      "message": "GitHub has no such pull request, or the repository is private and the gh account cannot read it",
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "fetched": 249,
+    "pages": 3,
+    "last_page": 3,
+    "complete": true,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=106&limit=0"
+}
+after: /api/plugin/github/pull-files?number=106&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 106,
+  "listed_from": "github",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": "gh:octo-reader",
+  "head": null,
+  "base": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "network_error",
+    "message": "gh could not reach api.github.com",
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 249,
+  "pages": 3,
+  "last_page": 3,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with network_error
+--- body ---
+{"number": 106, "retry": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/106/files?per_page=100&page=1 (If-None-Match)
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 106,
+    "listed_from": "github",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "generation": "00000000000000000000000000000001",
+    "reader": "gh:octo-reader",
+    "head": null,
+    "base": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "network_error",
+      "message": "gh could not reach api.github.com",
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "fetched": 249,
+    "pages": 3,
+    "last_page": 3,
+    "complete": true,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=106&limit=0"
+}
+after: /api/plugin/github/pull-files?number=106&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 106,
+  "listed_from": "github",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": "gh:octo-reader",
+  "head": null,
+  "base": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "gh_failed",
+    "message": "GitHub answered with something other than JSON",
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 249,
+  "pages": 3,
+  "last_page": 3,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with gh_failed
+--- body ---
+{"number": 106, "retry": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/106/files?per_page=100&page=1 (If-None-Match)
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 106,
+    "listed_from": "github",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "generation": "00000000000000000000000000000001",
+    "reader": "gh:octo-reader",
+    "head": null,
+    "base": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "gh_failed",
+      "message": "GitHub answered with something other than JSON",
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "fetched": 249,
+    "pages": 3,
+    "last_page": 3,
+    "complete": true,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=106&limit=0"
+}
+after: /api/plugin/github/pull-files?number=106&limit=0
+status: 200
+{
+  "state": "stale",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 106,
+  "listed_from": "github",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": "gh:octo-reader",
+  "head": null,
+  "base": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "account_changed",
+    "message": "the active gh account changed during the read, so it is not taken as complete; open the files again",
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 249,
+  "pages": 3,
+  "last_page": 3,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with account_changed
+--- body ---
+{"number": 106, "retry": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/106/files?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/106/files?per_page=100&page=2 (If-None-Match)
+gh api repos/octo/demo/pulls/106/files?per_page=100&page=3 (If-None-Match)
+gh auth status
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "stale",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 106,
+    "listed_from": "github",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "generation": "00000000000000000000000000000001",
+    "reader": "gh:octo-reader",
+    "head": null,
+    "base": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "account_changed",
+      "message": "the active gh account changed during the read, so it is not taken as complete; open the files again",
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "fetched": 249,
+    "pages": 3,
+    "last_page": 3,
+    "complete": true,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=106&limit=0"
+}
+after: /api/plugin/github/pull-files?number=106&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 106,
+  "listed_from": "github",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": "gh:octo-reader",
+  "head": null,
+  "base": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "gh_missing",
+    "message": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 249,
+  "pages": 3,
+  "last_page": 3,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with gh_missing
+--- body ---
+{"number": 106, "retry": true}
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 104,
+    "listed_from": null,
+    "fetched_at": null,
+    "generation": null,
+    "reader": null,
+    "head": null,
+    "base": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "fetched": 0,
+    "pages": 0,
+    "last_page": null,
+    "complete": false,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=104&limit=0"
+}
+after: /api/plugin/github/pull-files?number=104&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 104,
+  "listed_from": "github",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000009",
+  "reader": "gh:octo-reader",
+  "head": null,
+  "base": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "rate_limited",
+    "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
+    "reset_at": "2026-09-23T16:46:00Z",
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 200,
+  "pages": 2,
+  "last_page": 3,
+  "complete": false,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with rate_limited
+--- body ---
+{"number": 104, "retry": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/104/files?per_page=100&page=1
+gh api repos/octo/demo/pulls/104/files?per_page=100&page=2
+gh api repos/octo/demo/pulls/104/files?per_page=100&page=3
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "files": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 104,
+    "listed_from": "github",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "generation": "00000000000000000000000000000009",
+    "reader": "gh:octo-reader",
+    "head": null,
+    "base": null,
+    "fresh_for_s": 60.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "rate_limited",
+      "message": "GitHub's API rate limit is exhausted until 2026-09-23T16:46:00Z",
+      "reset_at": "2026-09-23T16:46:00Z",
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "fetched": 200,
+    "pages": 2,
+    "last_page": 3,
+    "complete": false,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=104&limit=0"
+}
+--- stderr ---
+--- body ---
+{"number": 104, "retry": true}
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 105,
+    "listed_from": null,
+    "fetched_at": null,
+    "generation": null,
+    "reader": null,
+    "head": null,
+    "base": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "fetched": 0,
+    "pages": 0,
+    "last_page": null,
+    "complete": false,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=105&limit=0"
+}
+after: /api/plugin/github/pull-files?number=105&limit=0
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "number": 105,
+  "listed_from": null,
+  "fetched_at": null,
+  "generation": null,
+  "reader": null,
+  "head": null,
+  "base": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "cache_unwritable",
+    "message": "the list of changed files could not be written to the cache",
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 0,
+  "pages": 0,
+  "last_page": null,
+  "complete": false,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with cache_unwritable
+--- body ---
+{"number": 105, "retry": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/105/files?per_page=100&page=1

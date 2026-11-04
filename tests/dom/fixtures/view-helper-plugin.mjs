@@ -5,6 +5,13 @@
 
 const mb = window.metabrowser;
 const log = window.viewHelperFixtureLog;
+if (
+  !mb.refChipHtml("<topic>", { copy: false }).includes("&lt;topic&gt;") ||
+  mb.ageBucket(0) !== null ||
+  mb.ageLabelHtml(0) !== ""
+) {
+  throw new Error("view presentation helpers were unavailable during plugin evaluation");
+}
 
 /** @param {string} when @param {{innerHTML: string}} host @param {string} content */
 function drawSource(when, host, content) {

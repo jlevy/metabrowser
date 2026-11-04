@@ -1,23 +1,35 @@
 """The envelope the pull routes answer, built from the cache and memory alone.
 
 It never runs gh or Git and never waits on the network, so a page opens as fast offline
-as online. The served pull request is the :class:`ServedPull` the CLI handed the server
-with the mirror, reached through the application's mirror session, so it is the same in
-a one-shot command and a server. It reports one of:
+as online. Every request names its pull request by number, and a server answers for any
+number of its repository, so it is the same in a one-shot command and a server. It
+reports one of:
 
-- ``absent``: nothing to show, with a ``reason``: the served URL selects no pull
-  request (``no_pull_request``), or no usable record is cached (``not_cached``,
-  ``schema_mismatch``, ``unreadable``);
+- ``absent``: nothing to show, with a ``reason``: this server serves no GitHub repository
+  (``not_github``), or no usable record is cached (``not_cached``, ``schema_mismatch``,
+  ``unreadable``);
 - ``pending``: no record yet, and a refresh is running;
 - ``current``: a record fetched within the refresh coordinator's freshness window;
 - ``stale``: an older record, still shown.
 
 ``refreshing`` says whether the pull request's refresh job is running, and
-``last_refresh`` how this server's last one ended. ``pin`` is the commit the server
-serves; the record's ``pull.head.sha`` and ``comparison_route`` name the head the record
-was read at. They differ when the URL selected a commit inside the pull request, and
-when a refresh found a newer head than the pin, which status reports as ``latest`` for
-the page to offer rather than switching under a reader.
+``last_refresh`` how its last one ended. ``pin`` is the commit the server serves and
+``pin_ref`` the ref it was resolved from; the record's ``pull.head.sha`` and
+``comparison_route`` name the head the record was read at. They differ when the pin is
+another pull request or a branch, when the URL selected a commit inside the pull request,
+and when a refresh found a newer head than the pin, which status reports as ``latest``
+for the page to offer rather than switching under a reader.
+
+A read never starts a fetch. Only ``POST pull-refresh`` does, and :func:`start_refresh`
+holds what it starts to the rule: a request that is not a reader's own action refreshes
+only a pull request with a record, and only when that record is stale and not tried within
+the window. So nothing a link can do adds to the cache.
+
+Which pull requests a server has is :func:`pull_host`'s to say, and nothing else here
+knows whether it is a mirror or a checkout. A checkout with no attached store answers a
+record with no comparison, ``no_store``, whoever wrote it. A server with a store answers
+a record written that way as ``stale``. Only an explicit comparison Fetch may attach a
+store to a checkout's pull records.
 """
 
 from __future__ import annotations
@@ -27,26 +39,55 @@ import json
 import os
 import stat
 import threading
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal, TypedDict
 
 from metabrowser.builtin_plugins.github import pulls
+from metabrowser.builtin_plugins.github.checkout import (
+    checkout_job_key,
+    checkout_pulls,
+    served_checkout,
+    start_pull_refresh,
+)
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     RecordAbsence,
     read_pull_record,
 )
-from metabrowser.builtin_plugins.github.served_pull import PullRefreshOutcome, ServedPull
-from metabrowser.cache.paths import source_pull_record
+from metabrowser.builtin_plugins.github.served_pull import (
+    PullRefreshOutcome,
+    ServedPull,
+    ServedPulls,
+    written_without_store,
+)
+from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_record
 from metabrowser.git.tree_source import GitRevisionSubject
+from metabrowser.git.wire import is_full_revision
 from metabrowser.http_caching import BUILD_TAG, build_scoped_etag, store_tag
-from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, MirrorSession
+from metabrowser.mirror_refresh import (
+    FRESHNESS_WINDOW_S,
+    PullJobStart,
+    mirror_session,
+    refresh_coordinator,
+)
 from metabrowser.source import RepositorySubject
+from metabrowser.view_routes import parse_pull_number
+
+PULL_ROUTE: Final = "/api/plugin/github/pull"
+_REFRESH_FIELDS: Final = frozenset({"number", "retry", "comparison", "recovery"})
+NUMBER_REQUIRED: Final = '"number" is a pull-request number'
 
 type PullState = Literal["absent", "pending", "current", "stale"]
-type PullAbsence = Literal["no_pull_request"] | RecordAbsence
+type PullAbsence = Literal["not_github"] | RecordAbsence
+type PullRefreshStart = PullJobStart | Literal["not_due", "not_cached"]
+
+
+class PullRequestError(Exception):
+    """A request the pull routes refuse. ``str()`` says why, and names only the request."""
 
 
 class PullEnvelope(TypedDict):
@@ -55,9 +96,11 @@ class PullEnvelope(TypedDict):
     state: PullState
     reason: PullAbsence | None
     source: str | None
-    number: int | None
+    number: int
     pin: str | None
+    pin_ref: str | None
     fetched_at: str | None
+    record_revision: str | None
     fresh_for_s: float
     refreshing: bool
     last_refresh: PullRefreshOutcome | None
@@ -70,14 +113,36 @@ def _parse_stamp(stamp: str) -> datetime:
 
 
 def pull_state(
-    record: PullRecord | RecordAbsence, *, now: datetime, refreshing: bool = False
+    record: PullRecord | RecordAbsence,
+    *,
+    now: datetime,
+    refreshing: bool = False,
+    has_store: bool = True,
 ) -> tuple[PullState, RecordAbsence | None]:
-    """The state a cached record (or its absence) is in at *now*."""
+    """The state a cached record (or its absence) is in at *now*.
+
+    A record written with no store, by a checkout's server, is stale whatever its age on a
+    server that *has_store*, which can give it its Files changed.
+    """
 
     if not isinstance(record, PullRecord):
         return ("pending", None) if refreshing else ("absent", record)
+    if has_store and written_without_store(record):
+        return "stale", None
     age = now - _parse_stamp(record.fetched_at)
     return ("current" if age <= timedelta(seconds=FRESHNESS_WINDOW_S) else "stale"), None
+
+
+def _without_store(dumped: dict[str, Any]) -> dict[str, Any]:
+    """A record as a server with no store has it: no comparison, ``no_store``.
+
+    A checkout's server may read a record a mirror wrote, with a comparison of commits in
+    that mirror's store. It has no store of its own, and it never reads the checkout's, so
+    it offers no Files changed for it. A new dictionary: *dumped* is the parsed cache's.
+    """
+
+    unavailable = {**dumped.get("unavailable", {}), "comparison": "no_store"}
+    return {**dumped, "comparison": None, "unavailable": unavailable}
 
 
 def comparison_route(record: PullRecord, *, store: str) -> str | None:
@@ -93,27 +158,12 @@ def comparison_route(record: PullRecord, *, store: str) -> str | None:
     )
 
 
-def _absent() -> PullEnvelope:
-    return PullEnvelope(
-        state="absent",
-        reason="no_pull_request",
-        source=None,
-        number=None,
-        pin=None,
-        fetched_at=None,
-        fresh_for_s=FRESHNESS_WINDOW_S,
-        refreshing=False,
-        last_refresh=None,
-        comparison_route=None,
-        record=None,
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class _Parsed:
     stamp: tuple[int, int, int]
     record: PullRecord
     dumped: dict[str, Any]
+    revision: str
 
 
 # Records parsed for this route, keyed by home, slug, and number, each kept with the
@@ -135,100 +185,168 @@ def _file_stamp(home: Path, slug: str, number: int) -> tuple[int, int, int] | No
     return status.st_ino, status.st_mtime_ns, status.st_size
 
 
+def _record_revision(dumped: dict[str, Any]) -> str:
+    """Reader-owned content identity, unaffected by refresh time and provider ETags."""
+
+    content = {key: value for key, value in dumped.items() if key not in {"fetched_at", "etags"}}
+    return hashlib.sha256(
+        json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
 def cached_pull_record(
     home: Path, slug: str, number: int
-) -> tuple[PullRecord | RecordAbsence, dict[str, Any] | None]:
-    """The record and its JSON form, parsed again only when its file changed."""
+) -> tuple[PullRecord | RecordAbsence, dict[str, Any] | None, str | None]:
+    """One parsed record, its JSON and content revision, reused while the file is unchanged."""
 
     key = (str(home), slug, number)
     stamp = _file_stamp(home, slug, number)
     with _PARSED_LOCK:
         hit = _PARSED.get(key)
     if hit is not None and stamp is not None and hit.stamp == stamp:
-        return hit.record, hit.dumped
+        return hit.record, hit.dumped, hit.revision
     record = read_pull_record(home, slug, number)
-    if not isinstance(record, PullRecord) or stamp is None:
-        return record, None
+    if not isinstance(record, PullRecord):
+        return record, None, None
     dumped = record.model_dump(mode="json")
-    with _PARSED_LOCK:
-        if key not in _PARSED and len(_PARSED) >= _MAX_PARSED:
-            _PARSED.pop(next(iter(_PARSED)))
-        _PARSED[key] = _Parsed(stamp, record, dumped)
-    return record, dumped
-
-
-def served_pull_of(mirror: MirrorSession | None) -> ServedPull | None:
-    """The pull request the mirror session serves beside the mirror, if any."""
-
-    companion = None if mirror is None else mirror.companion
-    return companion if isinstance(companion, ServedPull) else None
+    revision = _record_revision(dumped)
+    if stamp is not None:
+        with _PARSED_LOCK:
+            if key not in _PARSED and len(_PARSED) >= _MAX_PARSED:
+                _PARSED.pop(next(iter(_PARSED)))
+            _PARSED[key] = _Parsed(stamp, record, dumped, revision)
+    return record, dumped, revision
 
 
 @dataclass(frozen=True, slots=True)
-class ServedPullView:
+class PullHost:
+    """What the pull routes need of a server that has pull requests, and no more.
+
+    ``pulls`` is the repository's set, ``running`` says whether a number's refresh is
+    running, and ``start`` starts or joins it.
+    """
+
+    pulls: ServedPulls
+    running: Callable[[int], bool]
+    start: Callable[[int], PullJobStart]
+    start_comparison: Callable[[int], PullJobStart] | None = None
+
+
+def pull_host(app: Any) -> PullHost | None:
+    """This server's pull requests, or ``None``.
+
+    On a mirror, those the provider keeps. On a folder, those of a served checkout's
+    repository (:mod:`.checkout`), whose jobs run on the server's refresh coordinator.
+    """
+
+    session = mirror_session(app)
+    if session is None:
+        checkout = served_checkout(app)
+        coordinator = refresh_coordinator(app)
+        if checkout is None or coordinator is None:
+            return None
+        pulls = checkout_pulls(checkout)
+        return PullHost(
+            pulls,
+            lambda number: coordinator.running(checkout_job_key(checkout, number)),
+            partial(start_pull_refresh, coordinator, checkout),
+            partial(start_pull_refresh, coordinator, checkout, comparison=True),
+        )
+    served = session.pull_requests
+    if not isinstance(served, ServedPulls):
+        return None
+    return PullHost(served, session.pull_refreshing, session.request_pull_refresh)
+
+
+@dataclass(frozen=True, slots=True)
+class PullView:
     """What the envelope needs from memory, read on the event loop that owns it.
 
     The refresh job changes these on the loop, so a handler reads them there, before it
-    reads the record in a thread, and the answer describes one moment.
+    reads the record in a thread, and the answer describes one moment. ``kept`` is the
+    number's state when the set holds it; otherwise its last refresh is read from disk.
     """
 
-    served: ServedPull
+    number: int
+    host: PullHost | None
     pin: str | None
+    pin_ref: str | None
     refreshing: bool
-    last_refresh: PullRefreshOutcome | None
+    kept: ServedPull | None
 
 
-def served_pull_view(
-    mirror: MirrorSession | None, subject: RepositorySubject
-) -> ServedPullView | None:
-    """The served pull request's in-memory state, or ``None`` when none is served."""
+def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) -> PullView:
+    """Pull request *number*'s in-memory state. Reads nothing, so a read adds nothing."""
 
-    served = served_pull_of(mirror)
-    if mirror is None or served is None:
-        return None
-    return ServedPullView(
-        served=served,
-        pin=subject.commit_oid if isinstance(subject, GitRevisionSubject) else None,
-        refreshing=mirror.companion_refreshing(),
-        last_refresh=served.last,
+    revision = subject if isinstance(subject, GitRevisionSubject) else None
+    return PullView(
+        number=number,
+        host=host,
+        pin=None if revision is None else revision.commit_oid,
+        pin_ref=None if revision is None else revision.ref,
+        refreshing=host is not None and host.running(number),
+        kept=None if host is None else host.pulls.held(number),
     )
 
 
-def served_pull_envelope(view: ServedPullView | None) -> PullEnvelope:
-    """The envelope for the served pull request. Blocking and bounded; run it off the loop."""
+def pull_envelope(view: PullView) -> PullEnvelope:
+    """The envelope for one pull request. Blocking and bounded; run it off the loop."""
 
-    if view is None:
-        return _absent()
-    published = view.served.published
-    record, dumped = cached_pull_record(published.home, published.slug, view.served.number)
+    host = view.host
+    if host is None:
+        return PullEnvelope(
+            state="absent",
+            reason="not_github",
+            source=None,
+            number=view.number,
+            pin=view.pin,
+            pin_ref=view.pin_ref,
+            fetched_at=None,
+            record_revision=None,
+            fresh_for_s=FRESHNESS_WINDOW_S,
+            refreshing=False,
+            last_refresh=None,
+            comparison_route=None,
+            record=None,
+        )
+    served = host.pulls
+    record, dumped, revision = cached_pull_record(served.home, served.slug, view.number)
+    has_store = served.git_dir is not None
     # Through the module, so records and their age share one clock seam.
-    state, absence = pull_state(record, now=pulls.utc_now(), refreshing=view.refreshing)
+    state, absence = pull_state(
+        record, now=pulls.utc_now(), refreshing=view.refreshing, has_store=has_store
+    )
+    if not has_store and isinstance(record, PullRecord) and dumped is not None:
+        dumped = _without_store(dumped)
+        record = record.model_copy(update={"comparison": None})
+    route = (
+        comparison_route(record, store=store_tag(served.git_dir))
+        if isinstance(record, PullRecord) and served.git_dir is not None
+        else None
+    )
     return PullEnvelope(
         state=state,
         reason=absence,
-        source=published.source.normalized,
-        number=view.served.number,
+        source=served.source,
+        number=view.number,
         pin=view.pin,
+        pin_ref=view.pin_ref,
         fetched_at=record.fetched_at if isinstance(record, PullRecord) else None,
+        record_revision=revision,
         fresh_for_s=FRESHNESS_WINDOW_S,
         refreshing=view.refreshing,
-        last_refresh=view.last_refresh,
-        comparison_route=(
-            comparison_route(record, store=store_tag(published.git_dir))
-            if isinstance(record, PullRecord)
-            else None
-        ),
+        last_refresh=view.kept.last if view.kept is not None else served.last_refresh(view.number),
+        comparison_route=route,
         record=dumped if isinstance(record, PullRecord) else None,
     )
 
 
-def record_stamp(view: ServedPullView | None) -> tuple[int, int, int] | None:
-    """The served record file's inode, modification time in nanoseconds, and size."""
+def record_stamp(view: PullView) -> tuple[int, int, int] | None:
+    """The record file's inode, modification time in nanoseconds, and size."""
 
-    if view is None:
+    if view.host is None:
         return None
-    published = view.served.published
-    return _file_stamp(published.home, published.slug, view.served.number)
+    return _file_stamp(view.host.pulls.home, view.host.pulls.slug, view.number)
 
 
 def envelope_etag(envelope: PullEnvelope, stamp: tuple[int, int, int] | None) -> str:
@@ -241,22 +359,133 @@ def envelope_etag(envelope: PullEnvelope, stamp: tuple[int, int, int] | None) ->
     request no longer matches, and is sent again rather than taken as unchanged.
     """
 
-    fields = {name: value for name, value in envelope.items() if name != "record"}
+    fields: dict[str, Any] = {name: value for name, value in envelope.items() if name != "record"}
     fields["record_stamp"] = list(stamp) if stamp is not None else None
     digest = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
     return build_scoped_etag(f"pull-{digest[:32]}")
 
 
+def requested_number(params: Mapping[str, str]) -> int:
+    """The number a ``GET`` names, or :class:`PullRequestError`. It is required."""
+
+    number = parse_pull_number(params.get("number", ""))
+    if number is None:
+        raise PullRequestError(NUMBER_REQUIRED)
+    return number
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshRequest:
+    """What a ``POST`` asks for. *retry* is a reader's own action."""
+
+    number: int
+    retry: bool
+    comparison: bool = False
+    recovery: tuple[str, str] | None = None
+
+
+def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
+    """What a ``POST`` body names, or :class:`PullRequestError`."""
+
+    if set(body) - _REFRESH_FIELDS:
+        raise PullRequestError(
+            'a refresh request names only "number", "retry", "comparison", and "recovery"'
+        )
+    number = body.get("number")
+    if (
+        not isinstance(number, int)
+        or isinstance(number, bool)
+        or not 1 <= number <= MAX_PULL_REQUEST_NUMBER
+    ):
+        raise PullRequestError(NUMBER_REQUIRED)
+    retry = body.get("retry", False)
+    if not isinstance(retry, bool):
+        raise PullRequestError('"retry" is true or false')
+    comparison = body.get("comparison", False)
+    if not isinstance(comparison, bool) or (comparison and not retry):
+        raise PullRequestError('"comparison" is true or false and requires "retry": true')
+    recovery = body.get("recovery")
+    pair: tuple[str, str] | None = None
+    if recovery is not None:
+        if (
+            comparison
+            or not retry
+            or not isinstance(recovery, dict)
+            or set(recovery) != {"base", "head"}
+        ):
+            raise PullRequestError(
+                '"recovery" names a displayed base and head and requires "retry": true'
+            )
+        base, head = recovery.get("base"), recovery.get("head")
+        if (
+            not isinstance(base, str)
+            or not isinstance(head, str)
+            or not is_full_revision(base)
+            or not is_full_revision(head)
+        ):
+            raise PullRequestError('"recovery" requires two full commit IDs')
+        pair = (base, head)
+    return RefreshRequest(number, retry, comparison, pair)
+
+
+async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart:
+    """Start the refresh *ask* names, join the one running, or say why it starts nothing.
+
+    A reader's own action always may start one. An automatic request may only for a
+    pull request with a record (``not_cached`` otherwise), and only when that record is
+    stale and no attempt is due to wait (``not_due`` otherwise).
+    """
+
+    queued: ServedPull | None = None
+    if ask.retry and not ask.comparison:
+        served = await host.pulls.companion(ask.number)
+        queued = served
+        if ask.recovery is not None and not served.issued_comparison(ask.recovery):
+            raise PullRequestError("this pull request did not issue the requested comparison")
+        if not served.request_recovery(ask.recovery):
+            return "too_many"
+    if ask.comparison and host.start_comparison is not None:
+        return host.start_comparison(ask.number)
+    if host.running(ask.number):
+        return "joined"
+    if not ask.retry:
+        served = await host.pulls.companion(ask.number)
+        if served.fetched_at is None:
+            return "not_cached"
+        if not served.is_stale(pulls.utc_now(), window_s=FRESHNESS_WINDOW_S):
+            return "not_due"
+    started = host.start(ask.number)
+    if started == "too_many" and queued is not None:
+        queued.discard_recovery(ask.recovery)
+    return started
+
+
+def status_route(number: int) -> str:
+    """Where a one-shot ``--api`` reads how a refresh ended."""
+
+    return f"{PULL_ROUTE}?number={number}"
+
+
 __all__ = [
+    "NUMBER_REQUIRED",
+    "PULL_ROUTE",
     "PullEnvelope",
-    "envelope_etag",
-    "record_stamp",
+    "PullHost",
+    "PullRefreshStart",
+    "PullRequestError",
     "PullState",
-    "ServedPullView",
+    "PullView",
+    "RefreshRequest",
     "cached_pull_record",
     "comparison_route",
+    "envelope_etag",
+    "pull_envelope",
+    "pull_host",
     "pull_state",
-    "served_pull_envelope",
-    "served_pull_of",
-    "served_pull_view",
+    "pull_view",
+    "record_stamp",
+    "refresh_request",
+    "requested_number",
+    "start_refresh",
+    "status_route",
 ]

@@ -321,7 +321,7 @@ $ node tests/dom/diff-file-jump-session.js
         "d1.py",
         "d2.py"
       ],
-      "heldReserves": "calc(9 * 1.5 * var(--code-font-size, 0.85rem))"
+      "heldReserves": "calc(8 * var(--diff-code-row-height) + 1 * var(--diff-header-row-height) + 0 * var(--diff-fold-row-height) + 0 * var(--diff-notice-row-height))"
     },
     {
       "step": "fileForPath: a held file is a ready file of the comparison",

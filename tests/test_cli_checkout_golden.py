@@ -60,7 +60,7 @@ PULL = f"{CANONICAL}/pull/1"
 STATUS = "/api/source/status"
 STORES = "/api/cache/stores"
 REFS = "/api/source/refs?kind=branch"
-PULL_ROUTE = "/api/plugin/github/pull"
+PULL_ROUTE = "/api/plugin/github/pull?number=1"
 
 
 class _Session:

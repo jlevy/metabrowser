@@ -81,8 +81,8 @@ def test_a_plugin_finds_every_view_helper_wherever_its_code_runs(
     # load theirs. Its whole output is pinned by cli-ui-plugin-view-helpers.tryscript.md.
     loaded = view_helpers["withoutACompositor"]
     # The startup script keeps none of the helpers, or the move saved nothing.
-    assert loaded["helpersBefore"] == "0 of 9"
-    assert loaded["helpersAfter"] == "9 of 9"
+    assert loaded["helpersBefore"] == "0 of 15"
+    assert loaded["helpersAfter"] == "15 of 15"
     # The plugin's stylesheet and module are on the wire beside the helpers, not a
     # round trip after them, and none of its code has run while they are.
     assert loaded["requestedTogether"] == [STYLESHEET, MODULE_PRELOAD, VIEW_HELPERS]
@@ -307,3 +307,30 @@ def test_sdk_exports_shared_metric_emphasis_classes() -> None:
     assert "sizeClass: sizeClass" in src
     assert "MetabrowserFormatters.countClass" in src
     assert "MetabrowserFormatters.sizeClass" in src
+
+
+def test_core_source_header_waits_for_both_assets_and_retries(view_helpers: dict[str, Any]) -> None:
+    header = view_helpers["sourceHeaderReadiness"]
+    assert header == {
+        "folder": {"requested": [], "loading": "resolved"},
+        "requestedTogether": ["source-ref-selector", "sdk-views"],
+        "afterSelector": {"loading": "pending", "mounted": []},
+        "loaded": {"loading": "resolved", "mounted": ["source header"]},
+        "afterFailure": {"loading": "rejected: helpers unavailable", "mounted": []},
+        "retry": {"loading": "resolved", "mounted": ["source header"]},
+    }
+
+
+def test_external_link_destination_session() -> None:
+    result = subprocess.run(
+        [require_node(), str(TESTS / "dom" / "external-links-session.js")],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    observed = json.loads(result.stdout)
+    assert observed["providerCalls"] == 0
+    assert observed["knownStates"] == ["open", "draft", "closed", "merged"]
+    assert len(observed["sanitizedConversation"]) == 6

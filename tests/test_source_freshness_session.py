@@ -48,7 +48,7 @@ from metabrowser.cache.records import (
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import LineSelection, RepositorySelection
 from metabrowser.cli.selection import pending_selection_opener
-from metabrowser.mirror_refresh import serve_mirror
+from metabrowser.mirror_refresh import MAX_PULL_JOBS, mirror_session, serve_mirror
 from metabrowser.source import reset_source_session
 from tests.golden_harness import (
     JSON_BODY,
@@ -170,12 +170,15 @@ class _Beside:
     it, is recorded without a race.
     """
 
-    key = "recording:beside"
-
-    def __init__(self) -> None:
+    def __init__(
+        self, key: str = "recording:beside", *, released: threading.Event | None = None
+    ) -> None:
+        self.key = key
         self.stale = False
-        self._released = threading.Event()
-        self._released.set()
+        if released is None:
+            released = threading.Event()
+            released.set()
+        self._released = released
 
     def hold(self) -> None:
         self._released.clear()
@@ -189,6 +192,31 @@ class _Beside:
     async def refresh(self) -> None:
         await asyncio.to_thread(self._released.wait)
         self.stale = False
+
+
+class _BesideSet:
+    """The pull requests a server serves here, as a provider's set hands them over: 7's
+    data is *beside*, and every other number's is a stand-in of its own whose refresh is
+    held until :meth:`release`, so a queue of them waits while the server is asked."""
+
+    def __init__(self, beside: _Beside) -> None:
+        self.beside = beside
+        self.others: dict[int, _Beside] = {}
+        self._released = threading.Event()
+
+    def key(self, number: int) -> str:
+        return self.beside.key if number == 7 else f"recording:pull/{number}"
+
+    async def companion(self, number: int) -> _Beside:
+        if number == 7:
+            return self.beside
+        return self.others.setdefault(number, _Beside(self.key(number), released=self._released))
+
+    async def attend(self, number: int) -> _Beside:
+        return await self.companion(number)
+
+    def release(self) -> None:
+        self._released.set()
 
 
 def _commit_fetch(client: TestClient, *, retry: bool = False) -> Any:
@@ -315,7 +343,13 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         # Served as a server serves it: there a refresh fetches only what is stale, and
         # a commit's address is opened nowhere else.
         beside = _Beside()
-        serve_mirror(StoreMirror.from_published(published), serving=True, companion=beside)
+        pulls = _BesideSet(beside)
+        serve_mirror(
+            StoreMirror.from_published(published),
+            serving=True,
+            pull_request=7,
+            pull_requests=pulls,
+        )
         with TestClient(server.app) as client:
             # A fetch that just succeeded, so the page opens inside the window; the
             # origin gains the commit only after it.
@@ -361,6 +395,35 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
             }
             still = client.get(f"/api/git/commit/{_ABSENT_COMMIT}")
             recorded["commit_absent_after"] = {"oid": _ABSENT_COMMIT, **answer(still)}
+            # A full queue: other pull requests a reader asked for wait, held, with the
+            # attended 7 one over, and then the reader attends 20, whose record is stale
+            # and finds no room. The mirror was fetched just now, so a page's own refresh
+            # would refresh only 20's record, and the server refuses it.
+            session = mirror_session(server.app)
+            assert session is not None and client.portal is not None
+            beside.hold()
+            for number in (*range(100, 100 + MAX_PULL_JOBS), 7):
+                assert client.portal.call(session.request_pull_refresh, number) == "started"
+            client.portal.call(session.attend, 20)
+            pulls.others[20].stale = True
+            recorded["queue_full_page"] = client.get("/api/source/status").json()
+            recorded["queue_full_refresh"] = answer(
+                client.post("/api/source/refresh", json={}, headers=JSON_BODY)
+            )
+            # A reader's retry for a commit fetches the mirror, which waits its turn behind
+            # the queue, and says the pull request's refresh, which alone brings a newer
+            # head of it, was refused.
+            recorded["commit_unqueued_started"] = answer(_commit_fetch(client, retry=True))
+            beside.release()
+            pulls.release()
+            recorded["commit_unqueued_fetched"] = _settle(client)
+            deadline = time.monotonic() + 30
+            queued = (*range(100, 100 + MAX_PULL_JOBS), 7)
+            while any(session.pull_refreshing(number) for number in queued):
+                assert time.monotonic() < deadline, "the queue did not drain"
+                time.sleep(0.02)
+            still = client.get(f"/api/git/commit/{_ABSENT_COMMIT}")
+            recorded["commit_unqueued_after"] = {"oid": _ABSENT_COMMIT, **answer(still)}
         # A mirror whose last refresh found the repository gone or private, inside the
         # window: the row says so in the words the command line uses.
         _write_state(
@@ -436,6 +499,26 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["commit_stale_unfetched"]["last_outcome"]["outcome"] == "origin_unavailable"
     shown = recorded["origin_not_shown"]
     assert (shown["stale"], shown["last_outcome"]["outcome"]) == (False, "not_found_or_private")
+    # A full queue refuses a refresh that would refresh only the attended pull request.
+    full = recorded["queue_full_page"]
+    assert (full["stale"], full["refreshing"], full["pull_request"]) == (True, False, 20)
+    refused = recorded["queue_full_refresh"]
+    assert (refused["status"], refused["body"]["code"]) == (429, "too_many")
+    assert refused["body"]["status"] == full, "a refused refresh starts nothing"
+    # A commit's fetch then fetches the mirror and says the pull request's was refused.
+    unqueued = recorded["commit_unqueued_started"]
+    assert unqueued["status"] == 202
+    assert (unqueued["body"]["refresh"], unqueued["body"]["pull_refresh"]) == (
+        "started",
+        "too_many",
+    )
+    assert unqueued["body"]["status"]["refreshing"] is True
+    fetched = recorded["commit_unqueued_fetched"]
+    assert (fetched["refreshing"], fetched["last_outcome"]["outcome"]) == (False, "succeeded")
+    assert recorded["commit_unqueued_after"]["body"]["code"] == "commit_not_found"
+    # The other answers of a commit's fetch say how the pull request's refresh was asked.
+    assert recorded["commit_retry_started"]["body"]["pull_refresh"] == "joined"
+    assert recorded["commit_fresh"]["body"]["pull_refresh"] is None
     assert recorded["folder"]["pin"] is None
     check_recording(RECORDING, recorded, transcript=TRANSCRIPT)
 
@@ -511,5 +594,19 @@ def test_the_session_runs_on_the_recording() -> None:
     stopped = by_name["the server stopped answering while the fetch ran"]
     assert stopped["timer"] == "slow" and stopped["commit"]["state"] == "fetch_failed"
     assert "The server did not answer." in stopped["commit"]["detail"]
+    # A fetch that ran while a full queue refused the pull request's refresh does not let
+    # the view say the origin lacks the commit.
+    unqueued = by_name["the queue had no room for the pull request's refresh"]["commit"]
+    assert unqueued["state"] == "fetch_failed" and unqueued["offer"] == "[Retry]"
+    assert "was not queued" in unqueued["detail"]
+    assert "no branch or tag there reaches it" not in unqueued["detail"]
+    # A refusal of the page's own refresh says nothing; the reader's press says why.
+    own = by_name["a page's own refresh with no room in the queue says nothing"]
+    assert own["requests"] == ["GET /api/source/status", "POST /api/source/refresh {}"]
+    assert (own["paint"]["tone"], own["paint"]["error"]) == ("stale", None)
+    pressed = by_name["a press with no room in the queue says why"]
+    assert pressed["requests"] == ["POST /api/source/refresh {}"]
+    refusal = recording["queue_full_refresh"]["body"]["error"]
+    assert pressed["paint"]["error"] == f"Refresh refused: {refusal}"
     shown = by_name["the origin no longer shows the repository"]["paint"]["detail"]
     assert shown.startswith("The repository was not found, or it is private and could not be read.")

@@ -155,13 +155,14 @@ def untrusted_shell_csp(nonce: str, origin: str) -> str:
     application's own static paths on *origin* -- ``/static/`` and ``/plugin-static/``,
     never ``/raw``, where the browsed repository's own files are -- and the shell's
     inline scripts only by *nonce*; no inline handler runs. Stylesheets come from those
-    paths and ``/kpress-static/``; the Markdown worker from ``/plugin-static/``. Images,
-    fonts, and requests stay on this origin (images include ``data:`` ones the
-    stylesheet draws and the repository's own through ``/raw``). The page frames nothing
+    paths and ``/kpress-static/``; the Markdown worker from ``/plugin-static/``. Fonts
+    and requests stay on this origin. Images also admit ``data:`` ones the stylesheet
+    draws and GitHub's exact avatar host for application-owned author portraits;
+    document images remain restricted by the markup allowlist. The page frames nothing
     -- the untrusted profile removes the HTML preview, its only frame -- is framed by
     nothing, and has no plugins, ``<base>``, or form submission. Inline ``style``
     attributes stay allowed because the application writes them; an outside ``url()``
-    inside one is still an image the image rule refuses.
+    inside one is still limited to those image origins.
     """
 
     static = f"{origin}/static/"
@@ -173,7 +174,7 @@ def untrusted_shell_csp(nonce: str, origin: str) -> str:
             f"script-src 'nonce-{nonce}' {static} {plugins}",
             f"style-src {static} {plugins} {kpress}",
             "style-src-attr 'unsafe-inline'",
-            "img-src 'self' data:",
+            "img-src 'self' data: https://avatars.githubusercontent.com",
             "font-src 'self'",
             "connect-src 'self'",
             f"worker-src {plugins}",

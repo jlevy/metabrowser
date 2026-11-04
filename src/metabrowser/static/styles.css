@@ -1062,6 +1062,10 @@
   /* Ref badges, and the lane color for the branch HEAD is on. Each is
      text on the chip ground below, so all three sit at the same
      lightness and differ by hue: local, remote, tag. */
+  --git-status-added: oklch(48% 0.09 149.18);
+  --git-status-deleted: oklch(50% 0.12 27.2);
+  --git-status-modified: oklch(50% 0.1 85);
+  --git-status-renamed: var(--git-ref-local);
   --git-ref-local: oklch(0.5 0.1 259.52);
   --git-ref-remote: oklch(0.5 0.1 301.25);
   --git-ref-tag: oklch(0.5 0.14 71.1);
@@ -1191,6 +1195,10 @@
      stay the same three colors. `--git-ref-local` is overridden here
      too: it used to inherit a themed token, and a literal light value
      would be unreadable on this background. */
+  --git-status-added: oklch(78% 0.09 149.18);
+  --git-status-deleted: oklch(78% 0.12 27.2);
+  --git-status-modified: oklch(78% 0.1 85);
+  --git-status-renamed: var(--git-ref-local);
   --git-ref-local: oklch(0.74 0.1 259.52);
   --git-ref-remote: oklch(0.74 0.1 301.25);
   --git-ref-tag: oklch(0.76 0.14 71.1);
@@ -4833,6 +4841,26 @@ pre.code-block.metabrowser-source-lines > code {
   animation: tally-pending-pulse 1.6s ease-in-out infinite;
 }
 
+/* A cold pull-request route has a known text layout before plugin styles load. Match
+   the plugin's sans reading column using the same measure and host inset tokens. */
+.pull-request-placeholder {
+  width: 100%;
+  max-width: calc(
+    var(--document-body-font-size) *
+    var(--doc-max-chars) *
+    var(--sans-char-advance) +
+    2 *
+    var(--pane-header-padding-x) +
+    2 *
+    var(--content-padding-x)
+  );
+  margin-inline: auto;
+  padding: var(--content-padding-y) var(--content-padding-x);
+}
+.pull-request-placeholder > .recent-loading {
+  margin: 0;
+}
+
 .recent-loading {
   height: calc(var(--ui-row-height) * 6);
   margin: 4px 12px;
@@ -5757,13 +5785,12 @@ pre.code-block.metabrowser-source-lines > code {
 .git-commit-file-status-added {
   color: var(--status-success);
 }
-
 .git-commit-file-status-deleted {
   color: var(--status-error-strong);
 }
 
 .git-commit-summary .git-ref {
-  font-size: var(--body-font-size);
+  font-size: var(--ui-small-font-size);
   line-height: 20px;
 }
 
@@ -5886,14 +5913,6 @@ pre.code-block.metabrowser-source-lines > code {
   font-weight: var(--weight-bold);
 }
 
-.git-file-added .git-file-status {
-  color: var(--status-success);
-}
-
-.git-file-deleted .git-file-status {
-  color: var(--status-error-strong);
-}
-
 .git-file-path {
   flex-grow: 1;
   min-width: 0;
@@ -5947,4 +5966,115 @@ pre.code-block.metabrowser-source-lines > code {
   :root:not([data-theme="light"]) .file-identity-icon.file-identity-color {
     color: var(--mb-file-color-dark);
   }
+}
+
+/* A change letter has one semantic ink across Git, diffs and pull request trees. */
+.file-change-status[data-file-status] {
+  color: var(--muted);
+}
+.file-change-status:is([data-file-status="added"], [data-file-status="copied"]) {
+  color: var(--git-status-added);
+}
+.file-change-status:is([data-file-status="deleted"], [data-file-status="removed"]) {
+  color: var(--git-status-deleted);
+}
+.file-change-status:is(
+  [data-file-status="modified"],
+  [data-file-status="typechanged"],
+  [data-file-status="type_changed"],
+  [data-file-status="changed"]
+) {
+  color: var(--git-status-modified);
+}
+.file-change-status[data-file-status="renamed"] {
+  color: var(--git-status-renamed);
+}
+.file-change-status[data-file-status="unmerged"] {
+  color: var(--git-status-deleted);
+}
+
+/* Copy controls reserve their slot, so revealing one never changes a chip's size. */
+.git-ref-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-ref-copyable {
+  position: relative;
+  padding-right: 19px;
+}
+.git-ref-copy {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  min-width: 0;
+  padding: 1px;
+  opacity: 0;
+  color: inherit;
+}
+.git-ref-copy > svg {
+  width: 12px;
+  height: 12px;
+}
+.git-ref:is(:hover, :focus-within) > .git-ref-copy,
+.git-ref-copy-layer > .git-ref-copy {
+  opacity: 1;
+}
+.git-ref-copy:focus-visible {
+  outline: 1px solid var(--link);
+}
+.git-ref-copy-host {
+  position: relative;
+}
+.git-ref-copy-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.git-ref-copy-layer[hidden] {
+  display: none;
+}
+.git-ref-copy-layer > .git-ref-copy {
+  transform: none;
+  right: auto;
+  pointer-events: auto;
+  color: var(--git-ref-copy-ink);
+}
+.git-graph-item {
+  height: 22px;
+}
+
+.git-ref-copy[hidden] {
+  display: none;
+}
+
+.source-ref-selector .git-ref {
+  font-size: var(--ui-small-font-size);
+}
+
+/* The icon primitive gives hover/focus a neutral plate; use readable text ink on it. */
+.git-ref-copy:is(:hover, :focus-visible) {
+  color: var(--text);
+}
+
+/* Destination marks never make a long link an unbreakable inline-flex box. */
+.external-link-icon {
+  display: inline-flex;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+  margin-inline-start: 0.25em;
+  vertical-align: -0.12em;
+}
+.external-link-icon > svg,
+.external-link-icon > .github-pull-state-icon,
+.external-link-icon > .github-pull-state-icon > svg {
+  width: 100%;
+  height: 100%;
+}
+.kpress .external-link-icon {
+  width: 0.85em;
+  height: 0.85em;
 }

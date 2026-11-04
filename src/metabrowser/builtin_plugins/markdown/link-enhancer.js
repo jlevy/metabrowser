@@ -120,8 +120,10 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
             }
             internalTargets.set(anchor, target);
           }
+          mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor));
         } else {
           disableTarget(anchor, "href", resolved.status, resolved.reason);
+          mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor));
         }
       },
     );
@@ -154,6 +156,7 @@ export function enhanceRenderedLinks(container, sourcePath, mb, options = {}) {
       anchor.removeAttribute("data-metabrowser-link-adapter");
     }
     internalTargets.set(anchor, target);
+    mb.decorateExternalLink(/** @type {HTMLElement} */ (anchor));
   }
 
   for (const descriptor of RESOURCE_ATTRIBUTES) {

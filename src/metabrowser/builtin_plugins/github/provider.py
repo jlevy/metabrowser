@@ -1,5 +1,5 @@
 """The GitHub repository provider: reducer, ``gh`` credential helper, size check, context,
-the head a pull-request URL pins, and the pull request a server serves.
+the head a pull-request URL pins, and the pull requests a server serves.
 
 Core reaches this class only through
 :class:`~metabrowser.cache.providers.RepositoryProvider`.
@@ -7,14 +7,13 @@ Core reaches this class only through
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 from typing import TYPE_CHECKING, Final
 
 from metabrowser.builtin_plugins.github.gh import GhError, gh_executable, run_gh
 from metabrowser.builtin_plugins.github.pulls import PullDataError, open_pull_request
-from metabrowser.builtin_plugins.github.served_pull import served_pull
+from metabrowser.builtin_plugins.github.served_pull import ServedPulls
 from metabrowser.builtin_plugins.github.urls import (
     CANONICAL_HOST,
     GithubUrlReducer,
@@ -30,7 +29,7 @@ if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
     from metabrowser.cache.providers import PullRequestFetch, PullRequestPin
     from metabrowser.cache.urls import GitSource, ProviderUrlReducer
-    from metabrowser.mirror_refresh import CompanionRefresh
+    from metabrowser.mirror_refresh import PullRequestSet
 
 log = logging.getLogger(__name__)
 
@@ -213,12 +212,10 @@ class GithubProvider:
                 exc.state, _unavailable(published, number, exc)
             ) from exc
 
-    async def served_pull_request(
-        self, published: PublishedSource, number: int
-    ) -> CompanionRefresh | None:
+    def served_pull_requests(self, published: PublishedSource) -> PullRequestSet | None:
         if parse_repository_url(published.source.normalized) is None:
             return None
-        return await asyncio.to_thread(served_pull, published, number)
+        return ServedPulls(published)
 
     def repository_context(
         self, source_url: str, *, revision: str, branch: str | None

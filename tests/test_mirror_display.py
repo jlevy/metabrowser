@@ -110,6 +110,7 @@ def _mirror(home: Path, address: str = "https://github.com/jlevy/squares") -> St
         store_key=_STORE_KEY,
         store_id=f"sha256:{_STORE_KEY}",
         source=GitSource(transport="https", form="url", normalized=address),
+        slug="squares-0000",
     )
 
 

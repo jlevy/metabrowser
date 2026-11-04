@@ -135,7 +135,7 @@ def _no_gh_path(tmp_path: Path) -> str:
 
 def _check_files_changed(home: Path, number: int, *, merged: bool) -> dict[str, Any]:
     envelope = _envelope(
-        _run(home, f"{REPO_URL}/pull/{number}", "--api", "/api/plugin/github/pull")
+        _run(home, f"{REPO_URL}/pull/{number}", "--api", f"/api/plugin/github/pull?number={number}")
     )
     record = envelope["record"]
     pull = record["pull"]
@@ -168,7 +168,7 @@ def test_live_merged_pull_request_from_a_fork(tmp_path: Path) -> None:
             home,
             f"{REPO_URL}/pull/{MERGED_FROM_FORK}",
             "--api",
-            "/api/plugin/github/pull",
+            f"/api/plugin/github/pull?number={MERGED_FROM_FORK}",
             path=_no_gh_path(tmp_path),
         )
     )
@@ -182,3 +182,104 @@ def test_live_open_pull_request(tmp_path: Path) -> None:
     if not listed:
         pytest.skip(f"{REPOSITORY} has no open pull request today")
     _check_files_changed(tmp_path / "home", listed[0]["number"], merged=False)
+
+
+def _github_pull_counts() -> dict[str, int]:
+    """Exact provider totals without fetching full PR records or catalog rows."""
+
+    owner, name = REPOSITORY.split("/", 1)
+    query = """query($owner:String!,$name:String!) {
+      repository(owner:$owner,name:$name) {
+        all:pullRequests(first:1) { totalCount }
+        open:pullRequests(first:1,states:OPEN) { totalCount }
+        closed:pullRequests(first:1,states:[CLOSED,MERGED]) { totalCount }
+      }
+    }"""
+    response = _gh_json(
+        "graphql", "-f", f"query={query}", "-f", f"owner={owner}", "-f", f"name={name}"
+    )
+    assert not response.get("errors"), response
+    repository = response["data"]["repository"]
+    counts = {state: repository[state]["totalCount"] for state in ("all", "open", "closed")}
+    assert all(type(count) is int and count >= 0 for count in counts.values()), counts
+    return counts
+
+
+def test_live_list_of_pull_requests(tmp_path: Path) -> None:
+    """Bounded cache windows, exact totals, Open default, and offline catalog reads."""
+
+    require_admitted_git()
+    _require_signed_in_gh()
+    home = tmp_path / "home"
+    route = "/api/plugin/github/pulls"
+    window_route = f"{route}?state=all&limit=100"
+    # Resolve the explicit repository URL before observing HTTP-route behavior. Cold
+    # acquisition performs its separate provider repository-size admission check.
+    acquired = _run(home, REPO_URL, "--no-serve")
+    assert acquired.returncode == 0, (acquired.stdout, acquired.stderr)
+    offline = _no_gh_path(tmp_path)
+    called = tmp_path / "no-gh" / "gh.called"
+    # Observe calls as well as refusing them: silently falling back after consulting gh
+    # must not make a cache-only read look correct.
+    (tmp_path / "no-gh" / "gh").write_text(
+        '#!/bin/sh\nprintf "called\\n" >> "$0.called"\nexit 1\n', encoding="utf-8"
+    )
+    absent = _envelope(_run(home, REPO_URL, "--api", route, path=offline))
+    assert (absent["state"], absent["reason"], absent["list"]) == ("absent", "not_cached", "open")
+    assert absent["rows"] == [] and absent["catalog_fetched"] == 0
+    assert absent["total"] is None and absent["repository_total"] is None
+    assert not called.exists(), "an uncached GET consulted gh"
+
+    before = _github_pull_counts()
+    body = tmp_path / "refresh.json"
+    body.write_text('{"state": "all", "target": 500}\n', encoding="utf-8")
+    refreshed = _run(home, REPO_URL, "--api", f"{route}-refresh", "--data", str(body))
+    assert refreshed.returncode == 0, (refreshed.stdout, refreshed.stderr)
+
+    listed = _envelope(_run(home, REPO_URL, "--api", window_route, path=offline))
+    opened = _envelope(_run(home, REPO_URL, "--api", route, path=offline))
+    # A closed window includes merged PRs. An explicit numeric cursor keeps this fork
+    # fixture reachable even after it falls outside the newest100 metadata rows.
+    closed_route = f"{route}?state=closed&after={MERGED_FROM_FORK + 1}&limit=1"
+    closed = _envelope(_run(home, REPO_URL, "--api", closed_route, path=offline))
+    after = _github_pull_counts()
+    assert listed["state"] == "current" and listed["list"] == "all"
+    assert listed["reader"].startswith("gh:")
+    assert listed["complete"] is True and listed["refreshing"] is False
+    assert listed["count_at"] and listed["generation"]
+    assert listed["total"] == listed["repository_total"]
+    assert listed["fetched"] == listed["catalog_fetched"]
+    assert len(listed["rows"]) == min(100, listed["fetched"])
+    assert listed["limit"] == 100
+    assert opened["list"] == "open" and all(row["state"] == "open" for row in opened["rows"])
+    assert closed["list"] == "closed"
+    assert opened["repository_total"] == closed["repository_total"] == listed["repository_total"]
+    assert opened["total"] + closed["total"] == listed["repository_total"]
+    for state, envelope in (("all", listed), ("open", opened), ("closed", closed)):
+        # Public PRs can open or close between commands. Bracket the independent exact
+        # count instead of treating two different provider snapshots as one transaction.
+        assert (
+            min(before[state], after[state])
+            <= envelope["total"]
+            <= max(before[state], after[state])
+        ), (state, before, envelope["total"], after)
+
+    github = _gh_json(
+        f"repos/{REPOSITORY}/pulls?state=all&sort=created&direction=desc&per_page=100"
+    )
+    actual = [row["number"] for row in listed["rows"]]
+    expected = [item["number"] for item in github]
+    assert actual == sorted(set(actual), reverse=True)
+    lower, upper = max(min(actual), min(expected)), min(max(actual), max(expected))
+    shared = [number for number in expected if lower <= number <= upper]
+    assert len(shared) >= min(50, len(expected)), "the live windows moved too far apart to compare"
+    assert [number for number in actual if lower <= number <= upper] == shared
+    assert closed["rows"][0]["number"] == MERGED_FROM_FORK
+    merged = closed["rows"][0]
+    assert merged["merged"] is True and merged["state"] == "closed"
+    assert merged["head_repository"] != REPOSITORY
+
+    again = _envelope(_run(home, REPO_URL, "--api", window_route, path=offline))
+    assert again["rows"] == listed["rows"] and again["generation"] == listed["generation"]
+    assert again["catalog_fetched"] == listed["catalog_fetched"]
+    assert not called.exists(), "a cached catalog GET consulted gh"

@@ -1,0 +1,1460 @@
+## A read creates nothing: no home, no source, and no gh
+# metab checkout --api '/api/plugin/github/pulls?limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=0
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": null,
+  "reader": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "total": null,
+  "repository_total": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
+  "fetched": 0,
+  "complete": false,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+# metab checkout --api '/api/plugin/github/pull?number=10'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull?number=10
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "number": 10,
+  "pin": null,
+  "pin_ref": null,
+  "fetched_at": null,
+  "record_revision": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "comparison_route": null,
+  "record": null
+}
+--- stderr ---
+--- gh ---
+# metab checkout --api '/api/plugin/github/pull-files?number=7'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files?number=7
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "listed_from": null,
+  "fetched_at": null,
+  "generation": null,
+  "reader": null,
+  "head": null,
+  "base": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "fetched": 0,
+  "pages": 0,
+  "last_page": null,
+  "complete": false,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 3000,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+## The list's first refresh publishes the source, with no store
+# metab checkout --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "list": "open",
+    "fetched_at": null,
+    "reader": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "total": null,
+    "repository_total": null,
+    "count_at": null,
+    "catalog_fetched": 0,
+    "generation": null,
+    "fetched": 0,
+    "complete": false,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+after: /api/plugin/github/pulls?state=open&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH>:0",
+  "fetched": 100,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+gh auth status
+gh api graphql catalog state=open cursor=start
+gh api graphql catalog state=all cursor=start
+gh api graphql catalog state=all cursor=all-100
+# metab checkout --api /api/cache/source/github-com--octo--demo--46386669dc01
+exit: 0
+--- stdout ---
+api: /api/cache/source/github-com--octo--demo--46386669dc01
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "source": {
+    "slug": "github-com--octo--demo--46386669dc01",
+    "publication": "unattached",
+    "identity": {
+      "id": "sha256:46386669dc018f7570de90cce6b7e97fcdcf2d10c5a4949e668d38336b0fb12e",
+      "display_url": "https://github.com/octo/demo",
+      "clone_url": "https://github.com/octo/demo",
+      "transport": "https",
+      "created_at": "2026-09-17T12:00:00Z"
+    },
+    "alias": null,
+    "state": null,
+    "problems": [],
+    "store": null
+  }
+}
+--- stderr ---
+--- gh ---
+## A record is read with gh alone, and has no comparison
+# metab checkout --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "pin": null,
+    "pin_ref": null,
+    "fetched_at": null,
+    "record_revision": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "comparison_route": null,
+    "record": null
+  },
+  "status_route": "/api/plugin/github/pull?number=10"
+}
+after: /api/plugin/github/pull?number=10
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 10,
+  "pin": null,
+  "pin_ref": null,
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": null,
+  "record": {
+    "schema_version": 2,
+    "projection_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
+      "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
+      "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
+      "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+    },
+    "pull": {
+      "number": 10,
+      "title": "WIP: draft the next page",
+      "body": "Not ready.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 1,
+      "merge_commit_sha": null,
+      "mergeable": "conflicting",
+      "labels": [],
+      "author": "maintainer",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "c691256511d05858850bc7684ae062fea0d41132",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "wip",
+        "sha": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "repository": "octo/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/10"
+    },
+    "issue_comments": [],
+    "reviews": [],
+    "review_comments": [],
+    "check_runs": [],
+    "status": {
+      "state": "pending",
+      "statuses": []
+    },
+    "comparison": null,
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {
+      "comparison": "no_store"
+    }
+  }
+}
+--- stderr ---
+--- body ---
+{"number": 10, "retry": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/10
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1
+gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
+gh auth status
+# metab checkout --show /pull/10
+exit: 0
+--- stdout ---
+show: /pull/10
+route: /pull/10
+kind: pull-request
+views: pull-request (default)
+model: pull envelope; state=current pull_state=draft fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=0 reviews=0 review_comments=0 check_runs=0 statuses=0 unavailable=comparison tab=conversation
+--- stderr ---
+--- gh ---
+# metab checkout --show /pulls
+exit: 0
+--- stdout ---
+show: /pulls
+route: /pulls
+kind: pull-request-list
+views: pull-request-list (default)
+model: pull-request list envelope; state=current list=open total=100 repository_total=102 catalog_fetched=102 fetched=100 complete=True truncated=False refreshing=False reader=gh:octo-reader fetched_at=2026-09-17T12:00:00Z
+--- stderr ---
+--- gh ---
+# metab checkout --api '/api/plugin/github/pull-markdown?number=10&part=body'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-markdown?number=10&part=body
+status: 200
+{
+  "number": 10,
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+  "part": "body",
+  "html": "\n<div><div><p>Not ready.</p></div></div>",
+  "assets": {
+    "schema_version": "kpress-asset-manifest-v2",
+    "assets": [
+      {
+        "id": "css/style-tokens.css",
+        "kind": "package",
+        "path": "css/style-tokens.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "8aeaaafb77d8ec54",
+        "output_path": "css/style-tokens.css",
+        "public_url": "/kpress-static/v0.3.5/css/style-tokens.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/syntax.css",
+        "kind": "package",
+        "path": "css/syntax.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "807cf5be35b5a8dd",
+        "output_path": "css/syntax.css",
+        "public_url": "/kpress-static/v0.3.5/css/syntax.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/document.css",
+        "kind": "package",
+        "path": "css/document.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "49d55a2dbac06488",
+        "output_path": "css/document.css",
+        "public_url": "/kpress-static/v0.3.5/css/document.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/components.css",
+        "kind": "package",
+        "path": "css/components.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "3899b614d6672436",
+        "output_path": "css/components.css",
+        "public_url": "/kpress-static/v0.3.5/css/components.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      },
+      {
+        "id": "css/print.css",
+        "kind": "package",
+        "path": "css/print.css",
+        "mode": "hosted",
+        "media_type": "text/css",
+        "content_hash": "86c6396bc77060cd",
+        "output_path": "css/print.css",
+        "public_url": "/kpress-static/v0.3.5/css/print.css",
+        "entry_point": true,
+        "loading": "stylesheet"
+      }
+    ]
+  }
+}
+--- stderr ---
+--- gh ---
+# metab checkout --api /api/plugin/github/pull-files-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-files-refresh
+status: 202
+{
+  "refresh": "started",
+  "files": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 7,
+    "listed_from": null,
+    "fetched_at": null,
+    "generation": null,
+    "reader": null,
+    "head": null,
+    "base": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "fetched": 0,
+    "pages": 0,
+    "last_page": null,
+    "complete": false,
+    "capped": false,
+    "truncated": false,
+    "offset": 0,
+    "limit": 0,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pull-files?number=7&limit=0"
+}
+after: /api/plugin/github/pull-files?number=7&limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "listed_from": "github",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
+  "reader": "gh:octo-reader",
+  "head": null,
+  "base": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "fetched": 2,
+  "pages": 1,
+  "last_page": null,
+  "complete": true,
+  "capped": false,
+  "truncated": false,
+  "offset": 0,
+  "limit": 0,
+  "rows": []
+}
+--- stderr ---
+--- body ---
+{"number": 7}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/7/files?per_page=100&page=1
+gh auth status
+## A subdirectory of the checkout, and an SSH remote, name the same repository
+# metab checkout/src --api '/api/plugin/github/pulls?limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH>:0",
+  "fetched": 100,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+# metab ssh-checkout --api '/api/plugin/github/pulls?limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=0
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "list": "open",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "reader": "gh:octo-reader",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": 100,
+  "repository_total": 102,
+  "count_at": "2026-09-17T12:00:00Z",
+  "catalog_fetched": 102,
+  "generation": "<CATALOG_EPOCH>:0",
+  "fetched": 100,
+  "complete": true,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+## On a fork, origin is the fork, and that is the repository listed
+# metab fork-checkout --api '/api/plugin/github/pulls?limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=0
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/someone/demo",
+  "list": "open",
+  "fetched_at": null,
+  "reader": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "total": null,
+  "repository_total": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
+  "fetched": 0,
+  "complete": false,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+# metab fork-checkout --api /api/plugin/github/pulls-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 202
+{
+  "refresh": "started",
+  "pulls": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/someone/demo",
+    "list": "open",
+    "fetched_at": null,
+    "reader": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "total": null,
+    "repository_total": null,
+    "count_at": null,
+    "catalog_fetched": 0,
+    "generation": null,
+    "fetched": 0,
+    "complete": false,
+    "truncated": false,
+    "limit": 0,
+    "next_after": null,
+    "rows": []
+  },
+  "status_route": "/api/plugin/github/pulls?state=open&limit=0"
+}
+after: /api/plugin/github/pulls?state=open&limit=0
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/someone/demo",
+  "list": "open",
+  "fetched_at": null,
+  "reader": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "not_found_or_private",
+    "message": "GitHub has no such pull request, or it is private and the gh account cannot read it",
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "total": null,
+  "repository_total": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
+  "fetched": 0,
+  "complete": false,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+Error: the refresh ended with not_found_or_private
+--- body ---
+{"retry": true}
+--- gh ---
+gh auth status
+gh api graphql catalog state=open cursor=start
+## A remote the plugin's grammar refuses, and one that is not GitHub, list nothing
+# metab odd-checkout --api '/api/plugin/github/pulls?limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=0
+status: 200
+{
+  "state": "absent",
+  "reason": "not_github",
+  "source": null,
+  "list": "open",
+  "fetched_at": null,
+  "reader": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "total": null,
+  "repository_total": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
+  "fetched": 0,
+  "complete": false,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+# metab odd-checkout --api /api/plugin/github/pulls-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 409
+{
+  "error": "this server serves no GitHub repository",
+  "code": "not_github"
+}
+--- stderr ---
+Error: /api/plugin/github/pulls-refresh returned HTTP 409
+--- body ---
+{"retry": true}
+--- gh ---
+# metab elsewhere --api '/api/plugin/github/pulls?limit=0'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?limit=0
+status: 200
+{
+  "state": "absent",
+  "reason": "not_github",
+  "source": null,
+  "list": "open",
+  "fetched_at": null,
+  "reader": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "total": null,
+  "repository_total": null,
+  "count_at": null,
+  "catalog_fetched": 0,
+  "generation": null,
+  "fetched": 0,
+  "complete": false,
+  "truncated": false,
+  "limit": 0,
+  "next_after": null,
+  "rows": []
+}
+--- stderr ---
+--- gh ---
+# metab elsewhere --api /api/plugin/github/pulls-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/pulls-refresh
+status: 409
+{
+  "error": "this server serves no GitHub repository",
+  "code": "not_github"
+}
+--- stderr ---
+Error: /api/plugin/github/pulls-refresh returned HTTP 409
+--- body ---
+{"retry": true}
+--- gh ---
+## A mirror opened later attaches its store to the same source, and a record written with no store is stale there whatever its age
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=10'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull?number=10
+status: 200
+{
+  "state": "stale",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 10,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "pin_ref": "refs/remotes/origin/topic",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": null,
+  "record": {
+    "schema_version": 2,
+    "projection_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
+      "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
+      "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
+      "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+    },
+    "pull": {
+      "number": 10,
+      "title": "WIP: draft the next page",
+      "body": "Not ready.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 1,
+      "merge_commit_sha": null,
+      "mergeable": "conflicting",
+      "labels": [],
+      "author": "maintainer",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "c691256511d05858850bc7684ae062fea0d41132",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "wip",
+        "sha": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "repository": "octo/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/10"
+    },
+    "issue_comments": [],
+    "reviews": [],
+    "review_comments": [],
+    "check_runs": [],
+    "status": {
+      "state": "pending",
+      "statuses": []
+    },
+    "comparison": null,
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {
+      "comparison": "no_store"
+    }
+  }
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+--- gh ---
+gh api repos/octo/demo --jq .size
+# metab checkout --api /api/cache/source/github-com--octo--demo--46386669dc01
+exit: 0
+--- stdout ---
+api: /api/cache/source/github-com--octo--demo--46386669dc01
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "source": {
+    "slug": "github-com--octo--demo--46386669dc01",
+    "publication": "published",
+    "identity": {
+      "id": "sha256:46386669dc018f7570de90cce6b7e97fcdcf2d10c5a4949e668d38336b0fb12e",
+      "display_url": "https://github.com/octo/demo",
+      "clone_url": "https://github.com/octo/demo",
+      "transport": "https",
+      "created_at": "2026-09-17T12:00:00Z"
+    },
+    "alias": {
+      "store_id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
+      "generation": 1,
+      "updated_at": "2026-09-17T12:00:00Z"
+    },
+    "state": {
+      "last_opened_at": "2026-09-17T12:00:00Z"
+    },
+    "problems": [],
+    "store": {
+      "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
+      "publication": "published",
+      "mode": "full",
+      "lender": null,
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/topic",
+        "default_revision": "c691256511d05858850bc7684ae062fea0d41132",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        }
+      },
+      "problems": []
+    }
+  }
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "state": "stale",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "pin": "c691256511d05858850bc7684ae062fea0d41132",
+    "pin_ref": "refs/remotes/origin/topic",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": null,
+    "record": {
+      "schema_version": 2,
+      "projection_version": 1,
+      "source": "https://github.com/octo/demo",
+      "number": 10,
+      "fetched_at": "2026-09-17T12:00:00Z",
+      "reader": "gh:octo-reader",
+      "etags": {
+        "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
+        "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
+        "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
+        "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
+        "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
+        "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+      },
+      "pull": {
+        "number": 10,
+        "title": "WIP: draft the next page",
+        "body": "Not ready.",
+        "body_truncated": false,
+        "state": "open",
+        "draft": true,
+        "merged": false,
+        "merged_by": null,
+        "merged_by_avatar_url": null,
+        "commits": 1,
+        "merge_commit_sha": null,
+        "mergeable": "conflicting",
+        "labels": [],
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "created_at": "2026-09-16T10:57:23Z",
+        "updated_at": "2026-09-16T17:39:01Z",
+        "merged_at": null,
+        "closed_at": null,
+        "base": {
+          "ref": "topic",
+          "sha": "c691256511d05858850bc7684ae062fea0d41132",
+          "repository": "octo/demo"
+        },
+        "head": {
+          "ref": "wip",
+          "sha": "7a7d6596e515735d244dc1d942463c95851e139c",
+          "repository": "octo/demo"
+        },
+        "html_url": "https://github.com/octo/demo/pull/10"
+      },
+      "issue_comments": [],
+      "reviews": [],
+      "review_comments": [],
+      "check_runs": [],
+      "status": {
+        "state": "pending",
+        "statuses": []
+      },
+      "comparison": null,
+      "truncated": {
+        "issue_comments": false,
+        "reviews": false,
+        "review_comments": false,
+        "check_runs": false,
+        "statuses": false,
+        "text": false
+      },
+      "unavailable": {
+        "comparison": "no_store"
+      }
+    }
+  },
+  "status_route": "/api/plugin/github/pull?number=10"
+}
+after: /api/plugin/github/pull?number=10
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 10,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "pin_ref": "refs/remotes/origin/topic",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
+  "record": {
+    "schema_version": 2,
+    "projection_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
+      "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
+      "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
+      "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+    },
+    "pull": {
+      "number": 10,
+      "title": "WIP: draft the next page",
+      "body": "Not ready.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 1,
+      "merge_commit_sha": null,
+      "mergeable": "conflicting",
+      "labels": [],
+      "author": "maintainer",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "c691256511d05858850bc7684ae062fea0d41132",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "wip",
+        "sha": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "repository": "octo/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/10"
+    },
+    "issue_comments": [],
+    "reviews": [],
+    "review_comments": [],
+    "check_runs": [],
+    "status": {
+      "state": "pending",
+      "statuses": []
+    },
+    "comparison": {
+      "base": "c691256511d05858850bc7684ae062fea0d41132",
+      "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "base_from": "base_branch"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {}
+  }
+}
+--- stderr ---
+--- body ---
+{"number": 10}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/10 (If-None-Match)
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/issues/10/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1 (If-None-Match)
+gh auth status
+## The checkout's server offers no Files changed for that record: it has no store
+# metab checkout --api '/api/plugin/github/pull?number=10'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull?number=10
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 10,
+  "pin": null,
+  "pin_ref": null,
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": null,
+  "record": {
+    "schema_version": 2,
+    "projection_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
+      "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
+      "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
+      "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+    },
+    "pull": {
+      "number": 10,
+      "title": "WIP: draft the next page",
+      "body": "Not ready.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 1,
+      "merge_commit_sha": null,
+      "mergeable": "conflicting",
+      "labels": [],
+      "author": "maintainer",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "c691256511d05858850bc7684ae062fea0d41132",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "wip",
+        "sha": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "repository": "octo/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/10"
+    },
+    "issue_comments": [],
+    "reviews": [],
+    "review_comments": [],
+    "check_runs": [],
+    "status": {
+      "state": "pending",
+      "statuses": []
+    },
+    "comparison": null,
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {
+      "comparison": "no_store"
+    }
+  }
+}
+--- stderr ---
+--- gh ---
+## An explicit comparison Fetch attaches the cached store without changing the folder
+# metab checkout --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "pin": null,
+    "pin_ref": null,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": null,
+    "record": {
+      "schema_version": 2,
+      "projection_version": 1,
+      "source": "https://github.com/octo/demo",
+      "number": 10,
+      "fetched_at": "2026-09-17T12:00:00Z",
+      "reader": "gh:octo-reader",
+      "etags": {
+        "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
+        "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
+        "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
+        "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
+        "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
+        "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+      },
+      "pull": {
+        "number": 10,
+        "title": "WIP: draft the next page",
+        "body": "Not ready.",
+        "body_truncated": false,
+        "state": "open",
+        "draft": true,
+        "merged": false,
+        "merged_by": null,
+        "merged_by_avatar_url": null,
+        "commits": 1,
+        "merge_commit_sha": null,
+        "mergeable": "conflicting",
+        "labels": [],
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "created_at": "2026-09-16T10:57:23Z",
+        "updated_at": "2026-09-16T17:39:01Z",
+        "merged_at": null,
+        "closed_at": null,
+        "base": {
+          "ref": "topic",
+          "sha": "c691256511d05858850bc7684ae062fea0d41132",
+          "repository": "octo/demo"
+        },
+        "head": {
+          "ref": "wip",
+          "sha": "7a7d6596e515735d244dc1d942463c95851e139c",
+          "repository": "octo/demo"
+        },
+        "html_url": "https://github.com/octo/demo/pull/10"
+      },
+      "issue_comments": [],
+      "reviews": [],
+      "review_comments": [],
+      "check_runs": [],
+      "status": {
+        "state": "pending",
+        "statuses": []
+      },
+      "comparison": null,
+      "truncated": {
+        "issue_comments": false,
+        "reviews": false,
+        "review_comments": false,
+        "check_runs": false,
+        "statuses": false,
+        "text": false
+      },
+      "unavailable": {
+        "comparison": "no_store"
+      }
+    }
+  },
+  "status_route": "/api/plugin/github/pull?number=10"
+}
+after: /api/plugin/github/pull?number=10
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 10,
+  "pin": null,
+  "pin_ref": null,
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "9fc6a5900d8b512290cf866ef06ce3aa4281846caf360ee5ee4cce0ed3e06d4c",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
+  "record": {
+    "schema_version": 2,
+    "projection_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
+      "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
+      "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
+      "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
+      "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+    },
+    "pull": {
+      "number": 10,
+      "title": "WIP: draft the next page",
+      "body": "Not ready.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": true,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 1,
+      "merge_commit_sha": null,
+      "mergeable": "conflicting",
+      "labels": [],
+      "author": "maintainer",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "c691256511d05858850bc7684ae062fea0d41132",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "wip",
+        "sha": "7a7d6596e515735d244dc1d942463c95851e139c",
+        "repository": "octo/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/10"
+    },
+    "issue_comments": [],
+    "reviews": [],
+    "review_comments": [],
+    "check_runs": [],
+    "status": {
+      "state": "pending",
+      "statuses": []
+    },
+    "comparison": {
+      "base": "c691256511d05858850bc7684ae062fea0d41132",
+      "head": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "base_commit": "c691256511d05858850bc7684ae062fea0d41132",
+      "base_from": "base_branch"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {}
+  }
+}
+--- stderr ---
+--- body ---
+{"number": 10, "retry": true, "comparison": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/10 (If-None-Match)
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/issues/10/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1 (If-None-Match)
+gh auth status
+# metab checkout --api '/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>
+status: 200
+{
+  "schema": "file-diff-v1",
+  "schema_version": 1,
+  "resolved": {
+    "comparison_id": "git:6b7a4cb6dc7432f7",
+    "source": {
+      "name": "git"
+    },
+    "kind": "content",
+    "base_policy": "merge_base",
+    "left": {
+      "kind": "commit",
+      "id": "c691256511d05858850bc7684ae062fea0d41132",
+      "symbolic": "c691256511d05858850bc7684ae062fea0d41132"
+    },
+    "right": {
+      "kind": "commit",
+      "id": "7a7d6596e515735d244dc1d942463c95851e139c",
+      "symbolic": "7a7d6596e515735d244dc1d942463c95851e139c"
+    },
+    "options": {
+      "context": 3,
+      "rename_detection": true,
+      "rename_similarity": 50
+    },
+    "warnings": []
+  },
+  "manifest": {
+    "files": [
+      {
+        "id": "f1",
+        "kind": "added",
+        "new": {
+          "path": "docs/draft.md",
+          "entry_type": "file",
+          "mode": "100644",
+          "content": {
+            "kind": "git_object",
+            "oid": "da5fc9b8d4dda2a91060b97e5e3467b4d39849bd"
+          }
+        },
+        "binary": false,
+        "availability": "ready",
+        "additions": 1,
+        "deletions": 0
+      }
+    ],
+    "totals": {
+      "files": 1,
+      "additions": 1,
+      "deletions": 0,
+      "exact": true
+    },
+    "truncated": false
+  },
+  "patches": {
+    "f1": {
+      "file_id": "f1",
+      "hunks": [
+        {
+          "old_start": 0,
+          "old_count": 0,
+          "new_start": 1,
+          "new_count": 1,
+          "lines": [
+            {
+              "op": "add",
+              "text": "# Draft",
+              "no_newline": false
+            }
+          ]
+        }
+      ],
+      "truncated": false
+    }
+  }
+}
+--- stderr ---
+--- gh ---

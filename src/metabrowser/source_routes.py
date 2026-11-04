@@ -362,7 +362,9 @@ async def api_source_refresh(request: Request) -> JSONResponse:
 
     Returns ``202`` as soon as the job is scheduled; the response never waits on the
     network. ``refresh`` says whether this request started the job or joined one that
-    was running, and ``status`` is the envelope as of that moment.
+    was running, and ``status`` is the envelope as of that moment. When only the attended
+    pull request is stale and the queue of pull requests has no room for its job, nothing
+    starts and the answer is ``429`` with ``too_many``, as the pull-request route says.
 
     ``{"for": "commit"}`` asks for the fetch a commit the mirror lacks waits for
     (:meth:`~metabrowser.mirror_refresh.MirrorSession.request_commit_fetch`): the
@@ -371,7 +373,10 @@ async def api_source_refresh(request: Request) -> JSONResponse:
     older than the freshness window; inside the window ``refresh`` is ``"fresh"`` and
     no mirror fetch starts, and the answer is ``200`` unless a refresh of the data
     beside the mirror is running. ``"retry": true`` is a reader's own click and always
-    fetches.
+    fetches. That answer also carries ``pull_refresh``: how the attended pull request's
+    refresh was answered (``started``, ``joined``, or ``too_many`` when the queue had no
+    room for it), or null when none was asked for, so a page can tell a fetch that ran
+    from one a full queue refused.
     """
 
     try:
@@ -381,12 +386,30 @@ async def api_source_refresh(request: Request) -> JSONResponse:
         return _error(str(exc), "invalid_request", exc.status_code)
     except UnsupportedSourceCapabilityError as exc:
         return JSONResponse(unsupported_source_payload(exc), status_code=409)
-    started = mirror.request_commit_fetch(retry=retry) if for_commit else mirror.request_refresh()
+    pulled: dict[str, Any] = {}
+    if for_commit:
+        fetch = mirror.request_commit_fetch(retry=retry)
+        started: str = fetch.refresh
+        pulled["pull_refresh"] = fetch.pull_refresh
+    else:
+        started = mirror.request_refresh()
     status = source_status(mirror)
+    if started == "too_many":
+        # Only the attended pull request was stale, and the queue of pull requests is full.
+        return JSONResponse(
+            {
+                "refresh": started,
+                "status": dict(status),
+                "error": "too many pull requests are being fetched; try again when one has finished",
+                "code": "too_many",
+            },
+            status_code=429,
+        )
     # Nothing scheduled and nothing running is an answer, not accepted work.
     accepted = started != "fresh" or status["refreshing"]
     return JSONResponse(
-        {"refresh": started, "status": dict(status)}, status_code=202 if accepted else 200
+        {"refresh": started, **pulled, "status": dict(status)},
+        status_code=202 if accepted else 200,
     )
 
 

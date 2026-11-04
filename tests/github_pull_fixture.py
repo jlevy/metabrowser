@@ -13,12 +13,24 @@ so every commit ID is the same on every machine. It stands in for
 
 ``scenario`` answers every ``gh api`` read of those pull requests from
 ``tests/fixtures/github-pull/responses.json``, scrubbed real responses, and ``gh auth
-status`` for one signed-in account. ``install_fake_gh`` writes a ``gh`` that replays a
-scenario and logs each call; it is a Python script run by this interpreter.
+status`` for one signed-in account. GraphQL catalog pages contain 102 rows, of which
+100 are open and two are closed. Fixed REST list entries remain available for generic
+transport tests:
+
+| List | Pages |
+| --- | --- |
+| ``all`` | one full page, 106 down to 7, with a next link; a second page, 6 and 5 |
+| ``open`` | 10 and 7 |
+| ``closed`` | 9 and 8 |
+
+Pull requests other than those four appear in a list and have no record.
+``install_fake_gh`` writes a ``gh`` that replays a scenario and logs each call; it is a
+Python script run by this interpreter.
 
 Run as a script, it builds ``<directory>/home``, an application home holding the
 mirror and the records of all four pull requests, fetched through the production CLI
-path with the fake ``gh`` and a fixed clock, and ``<directory>/root``::
+path with the fake ``gh`` and a fixed clock, a complete metadata catalog last read
+by another account, and ``<directory>/root``::
 
     github_pull_fixture.py <directory>
 
@@ -30,22 +42,30 @@ the QA runbook's pull-request page walkthrough does::
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import copy
+import functools
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from collections.abc import Generator, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
+
+if TYPE_CHECKING:
+    from metabrowser.builtin_plugins.github.pull_catalog import CatalogState
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 
 CANONICAL: Final = "https://github.com/octo/demo"
 READER: Final = "octo-reader"
+ANOTHER_READER: Final = "someone-else"
 FETCHED_AT: Final = datetime(2026, 9, 17, 12, 0, tzinfo=UTC)
 RESPONSES: Final = Path(__file__).parent / "fixtures" / "github-pull" / "responses.json"
 DEFAULT_BRANCH: Final = "topic"
@@ -84,6 +104,12 @@ if log:
         handle.write(json.dumps({{"args": args, "stdin_null": stdin_null,
                                  "env": {{name: os.environ.get(name) for name in watched}}}}) + "\\n")
 
+if args == ["stack", "--version"]:
+    version = scenario.get("stack_version")
+    if version:
+        sys.stdout.write("gh stack version " + version + "\\n")
+    sys.exit(0 if version else 1)
+
 if args[:2] == ["auth", "status"]:
     answer = pick("auth", scenario["auth"])
     sys.stdout.write(answer.get("stdout", ""))
@@ -95,9 +121,14 @@ if args[:1] == ["api"]:
     if failure:
         sys.stderr.write(failure["stderr"])
         sys.exit(failure.get("exit", 1))
-    path, match, index = None, None, 1
+    path, match, index, fields = None, None, 1, {{}}
     while index < len(args):
         arg = args[index]
+        if arg in ("-f", "-F"):
+            key, _, value = args[index + 1].partition("=")
+            fields[key] = value
+            index += 2
+            continue
         if arg in ("--hostname", "--method", "-H", "--jq"):
             if arg == "-H" and args[index + 1].startswith("If-None-Match: "):
                 match = args[index + 1].split(": ", 1)[1]
@@ -106,6 +137,12 @@ if args[:1] == ["api"]:
         if not arg.startswith("-"):
             path = arg
         index += 1
+    if path == "graphql":
+        tail = fields.get("query", "").split("page:pullRequests", 1)[-1]
+        state = "updated" if "field:UPDATED_AT" in tail else "closed" if "states:[CLOSED,MERGED]" in tail else "open" if "states:OPEN" in tail else "all"
+        path = "graphql:" + state + ":" + fields.get("cursor", "start")
+        if fields.get("owner", "").casefold() != "octo" or fields.get("name", "").casefold() != "demo":
+            path = "graphql:unavailable-repository"
     entry = pick(path, scenario["api"].get(path, {{"status": 404, "body": {{"message": "Not Found"}}}}))
     status = entry["status"]
     headers = dict(entry.get("headers", {{}}))
@@ -261,6 +298,28 @@ def copy_origin(built: Origin, directory: Path) -> Origin:
     path = directory / built.path.name
     shutil.copytree(built.path, path)
     return Origin(path, built.commits)
+
+
+def clone_checkout(
+    origin: Origin, path: Path, *, remote: str = CANONICAL + ".git", branch: str = "wip"
+) -> Path:
+    """A checkout of the stand-in origin, as a reader's clone of the repository is.
+
+    Its ``origin`` names *remote*, the GitHub address, while its objects came from the
+    local origin. On ``wip`` its ``HEAD`` is pull request 10's head, and it holds 8's,
+    which ``topic`` merged; it lacks 7's and 9's, which only their pull-request refs reach.
+    """
+
+    env = git_env(path.parent)
+    subprocess.run(
+        ["git", "clone", "-q", "--template=", origin.url, str(path)],
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    for args in (("remote", "set-url", "origin", remote), ("checkout", "-q", branch)):
+        subprocess.run(["git", "-C", str(path), *args], check=True, capture_output=True, env=env)
+    return path
 
 
 def _etag(path: str, body: object) -> str:
@@ -522,6 +581,75 @@ def page(path: str) -> str:
     return f"{path}?per_page=100&page=1"
 
 
+def logged_gh_calls(directory: Path) -> list[str]:
+    """What the fake ``gh`` was asked since the last call, as a transcript lists it."""
+
+    log = directory / "fake-gh-log.jsonl"
+    if not log.exists():
+        return []
+    calls: list[str] = []
+    for line in log.read_text(encoding="utf-8").splitlines():
+        args: list[str] = json.loads(line)["args"]
+        if args == ["stack", "--version"]:
+            calls.append("gh stack --version")
+            continue
+        if args[:2] == ["auth", "status"]:
+            calls.append("gh auth status")
+            continue
+        if "graphql" in args:
+            fields = dict(arg.split("=", 1) for arg in args if "=" in arg)
+            tail = fields.get("query", "").split("page:pullRequests", 1)[-1]
+            state = (
+                "updated"
+                if "field:UPDATED_AT" in tail
+                else "closed"
+                if "states:[CLOSED,MERGED]" in tail
+                else "open"
+                if "states:OPEN" in tail
+                else "all"
+            )
+            calls.append(
+                f"gh api graphql catalog state={state} cursor={fields.get('cursor', 'start')}"
+            )
+            continue
+        path = next(arg for arg in args if arg.startswith("repos/"))
+        if "--jq" in args:
+            calls.append(f"gh api {path} --jq {args[args.index('--jq') + 1]}")
+            continue
+        conditional = any(arg.startswith("If-None-Match: ") for arg in args)
+        calls.append(f"gh api {path}" + (" (If-None-Match)" if conditional else ""))
+    log.unlink()
+    return calls
+
+
+def in_a_stable_order(calls: list[str]) -> list[str]:
+    """The log's calls, with those that run together in one order.
+
+    A refresh reads the pull first, for its head, and then its other parts in flight
+    together, which reach the log in whatever order the processes did. Only those parts
+    are sorted: a list's pages are read one after another, and their order is pinned.
+    """
+
+    ordered: list[str] = []
+    together: list[str] = []
+    for call in calls:
+        if _RECORD_PART.match(call):
+            together.append(call)
+            continue
+        ordered.extend(sorted(together))
+        together = []
+        ordered.append(call)
+    ordered.extend(sorted(together))
+    return ordered
+
+
+# The parts of a record a refresh reads together, after the pull itself.
+_RECORD_PART = re.compile(
+    r"gh api repos/[^/]+/[^/]+/"
+    r"(issues/\d+/comments|pulls/\d+/comments|pulls/\d+/reviews|commits/[0-9a-f]+/(status|check-runs))\?"
+)
+
+
 def api_entries(origin: Origin) -> dict[str, Any]:
     """Every ``gh api`` path of pull requests 7 to 10 and its recorded answer."""
 
@@ -542,6 +670,213 @@ def api_entries(origin: Origin) -> dict[str, Any]:
     return entries
 
 
+def list_page(state: str, number: int = 1) -> str:
+    """The ``gh api`` path of one full-size page of a repository's list."""
+
+    query = f"state={state}&sort=created&direction=desc&per_page=100&page={number}"
+    return f"repos/octo/demo/pulls?{query}"
+
+
+def next_link(path: str, number: int) -> dict[str, str]:
+    """The ``Link`` header of a page GitHub has another page after."""
+
+    return {"Link": f'<https://api.github.com/{path}?page={number + 1}>; rel="next"'}
+
+
+@functools.cache
+def _recorded_list_item() -> dict[str, Any]:
+    return recorded_responses()["list_item"]
+
+
+def list_item(pull: Mapping[str, Any]) -> dict[str, Any]:
+    """*pull* as a list's item carries it: every key of the real item, with its values."""
+
+    item = _recorded_list_item()
+    number = pull["number"]
+    links = {
+        key: value.replace("/7", f"/{number}")
+        for key, value in item.items()
+        if key == "url" or (key.endswith("_url") and key != "review_comment_url")
+    }
+    labels = [{**item["labels"][0], "name": label["name"]} for label in pull["labels"]]
+    copied = (
+        "number",
+        "state",
+        "title",
+        "user",
+        "body",
+        "created_at",
+        "updated_at",
+        "closed_at",
+        "merged_at",
+        "merge_commit_sha",
+        "head",
+        "base",
+        "draft",
+    )
+    return {**item, **links, **{key: pull[key] for key in copied}, "labels": labels}
+
+
+def generated_item(number: int) -> dict[str, Any]:
+    """A pull request that only lists hold, newer the higher its *number*."""
+
+    when = (FETCHED_AT.replace(hour=8) + timedelta(minutes=number)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    side = {"repo": {"full_name": "octo/demo"}}
+    return list_item(
+        {
+            "number": number,
+            "state": "open",
+            "title": f"Work item {number}",
+            "user": {"login": "contributor"},
+            "body": f"The description of work item {number}.",
+            "created_at": when,
+            "updated_at": when,
+            "closed_at": None,
+            "merged_at": None,
+            "merge_commit_sha": None,
+            "head": {"ref": f"work-{number}", "sha": "0" * 40, **side},
+            "base": {"ref": DEFAULT_BRANCH, "sha": "0" * 40, **side},
+            "draft": False,
+            "labels": [],
+        }
+    )
+
+
+def list_entries(origin: Origin) -> dict[str, Any]:
+    """Every ``gh api`` path of the repository's lists and its answer."""
+
+    known = {number: list_item(parts["pull"]) for number, parts in pull_bodies(origin).items()}
+    first_page = [
+        *(generated_item(number) for number in range(106, 10, -1)),
+        *(known[number] for number in (10, 9, 8, 7)),
+    ]
+    pages: list[tuple[str, list[dict[str, Any]], Mapping[str, str] | None]] = [
+        (list_page("all"), first_page, next_link("repos/octo/demo/pulls", 1)),
+        (list_page("all", 2), [generated_item(6), generated_item(5)], None),
+        (list_page("open"), [known[10], known[7]], None),
+        (list_page("closed"), [known[9], known[8]], None),
+    ]
+    return {path: ok(path, body, headers) for path, body, headers in pages}
+
+
+# ── Changed files ───────────────────────────────────────────────
+
+# Pull request 106's files: a chain of single-child folders, ``src/app``, that
+# splits below; a rename inside a folder and one across folders; a deleted file; a binary
+# file, which GitHub counts as no lines; a name with a control character and one with a
+# zero-width space, which the display rule replaces; and enough of one folder's files to
+# fill three pages, the last of them short.
+_TREE_FILES: Final[tuple[tuple[str, str, str | None, int, int], ...]] = (
+    ("README.md", "modified", None, 2, 1),
+    ("assets/logo.png", "modified", None, 0, 0),
+    ("docs/guide.md", "renamed", "docs/old-guide.md", 3, 0),
+    ("docs/removed.md", "removed", None, 0, 12),
+    *(
+        (f"src/app/plugins/github/mod_{index:03d}.py", "modified", None, 4, 2)
+        for index in range(239)
+    ),
+    ("src/app/plugins/github/pull_files.py", "added", None, 120, 0),
+    ("src/app/views/one.py", "modified", None, 1, 1),
+    ("src/app/views/two.py", "added", None, 9, 0),
+    ("tools/new/script.sh", "renamed", "scripts/script.sh", 0, 0),
+    ("weird/bell\u0007name.txt", "added", None, 1, 0),
+    ("weird/zero\u200bwidth.md", "modified", None, 1, 1),
+)
+# The pull request GitHub stops listing at its limit: 3,000 files on 30 full pages.
+CAPPED_PULL: Final = 105
+TREE_PULL: Final = 106
+
+
+def files_page(number: int, page_number: int = 1) -> str:
+    """The ``gh api`` path of one full-size page of a pull request's changed files."""
+
+    return f"repos/octo/demo/pulls/{number}/files?per_page=100&page={page_number}"
+
+
+def files_link(number: int, page_number: int, last: int) -> dict[str, str]:
+    """The ``Link`` header of a page of changed files that has another after it."""
+
+    base = f"https://api.github.com/repositories/1/pulls/{number}/files?per_page=100"
+    return {
+        "Link": f'<{base}&page={page_number + 1}>; rel="next", <{base}&page={last}>; rel="last"'
+    }
+
+
+@functools.cache
+def _recorded_file_item() -> dict[str, Any]:
+    return recorded_responses()["file_item"]
+
+
+def file_item(
+    path: str,
+    status: str = "modified",
+    previous: str | None = None,
+    additions: int = 1,
+    deletions: int = 0,
+) -> dict[str, Any]:
+    """*path* as GitHub's list of changed files carries it: every key of the real item."""
+
+    item = {
+        key: value for key, value in _recorded_file_item().items() if key != "previous_filename"
+    }
+    links = {
+        key: item[key].replace("docs/guide.md", path)
+        for key in ("blob_url", "raw_url", "contents_url")
+    }
+    fields = {"filename": path, "status": status, "additions": additions, "deletions": deletions}
+    renamed = {"previous_filename": previous} if previous is not None else {}
+    return {**item, **links, **fields, "changes": additions + deletions, **renamed}
+
+
+def tree_files() -> list[dict[str, Any]]:
+    """Pull request 106's changed files, in GitHub's order, which is by path."""
+
+    rows = sorted(_TREE_FILES, key=lambda row: row[0])
+    return [
+        file_item(path, status, previous, adds, dels) for path, status, previous, adds, dels in rows
+    ]
+
+
+def file_pages(number: int, items: list[dict[str, Any]]) -> dict[str, Any]:
+    """*items* as GitHub's full-size pages, each with its ``Link``, keyed by ``gh api`` path.
+
+    The last page names no next page, which at 3,000 files is GitHub's own end: the
+    thirtieth page is full and names none, as nodejs/node#65161's did.
+    """
+
+    chunks = [items[start : start + 100] for start in range(0, len(items), 100)] or [[]]
+    last = len(chunks)
+    entries: dict[str, Any] = {}
+    for index, chunk in enumerate(chunks, start=1):
+        path = files_page(number, index)
+        entries[path] = ok(path, chunk, files_link(number, index, last) if index < last else None)
+    return entries
+
+
+def file_entries() -> dict[str, Any]:
+    """Every ``gh api`` path of changed files the stand-in answers."""
+
+    capped = [file_item(f"gen/part{index // 100:02d}/file{index:04d}.txt") for index in range(3000)]
+    return {
+        **file_pages(
+            7,
+            [
+                file_item("docs/new.md", "added", None, 1, 0),
+                file_item("src/app.txt", "modified", None, 1, 0),
+            ],
+        ),
+        **file_pages(TREE_PULL, tree_files()),
+        **file_pages(CAPPED_PULL, capped),
+    }
+
+
+def files_scenario(origin: Origin) -> dict[str, Any]:
+    """:func:`scenario`, answering the changed files too, which only their tests read."""
+
+    answers = scenario(origin)
+    return {**answers, "api": {**answers["api"], **file_entries()}}
+
+
 def account(login: str = READER, *, state: str = "success") -> dict[str, Any]:
     """A ``gh auth status --json hosts`` answer for one active github.com account."""
 
@@ -557,10 +892,129 @@ def account(login: str = READER, *, state: str = "success") -> dict[str, Any]:
     return {"stdout": json.dumps({"hosts": {"github.com": [host]}}) + "\n", "exit": 0}
 
 
+def catalog_entries(
+    items: list[dict[str, Any]], *, reader: str = READER, repository_id: str = "R_demo"
+) -> dict[str, Any]:
+    """Fixed GraphQL catalog pages: graphql:<all|open|closed|updated>:<cursor|start>."""
+    totals = {"all": len(items), "open": sum(item["state"] == "open" for item in items)}
+    totals["closed"] = totals["all"] - totals["open"]
+    latest = max((item["updated_at"] for item in items), default=None)
+    entries: dict[str, Any] = {}
+    for name in ("all", "open", "closed", "updated"):
+        selected = [item for item in items if name in {"all", "updated"} or item["state"] == name]
+        selected.sort(
+            key=lambda item: (
+                (item["updated_at"], item["number"]) if name == "updated" else item["number"]
+            ),
+            reverse=True,
+        )
+        for offset in range(0, max(1, len(selected)), 100):
+            cursor = f"{name}-{offset}" if offset else "start"
+            batch = selected[offset : offset + 100]
+            nodes = []
+            for item in batch:
+                head = item["head"].get("repo")
+                nodes.append(
+                    {
+                        "number": item["number"],
+                        "title": item["title"],
+                        "state": "MERGED" if item.get("merged_at") else item["state"].upper(),
+                        "isDraft": item.get("draft", False),
+                        "mergedAt": item.get("merged_at"),
+                        "createdAt": item["created_at"],
+                        "updatedAt": item["updated_at"],
+                        "closedAt": item.get("closed_at"),
+                        "author": item.get("user"),
+                        "baseRefName": item["base"]["ref"],
+                        "headRefName": item["head"]["ref"],
+                        "headRepository": {"nameWithOwner": head["full_name"]} if head else None,
+                        "labels": {
+                            "nodes": [
+                                {"name": label["name"]} for label in item.get("labels", [])[:100]
+                            ],
+                            "pageInfo": {"hasNextPage": len(item.get("labels", [])) > 100},
+                        },
+                    }
+                )
+            key = f"graphql:{name}:{cursor}"
+            body = {
+                "data": {
+                    "viewer": {"login": reader},
+                    "repository": {
+                        "id": repository_id,
+                        **{label: {"totalCount": count} for label, count in totals.items()},
+                        "latest": {"nodes": [{"updatedAt": latest}] if latest else []},
+                        "page": {
+                            "nodes": nodes,
+                            "pageInfo": {
+                                "hasNextPage": offset + 100 < len(selected),
+                                "endCursor": f"{name}-{offset + len(batch)}" if batch else None,
+                            },
+                        },
+                    },
+                }
+            }
+            entries[key] = ok(key, body)
+    return entries
+
+
+def seed_catalog(
+    repository: ListedRepository,
+    items: list[dict[str, Any]],
+    *,
+    reader: str = READER,
+    fetched_at: str = "2026-10-01T12:00:00Z",
+    complete: bool = True,
+    repository_id: str = "R_demo",
+) -> CatalogState:
+    """Seed actual bounded catalog publications without a fake route envelope."""
+    from metabrowser.builtin_plugins.github.pull_catalog import (
+        CATALOG_PROJECTION,
+        CatalogState,
+        publish_page,
+        read_catalog,
+    )
+    from metabrowser.builtin_plugins.github.pull_list_refresh import (
+        _row,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    totals = {"all": len(items), "open": sum(item["state"] == "open" for item in items)}
+    totals["closed"] = totals["all"] - totals["open"]
+    state = read_catalog(repository.home, repository.slug)
+    ordered = sorted(items, key=lambda item: item["number"], reverse=True)
+    for offset in range(0, max(1, len(ordered)), 100):
+        proposed = CatalogState(
+            projection_version=CATALOG_PROJECTION,
+            source=repository.source,
+            repository_id=repository_id,
+            reader=f"gh:{reader}",
+            fetched_at=fetched_at,
+            count_at=fetched_at,
+            totals=totals,
+            covered={name: min(offset + 100, totals[name]) for name in totals},
+            done={name: complete and offset + 100 >= len(ordered) for name in totals},
+            watermark=max((item["updated_at"] for item in items), default=None),
+        )
+        if (
+            state is not None
+            and state.reader == proposed.reader
+            and state.repository_id == repository_id
+        ):
+            proposed = proposed.model_copy(update={"epoch": state.epoch})
+        rows = tuple(_row(item)[0] for item in ordered[offset : offset + 100])
+        assert publish_page(repository, state, proposed, rows)
+        state = read_catalog(repository.home, repository.slug)
+    assert state is not None
+    return state
+
+
 def scenario(origin: Origin) -> dict[str, Any]:
     """Signed in as :data:`READER`, answering every read of pull requests 7 to 10."""
 
-    return {"auth": account(), "api": api_entries(origin), "api_failure": None}
+    lists = list_entries(origin)
+    items = [*lists[list_page("all")]["body"], *lists[list_page("all", 2)]["body"]]
+    answers = {**api_entries(origin), **lists, **catalog_entries(items)}
+    return {"auth": account(), "api": answers, "api_failure": None}
 
 
 def install_fake_gh(directory: Path, answers: Mapping[str, Any]) -> dict[str, str]:
@@ -593,8 +1047,10 @@ def _patched(target: object, name: str, value: object) -> Generator[None]:
         setattr(target, name, original)
 
 
-def build_home(directory: Path) -> None:
+def build_home(directory: Path, *, files: bool = False) -> None:
     """Cache the mirror and pull requests 7 to 10 through the production CLI path.
+
+    With *files*, :func:`build_file_lists` adds lists of changed files.
 
     The seams are the in-process goldens' own: the origin URL, the Git floor (the
     machine's Git may be below it), the clock, and a fake ``gh`` first on ``PATH``.
@@ -602,14 +1058,15 @@ def build_home(directory: Path) -> None:
     run does, so the admitted-git job's tests still meet the floor unpatched.
     """
 
-    from metabrowser.builtin_plugins.github import pulls
+    from metabrowser.builtin_plugins.github import pull_list, pulls
     from metabrowser.cache import acquire
     from metabrowser.cache.urls import GitSource
     from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
     from metabrowser.git.process import detect_git_version
 
     origin = build_origin(directory)
-    environment = install_fake_gh(directory, scenario(origin))
+    answers = scenario(origin)
+    environment = install_fake_gh(directory, answers)
     version, _raw = detect_git_version()
     local = origin.url
 
@@ -623,6 +1080,7 @@ def build_home(directory: Path) -> None:
         _patched(acquire, "remote_url_for", remote_url_for),
         _patched(acquire, "require_acquisition_git", lambda: version),
         _patched(pulls, "utc_now", lambda: FETCHED_AT),
+        _patched(pull_list, "utc_now", lambda: FETCHED_AT),
     ):
         for number in (7, 8, 9, 10):
             try:
@@ -630,20 +1088,114 @@ def build_home(directory: Path) -> None:
             except SystemExit as exc:
                 if exc.code not in (0, None):
                     raise
+        build_lists(directory, answers)
+        if files:
+            build_file_lists(directory, answers)
     write_damaged_records(directory / "home")
     (directory / "root").mkdir(exist_ok=True)
+
+
+def _source_slug() -> str:
+    from metabrowser.cache.identity import cache_slug, source_identity
+
+    return cache_slug(
+        "https", CANONICAL, source_identity("https", CANONICAL), slug_owner=lambda _slug: None
+    )
+
+
+def build_lists(directory: Path, answers: Mapping[str, Any]) -> None:
+    """One complete shared catalog, last read as another account, for cache-only goldens."""
+
+    from metabrowser.builtin_plugins.github.pull_catalog import publish_page, read_catalog
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from metabrowser.builtin_plugins.github.pull_list_refresh import refresh_pull_list
+
+    repository = ListedRepository(directory / "home", _source_slug(), "octo", "demo")
+    asyncio.run(refresh_pull_list(repository, "open"))
+    other = json.loads(json.dumps(answers))
+    other["auth"] = account(ANOTHER_READER)
+    for key, entry in other["api"].items():
+        if key.startswith("graphql:"):
+            entry["body"]["data"]["viewer"]["login"] = ANOTHER_READER
+    os.environ.update(install_fake_gh(directory, other))
+    asyncio.run(refresh_pull_list(repository, "open"))
+    # The static read-only fixture has one epoch. Pin that opaque random identity,
+    # just as its clock is pinned; runtime account/reset tests use real unique epochs.
+    current = read_catalog(repository.home, repository.slug)
+    assert current is not None
+    fixed = current.model_copy(update={"epoch": "00000000000000000000000000000001"})
+    assert publish_page(repository, current, fixed, ())
+    os.environ.update(install_fake_gh(directory, answers))
+
+
+def build_file_lists(directory: Path, answers: Mapping[str, Any]) -> None:
+    """Lists of changed files, each through ``POST pull-files-refresh`` in a one-shot command.
+
+    7 from the local comparison of its record; 106 and the capped 105 from GitHub's pages;
+    104 stopped at its third page by GitHub's rate limit; 103 read by another account, and
+    then refreshed, and failed, as this one. 12 and 13 are lists the route cannot use.
+    """
+
+    from uuid import UUID
+
+    from metabrowser.builtin_plugins.github import pull_files_refresh
+    from metabrowser.cache.paths import source_pull_files
+    from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
+    from metabrowser.home import write_private_file_atomic
+
+    halted = CAPPED_PULL - 1
+    limited = {
+        "status": 403,
+        "headers": {"X-Ratelimit-Remaining": "0", "X-Ratelimit-Reset": "1790181960"},
+        "body": {"message": "API rate limit exceeded"},
+    }
+    with_files = {**answers, "api": {**answers["api"], **file_entries()}}
+    pages = {
+        **file_pages(halted, tree_files()),
+        files_page(halted, 3): limited,
+        **file_pages(halted - 1, tree_files()[:2]),
+    }
+    offline = {"stderr": "error connecting to api.github.com\n", "exit": 1}
+    others = {**with_files, "api": {**with_files["api"], **pages}}
+    # Each run, and whether it succeeds. 103's last refresh ran as this reader and failed,
+    # after another account read the list.
+    runs: list[tuple[int, Mapping[str, Any], bool]] = [
+        (7, with_files, True),
+        (TREE_PULL, with_files, True),
+        (CAPPED_PULL, with_files, True),
+        (halted, others, False),
+        (halted - 1, {**others, "auth": account(ANOTHER_READER)}, True),
+        (halted - 1, {**others, "api_failure": offline}, False),
+    ]
+    request = directory / "files-request.json"
+    refresh = "/api/plugin/github/pull-files-refresh"
+    for generation, (number, scenario_answers, succeeds) in enumerate(runs, start=1):
+        os.environ.update(install_fake_gh(directory, scenario_answers))
+        request.write_text(json.dumps({"number": number, "retry": True}) + "\n", encoding="utf-8")
+        try:
+            with _patched(
+                pull_files_refresh, "uuid4", lambda generation=generation: UUID(int=generation)
+            ):
+                _run_cli([CANONICAL, "--api", refresh, "--data", str(request)])
+        except SystemExit as exc:
+            if (exc.code in (0, None)) != succeeds:
+                raise
+    os.environ.update(install_fake_gh(directory, answers))
+    request.unlink()
+    home, slug = directory / "home", _source_slug()
+    write_private_file_atomic(
+        home, source_pull_files(slug, 12), json.dumps({"schema_version": 0}).encode()
+    )
+    write_private_file_atomic(home, source_pull_files(slug, 13), b"{not json")
 
 
 def write_damaged_records(home: Path) -> None:
     """Records the route cannot use: 12 from another schema, 13 not JSON at all."""
 
-    from metabrowser.cache.identity import cache_slug, source_identity
     from metabrowser.cache.paths import source_pull_record
     from metabrowser.home import write_private_file_atomic
 
-    slug = cache_slug(
-        "https", CANONICAL, source_identity("https", CANONICAL), slug_owner=lambda _slug: None
-    )
+    slug = _source_slug()
     write_private_file_atomic(
         home, source_pull_record(slug, 12), json.dumps({"schema_version": 0}).encode()
     )
@@ -679,10 +1231,93 @@ def serve_stand_in(directory: Path, number: int, port: int) -> None:
         _run_cli([f"{CANONICAL}/pull/{number}", "--no-open", "--port", str(port)])
 
 
+# The checkouts :func:`build_checkout_home` makes, each with its ``origin`` and any other
+# remote: the repository by HTTPS and by SSH, a fork of it, a remote the plugin's grammar
+# refuses though discovery admits it, and one that is not GitHub.
+CHECKOUTS: Final[dict[str, tuple[str, tuple[tuple[str, str], ...]]]] = {
+    "checkout": (CANONICAL + ".git", ()),
+    "ssh-checkout": ("git@github.com:Octo/Demo.git", ()),
+    "fork-checkout": ("https://github.com/someone/demo.git", (("upstream", CANONICAL + ".git"),)),
+    "odd-checkout": ("https://github.com/under_score/demo.git", ()),
+    "elsewhere": ("https://gitlab.example/octo/demo.git", ()),
+}
+
+
+def build_checkout_home(directory: Path) -> None:
+    """Checkouts of the stand-in, and ``home`` as their folder servers' requests wrote it.
+
+    Through the production CLI path, ``metab <checkout> --api`` with the fake ``gh`` and a
+    fixed clock: the ``all`` list's first page, the records of 10, whose head is the
+    checkout's ``HEAD``, and of 7, which it lacks, and 7's changed files, all from
+    ``checkout``. No store is made, so the source is ``unattached``. ``folder`` is a plain
+    directory.
+    """
+
+    from metabrowser.builtin_plugins.github import pull_list, pulls
+    from metabrowser.cache import acquire
+    from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
+
+    origin = build_origin(directory)
+    for name, (remote, more) in CHECKOUTS.items():
+        path = clone_checkout(origin, directory / name, remote=remote)
+        for remote_name, url in more:
+            subprocess.run(
+                ["git", "-C", str(path), "remote", "add", remote_name, url],
+                check=True,
+                capture_output=True,
+                env=git_env(directory),
+            )
+    os.environ.update(install_fake_gh(directory, files_scenario(origin)))
+    os.environ["METABROWSER_CACHE_DIR"] = str(directory / "home")
+    os.environ["METABROWSER_LOG_LEVEL"] = "ERROR"
+    request = directory / "request.json"
+    asked: list[tuple[str, dict[str, Any]]] = [
+        ("/api/plugin/github/pulls-refresh", {}),
+        ("/api/plugin/github/pull-refresh", {"number": 10, "retry": True}),
+        ("/api/plugin/github/pull-refresh", {"number": 7, "retry": True}),
+        ("/api/plugin/github/pull-files-refresh", {"number": 7}),
+    ]
+    with (
+        _patched(pulls, "utc_now", lambda: FETCHED_AT),
+        _patched(pull_list, "utc_now", lambda: FETCHED_AT),
+        _patched(acquire, "canonical_now", lambda: FETCHED_AT.strftime("%Y-%m-%dT%H:%M:%SZ")),
+    ):
+        for route, body in asked:
+            request.write_text(json.dumps(body) + "\n", encoding="utf-8")
+            try:
+                _run_cli([str(directory / "checkout"), "--api", route, "--data", str(request)])
+            except SystemExit as exc:
+                if exc.code not in (0, None):
+                    raise
+    request.unlink()
+    (directory / "folder").mkdir(exist_ok=True)
+
+
+def run_files_refresh(args: list[str]) -> None:
+    """The real CLI with only its file-list UUID pinned for the static transcript."""
+
+    from uuid import UUID
+
+    from metabrowser.builtin_plugins.github import pull_files_refresh
+    from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
+
+    with _patched(pull_files_refresh, "uuid4", lambda: UUID(int=15)):
+        _run_cli(args)
+
+
 if __name__ == "__main__":
-    if len(sys.argv) == 5 and sys.argv[2] == "--serve":
+    if len(sys.argv) > 2 and sys.argv[1] == "--files-refresh":
+        run_files_refresh(sys.argv[2:])
+    elif len(sys.argv) == 3 and sys.argv[2] == "--checkout":
+        build_checkout_home(Path(sys.argv[1]).resolve())
+    elif len(sys.argv) == 5 and sys.argv[2] == "--serve":
         serve_stand_in(Path(sys.argv[1]).resolve(), int(sys.argv[3]), int(sys.argv[4]))
+    elif len(sys.argv) == 3 and sys.argv[2] == "--files":
+        build_home(Path(sys.argv[1]).resolve(), files=True)
     elif len(sys.argv) == 2:
         build_home(Path(sys.argv[1]).resolve())
     else:
-        raise SystemExit("usage: github_pull_fixture.py <directory> [--serve <number> <port>]")
+        raise SystemExit(
+            "usage: github_pull_fixture.py <directory> [--files | --checkout | --serve <number> <port>] "
+            "or --files-refresh <metab arguments>"
+        )

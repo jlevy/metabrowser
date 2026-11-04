@@ -1,4 +1,4 @@
-// Browserless session: the served pull request's page, driven through the production
+// Browserless session: a pull request's page, driven through the production
 // browser code.
 //
 // The page talks to the server through three GitHub plugin routes and the pin route.
@@ -71,6 +71,31 @@ function assert(condition, message) {
   }
 }
 
+/**
+ * What a page that a step opens for one decision shows of it: its state and what it offers.
+ * The whole page is `summarize`'s, once per kind of record, and tryscript's matcher has a
+ * limit on how long one transcript can be.
+ */
+function summarizeState(model) {
+  return {
+    status: model.status,
+    message: model.message,
+    canRefresh: model.canRefresh,
+    freshness: model.freshness,
+    failure: model.failure,
+    browse: browseCode(model),
+    headOffer: model.headOffer === null ? null : model.headOffer.ref,
+  };
+}
+
+/** What Browse code does. */
+function browseCode(model) {
+  if (model.browse === null) {
+    return null;
+  }
+  return model.browse.kind === "link" ? "link to the root" : `switches to ${model.browse.ref}`;
+}
+
 /** What a reader would see, in a line per item. */
 function summarize(model) {
   const pull = model.pull;
@@ -103,6 +128,7 @@ function summarize(model) {
             items: model.checks.items.map((item) => `[${item.label}] ${item.name} -> ${item.url}`),
           },
     notes: model.notes,
+    browse: browseCode(model),
     headOffer:
       model.headOffer === null
         ? null
@@ -203,8 +229,9 @@ function createPage(runtime, options) {
   let paints = [];
   let rendered = [];
   let reloads = 0;
+  let navigations = [];
   // What the conversation last painted, to run the page's own paint decision on each paint.
-  let conversation = { key: "", recordAt: null };
+  let conversation = { key: "", recordRevision: null };
   const server = { pull: null, refresh: [], pin: [], markdown: new Map(), held: [] };
   const clock = { now: Date.parse("2026-09-17T12:00:30Z") };
 
@@ -218,7 +245,7 @@ function createPage(runtime, options) {
       }
       if (route.startsWith("/api/plugin/github/pull-markdown")) {
         log.push(`GET ${route}`);
-        const part = decodeURIComponent(route.split("?part=")[1]);
+        const part = decodeURIComponent(route.split("&part=")[1]);
         const answer = server.markdown.get(part) ?? recorded["markdown missing"];
         return new Promise((resolve) => server.held.push(() => resolve(answer)));
       }
@@ -253,6 +280,9 @@ function createPage(runtime, options) {
     reload() {
       reloads += 1;
     },
+    navigate(href) {
+      navigations.push(href);
+    },
   };
   const controller = runtime.createPullController(deps, options);
 
@@ -280,15 +310,18 @@ function createPage(runtime, options) {
       paints = [];
       rendered = [];
       reloads = 0;
+      navigations = [];
       await action();
       await settle();
-      const [timer] = [...timers.values()];
+      const [timer] = [...timers.values()].filter(
+        (each) => each.delayMs !== runtime.REFRESH_ASK_MS,
+      );
       const snapshot = controller.snapshot();
       const entry = {
         step: name,
         requests: [...log],
         timer:
-          timers.size === 0
+          timer === undefined
             ? null
             : timer.delayMs === runtime.FAST_POLL_MS
               ? "fast"
@@ -297,14 +330,20 @@ function createPage(runtime, options) {
                 : timer.delayMs,
         paints: paints.length,
       };
+      if ([...timers.values()].some((each) => each.delayMs === runtime.REFRESH_ASK_MS)) {
+        entry.askWaits = true;
+      }
       if (reloads > 0) {
         entry.reloads = reloads;
       }
+      if (navigations.length > 0) {
+        entry.navigated = navigations;
+      }
       if (paints.length > 0) {
         const last = paints[paints.length - 1];
-        entry.paint = summarize(last);
+        entry.paint = options.brief ? summarizeState(last) : summarize(last);
         if (last.pull !== null && last.tab === "") {
-          const next = { key: runtime.conversationKey(last), recordAt: last.recordAt };
+          const next = { key: runtime.conversationKey(last), recordRevision: last.recordRevision };
           entry.conversation = runtime.conversationAction(conversation, next);
           conversation = next;
         }
@@ -315,11 +354,23 @@ function createPage(runtime, options) {
       }
       return entry;
     },
+    /** The poll that is due. */
     fire() {
-      const [[id, timer]] = [...timers.entries()];
+      const [[id, timer]] = [...timers.entries()].filter(
+        ([, each]) => each.delayMs !== runtime.REFRESH_ASK_MS,
+      );
       timers.delete(id);
       timer.callback();
     },
+    /** The ask a stale page has waiting: the reader stayed. */
+    fireAsk() {
+      const [[id, timer]] = [...timers.entries()].filter(
+        ([, each]) => each.delayMs === runtime.REFRESH_ASK_MS,
+      );
+      timers.delete(id);
+      timer.callback();
+    },
+    timersLeft: () => timers.size,
   };
 }
 
@@ -763,13 +814,27 @@ async function main() {
   );
 
   // Serving began on the default branch, because the pull request could not be opened
-  // then; the record now names its head, which the page offers and the pin route takes.
+  // then, and a reader who opened any pull request from a branch is in the same place.
+  // Nothing is wrong, so nothing is offered: Browse code serves the head and then opens.
+  server.pin.push(recorded.switch_refused);
+  steps.push(
+    await page.step("Browse code that the server refuses says why and stays", () =>
+      controller.browseCode("/view/"),
+    ),
+  );
   server.pin.push(recorded.switch_to_head);
   steps.push(
-    await page.step("switch the pin to the head the record names", () => controller.switchToHead()),
+    await page.step("Browse code serves the head and opens the root", () =>
+      controller.browseCode("/view/"),
+    ),
   );
   server.pull = recorded.on_head;
-  steps.push(await page.step("reloaded on the head, nothing is offered", async () => page.fire()));
+  steps.push(await page.step("on the head, Browse code is a link", async () => page.fire()));
+  steps.push(
+    await page.step("with a link, the controller switches nothing", () =>
+      controller.browseCode("/view/"),
+    ),
+  );
 
   steps.push(await page.step("open Files changed", async () => controller.setTab("files")));
   steps.push(await page.step("back to the conversation", async () => controller.setTab("")));
@@ -777,9 +842,12 @@ async function main() {
   page.clock.now = Date.parse("2026-09-17T12:05:30Z");
   server.pull = recorded.stale;
   steps.push(await page.step("the record goes stale", async () => page.fire()));
-
   server.refresh.push(recorded.refresh_again);
-  steps.push(await page.step("refresh the stale page", () => controller.requestRefresh()));
+  steps.push(
+    await page.step("the reader stayed: the page asks for a refresh by itself", async () =>
+      page.fireAsk(),
+    ),
+  );
   server.pull = recorded.stale_refreshing;
   steps.push(await page.step("still refreshing", async () => page.fire()));
 
@@ -789,9 +857,9 @@ async function main() {
       page.fire(),
     ),
   );
-  // The body's render was made from the older record; answered now, it is dropped.
+  // The same content revision keeps an already requested render usable after refresh.
   steps.push(
-    await page.step("a render of the older record is dropped", async () => {
+    await page.step("a same-content render remains usable after a refresh", async () => {
       controller.requestMarkdown("body");
       await page.releaseMarkdown();
     }),
@@ -838,13 +906,104 @@ async function main() {
   steps.push(await page.step("dispose", async () => controller.dispose()));
 
   // A page opened in a background tab, on its Files changed: it reads the record once so
-  // it has something to show, and polls only once it is visible.
-  const background = createPage(runtime, { number: 7, tab: "files" });
+  // it has something to show, and polls only once it is visible. Its record is stale, and
+  // it asks for a refresh only then.
+  const background = createPage(runtime, { number: 7, tab: "files", brief: true });
   background.setVisible(false);
-  background.server.pull = recorded.current;
+  background.clock.now = page.clock.now;
+  background.server.pull = recorded.stale;
   steps.push(
-    await background.step("a page opened in the background reads once", () =>
+    await background.step("a page opened in the background reads once and asks for nothing", () =>
       background.controller.start(),
+    ),
+  );
+  background.setVisible(true);
+  steps.push(
+    await background.step("shown, its ask waits for the reader to stay", async () =>
+      background.controller.onVisibilityChange(),
+    ),
+  );
+  background.server.refresh.push(recorded.refresh_again);
+  steps.push(await background.step("the reader stayed: it asks", async () => background.fireAsk()));
+
+  // A reader walking past a stale page, holding Back or a key, spends no refresh on it.
+  const walkedPast = createPage(runtime, { number: 7, tab: "", brief: true });
+  walkedPast.clock.now = page.clock.now;
+  walkedPast.server.pull = recorded.stale;
+  steps.push(
+    await walkedPast.step("a page walked past reads once", () => walkedPast.controller.start()),
+  );
+  steps.push(
+    await walkedPast.step("and leaves before its ask, which is cancelled", async () =>
+      walkedPast.controller.dispose(),
+    ),
+  );
+  assert(walkedPast.timersLeft() === 0, "a disposed page left a timer running");
+
+  // A page whose refresh failed a moment ago: its own request is not due, and it asks once
+  // per visible period, not on every poll. A reader's press still goes through.
+  const failing = createPage(runtime, { number: 8, tab: "", brief: true });
+  failing.clock.now = Date.parse("2026-09-17T12:30:30Z");
+  failing.server.pull = recorded.failed;
+  failing.server.refresh.push(recorded.not_due);
+  await failing.controller.start();
+  steps.push(
+    await failing.step("a stale page asks once, and its refresh is not due", async () =>
+      failing.fireAsk(),
+    ),
+  );
+  steps.push(await failing.step("its next poll asks nothing", async () => failing.fire()));
+  failing.setVisible(false);
+  await failing.controller.onVisibilityChange();
+  failing.setVisible(true);
+  steps.push(
+    await failing.step("shown again, it may ask once more", async () =>
+      failing.controller.onVisibilityChange(),
+    ),
+  );
+  failing.server.refresh.push(recorded.not_due);
+  steps.push(await failing.step("the reader stayed again: it asks", async () => failing.fireAsk()));
+  failing.server.refresh.push(recorded.failed_again);
+  steps.push(
+    await failing.step("a reader's Refresh is always taken", () =>
+      failing.controller.requestRefresh(),
+    ),
+  );
+
+  // Served an older head of this pull request, a refresh found a newer one: the existing
+  // offer, which reloads on the newer head.
+  const behind = createPage(runtime, { number: 7, tab: "", brief: true });
+  behind.clock.now = Date.parse("2026-09-17T12:41:30Z");
+  behind.server.pull = recorded.behind_head;
+  steps.push(
+    await behind.step("served an older head, the page offers the newer one", () =>
+      behind.controller.start(),
+    ),
+  );
+  behind.server.pin.push(recorded.switch_to_head);
+  steps.push(await behind.step("taking the offer reloads", () => behind.controller.switchToHead()));
+
+  // A pull request with no record is fetched only by a reader's press: however often the
+  // page is read and shown, nothing else asks. Past the bound on jobs the press is refused,
+  // and the page says why and still offers it.
+  const absent = createPage(runtime, { number: 14, tab: "", brief: true });
+  absent.server.pull = recorded.absent_14;
+  steps.push(
+    await absent.step("an address alone reads what is cached", () => absent.controller.start()),
+  );
+  steps.push(await absent.step("polling it asks for no fetch", async () => absent.fire()));
+  absent.setVisible(false);
+  await absent.controller.onVisibilityChange();
+  absent.setVisible(true);
+  steps.push(
+    await absent.step("nor does showing it again", async () =>
+      absent.controller.onVisibilityChange(),
+    ),
+  );
+  absent.server.refresh.push(recorded.too_many);
+  steps.push(
+    await absent.step("a press past the bound is refused and says why", () =>
+      absent.controller.requestRefresh(),
     ),
   );
 
@@ -882,12 +1041,14 @@ async function main() {
     }),
   );
 
-  // What a page for another number, and the links a rendered text keeps, would show.
-  const other = runtime.describePull(recorded.current.body, {
-    number: 8,
+  // A server with no GitHub repository offers nothing to fetch.
+  const notGithub = runtime.describePull(recorded.not_github.body, {
+    number: 7,
     tab: "",
     nowMs: page.clock.now,
   });
+
+  // The links a rendered text keeps.
   const base = record.pull.html_url;
   const links = [
     "docs/new.md",
@@ -923,6 +1084,7 @@ async function main() {
       "no_merge_base",
       "base_uncertain",
       "commits_unavailable",
+      "no_store",
       "comparison_timeout",
       "comparison_too_large",
     ].map((why) => {
@@ -933,6 +1095,53 @@ async function main() {
       return [why, { files: model.filesUnavailable, notes: model.notes }];
     }),
   );
+
+  // A checkout's page: the server has no pin and no store, so the record has no comparison,
+  // there is no Browse code, and the page says only when the checkout's HEAD is the pull
+  // request's head. Its review comments name their files as text, since nothing is served
+  // at the pull request's commits.
+  const onCheckout = structuredClone(recorded.current.body);
+  onCheckout.pin = null;
+  onCheckout.pin_ref = null;
+  onCheckout.comparison_route = null;
+  onCheckout.record.comparison = null;
+  onCheckout.record.unavailable = { comparison: "no_store" };
+  const head = onCheckout.record.pull.head.sha;
+  const checkout = Object.fromEntries(
+    [
+      ["HEAD is the pull request's head", head],
+      ["HEAD is elsewhere", "0".repeat(40)],
+      ["no repository context", null],
+    ].map(([when, checkoutHead]) => {
+      const model = runtime.describePull(onCheckout, {
+        number: 7,
+        tab: "",
+        nowMs: page.clock.now,
+        checkoutHead,
+      });
+      return [
+        when,
+        {
+          browse: browseCode(model),
+          headOffer: model.headOffer,
+          checkoutAtHead: model.checkoutAtHead,
+          comparison: model.comparison,
+          files: model.filesUnavailable,
+        },
+      ];
+    }),
+  );
+  // On a mirror the same HEAD says nothing: the page has a pin, and Browse code.
+  const onMirror = runtime.describePull(recorded.current.body, {
+    number: 7,
+    tab: "",
+    nowMs: page.clock.now,
+    checkoutHead: recorded.current.body.record.pull.head.sha,
+  });
+  checkout["a mirror's page, whatever it is handed"] = {
+    browse: browseCode(onMirror),
+    checkoutAtHead: onMirror.checkoutAtHead,
+  };
 
   // What a review comment shows of its hunk: the recorded pull request with one comment,
   // whose fields are the case's, through describePull. The stand-in's hunks are short, as
@@ -981,13 +1190,32 @@ async function main() {
   const first = {
     steps,
     states,
-    otherNumber: { status: other.status, message: other.message, served: other.served },
+    notGithub: {
+      status: notGithub.status,
+      message: notGithub.message,
+      canRefresh: notGithub.canRefresh,
+    },
     links,
     wire: runtime.gitPathWire("src/app.txt"),
     pageDefense: inert,
     filesChanged: files,
   };
-  const second = { filesUnavailable, hunks, place: placeStory(runtime) };
+  // Which address is the page's entry on a tab, for a tab switch from beside the page and for
+  // writing a reader's place: a changed file's address is its Files changed too.
+  const pageRoutes = [
+    ["/pull/7", 7, ""],
+    ["/pull/7/", 7, ""],
+    ["/pull/7/files", 7, "files"],
+    ["/pull/7/files/src/app.py", 7, "files"],
+    ["/pull/7/files/src/app.py", 7, ""],
+    ["/pull/70/files", 7, "files"],
+    ["/pull/7/filesx", 7, "files"],
+    ["/pull/8/files/src/app.py", 7, "files"],
+  ].map(
+    ([pathname, number, tab]) =>
+      `${pathname} is #${number}'s ${tab || "conversation"}: ${runtime.onPageRoute(pathname, number, tab)}`,
+  );
+  const second = { filesUnavailable, checkout, hunks, place: placeStory(runtime), pageRoutes };
   const part = process.argv.indexOf("--part");
   const wanted = part === -1 ? "1" : process.argv[part + 1];
   const chosen = wanted === "all" ? { ...first, ...second } : wanted === "2" ? second : first;

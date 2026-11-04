@@ -194,6 +194,10 @@ def test_status_reports_freshness_from_memory_and_revalidates(
 
 
 def test_a_folder_reports_no_freshness_and_refuses_both_routes(tmp_path: Path) -> None:
+    """A folder's refresh is refused as unsupported before anything is asked of a queue, so
+    the refusal of a full queue of pull requests (429) cannot reach it, and its shell has
+    no freshness row to ask (``test_a_folder_shell_has_no_freshness_row``)."""
+
     server._set_root_dir(tmp_path)
     with TestClient(server.app) as client:
         status = client.get("/api/source/status").json()
@@ -203,7 +207,11 @@ def test_a_folder_reports_no_freshness_and_refuses_both_routes(tmp_path: Path) -
     assert status["refreshable"] is False
     assert status["latest"] is None and status["last_outcome"] is None
     assert refresh.status_code == 409
-    assert refresh.json()["capability"] == "refresh"
+    assert refresh.json() == {
+        "error": "source does not support refresh",
+        "code": "unsupported_for_subject",
+        "capability": "refresh",
+    }
     assert pin.status_code == 409
     assert pin.json()["capability"] == "pin"
 

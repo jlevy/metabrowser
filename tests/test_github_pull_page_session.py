@@ -1,4 +1,4 @@
-"""The pull-request page session runs production browser code on what a served PR answers.
+"""The pull-request page session runs production browser code on what a server answers.
 
 ``tests/dom/github-pull-page-session.js`` drives the GitHub plugin's
 ``builtin_plugins/github/pull-page.js`` -- what the page shows, its polling, the refresh a
@@ -12,10 +12,13 @@ responses. Serving began on the default branch, as it does when the pull request
 be opened at startup. The page opened with nothing cached, fetched the record, read its
 Markdown, switched the pin to the head the record names, went stale, refreshed to a
 record with the same text, and refreshed again to one with a hostile comment, recorded
-both as the hook answers it and as KPress alone renders it. The same server then served
+both as the hook answers it and as KPress alone renders it. The same server then fetched
 pull requests 8 and 9, merged and closed, and read each once, for the header's wording
-in those states and a skipped check, then read 8 again once GitHub named no merger. The first test here replays that story and fails
-when the recording no longer matches.
+in those states and a skipped check, then read 8 again once GitHub named no merger. With
+GitHub out of reach, a refresh of 8 failed and the page's own request found it not due,
+and a press of Fetch for 14 was refused past the bound on jobs. Served an older head of 7,
+a refresh then found the newer one. A folder's server answered last. The first test here
+replays that story and fails when the recording no longer matches.
 
 The clock is fixed, so fetch times are literal. Entity tags are the session's own, since
 the server's are scoped to the build; which answers share one is kept. The Markdown is
@@ -36,7 +39,9 @@ import copy
 import json
 import os
 import re
+import subprocess
 import threading
+import time
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -47,16 +52,16 @@ from starlette.testclient import TestClient
 
 from metabrowser import kpress_adapter
 from metabrowser.builtin_plugins.github import pulls
-from metabrowser.builtin_plugins.github.served_pull import ServedPull, served_pull
+from metabrowser.builtin_plugins.github.served_pull import ServedPull, ServedPulls
 from metabrowser.cache.acquire import acquire_source
 from metabrowser.cache.repository_store import open_revision
 from metabrowser.cache.served_mirror import StoreMirror
 from metabrowser.cache.urls import GitSource, RepositorySelection
 from metabrowser.git import repo as git_repo
 from metabrowser.git.tree_source import GitRevisionSubject
-from metabrowser.mirror_refresh import mirror_session, serve_mirror
+from metabrowser.mirror_refresh import MAX_PULL_JOBS, mirror_session, serve_mirror
 from metabrowser.server import app
-from metabrowser.source import attach_subject
+from metabrowser.source import reset_source_session, serve_subject_opener
 from tests.github_pull_fixture import (
     CANONICAL,
     DEFAULT_BRANCH,
@@ -91,6 +96,10 @@ pytestmark = [
 ]
 
 
+def _api(answers: dict[str, Any], path: str, entry: Any) -> dict[str, Any]:
+    return {**answers, "api": {**answers["api"], path: entry}}
+
+
 def _answer(response: Any) -> dict[str, Any]:
     """One response as the page sees it: status, entity tag, and body."""
 
@@ -115,6 +124,7 @@ def _switch(response: Any) -> dict[str, Any]:
             "changed": body.get("changed"),
             "pin": status.get("pin"),
             "ref": status.get("ref"),
+            "code": body.get("code"),
         },
     }
 
@@ -182,6 +192,18 @@ def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
     return recorded
 
 
+def _fetched(client: TestClient, number: int) -> dict[str, Any]:
+    """Pull request *number* after a reader's fetch of it has ended.
+
+    Status follows the mirror and the attended pull request, so this one is watched here.
+    """
+
+    client.post(_REFRESH, json={"number": number, "retry": True}, headers=JSON_BODY)
+    while client.get(_PULL, params={"number": number}).json()["refreshing"]:
+        time.sleep(0.01)
+    return _answer(client.get(_PULL, params={"number": number}))
+
+
 def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> dict[str, Any]:
     home = tmp_path / "home"
     monkeypatch.setenv("METABROWSER_CACHE_DIR", str(home))
@@ -213,15 +235,15 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             store_identity=published.store_id,
             ref=f"refs/remotes/origin/{DEFAULT_BRANCH}",
         )
-        await subject.aclose()
         return subject
 
     recorded: dict[str, Any] = {}
-    attach_subject(asyncio.run(_pin()))
+    # The serving lifespan owns the pin and any subjects a pin switch replaces it with.
+    serve_subject_opener(_pin)
     serve_mirror(
         StoreMirror.from_published(replace(published, source=source)),
         pull_request=7,
-        companion=served_pull(published, 7),
+        pull_requests=ServedPulls(published),
     )
     git_repo.clear_repo_cache()
     try:
@@ -229,6 +251,8 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             session = mirror_session(app)
             served = None if session is None else session.companion
             assert isinstance(served, ServedPull)
+            read_7 = {"number": 7}
+            ask_7 = {"number": 7, "retry": True}
             original = served.refresh
             release = threading.Event()
 
@@ -238,17 +262,19 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 await original()
 
             monkeypatch.setattr(served, "refresh", held)
-            recorded["absent"] = _answer(client.get(_PULL))
+            recorded["absent"] = _answer(client.get(_PULL, params=read_7))
             # Asked again with that answer's tag, an absent pull request is a 304: a page
             # polling one must not repaint on every poll. The session plays its own 304,
             # so this answer is checked here and not recorded.
             tag = {"if-none-match": recorded["absent"]["etag"]}
-            assert client.get(_PULL, headers=tag).status_code == 304
-            recorded["refresh_started"] = _answer(client.post(_REFRESH, json={}, headers=JSON_BODY))
-            recorded["pending"] = _answer(client.get(_PULL))
+            assert client.get(_PULL, params=read_7, headers=tag).status_code == 304
+            recorded["refresh_started"] = _answer(
+                client.post(_REFRESH, json=ask_7, headers=JSON_BODY)
+            )
+            recorded["pending"] = _answer(client.get(_PULL, params=read_7))
             release.set()
             settle(client)
-            recorded["current"] = _answer(client.get(_PULL))
+            recorded["current"] = _answer(client.get(_PULL, params=read_7))
             record = recorded["current"]["body"]["record"]
             for part in (
                 "body",
@@ -257,26 +283,33 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 f"review_comment/{record['review_comments'][0]['id']}",
             ):
                 recorded[f"markdown {part.split('/')[0]}"] = _answer(
-                    client.get(_MARKDOWN, params={"part": part})
+                    client.get(_MARKDOWN, params={**read_7, "part": part})
                 )
             recorded["markdown missing"] = _answer(
-                client.get(_MARKDOWN, params={"part": "issue_comment/1"})
+                client.get(_MARKDOWN, params={**read_7, "part": "issue_comment/1"})
             )
-            # The record names a head the fallback pin is not; the page offers it.
+            # The pin is a branch, so Browse code serves the head first; one the mirror
+            # lacks is refused, and the page says why.
+            recorded["switch_refused"] = _switch(
+                client.post(_PIN, json={"ref": "refs/pull/999/head"}, headers=JSON_BODY)
+            )
             recorded["switch_to_head"] = _switch(
                 client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=JSON_BODY)
             )
-            recorded["on_head"] = _answer(client.get(_PULL))
+            recorded["on_head"] = _answer(client.get(_PULL, params=read_7))
 
             # Five minutes on, the record is stale; a refresh finds nothing changed.
             clock[0] = FETCHED_AT + timedelta(minutes=5)
-            recorded["stale"] = _answer(client.get(_PULL))
+            recorded["stale"] = _answer(client.get(_PULL, params=read_7))
             release.clear()
-            recorded["refresh_again"] = _answer(client.post(_REFRESH, json={}, headers=JSON_BODY))
-            recorded["stale_refreshing"] = _answer(client.get(_PULL))
+            # The page asks by itself, which is not a reader's action: the record is due.
+            recorded["refresh_again"] = _answer(
+                client.post(_REFRESH, json=read_7, headers=JSON_BODY)
+            )
+            recorded["stale_refreshing"] = _answer(client.get(_PULL, params=read_7))
             release.set()
             settle(client)
-            recorded["refreshed_unchanged"] = _answer(client.get(_PULL))
+            recorded["refreshed_unchanged"] = _answer(client.get(_PULL, params=read_7))
 
             # A minute later a refresh reads one more comment, which carries markup
             # KPress's sanitized mode keeps and the page must not load.
@@ -294,11 +327,11 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             answers["api"][comments_path] = ok(comments_path, [*comments, added])
             for name, value in install_fake_gh(tmp_path, answers).items():
                 monkeypatch.setenv(name, value)
-            client.post(_REFRESH, json={}, headers=JSON_BODY)
+            client.post(_REFRESH, json=ask_7, headers=JSON_BODY)
             settle(client)
-            recorded["refreshed"] = _answer(client.get(_PULL))
+            recorded["refreshed"] = _answer(client.get(_PULL, params=read_7))
             recorded["markdown added"] = _answer(
-                client.get(_MARKDOWN, params={"part": f"issue_comment/{added['id']}"})
+                client.get(_MARKDOWN, params={**read_7, "part": f"issue_comment/{added['id']}"})
             )
             # What KPress alone makes of the same text, before the hook hardens it: the
             # input the page's own defense, neutralizeFragment, is played on.
@@ -308,17 +341,10 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
                 "body": {"tree": html_tree(_prose(_kpress_render(HOSTILE_COMMENT)))},
             }
 
-            # The same server, handed the stand-in's merged and then its closed pull
-            # request as the one it serves, as the CLI hands it one for a /pull/<n> URL,
-            # and each read once: what the header says in a state other than open. The
-            # server's batch readers belong to this session's event loop, so the answers
-            # are recorded here rather than from a second server.
-            assert session is not None
+            # The same server, asked for the stand-in's merged and then its closed pull
+            # request, each read once: what the header says in a state other than open.
             for number, name in ((8, "merged"), (9, "closed")):
-                session.companion = served_pull(published, number)
-                client.post(_REFRESH, json={}, headers=JSON_BODY)
-                settle(client)
-                recorded[name] = _answer(client.get(_PULL))
+                recorded[name] = _fetched(client, number)
 
             # GitHub then answers pull request 8 with no merger, and a refresh reads it.
             merged_path = "repos/octo/demo/pulls/8"
@@ -326,13 +352,83 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
             answers["api"][merged_path] = ok(merged_path, unattributed)
             for name, value in install_fake_gh(tmp_path, answers).items():
                 monkeypatch.setenv(name, value)
-            session.companion = served_pull(published, 8)
-            client.post(_REFRESH, json={}, headers=JSON_BODY)
-            settle(client)
-            recorded["merged_unattributed"] = _answer(client.get(_PULL))
+            recorded["merged_unattributed"] = _fetched(client, 8)
+
+            # Half an hour on, GitHub is out of reach. A reader's refresh of 8 fails, so the
+            # page's own request finds it tried a moment ago; a reader may still ask again.
+            clock[0] = FETCHED_AT + timedelta(minutes=30)
+            offline = {**answers, "api_failure": {"stderr": "dial tcp: i/o timeout\n", "exit": 1}}
+            for name, value in install_fake_gh(tmp_path, offline).items():
+                monkeypatch.setenv(name, value)
+            recorded["failed"] = _fetched(client, 8)
+            recorded["not_due"] = _answer(
+                client.post(_REFRESH, json={"number": 8}, headers=JSON_BODY)
+            )
+            recorded["failed_again"] = _answer(
+                client.post(_REFRESH, json={"number": 8, "retry": True}, headers=JSON_BODY)
+            )
+            while client.get(_PULL, params={"number": 8}).json()["refreshing"]:
+                time.sleep(0.01)
+
+            # Served an older head of 7, as a page left open is: a refresh finds a newer
+            # one, and the pin stays until the reader takes the offer.
+            def _answering_7(head: str) -> None:
+                path = "repos/octo/demo/pulls/7"
+                body = answers["api"][path]["body"]
+                moved = _api(
+                    answers, path, ok(path, {**body, "head": {**body["head"], "sha": head}})
+                )
+                for part, empty in (
+                    ("check-runs", {"total_count": 0, "check_runs": []}),
+                    ("status", {"state": "pending", "statuses": []}),
+                ):
+                    listed = page(f"repos/octo/demo/commits/{head}/{part}")
+                    moved = _api(moved, listed, ok(listed, empty))
+                subprocess.run(
+                    ["git", "--git-dir", str(origin.path), "update-ref", "refs/pull/7/head", head],
+                    check=True,
+                )
+                for name, value in install_fake_gh(tmp_path, moved).items():
+                    monkeypatch.setenv(name, value)
+
+            clock[0] = FETCHED_AT + timedelta(minutes=40)
+            _answering_7(origin["fork_earlier"])
+            _fetched(client, 7)
+            assert client.post(_PIN, json={"ref": "refs/pull/7/head"}, headers=JSON_BODY).json()
+            clock[0] = FETCHED_AT + timedelta(minutes=41)
+            _answering_7(origin["fork_head"])
+            recorded["behind_head"] = _fetched(client, 7)
+
+            # A number with no record, and a press of Fetch past the bound on jobs.
+            recorded["absent_14"] = _answer(client.get(_PULL, params={"number": 14}))
+            gate = threading.Event()
+
+            async def waiting(_served: ServedPull) -> None:
+                await asyncio.to_thread(gate.wait, 30)
+
+            monkeypatch.setattr(ServedPull, "refresh", waiting)
+            for number in range(20, 20 + MAX_PULL_JOBS):
+                started = client.post(
+                    _REFRESH, json={"number": number, "retry": True}, headers=JSON_BODY
+                )
+                assert started.status_code == 202
+            recorded["too_many"] = _answer(
+                client.post(_REFRESH, json={"number": 14, "retry": True}, headers=JSON_BODY)
+            )
+            gate.set()
     finally:
         serve_mirror(None)
         git_repo.clear_repo_cache()
+    # A server with no GitHub repository, which answers for no number. Explicitly
+    # choose a plain folder: the test runner itself lives inside a GitHub checkout.
+    from metabrowser.server import _set_root_dir
+
+    plain = tmp_path / "plain-folder"
+    plain.mkdir()
+    _set_root_dir(plain)
+    reset_source_session()
+    with TestClient(app) as client:
+        recorded["not_github"] = _answer(client.get(_PULL, params={"number": 7}))
     return _session_tags(recorded)
 
 
@@ -345,6 +441,19 @@ def test_recording_is_what_a_served_pull_request_answers(
         "not_cached",
     )
     assert recorded["refresh_started"]["body"]["pull"]["state"] == "pending"
+    assert recorded["refresh_again"]["body"]["refresh"] == "started"
+    assert recorded["not_due"]["body"]["refresh"] == "not_due"
+    assert recorded["failed"]["body"]["last_refresh"]["outcome"] == "network_error"
+    assert (recorded["too_many"]["status"], recorded["too_many"]["body"]["code"]) == (
+        429,
+        "too_many",
+    )
+    assert recorded["not_github"]["body"]["reason"] == "not_github"
+    behind = recorded["behind_head"]["body"]
+    assert behind["pin"] == pull_origin["fork_earlier"]
+    assert behind["pin_ref"] == "refs/pull/7/head"
+    assert behind["record"]["pull"]["head"]["sha"] == pull_origin["fork_head"]
+    assert recorded["switch_refused"]["status"] == 404
     assert recorded["pending"]["body"]["refreshing"] is True
     assert recorded["current"]["body"]["state"] == "current"
     assert "<strong>two</strong>" in recorded["markdown body"]["body"]["html"]
@@ -410,13 +519,23 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
         "no_merge_base",
         "base_uncertain",
         "commits_unavailable",
+        "no_store",
         "comparison_timeout",
         "comparison_too_large",
     }
     for state, said in unavailable.items():
-        assert said["files"].startswith("Files changed is "), state
+        assert said["files"].startswith("Files changed "), state
     assert "does not guess" in unavailable["base_uncertain"]["files"]
     assert "not readable here" in unavailable["commits_unavailable"]["files"]
+    # A checkout's page offers nothing that serves or switches code: it has no pin.
+    for when, checkout_page in transcript["checkout"].items():
+        if when.startswith("a mirror"):
+            continue
+        assert (
+            checkout_page["browse"],
+            checkout_page["headOffer"],
+            checkout_page["comparison"],
+        ) == (None, None, None)
     assert transcript["hunks"] and transcript["place"]
 
 
@@ -428,4 +547,36 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "failedAssetsRecover": True,
         "failedRenderRecovers": True,
         "staleRetryIsInert": True,
+        "checkoutFetchIsExplicit": True,
+        "displayedComparisonRepair": True,
+        "bridgeAfterPaint": True,
+        "bridgeFramesOwned": True,
+        "hiddenReadiness": True,
+        "markdownOwnership": True,
+    }
+
+
+def test_file_history_restores_place_and_fresh_selection_wins() -> None:
+    """The real route and page distinguish a history landing from a live file jump."""
+
+    assert run_session("github-pull-file-history-behavior.js") == {
+        "sameTabBack": 350,
+        "conversationBack": 350,
+        "freshSelection": 700,
+    }
+
+
+@pytest.mark.parametrize("scenario", ["history", "poll-order"])
+def test_explicit_repair_preserves_route_and_response_ownership(scenario: str) -> None:
+    assert run_session("github-pull-repair-lifecycle-behavior.js", "--case", scenario) == {
+        "case": scenario,
+        "passed": True,
+    }
+
+
+def test_pending_file_selection_belongs_to_one_files_visit() -> None:
+    assert run_session("github-pull-pending-file-behavior.js") == {
+        "abandonedJump": False,
+        "unavailableRetainsSelection": True,
+        "replacementRetainsSelection": True,
     }

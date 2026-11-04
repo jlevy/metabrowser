@@ -8,6 +8,7 @@ hover token. A failure here means a surface forked the vocabulary.
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 
@@ -401,6 +402,21 @@ def _baseline_rows() -> list[tuple[str, str, _El]]:
     el("content-body metabrowser-diff-host", el("diff-file", bar))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-toggle", toggle))
     rows.append(("Diff file bar", f"{diff_host} .diff-file-bar", bar))
+    # Pull request row: buildRow in the GitHub plugin's pulls-panel.js. The muted line under
+    # the title is alone on its line, so it neither shares a baseline nor is a box.
+    rows.append(
+        (
+            "Pull request row",
+            ".github-pulls-row",
+            el(
+                "github-pulls-row",
+                box("github-pull-state-icon"),
+                text("github-pulls-title"),
+                text("github-pulls-age age-min"),
+                el("github-pulls-meta"),
+            ),
+        )
+    )
     return rows
 
 
@@ -414,13 +430,20 @@ def test_row_text_shares_one_baseline() -> None:
     """
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     diff_css = (REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css").read_text(encoding="utf-8")
+    github_css = (REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css").read_text(encoding="utf-8")
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "### Row Text Shares a Baseline" in doc, "the row baseline rule lost its documentation"
     section = doc.split("### Row Text Shares a Baseline", 1)[1].split("\n### ", 1)[0]
     rules = _baseline_rules()
     for label, row_rule, row in _baseline_rows():
         assert f"| {label}" in section, f"{label} is missing from the design-system table"
-        css = diff_css if row_rule.startswith(".metabrowser-diff-host") else styles
+        css = (
+            diff_css
+            if row_rule.startswith(".metabrowser-diff-host")
+            else github_css
+            if row_rule.startswith(".github-")
+            else styles
+        )
         # The row centers its children, so a box needs no rule of its own.
         assert "align-items: center;" in _rule(css, row_rule), f"{row_rule} stopped centering"
         for child in row.children:
@@ -530,12 +553,22 @@ def test_nav_like_row_sets_share_the_vertical_keyboard_contract() -> None:
     design = (REPO_ROOT / "docs" / "design-system.md").read_text(encoding="utf-8")
     tree = (STATIC / "tree-keyboard-navigation.js").read_text(encoding="utf-8")
     git = (STATIC / "git-panel.js").read_text(encoding="utf-8")
+    # The host binds a row's keys in the registry, and the view moves the rows' tab stop.
+    pulls = (STATIC / "pulls-nav.js").read_text(encoding="utf-8") + (
+        REPO_ROOT / BUILTIN_PLUGINS / "github/pulls-panel.js"
+    ).read_text(encoding="utf-8")
+
+    pull_files = pulls + (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-files-view.js").read_text(
+        encoding="utf-8"
+    )
 
     assert "### Navigational Row Collections" in design
     assert "test_nav_like_row_sets_share_the_vertical_keyboard_contract" in design
     for source, movement_helper in (
         (tree, "focusAndOpen"),
         (git, "moveCommitRowFocus"),
+        (pulls, "nav.move("),
+        (pull_files, "nav.moveFile("),
     ):
         assert movement_helper in source
         assert '"ArrowUp"' in source
@@ -599,7 +632,9 @@ def test_age_is_one_primitive_everywhere() -> None:
     that add positioning only."""
     styles = (STATIC / "styles.css").read_text(encoding="utf-8")
     formatters = (STATIC / "formatters.js").read_text(encoding="utf-8")
-    assert "function age(epochSeconds)" in formatters, "the shared age primitive moved"
+    assert "function age(epochSeconds, options = {})" in formatters, (
+        "the shared age primitive moved"
+    )
     for name in ("git-panel.js", "app.js"):
         consumer = (STATIC / name).read_text(encoding="utf-8")
         assert "MetabrowserFormatters" in consumer and "age(" in consumer, (
@@ -724,7 +759,8 @@ def test_ref_chip_kinds_differ_in_form_not_only_hue() -> None:
     # The kind classes must reach the markup from the wire, not be guessed
     # in the browser.
     panel = (STATIC / "git-panel.js").read_text(encoding="utf-8")
-    assert "ref.is_trunk" in panel and "git-ref-trunk" in panel
+    views = (STATIC / "plugin-sdk-views.js").read_text(encoding="utf-8")
+    assert "ref.is_trunk" in panel and "git-ref-trunk" in views
 
 
 def test_git_history_vocabulary_is_documented() -> None:
@@ -791,12 +827,12 @@ def test_git_commit_summary_is_one_component() -> None:
         compact_subject,
         compact_meta,
         summary_age,
-        summary_refs,
         summary_lines,
     ):
         assert "font-size: var(--body-font-size)" in rule
         assert "font-size: var(--ui-small-font-size)" not in rule
         assert "font-size: var(--tooltip-detail-font-size)" not in rule
+    assert "font-size: var(--ui-small-font-size)" in summary_refs
     # The revision is the documented exception: monospace at body size
     # renders optically larger than the sans beside it, so the sha sits
     # one step down the ramp. See "Git Commit Summary" in the design
@@ -998,11 +1034,6 @@ _FONT_SIZE_EXEMPT: dict[tuple[str, str], str] = {
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) h3"): "relative fallback heading",
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) h4"): "relative fallback heading",
     ("styles.css", ".md-body:not(.metabrowser-kpress-host) .checkbox"): "relative to its text",
-    # Reported, not changed: --code-font-size is defined nowhere, so a diff's code reads at
-    # 0.85rem, 13.6px, and follows the browser's root size. The ramp's --mono-block-font-size
-    # is 12px. Moving to it shrinks every diff on every page, which is the owner's decision.
-    ("diff/styles.css", ".metabrowser-diff-host .diff-line"): "13.6px pending mb-ruyu",
-    ("diff/styles.css", ".metabrowser-diff-host .diff-split-side"): "13.6px pending mb-ruyu",
     # One step below the structured view's mono, in em so it follows that view's size.
     ("structured/styles.css", ".tok-meta"): "relative to the row it annotates",
 }
@@ -1060,6 +1091,7 @@ _TOGGLE_SOURCES: dict[str, str] = {
     "source-ref-selector.js": "marks a chip of its groupHtml in place",
     "agent_log/index.js": "marks a chip of its groupHtml in place",
     "folder/treemap.js": "marks a chip of its groupHtml in place",
+    "github/pulls-panel.js": "marks a chip of its groupHtml in place",
 }
 _TOGGLE_ARIA = re.compile(
     r"""aria-pressed|aria-checked|radiogroup|menuitemradio|menuitemcheckbox"""
@@ -1224,6 +1256,119 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     assert details[".github-pull-hunk-earlier[open]::details-content"]["height"] == "auto"
 
 
+def _oklch_channels(value: str) -> tuple[float, float, float]:
+    """Lightness (0 to 1), chroma, and hue of one `oklch(L% C H)` declaration."""
+
+    found = re.fullmatch(r"oklch\(([\d.]+)% ([\d.]+) ([\d.]+)\)", value.strip())
+    assert found is not None, value
+    return float(found[1]) / 100, float(found[2]), float(found[3])
+
+
+def _relative_luminance(lightness: float, chroma: float, hue: float) -> float:
+    """WCAG relative luminance of an oklch color, from its linear sRGB channels."""
+
+    a = chroma * math.cos(math.radians(hue))
+    b = chroma * math.sin(math.radians(hue))
+    long = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    medium = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    short = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    red = 4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short
+    green = -1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short
+    blue = -0.0041960863 * long - 0.7034186147 * medium + 1.7076147010 * short
+    channels = [min(max(channel, 0.0), 1.0) for channel in (red, green, blue)]
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def _contrast(foreground: str, background: str) -> float:
+    lighter, darker = sorted(
+        (
+            _relative_luminance(*_oklch_channels(foreground)),
+            _relative_luminance(*_oklch_channels(background)),
+        ),
+        reverse=True,
+    )
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_pull_state_colors_keep_their_hue_and_read_on_both_grounds() -> None:
+    """Each state is one color seen against two backgrounds, legible on both.
+
+    `test_themed_colors_keep_their_hue` reads the shell's stylesheet; these tokens are the
+    plugin's, as a domain's tokens are (docs/design-system.md, "Token Layers"). A state's
+    badge sets its name in this color, so it is held to the 4.5:1 of text, on the surface the
+    page's header sits on and on the panel's.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    light_block, dark_block = _theme_blocks()
+    # The plugin's own theme rules, parsed: a comment or another rule's brace cannot move them.
+    rules = _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+    plugin_light = next(body for selector, body in rules if selector == ":root")
+    plugin_dark = next(body for selector, body in rules if selector == '[data-theme="dark"]')
+    assert "--sidebar-bg" in styles
+    for name in ("open", "draft", "merged", "closed"):
+        token = f"--github-pull-{name}"
+        light = plugin_light[token]
+        dark = plugin_dark[token]
+        assert _oklch_channels(light)[2] == _oklch_channels(dark)[2], f"{token} changes hue"
+        for theme, block, color in (("light", light_block, light), ("dark", dark_block, dark)):
+            for ground in ("--bg", "--sidebar-bg"):
+                surface = _declared(block, ground)
+                assert _contrast(color, surface) >= 4.5, (
+                    f"{token} on {ground} in the {theme} theme reads at "
+                    f"{_contrast(color, surface):.2f}:1"
+                )
+
+
+def _declared(block: str, token: str) -> str:
+    found = re.search(rf"^\s*{re.escape(token)}:\s*([^;]+);", block, flags=re.MULTILINE)
+    assert found is not None, token
+    return found[1]
+
+
+def test_the_pulls_tab_carries_the_shells_primitives() -> None:
+    """What "The Pulls Tab" says it reuses is what its markup and stylesheet say."""
+
+    panel = (REPO_ROOT / BUILTIN_PLUGINS / "github/pulls-panel.js").read_text(encoding="utf-8")
+    state = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-state.js").read_text(encoding="utf-8")
+    page = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-page.js").read_text(encoding="utf-8")
+    icons = (STATIC / "icons.js").read_text(encoding="utf-8")
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "## The Pulls Tab" in doc
+    assert "test_the_pulls_tab_carries_the_shells_primitives" in doc
+    github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
+    # One Chevron, One Row Contract: the row height, the hover, and a row's own focus ring.
+    row = github[".github-pulls-row"]
+    assert row["min-height"] == "var(--ui-row-height)"
+    assert github[".github-pulls-row:hover"]["background"] == "var(--hover-bg)"
+    assert github[".github-pulls-row.selected"]["background"] == "var(--highlight-bg)"
+    assert github[".github-pulls-row:focus-visible"]["outline"] == "2px solid var(--link)"
+    assert "transition" not in row, "a row crossed by a held key answers with no easing"
+    # Icons: the app's glyph, in the state's color and never its own. The four shapes are the
+    # plugin's, Lucide's, and drawn only on a GitHub repository's page, so no folder's startup
+    # scripts carry them.
+    assert github[".github-pull-state-icon svg"]["width"] == "var(--icon-glyph)"
+    for name, lucide in (
+        ("gitPullRequest", "git-pull-request"),
+        ("gitPullRequestDraft", "git-pull-request-draft"),
+        ("gitMerge", "git-merge"),
+        ("gitPullRequestClosed", "git-pull-request-closed"),
+    ):
+        assert f"{name}: // Lucide `{lucide}`" in state
+        assert f'"{name}"' in state
+        assert name not in icons, f"{name} is back in the shell's eager icon registry"
+    assert 'fill="none" stroke="currentColor"' in state, "a state's glyph takes its color"
+    # A row and its page match: one state's icon, from one module.
+    assert "pullStateIcon(" in panel and "pullStateIcon(" in page
+    assert 'aria-label", PULL_STATES[state].label' in state
+    # Ages, filters, notices, and the skeleton are the shell's.
+    assert "mb.formatAge(" in panel
+    assert "controls.groupHtml(" in panel
+    assert 'class: "notice github-pulls-notice"' in panel
+    assert '"recent-loading mb-delayed-loading"' in panel
+    assert 'class: "btn github-pulls-more"' in panel
+
+
 def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     """What "The Pull Request Page" says it reuses is what its markup says."""
 
@@ -1233,7 +1378,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert "test_the_pull_request_page_carries_the_shells_primitives" in doc
     # Branch names and file paths are chrome: no `<code>` for either.
     assert 'h("code"' not in page
-    assert '"git-ref git-ref-remote"' in page
+    assert "mb.refChip(" in page and 'kind: "remote"' in page
     # One age, not a timestamp at each call site.
     assert "mb.formatAge(" in page
     assert page.count("mb.formatTimestamp(") == 1, "the exact time belongs in the age's tooltip"
@@ -1242,6 +1387,21 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     # Links take the link token rather than the browser's blue.
     assert github[".github-pull-header a"]["color"] == "var(--link)"
+    # A button that moves the pin looks as a link does: no primitive's border or fill.
+    action = github[".github-pull-text-action"]
+    assert (action["color"], action["border"], action["background"]) == (
+        "var(--link)",
+        "0",
+        "transparent",
+    )
+    assert "github-pull-browse" not in page and '"Browse code"' in page
+    assert page.count('class: "github-pull-text-action"') == 1
+    assert '"github-pull-file github-pull-text-action"' in page
+    # A <button> is an atomic inline box whatever its display, so the link and the plain
+    # path are one too: a wrapped path then puts the badge after it on the next line in every
+    # form, where the link alone let it follow the text. Measured in Chrome on a 685 px card
+    # head: before, the link's head was 45 px and the button's 63 px; after, both 63 px.
+    assert github[".github-pull-file"]["display"] == "inline-block"
     # A hunk is the user's code, at the chrome-context mono size, in the app's mono face.
     assert github[".github-pull-hunk"]["font-family"] == "var(--font-mono)"
     assert github[".github-pull-hunk"]["font-size"] == "var(--mono-block-font-size)"
@@ -1281,3 +1441,71 @@ def test_serif_is_only_for_documents() -> None:
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "### Serif Is for Documents" in doc
     assert "test_serif_is_only_for_documents" in doc
+
+
+def test_file_status_ink_is_shared_and_legible() -> None:
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    light, dark = _theme_blocks()
+    mapping = {
+        "added": "added",
+        "copied": "added",
+        "deleted": "deleted",
+        "removed": "deleted",
+        "modified": "modified",
+        "typechanged": "modified",
+        "type_changed": "modified",
+        "changed": "modified",
+        "renamed": "renamed",
+        "unmerged": "deleted",
+    }
+    rules = list(_rules_of(STATIC / "styles.css"))
+    for status, role in mapping.items():
+        assert any(
+            f'[data-file-status="{status}"]' in selector
+            and body.get("color") == f"var(--git-status-{role})"
+            for selector, body in rules
+        )
+    assert "color: var(--muted)" in _rule(styles, ".file-change-status[data-file-status]")
+    for block in (light, dark):
+        for role in ("added", "deleted", "modified", "renamed"):
+            color = _declared(block, f"--git-status-{role}")
+            if role == "renamed":
+                color = _declared(block, "--git-ref-local")
+                parts = color.removeprefix("oklch(").removesuffix(")").split()
+                color = f"oklch({float(parts[0]) * 100}% {parts[1]} {parts[2]})"
+            for ground in ("--bg", "--sidebar-bg", "--hover-bg"):
+                assert _contrast(color, _declared(block, ground)) >= 4.5
+    for relative in (
+        "static/git-panel.js",
+        "builtin_plugins/diff/diff-view.js",
+        "builtin_plugins/github/pull-files-view.js",
+    ):
+        source = (REPO_ROOT / "src/metabrowser" / relative).read_text(encoding="utf-8")
+        assert "file-change-status" in source and (
+            "data-file-status" in source or "fileStatus" in source
+        )
+
+
+def test_diff_text_and_reserved_geometry_use_the_dense_mono_token() -> None:
+    css = (REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css").read_text(encoding="utf-8")
+    view = (REPO_ROOT / BUILTIN_PLUGINS / "diff/diff-view.js").read_text(encoding="utf-8")
+    assert "--code-font-size" not in css + view
+    for selector in (
+        ".metabrowser-diff-host .diff-line",
+        ".metabrowser-diff-host .diff-split-side",
+    ):
+        assert "font-size: var(--mono-block-font-size)" in _rule(css, selector)
+    metrics = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "diff/styles.css"))[
+        ".metabrowser-diff-host"
+    ]
+    assert metrics["--diff-code-row-height"] == "calc(1.5 * var(--mono-block-font-size))"
+    for kind in ("code", "header", "fold", "notice"):
+        assert f"--diff-{kind}-row-height" in metrics
+        assert f"var(--diff-{kind}-row-height)" in view
+
+
+def test_branch_copy_plate_has_readable_interactive_ink() -> None:
+    css = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert "color: var(--text)" in _rule(css, ".git-ref-copy:is(:hover, :focus-visible)")
+    rules = dict(_rules_of(STATIC / "styles.css"))
+    assert rules[".git-ref-copy-layer > .git-ref-copy"]["color"] == "var(--git-ref-copy-ink)"

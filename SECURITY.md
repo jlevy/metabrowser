@@ -101,12 +101,18 @@ The browsed tree’s own files, served under `/raw`, are never among them.
 Stylesheets come from those paths and `/kpress-static/`, the Markdown worker from
 `/plugin-static/`, and images (with the `data:` images the stylesheet draws, and the
 repository’s own images through `/raw`), fonts, and requests from this origin.
+Application-owned GitHub avatars additionally permit HTTPS images from exactly
+`avatars.githubusercontent.com`. Provider and browser code validate these avatar URLs;
+anonymous CORS omits credentials, and the no-referrer policy omits the document URL.
+Both Markdown sanitizers still turn remote document images into links, including images
+on the avatar host. The raw HTML sandbox policy is unchanged.
 The page frames nothing, since the untrusted profile removes the HTML preview, its only
 frame, and nothing may frame it (`frame-ancestors 'none'` and `X-Frame-Options: DENY`);
 plugins, `<base>`, and form submission are off.
 `style-src-attr 'unsafe-inline'` keeps inline `style` attributes, because the
-application writes them for layout; an outside `url()` in one is still an image the
-image rule refuses, and untrusted Markdown carries no `style` attribute at all.
+application writes them for layout.
+Image URLs remain subject to the image-origin policy, and untrusted Markdown carries no
+`style` attribute at all.
 `capabilities.untrusted_shell_csp` is the policy, and `tests/test_untrusted_markdown.py`
 pins it and fails when the application writes an inline handler.
 

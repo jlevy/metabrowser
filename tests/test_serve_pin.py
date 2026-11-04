@@ -900,7 +900,7 @@ def _probe_urls(
 # The routes that answer with the page, and where each source route's answer holds the
 # status envelope: the status route's is the envelope, and the two POST routes carry it
 # as ``status`` when they have one to give.
-_PAGE_ROUTES = ("/view/{path:path}", "/commit/{rest:path}", "/pull/{rest:path}")
+_PAGE_ROUTES = ("/view/{path:path}", "/commit/{rest:path}", "/pull/{rest:path}", "/pulls")
 _STATUS_ROUTE = "/api/source/status"
 _PIN_ROUTE = "/api/source/pin"
 _REFRESH_ROUTE = "/api/source/refresh"

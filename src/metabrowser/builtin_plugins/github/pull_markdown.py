@@ -1,13 +1,14 @@
-"""Text of the served pull request rendered as Markdown, from the cached record alone.
+"""Text of a pull request rendered as Markdown, from the cached record alone.
 
-``GET /api/plugin/github/pull-markdown?part=<part>`` renders one text of the record
+``GET /api/plugin/github/pull-markdown?number=<n>&part=<part>`` renders one text of the record
 through the KPress adapter, the renderer every Markdown file goes through, in its
 sanitized trust mode: raw HTML in the text is cleaned, never trusted, and GitHub's own
 ``body_html`` is never read. KPress keeps what a document of its own may use, so
 :func:`~metabrowser.inert_html.harden` then reduces the HTML to a small allowlist of plain markup. A
 part is ``body``, the description, or ``issue_comment/<id>``, ``review/<id>``, or
-``review_comment/<id>``. The answer is that HTML with the record's ``fetched_at`` and the
-``part``, so a page drops a render of a record it no longer shows, and the manifest of
+``review_comment/<id>``. The answer carries the same parsed record's ``record_revision``
+and its ``fetched_at`` timestamp and ``part``, so a page can drop superseded content even
+when two records share a timestamp. It also carries the manifest of
 KPress's stylesheets, which set the text as they set a Markdown file. That manifest is the
 same for every text, and it is the only part of KPress's render envelope that reaches
 the page: the render's own asset list names scripts KPress adds for what a text contains,
@@ -26,7 +27,7 @@ from typing import Any, Final
 
 from metabrowser import kpress_adapter
 from metabrowser.builtin_plugins.github.pull_record import PullRecord
-from metabrowser.builtin_plugins.github.pull_route import ServedPullView, cached_pull_record
+from metabrowser.builtin_plugins.github.pull_route import PullView, cached_pull_record
 from metabrowser.inert_html import harden
 
 PART_PATTERN: Final = re.compile(r"^(?:body|(?:issue_comment|review|review_comment)/[0-9]{1,20})$")
@@ -47,16 +48,16 @@ def part_text(record: PullRecord, part: str) -> str | None:
     return next((item.body for item in items if item.id == wanted), None)
 
 
-def render_part(view: ServedPullView | None, part: str) -> tuple[int, dict[str, Any]]:
+def render_part(view: PullView, part: str) -> tuple[int, dict[str, Any]]:
     """The status and body for one part. Blocking and bounded; run it off the loop."""
 
     if PART_PATTERN.fullmatch(part) is None:
         return 400, {"error": "name a part of the pull request", "code": "invalid_part"}
-    if view is None:
-        return 409, {"error": "this server serves no pull request", "code": "no_pull_request"}
-    published = view.served.published
-    number = view.served.number
-    record, _dumped = cached_pull_record(published.home, published.slug, number)
+    if view.host is None:
+        return 409, {"error": "this server serves no GitHub repository", "code": "not_github"}
+    served = view.host.pulls
+    number = view.number
+    record, _dumped, revision = cached_pull_record(served.home, served.slug, number)
     if not isinstance(record, PullRecord):
         return 404, {"error": "no record of this pull request is cached", "code": record}
     text = part_text(record, part)
@@ -83,6 +84,7 @@ def render_part(view: ServedPullView | None, part: str) -> tuple[int, dict[str, 
     return 200, {
         "number": number,
         "fetched_at": record.fetched_at,
+        "record_revision": revision,
         "part": part,
         "html": html,
         "assets": kpress_adapter.document_stylesheets(),

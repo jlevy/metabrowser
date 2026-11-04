@@ -333,7 +333,9 @@ which space it belongs to:
 | `/view/<path>` | Content in the served tree or a pinned Git revision | A served-root-relative path, or a `GitPath` wire when the session is a `GitRevisionSubject` |
 | `/commit/<rev>` | One commit’s change set, compared against its first parent | A revision |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
-| `/pull/<n>`, `/pull/<n>/files` | The served pull request’s page: its conversation, or its Files changed | A pull-request number, then an optional tab |
+| `/pull/<n>`, `/pull/<n>/files` | A pull request’s page: its conversation, or its Files changed | A pull-request number, then an optional tab |
+| `/pull/<n>/files/<inner>` | One changed file of that page’s Files changed | A pull-request number, then a path within its comparison |
+| `/pulls` | A repository’s list of pull requests, with none selected | `?state=` names its filter: `open` or `closed`, and none for all of them |
 | `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
 | `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
 
@@ -347,8 +349,8 @@ The shape after the route is deliberately uniform —
 patch file and a commit are both containers whose children are file changes; only the
 container’s own address differs, so `/view/changes.patch/src/app.py` and
 `/commit/abc123/src/app.py` are the same grammar over two address spaces.
-An archive or pull-request container uses the same inner-path rule in its own address
-space.
+A pull request’s Files changed is a container in its own address space, so
+`/pull/7/files/src/app.py` is the same grammar again; an archive will be too.
 
 A repository branch is not another browser address space.
 Repository opening resolves a branch name to a full object ID and pins a
@@ -376,11 +378,14 @@ Route invariants:
 
 Path and fragment are implemented for `/view/`; `/commit/` is implemented for commit
 selection in the Git panel.
-`/pull/` is the served pull request’s page: the shell mounts the view a plugin registers
-for the `pull-request` kind, the GitHub plugin’s, and a tab is part of the URL, so back,
+`/pull/` is a pull request’s page: the shell mounts the view a plugin registers for the
+`pull-request` kind, the GitHub plugin’s, and a tab is part of the URL, so back,
 forward, and reload keep it.
-The page belongs to the one pull request a server serves; a server serves one repository
-and at most one pull request, so the number selects nothing else.
+One changed file, `/pull/<n>/files/<path>`, opens Files changed with the diff at that
+file; its path is the pull request’s text, so it reaches an address only through the
+route’s encoder and never reaches a filesystem call.
+A server serves one repository, and the number selects any of its pull requests.
+An address alone shows what is cached, whatever it was reached by, and moves no pin.
 `/compare/` is specified here and not yet built.
 
 The query slot is carried verbatim: it exists so a query an author wrote survives

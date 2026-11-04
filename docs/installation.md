@@ -57,8 +57,82 @@ Metabrowser installs KPress as a required dependency, at the exact version recor
 `pyproject.toml` and `uv.lock`. Do not install a second KPress checkout beside the
 package or override it with a workspace source.
 
-[Reviewing GitHub pull requests](reviewing-pull-requests.md) also needs `gh` and Git,
-which are installed separately.
+## Git and GitHub Setup
+
+Git and GitHub CLI (`gh`) are separate tools; installing Metabrowser does not install
+them. Choose the tools for what you want to read:
+
+| What you want to do | Extra tools |
+| --- | --- |
+| Browse local files | None |
+| Read Git history or comparisons | Git |
+| Open or refresh a public repository URL | Git; cloning works anonymously |
+| Fetch a GitHub PR catalog, description, or conversation for an opened repository | `gh`, signed in to github.com |
+| Open or refresh a private GitHub repository | Git and `gh`, signed in with access to it |
+
+Repository and PR caching currently require macOS or Linux and a filesystem that
+preserves Unix ownership and permissions.
+Native Windows caching is not supported.
+Ordinary local file browsing does not use this cache.
+
+Cached PR metadata remains readable without `gh`; reading cached Git objects still needs
+Git. No Node.js, npm, or separate database service is needed to run Metabrowser.
+
+On macOS with Homebrew, install the missing tools:
+
+```shell
+brew install git gh
+```
+
+For other platforms, follow the official
+[Git installation instructions](https://git-scm.com/install/) and
+[GitHub CLI installation instructions](https://github.com/cli/cli#installation).
+Use current maintained releases.
+Metabrowser refuses acquisition or fetching with Git below its security floor and
+reports the versions it accepts.
+
+Check the tools and the active GitHub account in the terminal that will run `metab`:
+
+```shell
+git --version
+gh --version
+gh auth status --active --hostname github.com
+```
+
+If `gh` reports that you are not signed in, run:
+
+```shell
+gh auth login --hostname github.com
+```
+
+Then repeat `gh auth status --active --hostname github.com`. A working saved login is
+sufficient; you do not need to set `GH_TOKEN`. For headless use, `gh` also accepts an
+[environment token](https://cli.github.com/manual/gh_help_environment). Metabrowser uses
+`gh` for GitHub credentials and does not ask you to paste a token into its
+configuration. A private repository also requires access for that account.
+
+If a command is not found, install that tool or make its executable available on `PATH`
+in the terminal that starts Metabrowser.
+If `metab` alone is missing after a successful `uv tool install`, run
+`uv tool update-shell` and open a new terminal.
+If `gh auth status` reports a connection failure, restore connectivity before trying
+again. Installation and sign-in do not fix a network failure.
+
+Native GitHub stack labels are optional.
+To enable them, install GitHub’s
+[gh-stack extension](https://github.com/github/gh-stack):
+
+```shell
+gh extension install github/gh-stack
+gh stack --version
+```
+
+Metabrowser reads repository stack metadata without changing local stack tracking or
+GitHub. If the extension or API is unavailable, PR browsing still works and stack labels
+are omitted unless a matching cached snapshot is available.
+
+See [reviewing pull requests](reviewing-pull-requests.md) for Fetch changes, cached
+reads, and refreshing after setup.
 
 ## Run a Source Checkout
 

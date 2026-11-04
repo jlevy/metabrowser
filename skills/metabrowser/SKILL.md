@@ -84,8 +84,8 @@ For an agent, these read everything without a browser or a port, where `<url>` i
   or `not_found_or_private`
 - See the kind and counts: `<invocation> <url> --show /pull/<n>`
 - Read the description, comments, reviews, review comments, and checks:
-  `<invocation> <url> --api /api/plugin/github/pull`. Its `comparison_route` is Files
-  changed
+  `<invocation> <url> --api '/api/plugin/github/pull?number=<n>'`. Its
+  `comparison_route` is Files changed
 - Read the diff: `<invocation> <url> --api '<comparison_route>'`
 - Read a file at the head: `git -C <location> show <pin>:<path>`, with `location` and
   `pin` from `<invocation> <url> --api /api/source/status`. Expand a leading `~` in
@@ -93,7 +93,8 @@ For an agent, these read everything without a browser or a port, where `<url>` i
 
 To give a person the page, run `<invocation> <url> --no-open` in the background and
 report the address on its `Serving … at` line.
-One server serves one pull request, and each takes its own port.
+Each server takes its own port and pins one head; it opens any other pull request of the
+repository at `/pull/<n>`, which offers **Fetch** if it has not been read.
 Metabrowser only reads: to comment or approve, use GitHub.
 It opens github.com only.
 The
