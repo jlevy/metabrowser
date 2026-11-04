@@ -17,12 +17,14 @@ from __future__ import annotations
 import json
 import os
 from datetime import timedelta
+from itertools import count
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh, pull_list, pulls
+from metabrowser.builtin_plugins.github import gh, pull_files_refresh, pull_list, pulls
 from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
@@ -83,6 +85,8 @@ class _Session:
         monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
         monkeypatch.setattr(pull_list, "utc_now", lambda: self.now)
         monkeypatch.setattr(pulls, "utc_now", lambda: self.now)
+        generations = count(1)
+        monkeypatch.setattr(pull_files_refresh, "uuid4", lambda: UUID(int=next(generations)))
         self.blocks: list[str] = []
         self.answer(files_scenario(origin))
 

@@ -16,15 +16,17 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from collections.abc import AsyncGenerator, Callable
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from uuid import UUID
 
 import pytest
 
-from metabrowser.builtin_plugins.github import pull_list, pull_record
+from metabrowser.builtin_plugins.github import pull_files_refresh, pull_list, pull_record
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError
 from metabrowser.builtin_plugins.github.pull_files_refresh import refresh_pull_files
 from metabrowser.builtin_plugins.github.pull_files_route import (
@@ -200,6 +202,7 @@ def test_a_list_of_the_worst_rows_the_bounds_allow_can_be_read_back(home: Path) 
     )
     worst = PullFileList(
         schema_version=PULL_FILES_SCHEMA,
+        generation="1" * 32,
         source=CANONICAL,
         number=1,
         listed_from="comparison",
@@ -248,15 +251,141 @@ def test_a_first_fill_is_published_page_by_page_and_a_reread_at_the_end(
 
     _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()))
     seen: list[PullFileList | str] = []
-    _refresh(repository, TREE_PULL, _watching(home, TREE_PULL, seen))
+    first = _refresh(repository, TREE_PULL, _watching(home, TREE_PULL, seen))
+    assert {item.generation for item in seen if isinstance(item, PullFileList)} == {
+        first.generation
+    }
     assert [
         (len(item.rows), item.complete, item.last_page) if isinstance(item, PullFileList) else item
         for item in seen
     ] == ["not_cached", "not_cached", (100, False, 3), (200, False, 3), (200, False, 3)]
 
     seen.clear()
-    _refresh(repository, TREE_PULL, _watching(home, TREE_PULL, seen))
+    second = _refresh(repository, TREE_PULL, _watching(home, TREE_PULL, seen))
+    assert second.fetched_at == first.fetched_at
+    assert second.generation != first.generation
+    assert {item.generation for item in seen if isinstance(item, PullFileList)} == {
+        first.generation
+    }
     assert all(isinstance(item, PullFileList) and len(item.rows) == 249 for item in seen)
+
+
+def test_concurrent_same_second_refreshes_keep_distinct_persisted_generations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, home: Path
+) -> None:
+    """Real overlapping page jobs each mint once; new-process cache reads keep the winner."""
+
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()))
+    minted: list[str] = []
+    real_uuid4 = pull_files_refresh.uuid4
+
+    def mint() -> UUID:
+        value = real_uuid4()
+        minted.append(value.hex)
+        return value
+
+    monkeypatch.setattr(pull_files_refresh, "uuid4", mint)
+
+    async def overlap() -> tuple[PullFileList, PullFileList]:
+        entered = 0
+        both_started = asyncio.Event()
+
+        @contextlib.asynccontextmanager
+        async def slot() -> AsyncGenerator[object]:
+            nonlocal entered
+            entered += 1
+            if entered == 2:
+                both_started.set()
+            await asyncio.wait_for(both_started.wait(), timeout=5)
+            yield None
+
+        first, second = await asyncio.gather(
+            refresh_pull_files(repository, TREE_PULL, local=None, slot=slot),
+            refresh_pull_files(repository, TREE_PULL, local=None, slot=slot),
+        )
+        return first, second
+
+    first, second = asyncio.run(overlap())
+    assert first.fetched_at == second.fetched_at
+    assert first.rows == second.rows
+    assert first.generation != second.generation
+    assert minted == [first.generation, second.generation]
+    kept = read_pull_files(home, SOURCE.slug, TREE_PULL)
+    assert isinstance(kept, PullFileList) and kept.generation in minted
+    before = (home / source_pull_files(SOURCE.slug, TREE_PULL)).read_bytes()
+    view, window = FilesView(TREE_PULL, repository, None, False, None), FilesWindow(TREE_PULL)
+    assert [pull_files_envelope(view, window)["generation"] for _ in range(2)] == [
+        kept.generation,
+        kept.generation,
+    ]
+    # A separate interpreter has no route or model cache and performs only private reads.
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import json, sys
+from pathlib import Path
+from metabrowser.builtin_plugins.github.pull_list import read_pull_files
+record = read_pull_files(Path(sys.argv[1]), sys.argv[2], int(sys.argv[3]))
+print(json.dumps(record.model_dump()))
+""",
+            str(home),
+            SOURCE.slug,
+            str(TREE_PULL),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert json.loads(child.stdout) == kept.model_dump(mode="json")
+    assert (home / source_pull_files(SOURCE.slug, TREE_PULL)).read_bytes() == before
+    assert len(minted) == 2
+
+
+def test_old_file_list_schema_is_a_nonmutating_miss_then_refetched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, repository: ListedRepository, home: Path
+) -> None:
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, [file_item("before.js")]))
+    previous = _refresh(repository, TREE_PULL)
+    payload = previous.model_dump()
+    payload["schema_version"] = PULL_FILES_SCHEMA - 1
+    del payload["generation"]
+    path = home / source_pull_files(SOURCE.slug, TREE_PULL)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    before = path.read_bytes()
+    view, window = FilesView(TREE_PULL, repository, None, False, None), FilesWindow(TREE_PULL)
+    absent = pull_files_envelope(view, window)
+    assert (absent["state"], absent["reason"], absent["generation"]) == (
+        "absent",
+        "schema_mismatch",
+        None,
+    )
+    assert read_pull_files(home, SOURCE.slug, TREE_PULL) == "schema_mismatch"
+    assert path.read_bytes() == before
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, [file_item("after.js")]))
+    current = _refresh(repository, TREE_PULL)
+    assert current.generation != previous.generation
+    assert current.rows[0].path == "after.js"
+    assert read_pull_files(home, SOURCE.slug, TREE_PULL) == current
+
+
+@pytest.mark.parametrize("generation", [None, "", "1" * 31, "1" * 33, "../escape", "G" * 32])
+def test_invalid_file_generation_is_not_adopted_or_rewritten(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    repository: ListedRepository,
+    home: Path,
+    generation: object,
+) -> None:
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, [file_item("a.py")]))
+    payload = _refresh(repository, TREE_PULL).model_dump()
+    payload["generation"] = generation
+    path = home / source_pull_files(SOURCE.slug, TREE_PULL)
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    before = path.read_bytes()
+    assert read_pull_files(home, SOURCE.slug, TREE_PULL) == "unreadable"
+    assert path.read_bytes() == before
 
 
 def test_a_retry_after_a_stop_does_not_shrink_what_is_held(
@@ -442,6 +571,7 @@ def test_local_list_retarget_and_unknown_old_base_are_stale(
 
     listed = PullFileList(
         schema_version=PULL_FILES_SCHEMA,
+        generation="1" * 32,
         source=CANONICAL,
         number=7,
         listed_from="comparison",
@@ -478,7 +608,7 @@ def test_local_list_retarget_and_unknown_old_base_are_stale(
     record.comparison = SimpleNamespace(base=listed.base, head=listed.head)
     old_payload = listed.model_dump()
     del old_payload["base"]
-    # A real cache written by the previous schema has no base field at all.
+    # A cache missing comparison identity cannot prove freshness.
     (home / source_pull_files(SOURCE.slug, 7)).write_text(json.dumps(old_payload), encoding="utf-8")
     old = read_pull_files(home, SOURCE.slug, 7)
     assert isinstance(old, PullFileList) and old.base is None
@@ -723,3 +853,33 @@ def test_malformed_saved_reset_does_not_become_a_network_hold(
     listed = asyncio.run(refresh_pull_files(repository, TREE_PULL, local=None, slot=_free))
     assert (listed.listed_from, len(listed.rows)) == ("github", 2)
     assert len(Path(os.environ["FAKE_GH_LOG"]).read_text().splitlines()) == 3
+
+
+def test_memory_only_file_refusal_does_not_mask_a_later_shared_rate_hold(
+    home: Path, repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another process's durable deadline still holds after a local admission refusal."""
+
+    from metabrowser.cache.paths import source_pull_files_refresh
+
+    refused = PullRefreshStamp(
+        outcome="cache_unwritable", at="2026-09-17T12:00:00Z", message="cache refused"
+    )
+    write_files_refresh(home, repository.slug, TREE_PULL, refused, persist=False)
+    relative = source_pull_files_refresh(repository.slug, TREE_PULL)
+    assert not (home / relative).exists()
+    held = PullRefreshStamp(
+        outcome="rate_limited", at="2026-09-17T12:00:00Z", reset_at="2026-09-17T12:05:00Z"
+    )
+    # The canonical disk writer models another process, which has no local memory entry.
+    pull_record.write_refresh_stamp(home, repository.slug, relative, held)
+    assert read_files_refresh(home, repository.slug, TREE_PULL) == held
+    write_files_refresh(home, repository.slug, TREE_PULL, refused, persist=False)
+    remembered = read_files_refresh(home, repository.slug, TREE_PULL)
+    assert remembered is not None and remembered.outcome == "cache_unwritable"
+    assert remembered.reset_at == held.reset_at
+    assert pull_record.read_refresh_stamp(home, relative) == held
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(minutes=6))
+    succeeded = PullRefreshStamp(outcome="succeeded", at="2026-09-17T12:06:00Z")
+    write_files_refresh(home, repository.slug, TREE_PULL, succeeded)
+    assert read_files_refresh(home, repository.slug, TREE_PULL) == succeeded

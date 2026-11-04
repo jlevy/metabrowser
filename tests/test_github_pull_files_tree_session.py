@@ -38,6 +38,7 @@ from tests.github_pull_fixture import (
     TREE_PULL,
     Origin,
     account,
+    file_item,
     file_pages,
     files_page,
     files_scenario,
@@ -169,6 +170,18 @@ def _record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, origin: Origin) -> 
         pulls_directory.chmod(0o700)
     recorded["failed cache_unwritable"] = _after(refused)
     recorded["stale"] = session.get(f"?number={TREE_PULL}&limit=0").payload()
+    # Two successful, equally sized refreshes in one clock second must be distinct.
+    # Polling at the old end first sees no rows; its identity must force a read from zero.
+    for name in ("before", "after"):
+        session.answer(
+            {
+                **online,
+                "api": {**online["api"], **file_pages(TREE_PULL, [file_item(f"{name}.js")])},
+            }
+        )
+        assert session.post({"number": TREE_PULL, "retry": True}).exit_code == 0
+        recorded[f"same second {name}"] = session.get(f"?number={TREE_PULL}").payload()
+    recorded["same second continuation"] = session.get(f"?number={TREE_PULL}&offset=1").payload()
     root = tmp_path / "root"
     root.mkdir(exist_ok=True)
     recorded["not_github"] = session.run(
@@ -189,6 +202,7 @@ def test_recording_is_what_the_routes_answer(
         (200, 2, 3, False),
     ]
     assert [len(f["rows"]) for f in fills[1:]] == [100, 100]
+    assert {f["generation"] for f in fills[1:]} == {recorded["filled"]["generation"]}
     filled = recorded["filled"]
     assert (filled["fetched"], filled["complete"], len(filled["rows"])) == (249, True, 49)
     assert recorded["pending"]["state"] == "pending"
@@ -203,6 +217,14 @@ def test_recording_is_what_the_routes_answer(
         assert envelope["fetched"] == 249, name
     assert recorded["stale"]["state"] == "stale"
     assert recorded["not_github"]["reason"] == "not_github"
+    before, after = recorded["same second before"], recorded["same second after"]
+    assert before["generation"] != after["generation"]
+    assert after["generation"] == recorded["same second continuation"]["generation"]
+    assert before["fetched_at"] == after["fetched_at"]
+    assert before["fetched"] == after["fetched"] == 1
+    assert before["rows"][0]["path"] == "before.js"
+    assert after["rows"][0]["path"] == "after.js"
+    assert recorded["same second continuation"]["rows"] == []
     check_recording(RECORDING, _rows_as_lines(recorded), transcript=TRANSCRIPT, indent=1)
 
 

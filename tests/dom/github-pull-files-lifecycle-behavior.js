@@ -8,12 +8,16 @@ const settle = async () => {
     await new Promise((resolve) => setImmediate(resolve));
   }
 };
+let nextGeneration = 0;
 function envelope(file) {
+  nextGeneration += 1;
   return {
     state: "current",
     reason: null,
     number: 7,
     listed_from: "github",
+    source: "https://github.com/octo/demo",
+    generation: nextGeneration.toString(16).padStart(32, "0"),
     fetched_at: "2026-09-17T12:00:00Z",
     reader: "gh:reader",
     head: "a".repeat(40),
@@ -155,6 +159,7 @@ async function run() {
       state: "absent",
       reason: "not_cached",
       listed_from: null,
+      generation: null,
       fetched: 0,
       rows: [],
     });
@@ -171,7 +176,8 @@ async function run() {
     for (const failure of [false, true]) {
       const r = rig(createFileTreeController);
       r.controller.expand();
-      r.respond(r.requests[0], envelope("before.txt"));
+      const cached = envelope("before.txt");
+      r.respond(r.requests[0], cached);
       await settle();
       const pending = r.controller.retry();
       const old = r.requests.at(-1);
@@ -180,7 +186,7 @@ async function run() {
       r.reopen(mode);
       const fresh = r.requests.at(-1);
       assert.equal(fresh.method, "GET", "reopened rows are read before old refresh completion");
-      r.respond(fresh, { ...envelope("before.txt"), offset: 1, rows: [] });
+      r.respond(fresh, { ...cached, offset: 1, rows: [] });
       await settle();
       const model = r.model();
       if (failure) {
