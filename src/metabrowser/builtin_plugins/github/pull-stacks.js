@@ -180,11 +180,7 @@ export function createStackController(deps) {
   }
   function schedule() {
     clearTimer();
-    if (
-      live() &&
-      envelope !== null &&
-      !["not_github", "gh_stack_missing"].includes(envelope.reason ?? "")
-    ) {
+    if (live() && !["not_github", "gh_stack_missing"].includes(envelope?.reason ?? "")) {
       timer = deps.schedule(
         () => {
           timer = null;
