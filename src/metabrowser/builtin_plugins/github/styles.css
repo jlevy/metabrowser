@@ -475,7 +475,6 @@
 }
 .github-pull-author {
   color: var(--muted);
-  font-size: inherit;
   font-weight: var(--weight-bold);
 }
 .github-pull-card-head .github-pull-author {
