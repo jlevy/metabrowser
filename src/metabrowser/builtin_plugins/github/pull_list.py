@@ -148,30 +148,41 @@ class LocalComparison:
     head: str
 
 
-def write_list_refresh(home: Path, slug: str, name: PullListName, stamp: PullRefreshStamp) -> None:
+def write_list_refresh(
+    home: Path,
+    slug: str,
+    name: PullListName,
+    stamp: PullRefreshStamp,
+    *,
+    persist: bool = True,
+) -> None:
     """Keep how the list's refresh ended beside it. Blocking; run it off the loop.
 
     A cache that will not take the stamp is the failure the stamp may be reporting, so
     this process remembers it instead: the route still says why, and the next automatic
     attempt still waits. Publishers serialize with catalog pages and preserve another
     worker's unexpired rate hold. Async callers use run_lock_section for cancellable waits.
+    Until the source claim admits the cache, persist=False records the failure only in
+    memory: neither a stamp nor its lock may be written into a refused cache.
     """
 
     relative = source_pull_list_refresh(slug, name)
-    try:
-        with source_alias_lock(home, slug):
-            held = read_list_refresh(home, slug, name)
-            if _preserves_hold(held, stamp):
+    if persist:
+        try:
+            with source_alias_lock(home, slug):
+                held = read_list_refresh(home, slug, name)
+                if _preserves_hold(held, stamp):
+                    return
+                write_refresh_stamp(home, slug, relative, stamp)
+                _UNWRITTEN_STAMPS.pop(str(home / relative), None)
                 return
-            write_refresh_stamp(home, slug, relative, stamp)
-            _UNWRITTEN_STAMPS.pop(str(home / relative), None)
-    except (PrivateStorageError, OSError) as exc:
-        log.debug("could not keep how the list's refresh ended: %s", exc)
-        held = read_list_refresh(home, slug, name)
-        _remember_unwritten(
-            str(home / relative),
-            held if held is not None and _preserves_hold(held, stamp) else stamp,
-        )
+        except (PrivateStorageError, OSError) as exc:
+            log.debug("could not keep how the list's refresh ended: %s", exc)
+    held = read_list_refresh(home, slug, name)
+    _remember_unwritten(
+        str(home / relative),
+        held if held is not None and _preserves_hold(held, stamp) else stamp,
+    )
 
 
 def read_list_refresh(home: Path, slug: str, name: PullListName) -> PullRefreshStamp | None:

@@ -577,6 +577,7 @@ def test_optional_native_stack_state_is_shared_and_owned() -> None:
         "retryWindow": True,
         "disposal": True,
         "lateOwnerGuard": True,
+        "initialFailureRetry": True,
     }
 
 
