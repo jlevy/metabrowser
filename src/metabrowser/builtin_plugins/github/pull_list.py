@@ -398,7 +398,7 @@ MAX_FILE_PATH_BYTES: Final = 1024
 # bounds allow is 2,124 bytes, and ``tests/test_github_pull_files.py`` writes 3,000 of them and
 # reads them back: 6.38 MB. So every list written can be read.
 MAX_PULL_FILES_BYTES: Final = 8 * 1024 * 1024
-PULL_FILES_SCHEMA: Final = 1
+PULL_FILES_SCHEMA: Final = 2
 
 type FileStatus = Literal[
     "added", "removed", "modified", "renamed", "copied", "changed", "unchanged"
@@ -440,6 +440,8 @@ class FilePageMark(_Model):
 class PullFileList(_Model):
     """The changed files of one pull request, from one of two sources.
 
+    ``generation`` identifies one refresh, shared by all its progressive publications.
+    It is persisted, never inferred from timestamps or minted on read.
     ``complete`` is false while GitHub has pages not yet read, which is the state a list is
     published in while it fills. ``last_page`` is the page count the first page's ``Link``
     header gave, which counts pages and not files. ``capped`` says GitHub stopped at the
@@ -452,10 +454,11 @@ class PullFileList(_Model):
     source: Url
     number: PullNumber
     listed_from: FileListSource
+    generation: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$", max_length=32)]
     fetched_at: Timestamp
     reader: Reader | None
     head: Sha | None
-    # Older comparison lists lack the base and remain readable, but the route calls them stale.
+    # A comparison without a base cannot prove freshness; the route calls it stale.
     base: Sha | None = None
     pages: int = Field(ge=0, le=MAX_FILE_PAGES)
     last_page: Annotated[int, Field(ge=1)] | None
