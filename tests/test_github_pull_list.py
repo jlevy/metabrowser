@@ -54,6 +54,7 @@ from metabrowser.builtin_plugins.github.pull_list_route import (
     refresh_wanted,
 )
 from metabrowser.cache.locks import run_lock_section, source_alias_lock
+from metabrowser.cache.paths import PullListName
 from metabrowser.home import ensure_private_directory, write_private_file_atomic
 from metabrowser.mirror_refresh import RefreshCoordinator
 from tests.cache_home_fixture import (  # pyright: ignore[reportPrivateUsage]
@@ -200,6 +201,27 @@ def test_append_generation_counts_and_stale_backfill_guard(repository: ListedRep
     assert publish_page(repository, moved, moved, (_row(generated_item(10))[0],))
     assert catalog_row(repository.home, repository.slug, 10).title == "new title"  # type: ignore[union-attr]
     assert not publish_page(repository, before, before, ())
+
+
+@pytest.mark.parametrize("name", ["all", "open", "closed"])
+def test_first_row_in_empty_filter_invalidates_its_held_prefix(
+    repository: ListedRepository, name: PullListName
+) -> None:
+    before = _seed(repository, [])
+    window = ListWindow(name)
+    held = pull_list_envelope(ListView(repository, None, False), window)
+    assert held["rows"] == [] and held["next_after"] is None
+    item = generated_item(7)
+    if name == "closed":
+        item["state"] = "closed"
+    totals = {"all": 1, "open": int(name != "closed"), "closed": int(name == "closed")}
+    assert publish_page(
+        repository, before, before.model_copy(update={"totals": totals}), (_row(item)[0],)
+    )
+    changed = pull_list_envelope(ListView(repository, None, False), window)
+    assert changed["generation"] != held["generation"]
+    assert [row["number"] for row in changed["rows"]] == [7]
+    assert changed["fetched"] == 1
 
 
 def test_reader_change_replaces_rows_atomically(
@@ -592,16 +614,33 @@ def test_an_automatic_refresh_waits_a_window_and_for_a_reset(
 
 
 @pytest.mark.parametrize(
-    ("errors", "state"),
+    ("errors", "state", "error_type"),
     [
-        ([{"type": "RATE_LIMITED", "message": "rate limit exhausted"}], "rate_limited"),
-        ([{"type": "NOT_FOUND", "message": "secret repository name"}], "not_found_or_private"),
-        ([{"message": "invalid cursor"}], "gh_failed"),
-        ([{"message": "arbitrary private upstream detail"}], "gh_failed"),
+        ([{"type": "RATE_LIMITED", "message": "rate limit exhausted"}], "rate_limited", GhError),
+        (
+            [{"type": "NOT_FOUND", "message": "secret repository name"}],
+            "not_found_or_private",
+            GhError,
+        ),
+        ([{"message": "invalid cursor"}], "gh_failed", GhCursorError),
+        (
+            [
+                {
+                    "type": "INVALID_CURSOR_ARGUMENTS",
+                    "message": "`YWJjZA==` does not appear to be a valid cursor.",
+                }
+            ],
+            "gh_failed",
+            GhCursorError,
+        ),
+        ([{"message": "arbitrary private upstream detail"}], "gh_failed", GhError),
     ],
 )
 def test_graphql_200_errors_never_publish_partial_data(
-    monkeypatch: pytest.MonkeyPatch, errors: list[dict[str, str]], state: str
+    monkeypatch: pytest.MonkeyPatch,
+    errors: list[dict[str, str]],
+    state: str,
+    error_type: type[GhError],
 ) -> None:
     async def run(args: Any, **kwargs: Any) -> Any:
         payload = json.dumps({"data": {"must_not_escape": True}, "errors": errors}).encode()
@@ -612,6 +651,7 @@ def test_graphql_200_errors_never_publish_partial_data(
     monkeypatch.setattr(gh, "_run", run)
     with pytest.raises(GhError) as caught:
         asyncio.run(gh.gh_graphql("query Fixed { viewer { login } }", {}, now=FETCHED_AT))
+    assert type(caught.value) is error_type
     assert caught.value.state == state
     assert "secret" not in str(caught.value) and "private upstream" not in str(caught.value)
 
