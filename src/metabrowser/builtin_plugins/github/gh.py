@@ -470,10 +470,15 @@ async def gh_graphql(
             )
         if any(
             isinstance(error, dict)
-            and "cursor" in str(error.get("message", "")).lower()
-            and any(
-                word in str(error.get("message", "")).lower()
-                for word in ("invalid", "exist", "expired")
+            and (
+                error.get("type") == "INVALID_CURSOR_ARGUMENTS"
+                or (
+                    "cursor" in str(error.get("message", "")).lower()
+                    and any(
+                        word in str(error.get("message", "")).lower()
+                        for word in ("invalid", "exist", "expired")
+                    )
+                )
             )
             for error in failures
         ):
@@ -541,6 +546,7 @@ __all__ = [
     "GH_MAX_BYTES",
     "GH_MIN_VERSION",
     "GH_TIMEOUT_S",
+    "GhCursorError",
     "GhError",
     "GhFailureState",
     "GhResponse",

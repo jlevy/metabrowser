@@ -402,7 +402,7 @@ status: 200
   "repository_total": 600,
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 600,
-  "generation": "<CATALOG_EPOCH_1>:0",
+  "generation": "<CATALOG_EPOCH_1>:1",
   "fetched": 2,
   "complete": true,
   "truncated": false,
