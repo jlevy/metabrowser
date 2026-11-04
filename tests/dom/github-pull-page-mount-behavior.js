@@ -19,6 +19,8 @@ for (const answer of Object.values(recorded)) {
 class Element {
   constructor(tag) {
     this.tag = tag;
+    this.tagName = tag.toUpperCase();
+    this.parentNode = null;
     this.children = [];
     this.attributes = new Map();
     this.dataset = {};
@@ -36,6 +38,12 @@ class Element {
       toggle: (name, on) => (on ? this.classes.add(name) : this.classes.delete(name)),
     };
   }
+  get ownerDocument() {
+    return globalThis.document;
+  }
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
+  }
   setAttribute(name, value) {
     this.attributes.set(name, String(value));
     if (name === "class") {
@@ -43,7 +51,12 @@ class Element {
     }
   }
   append(...children) {
-    this.children.push(...children);
+    for (const child of children) {
+      if (typeof child !== "string") {
+        child.parentNode = this;
+      }
+      this.children.push(child);
+    }
   }
   prepend(...children) {
     this.children.unshift(...children);
@@ -76,7 +89,12 @@ class Element {
     return null;
   }
   after() {}
-  remove() {}
+  remove() {
+    if (this.parentNode) {
+      this.parentNode.children = this.parentNode.children.filter((node) => node !== this);
+    }
+    this.parentNode = null;
+  }
   addEventListener(name, callback) {
     this.events.set(name, callback);
   }

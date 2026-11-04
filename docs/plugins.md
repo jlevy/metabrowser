@@ -424,6 +424,12 @@ Useful helpers include:
 - `render(template, data)` for auto-escaped Mustache templates;
 - `escapeHtml(value)` for carefully constructed HTML strings;
 - `wrapWithCopy(html)` for a standard copy-button frame;
+- `decorateExternalLink(anchor, {icon})` for the shared external GitHub destination
+  treatment. General destinations use the GitHub mark; canonical issue/PR addresses use
+  neutral entity glyphs when state is unknown.
+  A caller with matching metadata may supply its existing state icon.
+  Decorate after localization and sanitization; the helper keeps link labels and
+  navigation attributes and makes no provider requests;
 - `refChipHtml(name, options)` and `refChip(name, options)` for the shared Git ref chip
   as escaped markup or a DOM element.
   `name` is the complete copy value; `label` may display an owner or shortened name.

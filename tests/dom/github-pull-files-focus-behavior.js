@@ -24,6 +24,12 @@ class Element {
   get isConnected() {
     return this === document.body || !!this.parentNode?.isConnected;
   }
+  get ownerDocument() {
+    return globalThis.document;
+  }
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
+  }
   setAttribute(name, value) {
     this.attributes.set(name, value);
   }
@@ -115,6 +121,8 @@ async function run() {
     parent.append(owner);
     let generation = 0;
     const view = mountFileTree({
+      decorateExternalLink:
+        require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
       number: 7,
       autoExpandFiles: 3000,
       current: null,

@@ -1744,6 +1744,17 @@ order, conditional pages without `Link`, cache-only reads and missing-tool backo
    Expand, fold, scroll, resize and remount a long diff: reserved heights match actual
    rows, and the selected file, scroll anchor and keyboard position remain stable.
 
+7. Check external GitHub destinations in Markdown, conversation text, setup guidance and
+   application controls.
+   General destinations show the GitHub mark; issue/PR links show neutral entity icons
+   when state is unknown, and the selected PR’s GitHub link shows its known state.
+   A localized file link has no external icon.
+   Repeated decoration, long wrapping labels and keyboard focus preserve the text and
+   link attributes. No metadata request or remote SVG fetch occurs for an icon.
+   Check protocol-relative GitHub links and the existing Markdown enhancement-limit
+   fallback. Focus a branch-copy control with Tab, then drag the pane splitter narrower:
+   focus returns to its visible primary row and no invisible copy control remains.
+
 Retain screenshots, provider traces and errors with the artifact pin.
 These are focused functional observations; a historical catalog profile does not measure
 this layer.

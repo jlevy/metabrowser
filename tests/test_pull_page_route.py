@@ -292,9 +292,10 @@ def test_a_text_is_set_in_a_kpress_article_the_page_makes() -> None:
     """
 
     source = PAGE_JS.read_text(encoding="utf-8")
-    assert (
-        'h("article", { class: "kpress kpress-inert" }, [inert.kpressProse(nodes, document)])'
-        in (" ".join(source.split()).replace("[ ", "[").replace(" ]", "]"))
+    assert re.search(
+        r'h\("article", \{ class: "kpress kpress-inert" \}, \[\s*'
+        r"inert\.kpressProse\(nodes, document\),?\s*\]\)",
+        source,
     )
     assert '{ class: "metabrowser-kpress-host" }' in source
     # Nothing but the card's own edges is left to this stylesheet.

@@ -96,6 +96,9 @@ class FakeElement extends FakeNode {
     this.hidden = false;
     this.classes = new Set();
   }
+  get ownerDocument() {
+    return globalThis.document;
+  }
   get classList() {
     const classes = this.classes;
     return {

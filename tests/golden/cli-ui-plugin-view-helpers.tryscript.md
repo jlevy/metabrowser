@@ -27,7 +27,7 @@ asking again fetches only what failed.
 $ node tests/dom/plugin-view-helpers-session.js
 {
   "withoutACompositor": {
-    "helpersBefore": "0 of 14",
+    "helpersBefore": "0 of 15",
     "requestedTogether": [
       "link rel=stylesheet /plugin-static/fixture-kind/styles.css",
       "link rel=modulepreload <the plugin's module>",
@@ -43,7 +43,7 @@ $ node tests/dom/plugin-view-helpers-session.js
         "module evaluation: a Source view with a gutter of 1 lines"
       ]
     },
-    "helpersAfter": "14 of 14",
+    "helpersAfter": "15 of 15",
     "pluginCode": [
       "module evaluation: a Source view with a gutter of 1 lines",
       "render: a Source view with a gutter of 2 lines",

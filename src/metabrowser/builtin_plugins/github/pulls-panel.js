@@ -1706,6 +1706,7 @@ export function mountPullsPanel(container, ctx, mb) {
     let tree = trees.get(number);
     if (tree === undefined) {
       tree = mountFileTree({
+        decorateExternalLink: mb.decorateExternalLink,
         number,
         autoExpandFiles: AUTO_EXPAND_FILES,
         current: number === currentRow ? currentFile : null,
@@ -2160,10 +2161,12 @@ export function mountPullsPanel(container, ctx, mb) {
       );
       if (model.notice.help !== undefined) {
         box.append(
-          h(
-            "a",
-            { href: "https://cli.github.com/", target: "_blank", rel: "noopener noreferrer" },
-            [model.notice.help === "install" ? "Install GitHub CLI" : "Update GitHub CLI"],
+          mb.decorateExternalLink(
+            h(
+              "a",
+              { href: "https://cli.github.com/", target: "_blank", rel: "noopener noreferrer" },
+              [model.notice.help === "install" ? "Install GitHub CLI" : "Update GitHub CLI"],
+            ),
           ),
         );
       }
@@ -2182,9 +2185,11 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     if (model.github !== null) {
       footChildren.push(
-        h("a", { href: model.github, target: "_blank", rel: "noopener noreferrer" }, [
-          "See the rest on GitHub",
-        ]),
+        mb.decorateExternalLink(
+          h("a", { href: model.github, target: "_blank", rel: "noopener noreferrer" }, [
+            "See the rest on GitHub",
+          ]),
+        ),
       );
     }
     const sameFoot =

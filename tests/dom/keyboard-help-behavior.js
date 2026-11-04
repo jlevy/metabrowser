@@ -143,7 +143,17 @@ class FakeDocument {
 }
 
 const document = new FakeDocument();
-const sandbox = { document };
+const viewSdk = require("./sdk-sandbox.js").createSdkSandbox();
+viewSdk.document = document;
+const viewLoads = [];
+const sandbox = {
+  document,
+  metabrowser: {
+    decorateExternalLink: viewSdk.metabrowser.decorateExternalLink,
+    ensureAsset: (name) =>
+      new Promise((resolve, reject) => viewLoads.push({ name, resolve, reject })),
+  },
+};
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
@@ -189,7 +199,9 @@ const overlay = {
       open(trigger) {
         modalOpen = true;
         openedTrigger = trigger;
-        deactivateModalScope = options.shortcuts.activateScope(options.scope, { exclusive: true });
+        deactivateModalScope = options.shortcuts.activateScope(options.scope, {
+          exclusive: true,
+        });
       },
     });
   },
@@ -210,6 +222,7 @@ const help = sandbox.MetabrowserKeyboardHelp.create({
   shortcuts,
 });
 
+check("Help creation does not load view helpers", viewLoads.length === 0);
 const paragraphs = body.querySelectorAll("p").map((element) => element.textContent);
 check(
   "approved three-sentence description",
@@ -341,7 +354,10 @@ check(
     .some((element) => element.textContent.includes("Find and open a file")),
 );
 
+check("Help reuses the first open load", viewLoads.length === 1);
+// The earlier shortcut open started one load; repeated opens share it.
 help.open(helpButton);
+viewLoads[0].resolve();
 shortcuts.invoke("help.close");
 check("Help can reopen and close", closeCount === 2);
 
@@ -391,14 +407,46 @@ check(
 );
 treeNavigator.dispose();
 treeShortcuts.dispose();
-help.dispose();
-check("dispose clears hints", hintHost.children.length === 0);
-check("dispose unregisters Help", shortcuts.present("help.open") === null);
-shortcuts.dispose();
+(async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+  check(
+    "Help loads only its on-demand helper bundle",
+    viewLoads.length === 1 && viewLoads[0].name === "sdk-views",
+  );
+  check(
+    "Help project link uses shared GitHub mark",
+    projectLink.children.at(-1)?.getAttribute("data-external-kind") === "github",
+  );
+  help.dispose();
+  check("dispose clears hints", hintHost.children.length === 0);
+  check("dispose unregisters Help", shortcuts.present("help.open") === null);
+  const abandoned = sandbox.MetabrowserKeyboardHelp.create({
+    document,
+    overlay,
+    hintHost,
+    shortcuts,
+  });
+  const abandonedLink = body.querySelectorAll("a").at(-1);
+  abandoned.open();
+  viewLoads[1].reject(new Error("helpers unavailable"));
+  await Promise.resolve();
+  await Promise.resolve();
+  abandoned.open();
+  check("a later Help open retries a failed helper load", viewLoads.length === 3);
+  abandoned.dispose();
+  viewLoads[2].resolve();
+  await Promise.resolve();
+  check("late helpers cannot decorate disposed Help", abandonedLink.children.length === 0);
+  shortcuts.dispose();
 
-if (failures.length > 0) {
-  console.error(failures.join("\n"));
+  if (failures.length > 0) {
+    console.error(failures.join("\n"));
+    process.exitCode = 1;
+  } else {
+    console.log("OK keyboard help");
+  }
+})().catch((error) => {
+  console.error(error);
   process.exitCode = 1;
-} else {
-  console.log("OK keyboard help");
-}
+});

@@ -12,6 +12,7 @@ independent of Metabrowser’s license.
   implementation in `src/metabrowser/static/git-graph.js` is derived from Visual Studio
   Code’s `scmHistory.ts`, copied at upstream commit
   `9245212c26af8113b3b96392c04563623cd99811` (2026-08-07).
+
 - **Visual Studio Code Diff Algorithms**
   ([MIT License](src/metabrowser/static/vendor/licenses/vscode.txt),
   [Visual Studio Code](https://github.com/microsoft/vscode)). The browser-local
@@ -19,26 +20,46 @@ independent of Metabrowser’s license.
   the sequence diff, dynamic-programming, Myers, boundary-scoring, and cleanup code from
   `defaultLinesDiffComputer` at upstream commit
   `77f86f3d3a05cf5d6f765705e816341c918b7dae`.
+
 - **Mustache.js** v4.2.0
   ([MIT License](src/metabrowser/static/vendor/licenses/mustache.txt),
   [mustache.js](https://github.com/janl/mustache.js)). The browser runtime is vendored
   as `src/metabrowser/static/vendor/mustache.min.js`.
+
 - **highlight.js** v11.9.0
   ([BSD 3-Clause License](src/metabrowser/static/vendor/licenses/@highlightjs__cdn-assets.txt),
   [highlightjs.org](https://highlightjs.org)). The browser runtime, TOML language
   module, and GitHub stylesheet are vendored under `src/metabrowser/static/vendor/`.
+
 - **Chart.js** v4.5.1
   ([MIT License](src/metabrowser/static/vendor/licenses/chart.js.txt),
   [chartjs.org](https://www.chartjs.org)). The browser bundle is vendored as
   `src/metabrowser/static/vendor/chart.umd.min.js`.
+
 - **chartjs-adapter-date-fns** v3.0.0
   ([MIT License](src/metabrowser/static/vendor/licenses/chartjs-adapter-date-fns.txt),
   [Chart.js adapter repository](https://github.com/chartjs/chartjs-adapter-date-fns)).
   The browser bundle is vendored under `src/metabrowser/static/vendor/`.
+
 - **chartjs-plugin-annotation** v3.1.0
   ([MIT License](src/metabrowser/static/vendor/licenses/chartjs-plugin-annotation.txt),
   [Chart.js annotation plugin](https://www.chartjs.org/chartjs-plugin-annotation/)). The
   browser bundle is vendored under `src/metabrowser/static/vendor/`.
+
+- **Primer Octicons GitHub mark**
+  ([MIT License](https://github.com/primer/octicons/blob/ea8e6bb79894cc7e85564ee9b53d86b418738d04/LICENSE),
+  [Primer Octicons](https://github.com/primer/octicons)). The inline GitHub destination
+  mark in `src/metabrowser/static/plugin-sdk-views.js` uses `mark-github-16.svg` at
+  upstream commit `ea8e6bb79894cc7e85564ee9b53d86b418738d04`. Its copyright and license
+  accompany the inline glyph in the distributed script.
+
+- **Lucide neutral destination icons**
+  ([ISC License](https://github.com/lucide-icons/lucide/blob/896aba0d195a4fec38ad7c4a90d00cb3389ebfea/LICENSE),
+  [Lucide](https://github.com/lucide-icons/lucide)). The inline neutral issue and PR
+  destination glyphs in `src/metabrowser/static/plugin-sdk-views.js` use
+  `circle-dot.svg` and `git-pull-request.svg` from release 1.17.0 at upstream commit
+  `896aba0d195a4fec38ad7c4a90d00cb3389ebfea`. Their copyright and license accompany the
+  glyphs in the distributed script.
 
 ## Runtime Dependencies
 

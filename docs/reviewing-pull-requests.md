@@ -124,7 +124,9 @@ available. Full metadata uses relative ages such as “2h ago”, “just now”
 condensed navigation keeps short ages.
 An uncached page shows gray pulsing loading blocks; a cached page keeps its content
 visible while it refreshes.
-**View on GitHub** opens the pull request on github.com.
+**View on GitHub** opens the pull request on github.com with its state icon.
+External GitHub links in conversation text carry a destination icon; an unknown issue or
+PR state uses a neutral entity icon.
 Below the header are two tabs:
 
 - **Conversation:** the description, then comments and reviews in time order.

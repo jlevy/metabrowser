@@ -5,6 +5,7 @@ function refHelpers(document) {
   sandbox.document = document;
   sandbox.MetabrowserIcons = { copy: '<svg data-icon="copy"></svg>' };
   return {
+    decorateExternalLink: sandbox.metabrowser.decorateExternalLink,
     refChip: sandbox.metabrowser.refChip,
     refChipHtml: sandbox.metabrowser.refChipHtml,
     mountRefCopies: sandbox.metabrowser.mountRefCopies,

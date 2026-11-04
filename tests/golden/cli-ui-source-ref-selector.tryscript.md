@@ -405,6 +405,8 @@ $ node tests/dom/sdk-copy-delegate-behavior.js
     "nestedButtons": 0,
     "scrolledFocus": "primary",
     "resizedCopy": "hidden",
+    "outsidePointerFocus": "primary",
+    "insidePointerCopy": "feature/←<literal>",
     "clippedCopy": true,
     "listenersAfterDispose": 0
   }

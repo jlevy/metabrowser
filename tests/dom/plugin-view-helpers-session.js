@@ -34,6 +34,7 @@ process.emitWarning = (warning, ...rest) => {
 };
 
 const HELPERS = [
+  "decorateExternalLink",
   "refChipHtml",
   "refChip",
   "mountRefCopies",

@@ -497,6 +497,12 @@ GitHub URLs and HTTPS:
   PR numbers use dark text, usernames use bold gray text, and branch names use a smaller
   consistent treatment across the list and PR pages.
 
+- External GitHub links show a shared destination icon in rendered text and application
+  controls. Issue and PR links use neutral entity icons when state is unknown; matching
+  PR metadata supplies the state icon.
+  Localized file links remain internal, and decoration makes no additional API requests.
+  Branch-copy controls also restore visible row focus before dragging a pane splitter.
+
 - File change letters share muted semantic colors across Git, diffs and PR file trees:
   additions green, deletions red, modifications ochre and renames blue.
   Branch names share ref chips with hover/focus copy controls.

@@ -59,6 +59,7 @@ export const FILE_ROWS_OVERSCAN = 40;
  *   href: (path: string) => string | null,
  *   request: import("./pull-files-tree.js").FileTreeDependencies["request"],
  *   formatTime: (iso: string) => string,
+ *   decorateExternalLink: MetabrowserPublicSdk["decorateExternalLink"],
  *   page: () => FilePage | null,
  *   open: (route: {file: string, replace: boolean, jumped: boolean}) => void,
  *   leave: () => void,
@@ -350,10 +351,12 @@ export function mountFileTree(host) {
       );
       if (next.notice.help !== undefined) {
         box.append(
-          h(
-            "a",
-            { href: "https://cli.github.com/", target: "_blank", rel: "noopener noreferrer" },
-            [next.notice.help === "install" ? "Install GitHub CLI" : "Update GitHub CLI"],
+          host.decorateExternalLink(
+            h(
+              "a",
+              { href: "https://cli.github.com/", target: "_blank", rel: "noopener noreferrer" },
+              [next.notice.help === "install" ? "Install GitHub CLI" : "Update GitHub CLI"],
+            ),
           ),
         );
       }

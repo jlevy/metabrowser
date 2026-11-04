@@ -245,7 +245,7 @@ const TRUNCATED = Object.freeze({
  *   failure: string | null,
  *   failureHelp?: "install" | "update",
  *   pull: null | {
- *     title: string, number: number, state: string, stateLabel: string, author: string,
+ *     title: string, number: number, state: import("./pull-state.js").PullState, stateLabel: string, author: string,
  *     avatar: string | null, actorAvatar: string | null, baseRef: string, headRef: string,
  *     actor: string | null, action: string,
  *     base: string, head: string, htmlUrl: string, created: string, updated: string,
@@ -1758,28 +1758,74 @@ export function authorLabel(name, url, className = "") {
   return label;
 }
 
+/** Whether a destination is this exact known pull request, including its subpages.
+ * @param {string} href
+ * @param {string} pullUrl
+ */
+export function samePullDestination(href, pullUrl) {
+  const path = /^\/([A-Za-z0-9-]+)\/([A-Za-z0-9_.-]+)\/pull\/([1-9]\d*)(?:\/|$)/;
+  try {
+    const target = new URL(href);
+    const known = new URL(pullUrl);
+    if (
+      target.hostname !== "github.com" ||
+      known.hostname !== "github.com" ||
+      !/^https?:$/.test(target.protocol) ||
+      target.username ||
+      target.password ||
+      target.port
+    ) {
+      return false;
+    }
+    const a = path.exec(target.pathname);
+    const b = path.exec(known.pathname);
+    return (
+      a !== null &&
+      b !== null &&
+      a[1].toLowerCase() === b[1].toLowerCase() &&
+      a[2].toLowerCase() === b[2].toLowerCase() &&
+      a[3] === b[3]
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** @param {HTMLElement} anchor @param {PullModel["pull"]} pull @param {MetabrowserPublicSdk} mb */
+export function decoratePullLink(anchor, pull, mb) {
+  const known =
+    pull !== null && samePullDestination(anchor.getAttribute("href") ?? "", pull.htmlUrl);
+  return mb.decorateExternalLink(
+    anchor,
+    known ? { icon: pullStateIcon(pull.state, { named: false }) } : {},
+  );
+}
+
 /**
  * An outside link: new tab, no opener, no referrer. Text when the URL is not http(s).
  *
+ * @param {MetabrowserPublicSdk} mb
  * @param {string | null} href
  * @param {string} base
  * @param {Array<Node | string | null>} children
  * @param {string} [className]
  */
-function outside(href, base, children, className = "") {
+function outside(mb, href, base, children, className = "") {
   const safe = safeLink(href, base);
   if (safe === null) {
     return h("span", className ? { class: className } : {}, children);
   }
-  return h(
-    "a",
-    {
-      href: safe,
-      target: "_blank",
-      rel: "noopener noreferrer",
-      ...(className ? { class: className } : {}),
-    },
-    children,
+  return mb.decorateExternalLink(
+    h(
+      "a",
+      {
+        href: safe,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        ...(className ? { class: className } : {}),
+      },
+      children,
+    ),
   );
 }
 
@@ -2019,11 +2065,15 @@ export function mountPullPage(container, ctx, mb) {
         String(rendered.html),
         shown?.pull?.htmlUrl ?? "https://github.com/",
       );
-      plain.replaceWith(
-        h("div", { class: "metabrowser-kpress-host" }, [
-          h("article", { class: "kpress kpress-inert" }, [inert.kpressProse(nodes, document)]),
-        ]),
-      );
+      const article = h("article", { class: "kpress kpress-inert" }, [
+        inert.kpressProse(nodes, document),
+      ]);
+      // Only this newly sanitized, lazily opened message is visited. Authored SVG and
+      // state attributes have already been discarded; known state comes from our record.
+      for (const anchor of article.querySelectorAll("a[href]")) {
+        decoratePullLink(/** @type {HTMLElement} */ (anchor), shown?.pull ?? null, mb);
+      }
+      plain.replaceWith(h("div", { class: "metabrowser-kpress-host" }, [article]));
     });
   }
 
@@ -2268,7 +2318,7 @@ export function mountPullPage(container, ctx, mb) {
           age(pull.updated),
           ...(pull.closed && pull.closedLabel ? [` · ${pull.closedLabel} `, age(pull.closed)] : []),
           " · ",
-          outside(pull.htmlUrl, "", ["View on GitHub"]),
+          decoratePullLink(outside(mb, pull.htmlUrl, "", ["View on GitHub"]), pull, mb),
           model.browse === null ? null : " · ",
           model.browse === null ? null : browseControl(model.browse),
         ]),
@@ -2296,7 +2346,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     if (model.failureHelp !== undefined) {
       status.append(
-        outside("https://cli.github.com/", "", [
+        outside(mb, "https://cli.github.com/", "", [
           model.failureHelp === "install" ? "Install GitHub CLI" : "Update GitHub CLI",
         ]),
       );
@@ -2460,7 +2510,7 @@ export function mountPullPage(container, ctx, mb) {
           h("li", {}, [
             badge(item.tone, item.label, "check"),
             " ",
-            outside(item.url, pull.htmlUrl, [item.name]),
+            outside(mb, item.url, pull.htmlUrl, [item.name]),
             item.detail ? h("span", { class: "github-pull-quiet" }, [` ${item.detail}`]) : null,
           ]),
         );

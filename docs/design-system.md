@@ -459,6 +459,23 @@ actions. Each context sets one look for the `<a>` and the `<button>`, box includ
 `<button>` is always an atomic inline box, so where a label can wrap, the `<a>` is one
 too, and what follows a wrapped label starts on the next line in both forms.
 
+### External GitHub Links
+
+External GitHub destinations share a small inline icon beside the link label.
+General GitHub, CLI, documentation, gist and API links use the GitHub mark.
+Canonical issue and pull-request addresses use a neutral entity icon when their state is
+unknown. Matching PR metadata supplies the existing open, closed, draft or merged icon;
+the address alone never establishes a state.
+Icons preserve the link’s text, wrapping, focus and safe external-navigation attributes.
+
+Use the shared `decorateExternalLink` view helper after source-link localization and
+sanitization. A link localized to a served file stays internal.
+The decorator adds no metadata request, remote image or SVG fetch, observer, or
+document-wide scan. It uses the existing on-demand SDK view bundle and app-owned icon
+markup; document sanitization keeps its allowlist.
+Rendered Markdown retains its existing enhancement budget; links beyond the admitted
+prefix keep their authored form.
+
 ### Choosing Among Values
 
 A control that offers two or more values, or one value on or off, is one of these.
@@ -887,6 +904,8 @@ Copyable branch chips reserve a tiny copy control beside the label, revealed on 
 keyboard focus. The control copies the complete underlying branch or ref, regardless of
 label truncation or a displayed fork owner, and reports the normal copy feedback.
 Its click does not select a different row or follow its link.
+An outside pointer interaction hides active copy controls and restores the primary row’s
+focus before a pane drag can clip its focused button.
 Place copy controls beside a primary link or button rather than nesting interactive
 controls. Keep local, remote, tag, trunk and HEAD semantics when rendering a chip.
 

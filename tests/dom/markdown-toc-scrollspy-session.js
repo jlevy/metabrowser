@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
+const { createSdkSandbox } = require("./sdk-sandbox.js");
 
 const repoRoot = path.resolve(process.argv[2] || ".");
 const markdownModuleRoot = path.join(repoRoot, "src/metabrowser/builtin_plugins/markdown");
@@ -300,6 +301,7 @@ function plainClick(target) {
   let catalogSnapshots = 0;
   let tocMountedWithoutCatalogSnapshot = false;
   const mb = {
+    decorateExternalLink: createSdkSandbox().metabrowser.decorateExternalLink,
     errors: { isAbortError: () => false },
     escapeHtml: (value) => value,
     fetchKpressRender: async () => ({ diagnostics: [], html: "<article></article>" }),

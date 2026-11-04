@@ -330,6 +330,39 @@ if (typeof clickHandler !== "function") {
       clickHandler({ target: copy });
       assert.equal(clipboardWrites.at(-1), raw, "underlying ref rather than owner-qualified label");
       copy.focus();
+      assert.equal(
+        typeof documentListeners.get("pointerdown"),
+        "function",
+        "shown copies own an outside-pointer listener",
+      );
+      documentListeners.get("pointerdown")({ target: copy });
+      assert.equal(doc.activeElement, copy, "inside pointer keeps copy focused");
+      const copiedBefore = clipboardWrites.length;
+      clickHandler({ target: copy });
+      assert.equal(
+        clipboardWrites.length,
+        copiedBefore + 1,
+        "inside pointer still reaches the real copy delegate",
+      );
+      assert.equal(clipboardWrites.at(-1), raw);
+      documentListeners.get("pointerdown")({ target: new RefElement("div") });
+      assert.equal(
+        doc.activeElement,
+        primary,
+        "splitter pointerdown restores the visible primary before dragging",
+      );
+      assert.equal(copy.tabIndex, -1);
+      assert.equal(
+        windowListeners.size + documentListeners.size,
+        0,
+        "outside pointer releases all active listeners",
+      );
+      chip.box.right = 400;
+      primary.focus();
+      assert.equal(copy.hidden, true, "pane shrink cannot restore a clipped copy");
+      chip.box.right = 160;
+      primary.focus();
+      copy.focus();
       documentListeners.get("scroll")();
       assert.equal(doc.activeElement, primary, "hiding a focused icon returns to its row");
       assert.equal(copy.tabIndex, -1);
@@ -378,6 +411,8 @@ if (typeof clickHandler !== "function") {
               nestedButtons: primary.querySelectorAll("button").length,
               scrolledFocus: doc.activeElement === primary ? "primary" : "other",
               resizedCopy: "hidden",
+              outsidePointerFocus: "primary",
+              insidePointerCopy: raw,
               clippedCopy: copy.hidden,
               listenersAfterDispose: windowListeners.size + documentListeners.size,
             },

@@ -6059,3 +6059,22 @@ pre.code-block.metabrowser-source-lines > code {
 .git-ref-copy:is(:hover, :focus-visible) {
   color: var(--text);
 }
+
+/* Destination marks never make a long link an unbreakable inline-flex box. */
+.external-link-icon {
+  display: inline-flex;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+  margin-inline-start: 0.25em;
+  vertical-align: -0.12em;
+}
+.external-link-icon > svg,
+.external-link-icon > .github-pull-state-icon,
+.external-link-icon > .github-pull-state-icon > svg {
+  width: 100%;
+  height: 100%;
+}
+.kpress .external-link-icon {
+  width: 0.85em;
+  height: 0.85em;
+}
