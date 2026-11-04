@@ -1,0 +1,449 @@
+## A cache-only read; explicit optional acquisition fetches two repository pages.
+# metab https://github.com/octo/demo --api /api/plugin/github/stacks
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stacks
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "reader": null,
+  "fetched_at": null,
+  "fresh_for_s": 0,
+  "refreshing": false,
+  "last_refresh": null,
+  "complete": false,
+  "stacks": []
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+--- gh ---
+gh api repos/octo/demo --jq .size
+# metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stacks-refresh
+status: 202
+{
+  "refresh": "started",
+  "stacks": {
+    "state": "absent",
+    "reason": "not_cached",
+    "source": "https://github.com/octo/demo",
+    "reader": null,
+    "fetched_at": null,
+    "fresh_for_s": 0,
+    "refreshing": true,
+    "last_refresh": null,
+    "complete": false,
+    "stacks": []
+  },
+  "status_route": "/api/plugin/github/stacks"
+}
+after: /api/plugin/github/stacks
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "reader": "gh:octo-reader",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 300.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "complete": true,
+  "stacks": [
+    {
+      "number": 70,
+      "base_ref": "main",
+      "open": true,
+      "pulls": [
+        7,
+        8
+      ]
+    },
+    {
+      "number": 90,
+      "base_ref": "main",
+      "open": true,
+      "pulls": [
+        9
+      ]
+    }
+  ]
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+gh stack --version
+gh auth status
+gh api repos/octo/demo/stacks?per_page=100&page=1
+gh api repos/octo/demo/stacks?per_page=100&page=2
+gh auth status
+# metab https://github.com/octo/demo --api /api/plugin/github/stacks
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stacks
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "reader": "gh:octo-reader",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 300.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "complete": true,
+  "stacks": [
+    {
+      "number": 70,
+      "base_ref": "main",
+      "open": true,
+      "pulls": [
+        7,
+        8
+      ]
+    },
+    {
+      "number": 90,
+      "base_ref": "main",
+      "open": true,
+      "pulls": [
+        9
+      ]
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stacks-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "stacks": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "reader": "gh:octo-reader",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "fresh_for_s": 300.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "complete": true,
+    "stacks": [
+      {
+        "number": 70,
+        "base_ref": "main",
+        "open": true,
+        "pulls": [
+          7,
+          8
+        ]
+      },
+      {
+        "number": 90,
+        "base_ref": "main",
+        "open": true,
+        "pulls": [
+          9
+        ]
+      }
+    ]
+  },
+  "status_route": "/api/plugin/github/stacks"
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+## A due refresh asks conditionally; a 304 without Link retains page two.
+# metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stacks-refresh
+status: 202
+{
+  "refresh": "started",
+  "stacks": {
+    "state": "stale",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "reader": "gh:octo-reader",
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "fresh_for_s": 0.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "complete": true,
+    "stacks": [
+      {
+        "number": 70,
+        "base_ref": "main",
+        "open": true,
+        "pulls": [
+          7,
+          8
+        ]
+      },
+      {
+        "number": 90,
+        "base_ref": "main",
+        "open": true,
+        "pulls": [
+          9
+        ]
+      }
+    ]
+  },
+  "status_route": "/api/plugin/github/stacks"
+}
+after: /api/plugin/github/stacks
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "reader": "gh:octo-reader",
+  "fetched_at": "2026-09-17T12:05:01Z",
+  "fresh_for_s": 300.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:05:01Z"
+  },
+  "complete": true,
+  "stacks": [
+    {
+      "number": 70,
+      "base_ref": "main",
+      "open": true,
+      "pulls": [
+        7,
+        8
+      ]
+    },
+    {
+      "number": 90,
+      "base_ref": "main",
+      "open": true,
+      "pulls": [
+        9
+      ]
+    }
+  ]
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+gh stack --version
+gh auth status
+gh api repos/octo/demo/stacks?per_page=100&page=1 (If-None-Match)
+gh api repos/octo/demo/stacks?per_page=100&page=2 (If-None-Match)
+gh auth status
+## Removing optional tooling retains known membership and backs off.
+# metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
+exit: 1
+--- stdout ---
+api: /api/plugin/github/stacks-refresh
+status: 202
+{
+  "refresh": "started",
+  "stacks": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "reader": "gh:octo-reader",
+    "fetched_at": "2026-09-17T12:05:01Z",
+    "fresh_for_s": 300.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:05:01Z"
+    },
+    "complete": true,
+    "stacks": [
+      {
+        "number": 70,
+        "base_ref": "main",
+        "open": true,
+        "pulls": [
+          7,
+          8
+        ]
+      },
+      {
+        "number": 90,
+        "base_ref": "main",
+        "open": true,
+        "pulls": [
+          9
+        ]
+      }
+    ]
+  },
+  "status_route": "/api/plugin/github/stacks"
+}
+after: /api/plugin/github/stacks
+status: 200
+{
+  "state": "stale",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "reader": "gh:octo-reader",
+  "fetched_at": "2026-09-17T12:05:01Z",
+  "fresh_for_s": 300.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "gh_stack_missing",
+    "message": "Optional GitHub stack tooling is unavailable",
+    "reset_at": null,
+    "at": "2026-09-17T12:05:01Z"
+  },
+  "complete": true,
+  "stacks": [
+    {
+      "number": 70,
+      "base_ref": "main",
+      "open": true,
+      "pulls": [
+        7,
+        8
+      ]
+    },
+    {
+      "number": 90,
+      "base_ref": "main",
+      "open": true,
+      "pulls": [
+        9
+      ]
+    }
+  ]
+}
+--- stderr ---
+Error: the refresh ended with gh_stack_missing
+--- body ---
+{"retry": true}
+--- gh ---
+gh stack --version
+# metab https://github.com/octo/demo --api /api/plugin/github/stacks-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stacks-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "stacks": {
+    "state": "stale",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "reader": "gh:octo-reader",
+    "fetched_at": "2026-09-17T12:05:01Z",
+    "fresh_for_s": 300.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "gh_stack_missing",
+      "message": "Optional GitHub stack tooling is unavailable",
+      "reset_at": null,
+      "at": "2026-09-17T12:05:01Z"
+    },
+    "complete": true,
+    "stacks": [
+      {
+        "number": 70,
+        "base_ref": "main",
+        "open": true,
+        "pulls": [
+          7,
+          8
+        ]
+      },
+      {
+        "number": 90,
+        "base_ref": "main",
+        "open": true,
+        "pulls": [
+          9
+        ]
+      }
+    ]
+  },
+  "status_route": "/api/plugin/github/stacks"
+}
+--- stderr ---
+--- body ---
+{}
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/stacks
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stacks
+status: 200
+{
+  "state": "stale",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "reader": "gh:octo-reader",
+  "fetched_at": "2026-09-17T12:05:01Z",
+  "fresh_for_s": 300.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "gh_stack_missing",
+    "message": "Optional GitHub stack tooling is unavailable",
+    "reset_at": null,
+    "at": "2026-09-17T12:05:01Z"
+  },
+  "complete": true,
+  "stacks": [
+    {
+      "number": 70,
+      "base_ref": "main",
+      "open": true,
+      "pulls": [
+        7,
+        8
+      ]
+    },
+    {
+      "number": 90,
+      "base_ref": "main",
+      "open": true,
+      "pulls": [
+        9
+      ]
+    }
+  ]
+}
+--- stderr ---
+--- gh ---

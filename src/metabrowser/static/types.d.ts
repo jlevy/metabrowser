@@ -14,7 +14,7 @@ type MetabrowserRenderContext = {
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
   tab?: string;
-  open?: (route: { number: number; tab: string }) => unknown;
+  open?: (route: MetabrowserPullRoute) => unknown;
   /** A pull request's page opened by a reader's selection in the Pulls tab: what the tab read
    *  of its record, and how long the page waits before it fetches one the cache lacks. */
   reader?: MetabrowserPullReader | null;

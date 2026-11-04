@@ -978,13 +978,26 @@ tests named beside each primitive.
 
 ### Layout
 
-The page is a header, a [tab bar](#the-tab-bar), and a body, in that order.
+The page is a header, optional native stack navigation, a [tab bar](#the-tab-bar), and a
+body, in that order.
 The header and the conversation share a **reading column**: `--doc-measure` plus two
 card insets, centered in a wider pane as a Markdown file’s card and Overview’s stack
 are. So a card’s text box is the one a file’s text has, and the title lines up with the
 cards under it. The Conversation and Files changed tabs follow that same column, so the
 first tab aligns with the content on both narrow and wide screens.
 The Files changed body keeps the full pane: a diff needs room for Split.
+A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
+reading column even when Files changed is selected.
+Its reveal wrapper and skeleton are separate nodes, so the shared loading delay does not
+replace the pulse or reduced-motion rule.
+A cached page stays readable during refresh.
+
+Native stack navigation uses the repository snapshot’s verified membership and order.
+The quiet Stack #N disclosure, position, and Previous PR / Next PR links share the
+reading column. The disclosure creates its ordered member links when opened.
+A member selection preserves Conversation or Files changed and clears the previous file
+selection. Unknown membership and unavailable optional tooling add no placeholder or
+setup notice; known cached membership remains visible during refresh or failure.
 
 ### Text
 
@@ -1013,9 +1026,10 @@ Until its render arrives a text shows as plain text in the same face and size.
 
 | Element | Primitive | Why |
 | --- | --- | --- |
-| Title | `--page-title-font-size`, `--weight-bold`, sans | The number beside it is muted and regular |
+| Title | `--page-title-font-size`, `--weight-bold`, sans | The number beside it uses normal text ink and regular weight at the same size |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome |
-| Base and head branch | `.git-ref.git-ref-remote`, at this line’s size | A branch is a ref, so it takes the [ref chip](#branch-chips) and is sans, not `<code>` |
+| Username | `.github-pull-author`, bold and muted at the surface’s normal text size | Applies to the author, merger, comments, and reviews |
+| Base and head branch | `.git-ref.git-ref-remote`, at `--ui-small-font-size` | The [ref chip](#branch-chips), smaller than the actor and action; the list uses the same remote-ref ink |
 | Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
 | Opened, updated, commented | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age). “Fetched 2 min ago” is a status sentence |
 | File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
@@ -1039,6 +1053,13 @@ row, connected by `aria-owns`. Clicking the row opens the page and toggles the t
 Right expands or enters it, and Left collapses it.
 The shown page’s row opens automatically and closes when the page moves, unless a reader
 opened it.
+
+The metadata line gives the PR number normal row size and text ink.
+The username is the same size, bold and muted; the branch names are smaller in the
+shared remote-ref color.
+Known native stack numbers use quiet text on that line.
+Their shared repository snapshot is indexed once by PR number; rows make no stack
+requests, and enrichment updates retain the row and any focused changed-file tree.
 
 Changed files use the Files tree’s row height, indent, chevron, and inline change stats.
 A one-letter change badge replaces the file icon.
@@ -1085,7 +1106,8 @@ Everything goes through `pullStateIcon` and `displayState` in
 | State icon | The 16px alignment box around `--icon-glyph` | [One Glyph Size](#one-glyph-size) |
 | Title | `--nav-font-size`, full contrast, cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity |
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
-| Number, author, base and head | One muted line at `--ui-small-font-size` | Context, and paths and names are sans |
+| PR number and username | `--nav-font-size`; number uses text ink, username uses `.github-pull-author` | Both are readable context; usernames stay bold and muted across PR surfaces |
+| Base and head | `--ui-small-font-size`, remote-ref ink | Ref context is smaller than the number and username |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | [Choosing Among Values](#choosing-among-values) |
 | Count and freshness | Bold numeric total with “PRs on owner/repo”; a separate “Showing last 500” line when the display is partial, followed by muted freshness | A status sentence is the [Age](#age) exception |
 | A refresh’s failure, cut rows | [`.notice`](#notices), `warning`, with **Retry** in it when a reader can act | A cached list still shows under it |
@@ -1093,10 +1115,10 @@ Everything goes through `pullStateIcon` and `displayState` in
 | Fetch more, Retry | `.btn` | [Control Families](#control-families) |
 
 A row is two lines and one target, because a pane is narrower than its parts: the state
-icon and the title with the age beside it, sharing a baseline, then the muted line under
-them.
-It is one link, so a new tab and a copied address are the browser’s own, and all of
-its text is text: GitHub’s users write it, and none of it reaches markup or a style.
+icon and the title with the age beside it, sharing a baseline, then the metadata line
+under them. It is one link, so a new tab and a copied address are the browser’s own, and
+all of its text is text: GitHub’s users write it, and none of it reaches markup or a
+style.
 
 ### Keys
 

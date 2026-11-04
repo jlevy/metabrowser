@@ -50,6 +50,17 @@ route = "pulls-refresh"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pulls_refresh_handler"
 methods = ["POST"]
 
+# Optional native stack membership. Reads never discover tooling or contact GitHub.
+[[data_hook]]
+route = "stacks"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:stacks_handler"
+methods = ["GET"]
+
+[[data_hook]]
+route = "stacks-refresh"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:stacks_refresh_handler"
+methods = ["POST"]
+
 # One pull request's changed files, from the local comparison or GitHub's list, with a
 # typed absent, pending, current, or stale state and an honest count while it fills.
 # Answers from the cache alone; only a refresh lists them.

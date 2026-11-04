@@ -30,6 +30,29 @@ record the original design.
 The current route and storage contracts are in
 [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
 
+## Optional Stacks and Presentation Revision
+
+The owner’s follow-up requests are delivered as a separate layer above the catalog,
+setup and performance work.
+Native GitHub stack membership is optional enrichment, shared by the list and PR page;
+it is never inferred from a branch-base chain.
+The local-only `gh stack --version` probe gates reads through `gh api`; runtime browsing
+never invokes state-writing stack commands.
+Separate private snapshots, conditional pages, account/source checks and bounded
+background jobs keep ordinary PR reading independent of optional tooling or API
+failures.
+
+A known member shows its stack number and ordered member navigation, preserving the
+selected tab while clearing a preceding file selection.
+Unknown membership in a partial or unavailable snapshot is not an assertion that the PR
+has no stack. Cold PR pages use the existing gray pulse in their reading column; cached
+refreshes keep content visible.
+The shared [design system](../../../design-system.md#the-pulls-tab) uses dark PR
+numbers, normal-size bold gray usernames, and smaller branch refs.
+The
+[focused QA session](../../../qa-v012-repository-library.md#57b-optional-stacks-and-pr-presentation)
+records the final artifact and cache conditions without a new testing framework.
+
 ## Goal
 
 Open a GitHub repository and find its pull requests in a **Pulls** tab beside Files and

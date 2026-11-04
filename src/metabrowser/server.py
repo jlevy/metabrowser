@@ -1444,6 +1444,15 @@ async def index(
             else '\n        <div id="tab-pulls" data-tab-content="pulls"'
             ' style="display: none"></div>'
         )
+    # The PR route knows it will show text. Its cold shell uses the same row skeleton
+    # as the plugin, while unrelated previews keep their indeterminate placeholder.
+    preview_loading = (
+        '<div class="pull-request-placeholder mb-delayed-loading" role="status" aria-label="Loading pull request">'
+        '<div class="recent-loading" aria-hidden="true"></div></div>'
+        if pull_page
+        else '<div class="loading mb-delayed-loading"><div class="spinner"></div>'
+        '<span class="sr-only">Loading preview…</span></div>'
+    )
     source_kind_json = _json.dumps("git_revision" if git_pin else "filesystem")
     # The tree's first rows, inlined. Without this the reader waits for a round
     # trip the server did not have to make them take: time to first row is
@@ -1851,8 +1860,7 @@ async def index(
          scroll, so KPress's floating UI pins to it (see .preview-frame). -->
     <div class="preview-frame kpress-frame">
       <div class="preview-pane" id="preview-pane" data-kpress-viewport tabindex="-1">
-        <div class="loading mb-delayed-loading"><div class="spinner"></div><span
-          class="sr-only">Loading preview…</span></div>
+        {preview_loading}
       </div>
     </div>
   </main>

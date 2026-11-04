@@ -37,6 +37,7 @@ import {
   relativeAge,
   SLOW_POLL_MS,
 } from "./pull-page.js";
+import { createStackIndex, stackCaption, watchStacks } from "./pull-stacks.js";
 import { displayState, PULL_STATES, pullStateIcon } from "./pull-state.js";
 import { createPullsWindow } from "./pulls-window.js";
 
@@ -491,7 +492,7 @@ function pinChanged(response) {
  *   now(): number,
  *   isVisible(): boolean,
  *   formatTime(iso: string): string,
- *   render(model: PullsModel): void,
+ *   render(model: PullsModel, identity: import("./pull-stacks.js").StackIdentity | null): void,
  *   markCurrent(previous: number | null, next: number | null): void,
  *   markAnchor(previous: number | null, next: number | null, focus: boolean): void,
  *   reveal(number: number): void,
@@ -635,10 +636,13 @@ export function createPullsController(deps, options = {}) {
       return;
     }
     const next = model();
-    const key = JSON.stringify({ ...next, rows: null });
+    const envelope = held().envelope;
+    const identity =
+      envelope === null ? null : { source: envelope.source, reader: envelope.reader };
+    const key = JSON.stringify([{ ...next, rows: null }, identity]);
     if (key !== painted) {
       painted = key;
-      deps.render(next);
+      deps.render(next, identity);
     }
   }
 
@@ -1574,6 +1578,7 @@ export function mountPullsPanel(container, ctx, mb) {
    *   item: HTMLElement,
    *   row: HTMLAnchorElement,
    *   age: HTMLElement,
+   *   stack: HTMLElement,
    *   key: string,
    *   at: number | null,
    *   label: string,
@@ -1581,6 +1586,9 @@ export function mountPullsPanel(container, ctx, mb) {
    */
   /** @type {Map<number, PaintedRow>} */
   const painted = new Map();
+  let stackIndex = createStackIndex(null);
+  /** @type {import("./pull-stacks.js").StackIdentity | null} */
+  let stackIdentity = null;
   /** The rows last painted, in their order: an append leaves them as they were. @type {PullRow[]} */
   let paintedRows = [];
   let paintedVersion = -1;
@@ -1789,7 +1797,17 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       [when.label],
     );
-    const meta = h("span", { class: "github-pulls-meta" }, [row.meta]);
+    const stack = h("span", { class: "github-pulls-stack" }, [
+      stackCaption(stackIndex, stackIdentity, row.number),
+    ]);
+    const meta = h("span", { class: "github-pulls-meta" }, [
+      h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
+      " · ",
+      h("strong", { class: "github-pull-author github-pulls-author" }, [row.author]),
+      " · ",
+      h("span", { class: "github-pulls-refs" }, [row.refs]),
+      stack,
+    ]);
     // The registry's chevron in the 16px box a folder's takes, since the row is a container.
     const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
@@ -1818,7 +1836,7 @@ export function mountPullsPanel(container, ctx, mb) {
     const item = h("li", { class: "github-pulls-item", role: "none" }, [anchor]);
     // Its files, kept across a row built again for what it shows.
     trees.get(row.number)?.attach(item, anchor);
-    return { item, row: anchor, age: updated, key, at, label: when.label };
+    return { item, row: anchor, age: updated, stack, key, at, label: when.label };
   }
 
   /**
@@ -1941,6 +1959,10 @@ export function mountPullsPanel(container, ctx, mb) {
         entry.item.dataset.number = String(row.number);
         painted.set(row.number, entry);
         rowSizes?.observe(entry.item);
+      }
+      const caption = stackCaption(stackIndex, stackIdentity, row.number);
+      if (entry.stack.textContent !== caption) {
+        entry.stack.textContent = caption;
       }
       entry.row.setAttribute("aria-posinset", String(part.index + 1));
       entry.row.setAttribute("aria-setsize", String(placedSize));
@@ -2157,7 +2179,8 @@ export function mountPullsPanel(container, ctx, mb) {
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
       formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
-      render(model) {
+      render(model, identity) {
+        stackIdentity = identity;
         mb.perf.measure("githubPulls:render", () => paint(model), { rows: model.rows.length });
         if (windowDisposed) {
           return;
@@ -2326,6 +2349,13 @@ export function mountPullsPanel(container, ctx, mb) {
   /** The tree a file row with focus is in. */
   const focused = () => (focusedTree === null ? undefined : trees.get(focusedTree)?.controller);
 
+  const stacks = watchStacks((index) => {
+    const hadMembership = stackIndex.byPull.size > 0;
+    stackIndex = index;
+    if (!windowDisposed && painted.size > 0 && (hadMembership || index.byPull.size > 0)) {
+      queueWindow();
+    }
+  }, nav.shown);
   void controller.start({ shown: nav.shown, refreshAhead: nav.refreshAhead });
   showPage(nav.current);
   const unwatchPage = tab.onPageChange(followCurrentFile);
@@ -2335,6 +2365,7 @@ export function mountPullsPanel(container, ctx, mb) {
     /** @param {boolean} visible */
     setShown(visible) {
       panelShown = visible;
+      stacks.setShown(visible);
       controller.setShown(visible);
       for (const [number, tree] of trees) {
         tree.controller.setShown(visible && painted.has(number));
@@ -2412,6 +2443,7 @@ export function mountPullsPanel(container, ctx, mb) {
       unwatchFile?.();
       window.clearTimeout(peekTimer);
       unbindFilters();
+      stacks.dispose();
       controller.dispose();
       for (const tree of trees.values()) {
         tree.dispose();

@@ -50,7 +50,7 @@
   overflow-wrap: anywhere;
 }
 .github-pull-number {
-  color: var(--muted);
+  color: var(--text);
   font-weight: var(--weight-normal);
 }
 .github-pull-meta {
@@ -59,9 +59,9 @@
   align-items: center;
   gap: 4px 8px;
 }
-/* A branch is a ref, so it takes the ref chip, at this line's size as in a commit's summary. */
+/* A branch takes the remote ref chip, smaller than the actor and action beside it. */
 .github-pull-meta .git-ref {
-  font-size: var(--body-font-size);
+  font-size: var(--ui-small-font-size);
   line-height: 20px;
 }
 .github-pull-quiet {
@@ -468,6 +468,24 @@
 .github-pulls-meta {
   grid-column: 3 / -1;
   color: var(--muted);
+  font-size: var(--nav-font-size);
+}
+.github-pulls-number {
+  color: var(--text);
+}
+.github-pull-author {
+  color: var(--muted);
+  font-size: inherit;
+  font-weight: var(--weight-bold);
+}
+.github-pull-card-head .github-pull-author {
+  font-size: var(--body-font-size);
+}
+.github-pulls-refs {
+  color: var(--git-ref-remote);
+}
+.github-pulls-refs,
+.github-pulls-stack {
   font-size: var(--ui-small-font-size);
 }
 /* The registry's chevron, at the tree's 12px glyph in a 16px box; `.collapsed` and `.expanded`
@@ -589,4 +607,47 @@
 .github-pulls-foot a:focus-visible {
   outline: 2px solid var(--link);
   outline-offset: 1px;
+}
+
+/* Optional native membership follows the title's reading column, outside the age/status
+   repaint. The disclosure contains PR addresses; the stack itself has no HTML URL. */
+.github-pull-stacks {
+  padding-inline: var(--content-padding-x);
+  font-size: var(--ui-small-font-size);
+}
+.github-pull-stacks[hidden] {
+  display: none;
+}
+.github-pull-stack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding-block-end: 6px;
+}
+.github-pull-stack-disclosure > summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.github-pull-stack-members {
+  margin-block: 6px;
+  padding-inline-start: 24px;
+}
+.github-pull-stack a {
+  color: var(--link);
+  text-decoration: none;
+}
+.github-pull-stack a:hover {
+  text-decoration: underline;
+}
+.github-pull-stack a:focus-visible,
+.github-pull-stack-disclosure > summary:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+.github-pull-stack-members [aria-current="page"] {
+  font-weight: var(--weight-bold);
+}
+.github-pull-loading {
+  margin: 0;
 }

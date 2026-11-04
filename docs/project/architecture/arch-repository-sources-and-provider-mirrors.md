@@ -839,6 +839,44 @@ Automatic retries wait a freshness window, and a known rate-limit reset holds ev
 request. The server’s `served_repository` selects its managed store or a served
 checkout’s validated GitHub origin; neither yields a source for an unrelated folder.
 
+### Optional native stack metadata
+
+The GitHub plugin stores one bounded disposable `sources/<slug>/pulls/stacks.json`
+snapshot independently of the catalog and PR records.
+The snapshot records its source, reader, fetch time, completion flag, native stack
+numbers and ordered PR membership, plus each page’s ETag and continuation.
+Cached reads run no processes and create nothing.
+
+A separate coordinator job probes `gh stack --version` from an isolated directory, then
+reads repository-wide GitHub REST stack pages.
+It never runs `gh stack view`, checkout, sync, or tracking commands.
+Unlike the catalog’s GraphQL response, a REST page has no embedded reader; this job
+checks the active account before and after its pages.
+Changed accounts, foreign repository URLs and malformed pages cannot replace a known
+snapshot. A source-lock revision check rejects superseded publishers; cancellation
+abandons a waiting publisher.
+Network work stays outside the publication lock and yields the shared slot between
+pages. Each request checks optional and catalog rate holds after acquiring its slot;
+optional outcomes never overwrite core refresh stamps or records.
+
+An unchanged page’s `304` retains its cached continuation even when `Link` is absent.
+A refresh publishes only the pages it actually revisited, so a shorter result cannot
+retain an old tail. Multiple distinct native stacks may name the same PR; each stack
+retains its own complete bottom-to-top member order.
+The bounds are 10 pages of 100 stacks, 8 MiB of normalized cache data, 1,000 members per
+stack, and 10,000 memberships per snapshot.
+A whole page that would exceed the snapshot budget is omitted and `complete` is false;
+an oversized individual stack is refused.
+Missing membership in a partial or unavailable result never means the PR is unstacked.
+
+Successful and failed attempts have a five-minute window, with remaining freshness in
+the envelope. Explicit retry reprobes optional capability, but a known rate reset still
+holds it. Failure retains a preceding snapshot; a refused cache write records bounded
+process-local backoff.
+`403` and `404` are neutral unavailability, not proof that the repository has no stacks.
+Native stack numbers are labels, not PR numbers; the API URL is not a browser stack
+link. See the [route contract](arch-views-models-routes.md#data-routes).
+
 ### Pull requests beside a checkout
 
 A folder’s pull routes resolve its checkout’s `origin` to the GitHub plugin’s canonical

@@ -49,6 +49,12 @@ def source_pulls_directory(slug: str) -> str:
     return f"{source_directory(slug)}/pulls"
 
 
+def source_stacks(slug: str) -> str:
+    """Return the GitHub plugin's optional native stack snapshot."""
+
+    return f"{source_pulls_directory(slug)}/stacks.json"
+
+
 def source_pull_record(slug: str, number: int) -> str:
     """Return ``sources/<slug>/pulls/<n>.json`` for a positive pull-request number."""
 
@@ -124,6 +130,7 @@ __all__ = [
     "source_pull_refresh",
     "source_pulls_directory",
     "source_record",
+    "source_stacks",
     "staging_entry",
     "store_directory",
     "store_record",

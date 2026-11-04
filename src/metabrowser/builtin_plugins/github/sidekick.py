@@ -389,6 +389,58 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     return JSONResponse(answer, status_code=200 if started == "not_due" else 202, headers=_NO_STORE)
 
 
+async def stacks_handler(request: Request) -> Response:
+    """Read optional native stack membership from the cache alone."""
+    from metabrowser.builtin_plugins.github.pull_stacks_route import (
+        envelope_etag,
+        stack_envelope,
+        stack_view,
+    )
+
+    if request.query_params:
+        return _invalid_request("a stack snapshot has no query parameters")
+    await _resolve(request)
+    envelope = await asyncio.to_thread(stack_envelope, stack_view(request.app))
+    etag = envelope_etag(envelope)
+    headers = {**_NO_STORE, "etag": etag}
+    if matches_if_none_match(request, etag):
+        return Response(status_code=304, headers=headers)
+    return JSONResponse(dict(envelope), headers=headers)
+
+
+async def stacks_refresh_handler(request: Request) -> Response:
+    """Start or join optional stack work; core PR/catalog outcomes stay independent."""
+    from metabrowser.builtin_plugins.github.pull_stacks import refresh_wanted
+    from metabrowser.builtin_plugins.github.pull_stacks_route import (
+        STACKS_ROUTE,
+        stack_envelope,
+        stack_view,
+        start_refresh,
+    )
+
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
+    retry = body.get("retry", False)
+    if set(body) - {"retry"} or not isinstance(retry, bool):
+        return _invalid_request('a stack refresh accepts only optional boolean "retry"')
+    await _resolve(request)
+    view = stack_view(request.app)
+    if view.repository is None or view.coordinator is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+        )
+    wanted = await asyncio.to_thread(refresh_wanted, view.repository, retry=retry)
+    started = start_refresh(view, retry=retry, wanted=wanted)
+    envelope = await asyncio.to_thread(stack_envelope, stack_view(request.app))
+    return JSONResponse(
+        {"refresh": started, "stacks": dict(envelope), "status_route": STACKS_ROUTE},
+        status_code=200 if started == "not_due" else 202,
+        headers=_NO_STORE,
+    )
+
+
 async def pull_files_handler(request: Request) -> Response:
     """``GET /api/plugin/github/pull-files?number=<n>&offset=&limit=`` — see :mod:`.pull_files_route`.
 
@@ -480,5 +532,7 @@ __all__ = [
     "pull_refresh_handler",
     "pull_comparison_handler",
     "pulls_handler",
+    "stacks_handler",
+    "stacks_refresh_handler",
     "pulls_refresh_handler",
 ]

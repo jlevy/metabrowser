@@ -32,6 +32,7 @@
 // KPress article of its own making, so a text reads as the same Markdown in a file does.
 
 import { createComparisonPrefetch } from "./comparison-prefetch.js";
+import { createStackIndex, memberRoute, stackMembership, watchStacks } from "./pull-stacks.js";
 import { displayState, pullStateIcon } from "./pull-state.js";
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
@@ -169,6 +170,7 @@ const TRUNCATED = Object.freeze({
  * @typedef {{
  *   state: "absent" | "pending" | "current" | "stale",
  *   reason: string | null,
+ *   source: string | null,
  *   number: number,
  *   pin: string | null,
  *   pin_ref: string | null,
@@ -694,7 +696,7 @@ export function describePull(envelope, page) {
     checkoutAtHead: null,
   };
   if (envelope === null) {
-    // Nothing read yet: the page shows a spinner, and an error once a read failed.
+    // Nothing read yet: the page shows a skeleton, and an error once a read failed.
     model.status = page.error ? "unavailable" : "loading";
     return model;
   }
@@ -865,7 +867,7 @@ function isEnvelope(value) {
  *   cancel(handle: unknown): void,
  *   now(): number,
  *   isVisible(): boolean,
- *   render(model: PullModel): void,
+ *   render(model: PullModel, identity: import("./pull-stacks.js").StackIdentity | null): void,
  *   renderMarkdown(part: string, rendered: Record<string, any>): void,
  *   reload(): void,
  *   navigate(href: string): void,
@@ -941,10 +943,16 @@ export function createPullController(deps, options) {
 
   function render() {
     const next = model();
-    const key = JSON.stringify(next);
+    const identity = envelope?.record
+      ? {
+          source: typeof envelope.record.source === "string" ? envelope.record.source : null,
+          reader: typeof envelope.record.reader === "string" ? envelope.record.reader : null,
+        }
+      : null;
+    const key = JSON.stringify([next, identity]);
     if (key !== painted) {
       painted = key;
-      deps.render(next);
+      deps.render(next, identity);
     }
   }
 
@@ -1730,11 +1738,16 @@ export function mountPullPage(container, ctx, mb) {
   container.classList.add("github-pull");
   const header = h("div", { class: "github-pull-header github-pull-column" });
   const body = h("div", { class: "github-pull-body" });
+  const stackColumn = h("div", { class: "github-pull-column github-pull-stacks", hidden: "" });
+  let stackIndex = createStackIndex(null);
+  /** @type {import("./pull-stacks.js").StackIdentity | null} */
+  let stackIdentity = null;
+  let stackKey = "";
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   // Follow the reading column at every width; Files changed keeps the full pane.
   const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Pull request" });
   const tabColumn = h("div", { class: "github-pull-column" }, [tabBar]);
-  container.replaceChildren(header, body, live);
+  container.replaceChildren(header, stackColumn, body, live);
 
   /** @type {PullModel | null} */
   let shown = null;
@@ -2035,7 +2048,7 @@ export function mountPullPage(container, ctx, mb) {
    * A link to a tab of this page or to another pull request's page. A plain click stays
    * in the app: the shell's `open` puts the route in the URL and shows it.
    *
-   * @param {{number: number, tab: string}} route
+   * @param {Parameters<NonNullable<MetabrowserPublicRenderContext["open"]>>[0]} route
    * @param {string} className
    * @param {Array<Node | string>} children
    */
@@ -2046,7 +2059,7 @@ export function mountPullPage(container, ctx, mb) {
       children,
     );
     link.addEventListener("click", (event) => {
-      if (!isPlainClick(event)) {
+      if (listening.signal.aborted || !isPlainClick(event)) {
         return;
       }
       event.preventDefault();
@@ -2121,6 +2134,58 @@ export function mountPullPage(container, ctx, mb) {
     return { id, link };
   });
 
+  /** Optional membership stays separate from the frequently repainted ages/status header.
+   * @param {PullModel} model
+   */
+  function paintStacks(model) {
+    const memberships =
+      model.pull === null ? [] : stackMembership(stackIndex, stackIdentity, number);
+    const key = JSON.stringify([stackIdentity, memberships, model.tab]);
+    if (key === stackKey) {
+      return;
+    }
+    stackKey = key;
+    stackColumn.hidden = memberships.length === 0;
+    stackColumn.replaceChildren(
+      ...memberships.map((stack) => {
+        const position = stack.pulls.indexOf(number);
+        const member = (/** @type {number} */ target, /** @type {string} */ label) =>
+          pageLink(memberRoute(target, model.tab), "github-pull-stack-member", [label]);
+        const disclosure = /** @type {HTMLDetailsElement} */ (
+          h("details", { class: "github-pull-stack-disclosure" }, [
+            h("summary", {}, [`Stack #${stack.number}`]),
+          ])
+        );
+        let listed = false;
+        disclosure.addEventListener("toggle", () => {
+          if (listed || !disclosure.open || listening.signal.aborted) {
+            return;
+          }
+          listed = true;
+          disclosure.append(
+            h(
+              "ol",
+              { class: "github-pull-stack-members" },
+              stack.pulls.map((target) => {
+                const link = member(target, `#${target}`);
+                if (target === number) {
+                  link.setAttribute("aria-current", "page");
+                }
+                return h("li", {}, [link]);
+              }),
+            ),
+          );
+        });
+        return h("nav", { class: "github-pull-stack", "aria-label": `Stack #${stack.number}` }, [
+          disclosure,
+          h("span", { class: "github-pull-quiet" }, [`${position + 1} of ${stack.pulls.length}`]),
+          position > 0 ? member(stack.pulls[position - 1], "Previous PR") : null,
+          position + 1 < stack.pulls.length ? member(stack.pulls[position + 1], "Next PR") : null,
+        ]);
+      }),
+    );
+  }
+
   /** @param {PullModel} model */
   function paintHeader(model) {
     const children = [];
@@ -2135,7 +2200,7 @@ export function mountPullPage(container, ctx, mb) {
         h("div", { class: "github-pull-meta" }, [
           stateBadge(pull.state, pull.stateLabel),
           h("span", {}, [
-            pull.actor === null ? null : h("strong", {}, [pull.actor]),
+            pull.actor === null ? null : h("strong", { class: "github-pull-author" }, [pull.actor]),
             `${pull.actor === null ? "" : " "}${pull.action} `,
             branch(pull.base),
             " from ",
@@ -2169,15 +2234,6 @@ export function mountPullPage(container, ctx, mb) {
     const status = h("div", { class: "github-pull-status", "data-status": model.status }, [
       model.freshness,
     ]);
-    if (model.status === "loading" || model.status === "pending") {
-      // A quiet spinner, named for a screen reader; the pending message says why.
-      const name = document.createElement("span");
-      name.className = "sr-only";
-      name.textContent = "Loading the pull request";
-      status.append(
-        h("div", { class: "loading mb-delayed-loading" }, [h("div", { class: "spinner" }), name]),
-      );
-    }
     if (model.message !== null) {
       status.append(h("span", { class: "github-pull-message" }, [model.message]));
     }
@@ -2227,7 +2283,7 @@ export function mountPullPage(container, ctx, mb) {
         link.classList.toggle("active", model.tab === id);
         link.setAttribute("aria-selected", String(model.tab === id));
       }
-      header.after(tabColumn);
+      stackColumn.after(tabColumn);
     }
     live.textContent = [model.message, model.failure].filter(Boolean).join(" ");
   }
@@ -2254,7 +2310,7 @@ export function mountPullPage(container, ctx, mb) {
     const sections = [
       h("section", { class: "github-pull-card" }, [
         h("div", { class: "github-pull-card-head" }, [
-          h("strong", {}, [pull.author]),
+          h("strong", { class: "github-pull-author" }, [pull.author]),
           " opened ",
           age(pull.created),
         ]),
@@ -2262,7 +2318,9 @@ export function mountPullPage(container, ctx, mb) {
       ]),
     ];
     for (const item of model.timeline) {
-      const head = h("div", { class: "github-pull-card-head" }, [h("strong", {}, [item.author])]);
+      const head = h("div", { class: "github-pull-card-head" }, [
+        h("strong", { class: "github-pull-author" }, [item.author]),
+      ]);
       if (item.review !== null) {
         head.append(" ", badge(item.review.state, item.review.label, "review"));
       } else {
@@ -2285,7 +2343,7 @@ export function mountPullPage(container, ctx, mb) {
           comment.outdated ? " " : "",
           comment.outdated ? badge("outdated", "outdated", "review") : null,
           " ",
-          h("strong", {}, [comment.author]),
+          h("strong", { class: "github-pull-author" }, [comment.author]),
           ` ${comment.reply ? "replied" : "commented"} `,
           age(comment.at),
         ]);
@@ -2603,12 +2661,29 @@ export function mountPullPage(container, ctx, mb) {
       wantedFile = null;
     }
     paintHeader(model);
+    paintStacks(model);
     // The conversation reads in the column; a diff takes the pane.
-    body.classList.toggle("github-pull-column", model.tab !== "files");
+    body.classList.toggle("github-pull-column", model.pull === null || model.tab !== "files");
     if (model.pull === null) {
       disposeDiff();
       texts.clear();
-      body.replaceChildren();
+      // A known text layout uses the shell's neutral pulse. The reveal wrapper has its
+      // own node so its animation does not replace the skeleton's pulse/reduced motion.
+      body.replaceChildren(
+        ...(model.status === "loading" || model.status === "pending"
+          ? [
+              h(
+                "div",
+                {
+                  class: "mb-delayed-loading",
+                  role: "status",
+                  "aria-label": "Loading the pull request",
+                },
+                [h("div", { class: "recent-loading github-pull-loading", "aria-hidden": "true" })],
+              ),
+            ]
+          : []),
+      );
       bodyKey = "";
       return;
     }
@@ -2682,7 +2757,8 @@ export function mountPullPage(container, ctx, mb) {
       cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
-      render(model) {
+      render(model, identity) {
+        stackIdentity = identity;
         mb.perf.measure("githubPull:render", () => paint(model), { number });
         if (
           !listening.signal.aborted &&
@@ -2720,6 +2796,12 @@ export function mountPullPage(container, ctx, mb) {
     },
     { signal: listening.signal },
   );
+  const stacks = watchStacks((index) => {
+    stackIndex = index;
+    if (shown !== null && !listening.signal.aborted) {
+      paintStacks(shown);
+    }
+  });
   void controller.start();
   const place = pane === null ? null : keepPlace(pane, body, () => shown?.tab ?? "", number);
   place?.keeper.land();
@@ -2820,6 +2902,7 @@ export function mountPullPage(container, ctx, mb) {
       place?.dispose();
       controller.dispose();
       prefetch.dispose();
+      stacks.dispose();
       disposeDiff();
       currentFileListeners.clear();
     },

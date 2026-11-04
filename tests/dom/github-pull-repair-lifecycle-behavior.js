@@ -1,5 +1,6 @@
 // Real pull-page lifecycle: route changes and response order during explicit repair.
 const assert = require("node:assert/strict");
+const optionalStacks = require("../fixtures/github-stacks-responses.json");
 const { pathToFileURL } = require("node:url");
 const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
 
@@ -36,6 +37,13 @@ async function story({ delaySecondMount = false } = {}) {
     reads = 0;
   const mounted = [];
   globalThis.fetch = async (route, options = {}) => {
+    if (route === "/api/plugin/github/stacks") {
+      return {
+        status: optionalStacks.missing.status,
+        headers: { get: () => optionalStacks.missing.etag },
+        json: async () => optionalStacks.missing.body,
+      };
+    }
     if (options.method === "POST") {
       return new Promise((resolve) => {
         reply = resolve;

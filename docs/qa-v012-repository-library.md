@@ -1690,6 +1690,33 @@ expanded trees, resize and remounts.
 The generic capture’s filesystem inventory completion does not establish catalog
 completion; verify the catalog envelope before exporting the profile.
 
+### 5.7b Optional stacks and PR presentation
+
+Use the same final wheel and record stack-cache conditions separately from catalog and
+PR-detail caches. The concise `cli-github-stacks.txt` session records provider command
+order, conditional pages without `Link`, cache-only reads and missing-tool backoff.
+
+1. With `gh stack` available, open a known native-stack member from both a repository
+   URL and a served checkout.
+   Check its stack number, bottom-to-top member order, position and neighbors against
+   GitHub. Member navigation preserves the selected tab and clears the preceding PR’s
+   file; normal Back and Forward still work.
+2. Revisit with a warm snapshot.
+   Cached GET/304 reads run no `gh`; no row starts its own stack fetch.
+   Remove optional tooling only in the controlled test environment and confirm that core
+   PR reading works, matching cached badges remain, and refreshes back off.
+   An account/source mismatch must hide those badges.
+3. On narrow and wide screens, check dark PR numbers, normal-size bold gray usernames
+   and smaller consistently colored branches in the list, header and conversation.
+   Cold Conversation and Files changed show aligned gray pulsing blocks; cached refresh
+   keeps content and focus.
+   Check reduced motion, late stack arrival, expanded trees and scroll after the actual
+   row height changes.
+
+Retain screenshots, provider traces and errors with the artifact pin.
+These are focused functional observations; a historical catalog profile does not measure
+this layer.
+
 ### 5.8 A hostile README on a mirror (no network)
 
 Serve a `file://` origin whose README carries every payload of the hostile corpus,

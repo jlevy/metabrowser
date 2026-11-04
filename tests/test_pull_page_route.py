@@ -92,6 +92,13 @@ def test_the_pull_route_serves_the_shell_and_the_plugin_for_its_kind() -> None:
         shell = client.get("/pull/7/files")
         assert shell.status_code == 200
         assert 'id="preview-pane"' in shell.text
+        preview = shell.text.split('id="preview-pane"', 1)[1].split("</main>", 1)[0]
+        assert 'aria-label="Loading pull request"' in preview
+        assert 'class="recent-loading"' in preview
+        assert 'class="spinner"' not in preview
+        ordinary = client.get("/view/").text.split('id="preview-pane"', 1)[1]
+        assert 'class="spinner"' in ordinary.split("</main>", 1)[0]
+
         # The shell loads a plugin's assets by the kinds its views consume.
         config = re.search(r"configureAssets\((\{.*?\})\);", shell.text)
         assert config is not None and '"pull-request": [{"name": "github"' in config.group(1)
@@ -212,7 +219,10 @@ def test_a_hunk_is_painted_as_text_in_a_native_disclosure() -> None:
     # The browser opens it. The page listens to that event in one place, the function the
     # session drives, and remembers nothing: a repaint replaces the disclosure.
     assert 'h("details", { class: "github-pull-hunk-earlier" }' in source
-    assert source.count('"toggle"') == 1
+    assert (
+        source.split("export function tintOnFirstOpen(", 1)[1].split("\n}", 1)[0].count('"toggle"')
+        == 1
+    )
     assert "tintOnFirstOpen(disclosure, plain, earlier, hunkLines);" in source
 
 

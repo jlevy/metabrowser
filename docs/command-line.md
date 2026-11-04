@@ -380,6 +380,23 @@ writing to the checkout or falling back to a full clone if borrowing is refused.
 The URL-based [`--checkout` option](#beside-a-checkout) instead serves a managed pin and
 retains the fallback cases documented below.
 
+With the optional [gh-stack extension](installation.md#git-and-github-setup), native
+stack membership is shared by the Pulls list and opened PRs.
+Stack metadata is separate from PR details and refreshed as one shared repository
+snapshot, not once per row.
+These routes read the cached snapshot or explicitly refresh it (`stack-refresh.json`
+contains `{}` or `{"retry": true}`):
+
+```shell
+metab https://github.com/owner/repo --api /api/plugin/github/stacks
+metab https://github.com/owner/repo --api /api/plugin/github/stacks-refresh --data stack-refresh.json
+```
+
+The refresh body accepts only an optional boolean `retry`. A known provider rate reset
+still holds a retry.
+Failed optional work retains cached membership and leaves the PR catalog and details
+usable.
+
 A pull-request URL pins the pull request’s head commit and reads its data:
 
 ```shell

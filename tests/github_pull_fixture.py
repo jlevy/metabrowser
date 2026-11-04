@@ -104,6 +104,12 @@ if log:
         handle.write(json.dumps({{"args": args, "stdin_null": stdin_null,
                                  "env": {{name: os.environ.get(name) for name in watched}}}}) + "\\n")
 
+if args == ["stack", "--version"]:
+    version = scenario.get("stack_version")
+    if version:
+        sys.stdout.write("gh stack version " + version + "\\n")
+    sys.exit(0 if version else 1)
+
 if args[:2] == ["auth", "status"]:
     answer = pick("auth", scenario["auth"])
     sys.stdout.write(answer.get("stdout", ""))
@@ -584,6 +590,9 @@ def logged_gh_calls(directory: Path) -> list[str]:
     calls: list[str] = []
     for line in log.read_text(encoding="utf-8").splitlines():
         args: list[str] = json.loads(line)["args"]
+        if args == ["stack", "--version"]:
+            calls.append("gh stack --version")
+            continue
         if args[:2] == ["auth", "status"]:
             calls.append("gh auth status")
             continue

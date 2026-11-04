@@ -118,6 +118,19 @@ If `metab` alone is missing after a successful `uv tool install`, run
 If `gh auth status` reports a connection failure, restore connectivity before trying
 again. Installation and sign-in do not fix a network failure.
 
+Native GitHub stack labels are optional.
+To enable them, install GitHub’s
+[gh-stack extension](https://github.com/github/gh-stack):
+
+```shell
+gh extension install github/gh-stack
+gh stack --version
+```
+
+Metabrowser reads repository stack metadata without changing local stack tracking or
+GitHub. If the extension or API is unavailable, PR browsing still works and stack labels
+are omitted unless a matching cached snapshot is available.
+
 See [reviewing pull requests](reviewing-pull-requests.md) for Fetch changes, cached
 reads, and refreshing after setup.
 

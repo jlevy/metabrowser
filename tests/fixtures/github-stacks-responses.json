@@ -1,0 +1,129 @@
+{
+  "absent": {
+    "status": 200,
+    "etag": "\"pulls-1\"",
+    "body": {
+      "state": "absent",
+      "reason": "not_cached",
+      "source": "https://github.com/octo/demo",
+      "reader": null,
+      "fetched_at": null,
+      "fresh_for_s": 0,
+      "refreshing": false,
+      "last_refresh": null,
+      "complete": false,
+      "stacks": []
+    }
+  },
+  "missing": {
+    "status": 200,
+    "etag": "\"pulls-2\"",
+    "body": {
+      "state": "absent",
+      "reason": "gh_stack_missing",
+      "source": "https://github.com/octo/demo",
+      "reader": null,
+      "fetched_at": null,
+      "fresh_for_s": 300.0,
+      "refreshing": false,
+      "last_refresh": {
+        "outcome": "gh_stack_missing",
+        "message": "Optional GitHub stack tooling is unavailable",
+        "reset_at": null,
+        "at": "2026-09-17T12:00:00Z"
+      },
+      "complete": false,
+      "stacks": []
+    }
+  },
+  "current": {
+    "status": 200,
+    "etag": "\"pulls-3\"",
+    "body": {
+      "state": "current",
+      "reason": null,
+      "source": "https://github.com/octo/demo",
+      "reader": "gh:octo-reader",
+      "fetched_at": "2026-09-17T12:05:01Z",
+      "fresh_for_s": 300.0,
+      "refreshing": false,
+      "last_refresh": {
+        "outcome": "succeeded",
+        "message": null,
+        "reset_at": null,
+        "at": "2026-09-17T12:05:01Z"
+      },
+      "complete": true,
+      "stacks": [
+        {
+          "number": 286,
+          "base_ref": "main",
+          "open": true,
+          "pulls": [
+            6,
+            7,
+            8
+          ]
+        }
+      ]
+    }
+  },
+  "unchanged": {
+    "status": 304,
+    "etag": "\"pulls-3\"",
+    "body": null
+  },
+  "failed_retained": {
+    "status": 200,
+    "etag": "\"pulls-4\"",
+    "body": {
+      "state": "stale",
+      "reason": null,
+      "source": "https://github.com/octo/demo",
+      "reader": "gh:octo-reader",
+      "fetched_at": "2026-09-17T12:05:01Z",
+      "fresh_for_s": 300.0,
+      "refreshing": false,
+      "last_refresh": {
+        "outcome": "gh_stack_missing",
+        "message": "Optional GitHub stack tooling is unavailable",
+        "reset_at": null,
+        "at": "2026-09-17T12:10:02Z"
+      },
+      "complete": true,
+      "stacks": [
+        {
+          "number": 286,
+          "base_ref": "main",
+          "open": true,
+          "pulls": [
+            6,
+            7,
+            8
+          ]
+        }
+      ]
+    }
+  },
+  "empty": {
+    "status": 200,
+    "etag": "\"pulls-5\"",
+    "body": {
+      "state": "current",
+      "reason": null,
+      "source": "https://github.com/octo/demo",
+      "reader": "gh:octo-reader",
+      "fetched_at": "2026-09-17T12:15:03Z",
+      "fresh_for_s": 300.0,
+      "refreshing": false,
+      "last_refresh": {
+        "outcome": "succeeded",
+        "message": null,
+        "reset_at": null,
+        "at": "2026-09-17T12:15:03Z"
+      },
+      "complete": true,
+      "stacks": []
+    }
+  }
+}

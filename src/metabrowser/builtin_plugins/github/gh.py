@@ -26,6 +26,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any, Final, Literal
 
 from metabrowser.git.process import (
@@ -189,6 +190,7 @@ def gh_environment() -> dict[str, str]:
         {
             "GH_PROMPT_DISABLED": "1",
             "GH_NO_UPDATE_NOTIFIER": "1",
+            "GH_STACK_NO_UPDATE_NOTIFIER": "1",
             "GH_SPINNER_DISABLED": "1",
             "NO_COLOR": "1",
             "CLICOLOR": "0",
@@ -212,7 +214,9 @@ async def _read_capped(stream: asyncio.StreamReader | None, limit: int) -> tuple
     return b"".join(chunks), overflowed
 
 
-async def _run(args: Sequence[str], *, timeout_s: float, max_bytes: int) -> _Completed:
+async def _run(
+    args: Sequence[str], *, timeout_s: float, max_bytes: int, cwd: Path | None = None
+) -> _Completed:
     """Run ``gh`` once. Raises only for a missing gh, a deadline, or too much output."""
 
     exe = gh_executable()
@@ -226,6 +230,7 @@ async def _run(args: Sequence[str], *, timeout_s: float, max_bytes: int) -> _Com
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=gh_environment(),
+            cwd=cwd,
             start_new_session=os.name == "posix",
         )
     except OSError as exc:
@@ -263,6 +268,19 @@ async def _finish(
     if returncode != 0:
         log.debug("gh %s exited %s: %s", args[0] if args else "", returncode, stderr[:512])
     return _Completed(returncode, stdout, stderr)
+
+
+async def gh_stack_available() -> bool:
+    """Probe the optional extension without resolving or writing local stack state.
+
+    The official version command only prints its version. In contrast, even
+    ``view --json`` saves local tracking state and must never run here.
+    """
+    result = await _run(["stack", "--version"], timeout_s=5.0, max_bytes=4096, cwd=Path("/"))
+    return (
+        result.returncode == 0
+        and re.fullmatch(rb"gh stack version [^\r\n]{1,80}\r?\n?", result.stdout) is not None
+    )
 
 
 async def run_gh(

@@ -4833,6 +4833,26 @@ pre.code-block.metabrowser-source-lines > code {
   animation: tally-pending-pulse 1.6s ease-in-out infinite;
 }
 
+/* A cold pull-request route has a known text layout before plugin styles load. Match
+   the plugin's sans reading column using the same measure and host inset tokens. */
+.pull-request-placeholder {
+  width: 100%;
+  max-width: calc(
+    var(--document-body-font-size) *
+    var(--doc-max-chars) *
+    var(--sans-char-advance) +
+    2 *
+    var(--pane-header-padding-x) +
+    2 *
+    var(--content-padding-x)
+  );
+  margin-inline: auto;
+  padding: var(--content-padding-y) var(--content-padding-x);
+}
+.pull-request-placeholder > .recent-loading {
+  margin: 0;
+}
+
 .recent-loading {
   height: calc(var(--ui-row-height) * 6);
   margin: 4px 12px;

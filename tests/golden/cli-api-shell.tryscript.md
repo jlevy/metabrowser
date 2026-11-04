@@ -532,6 +532,21 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/stacks",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/stacks-refresh",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/structured/parsed",
       "methods": [
         "GET",
@@ -703,7 +718,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 54
+  "count": 56
 }
 ? 0
 ```

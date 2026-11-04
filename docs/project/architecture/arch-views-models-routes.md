@@ -167,11 +167,11 @@ reservation and its invariants, is in
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
 `github/pull-refresh`, `github/pull-markdown`, `github/pull-comparison`, `github/pulls`,
-`github/pulls-refresh`, `github/pull-files`, `github/pull-files-refresh`. On a
-`GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
-`GitDiffSource.content` reads blobs through the shared cat-file pool; patch
-`document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
-`GitPath` and follow in-tree relative symlink blobs.
+`github/pulls-refresh`, `github/stacks`, `github/stacks-refresh`, `github/pull-files`,
+`github/pull-files-refresh`. On a `GitRevisionSubject`, `diff/comparison` honors the pin
+through `GitLocation` and `GitDiffSource.content` reads blobs through the shared
+cat-file pool; patch `document`/`children`, `binary/chunk`, `structured/parsed`, and
+`agent-log/charts` honor `GitPath` and follow in-tree relative symlink blobs.
 `diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
 and reports it in the document.
 
@@ -326,6 +326,20 @@ A held request returns `200` with `refresh: "not_due"`. Unknown fields or invali
 return `invalid_request` (400); no GitHub repository returns `not_github` (409). See
 [Lists of pull requests](arch-repository-sources-and-provider-mirrors.md#lists-of-pull-requests).
 
+`GET github/stacks` reads one optional repository stack snapshot with no query
+parameters. Its envelope has `state` (`absent`, `current`, `stale`), `reason`, `source`,
+`reader`, `fetched_at`, remaining `fresh_for_s`, `refreshing`, `last_refresh`,
+`complete`, and `stacks`. Each stack has its native `number`, `base_ref`, `open`, and
+ordered bottom-to-top PR numbers in `pulls`. Only matching source/reader membership
+enriches a PR. An incomplete snapshot supports positive membership only.
+The entity tag excludes the ticking freshness countdown; expiry still changes `state`
+and the tag. `POST github/stacks-refresh` accepts only optional boolean `retry`, and
+returns `refresh`, `stacks`, and `status_route`; `202` starts/joins a job and `200` is
+`not_due`. GET remains cache-only.
+Optional failure retains known metadata without changing core PR/catalog outcomes.
+See
+[optional native stack metadata](arch-repository-sources-and-provider-mirrors.md#optional-native-stack-metadata).
+
 `GET github/pull-files?number=<n>&offset=&limit=` answers one pull request’s changed
 files from the cache alone, with the same `state` values.
 A list is from the local comparison (`listed_from: "comparison"`, current while the
@@ -427,6 +441,8 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-checkout.txt` |
 | `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt` |
 | `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
+| `/api/plugin/github/stacks` | covered | `--api` | `cli-github-stacks.txt` |
+| `/api/plugin/github/stacks-refresh` | covered | `--api` | `cli-github-stacks.txt` |
 | `/api/plugin/github/pull-files` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt` |
 | `/api/plugin/github/pull-files-refresh` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt`, `cli-github-pull-files-failures.txt` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
@@ -603,6 +619,8 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `navigation.pull-page-history` | interaction | `static/pull-route.js#pullHistoryAction`, `static/pull-route.js#createPullPageHost`, `static/pull-route.js#parsePulls`, `static/pull-route.js#pullsHref` | `local-only` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `github.pulls-tab-host` | interaction | `static/pulls-nav.js#createPullsNav`, `static/pulls-nav.js#tabForAddress`, `static/pulls-nav.js#pullAddress`, `static/pulls-nav.js#registerKeys` | `local-only` | `node tests/dom/pulls-nav-session.js` | `cli-ui-pulls-nav.tryscript.md` |
 | `github.pulls-panel` | interaction | `builtin_plugins/github/pulls-panel.js#describePulls`, `builtin_plugins/github/pulls-panel.js#describeRow`, `builtin_plugins/github/pulls-panel.js#refreshFailure`, `builtin_plugins/github/pulls-panel.js#describeLanding`, `builtin_plugins/github/pulls-panel.js#followLanding`, `builtin_plugins/github/pulls-panel.js#createPullsController`, `builtin_plugins/github/pull-state.js#displayState` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-refresh`, `/api/plugin/github/pull` | `node tests/dom/github-pulls-panel-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
+| `github.native-stack-ui` | interaction | `builtin_plugins/github/pull-stacks.js#createStackController`, `builtin_plugins/github/pull-stacks.js#createStackIndex`, `builtin_plugins/github/pull-stacks.js#stackMembership`, `builtin_plugins/github/pull-stacks.js#memberRoute` | `/api/plugin/github/stacks`, `/api/plugin/github/stacks-refresh` | `node tests/dom/github-pull-stacks-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
+| `github.pull-stack-loading` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage` | `/api/plugin/github/pull`, `/api/plugin/github/stacks` | `node tests/dom/github-pull-stack-mount-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.pull-files-tree` | interaction | `builtin_plugins/github/pull-files-tree.js#buildFileTree`, `builtin_plugins/github/pull-files-tree.js#visibleRows`, `builtin_plugins/github/pull-files-tree.js#initialExpansion`, `builtin_plugins/github/pull-files-tree.js#toggleFolder`, `builtin_plugins/github/pull-files-tree.js#revealPath`, `builtin_plugins/github/pull-files-tree.js#holdFileList`, `builtin_plugins/github/pull-files-tree.js#describeFileList`, `builtin_plugins/github/pull-files-tree.js#createFileTreeController`, `builtin_plugins/github/pull-files-tree.js#createRowExpansion`, `builtin_plugins/github/pull-files-tree.js#windowRange`, `builtin_plugins/github/pull-files-tree.js#describeFileTree` | `/api/plugin/github/pull-files`, `/api/plugin/github/pull-files-refresh` | `node tests/dom/github-pull-files-tree-session.js` | `cli-ui-github-pull-files-tree.tryscript.md` |
 | `github.pulls-reader-fetch` | interaction | `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pulls-panel-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `assets.on-demand-load-recovery` | interaction | `static/asset-loader.js#ensureAsset`, `static/asset-loader.js#ensureScript` | `local-only` | `node tests/dom/asset-loader-behavior.js` | `cli-ui-navigation.tryscript.md` |

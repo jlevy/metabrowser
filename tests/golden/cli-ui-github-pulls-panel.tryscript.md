@@ -894,6 +894,31 @@ $ node tests/dom/github-pulls-panel-second-session.js
 ? 0
 ```
 
+## Optional Native Stack Navigation and Cold Loading
+
+One shared snapshot retains verified memberships through refresh failure, keeps multiple
+memberships, and refuses another source or reader.
+Disposing the last consumer aborts its presentation reads; a late result cannot
+overwrite a new owner.
+
+```console
+$ node tests/dom/github-pull-stacks-behavior.js
+{"authoritativeMembership":true,"multipleStacks":true,"identityGuard":true,"tabAndReaderIntent":true,"sharedRead":true,"failureRetention":true,"retryWindow":true,"disposal":true,"lateOwnerGuard":true}
+? 0
+```
+
+The mounted PR page uses a shared gray skeleton only while cold or pending.
+Cached refreshes stay readable.
+Native stack members are created on disclosure; Previous PR and Next PR preserve the
+active tab, clear file selection, and carry a reader’s explicit fetch intent.
+An identity-only response removes the old source’s enrichment.
+
+```console
+$ node tests/dom/github-pull-stack-mount-behavior.js
+{"coldSkeleton":true,"pendingSkeleton":true,"cachedRefreshRetained":true,"authoritativeStack":true,"orderedNeighbors":true,"tabPreserved":true,"fileCleared":true,"explicitReaderIntent":true,"disposedWorkReleased":true}
+? 0
+```
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

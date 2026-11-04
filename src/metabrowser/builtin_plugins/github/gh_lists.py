@@ -45,6 +45,7 @@ type PullDataState = Literal[
     "commits_unavailable",
     "comparison_too_large",
     "gh_missing",
+    "gh_stack_missing",
     "gh_too_old",
     "not_logged_in",
     "rate_limited",

@@ -564,3 +564,128 @@ def test_setup_guidance_retains_cached_content_and_failure_distinctions() -> Non
         "explicit401Preserved": True,
         "otherFailureKindsPreserved": True,
     }
+
+
+def test_optional_native_stack_state_is_shared_and_owned() -> None:
+    assert run_session("github-pull-stacks-behavior.js") == {
+        "authoritativeMembership": True,
+        "multipleStacks": True,
+        "identityGuard": True,
+        "tabAndReaderIntent": True,
+        "sharedRead": True,
+        "failureRetention": True,
+        "retryWindow": True,
+        "disposal": True,
+        "lateOwnerGuard": True,
+    }
+
+
+def test_native_stack_navigation_and_cold_page_skeleton_preserve_cached_content() -> None:
+    assert run_session("github-pull-stack-mount-behavior.js") == {
+        "coldSkeleton": True,
+        "pendingSkeleton": True,
+        "cachedRefreshRetained": True,
+        "authoritativeStack": True,
+        "orderedNeighbors": True,
+        "tabPreserved": True,
+        "fileCleared": True,
+        "explicitReaderIntent": True,
+        "disposedWorkReleased": True,
+    }
+
+
+def test_recording_optional_stack_metadata_answers_real_routes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The UI's optional snapshot comes from the actual cache-only route and worker."""
+    from metabrowser import paths_safe
+    from tests.cache_home_fixture import FixtureSource, _stage_and_publish_source, build_empty_home
+    from tests.github_pull_fixture import account, ok
+
+    paths_safe._set_root_dir(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    home = tmp_path / "home"
+    build_empty_home(home)
+    source = FixtureSource("https", CANONICAL)
+    _stage_and_publish_source(home, source, opened=False)
+    repository = ListedRepository(home, source.slug, "octo", "demo")
+    monkeypatch.setattr(
+        "metabrowser.builtin_plugins.github.pull_stacks_route.served_repository",
+        lambda _app: repository,
+    )
+    clock = [FETCHED_AT]
+    monkeypatch.setattr(pull_list, "utc_now", lambda: clock[0])
+    answers: dict[str, Any] = {"auth": account(), "api": {}}
+    endpoint = "repos/octo/demo/stacks?per_page=100&page=1"
+
+    def install() -> None:
+        for name, value in install_fake_gh(tmp_path, answers).items():
+            monkeypatch.setenv(name, value)
+
+    install()
+    recorded: dict[str, Any] = {}
+    with TestClient(app) as client:
+
+        def read(name: str) -> dict[str, Any]:
+            logged_gh_calls(tmp_path)  # Drain the completed explicit worker's calls.
+            response = client.get("/api/plugin/github/stacks")
+            assert logged_gh_calls(tmp_path) == [], "stack GET must stay cache-only"
+            recorded[name] = _answer(response)
+            return recorded[name]["body"]
+
+        def refresh() -> None:
+            response = client.post(
+                "/api/plugin/github/stacks-refresh", json={"retry": True}, headers=JSON_BODY
+            )
+            assert response.status_code == 202
+            deadline = time.monotonic() + 20
+            while client.get("/api/plugin/github/stacks").json()["refreshing"]:
+                assert time.monotonic() < deadline, "optional stack job did not finish"
+                time.sleep(0.01)
+
+        assert read("absent")["reason"] == "not_cached"
+        refresh()
+        assert read("missing")["reason"] == "gh_stack_missing"
+        clock[0] += timedelta(seconds=301)
+        answers["stack_version"] = "0.1.0"
+        answers["api"][endpoint] = ok(
+            endpoint,
+            [
+                {
+                    "number": 286,
+                    "url": "https://api.github.com/repos/octo/demo/stacks/286",
+                    "base": {"ref": "main"},
+                    "open": True,
+                    "pull_requests": [{"number": n} for n in (6, 7, 8)],
+                }
+            ],
+        )
+        install()
+        refresh()
+        present = read("current")
+        assert present["stacks"][0]["pulls"] == [6, 7, 8]
+        response = client.get(
+            "/api/plugin/github/stacks",
+            headers={
+                "if-none-match": recorded["current"]["etag"],
+            },
+        )
+        recorded["unchanged"] = _answer(response)
+        assert response.status_code == 304
+        clock[0] += timedelta(seconds=301)
+        answers.pop("stack_version")
+        install()
+        refresh()
+        failed = read("failed_retained")
+        assert failed["state"] == "stale" and failed["stacks"] == present["stacks"]
+        clock[0] += timedelta(seconds=301)
+        answers["stack_version"] = "0.1.0"
+        answers["api"][endpoint] = ok(endpoint, [])
+        install()
+        refresh()
+        empty = read("empty")
+        assert empty["complete"] and empty["stacks"] == [] and empty["state"] == "current"
+    check_recording(
+        "github-stacks-responses.json",
+        _session_tags(recorded),
+        transcript="cli-ui-github-pulls-panel.tryscript.md",
+    )

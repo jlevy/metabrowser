@@ -483,6 +483,16 @@ GitHub URLs and HTTPS:
   Catalog jobs check the account once and validate the viewer returned with every page,
   avoiding repeated account-status requests during backfill.
 
+- When the optional `gh stack` extension is installed, pull-request rows and pages show
+  native GitHub stack numbers and ordered member links.
+  Stack metadata refreshes separately from PR content; unavailable tooling leaves the
+  normal PR views usable.
+
+- An uncached pull-request page shows pulsing gray loading blocks in the reading column.
+  Cached content stays visible while it refreshes.
+  PR numbers use dark text, usernames use bold gray text, and branch names use a smaller
+  consistent treatment across the list and PR pages.
+
 - Pull-request page: serving a pull-request URL now opens its page at `/pull/<n>`, the
   way github.com shows it: title, state (open, draft, merged, or closed), github.com’s
   header line (“author wants to merge 2 commits into base from head”, and once merged

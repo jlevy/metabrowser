@@ -19,12 +19,12 @@ stable; the absolute checkout prefix of each plugin’s `static_root` is elided 
 ```console
 $ metab --plugins
 NAME           SOURCE   KINDS       VIEWS  HOOKS
--------------  -------  ----------  -----  -------------------------------------------------------------------------------------------------
+-------------  -------  ----------  -----  -----------------------------------------------------------------------------------------------------------------------
 agent-log      builtin  agent-log   3      charts
 binary         builtin  -           1      chunk
 diff           builtin  diff        1      document,children,comparison
 folder         builtin  -           2      -
-github         builtin  -           2      pull,pull-refresh,pull-comparison,pull-markdown,pulls,pulls-refresh,pull-files,pull-files-refresh
+github         builtin  -           2      pull,pull-refresh,pull-comparison,pull-markdown,pulls,pulls-refresh,stacks,stacks-refresh,pull-files,pull-files-refresh
 html           builtin  html        2      -
 image          builtin  -           1      -
 markdown       builtin  markdown    2      -
@@ -130,6 +130,8 @@ $ metab --plugins --json
         "pull-markdown",
         "pulls",
         "pulls-refresh",
+        "stacks",
+        "stacks-refresh",
         "pull-files",
         "pull-files-refresh"
       ],

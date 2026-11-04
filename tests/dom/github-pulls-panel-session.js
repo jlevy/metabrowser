@@ -15,6 +15,7 @@
 // what it opened.
 
 const fs = require("node:fs");
+const optionalStacks = require("../fixtures/github-stacks-responses.json");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
@@ -757,9 +758,15 @@ async function paintStory(panel) {
       disconnect() {}
     },
     fetch: (route, init) =>
-      new Promise((resolve) => {
-        answers.push({ route, init, resolve });
-      }),
+      route === "/api/plugin/github/stacks"
+        ? Promise.resolve({
+            status: optionalStacks.missing.status,
+            headers: { get: () => optionalStacks.missing.etag },
+            json: async () => optionalStacks.missing.body,
+          })
+        : new Promise((resolve) => {
+            answers.push({ route, init, resolve });
+          }),
   };
   for (const [name, value] of Object.entries(globals)) {
     saved[name] = Object.getOwnPropertyDescriptor(globalThis, name);
@@ -825,6 +832,26 @@ async function paintStory(panel) {
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
     const row = (item) => item.firstElementChild;
+    const metadata = row(hostile).childNodes.find((node) =>
+      node.classList?.contains("github-pulls-meta"),
+    );
+    const numberLabel = metadata.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-number"),
+    );
+    const authorLabel = metadata.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-author"),
+    );
+    const branches = metadata.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-refs"),
+    );
+    assert(
+      numberLabel.textContent === `#${first.body.rows[0].number}`,
+      "number has its normal-size span",
+    );
+    assert(authorLabel.localName === "strong", "username is semantically bold");
+    assert(authorLabel.textContent === first.body.rows[0].author, "username stays literal text");
+    assert(branches.textContent.includes(" ← "), "branches keep their own smaller semantic span");
+
     const status = container.childNodes.find((node) =>
       node.classList?.contains("github-pulls-status"),
     );

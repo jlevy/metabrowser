@@ -62,6 +62,21 @@ the checkout. If the checkout cannot lend, the action reports why instead of sil
 cloning a full repository.
 See [Beside a Checkout](#beside-a-checkout) for the URL-based borrowing workflow.
 
+## Native Stack Navigation
+
+With the optional [gh-stack extension](installation.md#git-and-github-setup), a list row
+shows **Stack #N** when native GitHub metadata names its membership.
+The PR page shows its position, **Previous PR** and **Next PR**, and a disclosure of
+member PR links in bottom-to-top order.
+Moving between members keeps Conversation or Files changed selected and clears the
+previous PR’s file selection.
+
+Stack metadata refreshes as one shared repository snapshot, independently of PR details.
+Missing tooling, unavailable APIs, or a partial snapshot do not prevent normal PR
+reading and do not establish that a PR is unstacked.
+Matching cached membership remains usable.
+Metabrowser reads stack metadata; it does not create or change GitHub or local stacks.
+
 ## Review a Pull Request
 
 ```shell
@@ -91,6 +106,10 @@ URL opens on Conversation, because the page has no Commits tab.
 ## What the Page Shows
 
 The header has the title, state, branches, labels, and dates.
+PR numbers use dark text, usernames use bold gray text at the surface’s normal size, and
+branch names use smaller ref styling, consistently with the Pulls list.
+An uncached page shows gray pulsing loading blocks; a cached page keeps its content
+visible while it refreshes.
 **View on GitHub** opens the pull request on github.com.
 Below the header are two tabs:
 
