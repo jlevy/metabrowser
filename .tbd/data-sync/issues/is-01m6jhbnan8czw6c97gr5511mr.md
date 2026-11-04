@@ -5,7 +5,7 @@ title: Adjudicate new PR reviews and safely land the complete feature stack
 kind: epic
 status: in_progress
 priority: 1
-version: 12
+version: 13
 labels: []
 dependencies:
   - type: blocks
@@ -20,8 +20,9 @@ child_order_hints:
   - is-01m6jrdfayb71zm3ck9p929cys
   - is-01m6jrtcsc7jkzpzxfqq4t8q35
   - is-01m6jtxcrqybrpkrw91fnfp1sk
+  - is-01m6k1e50h9aysq7g03btn8n67
 created_at: 2026-11-04T05:43:53.938Z
-updated_at: 2026-11-04T09:56:27.393Z
+updated_at: 2026-11-04T10:24:52.751Z
 ---
 Owner authorizes safe landing of the entire reviewed feature stack after current-head CI, automated/manual E2E, conflict and review gates. Merge forward only; no rewrite or force push. Native278 has9 layers;286 has11 published layers and will have12 after the new Markdown ownership layer is published. Review the full composition before merging anything. Then merge278, unstack/reroot/cascade/relink286 onto actualmain and qualify current heads again before its native merge. Preserve draft247, explicitly do-not-merge, and both WIP branches. Mandatory dependent postlanding integrated review, documentation/skills refresh and plans/specs/beads reconciliation remain mb-ao35.
 
