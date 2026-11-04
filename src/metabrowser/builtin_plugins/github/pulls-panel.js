@@ -1632,11 +1632,17 @@ export function mountPullsPanel(container, ctx, mb) {
   let followedPage = null;
   /** @type {(() => void) | null} */
   let unwatchFile = null;
-  function followCurrentFile() {
-    const page = currentRow === null ? null : tab.pageFor(currentRow);
-    if (page === followedPage) {
+  let fileFollowEpoch = 0;
+  /** A null-file route replays the same page's current observation after address sync.
+   * @param {boolean} [replay]
+   */
+  function followCurrentFile(replay = false) {
+    const number = currentRow;
+    const page = number === null ? null : tab.pageFor(number);
+    if (!replay && page === followedPage) {
       return;
     }
+    const epoch = ++fileFollowEpoch;
     unwatchFile?.();
     unwatchFile = null;
     followedPage = page;
@@ -1647,9 +1653,16 @@ export function mountPullsPanel(container, ctx, mb) {
     unwatchFile =
       reporting?.onCurrentFile?.((file) => {
         // A tab switch has no file at the top; its explicit address remains the selection.
-        if (file !== null && currentRow !== null) {
+        if (
+          !windowDisposed &&
+          epoch === fileFollowEpoch &&
+          followedPage === page &&
+          currentRow === number &&
+          number !== null &&
+          file !== null
+        ) {
           currentFile = file.path;
-          trees.get(currentRow)?.controller.followCurrent(file.path);
+          trees.get(number)?.controller.followCurrent(file.path);
         }
       }) ?? null;
   }
@@ -2195,6 +2208,10 @@ export function mountPullsPanel(container, ctx, mb) {
         }
       },
       markCurrent(previous, next) {
+        // The roving anchor and reader expansion remain; only the old page's mark leaves.
+        if (previous !== null && previous !== next) {
+          trees.get(previous)?.controller.setCurrent(null);
+        }
         currentRow = next;
         const leaving = previous === null ? undefined : painted.get(previous)?.row;
         if (leaving !== undefined) {
@@ -2394,7 +2411,9 @@ export function mountPullsPanel(container, ctx, mb) {
       if (number !== null) {
         trees.get(number)?.controller.setCurrent(file);
       }
-      followCurrentFile();
+      // An explicit file wins until its jump reports. A PR-only address can replay the
+      // same page's observation instead of erasing it on a duplicate route notification.
+      followCurrentFile(file === null);
     },
     setFilter: (/** @type {string} */ state) => controller.setFilter(state, { fromAddress: true }),
     move: controller.move,

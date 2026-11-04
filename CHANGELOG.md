@@ -488,6 +488,10 @@ GitHub URLs and HTTPS:
   Stack metadata refreshes separately from PR content; unavailable tooling leaves the
   normal PR views usable.
 
+- Moving between pull requests clears the previous file tree’s current-file highlight
+  while retaining its expansion and keyboard position.
+  Repeated route notifications preserve the active diff’s file selection.
+
 - An uncached pull-request page shows pulsing gray loading blocks in the reading column.
   Cached content stays visible while it refreshes.
   PR numbers use dark text, usernames use bold gray text, and branch names use a smaller

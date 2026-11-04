@@ -919,6 +919,57 @@ $ node tests/dom/github-pull-stack-mount-behavior.js
 ? 0
 ```
 
+## Active Page Selection and Retained Tree Cursors
+
+The real page host opens the next PR and handles Back while the production panel holds
+both file trees. Leaving clears the old page’s blue file selection while its manual
+expansion and roving keyboard anchor remain.
+A repeated route notification replays the active page’s observation; delayed or
+unsubscribed old callbacks cannot repaint another page.
+An explicit file keeps its selection through a temporarily unavailable jump.
+
+```console
+$ node tests/dom/github-pulls-file-selection-session.js
+{
+  "selection": {
+    "observations": {
+      "initial": [
+        "/pull/105/files/src/app.txt"
+      ],
+      "repeat": [
+        "/pull/105/files/src/app.txt"
+      ],
+      "leaving": [],
+      "ignoredOld": [],
+      "arriving": [
+        "/pull/106/files/src/app.txt"
+      ],
+      "sameHandle": [
+        "/pull/106/files/src/app.txt"
+      ],
+      "explicit": [
+        "/pull/106/files/docs/new.md"
+      ],
+      "unavailable": [
+        "/pull/106/files/docs/new.md"
+      ],
+      "reported": [
+        "/pull/106/files/docs/new.md"
+      ],
+      "history": [
+        "/pull/105/files/src/app.txt"
+      ],
+      "lateAfterHistory": []
+    },
+    "back": "mount",
+    "readerExpansionRetained": true,
+    "rovingAnchorRetained": true,
+    "disposed": 0
+  }
+}
+? 0
+```
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

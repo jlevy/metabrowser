@@ -70,6 +70,8 @@ The PR page shows its position, **Previous PR** and **Next PR**, and a disclosur
 member PR links in bottom-to-top order.
 Moving between members keeps Conversation or Files changed selected and clears the
 previous PR’s file selection.
+Expanded trees retain their keyboard position; the current-file highlight belongs to the
+PR being viewed.
 
 Stack metadata refreshes as one shared repository snapshot, independently of PR details.
 Missing tooling, unavailable APIs, or a partial snapshot do not prevent normal PR

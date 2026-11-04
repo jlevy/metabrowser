@@ -1069,6 +1069,10 @@ A file step calls the diff’s public jump API; a held key replaces the address 
 stops, while Enter and a click push it.
 A hand-scrolled diff reports its current file through the same public page handle, so
 the tree follows without moving the address.
+Only the active PR’s file carries the page-selection mark.
+Leaving a PR clears that mark while preserving its reader-expanded tree and roving
+keyboard anchor. Repeated notices for the same page retain the observed diff file;
+explicit file addresses remain selected while their jump is temporarily unavailable.
 
 The tree draws a viewport window, keeping its focused anchor mounted.
 Counts name the files fetched and say when the list is partial or capped; the rows do

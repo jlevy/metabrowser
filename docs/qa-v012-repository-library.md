@@ -1701,6 +1701,8 @@ order, conditional pages without `Link`, cache-only reads and missing-tool backo
    Check its stack number, bottom-to-top member order, position and neighbors against
    GitHub. Member navigation preserves the selected tab and clears the preceding PR’s
    file; normal Back and Forward still work.
+   Leave the preceding tree expanded: its file highlight clears while its keyboard
+   position remains. Returning through history restores the active diff’s file selection.
 2. Revisit with a warm snapshot.
    Cached GET/304 reads run no `gh`; no row starts its own stack fetch.
    Remove optional tooling only in the controlled test environment and confirm that core

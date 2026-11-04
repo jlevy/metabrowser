@@ -271,6 +271,9 @@ function createPage() {
 
 async function run() {
   const panel = await import(pathToFileURL(panelPath).href);
+  if (process.argv.includes("selection")) {
+    return { selection: await paintStory(panel, true) };
+  }
   const steps = [];
   let page = createPage();
   let controller = panel.createPullsController(page.deps, { filter: "all", current: null });
@@ -710,9 +713,11 @@ function described(element) {
     .join(" ");
 }
 
-async function paintStory(panel) {
+async function paintStory(panel, selection = false) {
   const { SLOW_POLL_MS } = await import(pathToFileURL(pagePath).href);
   const answers = [];
+  const pageChanges = new Set();
+  let pageHost = null;
   const timers = new Map();
   let nextTimer = 1;
   let now = Date.parse(recorded.more_done.body.fetched_at) + 30_000;
@@ -745,6 +750,7 @@ async function paintStory(panel) {
       },
       clearTimeout: (handle) => timers.delete(handle),
     },
+    getComputedStyle: () => ({ getPropertyValue: () => "24" }),
     HTMLElement: FakeElement,
     Element: FakeElement,
     MouseEvent: class {},
@@ -801,6 +807,17 @@ async function paintStory(panel) {
     const first = structuredClone(recorded.more_done);
     first.body.rows[0].title = '<img src=x onerror="alert(1)"> & <b>bold</b>';
     const container = new FakeElement("div");
+    if (selection) {
+      document.body = container;
+      container.bounds = () => ({
+        top: 0,
+        bottom: 700,
+        height: 700,
+        left: 0,
+        right: 800,
+        width: 800,
+      });
+    }
     const opened = [];
     const current = first.body.rows[1].number;
     const mounted = panel.mountPullsPanel(
@@ -812,12 +829,15 @@ async function paintStory(panel) {
           current,
           shown: true,
           refreshAhead: false,
-          scrollRoot: null,
+          scrollRoot: selection ? container : null,
           open: (route) => opened.push(route.number),
           file: null,
           fileHref: (number, path) => `/pull/${number}/files/${path}`,
-          pageFor: () => null,
-          onPageChange: () => () => {},
+          pageFor: (number) => pageHost?.pageFor(number) ?? null,
+          onPageChange: (listener) => {
+            pageChanges.add(listener);
+            return () => pageChanges.delete(listener);
+          },
           filterChanged() {},
         },
       },
@@ -832,6 +852,207 @@ async function paintStory(panel) {
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
     const row = (item) => item.firstElementChild;
+    if (selection) {
+      if (answers[0]?.route.includes("/pulls?")) {
+        await answer(recorded.more_window);
+      }
+      const vm = require("node:vm");
+      const runtime = {
+        Object,
+        Array,
+        String,
+        Error,
+        TypeError,
+        URIError,
+        atob,
+        btoa,
+        TextDecoder,
+        TextEncoder,
+        Uint8Array,
+        URLSearchParams,
+      };
+      runtime.window = runtime;
+      for (const name of ["navigation.js", "pull-route.js"]) {
+        vm.runInNewContext(
+          fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", name), "utf8"),
+          runtime,
+        );
+      }
+      const routes = runtime.MetabrowserPullRoute;
+      const handles = new Map();
+      const other = Number(row(hostile).dataset.number);
+      let pathname = `/pull/${current}/files/src/app.txt`;
+      let claim = 0;
+      let releaseNext;
+      let delayNext = false;
+      function makePage(route) {
+        let path = route.file ?? "src/app.txt";
+        const listeners = [];
+        const handle = {
+          callbacks: listeners,
+          onCurrentFile(listener) {
+            listeners.push(listener);
+            listener(path === null ? null : { path });
+            return () => {};
+          },
+          emit(next) {
+            path = next;
+            for (const listener of listeners) {
+              listener(path === null ? null : { path });
+            }
+          },
+          fileForPath: (path) => ({ kind: "file", path }),
+          scrollToFile: (path) => ({ kind: "file", path }),
+          // A jump may report later; its explicit address must win while unavailable.
+          showFile() {},
+          setTab() {},
+          land() {},
+          flush() {},
+          dispose() {},
+        };
+        handles.set(route.number, handle);
+        return handle;
+      }
+      function address(href) {
+        pathname = href;
+        const route = routes.parsePull(href);
+        mounted.setCurrent(route?.number ?? null, route?.file || null);
+      }
+      pageHost = routes.createPullPageHost({
+        claim: () => ++claim,
+        isCurrent: (ticket) => ticket === claim,
+        pathname: () => pathname,
+        pushHref: address,
+        replaceHref: address,
+        mount(_claim, route) {
+          return delayNext && route.number === other
+            ? new Promise((resolve) => {
+                releaseNext = () => resolve(makePage(route));
+              })
+            : Promise.resolve(makePage(route));
+        },
+        mountList: async () => null,
+      });
+      const off = routes.onPageChange(() => {
+        for (const listener of pageChanges) {
+          listener();
+        }
+      });
+      await pageHost.open({ number: current, tab: "files", file: "src/app.txt" });
+      await settle();
+      const walk = (node) => [node, ...node.childNodes.flatMap(walk)];
+      const files = (number) =>
+        walk(container).filter(
+          (node) =>
+            node.classList?.contains("github-pull-file-row") &&
+            node.closest(".github-pull-files")?.getAttribute("id") ===
+              `github-pull-files-${number}`,
+        );
+      const selected = (number) =>
+        files(number)
+          .filter((node) => node.getAttribute("aria-selected") === "true")
+          .map((node) => node.getAttribute("href"));
+      assert(selected(current).length === 1, "initial page observation selects its actual file");
+      list.listeners.get("focusin")({ target: row(shown) });
+      mounted.expand();
+      const oldAnchor = walk(container).find(
+        (node) =>
+          node.getAttribute?.("tabindex") === "0" &&
+          node.closest?.(".github-pull-files")?.getAttribute("id") ===
+            `github-pull-files-${current}`,
+      );
+      assert(oldAnchor !== undefined, "positive control: reader has a roving anchor");
+      const observations = { initial: selected(current) };
+      mounted.setCurrent(current, null);
+      observations.repeat = selected(current);
+      handles.get(current).emit("src/app.txt");
+      assert(
+        selected(current).length === 1,
+        "positive control: restore old active file before leaving",
+      );
+      delayNext = true;
+      const opening = pageHost.open({
+        number: other,
+        tab: "files",
+        reader: { fetchAfterMs: 0, initial: null },
+      });
+      await settle();
+      observations.leaving = selected(current);
+      assert(
+        row(shown).getAttribute("aria-expanded") === "true",
+        "reader-expanded old tree remains open",
+      );
+      assert(oldAnchor.getAttribute("tabindex") === "0", "leaving keeps the old roving anchor");
+      handles.get(current).emit("docs/new.md");
+      observations.ignoredOld = selected(current);
+      releaseNext();
+      await opening;
+      await settle();
+      const fileRequest = answers.findIndex((request) =>
+        request.route.includes(`/pull-files?number=${other}`),
+      );
+      if (fileRequest !== -1) {
+        const [request] = answers.splice(fileRequest, 1);
+        request.resolve({
+          status: 200,
+          headers: { get: () => null },
+          json: async () => ({ ...filesRecorded.comparison, number: other }),
+        });
+        await settle();
+      }
+      observations.arriving = selected(other);
+      mounted.setCurrent(other, null);
+      const rebound = handles.get(other);
+      const staleSameHandle = rebound.callbacks.at(-1);
+      // Rebinding the same handle creates a new subscription owner, not just the same PR.
+      mounted.setCurrent(other, null);
+      observations.sameHandle = selected(other);
+      await pageHost.open({ number: other, tab: "files", file: "docs/new.md" });
+      staleSameHandle({ path: "src/app.txt" });
+      observations.explicit = selected(other);
+      rebound.emit(null);
+      observations.unavailable = selected(other);
+      rebound.emit("docs/new.md");
+      observations.reported = selected(other);
+      delayNext = false;
+      pathname = `/pull/${current}/files/src/app.txt`;
+      const back = pageHost.onHistory(pathname, false);
+      address(pathname);
+      await settle();
+      observations.history = selected(current);
+      handles.get(other).emit("src/app.txt");
+      observations.lateAfterHistory = selected(other);
+      mounted.dispose();
+      handles.get(current).emit("docs/new.md");
+      pageHost.dispose();
+      off();
+      assert(observations.repeat.length === 1, "same-page route retains current diff selection");
+      assert(
+        observations.leaving.length === 0 && observations.ignoredOld.length === 0,
+        "inactive page selection clears and ignores a stale callback",
+      );
+      assert(
+        observations.arriving.length === 1 && observations.sameHandle.length === 1,
+        "new and repeated active page observations select their file",
+      );
+      assert(
+        observations.explicit[0]?.endsWith("/docs/new.md") &&
+          observations.unavailable[0]?.endsWith("/docs/new.md"),
+        "explicit file survives an unavailable jump report",
+      );
+      assert(
+        observations.history.length === 1 && observations.lateAfterHistory.length === 0,
+        "Back restores old page selection without a late new-page callback",
+      );
+      return {
+        observations,
+        back: back.action,
+        readerExpansionRetained: true,
+        rovingAnchorRetained: true,
+        disposed: container.childNodes.length,
+      };
+    }
+
     const metadata = row(hostile).childNodes.find((node) =>
       node.classList?.contains("github-pulls-meta"),
     );
@@ -992,7 +1213,8 @@ run()
     const { steps, ...rest } = transcript;
     const part = process.argv.indexOf("--part");
     const wanted = part === -1 ? "1" : process.argv[part + 1];
-    const chosen = wanted === "all" ? transcript : wanted === "2" ? rest : { steps };
+    const chosen =
+      wanted === "all" || wanted === "selection" ? transcript : wanted === "2" ? rest : { steps };
     process.stdout.write(`${JSON.stringify(chosen, null, 2)}\n`);
   })
   .catch((error) => {

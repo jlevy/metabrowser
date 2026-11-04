@@ -689,3 +689,26 @@ def test_recording_optional_stack_metadata_answers_real_routes(
         _session_tags(recorded),
         transcript="cli-ui-github-pulls-panel.tryscript.md",
     )
+
+
+def test_real_page_history_owns_file_selection_separately_from_retained_cursor() -> None:
+    result = run_session("github-pulls-file-selection-session.js")["selection"]
+    assert result == {
+        "observations": {
+            "initial": ["/pull/105/files/src/app.txt"],
+            "repeat": ["/pull/105/files/src/app.txt"],
+            "leaving": [],
+            "ignoredOld": [],
+            "arriving": ["/pull/106/files/src/app.txt"],
+            "sameHandle": ["/pull/106/files/src/app.txt"],
+            "explicit": ["/pull/106/files/docs/new.md"],
+            "unavailable": ["/pull/106/files/docs/new.md"],
+            "reported": ["/pull/106/files/docs/new.md"],
+            "history": ["/pull/105/files/src/app.txt"],
+            "lateAfterHistory": [],
+        },
+        "back": "mount",
+        "readerExpansionRetained": True,
+        "rovingAnchorRetained": True,
+        "disposed": 0,
+    }
