@@ -305,7 +305,7 @@ def publish_page(
                 else:
                     counts["all"] += 1
                     for name in ("all", row.state):
-                        if minima[name] is not None and row.number > minima[name]:
+                        if not reset and (minima[name] is None or row.number > minima[name]):
                             changed.add(name)
                 counts[row.state] += 1
                 db.execute(
