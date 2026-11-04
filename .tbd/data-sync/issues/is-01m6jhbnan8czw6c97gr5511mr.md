@@ -5,7 +5,7 @@ title: Adjudicate new PR reviews and safely land the complete feature stack
 kind: epic
 status: in_progress
 priority: 1
-version: 8
+version: 9
 labels: []
 dependencies:
   - type: blocks
@@ -17,8 +17,9 @@ child_order_hints:
   - is-01m6jhcs2psmchp4gw3rc2wcba
   - is-01m6jhcsdtrmt1bb3ezcgqwff0
   - is-01m6jq82s3k7kvk3asas7spbwt
+  - is-01m6jrdfayb71zm3ck9p929cys
 created_at: 2026-11-04T05:43:53.938Z
-updated_at: 2026-11-04T07:26:48.093Z
+updated_at: 2026-11-04T07:47:13.373Z
 ---
 Owner now conditionally authorizes merging ready feature PRs after every review, automated/manual E2E, CI and conflict check passes. Audit all21openPRs: monitored20featurePRs plus draft247 explicitlydo-not-merge reference (excluded). Resolve nine newQodo claims on289/292/293 with concrete evidence, fixconfirmeddefects inowninglayers, mergeforward only/cascade, repeat affected independent review/tests and finalexactartifact acceptance, normalfullgates/pushhooks/CI. Onceallready merge278 via normalnative stackmerge preservinghistory, unstack286 onlyafter278lands, retarget279main, mergeforward/cascade ifneeded/relinkall11, watchCI, thenmergeready286. No rebase/forcepush; preserveprivatefixtures/WIP. Postlandingintegratedreview/documentation/spec/beadreconciliation follows in dependentphase.
 
