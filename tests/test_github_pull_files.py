@@ -883,3 +883,52 @@ def test_memory_only_file_refusal_does_not_mask_a_later_shared_rate_hold(
     succeeded = PullRefreshStamp(outcome="succeeded", at="2026-09-17T12:06:00Z")
     write_files_refresh(home, repository.slug, TREE_PULL, succeeded)
     assert read_files_refresh(home, repository.slug, TREE_PULL) == succeeded
+
+
+def test_newer_memory_file_refusal_keeps_a_later_shared_deadline(
+    home: Path, repository: ListedRepository
+) -> None:
+    """A delayed older publication must retain its hold, not replace the latest outcome."""
+
+    from metabrowser.cache.paths import source_pull_files_refresh
+
+    refused = PullRefreshStamp(
+        outcome="cache_unwritable", at="2026-09-17T12:00:01Z", message="cache refused"
+    )
+    write_files_refresh(home, repository.slug, TREE_PULL, refused, persist=False)
+    held = PullRefreshStamp(
+        outcome="rate_limited", at="2026-09-17T12:00:00Z", reset_at="2026-09-17T12:05:00Z"
+    )
+    relative = source_pull_files_refresh(repository.slug, TREE_PULL)
+    # Another process captured its outcome earlier but finishes publication later.
+    pull_record.write_refresh_stamp(home, repository.slug, relative, held)
+    view = FilesView(TREE_PULL, repository, None, False, None)
+    envelope = pull_files_envelope(view, FilesWindow(TREE_PULL))
+    assert envelope["last_refresh"] == {
+        "outcome": refused.outcome,
+        "message": refused.message,
+        "at": refused.at,
+        "reset_at": held.reset_at,
+    }
+    for retry in (False, True):
+        wanted, _local = files_refresh_wanted(view, FilesRefreshRequest(TREE_PULL, retry))
+        assert not wanted
+    assert pull_record.read_refresh_stamp(home, relative) == held
+
+
+def test_expired_equal_time_file_hold_keeps_the_memory_outcome(
+    home: Path, repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An expired deadline does not change the existing equal-time memory precedence."""
+
+    from metabrowser.cache.paths import source_pull_files_refresh
+
+    monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT + timedelta(minutes=6))
+    refused = PullRefreshStamp(
+        outcome="cache_unwritable", at="2026-09-17T12:00:00Z", message="cache refused"
+    )
+    write_files_refresh(home, repository.slug, TREE_PULL, refused, persist=False)
+    held = PullRefreshStamp(outcome="rate_limited", at=refused.at, reset_at="2026-09-17T12:05:00Z")
+    relative = source_pull_files_refresh(repository.slug, TREE_PULL)
+    pull_record.write_refresh_stamp(home, repository.slug, relative, held)
+    assert read_files_refresh(home, repository.slug, TREE_PULL) == refused
