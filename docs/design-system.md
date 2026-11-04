@@ -51,6 +51,39 @@ Plugin styles may consume host tokens.
 A plugin-specific visual language belongs in the plugin stylesheet, including any new
 domain tokens, rather than in core `styles.css`.
 
+## Color and Theming
+
+**Every color is declared in `oklch`** — there are no hex, `hsl`, or `rgb` literals, and
+`tests/test_design_vocabulary.py` rejects new ones.
+One notation is not a style preference: `oklch` separates the three things a theme has
+to reason about — lightness, chroma, and hue — so they can be compared across tokens and
+across themes. In `hsl` they cannot, which is how a chip ground came to carry four times
+its neighbours’ chroma, and how thirty-five tokens came to shift hue between themes
+without anyone choosing that.
+
+> A token defined in both themes names **one color seen against two backgrounds**: its
+> **hue is the invariant**, while lightness and chroma are tuned for the background it
+> sits on — dark surfaces generally want less chroma, not more.
+
+Near-neutrals are the one exemption: below about `0.02` chroma the hue is not
+perceptible, so requiring it to match would constrain a number nobody can see — and
+would force the dark theme’s cool grays to adopt the light theme’s warm ones.
+
+Consequences worth knowing:
+
+- A token that needs a different hue in one theme is two different colors and should be
+  two tokens with names that say so.
+- A token defined in one theme only is a bug in waiting: a literal tuned for a light
+  background is unreadable on a dark one, which is exactly how `--git-ref-local` broke
+  when it stopped inheriting a themed token.
+- The graph lane colors are the documented exception, and the reason is in the
+  stylesheet beside them: they are one *set*, chosen so the five stay distinguishable
+  from one another, and that property belongs to the set rather than to any member, so
+  they are identical in both themes and are never returned individually.
+
+`tests/test_design_vocabulary.py` enforces both halves: every color is `oklch`, and
+every chromatic token defined in both themes carries the same hue in each.
+
 ## File Age
 
 File age is one shared primitive across navigation rows, file headers, recent-filter
@@ -85,6 +118,20 @@ Adjust this family only at its token definitions, preserve the semantic ordering
 themes, and run `tests/test_file_age_palette.py` to verify the approved light palette,
 OKLCH structure, semantic ordering, and dark-theme surface contrast.
 
+### Age
+
+An age is an age, wherever it appears — a file row, a commit row, a commit’s header.
+One primitive produces all of them: `MetabrowserFormatters.age()` returns the
+abbreviation (`<1m`, `5m`, `2h`, `3d`, `2w`) and the freshness class (`.age-live` …
+`.age-old`), and the `:is(...)` rule over those classes owns the hue, the weight, the
+small size, and tabular numerals.
+Call sites add positioning only, never color, weight, or their own abbreviations — the
+same discipline `.size` follows for byte counts.
+A plugin reaches it as `metabrowser.formatAge`, and puts the exact time in the age’s
+`data-tip-text`. A status sentence such as “Fetched 2 min ago by a reader” is the one
+exception: it states how long ago in words, because it is a sentence rather than a
+label. Any other exception needs a line in this document; otherwise there is one age.
+
 ## Typography
 
 The shell uses a compact UI face for chrome, a monospaced face for rendered content, and
@@ -110,6 +157,32 @@ each live in the `── Typography roles ──` block of `static/styles.css`, 
 tokens they govern. `tests/test_chrome_typography.py` enforces that list across the host
 and plugin stylesheets, so a new monospace use site fails the build until it is
 classified.
+
+### Serif Is for Documents
+
+Serif is reserved for a committed document rendered as one, such as a Markdown file or a
+README on Overview, and only when the reader’s reading font is serif.
+Everything else is sans in either reading font: chrome, and the messages written about
+the content, such as a pull request’s description, comments, and reviews, a commit
+message, and a notice.
+The dividing line is again what the text is.
+A document is what the repository holds, and the reading font exists for reading it at
+length. A message is conversation about the content, and setting it in the document’s
+face makes the two read as one thing.
+
+A message reads at the document’s size in `--prose-sans-font`, the face a document takes
+under the sans reading font, so the face is the only difference, and a pull request’s
+text looks the same as its Markdown would in sans.
+Its width is `--message-measure`, the reader’s same “Max text width” in characters (see
+[Reading Width](#reading-width)).
+
+The serif face reaches a page only through KPress’s `--kpress-host-font-prose` hook,
+which `static/styles.css` points at the reading font.
+A surface of messages that renders through KPress points that hook at
+`--prose-sans-font` and `--doc-measure` at `--message-measure` on its own root, as the
+pull request page does on `.github-pull`, so its KPress prose and its column follow
+together. No other rule names a serif.
+`test_serif_is_only_for_documents` holds this.
 
 ### Keyboard Keys
 
@@ -201,10 +274,15 @@ Chrome (interface) sizes:
 - `--mono-block-font-size` (= ui-small): monospaced blocks in chrome contexts — source
   views, logs, raw JSON.
 - `--micro-font-size` (10px): deliberately minimized marks — the brand line.
+- `--page-title-font-size` (24px): the title of a page no file stands behind, a pull
+  request’s. It sits above the 25.5px regular first heading of the text below by its
+  bold weight, not by its size.
 
 Document (rendered prose) sizes are a single token:
 
 - `--document-body-font-size` (15px): prose, one size step above the 14px app body.
+  Anything a reader reads as prose takes it, a pull request’s description and comments
+  as much as a README, so the same text is the same size wherever it appears.
 
 Everything else inside a rendered document — secondary text, table cells, captions,
 footnotes, and code at every tier — belongs to KPress’s ramp, which it derives from this
@@ -223,6 +301,24 @@ text to 12.75px against 15px prose — well under the 14.25px KPress intends.
 The bridge keeps one size override, and only because it is a real design difference: the
 CONTENTS label uses `--label-font-size` so it matches app labels.
 When adding a size, extend the ramp and its documentation; do not create a one-off.
+
+`test_font_sizes_come_from_the_type_scale` in `tests/test_design_vocabulary.py` holds
+every stylesheet the app ships to this, plugins included.
+A literal fails the build unless its exemption list names the selector and why.
+
+### Text Roles
+
+Keep these roles distinct:
+
+- labels and metadata use normal weight and muted text;
+- filenames are the identity of a row and carry bold weight at full contrast, while the
+  parent path beside them is context and stays regular weight and muted;
+- byte counts, durations, timestamps, and numeric table columns use tabular numerals;
+- code uses monospaced text without forcing prose into a code style, and paths stay in
+  the sans navigation face.
+
+Do not shrink essential text to fit.
+Prefer truncation with an accessible full-value tooltip or allow a panel to scroll.
 
 ### KPress Base-Size Boundary
 
@@ -248,19 +344,29 @@ Characters rather than a length because that is the decision a reader has: 45–
 classic range for a single column, and a browser pane is wide enough to sit above it.
 The default is 102.
 
-Three tokens, all on `:root`:
+Document tokens live on `:root`; the PR page owns its message measure:
 
 | Token | Meaning |
 | --- | --- |
 | `--doc-max-chars` | the reader’s setting; the menu writes it, the pre-paint script seeds it |
 | `--doc-char-advance` | average glyph advance per em for the current reading face |
+| `--sans-char-advance` | the calibrated advance of the clean sans |
 | `--doc-measure` | the resolved length: base × chars × advance |
+| `--message-measure` | on `.github-pull`, the same characters at the active sans advance |
 
 `--doc-measure` is the single source of truth for how wide prose reads anywhere in the
-app, and the only place the character count is converted.
-Every prose surface reads it: the KPress bridge, the folder Overview’s card widths, and
-the fallback `md-body` path a plugin gets when it renders Markdown without KPress.
-A new surface that lays out prose reads `--doc-measure`, never a literal.
+app, and it and `--message-measure` beside it are the only places the character count is
+converted. Every prose surface reads it: the KPress bridge, the folder Overview’s card
+widths, the pull request page’s column, and the fallback `md-body` path a plugin gets
+when it renders Markdown without KPress.
+A surface of messages, the pull request page, points `--doc-measure` at
+`--message-measure` on its own root, so the bridge and its column read the message width
+with no second spelling ([Serif Is for Documents](#serif-is-for-documents)). A new
+surface that lays out prose reads `--doc-measure`, never a literal.
+Markdown rebuilt from an untrusted source goes through
+`MetabrowserInertHtml.kpressProse`, which sets it in KPress’s prose element with the
+classes the allowlist removed, so it reaches the same rules.
+`test_every_prose_surface_reads_the_measure` holds these.
 
 **Never read `--kpress-measure` from host CSS.** KPress declares that token on
 `:root, .kpress, …` from a stylesheet that loads after the app’s, so on `:root` the
@@ -278,7 +384,11 @@ reading mode swaps the ratio and the same character count still holds.
 This is the average advance, not the CSS `ch` unit — `ch` is the advance of “0” and
 overstates a proportional face by roughly 23%. KPress ships no per-face constants
 because a host may swap the face; Metabrowser pins its own faces, so it owns the
-conversion.
+conversion. For PR messages in the system font set, `github/message-measure.js` measures
+the active system sans with Canvas and sets a page-local advance.
+It observes font-setting changes and disposes with the view; clean fonts keep their
+calibration. Size and character-count changes remain CSS inputs.
+Folder startup and document widths do not run this measurement.
 
 Verify a width change by measuring the *text* box with padding excluded, in both the
 single-column and wide bands, and against the same file opened on its own.
@@ -306,18 +416,6 @@ scrollable scrollbar.
 The narrow overlay drawer keeps its border and visible scrollbar so it remains distinct
 from the document it covers.
 
-Keep these roles distinct:
-
-- labels and metadata use normal weight and muted text;
-- filenames are the identity of a row and carry bold weight at full contrast, while the
-  parent path beside them is context and stays regular weight and muted;
-- byte counts, durations, timestamps, and numeric table columns use tabular numerals;
-- code uses monospaced text without forcing prose into a code style, and paths stay in
-  the sans navigation face.
-
-Do not shrink essential text to fit.
-Prefer truncation with an accessible full-value tooltip or allow a panel to scroll.
-
 ## Control Families
 
 Every button belongs to one role-specific primitive:
@@ -327,6 +425,7 @@ Every button belongs to one role-specific primitive:
 | Labelled action | `.btn` |
 | Icon-only action | `.icon-btn` |
 | Filter value or filter menu | `.chip` and its variants |
+| Exclusive choice among labelled values | `.chip-group[data-select="one"]` |
 | Menu row or segmented menu choice | `.menu-item` or `.menu-seg` |
 | Tab | `.tab-btn` |
 | Collapsible section title | `.section-disclosure-trigger` |
@@ -339,221 +438,47 @@ typography, or focus rules.
 Every non-submit button declares `type="button"`, and every icon-only button has an
 accessible action name.
 
-### One Tooltip, and It Is Ours
+### Choosing Among Values
 
-The app has its own tooltip: anchored to the element it describes, styled, themed, and
-on the app’s timer. The browser’s native `title` is a second tooltip system, and a
-surface carrying both shows the reader two tooltips side by side on different timers.
-That happened on the navigation heading, so the rule is enforced rather than remembered.
+A control that offers two or more values, or one value on or off, is one of these.
+They differ in shape because they offer different things, and they agree on what each
+state looks like.
 
-**No `title` attribute, and no `.title =` assignment, anywhere the app owns the markup**
-— browser sources, built-in plugins, and the HTML the server renders.
-`devtools/check_tooltips.py` fails the build on one, and runs in `make lint`.
+| Offers | Primitive | ARIA and keyboard | Used by |
+| --- | --- | --- | --- |
+| One of a few labelled values | `.chip-group[data-select="one"][data-layout="joined"]` | `radiogroup` of `radio` with `aria-checked`; one tab stop, arrow keys select | Split / Unified, Files / Bytes, Branches / Tags |
+| Any of a set of labelled values | `.chip-group[data-select="many"]` | `group` of buttons with `aria-pressed`; each a tab stop | An agent log’s event types |
+| One of a few values in a menu, where the glyph is the label | `.menu-chooser` of `.menu-seg` | `group` of `menuitemradio` with `aria-checked`; each a tab stop | Theme and reading font |
+| One of a long list, named by its trigger | `.chip-menu-trigger` over a `.menu` | `aria-haspopup`, `aria-expanded`; the panel’s pattern within | Filter dropdowns, the source ref selector |
+| A boolean whose polarity has to be legible | `.filter-check` | A real checkbox | Show ignored |
+| A boolean with no room for a word | `.icon-btn[aria-pressed]` | A button with an accessible action name | The filter drawer |
 
-| Need | Use |
-| --- | --- |
-| A short string | `data-tip-text="…"` |
-| Rich content — counts, sizes, several lines | `MetabrowserTooltip.show(html, anchor)`, or `mb.tooltip.show` from a plugin |
+The chip group and the menu segment are two forms of one exclusive choice, because a
+word and a glyph need different boxes.
+A chip sizes to its word at `--chip-height` and sits in a row of chrome.
+A segment holds one glyph, carries the weight of a word, and shares a menu’s whole width
+at a target large enough to hit in a popup.
 
-**A tooltip reads at body size**, `--tooltip-font-size`, with subordinate lines one step
-down at `--tooltip-detail-font-size`. Neither may be spelled as another token or as a
-literal. Pointing a tooltip at `--ui-small-font-size` — the size of chips, counts, and
-row metadata — makes its size a side effect of a decision about chrome, so the next
-adjustment to small chrome text moves every tooltip with it.
-A tooltip is prose the reader has stopped to read.
-`devtools/check_tooltips.py` holds this alongside the rule above.
-
-KPress’s own tooltip inside an embedded document is not this tooltip and keeps its own
-ramp; see the note beside the radius bridge in `styles.css` for why the app flattens
-KPress’s radii but not its type scale.
-
-`data-tip-text` is read by a delegated pointer listener on the document, so it works on
-markup that does not exist yet, including a plugin’s.
-
-### Tooltip Input Modality
-
-**Navigation tooltips are pointer-only.** Keyboard focus already communicates the active
-row or control through focus treatment, selection state, its accessible name, and the
-content it opens.
-A tooltip must not cover that content or repeat it merely because focus
-moved.
-
-Pointer hover may open supplementary tooltip detail.
-Pointer leave or any focus transition dismisses it, and focus alone never opens or
-retains it. This contract applies to delegated `data-tip-text` tooltips and rich
-navigation tooltips such as Git commit summaries.
-Tooltip content therefore cannot be the only source of an accessible name, instruction,
-or state.
-
-This is not a rule about accessible names.
-`aria-label` is unaffected and still required wherever it was: a screen reader does not
-read `data-tip-text`, so an icon-only control needs both.
-
-### Hover Styles the Thing Under the Pointer
-
-A hover is a statement about one element, so it is drawn **on that element** and nowhere
-else. Dimming, fading, or desaturating an item’s neighbours to pick it out is not
-available: it is a larger visual event than the interaction earns, it makes the reader’s
-eye track motion across the whole component rather than the one thing they pointed at,
-and a dimmed neighbour reads as *excluded* or *inactive*, which is a claim the hover is
-not making.
-
-For a segment of a bar, a treemap cell, a chart mark, or any other measure the reader
-can point at:
-
-| Do | Do not |
-| --- | --- |
-| Grow the hovered mark on the axis that carries **no** data, with `--viz-hover-grow` on `--viz-hover-grow-ease` | Grow the axis that encodes the value |
-| Lift its own color a step with `--viz-data-mark-hover-filter` | Dim, fade, or desaturate the other marks |
-| Leave every other mark exactly as it was | Outline, ring, or border the mark, or move the layout |
-
-**Grow, do not outline.** An outline is drawn *on* the data: it covers the color it is
-meant to point at, it competes with whatever separators the component already has
-between marks, and on a short mark it is a large fraction of the height — two pixels of
-ring is a quarter of an eight-pixel track.
-Growth says the same thing and covers nothing, and the eye is already good at finding
-the one thing that moved.
-This was tried as a translucent ring and then as an opaque grey one before landing here;
-neither is the instrument.
-
-**Grow the axis that carries no data.** This is the part that is easy to get backwards.
-On a horizontal bar the *width* is the value, so it is the one dimension that must not
-move: growing it states a share the mark does not have, and every mark after it appears
-to shift. Thickness means nothing there, which is exactly what frees it — so a bar
-segment grows *taller*, centered on the baseline the eye follows along the row.
-
-It also makes the answer uniform.
-A proportional width grew a wide segment by fifteen pixels and a three-pixel segment by
-nothing, so the marks hardest to point at were the ones that answered least.
-Every segment shares one height, so every segment now answers the same.
-
-Because the axis is small, the factor is large: an eight-pixel bar at 1.5 is twelve, and
-the overshoot carries it past thirteen before it settles.
-A few percent would be a fraction of a pixel.
-
-**Grow with a transform, never with layout**, so the row does not reflow under the
-pointer.
-
-**The curve is what makes it read as an answer.** `--viz-hover-grow-ease` overshoots its
-target and settles back, so the mark goes further than it ends up and returns.
-At around 190ms that is a flick; the same distance on a plain ease reads as the layout
-being sluggish.
-
-Growth is proportional, so a wide mark moves further than a narrow one.
-That is the right way round: a one-pixel segment has almost no color to lift either, and
-its tooltip is what identifies it.
-
-The lift darkens on light and brightens on dark, and it is relative to the mark’s own
-color rather than a fixed overlay — file-type families no longer share one lightness,
-they sit in a band and a deviating family sits outside it, so a fixed delta lands
-differently on a pale family than on a dark one.
-See [color and theming](#color-and-theming).
-
-Under `prefers-reduced-motion` the growth is dropped rather than made instant: an
-instant jump is worse than no growth, and the color lift still answers the hover.
-
-**Where growth does not apply.** Two conditions rule it out, and the treemap meets both
-— it takes the lift alone.
-
-- *The mark’s area is its value in two dimensions.* A bar segment’s width encodes its
-  share and the overshoot settles back to it, so nothing is misstated once the motion
-  ends. A treemap cell’s area is the whole encoding, and a cell held larger states a size
-  it does not have.
-- *The mark cannot be lifted above its neighbours.* Growth needs the mark on top, and a
-  treemap flattens a nested folder and its descendants into siblings, so raising a
-  hovered container paints it over every rectangle inside it.
-  `test_treemap_hover_never_promotes_a_container_over_nested_cells` holds that.
-
-A new chart mark that meets neither condition grows.
-One that meets either keeps the lift and states why here.
-
-### Continuing Partial Content
-
-A view that shows part of a file offers the control that loads the rest **at both ends
-of the content**, above it and below it, whenever more remains.
-
-The reader who most wants the next chunk is the one who just finished the current one,
-and they are at the bottom.
-A single control in the pane header is out of view by then, so continuing means
-scrolling back through everything already read to reach it — the longer the content, the
-worse the cost, which is exactly backwards.
-Both controls carry the same label, act on the same state, and appear and retire
-together.
-
-### Notices
-
-A **notice** is any box the app draws to say something *about* the content it is
-showing: that a file is only partly loaded, that a document could not be rendered.
-They are one primitive, `.notice` in `static/styles.css`, in core and in plugins alike.
-
-Its fill is always the ordinary surface — `var(--bg)`, white in the light theme — and
-**severity is carried by the border alone**, as one `[data-severity]` override:
-
-| Severity | Border | Means |
+| State | Text and fill | Also |
 | --- | --- | --- |
-| (none) | `var(--border)` | Neutral; the box is a container, not a signal |
-| `warning` | `var(--status-warning)` | Incomplete, capped, or degraded — the content is fine as far as it goes |
-| `error` | `var(--status-error)` | The thing could not be done at all |
+| Rest | `--muted`, no fill |  |
+| Hover | `--text` on `--hover-bg` |  |
+| Selected | `--link` on `--highlight-bg` | A chip’s word takes `--weight-medium` |
+| Keyboard focus | Unchanged | A 2px `--link` ring, inset 2px |
 
-One tone per box, and it is the one on the edge.
-Tinting the fill is how these drifted, twice: the partial-content banner wore an
-info-blue fill with a warning border while the byte view announced the same condition
-with no box at all, and the KPress render error wore that same blue under an orange
-border — an error announcing itself in the color of an aside, beneath a border naming
-the wrong severity. A tint token such as `--status-info-bg` exists for surfaces that
-genuinely mean “informational”; it is never a message box’s fill.
+Build a chip group with `metabrowser.filterControls.groupHtml` and `bind`, including
+outside a filter bar: an exclusive choice is the same control whatever it chooses.
+A consumer may repaint the group from its state on every change, and `bind` puts focus
+back on the chosen chip, so the arrow keys keep working.
 
-A use site carries `.notice` in the markup alongside its own class, and owns only
-**layout and position** — how it arranges its contents and where it sits.
-It never restates the fill, border, or type, the same rule the
-[control families](#control-families) follow, for the same reason.
-Layout is deliberately not shared: a one-line notice with a button and a stacked render
-error with a detail block have nothing useful in common there.
+`test_a_toggle_cannot_fork_the_family` fails when a stylesheet or a source states a
+toggle’s ARIA outside this family, and
+`test_exclusive_choices_share_one_answer_to_each_state` holds the table above.
 
-`tests/test_notice_style.py` enforces all of it.
-It fails the build if the primitive is redefined outside core, if its fill stops being
-the surface, if a severity does anything but set a border color, if a use site declares
-its own background, border, color, or font, or if any stylesheet uses a status tint as a
-box fill.
+## Rows and Disclosures
 
-Build a partial-content notice through `mb.partialNoticeHtml` rather than by hand, so a
-new view gets the markup, the severity, and the placement together.
-
-### State Progress Once
-
-The notice is the only place a view reports how much of a file is loaded.
-
-Both views used to carry a second readout in their pane chrome — “1.0 MB / 6.0 MB” above
-a notice reading “Showing 1.0 MB of 6.0 MB” — which is the same sentence twice in two
-boxes, and gives a reader two things to reconcile where there is only one fact.
-The file header states the file’s **size**, which is identity; the notice states
-**progress**, which is state.
-The two controls at the ends of the content are not a second statement: they bracket the
-same content so the reader meets one of them wherever they are.
-
-Three supporting rules follow from the same reasoning:
-
-- **A notice that content is missing carries its own control.** Telling a reader that
-  more exists and pointing them elsewhere to ask for it puts the explanation and the
-  remedy in different places.
-  The partial-content banner holds a Load more button rather than naming one.
-- **Retire the control when nothing remains.** A control that cannot do anything reads
-  as a broken control, and any trailing rule or spacing it owns goes with it.
-- **A bound on loading is not a refusal to show anything.** When a view caps how much it
-  will load, it still opens the file and loads up to the cap; it then keeps the notice,
-  drops the control, and says the limit was reached.
-  “No control” and “you are seeing the whole file” look identical otherwise, and a
-  reader who cannot see the rest needs telling either way.
-  The byte view previously refused any file above its 32 MiB ceiling outright, which
-  meant the view existed for binaries and declined the large ones with nothing to look
-  at.
-
-Core provides both halves through `mb.renderTextTruncationWarning` and
-`mb.renderTextLoadMoreFooter` for views whose progress comes from `/api/file`, and
-`mb.partialNoticeHtml` for a view that tracks its own offsets.
-A plugin gets the placement and the style by using them rather than by reproducing them.
-See [Rendering Large Content](large-content-rendering.md) for the loading policy behind
-the chunk sizes these controls request.
+A row is one activation target at one height, and a disclosure says what it holds and
+travels the same way wherever it is.
 
 ### Navigation Tree Folders
 
@@ -613,24 +538,9 @@ Markdown Frontmatter and Diagnostics disclosures start collapsed through the abs
 the native `open` attribute.
 These defaults are not saved as user preferences.
 
-The diff view’s per-file bar is **a row, not a heading disclosure**: it leads with the
-same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
-`expanded`/`collapsed` classes), sits at the shared `--ui-row-height`, hovers with
-`--hover-bg`, and reveals its `[data-mb-copy]` copy control on row hover or focus — the
-file-header copy affordance, present wherever a filename is.
-Its content is left-aligned reading order — chevron, kind letter, filename in the
-shell’s file-path typography, then the stat pair beside the name — and the whole bar is
-one activation surface, the folder-row rule applied to a section header: clicking
-anywhere toggles, with only the copy and View file controls opting out.
-On a page that shows a pinned revision, the bar ends with quiet text actions that open
-the file at a side of the change: **View file**, and **View at parent** or **View at
-base** where the old side exists.
-They stay visible rather than revealing on hover, because they are how a reader leaves
-the diff for the file.
-An action is a link when the page already has the file’s address and a button when
-following it first switches the served pin; both look the same, and the tooltip says
-which commit opens and whether the pin switches.
-A collapsed section keeps the section’s own border as its single line.
+This pattern does not replace the navigation-tree disclosure.
+The tree keeps its leading chevron because that mark communicates hierarchy and shares
+one activation target with folder navigation.
 
 ### One Chevron, One Row Contract
 
@@ -677,6 +587,12 @@ so they are set at the path’s own size: text of one size centers onto one base
 At `--ui-small-font-size` a link sat 0.75px above the path’s baseline and a button
 0.5px, measured in Chromium at a device pixel ratio of 2.
 
+A mirror’s location note at the far end of the file header is deliberately not in the
+table.
+It is whole or absent, by wrapping inside a box of its own one line tall, so it is
+centered rather than baseline-aligned, and sits 0.25px above the path at a device pixel
+ratio of 1, with the rest of the row between them.
+
 The Git commit summary’s metadata line also sets two sizes and is deliberately not in
 the table.
 Its revision is monospace at `--nav-font-size` beside body-size sans text, and
@@ -695,7 +611,9 @@ chevron, in `--highlight-bg`, hovering with `--hover-bg`. The label states the c
 holds (`86 more changed lines`) and becomes the inverse when open (`Hide 86 lines`),
 because a control that hides its size is a control the reader cannot judge.
 A fold inside another disclosure stops its click, so expanding a fold never collapses
-its container.
+its container. It is one primitive, `.fold-expander` in `static/styles.css`, on a button
+or a native `summary`. `test_section_headings_and_fold_expanders_are_primitives` holds
+it.
 
 ### Disclosure Motion
 
@@ -709,59 +627,107 @@ Collapse is always class-driven (`.tree-children-collapsed`,
 `.diff-file-body-collapsed`, `.diff-fold-collapsed`,
 `.folder-overview-panel-body-collapsed`), never inline `display`, so the stylesheet owns
 the motion, and reduced-motion drops every travel to 1ms while keeping the state change.
+A native `details` keeps its state in `open` and takes the same recipe on
+`::details-content`, as a pull request hunk’s earlier lines do.
 `tests/test_design_vocabulary.py` pins the recipe on every site.
 
-### Color and Theming
+## Notices and Partial Content
 
-**Every color is declared in `oklch`** — there are no hex, `hsl`, or `rgb` literals, and
-`tests/test_design_vocabulary.py` rejects new ones.
-One notation is not a style preference: `oklch` separates the three things a theme has
-to reason about — lightness, chroma, and hue — so they can be compared across tokens and
-across themes. In `hsl` they cannot, which is how a chip ground came to carry four times
-its neighbours’ chroma, and how thirty-five tokens came to shift hue between themes
-without anyone choosing that.
+### Notices
 
-> A token defined in both themes names **one color seen against two backgrounds**: its
-> **hue is the invariant**, while lightness and chroma are tuned for the background it
-> sits on — dark surfaces generally want less chroma, not more.
+A **notice** is any box the app draws to say something *about* the content it is
+showing: that a file is only partly loaded, that a document could not be rendered.
+They are one primitive, `.notice` in `static/styles.css`, in core and in plugins alike.
 
-Near-neutrals are the one exemption: below about `0.02` chroma the hue is not
-perceptible, so requiring it to match would constrain a number nobody can see — and
-would force the dark theme’s cool grays to adopt the light theme’s warm ones.
+Its fill is always the ordinary surface — `var(--bg)`, white in the light theme — and
+**severity is carried by the border alone**, as one `[data-severity]` override:
 
-Consequences worth knowing:
+| Severity | Border | Means |
+| --- | --- | --- |
+| (none) | `var(--border)` | Neutral; the box is a container, not a signal |
+| `warning` | `var(--status-warning)` | Incomplete, capped, or degraded — the content is fine as far as it goes |
+| `error` | `var(--status-error)` | The thing could not be done at all |
 
-- A token that needs a different hue in one theme is two different colors and should be
-  two tokens with names that say so.
-- A token defined in one theme only is a bug in waiting: a literal tuned for a light
-  background is unreadable on a dark one, which is exactly how `--git-ref-local` broke
-  when it stopped inheriting a themed token.
-- The graph lane colors are the documented exception, and the reason is in the
-  stylesheet beside them: they are one *set*, chosen so the five stay distinguishable
-  from one another, and that property belongs to the set rather than to any member, so
-  they are identical in both themes and are never returned individually.
+One tone per box, and it is the one on the edge.
+Tinting the fill is how these drifted, twice: the partial-content banner wore an
+info-blue fill with a warning border while the byte view announced the same condition
+with no box at all, and the KPress render error wore that same blue under an orange
+border — an error announcing itself in the color of an aside, beneath a border naming
+the wrong severity. A tint token such as `--status-info-bg` exists for surfaces that
+genuinely mean “informational”; it is never a message box’s fill.
 
-`tests/test_design_vocabulary.py` enforces both halves: every color is `oklch`, and
-every chromatic token defined in both themes carries the same hue in each.
+A use site carries `.notice` in the markup alongside its own class, and owns only
+**layout and position** — how it arranges its contents and where it sits.
+It never restates the fill, border, or type, the same rule the
+[control families](#control-families) follow, for the same reason.
+Layout is deliberately not shared: a one-line notice with a button and a stacked render
+error with a detail block have nothing useful in common there.
 
-### Age
+`tests/test_notice_style.py` enforces all of it.
+It fails the build if the primitive is redefined outside core, if its fill stops being
+the surface, if a severity does anything but set a border color, if a use site declares
+its own background, border, color, or font, or if any stylesheet uses a status tint as a
+box fill.
 
-An age is an age, wherever it appears — a file row, a commit row, a commit’s header.
-One primitive produces all of them: `MetabrowserFormatters.age()` returns the
-abbreviation (`<1m`, `5m`, `2h`, `3d`, `2w`) and the freshness class (`.age-live` …
-`.age-old`), and the `:is(...)` rule over those classes owns the hue, the weight, the
-small size, and tabular numerals.
-Call sites add positioning only, never color, weight, or their own abbreviations — the
-same discipline `.size` follows for byte counts.
-An exception needs a line in this document; otherwise there is one age.
+Build a partial-content notice through `mb.partialNoticeHtml` rather than by hand, so a
+new view gets the markup, the severity, and the placement together.
+
+### Continuing Partial Content
+
+A view that shows part of a file offers the control that loads the rest **at both ends
+of the content**, above it and below it, whenever more remains.
+
+The reader who most wants the next chunk is the one who just finished the current one,
+and they are at the bottom.
+A single control in the pane header is out of view by then, so continuing means
+scrolling back through everything already read to reach it — the longer the content, the
+worse the cost, which is exactly backwards.
+Both controls carry the same label, act on the same state, and appear and retire
+together.
+
+### State Progress Once
+
+The notice is the only place a view reports how much of a file is loaded.
+
+Both views used to carry a second readout in their pane chrome — “1.0 MB / 6.0 MB” above
+a notice reading “Showing 1.0 MB of 6.0 MB” — which is the same sentence twice in two
+boxes, and gives a reader two things to reconcile where there is only one fact.
+The file header states the file’s **size**, which is identity; the notice states
+**progress**, which is state.
+The two controls at the ends of the content are not a second statement: they bracket the
+same content so the reader meets one of them wherever they are.
+
+Three supporting rules follow from the same reasoning:
+
+- **A notice that content is missing carries its own control.** Telling a reader that
+  more exists and pointing them elsewhere to ask for it puts the explanation and the
+  remedy in different places.
+  The partial-content banner holds a Load more button rather than naming one.
+- **Retire the control when nothing remains.** A control that cannot do anything reads
+  as a broken control, and any trailing rule or spacing it owns goes with it.
+- **A bound on loading is not a refusal to show anything.** When a view caps how much it
+  will load, it still opens the file and loads up to the cap; it then keeps the notice,
+  drops the control, and says the limit was reached.
+  “No control” and “you are seeing the whole file” look identical otherwise, and a
+  reader who cannot see the rest needs telling either way.
+  The byte view previously refused any file above its 32 MiB ceiling outright, which
+  meant the view existed for binaries and declined the large ones with nothing to look
+  at.
+
+Core provides both halves through `mb.renderTextTruncationWarning` and
+`mb.renderTextLoadMoreFooter` for views whose progress comes from `/api/file`, and
+`mb.partialNoticeHtml` for a view that tracks its own offsets.
+A plugin gets the placement and the style by using them rather than by reproducing them.
+See [Rendering Large Content](large-content-rendering.md) for the loading policy behind
+the chunk sizes these controls request.
 
 ## Git History
 
 The history panel has its own vocabulary because it shows a structure nothing else in
 the product shows — a graph of commits — but it borrows every general element it can:
 ages come from [Age](#age), change counts from
-[Inline Change Stats](#inline-change-stats), and rows follow the shared row height and
-hover.
+[Inline Change Stats](#inline-change-stats), and rows follow the shared
+[row height and hover](#one-chevron-one-row-contract).
 
 ### Lane Colors
 
@@ -871,7 +837,7 @@ the renderer, root, child, styling, and documentation contract.
 
 Git ref badges (`.git-ref`) are their own vocabulary, not filter chips.
 In the dense Git history row they use `--micro-font-size`; in the commit-summary
-component they use `--body-font-size` with the same form.
+component and a pull request’s header they use `--body-font-size` with the same form.
 The name carries the meaning, so it is always `--weight-bold`, and the corner is
 `--radius-tag` (square-ish) so “a ref” and a “filter” never read as the same control.
 
@@ -894,6 +860,11 @@ separate from them. The three ref colors — `--git-ref-local`, `--git-ref-remot
 second signal, and the dark theme raises only their lightness so they stay the same
 three colors.
 
+## Diffs
+
+Diff surfaces serve a commit, a comparison, and a pull request’s Files changed, and they
+share these rules wherever they appear.
+
 ### Inline Change Stats
 
 The `+N` / `−N` pair that rides beside a filename wherever a surface reports change
@@ -905,6 +876,27 @@ rule but use the commit summary’s standard body size.
 The same pair is the summary line’s vocabulary, so a change set and its files read
 identically. Kind letters reuse the same mapping — added is `--status-success`, deleted
 is `--status-error` — and no diff surface introduces a local green or red.
+
+### Diff File Bar
+
+The diff view’s per-file bar is **a row, not a heading disclosure**: it leads with the
+same registry chevron the tree uses (`.toggle-chevron`, rotated by the shared
+`expanded`/`collapsed` classes), sits at the shared `--ui-row-height`, hovers with
+`--hover-bg`, and reveals its `[data-mb-copy]` copy control on row hover or focus — the
+file-header copy affordance, present wherever a filename is.
+Its content is left-aligned reading order — chevron, kind letter, filename in the
+shell’s file-path typography, then the stat pair beside the name — and the whole bar is
+one activation surface, the folder-row rule applied to a section header: clicking
+anywhere toggles, with only the copy and View file controls opting out.
+On a page that shows a pinned revision, the bar ends with quiet text actions that open
+the file at a side of the change: **View file**, and **View at parent** or **View at
+base** where the old side exists.
+They stay visible rather than revealing on hover, because they are how a reader leaves
+the diff for the file.
+An action is a link when the page already has the file’s address and a button when
+following it first switches the served pin; both look the same, and the tooltip says
+which commit opens and whether the pin switches.
+A collapsed section keeps the section’s own border as its single line.
 
 ### Diff Change Surfaces
 
@@ -957,14 +949,67 @@ The joined layout control always orders **Split** on the left and **Unified** on
 right. A reader without a valid stored `diff.layout` preference starts in Split.
 Either valid stored choice remains authoritative, and switching layouts reprojects the
 shared semantic model without re-fetching or re-running syntax highlighting.
+A diff too narrow for Split draws Unified, and the control shows what is drawn, with a
+tip on **Split** saying why; the stored choice is not touched, so Split returns when
+there is room, and choosing **Split** there draws it with a sideways scroll.
 
-Section headings use `--section-heading-divider-gap` between their content and the
-divider. Components consume the token instead of choosing local bottom padding, so the
-divider remains equally close to headings with and without disclosure controls.
+## The Pull Request Page
 
-This pattern does not replace the navigation-tree disclosure.
-The tree keeps its leading chevron because that mark communicates hierarchy and shares
-one activation target with folder navigation.
+The page at `/pull/<n>` shows one cached pull request.
+It has almost no vocabulary of its own: it places the shell’s primitives, and a text of
+the pull request reads as the same Markdown does in a file.
+`test_the_pull_request_page_carries_the_shells_primitives` holds what follows, with the
+tests named beside each primitive.
+
+### Layout
+
+The page is a header, a [tab bar](#the-tab-bar), and a body, in that order.
+The header and the conversation share a **reading column**: `--doc-measure` plus two
+card insets, centered in a wider pane as a Markdown file’s card and Overview’s stack
+are. So a card’s text box is the one a file’s text has, and the title lines up with the
+cards under it. The tab bar and Files changed are as wide as the pane: a diff is not
+prose, and Split needs the room.
+
+### Text
+
+A description, comment, or review body is prose, and it reads at the document’s size
+rather than chrome’s, in sans whatever the reading font, because it is a message and not
+a committed document ([Serif Is for Documents](#serif-is-for-documents)). The page sets
+it in `article.kpress.kpress-inert > .kpress-prose` under `.metabrowser-kpress-host`,
+the path a mirrored Markdown file takes, so KPress’s own rules apply: the prose size,
+the heading ramp, the graded code sizes in a paragraph, a list, a table, and a heading,
+and the reader’s “Max text width”.
+Nothing restates a ratio.
+The one rule the page adds removes the first and last block’s outer margin, because the
+card’s padding is the space around a text.
+
+The fallback `md-body` path is not used, because it is a different ramp: one flat code
+size and its own heading steps, which would make the same text read differently from a
+file.
+
+A text stays inert. The server and `static/inert-html.js` reduce it to the allowlist, no
+KPress script loads, and every class in the article is the page’s, chosen by element.
+The route’s answer names KPress’s stylesheets, and that list is the same for every text,
+so a comment does not choose what the page loads.
+Until its render arrives a text shows as plain text in the same face and size.
+
+### Chrome
+
+| Element | Primitive | Why |
+| --- | --- | --- |
+| Title | `--page-title-font-size`, `--weight-bold`, sans | The number beside it is muted and regular |
+| State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome |
+| Base and head branch | `.git-ref.git-ref-remote`, at this line’s size | A branch is a ref, so it takes the [ref chip](#branch-chips) and is sans, not `<code>` |
+| Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
+| Opened, updated, commented | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age). “Fetched 2 min ago” is a status sentence |
+| File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
+| Link | `--link`, underline on hover, the focus ring | As the freshness row’s link is |
+| Section title | [`.section-heading`](#section-headings) |  |
+| Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Files changed cannot be drawn; no severity for the offer of newer changes, which carries its own control |
+| A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |
+| A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
+| Empty state | `--muted`, sentence with a period |  |
+| Refresh, Fetch, Switch to the head | `.btn` |  |
 
 ## Keyboard Commands and Help
 
@@ -1136,8 +1181,8 @@ above content: a bare glyph over source text is unreadable, so it needs an opaqu
 
 ### Copyable Identifiers Use One Delegate
 
-A copyable path, revision, or other exact identifier pairs its visible monospace value
-with an adjacent `.icon-btn.icon-btn-reveal` using the registry’s `copy` icon.
+A copyable path, revision, or other exact identifier pairs its visible value with an
+adjacent `.icon-btn.icon-btn-reveal` using the registry’s `copy` icon.
 The visible value may be abbreviated when its meaning remains clear, but the copy
 payload must preserve the complete identifier.
 The Git commit header therefore shows the short revision and copies the full commit ID.
@@ -1189,6 +1234,8 @@ Every filter in the app is built from one chip family, documented in the
 `── Filter controls ──` block of `static/styles.css` and rendered by
 `static/filter-controls.js`. A surface that needs a filter reaches for these rather than
 inventing a pill of its own; four near-identical pills is what this family replaced.
+[Choosing Among Values](#choosing-among-values) says where the family fits among the
+other controls that offer a choice.
 
 Core and plugin views use the same renderer and interaction code.
 Plugins reach it through `window.metabrowser.filterControls`; they may use a plugin
@@ -1506,18 +1553,11 @@ for that row’s disjoint population.
 Tooltip-bearing categorical marks use `--viz-data-mark-hover-filter`, the same subtle
 whole-mark brightness change used by Treemap cells.
 The filter preserves the mark’s hue and the contrast between its fill, border, and
-nested content; hover never changes geometry or stacking.
+nested content.
 
-On a tally track the filter alone is not enough, because the track is eight pixels tall
-and a brightness change on one segment has almost no area to register in.
-The rest of the track recedes as well, to `--mb-distribution-segment-recede`, so the
-hovered segment holds its color while its neighbors drop toward the track behind them.
-That reads at any hue and at any segment width, and it answers the question the tooltip
-raises: which segment is this.
-A Treemap cell is large enough to carry the filter on its own and does not recede its
-siblings.
-It transitions with the shared visualization hover timing, while reduced-motion
-mode applies the state immediately.
+A tally segment also grows, as
+[Hover Styles the Thing Under the Pointer](#hover-styles-the-thing-under-the-pointer)
+says; a Treemap cell takes the lift alone.
 These supplemental hover tooltips do not create tab stops; the type distribution remains
 the accessible source for the same values.
 The Ignored row dims its label, tally, track, and colors through
@@ -1656,6 +1696,34 @@ The preview pane has one scroll owner.
 Views should not introduce nested full-height scroll containers unless the content
 itself requires independent horizontal or virtual scrolling.
 
+### The Tab Bar
+
+A tab is `.tab-btn` in a `.tab-bar`, everywhere: OVERVIEW and TREEMAP, DOCUMENT and
+SOURCE, FILES and GIT, and CONVERSATION and FILES CHANGED. Markup keeps the label’s
+natural case, “Files changed”, and the caps are presentational.
+`.active` paints the selected tab; under `role="tab"`, `aria-selected` says the same to
+assistive technology, and both are set together.
+
+A tab that is an address is `<a class="tab-btn" href>`, so back, forward, and open in a
+new tab keep working.
+`a.tab-btn` states what a `<button>` gets from the browser, so the two render as one
+tab.
+
+The bar is as wide as the pane and sits under the identity it belongs to and over the
+content it switches.
+A use site does not pad, recolor, or re-letter it.
+`test_every_tab_is_the_tab_primitive` holds the markup, the stylesheets, and the tokens.
+
+### Section Headings
+
+The title of a section in a stack is `.section-heading`: the tab bar’s uppercase, bold,
+tracked sans grammar at `--body-font-size`, over a neutral rule.
+`--section-heading-divider-gap` sets the space between its content and the rule, so the
+rule is equally close to a heading with or without a disclosure control.
+A use site owns the space around the heading, and the type and the rule stay with the
+primitive. Overview’s panels and a pull request’s sections carry it, and
+`test_section_headings_and_fold_expanders_are_primitives` holds it.
+
 ### Folder Views Are Tabs
 
 The Folder Overview applies these rules to every served directory.
@@ -1691,9 +1759,8 @@ Named placement bands establish broad order; stable panel IDs break ties, so
 asynchronous resolution and plugin load timing never rearrange the page.
 
 Every contribution is a labelled semantic section.
-The composer renders the label as a visible, document-aligned section heading above the
-panel body. These headings use the tab bar’s uppercase, bold, tracked sans-serif grammar
-at the body-text size, followed by a neutral separator.
+The composer renders the label as a visible, document-aligned
+[section heading](#section-headings) above the panel body.
 Collapsible headings contain the shared section-disclosure trigger, with its gray
 trailing chevron and unchanged heading typography.
 File Overview and README start expanded.
@@ -1786,6 +1853,58 @@ difference between a tooltip, menu, and dialog.
 A compact surface can still be a modal dialog.
 Help is a dialog because it contains a link and controls and temporarily owns focus; it
 is not a tooltip or menu.
+
+### One Tooltip, and It Is Ours
+
+The app has its own tooltip: anchored to the element it describes, styled, themed, and
+on the app’s timer. The browser’s native `title` is a second tooltip system, and a
+surface carrying both shows the reader two tooltips side by side on different timers.
+That happened on the navigation heading, so the rule is enforced rather than remembered.
+
+**No `title` attribute, no `.title =` assignment, and no `setAttribute("title", …)`,
+anywhere the app owns the markup** — browser sources, built-in plugins, and the HTML the
+server renders. `devtools/check_tooltips.py` fails the build on one, and runs in
+`make lint`. Its exemption list names each exception and why: an iframe’s accessible
+name, and a rendered document’s own links and embeds.
+
+| Need | Use |
+| --- | --- |
+| A short string | `data-tip-text="…"` |
+| Rich content — counts, sizes, several lines | `MetabrowserTooltip.show(html, anchor)`, or `mb.tooltip.show` from a plugin |
+
+**A tooltip reads at body size**, `--tooltip-font-size`, with subordinate lines one step
+down at `--tooltip-detail-font-size`. Neither may be spelled as another token or as a
+literal. Pointing a tooltip at `--ui-small-font-size` — the size of chips, counts, and
+row metadata — makes its size a side effect of a decision about chrome, so the next
+adjustment to small chrome text moves every tooltip with it.
+A tooltip is prose the reader has stopped to read.
+`devtools/check_tooltips.py` holds this alongside the rule above.
+
+KPress’s own tooltip inside an embedded document is not this tooltip and keeps its own
+ramp; see the note beside the radius bridge in `styles.css` for why the app flattens
+KPress’s radii but not its type scale.
+
+`data-tip-text` is read by a delegated pointer listener on the document, so it works on
+markup that does not exist yet, including a plugin’s.
+
+### Tooltip Input Modality
+
+**Navigation tooltips are pointer-only.** Keyboard focus already communicates the active
+row or control through focus treatment, selection state, its accessible name, and the
+content it opens.
+A tooltip must not cover that content or repeat it merely because focus
+moved.
+
+Pointer hover may open supplementary tooltip detail.
+Pointer leave or any focus transition dismisses it, and focus alone never opens or
+retains it. This contract applies to delegated `data-tip-text` tooltips and rich
+navigation tooltips such as Git commit summaries.
+Tooltip content therefore cannot be the only source of an accessible name, instruction,
+or state.
+
+This is not a rule about accessible names.
+`aria-label` is unaffected and still required wherever it was: a screen reader does not
+read `data-tip-text`, so an icon-only control needs both.
 
 ### A Tooltip Holds Still
 
@@ -1898,6 +2017,84 @@ Charts must include text labels and usable summaries.
 Color alone cannot distinguish series, thresholds, or success and failure.
 Destroy SDK-created Chart.js instances when their view is disposed so their theme
 subscription is also released.
+
+### Hover Styles the Thing Under the Pointer
+
+A hover is a statement about one element, so it is drawn **on that element** and nowhere
+else. Dimming, fading, or desaturating an item’s neighbours to pick it out is not
+available: it is a larger visual event than the interaction earns, it makes the reader’s
+eye track motion across the whole component rather than the one thing they pointed at,
+and a dimmed neighbour reads as *excluded* or *inactive*, which is a claim the hover is
+not making.
+
+For a segment of a bar, a treemap cell, a chart mark, or any other measure the reader
+can point at:
+
+| Do | Do not |
+| --- | --- |
+| Grow the hovered mark on the axis that carries **no** data, with `--viz-hover-grow` on `--viz-hover-grow-ease` | Grow the axis that encodes the value |
+| Lift its own color a step with `--viz-data-mark-hover-filter` | Dim, fade, or desaturate the other marks |
+| Leave every other mark exactly as it was | Outline, ring, or border the mark, or move the layout |
+
+**Grow, do not outline.** An outline is drawn *on* the data: it covers the color it is
+meant to point at, it competes with whatever separators the component already has
+between marks, and on a short mark it is a large fraction of the height — two pixels of
+ring is a quarter of an eight-pixel track.
+Growth says the same thing and covers nothing, and the eye is already good at finding
+the one thing that moved.
+This was tried as a translucent ring and then as an opaque grey one before landing here;
+neither is the instrument.
+
+**Grow the axis that carries no data.** This is the part that is easy to get backwards.
+On a horizontal bar the *width* is the value, so it is the one dimension that must not
+move: growing it states a share the mark does not have, and every mark after it appears
+to shift. Thickness means nothing there, which is exactly what frees it — so a bar
+segment grows *taller*, centered on the baseline the eye follows along the row.
+
+It also makes the answer uniform.
+A proportional width grew a wide segment by fifteen pixels and a three-pixel segment by
+nothing, so the marks hardest to point at were the ones that answered least.
+Every segment shares one height, so every segment now answers the same.
+
+Because the axis is small, the factor is large: an eight-pixel bar at 1.5 is twelve, and
+the overshoot carries it past thirteen before it settles.
+A few percent would be a fraction of a pixel.
+
+**Grow with a transform, never with layout**, so the row does not reflow under the
+pointer.
+
+**The curve is what makes it read as an answer.** `--viz-hover-grow-ease` overshoots its
+target and settles back, so the mark goes further than it ends up and returns.
+At around 190ms that is a flick; the same distance on a plain ease reads as the layout
+being sluggish.
+
+Growth is proportional, so a wide mark moves further than a narrow one.
+That is the right way round: a one-pixel segment has almost no color to lift either, and
+its tooltip is what identifies it.
+
+The lift darkens on light and brightens on dark, and it is relative to the mark’s own
+color rather than a fixed overlay — file-type families no longer share one lightness,
+they sit in a band and a deviating family sits outside it, so a fixed delta lands
+differently on a pale family than on a dark one.
+See [color and theming](#color-and-theming).
+
+Under `prefers-reduced-motion` the growth is dropped rather than made instant: an
+instant jump is worse than no growth, and the color lift still answers the hover.
+
+**Where growth does not apply.** Two conditions rule it out, and the treemap meets both
+— it takes the lift alone.
+
+- *The mark’s area is its value in two dimensions.* A bar segment’s width encodes its
+  share and the overshoot settles back to it, so nothing is misstated once the motion
+  ends. A treemap cell’s area is the whole encoding, and a cell held larger states a size
+  it does not have.
+- *The mark cannot be lifted above its neighbours.* Growth needs the mark on top, and a
+  treemap flattens a nested folder and its descendants into siblings, so raising a
+  hovered container paints it over every rectangle inside it.
+  `test_treemap_hover_never_promotes_a_container_over_nested_cells` holds that.
+
+A new chart mark that meets neither condition grows.
+One that meets either keeps the lift and states why here.
 
 ## Motion
 

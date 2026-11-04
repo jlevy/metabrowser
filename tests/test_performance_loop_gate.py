@@ -6,6 +6,8 @@ import argparse
 import importlib.util
 import io
 import json
+import re
+import tomllib
 from pathlib import Path
 from typing import Any, cast
 
@@ -16,6 +18,9 @@ from tests.required_tools import needs_git
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "explorations" / "performance-loop" / "run.py"
 BUDGETS = ROOT / "explorations" / "performance-loop" / "performance-budgets.toml"
+FLAT_STRESS_BUDGETS = (
+    ROOT / "explorations" / "performance-loop" / "performance-budgets-flat-stress.toml"
+)
 
 
 def _runner() -> Any:
@@ -113,6 +118,48 @@ def test_report_reader_rejects_duplicate_experiment_ids(tmp_path: Path) -> None:
 
     with pytest.raises(SystemExit, match=r"duplicate experiment id exp-001.*first.*second"):
         module._experiment_records()
+
+
+def test_report_marks_the_bytecode_state_of_a_round_that_records_one(tmp_path: Path) -> None:
+    """A start's figures read as a build's cost unless the row says what state they are of."""
+
+    module = _runner()
+    module.EXPERIMENTS = tmp_path
+    module.REPORT = tmp_path / "report.md"
+    module._load_runs = lambda: []
+    module.REPO = tmp_path
+
+    def artifact(number: int, method: str, before: float, after: float) -> str:
+        return (
+            f"---\nexperiment:\n  id: exp-00{number}\n  title: Round {number}\n"
+            f"  method:\n    runs_per_condition: 1\n{method}  results:\n"
+            f"    - metric: cli_show_instr_millions\n      control_median: {before}\n"
+            f"      candidate_median: {after}\n  verdict:\n    decision: accepted\n"
+            "    primary_metric: cli_show_instr_millions\n---\n"
+        )
+
+    for number, method, before, after in (
+        (1, "    bytecode: uncached\n", 7400.8, 7689.4),
+        (2, "    bytecode: cached\n", 2445.0, 2400.0),
+        (3, "", 900.0, 800.0),
+        (4, '    bytecode: "uncached"\n', 700.0, 600.0),
+        (5, "    bytecode: 'cached'\n", 500.0, 400.0),
+    ):
+        (tmp_path / f"exp-00{number}-round.md").write_text(
+            artifact(number, method, before, after), encoding="utf-8"
+        )
+
+    assert module.cmd_report(argparse.Namespace()) == 0
+    report = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert (
+        "| 7,401 | **7,689** (accepted on other grounds; see the round; "
+        "measured without compiled bytecode) | exp-001 |"
+    ) in report
+    assert "| 2,445 | **2,400** (measured with compiled bytecode) | exp-002 |" in report
+    assert "| 900 | **800** | exp-003 |" in report
+    # The schema admits either YAML quoting, and a value it admits keeps its mark.
+    assert "| 700 | **600** (measured without compiled bytecode) | exp-004 |" in report
+    assert "| 500 | **400** (measured with compiled bytecode) | exp-005 |" in report
 
 
 def _compare(module: Any, runs: list[dict[str, Any]]) -> int:
@@ -1516,3 +1563,103 @@ def test_compare_requires_a_nonce_for_current_harness_evidence() -> None:
 
     with pytest.raises(SystemExit, match="after row 2 has no measurement_run_id"):
         _compare(module, [*before, *after])
+
+
+# The stress file's header lists each divergence as `#   metric  release -> stress`.
+# A value is whole or fractional, as the budgets are: `metrics.cls` has a maximum of 0.1.
+_BUDGET_VALUE = r"([0-9]+(?:\.[0-9]+)?)"
+_DECLARED_DIVERGENCE = re.compile(rf"^#   (\w+)  {_BUDGET_VALUE} -> {_BUDGET_VALUE}$", re.MULTILINE)
+
+
+def _budget_divergences(release_text: str, stress_text: str) -> list[str]:
+    """Name everything that differs between the two files beyond the header's declarations.
+
+    A declared value is compared by number, which is how a TOML ``450`` and a ``450.0``
+    compare too.
+    """
+    release = tomllib.loads(release_text)
+    stress = tomllib.loads(stress_text)
+    release_metrics = release.pop("metrics")
+    stress_metrics = stress.pop("metrics")
+    expected = dict(release_metrics)
+    found = [
+        f"[{table}]"
+        for table in release.keys() | stress.keys()
+        if release.get(table) != stress.get(table)
+    ]
+    for name, before, after in _DECLARED_DIVERGENCE.findall(stress_text):
+        if release_metrics.get(name, {}).get("maximum") != float(before):
+            found.append(f"{name}: declared release value {before} is not the release gate's")
+        expected[name] = {**release_metrics.get(name, {}), "maximum": float(after)}
+    found += [
+        f"metrics.{name}"
+        for name in expected.keys() | stress_metrics.keys()
+        if expected.get(name) != stress_metrics.get(name)
+    ]
+    return sorted(found)
+
+
+def test_flat_stress_budgets_differ_from_the_release_gate_only_where_declared() -> None:
+    assert _budget_divergences(BUDGETS.read_text(), FLAT_STRESS_BUDGETS.read_text()) == []
+
+
+@pytest.mark.parametrize(
+    ("side", "old", "new", "named"),
+    [
+        (
+            "stress",
+            "minimum_interaction_inputs = 5",
+            "minimum_interaction_inputs = 6",
+            "[requirements]",
+        ),
+        (
+            "release",
+            "minimum_interaction_inputs = 5",
+            "minimum_interaction_inputs = 6",
+            "[requirements]",
+        ),
+        ("stress", "maximum = 450", "maximum = 500", "metrics.first_row_ms"),
+        ("release", "maximum = 350", "maximum = 300", "first_row_ms: declared release value"),
+        ("stress", "#   first_row_ms  350 -> 450", "#   (undeclared)", "metrics.first_row_ms"),
+        ("stress", "[metrics.fetch_aborts]", "[metrics.only_here]", "metrics.only_here"),
+        ("release", "[metrics.fetch_aborts]", "[metrics.only_here]", "metrics.only_here"),
+    ],
+)
+def test_flat_stress_budget_check_names_an_undeclared_divergence_in_either_file(
+    side: str, old: str, new: str, named: str
+) -> None:
+    release = BUDGETS.read_text()
+    stress = FLAT_STRESS_BUDGETS.read_text()
+    assert old in (stress if side == "stress" else release)
+    if side == "stress":
+        stress = stress.replace(old, new)
+    else:
+        release = release.replace(old, new)
+
+    assert any(named in divergence for divergence in _budget_divergences(release, stress))
+
+
+@pytest.mark.parametrize(
+    ("declaration", "maximum", "divergences"),
+    [
+        ("0.1 -> 0.2", "0.2", []),
+        # A whole number and a fraction are the same kind of value to a TOML reader.
+        ("0.1 -> 1", "1", []),
+        ("0.1 -> 0.2", "0.3", ["metrics.cls"]),
+        ("0.5 -> 0.2", "0.2", ["cls: declared release value 0.5 is not the release gate's"]),
+    ],
+    ids=["declared", "to-a-whole-number", "file-differs", "stale-release-value"],
+)
+def test_flat_stress_budget_check_reads_a_declared_fractional_maximum(
+    declaration: str, maximum: str, divergences: list[str]
+) -> None:
+    """``metrics.cls`` is 0.1 in both files, and the header's rule has to be able to name it."""
+    release = BUDGETS.read_text()
+    stress = FLAT_STRESS_BUDGETS.read_text()
+    assert "[metrics.cls]" in release and stress.count("maximum = 0.1\n") == 1
+    stress = stress.replace("maximum = 0.1\n", f"maximum = {maximum}\n").replace(
+        "#   first_row_ms  350 -> 450\n",
+        f"#   cls  {declaration}\n#   first_row_ms  350 -> 450\n",
+    )
+
+    assert _budget_divergences(release, stress) == divergences

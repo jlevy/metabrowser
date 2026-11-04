@@ -223,6 +223,59 @@ def test_recording_is_what_the_servers_answer(
     )
 
 
+def test_only_a_pinned_page_asks_for_the_view_file_module() -> None:
+    """A served folder's diff requests what it did on v0.11.0; a pin's first diff adds one.
+
+    ``docs/development.md`` records the tier: a static import of ``diff-view-file.js``
+    made every folder's first diff wait for a module it never calls.
+    """
+
+    steps = run_session(SESSION)["steps"]
+    folder, asked, pinned = steps[0], steps[1], steps[2]
+    assert folder["step"] == "a served folder's page has no controls"
+    assert folder["modules"] == [
+        "diff-intraline.js",
+        "diff-model.js",
+        "diff-render-model.js",
+        "diff-syntax.js",
+        "diff-view.js",
+        "index.js",
+    ]
+    assert not any(controls for controls in folder["bars"].values())
+    # The request overlaps the comparison: it is made while the comparison has not answered.
+    assert asked["modules"] == ["diff-view-file.js"]
+    assert asked["bars"] == {}
+    assert any(controls for controls in pinned["bars"].values())
+    # Nothing later in the session loads anything more.
+    assert not any("modules" in step for step in steps[2:])
+
+
+def test_a_module_that_does_not_load_is_said_and_logged() -> None:
+    """A pin that cannot load View file's module shows the failure and draws no bars.
+
+    The console line names the request, as the view's fetch failure does, because the Git
+    panel's own sentence for a rejected render says nothing of which request failed. A
+    diff that fails first keeps its own message, and a served folder never asks.
+    """
+
+    steps = {step["step"]: step for step in run_session(SESSION)["steps"]}
+    failed = steps["a page whose module does not load says so, and logs the request"]
+    assert failed["bars"] == {}
+    assert failed["failure"] == ["Could not load this diff. Refresh the page to try again."]
+    assert failed["logged"] == [
+        "metabrowser diff: view load failed · diff/view-file"
+        " · Failed to fetch dynamically imported module"
+    ]
+    both = steps["a diff that fails while the module fails too says the diff's failure"]
+    assert both["failure"] == ["This commit's comparison failed."]
+    assert both["logged"] == [
+        "metabrowser diff: view load failed · diff/comparison · the comparison failed"
+    ]
+    folder = steps["a served folder's diff does not depend on the module"]
+    assert folder["failure"] == [] and folder["logged"] == []
+    assert folder["bars"] and not any(controls for controls in folder["bars"].values())
+
+
 _LINK = re.compile(r"link (/view/\S+) · Open .* at ([0-9a-f]{12}), ")
 _SWITCH = re.compile(r"POST /api/source/pin \[content-type: application/json\] (\{.*\})$")
 

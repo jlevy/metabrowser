@@ -221,8 +221,9 @@ function familyRow() {
     "summary has no standalone metadata row",
     handle.root.children.length === 1 && handle.root.children[0] === handle.body,
   );
-  check("visual table headers are removed", handle.table.children[1].className === "sr-only");
-  check("summary has one selected metric column", handle.table.children[0].children.length === 2);
+  check("the caption is the table's first child", handle.table.children[0] === handle.caption);
+  check("visual table headers are removed", handle.table.children[2].className === "sr-only");
+  check("summary has one selected metric column", handle.table.children[1].children.length === 2);
   check(
     "semantic metric header follows the selected measure",
     handle.metricHeader.textContent === "Files",

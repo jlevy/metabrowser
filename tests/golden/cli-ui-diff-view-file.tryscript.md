@@ -42,11 +42,46 @@ and accessible name.
 `latin1-�.txt` is a name that is not UTF-8: its address carries the name’s bytes.
 `opens` is the path an address names, by the production decoder, `busy` lists the
 controls marked `aria-busy`, and a refusal is shown with the role it is announced by.
+`modules` lists the plugin modules a step loaded, which a browser requests once each
+from `/plugin-static/diff/`: a served folder’s diff comes first, and the first diff on a
+pin is what loads `diff-view-file.js`, while its comparison is still on its way.
+The last steps have the server not answer for that module.
+`failure` is what the view announces in place of a diff, and `logged` is what it writes
+to the console, which names the request that failed.
 
 ```console
 $ node tests/dom/diff-view-file-session.js
 {
   "steps": [
+    {
+      "step": "a served folder's page has no controls",
+      "requests": [],
+      "modules": [
+        "diff-intraline.js",
+        "diff-model.js",
+        "diff-render-model.js",
+        "diff-syntax.js",
+        "diff-view.js",
+        "index.js"
+      ],
+      "bars": {
+        "M README.md": [],
+        "A added.txt": [],
+        "D gone.txt": [],
+        "M latin1-�.txt": [],
+        "M link": [],
+        "R100 src/old_name.py → src/new_name.py": [],
+        "M vendor/lib": []
+      }
+    },
+    {
+      "step": "a pin's first diff asks for the module before its comparison answers",
+      "requests": [],
+      "modules": [
+        "diff-view-file.js"
+      ],
+      "bars": {}
+    },
     {
       "step": "a commit's diff on the page that shows that commit",
       "requests": [],
@@ -300,7 +335,29 @@ $ node tests/dom/diff-view-file-session.js
       "waiting": 1
     },
     {
-      "step": "a served folder's page has no controls",
+      "step": "a page whose module does not load says so, and logs the request",
+      "requests": [],
+      "bars": {},
+      "failure": [
+        "Could not load this diff. Refresh the page to try again."
+      ],
+      "logged": [
+        "metabrowser diff: view load failed · diff/view-file · Failed to fetch dynamically imported module"
+      ]
+    },
+    {
+      "step": "a diff that fails while the module fails too says the diff's failure",
+      "requests": [],
+      "bars": {},
+      "failure": [
+        "This commit's comparison failed."
+      ],
+      "logged": [
+        "metabrowser diff: view load failed · diff/comparison · the comparison failed"
+      ]
+    },
+    {
+      "step": "a served folder's diff does not depend on the module",
       "requests": [],
       "bars": {
         "M README.md": [],
@@ -310,7 +367,9 @@ $ node tests/dom/diff-view-file-session.js
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [],
         "M vendor/lib": []
-      }
+      },
+      "failure": [],
+      "logged": []
     }
   ]
 }

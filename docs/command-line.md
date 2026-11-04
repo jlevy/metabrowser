@@ -69,14 +69,14 @@ looks accepted while being ignored.
 | `--walk` | Dump the inventory walker’s result |
 | `--diff SPEC` | Show a change set between two snapshots |
 | `--check-api` | Run the navigation scenario as a pass/fail check |
-| `--no-serve` | Acquire a `file://` Git source into the cache without starting a server |
+| `--no-serve` | Acquire a `file://` or `https://` Git source into the cache without starting a server |
 | `--remote HOST` | Serve a remote directory over an SSH tunnel |
 | `--plugins`, `--plugin NAME`, `--doctor` | Inspect installed plugins |
 
 Most modes are read-only.
-`--no-serve` writes a cache entry for a `file://` source.
+`--no-serve` writes a cache entry for a Git source.
 `--api` writes only when the route it names writes, which today means
-`/api/kpress/export`.
+`/api/kpress/export` and, in the cache, the refresh routes.
 
 ## Serving
 
@@ -294,10 +294,16 @@ metab https://github.com/owner/repo --api /api/source/status
   `file://~/git/squares.git`.
 - `location` is the mirror’s bare repository, with your home directory as `~` when
   `METABROWSER_CACHE_DIR` is under it, and absolute when it is not.
+- `borrows` is the checkout the mirror borrows objects from, as
+  [Beside a checkout](#beside-a-checkout) describes, and `null` for a mirror that holds
+  its own.
+- `shallow` is `true` when the mirror’s history stops at a shallow boundary, and `false`
+  otherwise.
 
-`location` is the only place a route’s answer names a path in the cache.
-File content, listings, errors, and every other envelope name none.
-All three fields are `null` for a folder.
+`location` is the only place a route’s answer names a path in the cache, and `borrows`,
+beside it, the only one that names a checkout.
+File content, listings, errors, and every other envelope name neither.
+`name`, `origin`, `location`, and `borrows` are `null` for a folder.
 
 ### GitHub URLs
 
@@ -319,9 +325,10 @@ A `/tree/` or `/blob/` URL may name a branch whose name contains `/`; the mirror
 where the ref ends, preferring a branch, then a tag, then a commit ID. Ref names match
 exactly, including letter case, and `HEAD` names the default branch.
 `--no-serve` prints what the URL selected after the identity lines (`selection`, `pin`,
-`path`, and `lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor), and `--show`
-and `--api` print the same lines on stderr and pin that commit.
-A `/pull/<n>` URL pins the pull request’s head; see [Pull requests](#pull-requests).
+`path`, `lines` for a `#L10`, `#L10-L20`, or `#L10C5-L20C8` anchor, and `tab` for a pull
+request’s `/files`), and `--show` and `--api` print the same lines on stderr and pin
+that commit. A `/pull/<n>` URL pins the pull request’s head; see
+[Pull requests](#pull-requests).
 Query parameters other than `?plain=1` are dropped.
 Any other github.com page, `http://`, and GitHub’s own top-level pages are refused with
 a message that names the shape and offers the repository URL.
@@ -347,19 +354,29 @@ nothing else, so a private repository opens once `gh auth login` has signed in a
 account that can read it; Metabrowser never reads or stores a token.
 No other credential source applies: your Git credential helpers are cleared, and Git
 runs with `HOME=/dev/null`, so curl does not read `~/.netrc`. With `gh` installed, a
-first clone is also refused before it starts when GitHub reports the repository too
-large to finish within the acquisition deadline.
+first clone is also refused before it starts when GitHub reports the repository over a
+size limit, which the refusal states, set so a slow network still finishes within the
+900-second acquisition deadline.
+On a faster network, export `METABROWSER_MAX_FIRST_CLONE_KB` with a larger number of
+kilobytes to go past it; the deadline still applies.
+[Large repositories](reviewing-pull-requests.md#large-repositories) gives a measured
+cost and what a mirror stores.
 A first clone reports where it goes and how far it has got; see
 [What a clone prints](#what-a-clone-prints).
 
 ### Pull requests
 
+This is the reference for the commands; for the workflow in a browser, see
+[Reviewing pull requests](reviewing-pull-requests.md).
+
 A pull-request URL pins the pull request’s head commit and reads its data:
 
 ```shell
-metab https://github.com/owner/repo/pull/123 --api /api/plugin/github/pull
-metab https://github.com/owner/repo/pull/123/files --show README.md
 metab https://github.com/owner/repo/pull/123 --no-serve
+metab https://github.com/owner/repo/pull/123 --show /pull/123
+metab https://github.com/owner/repo/pull/123 --show /pull/123/files
+metab https://github.com/owner/repo/pull/123 --show README.md
+metab https://github.com/owner/repo/pull/123 --api /api/plugin/github/pull
 ```
 
 The first `--show` or `--api` of a pull request reads it with `gh api` (the description,
@@ -368,33 +385,99 @@ through GitHub’s `refs/pull/<n>/head`, a fork’s included, and caches the rec
 Later ones answer from that cache without running `gh` or reaching the network, so they
 work offline. `--no-serve` refreshes the record, sending the ETags it holds so an
 unchanged part costs GitHub nothing against the rate limit.
-A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s.
+A one-shot `--api /api/plugin/github/pull-refresh --data <file with {}>` also refreshes
+it, waits, prints the record under `after:`, and exits 1 when the refresh failed.
+
+A `/pull/<n>/commits/<id>` URL pins that commit, which can be a fork’s, and a server
+opens at the top of the repository.
+A `/pull/<n>/files` URL selects the same pull request as `/pull/<n>` and adds
+`tab: files` to the selection lines, and a server opens at `/pull/<n>/files`, as its
+`Serving` line prints.
+The tab says only where a server opens: `--show` and `--api` answer the path or route
+they are given, so `--show /pull/<n>/files` is the way to ask for Files changed without
+a browser. A `/pull/<n>/commits` URL is the same as `/pull/<n>`, because the page has no
+Commits tab. Other pull-request pages, such as `/pull/<n>/checks`, and a repository’s
+`/pulls` list are refused.
+Each command opens one pull request: `--show /pull/<other>` answers
+`this source serves pull request <n>`, and a folder or a checkout answers
+`this source serves no pull request`.
+
+`--show /pull/<n>` reports the page’s kind and a summary of its record, after the
+selection lines that `--show` and `--api` print on stderr:
+
+```console
+$ metab https://github.com/pallets/click/pull/3866 --show /pull/3866
+selection: pull_request
+pin: b90faad1788bc030bb3320938f07c9189f42d7d0 (pull request 3866 head)
+pull_request: 3866 (merged; fetched 2026-11-02T21:49:31Z by gh:your-login)
+show: /pull/3866
+route: /pull/3866
+kind: pull-request
+views: pull-request (default)
+model: pull envelope; state=current pull_state=merged fetched_at=2026-11-02T21:49:31Z reader=gh:your-login issue_comments=6 reviews=1 review_comments=0 check_runs=11 statuses=1 tab=conversation
+```
 
 `/api/plugin/github/pull` reports the record with a state: `current` within a minute of
 its fetch, `stale` after, or `absent` with a reason.
 Its `comparison_route` is Files changed, the merge base of the base branch and the head
 to the head, as GitHub shows it; issue it with `--api` to get the diff.
+`--diff` does not open an `https://` source, so this route is the way to read one.
+`--format json` prints the envelope alone, for a tool such as `jq`:
+
+```shell
+URL=https://github.com/owner/repo/pull/123
+ROUTE=$(metab "$URL" --api /api/plugin/github/pull --format json | jq -r .comparison_route)
+metab "$URL" --api "$ROUTE" --format json |
+  jq -r '.manifest.files[] | "\(.kind) \(.new.path // .old.path) +\(.additions) -\(.deletions)"'
+```
+
+The answer is a
+[File Diff Format](project/architecture/file-diff-format/file-diff-format.md) document:
+`manifest.files` lists the changed files, and `patches`, keyed by each file’s `id`,
+holds its hunks.
+
+`--show <path>` reports a file at the head without printing it.
+To read the file, run Git in the mirror, using `pin` and `location` from
+`/api/source/status`, and expand a leading `~` in `location` yourself:
+
+```shell
+git -C <location> show <pin>:README.md
+```
 
 `metab <pull-request URL>` without `--no-serve` serves the head and keeps the record
 fresh beside the mirror: a stale one is refreshed when serving starts and when a stale
 page becomes visible, and `POST /api/plugin/github/pull-refresh` (a JSON object body)
 refreshes it on request and returns at once, with `pending` while no record exists yet.
 A newer head is offered as the source’s `latest` rather than switched to.
+The server serves that one pull request on the port its `Serving` line reports, so
+several run side by side from one cache, one process for each.
 
 Reading pull requests needs `gh` 2.81.0 or newer, signed in with `gh auth login`,
 because `gh api` refuses requests while signed out.
-A pull request that cannot be read does not fail the command.
+A pull request that cannot be read does not fail the command, so a script reads the
+`pull_request` line or the route’s `state` rather than the exit status.
 With a record cached, the pin stays at the record’s head and the `pull_request` line
 adds why the refresh failed.
 Without one, `/pull/<n>` pins the default branch and `/pull/<n>/commits/<id>` pins that
-commit if the mirror has it, and the `pull_request` line says why: `gh_missing`,
-`gh_too_old`, `not_logged_in`, `rate_limited` with the time the limit resets when GitHub
-gives one, `not_found_or_private`, `network_error`, `account_changed` when the active
-account changed during the read, `head_mismatch` when the pull request kept moving,
-`gh_failed` for an answer that cannot be read, `fetch_failed` or `git_failed` when Git
-failed, `record_too_large`, or `cache_unwritable`. Check runs or statuses GitHub
-refuses, and a comparison whose base cannot be fetched, are listed in the record’s
-`unavailable`, and the rest of the record stands.
+commit if the mirror has it, and the `pull_request` line says why:
+
+| Name | Meaning |
+| --- | --- |
+| `gh_missing` | `gh` is not on `PATH` |
+| `gh_too_old` | `gh` is older than the version above |
+| `not_logged_in` | `gh` is not signed in to github.com |
+| `rate_limited` | GitHub’s rate limit, with the time it resets when GitHub gives one |
+| `not_found_or_private` | The pull request does not exist, or the account cannot read it |
+| `network_error` | `gh` could not reach GitHub |
+| `account_changed` | The active `gh` account changed during the read |
+| `head_mismatch` | The pull request kept moving during the read |
+| `gh_failed` | An answer from `gh` could not be read |
+| `fetch_failed`, `git_failed` | Git failed |
+| `record_too_large` | The record is over the size a record may have |
+| `cache_unwritable` | The record could not be written to the cache |
+
+Check runs or statuses GitHub refuses, and a comparison whose base cannot be fetched,
+are listed in the record’s `unavailable`, and the rest of the record stands.
 
 `--api /api/cache/…` on a `file://` URL acquires as a side effect, then issues the route
 against an empty throwaway directory so cache inspection cannot expose origin objects
@@ -419,6 +502,96 @@ Inspect cache state from any local root after an acquire: the cache routes resol
 ```shell
 metab ./notes --api /api/cache/sources
 ```
+
+### Beside a checkout
+
+If you already have the repository checked out, name that checkout once and the mirror
+borrows its objects instead of copying them:
+
+```shell
+metab https://github.com/owner/repo/pull/123 --checkout ~/src/repo
+metab https://github.com/owner/repo/pull/124    # remembered from then on, from anywhere
+```
+
+`--checkout` works with serving, `--api`, `--show`, `--check-api`, and `--no-serve`, on
+a Git source. The path is a checkout’s root, a linked worktree of it, or a bare clone.
+The mirror’s Git objects come from that checkout through `objects/info/alternates`, and
+what it lacks, such as a pull request whose branch it never fetched, is fetched into the
+mirror. That is usually kilobytes, and more when the checkout is behind: on a shallow
+checkout of a 1.2 GB repository, one branch pushed since the checkout’s last fetch cost
+43 MB and 15 s, and the same command minutes later cost 1 MB and 5 s, the checkout
+having fetched it (measured 2026-11-02).
+
+Everything else is the mirror you would otherwise have: the same pages, the same
+pull-request records, and a page served under the same untrusted profile.
+`metab` says so on stderr, `borrowing objects from ~/src/repo`, and `borrows` in
+`/api/source/status` and the heading’s tooltip name it.
+
+**Nothing writes to the checkout, and no Git runs in it.** Its refs, remotes, and
+configuration are files read with a bound on each, and its hooks, `core.fsmonitor`,
+`core.sshCommand`, and diff drivers are not consulted.
+The mirror’s refs are still only what the origin sent: a branch or tag that exists only
+in your checkout is not served.
+
+**Only a checkout you name lends.** Run `metab <url>` inside a checkout of that
+repository with no mirror yet and it clones a full mirror, as it does anywhere else, and
+prints once what would have borrowed instead:
+
+```text
+this directory is a checkout of https://github.com/owner/repo; to borrow its objects instead of cloning: metab https://github.com/owner/repo --checkout ~/src/repo
+```
+
+A directory you merely stand in can be made to look like a checkout of anything, and Git
+does not verify what it reads from one, so that decision is yours.
+
+What can happen when you name one:
+
+| Situation | What `metab` does |
+| --- | --- |
+| No remote of the checkout is the URL’s repository | Refuses, and names the repositories its remotes point at, with any credentials in their URLs left out. Any remote counts, compared without regard to case, so a fork with the repository as `upstream` lends; a remote spelled as a path, as `git clone /x/origin.git` records it, is the `file://` source of that path |
+| The path is no checkout at all | Refuses, whether or not a mirror of the repository is already in the cache |
+| The checkout is a partial clone, or has its own `objects/info/alternates` | Says why and clones a full mirror: the first would find objects missing when they are read, and the second would follow a chain nothing recorded |
+| Its object format differs from the origin’s, its objects cannot be read, or another user owns them | Says why and clones a full mirror |
+| A full mirror of the repository is already in the cache | Keeps it, says so, and borrows nothing. This release has no command that converts one; to borrow instead, delete the mirror from the cache and run the command again |
+| The mirror already borrows from another checkout that can still lend | Keeps borrowing from that one, and says so |
+| `--api /api/cache/...` | Says that the flag is not applied to a cache route, which reads records and no object, and answers the route |
+
+**A shallow checkout** lends too, and `shallow` is `true`: history views stop where the
+checkout’s do, and `metab` says `history is shallow, as the checkout’s is`. On a shallow
+history `git merge-base` can name a commit that is not the real merge base, with no
+error, which would show the base branch’s own changes as the pull request’s. So a merge
+base there is used only when it is provably right.
+When it is not, the pull request’s refresh fetches more history into the mirror, never
+the checkout, in up to five growing rounds; a depth-limited CI checkout is where this
+most often happens. Meanwhile, and offline, the record’s `unavailable.comparison` is
+`base_uncertain`, `comparison_route` is `null`, and the page shows no Files changed
+rather than a guess.
+
+A commit the comparison needs that the checkout no longer holds, an ancestor it has
+collected, is `commits_unavailable` in the record’s `unavailable.comparison`, never
+`no_merge_base`, which is Git’s own answer that two commits share no history.
+A commit at the shallow boundary is shown with its message and author, and its diff is
+refused as `parent_unavailable`, since Git would otherwise diff it against nothing.
+
+**If the checkout moves or is deleted,** nothing borrowed can be read, and `metab`
+refuses rather than serve a failing page:
+
+```text
+Error: the checkout this mirror borrows objects from is gone: ~/src/repo (lender_missing), and this mirror of https://github.com/owner/repo cannot be served without it. If it moved, or another checkout of the repository should lend instead, name it: metab https://github.com/owner/repo --checkout <new path>
+```
+
+The same refusal, with its own reason, answers a checkout that can no longer lend: one
+that has grown an `objects/info/alternates` of its own, whose objects can no longer be
+read, or whose directory now holds another repository.
+The checks that admitted it run again on every open that uses it, and before every fetch
+into the mirror.
+Naming the new place, or another checkout of the repository, repairs it,
+after the same checks, with no network; a repair that stopped before its record was
+written is finished by the same command.
+`--api /api/cache/stores` still answers, with `mode` (`full` or `overlay`) and `lender`
+(`present` or `lender_missing`) for each store, and no path.
+A refresh in a server that is already running reports `lender_missing` as its outcome.
+A store whose alternates file disagrees with its record is refused as `damaged`.
 
 ### Refusals, failures, and interruptions
 
@@ -496,7 +669,8 @@ metab ./notes --api '/api/git/log?limit=5'
 metab ./notes --api /api/cache/layout
 metab ./notes --api '/api/cache/sources?limit=20'
 
-# YAML instead of JSON.
+# Only the envelope, as JSON or YAML, for a tool to parse.
+metab ./notes --api /api/git/refs --format json
 metab ./notes --api /api/git/refs --format yaml
 
 # A route that takes a POST body.
@@ -515,6 +689,10 @@ status: 200
   "views": [ ... ]
 }
 ```
+
+With `--format json` or `--format yaml`, stdout is the envelope alone, so it parses.
+A body that is not JSON is one string, and a refresh that waits prints only the status
+it ended with, the answer the output above would print under `after:`.
 
 The exit status is non-zero when the route answers outside 2xx, so a script can act on
 failure without parsing the body.

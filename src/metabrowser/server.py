@@ -101,6 +101,7 @@ from metabrowser.file_kinds import (
 )
 from metabrowser.file_type_filters import FILTER_TYPE_PRESETS
 from metabrowser.folder_discovery import discover_folder
+from metabrowser.fs_paths import is_visible_segment
 from metabrowser.git.history import close_history_sessions
 from metabrowser.git.routes import GIT_ROUTES
 from metabrowser.gz_io import (
@@ -109,9 +110,11 @@ from metabrowser.gz_io import (
     ArtifactPath,
 )
 from metabrowser.http_caching import (
+    BUILD_TAG,
     build_scoped_etag,
     etag_headers,
     matches_if_none_match,
+    store_tag,
 )
 from metabrowser.inventory_engine.contract import (
     DiagnosticsProjection,
@@ -1176,9 +1179,10 @@ def _mirror_tip(status: SourceStatus) -> str | None:
 
     if status["location"] is None:
         return None
+    borrowing = f", borrowing objects from {status['borrows']}" if status["borrows"] else ""
     return (
-        f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}: "
-        "a bare Git repository, with no checked-out files."
+        f"Mirror of {status['origin']} at {status['pin']}, stored in {status['location']}"
+        f"{borrowing}: a bare Git repository, with no checked-out files."
     )
 
 
@@ -1382,8 +1386,17 @@ async def index(request: Request, *, pull_page: bool = False) -> HTMLResponse:
     perf_url = _static_asset_url("perf.js")
     # Inject the client-visible settings dict before any app code
     # runs so JS can read window.METABROWSER_SETTINGS.* without
-    # duplicating constants in the source.
-    client_settings_block = f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES))};</script>"
+    # duplicating constants in the source. A store's token travels beside the build, so
+    # an answer a browser keeps is scoped to this store; a folder has none.
+    client_settings = {
+        **client_settings_dict(syntax_highlight_max_bytes=_SYNTAX_HIGHLIGHT_MAX_BYTES),
+        "BUILD_TAG": BUILD_TAG,
+    }
+    if pin is not None:
+        client_settings["STORE_TAG"] = store_tag(pin.command_target.git_dir)
+    client_settings_block = (
+        f"<script>window.METABROWSER_SETTINGS={_json.dumps(client_settings)};</script>"
+    )
     settings_block = (
         f"<script>window.METABROWSER_PATH_ENCODING={_json.dumps('utf16' if os.name == 'nt' else 'bytes')};</script>"
         f"<script>window.METABROWSER_CONTAINER_EXTS={_json.dumps(_container_exts())};</script>"
@@ -1972,14 +1985,16 @@ def _inventory_runtime_for(request: Request) -> InventoryRuntime:
 
 
 def _index_status_from_state(phase: LifecyclePhase, *, complete: bool, budget: bool) -> str:
+    # The budget first: the walk it stops is STOPPED, which would otherwise read as "idle".
+    # `events_route._status_from_phase` and `walk.py` answer in this order too.
+    if budget:
+        return "truncated"
     if phase is LifecyclePhase.DISCOVERING:
         return "scanning"
     if phase is LifecyclePhase.FAILED:
         return "failed"
     if phase is LifecyclePhase.STOPPED:
         return "idle"
-    if budget:
-        return "truncated"
     return "done" if complete else "scanning"
 
 
@@ -2548,6 +2563,21 @@ def _api_file_internal_error_response(subpath: str, exc: Exception) -> JSONRespo
     )
 
 
+def _folder_not_indexed(subpath: str, target: Path) -> str | None:
+    """Why the inventory's scope leaves out this served folder, or None if it does not.
+
+    *target* is already resolved, so a symlink anywhere on the path shows as a target
+    other than the path's own spelling under the root.
+    """
+
+    if not is_visible_segment(subpath):
+        return "hidden"
+    native = native_inventory_path(subpath)
+    if subpath and native is not None and target != _paths_safe.ROOT_DIR.resolve() / native:
+        return "symlink"
+    return None
+
+
 async def _api_folder_envelope(
     request: Request,
     subpath: str,
@@ -2562,6 +2592,11 @@ async def _api_folder_envelope(
     `readme_path` names a direct-child README for Overview panel discovery.
     Served no-store: the envelope is tiny and its aggregates change
     while a scan is running.
+
+    The inventory's scope leaves out hidden path components and does not follow
+    symlinks, so a folder reached either way has no tree, no rollup, and aggregates
+    that will never arrive. It still gets this envelope, so its page and README show;
+    `dir.not_indexed` names which it is, so the page can say why rather than wait.
     """
 
     key = parse_inventory_path(subpath)
@@ -2609,6 +2644,9 @@ async def _api_folder_envelope(
         "readme_path": readme_path,
         "readme_search_truncated": discovery.readme_search_truncated,
     }
+    not_indexed = _folder_not_indexed(subpath, target)
+    if not_indexed is not None:
+        payload["dir"]["not_indexed"] = not_indexed
     return JSONResponse(payload, headers={"cache-control": "no-store"})
 
 

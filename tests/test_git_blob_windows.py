@@ -72,6 +72,7 @@ def _store(tmp_path: Path) -> tuple[Path, str]:
             b"notes": _LINES,
             b"doc.md": _FRONTMATTER,
             b"session.jsonl": _JSONL,
+            b"run.codex.jsonl": _JSONL,
             b"pic.png": _PNG_HEADER,
             b"data.bin": _BINARY,
         },
@@ -267,6 +268,8 @@ def test_a_blob_past_the_ceiling_is_classified_like_a_large_file(tmp_path: Path)
             jsonl = await file(b"session.jsonl")
             assert jsonl["type"] == "jsonl"
             assert jsonl["size"] == len(_JSONL)
+            # A compound name takes the JSONL branch here too, as it does on a folder.
+            assert (await file(b"run.codex.jsonl"))["type"] == "jsonl"
 
             past = await client.get(
                 "/api/file", params={"path": _wire(b"lines.txt"), "offset": str(_CEILING)}
@@ -381,5 +384,123 @@ def test_load_more_on_a_pin_advances_the_notice_and_the_cursor(
             assert cached["content"] == _LINES[: 3 * step].decode()
             # The total is the blob's size either way; the ceiling bounds only the reads.
             assert readouts == ["Showing 32 B of 10.2 KB.", "Showing 48 B of 10.2 KB."]
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("object_format", ["sha1", "sha256"])
+@pytest.mark.parametrize("read", ["whole", "window"])
+@pytest.mark.parametrize("packed", [False, True])
+def test_complete_blob_reads_reject_forged_bytes(
+    tmp_path: Path, object_format: str, read: str, packed: bool
+) -> None:
+    import hashlib
+    import zlib
+
+    from metabrowser.git.tree_source import GitObjectCorruptError, read_store_blob
+
+    store = tmp_path / "forged.git"
+    subprocess.run(
+        ["git", "init", "--bare", f"--object-format={object_format}", str(store)],
+        check=True,
+        capture_output=True,
+    )
+    body = b"unchanged prefix, genuine tail\n"
+    frame = b"blob " + str(len(body)).encode() + b"\0" + body
+    oid = hashlib.new(object_format, frame).hexdigest()
+    path = store / "objects" / oid[:2] / oid[2:]
+    path.parent.mkdir()
+    forged = body.replace(b"genuine", b"falsely")
+    if packed:
+        # A valid pack/index envelope mapping the genuine name to a forged blob.
+        # Git validates framing and zlib, but does not authenticate these read bytes.
+        import struct
+
+        packed_object = bytes([0xB0 | (len(forged) & 15), len(forged) >> 4]) + zlib.compress(forged)
+        pack = b"PACK" + struct.pack(">II", 2, 1) + packed_object
+        pack_hash = hashlib.new(object_format, pack).digest()
+        index = b"\xfftOc" + struct.pack(">I", 2)
+        index += b"".join(struct.pack(">I", int(i >= int(oid[:2], 16))) for i in range(256))
+        index += bytes.fromhex(oid) + struct.pack(">II", zlib.crc32(packed_object), 12) + pack_hash
+        pack_dir = store / "objects" / "pack"
+        prefix = pack_dir / f"pack-{pack_hash.hex()}"
+        prefix.with_suffix(".pack").write_bytes(pack + pack_hash)
+        prefix.with_suffix(".idx").write_bytes(index + hashlib.new(object_format, index).digest())
+    else:
+        path.write_bytes(zlib.compress(b"blob " + str(len(forged)).encode() + b"\0" + forged))
+    target = repository_store_target(git_dir=store)
+    # Git itself accepts these bytes under the genuine ID.
+    assert (
+        subprocess.run(
+            ["git", "--git-dir", str(store), "cat-file", "blob", oid],
+            check=True,
+            capture_output=True,
+        ).stdout
+        == forged
+    )
+
+    async def run() -> None:
+        with pytest.raises(GitObjectCorruptError) as refused:
+            if read == "whole":
+                await read_store_blob(target, oid)
+            else:
+                source = GitTreeSource(target=target, root_tree_oid="0" * len(oid))
+                try:
+                    await source.read_blob_window(oid, offset=5, max_bytes=3)
+                finally:
+                    await source.aclose()
+        assert refused.value.oid == oid
+        assert refused.value.code == "object_corrupt"
+
+    asyncio.run(run())
+
+
+def test_partial_blob_windows_preserve_the_existing_drain_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, commit = _store(tmp_path)
+    monkeypatch.setattr(tree_module, "BLOB_WINDOW_DRAIN_MAX_BYTES", 1)
+
+    def no_digest(*_args: Any) -> Any:
+        raise AssertionError("a partial window must not claim a whole-object hash")
+
+    async def run() -> None:
+        source = await _source(store, commit)
+        oid = await _oid(source, b"lines.txt")
+        monkeypatch.setattr(tree_module, "_object_digest", no_digest)
+        try:
+            window, size = await source.read_blob_window(oid, offset=7, max_bytes=13)
+            assert window == _LINES[7:20] and size == len(_LINES)
+            assert await _actor_pid(source) is None
+        finally:
+            await source.aclose()
+
+    asyncio.run(run())
+
+
+def test_recovery_verification_cannot_use_a_pool_holding_an_unlinked_pack(tmp_path: Path) -> None:
+    """A live reader may retain old file descriptors; repair must test new-process visibility."""
+    store, commit = _store(tmp_path)
+    subprocess.run(
+        ["git", "--git-dir", str(store), "repack", "-adq"], check=True, capture_output=True
+    )
+    target = repository_store_target(git_dir=store)
+
+    async def run() -> None:
+        source = await _source(store, commit)
+        try:
+            oid = await _oid(source, b"lines.txt")
+            assert await tree_module.read_store_blob(target, oid) == _LINES
+            packs = tuple((store / "objects" / "pack").glob("*.pack"))
+            assert packs
+            for pack in packs:
+                pack.unlink()
+                pack.with_suffix(".idx").unlink()
+            # This existing process can still read the unlinked pack on POSIX.
+            assert await tree_module.read_store_blob(target, oid) == _LINES
+            with pytest.raises(GitObjectUnavailableError):
+                await tree_module.verify_store_object(target, oid)
+        finally:
+            await source.aclose()
 
     asyncio.run(run())

@@ -18,32 +18,73 @@ if (!mb) {
 // The view projects documents; fetching is the plugin's job. This wires
 // the deferred-file loader to the same hook the whole comparison came
 // from, narrowed to one path.
-setChangeLoader((revision, path, options) =>
-  mb.fetchPluginData("diff", "comparison", { ...comparisonParams(revision), file: path }, options),
-);
+setChangeLoader((revision, path, options) => fetchComparison(revision, options, path));
 
 // A comparison between two endpoints travels to the deferred loader as one opaque
 // string, the way a revision does: `left...right` from their merge base, as
 // `git diff` spells it, or `left..right` directly. No Git ref name contains `..`, so
 // neither spelling can be mistaken for a revision.
 
-/** @param {{left: string, right: string, base_policy: "direct" | "merge_base"}} comparison */
+/** @param {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string}} comparison */
 function comparisonKey(comparison) {
+  if (comparison.route !== undefined) {
+    pluginComparisonRoute(comparison.route);
+    return comparison.route;
+  }
   const separator = comparison.base_policy === "merge_base" ? "..." : "..";
   return `${comparison.left}${separator}${comparison.right}`;
+}
+
+// Every comparison request names this build and, on a store, the store, so the browser may
+// keep an answer that cannot change without asking again: the server says so only for an
+// address that names both, and a folder's page has no store to name. This is the one place
+// the address is spelled; the pull-request page's prefetch asks `prefetch` below for it, so
+// the browser's cache, keyed by the address, answers the mount from the prefetch.
+const SETTINGS = window.METABROWSER_SETTINGS;
+/** @type {Record<string, string>} */
+const SCOPE_PARAMS = {
+  ...(typeof SETTINGS?.BUILD_TAG === "string" ? { build: SETTINGS.BUILD_TAG } : {}),
+  ...(typeof SETTINGS?.STORE_TAG === "string" ? { store: SETTINGS.STORE_TAG } : {}),
+};
+
+/**
+ * An optional comparison route comes from the server's PR envelope. It remains
+ * a same-origin plugin-data request, including for each deferred file.
+ * @param {string} route
+ */
+function pluginComparisonRoute(route) {
+  const url = new URL(route, "http://metabrowser.invalid");
+  const match = /^\/api\/plugin\/([a-z][a-z0-9_-]*)\/([a-z][a-z0-9_-]*)$/.exec(url.pathname);
+  if (!route.startsWith("/") || url.origin !== "http://metabrowser.invalid" || url.hash || !match) {
+    throw new Error("The comparison route is not a same-origin plugin route.");
+  }
+  return { plugin: match[1], hook: match[2], params: Object.fromEntries(url.searchParams) };
+}
+
+/** @param {string} key @param {{signal?: AbortSignal}} [options] @param {string} [file] */
+function fetchComparison(key, options, file) {
+  const target = key.startsWith("/")
+    ? pluginComparisonRoute(key)
+    : { plugin: "diff", hook: "comparison", params: comparisonParams(key) };
+  return mb.fetchPluginData(
+    target.plugin,
+    target.hook,
+    { ...target.params, ...(file === undefined ? {} : { file }) },
+    options,
+  );
 }
 
 /** @param {string} key @returns {Record<string, string>} */
 function comparisonParams(key) {
   const merged = key.split("...");
   if (merged.length === 2) {
-    return { left: merged[0], right: merged[1], base_policy: "merge_base" };
+    return { left: merged[0], right: merged[1], base_policy: "merge_base", ...SCOPE_PARAMS };
   }
   const direct = key.split("..");
   if (direct.length === 2) {
-    return { left: direct[0], right: direct[1], base_policy: "direct" };
+    return { left: direct[0], right: direct[1], base_policy: "direct", ...SCOPE_PARAMS };
   }
-  return { revision: key };
+  return { revision: key, ...SCOPE_PARAMS };
 }
 
 /**
@@ -109,6 +150,30 @@ function viewFileHost() {
   };
 }
 
+/**
+ * What makes this page's View file opener, or null on a page with no pin.
+ *
+ * diff-view-file.js loads here, for a pinned page's first diff, and not with the plugin's
+ * module tree: a served folder has no controls and never calls it. As a static import it
+ * was a seventh module on a served folder's first diff view, which the plugin could not
+ * evaluate without. Without it the view requests the six modules v0.11.0 did. Measured
+ * 2026-11-02 in Chrome 152 on a pinned page's first diff: 4,135 bytes transferred and
+ * 11,161 decoded. A pin pays that one local request, which render starts beside the diff's
+ * own, and in that measurement it finished before the comparison did. Its controls still
+ * arrive with the mount. A failed import is the view's to report: render says the diff did
+ * not load, and logs which request failed.
+ *
+ * @returns {Promise<import("./diff-view-file.js").ViewFileOpenerFactory | null>}
+ */
+async function viewFileOpener() {
+  const host = viewFileHost();
+  if (host === null) {
+    return null;
+  }
+  const { createViewFileOpener } = await import("./diff-view-file.js");
+  return (options) => createViewFileOpener(host, options);
+}
+
 /** @param {HTMLElement} container @param {string} message */
 function renderFailure(container, message) {
   const notice = document.createElement("div");
@@ -128,12 +193,15 @@ mb.registerView("diff", "diff", {
     // A revision is a commit against its first parent; a comparison names both ends.
     const revision = ctx.comparison ? comparisonKey(ctx.comparison) : ctx.revision || "";
     const startedAt = Date.now();
+    // Asked for now, so its request overlaps the diff's own instead of following it. Its
+    // failure waits for the mount below, and may never reach it: a diff that fails first
+    // answers for itself, and the rejection still needs a handler.
+    const opener = viewFileOpener();
+    void opener.catch(() => {});
     let payload;
     try {
       payload = revision
-        ? await (ctx.raw === undefined
-            ? mb.fetchPluginData("diff", "comparison", comparisonParams(revision))
-            : ctx.raw)
+        ? await (ctx.raw === undefined ? fetchComparison(revision) : ctx.raw)
         : await mb.fetchPluginData("diff", "document", { path: ctx.path || "" });
       if (revision && payload && typeof payload === "object") {
         // The document is source-agnostic by design, so the revision
@@ -171,12 +239,40 @@ mb.registerView("diff", "diff", {
     if (!result.ok) {
       return renderFailure(container, `This diff document is not valid: ${result.error}`);
     }
+    let viewFile;
+    try {
+      viewFile = await opener;
+    } catch (error) {
+      console.error(
+        "metabrowser diff: view load failed",
+        {
+          hook: "diff/view-file",
+          revision: revision || undefined,
+          path: ctx.path || undefined,
+          elapsedMs: Date.now() - startedAt,
+        },
+        error,
+      );
+      return renderFailure(container, "Could not load this diff. Refresh the page to try again.");
+    }
     // A commit comparison already carries these totals beside its revision,
     // author, and age. Direct diff documents and two-endpoint comparisons own
     // their aggregate summary.
     return mountDiffView(container, result.document, mb, {
       showSummary: !ctx.revision,
-      viewFile: viewFileHost(),
+      viewFile,
     });
   },
+  /**
+   * The comparison `render` would fetch for `ctx.comparison`, fetched now, for a page that
+   * will show it: the pull-request page's Conversation. The answer is handed back to
+   * `render` as `ctx.raw`, and a Back onto the page is answered by the browser's cache,
+   * because this request's address is the one `render` would ask.
+   *
+   * @param {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string}} comparison
+   * @param {AbortSignal} [signal]
+   * @returns {Promise<unknown>}
+   */
+  prefetch: (comparison, signal) =>
+    fetchComparison(comparisonKey(comparison), signal === undefined ? undefined : { signal }),
 });

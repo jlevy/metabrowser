@@ -309,6 +309,20 @@ M    x.txt  [+1 -1]
 ? 0
 ```
 
+## Test: what the source could not model is said above the files
+
+The page shows a document’s warnings above its files; the text form says the same.
+
+```console
+$ printf 'this is not a diff at all\n' > prose.patch && metab . --diff prose.patch
+comparison patch:[..] (direct)
+left  patch
+right patch
+files 0  +0 -0  (exact)
+warning: no diff sections recognized in this input
+? 0
+```
+
 ## Test: three-dot compares against the merge base
 
 A side branch diverges from `main^`; `main...side` must diff from the merge base

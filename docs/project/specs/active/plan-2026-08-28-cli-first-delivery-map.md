@@ -16,11 +16,11 @@ PR-first slice”. The modules as built are in
 and the goldens as built are in the
 [parity table](../../architecture/arch-views-models-routes.md#cli-and-functional-ui-parity).
 
-**Status:** v0.11.0 released after the parity foundation; the v0.12.0 implementation is
-on [stack #218](https://github.com/jlevy/metabrowser/stack/218), unmerged.
-The #209 content-trust foundation is on `main`. The
-[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
-remains before landing.
+**Status:** v0.11.0 released after the parity foundation; the v0.12.0 implementation,
+[stack #218](https://github.com/jlevy/metabrowser/stack/218), has landed on `main` and
+is not yet tagged. The #209 content-trust foundation is on `main` too.
+The [alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
+remains before the release.
 
 ## Overview
 

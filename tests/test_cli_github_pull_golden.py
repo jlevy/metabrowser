@@ -51,6 +51,7 @@ from tests.golden_harness import (
     check_golden,
     isolate_cli,
     label_home,
+    normalize_pull_comparison_scopes,
     origin_identity,
     quoted,
     run_metab,
@@ -66,6 +67,26 @@ PULL = f"{CANONICAL}/pull"
 # A record as the CLI prints it inside an envelope: the key, then the object up to the
 # brace that closes it, which is the first one at the key's own indentation.
 _RECORD = re.compile(r'^( *)"record": (\{\n.*?\n\1\})', re.MULTILINE | re.DOTALL)
+
+
+def _in_a_stable_order(calls: list[str]) -> list[str]:
+    """The log's calls, with those that run together in one order.
+
+    A refresh reads the pull first, for its head, and then its other parts in flight
+    together, which reach the log in whatever order the processes did.
+    """
+
+    ordered: list[str] = []
+    together: list[str] = []
+    for call in calls:
+        if call.startswith("gh api ") and ordered and ordered[-1].startswith("gh api "):
+            together.append(call)
+            continue
+        ordered.extend(sorted(together))
+        together = []
+        ordered.append(call)
+    ordered.extend(sorted(together))
+    return ordered
 
 
 class _Session:
@@ -112,7 +133,7 @@ class _Session:
             conditional = any(arg.startswith("If-None-Match: ") for arg in args)
             calls.append(f"gh api {path}" + (" (If-None-Match)" if conditional else ""))
         log.unlink()
-        return calls
+        return _in_a_stable_order(calls)
 
     def _once(self, found: re.Match[str]) -> str:
         record = json.loads(found.group(2))
@@ -328,7 +349,9 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     cached = session.run(str(tmp_path / "root"), "--api", f"/api/cache/source/{slug}")
     assert cached.exit_code == 0, cached.stderr
 
-    rendered = label_home(Labels().apply("".join(session.blocks)), session.home)
+    rendered = normalize_pull_comparison_scopes(
+        label_home(Labels().apply("".join(session.blocks)), session.home)
+    )
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
     # One full print of each distinct record: pull request 7's and pull request 8's.

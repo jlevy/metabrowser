@@ -45,10 +45,12 @@ SEARCH_ROOTS = (
 )
 SUFFIXES = (".js", ".py", ".html", ".css")
 
-# `title=` as an HTML attribute, and `.title =` as a DOM assignment. Both are
-# the visible-tooltip mechanism this rule replaces.
+# `title=` as an HTML attribute, `.title =` as a DOM assignment, and
+# `setAttribute("title", ...)`. All three are the visible-tooltip mechanism this
+# rule replaces.
 _ATTRIBUTE = re.compile(r"""(?<![\w-])title\s*=\s*["'{]""")
 _ASSIGNMENT = re.compile(r"""\.title\s*=\s*(?!=)""")
+_SET_ATTRIBUTE = re.compile(r"""setAttribute\(\s*["']title["']""")
 
 # Places the attribute is not the browser's tooltip and the rule does not
 # reach. Each is a path suffix and the reason it is here.
@@ -56,6 +58,45 @@ ALLOWED: dict[str, str] = {
     "static/vendor": "vendored third-party assets, not ours to edit",
     "static/types.d.ts": "type declarations describe the DOM, they do not render",
 }
+
+# `setAttribute("title", ...)` lines the rule does not reach. Each is the file, the text
+# that identifies the line, and why it is not the app's chrome setting a tooltip.
+ALLOWED_LINES: tuple[tuple[str, str, str], ...] = (
+    (
+        "builtin_plugins/html/index.js",
+        'frame.setAttribute("title"',
+        "an iframe's title is its accessible name, and a frame shows no tooltip for it",
+    ),
+    (
+        "builtin_plugins/markdown/inert-toc.js",
+        'toggle.setAttribute("title", "Table of contents")',
+        "inside a rendered document's host the app's tooltip ignores data-tip-text, so a "
+        "document cannot label itself, and only this one shows",
+    ),
+    (
+        "builtin_plugins/markdown/link-enhancer.js",
+        'element.setAttribute("title", authoredTitle)',
+        "gives a document's own link back the title its author wrote",
+    ),
+    # The next three explain a link or embed inside a rendered document, where the title is
+    # part of what the enhancers restore and test. They predate this rule's reach to
+    # setAttribute. Moving them to data-tip-text is a change to the enhancers' contract.
+    (
+        "builtin_plugins/markdown/link-enhancer.js",
+        'element.setAttribute("title", `${destinationStatusMessage',
+        "an unresolved link's explanation inside a rendered document",
+    ),
+    (
+        "builtin_plugins/markdown/transclusion.js",
+        'aside.setAttribute("title", explanation)',
+        "an unresolved embed's explanation inside a rendered document",
+    ),
+    (
+        "builtin_plugins/markdown/wiki-enhancer.js",
+        'element.setAttribute("title", explanation)',
+        "an unresolved wiki link's explanation inside a rendered document",
+    ),
+)
 
 # A document's <title> is the tab's name, not a tooltip.
 _DOCUMENT_TITLE = re.compile(r"<title>|</title>|<title\s")
@@ -85,12 +126,21 @@ def _allowed(path: Path) -> str | None:
     return None
 
 
+def _allowed_line(path: Path, line: str) -> bool:
+    text = path.as_posix()
+    return any(
+        text.endswith(suffix) and fragment in line for suffix, fragment, _why in ALLOWED_LINES
+    )
+
+
 def _scan(path: Path) -> list[Finding]:
     findings: list[Finding] = []
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         if _DOCUMENT_TITLE.search(line):
             continue
-        if _ATTRIBUTE.search(line) or _ASSIGNMENT.search(line):
+        if _SET_ATTRIBUTE.search(line) and _allowed_line(path, line):
+            continue
+        if _ATTRIBUTE.search(line) or _ASSIGNMENT.search(line) or _SET_ATTRIBUTE.search(line):
             findings.append(Finding(path, number, line.strip()))
     return findings
 

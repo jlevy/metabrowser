@@ -65,6 +65,10 @@ from tests.cache_home_fixture import (
 )
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="owner-only storage is POSIX-only")
+skip_as_root = pytest.mark.skipif(
+    os.name == "posix" and os.geteuid() == 0,
+    reason="root is never denied by modes, so a denial cannot be staged",
+)
 CHILD_TIMEOUT = 50
 
 
@@ -305,7 +309,10 @@ def test_metab_browsing_a_local_directory_never_creates_or_imports_the_home(
     assert '"tree"' in result.stdout
     loaded = json.loads(result.stderr.rpartition("loaded-modules:")[2])
     # The server registers the /api/cache/ route table, which imports the rest of the
-    # cache and the application home only inside a cache request.
+    # cache and the application home only inside a cache request. A folder's serve
+    # loads nothing else of the cache: not the lender a mirror borrows through, whose
+    # reads of a checkout's files have no business on a plain folder.
+    assert "metabrowser.cache.lender" not in loaded
     assert loaded == ["metabrowser.cache", "metabrowser.cache.routes"]
     assert _snapshot(tmp_path) == before
 
@@ -808,7 +815,7 @@ def _durable_directory_denies_its_owner(home: Path) -> None:
     [
         _durable_directory_is_a_file,
         _durable_directory_is_a_link,
-        _durable_directory_denies_its_owner,
+        pytest.param(_durable_directory_denies_its_owner, marks=skip_as_root),
     ],
     ids=["regular-file", "symlink", "owner-denied"],
 )
@@ -872,7 +879,7 @@ def _unreadable_future_layout(home: Path) -> None:
     [
         _symlinked_config_beside_durable_entries,
         _hard_linked_future_layout,
-        _unreadable_future_layout,
+        pytest.param(_unreadable_future_layout, marks=skip_as_root),
     ],
     ids=["symlinked-config", "hard-linked-layout", "unreadable-layout"],
 )

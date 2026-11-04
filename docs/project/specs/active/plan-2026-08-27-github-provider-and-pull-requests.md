@@ -28,7 +28,8 @@ The pull-request index and panel (Phases 3C and 4B) and anchored review threads 
 4C) are deferred by the user’s 2026-09-23 decision.
 Phases 5 and 6, hosted releases, and GitLab remain later work and need re-planning
 against the thin mirror before they start.
-Landing is `mb-n2ro` and requires the user’s explicit approval; the
+The v0.12 stack has landed; the release is `mb-4bd2` and requires the user’s explicit
+approval, and the
 [alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
 remains before it.
 

@@ -21,6 +21,13 @@ Page lifecycle:
   reconnects use explicit ETag validation.
   A live log deleted or truncated while the page was away stops showing as live on
   return.
+- `GET /api/stream` asked to resume past the end of the file now ends the stream: it
+  sends `event: closed` with `data: {"reason": "rotated"}` and stops.
+  0.11.0 clamped the cursor to the file’s size and kept streaming, so a client saw
+  `: heartbeat` and resumed at the wrong offset, although a cursor past the end means
+  the file was rotated or truncated under the reader.
+  This is the route’s side of the live-log entry above, which a plugin or script reading
+  `/api/stream` directly sees.
 
 Plugin SDK:
 
@@ -101,6 +108,72 @@ Plugin SDK:
   `content_source()`, added earlier in this unreleased series and never part of a
   release, is gone: it handed a hook the raw active source, which is what the content
   reader replaces.
+
+Reviewing beside a checkout:
+
+- `--checkout <path>` serves a repository or pull-request URL by borrowing objects from
+  a checkout you already have instead of cloning it: a 1.2 GB repository that took 185 s
+  and 1.2 GB as a full mirror took 5 s and about 1 MB.
+
+  The store is the same store, read and served the same way, and it is remembered from
+  then on. Nothing is written to the checkout, and no Git runs in it.
+  See [Beside a checkout](docs/command-line.md#beside-a-checkout).
+
+- Only a checkout you name lends.
+  `metab <url>` inside a checkout clones as before, and prints the `--checkout` command
+  once.
+
+- `/api/source/status` gains `borrows` and `shallow`, and `/api/cache/stores` and
+  `/api/cache/source/<slug>` gain `mode` and `lender`, on every store.
+  `store.yml` gains an optional `lender`, which a full store does not write.
+
+- On a shallow store, a merge base is used only when it is provably right.
+  Otherwise the record’s `unavailable.comparison` is the new `base_uncertain`, Files
+  changed shows no diff, and the pull request’s refresh deepens the store from the
+  origin. A comparison asked for with `base_policy=merge_base` on such a store is refused
+  the same way.
+
+- A checkout that moved is a typed refusal, `lender_missing`, with the recorded path and
+  the command that repairs it; a store whose alternates file disagrees with its record
+  is refused as `damaged`. The same refusal, with its own reason, answers a checkout
+  that can no longer lend: one that has grown an `objects/info/alternates` of its own,
+  whose objects can no longer be read, or whose directory holds another repository now.
+  The checks that admitted a checkout run again on every open that uses it and before
+  every fetch, so a mirror never follows a chain of alternates nothing recorded.
+  A repair that stopped before its record was written is finished by the same
+  `--checkout` command, and a repair takes the store’s fetch lock, so it never changes
+  what a fetch in flight reads.
+  A repair the disk refuses is an `Error:` line naming the reason, never a traceback,
+  and the same command finishes it once the cache can be written.
+
+- A refresh of a mirror that borrows offers the mirror’s own refs to the origin as well
+  as the checkout’s, so it fetches only what the mirror lacks: on a replica, a branch of
+  24 commits the checkout never fetched, moved by one commit, cost that one commit’s
+  three objects per refresh rather than the branch’s 75 again each time.
+
+- A mirror whose checkout cannot be read does not sweep its refs: a present but
+  unreadable checkout answers `lender_missing` and the refs stay.
+  A ref is swept only when the checkout shows its commit gone, so one loose object or
+  one pack it cannot read now, or a checkout whose refs no file holds, as reftable keeps
+  them, leaves every ref in place rather than deleting a live `refs/pull/<n>/head` or
+  the default branch. A served `refs/pull/<n>/head` the sweep removed, because the
+  checkout collected its commits, is unobserved in `/api/source/status`
+  (`ref_on_origin: null`) rather than reported as removed by the origin, which keeps
+  every pull-request head.
+  A boundary the mirror owns is dropped once the checkout has no shallow file, so
+  `shallow` turns `false` when the checkout is deepened or unshallowed.
+
+- A comparison that needs a commit the mirror cannot read is `commits_unavailable` in
+  the record’s `unavailable.comparison`, and `no_merge_base` is only Git’s own answer
+  that the two commits share no history.
+
+- A checkout whose remote is spelled as a path, as `git clone /x/origin.git` records it,
+  is a checkout of the `file://` source of that path, so the documented commands work
+  against a local origin; a `--checkout` refusal lists the checkout’s remotes with any
+  credentials left out, whatever the URL’s scheme, the scp form included.
+
+- Every read of a repository’s `.git` metadata, a folder’s included, now refuses
+  anything but a regular file, so a FIFO planted in a `.git` directory cannot block it.
 
 GitHub URLs and HTTPS:
 
@@ -206,7 +279,9 @@ GitHub URLs and HTTPS:
   A failed https acquisition names its cause: `not_found_or_private`,
   `network_unreachable`, `connection_interrupted`, `tls_failed`, `timed_out`,
   `server_error`, `rate_limited`, `proxy_auth_required`, or `too_large`, the last when
-  `gh` reports a repository too large to clone within the acquisition deadline.
+  `gh` reports a repository over the first-clone size limit, which the refusal states
+  along with how to go past it: `METABROWSER_MAX_FIRST_CLONE_KB`, for a network fast
+  enough to finish within the acquisition deadline.
   A `not_found_or_private` message says the repository was not found, or is private and
   could not be read, and claims nothing about credentials: GitHub answers the same way
   for a repository that does not exist, one read anonymously, and one the account `gh`
@@ -300,6 +375,8 @@ GitHub URLs and HTTPS:
   The record names Files changed as two pinned commits, the merge base and the head, as
   GitHub computes it, and `/api/plugin/diff/comparison` now honors
   `base_policy=merge_base` for such a comparison.
+  The route also validates the parameter, which 0.11.0 ignored: a value other than
+  `direct` or `merge_base`, or one given with `revision`, answers 400 `diff_comparison`.
   Two commits that share no history have no merge base, and the route answers 404
   `diff_comparison` with a message that says so.
   Reading pull requests needs `gh` 2.81.0 or newer signed in to github.com, because
@@ -348,34 +425,50 @@ GitHub URLs and HTTPS:
   not yet completed, whatever its status, and a pending status); and unknown (a
   completed run with no conclusion, or a conclusion or state GitHub does not document).
   `/pull/<n>/files` is its Files changed, the diff view over the record’s merge-base
-  comparison. The page reads only the cached record, so it opens instantly and offline;
-  it says how old the record is and who read it, offers a refresh when it is stale,
-  shows a quiet loading state while the first record is fetched, and updates the
-  conversation and checks in place when a refresh brings a new record, while the diff
-  stays on what it showed and offers a newer head.
+  comparison, and a `…/pull/<n>/files` URL copied from GitHub opens there, with
+  `tab: files` among the lines that report what the URL selected.
+  The page reads only the cached record, so it opens instantly and offline; it says how
+  old the record is and who read it, offers a refresh when it is stale, shows a quiet
+  loading state while the first record is fetched, and updates the conversation and
+  checks in place when a refresh brings a new record, while the diff stays on what it
+  showed and offers a newer head.
   When the served code is not the head the record names, as when the pull request could
   not be opened at startup and serving fell back to the default branch, the page offers
   to switch to the head (`refs/pull/<n>/head`) and reloads on it.
   Descriptions and comments render as Markdown through KPress’s sanitized mode, one text
-  at a time as it scrolls into view, never from GitHub’s own HTML, and are then reduced
-  to an allowlist of plain markup, on the server and again in the page: paragraphs,
-  headings, emphasis, code, quotes, lists, tables, and details, with no class, `id`,
-  `data-*`, style, or event attribute.
-  SVG, MathML, media, frames, forms, stylesheets, and scripts are removed with their
-  content, and no KPress script or stylesheet is loaded for a comment, so a comment
-  cannot load anything, restyle or cover the page, reach the application’s own handlers,
-  or clobber a global.
+  at a time a screen before it scrolls into view, so a fast scroll does not show raw
+  Markdown, never from GitHub’s own HTML, and are then reduced to an allowlist of plain
+  markup, on the server and again in the page: paragraphs, headings, emphasis, code,
+  quotes, lists, tables, and details, with no class, `id`, `data-*`, style, or event
+  attribute. SVG, MathML, media, frames, forms, stylesheets, and scripts are removed with
+  their content, and no KPress script or stylesheet is loaded for a comment, so a
+  comment cannot load anything, restyle or cover the page, reach the application’s own
+  handlers, or clobber a global.
   An image is a link to it rather than loaded, links open on GitHub in a new tab, only
-  `http` and `https` ones kept, and code blocks show as plain text without highlighting.
-  A review comment’s file opens at the served head, at its line.
+  `http` and `https` ones kept, with the scheme in lower case in the Markdown route’s
+  answer too, and code blocks show as plain text without highlighting.
+  A text’s paragraphs, headings, lists, quotes, code, tables, and details have their own
+  spacing and list indent inside the card, with none above the first block or below the
+  last; a table wider than its text scrolls there, and a long word or URL breaks to fit.
+  A review comment’s file opens at the served head, at its line, and it shows the end of
+  its diff hunk, where it anchors: the last eight lines, back to the start of a
+  multi-line comment’s range for up to 100 lines, with the earlier lines behind a
+  disclosure and added and deleted lines tinted as in the diff.
   The freshness row links to the page, and back, forward, and reload keep its tab.
-  The page for a number the server does not serve links to the served pull request’s
-  page, on the same tab.
+  They also return a reader to their place in either tab, by the comment or file they
+  were in rather than by pixels, because what has rendered above it differs when the
+  page loads again; a new entry starts at the top, and a fragment in the address or a
+  reader who has started scrolling with a wheel, a finger, the scrollbar, or a key is
+  never overridden. The page for a number the server does not serve links to the served
+  pull request’s page, on the same tab.
   `metab <pr-url> --show /pull/<n>[/files]` reports the page’s kind and a summary of its
   record, and `/api/plugin/github/pull-markdown?part=…` answers the allowlisted HTML of
   the description (`body`) or one comment, review, or review comment, and nothing else
   of KPress’s render. `/api/plugin/github/pull` answers with an entity tag and a `304`
   when nothing changed.
+  The description and every comment and review read in the interface sans at a Markdown
+  file’s size and “Max text width”, whichever reading font is chosen, because serif is
+  kept for committed documents.
 
 - A terminal hangup or `SIGTERM` now cancels an acquisition the way Ctrl-C does: Git and
   every helper it started are stopped, staging is removed, and `metab` exits with status
@@ -432,8 +525,9 @@ Repository cache:
   `ACQUISITION_PATCHED_TRACKS` in `src/metabrowser/git/process.py` lists them.
   An older Git is refused with a message that names the version found and the version
   required, and a refused acquisition does not create the application home.
-  Reusing a store already in the cache and serving a folder on disk do not check the
-  floor.
+  With no `git` on `PATH`, the same refusal says that git was not found and which
+  release to install. Reusing a store already in the cache and serving a folder on disk
+  do not check the floor.
 
 - New read-only routes `/api/cache/layout`, `/api/cache/sources`,
   `/api/cache/source/<slug>`, and `/api/cache/stores` report the cache’s layout and
@@ -627,7 +721,9 @@ Repository cache:
   has no link to copy or open in a new tab.
   A name that is not UTF-8 is addressed by its bytes.
   A diff in a served folder, and a patch file’s diff, have no such control: a folder has
-  no file at a commit to open, only its working tree’s.
+  no file at a commit to open, only its working tree’s. The first diff on a pinned page
+  requests `/plugin-static/diff/diff-view-file.js`, which decides the View file
+  controls; a folder’s diff does not.
 
 - `POST /api/source/pin` with `{"oid": …}` keeps the ref when the commit is its tip.
   A commit pinned by ID had no ref.
@@ -727,6 +823,14 @@ Content trust:
   `inert-render.js`, `inert-toc.js`, and `place-rendered.js`, which places a render and
   imports the other two on the first inert one.
 
+- One more module is requested on every Markdown view, with nothing visible changing on
+  a folder: `/plugin-static/markdown/place-rendered.js`, for the reason above.
+
+- The comparison adapter resolves a revision with
+  `git rev-parse --verify --end-of-options <rev>^{commit}`, so a revision that begins
+  with `-` is an argument and not an option.
+  A revision that names a commit resolves as before.
+
 - With active content off the application page carries a Content-Security-Policy:
   scripts run only from the application’s `/static/` and `/plugin-static/` paths and the
   shell’s inline scripts by a per-response nonce, never from the browsed tree’s `/raw`
@@ -746,6 +850,8 @@ Content trust:
   Such a folder’s Markdown now renders inert, so code blocks lose their highlighting, an
   outside image becomes a link, and Obsidian wiki links and embeds show as plain text;
   and its page carries the Content-Security-Policy.
+  It keeps KPress’s card and the reader’s measure, on the one inert path a mirrored
+  file’s Markdown and a pull request’s text also take.
   A folder served with neither flag renders as before.
 
 - In an inert render, a query alone and root-relative `/api`, `/_debug`, and `/raw`
@@ -771,6 +877,11 @@ Content trust:
   earlier cannot carry, and the tooltip ignores a rendered document’s `data-tip-text`.
   The header’s print button no longer has an `id` (`print-view-btn`), so a label naming
   it could not click it with its mark; SECURITY.md lists what the mark does not cover.
+
+- The warning that a `.env` or `.env.local` file’s names were ignored shows those names
+  and the file’s path as visible escapes on one line.
+  A browsed repository could otherwise colour or erase that line, or add a line of its
+  own, with a name holding escape sequences or a line break.
 
 Content source:
 
@@ -916,7 +1027,183 @@ Content source:
   A store target read without a named policy gets the same policy, and whole-tree blob
   sizes are read in chunks that each get the batch deadline.
 
+Large pull requests:
+
+- PR refresh prepares and retains the immutable comparison manifest, so opening Files
+  changed on a fresh server can reuse it.
+  The GitHub comparison route remains scoped to the PR’s published store, and missing or
+  invalid cache entries heal on demand.
+
+- `diff/comparison` no longer recomputes a comparison on every request.
+  The patch is limited to the files being hydrated, and the manifest is computed once,
+  in one Git run. On a store, a request naming two commit IDs keeps its manifest and
+  answer in memory, sends an `ETag` naming the build and the store, and answers
+  `If-None-Match` with 304; with `&build=` naming this build and `&store=` naming this
+  store, which the page gets as `METABROWSER_SETTINGS.STORE_TAG`, it is also
+  `immutable`, so a browser’s Back makes no request, and one store’s kept answer never
+  stands for another’s or for a folder’s on the same origin.
+  Its documents are unchanged, and a folder’s comparison keeps nothing and sends neither
+  header. A store’s reads see none of the reader’s attributes files (`HOME`,
+  `XDG_CONFIG_HOME` and the system file), so every reader gets the same answer, and no
+  commit’s `.gitattributes`: Git 2.43 reads a bare repository’s from its default branch,
+  so on that Git a store’s comparison of two fixed commits changed with a fetch that
+  moved `HEAD`, and 2.50 reads none; a store read now names the store’s empty tree as
+  its attributes source, and the same two commits answer the same bytes on every Git
+  Metabrowser admits. A store’s own `info/attributes` is the one attributes input a store
+  read honors; it is in the store’s token and in the key an answer is kept under, so an
+  edit to it moves every address and is answered afresh by a running server.
+  A folder’s comparison keeps honoring its working tree’s `.gitattributes`, its
+  `.git/info/attributes`, and the reader’s own attributes files and configuration, as
+  `git diff` in that folder does.
+
+- A pull request’s Conversation fetches Files changed when the browser is idle, so the
+  tab opens with no request.
+  A pull request’s page no longer fetches the repository’s file catalog until its search
+  palette opens or the reader leaves for a file.
+
+- A comparison’s 8 MiB bound applies per file, and only to the files a request asked
+  for. One file past it says it is too large to show, a file that would take a request
+  past it loads when the reader reaches it, and neither costs the rest of the
+  comparison. A file past 8 MiB of the whole patch could not be loaded at all before.
+
+- A diff with files still to load says how many, such as “50 of 1,183 files loaded; the
+  rest load as you reach them”, in a commit’s diff in a served folder as well.
+
+- A pull request’s record refreshes with its five parts in flight together instead of
+  one after another, and serving one with no record says “reading pull request N” after
+  half a second, on the cadence of a clone’s progress, instead of saying nothing.
+
+- A deferred file reserves an estimate of its height, the diff asks for one file at a
+  time, the one on screen nearest the top, and renders at most one per frame, and what
+  is at the top of the pane stays there as files fill in.
+  This holds in a commit’s diff in a served folder as well.
+
 Fixes:
+
+- A commit at a shallow repository’s boundary is no longer shown as if it were a root
+  commit. Git grafts such a commit into a root, so its diff was taken against the empty
+  tree and every file read as added, with no warning, in the commit view, `--diff`, and
+  `/api/plugin/diff/comparison?revision=`, on a served shallow checkout and on a mirror
+  borrowing from one alike.
+  The comparison now answers a typed refusal, `parent_unavailable`, that says the parent
+  is beyond the history here, and `/api/git/commit/<id>` reports that commit’s `stats`
+  as `null` counts with no files, which the panel shows as `?`. A real root commit is
+  unchanged. `/api/git/log` still lists the commit with no parents, as Git’s own log does
+  on a shallow clone; the status route says the history is shallow.
+
+- A pull request or a `.patch` file that deletes an empty file now shows its changes.
+  Git writes no hunks for that, nor for a deleted binary file, and the parser could not
+  model the section, emptied the whole document, and left the comparison route answering
+  `404 "file 'f1' not found in the produced diff"`, so such a pull request had no Files
+  changed. A section that still cannot be modeled now keeps its row and is named in
+  `resolved.warnings`, which the diff view shows above the files, and the rest of the
+  comparison is kept. A section with no hunks whose path is quoted or holds ` b/` is read
+  from its `diff --git` line rather than dropped.
+
+- A file whose name Git quotes with `\a`, `\b`, `\f`, `\r` or `\v` now loads: the parser
+  undid only `\n`, `\t`, `\"` and `\\`, so such a file was left out of every comparison
+  and `.patch` file with a warning.
+  A name that begins or ends with a space now loads alone from a comparison, where
+  `file=` was stripped before it was matched.
+  A tree entry Git refuses as a pathspec, such as `..` from a source that runs no fsck,
+  no longer fails the whole page: the comparison runs unrestricted for it.
+
+- A comparison’s patch runs are pinned to Git’s own `a/` and `b/` prefixes and to its
+  internal diff, so a folder’s `diff.noprefix`, `diff.mnemonicPrefix` and
+  `diff.external` no longer reach the parser, where `diff.noprefix` left a mode-only
+  change unnamed and failed.
+  `metab --diff` prints a document’s warnings above its files in text form, as the page
+  shows them. A Git failure behind `diff/comparison` answers “git diff failed” or “git
+  diff timed out” and logs the command; the body no longer spells every path asked for.
+
+- A diff’s “N of M files loaded” note counts a file that could not be loaded apart from
+  the loaded ones, a file that leaves the viewport after its answer arrived is rendered
+  rather than asked for again, and one file’s render failing no longer stops the files
+  after it from loading.
+  A file whose render fails after the server answered says so where its lines would be
+  and is counted the same way; before, it showed nothing and counted as loaded.
+
+- `metab --diff` on a comparison whose whole patch is past 8 MiB answers every file,
+  each file past what one run hydrates asked for alone, as the page does once a reader
+  has reached every file; a file too large for one patch is listed as `too_large`, and
+  `--diff-check` refuses such a comparison by name.
+  Before, it answered `diff error: file 'fN' not found in the produced diff`.
+
+- A diff draws the lines of the files on its first screen, and one screen more, when it
+  opens, and each later file that came with it when the reader reaches it, from what the
+  page already has, so nothing more is asked of the server.
+  Every file’s bar is there at once and holds its own height, a file the reader is
+  looking at stays where it is as others fill in, and a file looks the same once drawn.
+  Before, a diff drew every file it was sent in one task the page waited on, at load, on
+  Back, and on opening Files changed: on a 1,031-file pull request that was 114,609 page
+  nodes and about 1.1 s, and it is now 23,451 nodes and a longest task of 114 to 330 ms,
+  with the first line 1.4x to 2.0x sooner, measured in Chrome under load.
+  A commit’s diff in a served folder and a `.patch` file’s view are the same view and
+  draw the same way; a diff that fits on its first two screens is drawn whole at once,
+  as before. The browser’s find in page now finds a line only in a file that has been
+  drawn, as on GitHub; it still finds every file by its path, and going to the file
+  draws its lines.
+
+- Pull request messages follow the active system font when converting the reading-width
+  preference to a text measure.
+  Ordinary document widths are unchanged.
+
+- A `.env` or `.env.local` that cannot be read as text no longer stops `metab` with a
+  traceback in every mode.
+  It is skipped with a warning naming the file, so a repository whose `.env` is not
+  UTF-8 can still be browsed.
+
+- A `.env` or `.env.local` can no longer hold `metab` before it starts.
+  A FIFO, or a link to one or to a piped stdin, blocked the command, and a large file
+  could take minutes to parse.
+  One that is not a regular file or is larger than 64 KB is now skipped with a warning
+  naming the file, and python-dotenv’s warning about a line it cannot parse is printed
+  once for a file rather than once a line.
+  **A value’s `${VAR}` is no longer expanded:** `METABROWSER_LOG_LEVEL=${MY_LEVEL}` now
+  sets that literal text, which falls back to `INFO`, where 0.11.0 expanded it.
+  Expansion is what made the parse quadratic in the file’s lines, and neither name a
+  dotenv file may set needs it.
+
+- `metab --api <route> --format json` or `--format yaml` prints the envelope alone, so
+  stdout parses; a body that is not JSON is one string, and a refresh that waits prints
+  only the status it ended with.
+  An explicit format used to print the `api:` and `status:` lines above the envelope
+  too. Without `--format`, the output is unchanged.
+
+- Choosing with the keyboard works past the first key press.
+  In Files / Bytes and Split / Unified, an arrow key changed the choice and left focus
+  nowhere, so the next key did nothing.
+  Focus now stays on the chosen segment.
+
+- Controls that offer a choice answer every state the same way.
+  An unselected segment of Files / Bytes or Split / Unified now raises the hover fill,
+  as other chips and the menu’s segments do, and a theme or reading-font segment and a
+  tab (Overview, Document, Files) show the shared focus ring under the keyboard.
+  A selected theme or font segment showed no focus at all, and a tab the browser’s own.
+  A commit diff’s fold controls show that focus ring too, where they showed the
+  browser’s own. Nothing else on a plain-folder page changes at rest, apart from the next
+  entry.
+
+- The note that a folder’s file list is incomplete, in a folder over the file limit, is
+  now the app’s warning notice, as other notes about partial content are: a
+  warning-colored border on the ordinary surface, in place of the sidebar fill and
+  bottom rule.
+
+- The filter drawer’s toggle, a diff’s copy button, and a structured view’s copy button
+  no longer show the browser’s tooltip beside the app’s. The drawer’s tooltip now
+  follows its state, the structured view’s button has an accessible name, and Overview’s
+  Show ignored has the tooltip it was written with.
+
+- A diff in a narrow pane no longer hides its additions.
+  Split needs 44 ems of width, and below that its right column was off-screen behind a
+  sideways scroll, so an added line read as a blank gap.
+  Such a diff now draws Unified, in a pull request’s Files changed and in a commit’s
+  diff in a served folder alike, and goes back when there is room.
+  The layout control shows what is drawn, and **Split** says why it is not selected.
+  The remembered choice is not touched, and choosing **Split** in a narrow pane still
+  draws it. A wide pane draws what it did.
+  A pane opening within 20 px of the limit counts as narrow, because the pane’s
+  scrollbar may not have arrived, so a reader sees one layout from the first paint.
 
 - A served folder holding a filename with a backslash, which POSIX allows, no longer
   fails its whole index: the index progress route errored and the tree answered HTTP
@@ -955,9 +1242,14 @@ Fixes:
   `/api/plugin/diff/document` answered that it recognized no diff, and
   `/api/plugin/diff/children` and a virtual child `change.patch.gz/<path>` answered 404.
   The three now read the patch the file holds.
-  A compressed file whose stream cannot be decoded answers the same 404 as a file that
-  cannot be opened; `/api/file` shows such a file as bytes and never sends it to the
-  Diff view.
+  A compressed file whose stream cannot be decoded within the first 8 MiB of decoded
+  content, which is as far as they read, answers the same 404 as a file that cannot be
+  opened. Damage past that is not reached: they answer the patch they read, marked
+  truncated, as they do for an undamaged patch that long.
+  `/api/file` shows a damaged file as bytes when the damage is in the first 512 KiB it
+  reads. Damage past that is not seen there: an 8.5 MB patch whose gzip is cut at 80%
+  still says `kind: diff`, and the Diff view shows “This file is not available.”, where
+  0.11.0 showed an empty change set, as it did for every `.patch.gz`.
 
 - A byte limit set below zero gives a typed, empty answer on every value.
   This applies to `STRUCTURED_PARSE_MAX_BYTES`, `METABROWSER_BINARY_PREVIEW_BYTES`,
@@ -969,8 +1261,15 @@ Fixes:
   reader’s own bound check.
   Now a negative structured limit answers `truncated` for every file, a negative chunk
   size answers an empty chunk and says whether bytes remain, and a negative offset
-  ceiling answers 404. Zero is unchanged, except that a compressed structured file at
-  `STRUCTURED_PARSE_MAX_BYTES=0` answers `truncated` instead of that parse error.
+  ceiling answers 404. Zero is unchanged for the binary settings and for a structured
+  file that is not compressed, apart from a file that cannot be opened.
+  At `STRUCTURED_PARSE_MAX_BYTES=0` a compressed structured file no longer answers that
+  parse error, and answers as it does at any limit too small for it: `truncated` when
+  the start of its stream decodes, whatever damage follows, a decompression parse error
+  when it fails before that, and what an empty file answers when it holds nothing.
+  A file that cannot be opened answers 404 `content_unavailable` at zero too, where
+  0.11.0 answered `truncated` for an uncompressed one larger than the limit, without
+  opening it.
 
 - Load more on a large text file in a pin advances its notice and continues the text.
   A pin’s later window reported its own length as `bytes_read`, where the filesystem
@@ -984,6 +1283,61 @@ Fixes:
   alike, because the scrolling preview pane was also the box its fixed position pinned
   to. The pane now scrolls inside a non-scrolling frame that holds the drawer, its
   toggle, and its backdrop, as KPress’s embedding contract asks.
+
+- A tree row replaced during the tooltip’s 300 ms delay, as when its folder re-renders,
+  no longer puts a tooltip at the window’s top-left corner until the next hover.
+  The tooltip does not appear when its anchor has left the document, and one still up
+  for another row is put away.
+
+- A folder the inventory leaves out says why it has no totals.
+  `/view/.github/` and a symbolic link to a folder keep their page and README, but File
+  Overview said “Could not load file types.”
+  and the header’s tally stayed pending forever.
+  File Overview now says, for example, “Metabrowser does not index hidden folders, so
+  this one has no file totals.”, and the header shows no tally.
+  `/api/file` still answers 200 with the folder envelope, which gains `dir.not_indexed`
+  (`hidden` or `symlink`) on such a folder and is unchanged on every other.
+
+- File Overview and Treemap no longer keep a loading skeleton when the rollup cannot
+  supply one. A failed or refused request, or an index that finished without the folder,
+  now stops the totals’ skeleton and the Treemap’s, which says “Treemap unavailable.”;
+  changing Files or Bytes or Show ignored after a failure keeps the failure’s message
+  instead of bringing the skeleton back; and a refresh that fails while nothing has been
+  counted says so and offers Retry where the request can be retried.
+  A scan that is still running keeps its skeletons, and an answer that it is running
+  brings them back after a failure.
+
+- A JSONL log’s event rows answer the keyboard.
+  Each row’s header is now a button with a tab stop and an expanded state, and Enter or
+  Space opens and closes it as a click does.
+  A keyboard could not reach a row in 0.11.0 either, and moving the rows off inline
+  handlers in this release had also removed the clickable node the accessibility tree
+  showed. A click on a row opens it as it did, and now also focuses it.
+
+- Back or Forward onto a `/commit/` entry shows the commit.
+  With a file opened in-page over a commit, Back changed the address and left the file
+  showing, because the Git panel restored a commit only when the page loaded.
+
+- A `/commit/` address with a short commit ID, or a ref name with no slash in it, now
+  says it needs the full lowercase ID, in place of “Could not load this commit.”
+  `/api/git/commit/<rev>` still refuses such a revision with 400, and its answer now
+  carries the `revision_not_full` code.
+
+- File Overview’s type distribution says which population it counts, in a caption such
+  as “Share of Files (536 files)” or “Share of Total (8,533 files)”. The percentages
+  match the Total row while Show ignored is on and the Files row while it is off, which
+  a reader could otherwise tell only by comparing the numbers of two tables.
+  The caption follows Show ignored and the measure, and is the table’s accessible
+  caption.
+
+- A tree that reaches the 500,000-file cap now says so.
+  The file list shows “File list incomplete.”, File Overview says its summary is
+  partial, and Treemap draws the indexed files under “Index capped at 500,000 files”;
+  before, it stayed on its loading skeleton and nothing mentioned the cap.
+  `/api/rollup` answered `index_status: "idle"` and `truncated: false` for such an
+  index, and `/api/tree` and `/api/recent` answered `tally_cache_status: "idle"`, as
+  0.11.0 did. They now answer `truncated`, as `/api/index/progress` and `--walk` already
+  did.
 
 ## 0.11.0
 

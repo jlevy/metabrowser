@@ -17,13 +17,45 @@
 // preferences) are stand-ins, and the page is a small element tree that records what the
 // production code builds. The stand-in for the pin route refuses what the server
 // refuses: a request whose content type is not JSON. Each step prints the requests the
-// page made, the controls of each file bar, where the browser or the page went, and
-// what a refusal said.
+// page made, the plugin modules that step loaded, the controls of each file bar, where
+// the browser or the page went, and what a refusal said. A browser requests each module
+// of /plugin-static/diff/ once, as Node loads it here once, so `modules` is what the step
+// asked the server for. The served folder's step comes first, before a pin has loaded
+// anything, because a module stays loaded for the rest of the session. The steps that
+// fail to load the module print what the view said and what it logged; a rejection nothing
+// handles would end this process with an error.
 
 const fs = require("node:fs");
+const { registerHooks } = require("node:module");
 const path = require("node:path");
 const vm = require("node:vm");
 const { pathToFileURL } = require("node:url");
+
+// The plugin's modules loaded since the last step, static and dynamic alike.
+const loadedModules = [];
+// While this is set the server does not answer for the module View file needs. The failed
+// URL is its own, because a module that has loaded stays loaded, and so stays usable once
+// the step is over.
+let viewFileModuleUnavailable = false;
+const UNAVAILABLE = "?unavailable";
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    const resolved = nextResolve(specifier, context);
+    return viewFileModuleUnavailable && resolved.url.endsWith("/diff-view-file.js")
+      ? { ...resolved, url: `${resolved.url}${UNAVAILABLE}` }
+      : resolved;
+  },
+  load(url, context, nextLoad) {
+    if (url.endsWith(UNAVAILABLE)) {
+      throw new TypeError("Failed to fetch dynamically imported module");
+    }
+    const name = /\/builtin_plugins\/diff\/([^/]+\.js)$/.exec(url)?.[1];
+    if (name) {
+      loadedModules.push(name);
+    }
+    return nextLoad(url, context);
+  },
+});
 
 const repoRoot = path.resolve(__dirname, "../..");
 const sourceRoot = path.join(repoRoot, "src/metabrowser");
@@ -351,6 +383,14 @@ function bars(container) {
   return shown;
 }
 
+/** What the view announces in place of a diff. */
+function failure(container) {
+  return container
+    .find("diff-availability")
+    .filter((notice) => notice.getAttribute("role") === "alert")
+    .map((notice) => notice.textContent);
+}
+
 /** What a refusal says under a bar, with the role it is announced by. */
 function notices(container) {
   const said = {};
@@ -412,23 +452,45 @@ async function main() {
   let mounted = null;
   let container = null;
 
-  /** Mount a diff on a page the server rendered for *page*, as a caller of the view does. */
-  async function open(page, ctx) {
+  /** Start a diff on a page the server rendered for *page*, as a caller of the view does. */
+  function begin(page, ctx) {
     mounted?.dispose();
+    mounted = null;
     if (page === null) {
       delete globalThis.window.METABROWSER_SOURCE_PIN;
     } else {
       globalThis.window.METABROWSER_SOURCE_PIN = page;
     }
     container = new PageElement("div");
-    mounted = await diffView.render(container, ctx);
+    return diffView.render(container, ctx);
+  }
+
+  async function open(page, ctx) {
+    mounted = await begin(page, ctx);
     await settle();
   }
 
+  /** Run *body* with the view's console.error recorded; returns one line per call. */
+  async function logging(body) {
+    const logged = [];
+    const consoleError = console.error;
+    console.error = (message, details, error) => {
+      logged.push(`${message} · ${details.hook} · ${error.message}`);
+    };
+    try {
+      await body();
+    } finally {
+      console.error = consoleError;
+    }
+    return logged;
+  }
+
   function step(name, extra = {}) {
+    const modules = loadedModules.splice(0).sort();
     steps.push({
       step: name,
       requests: requests.splice(0),
+      ...(modules.length > 0 ? { modules } : {}),
       ...extra,
       ...(navigated.length > 0 ? { navigated: navigated.splice(0) } : {}),
       ...(Object.keys(notices(container)).length > 0 ? { notices: notices(container) } : {}),
@@ -439,8 +501,27 @@ async function main() {
   const readme = "M README.md";
   const renamed = "R100 src/old_name.py → src/new_name.py";
 
-  // The Git panel asks for the commit's comparison itself and hands it to the view.
-  await open(recorded.page, commitDiff);
+  // A served folder's page carries no pin, so its diffs carry no controls, and it never
+  // asks for the module that decides them.
+  await open(recorded.folder_page, commitDiff);
+  step("a served folder's page has no controls", { bars: bars(container) });
+
+  // The Git panel asks for the commit's comparison itself and hands it to the view. A pin
+  // asks for the module as that request is on its way, so neither waits for the other.
+  let comparisonArrives = () => {};
+  const rendering = begin(recorded.page, {
+    revision: ids.second,
+    raw: new Promise((resolve) => {
+      comparisonArrives = resolve;
+    }),
+  });
+  await settle();
+  step("a pin's first diff asks for the module before its comparison answers", {
+    bars: bars(container),
+  });
+  comparisonArrives(recorded.commit.body);
+  mounted = await rendering;
+  await settle();
   step("a commit's diff on the page that shows that commit", { bars: bars(container) });
 
   // A link has no handler: the browser follows its address, and the bar does not fold.
@@ -569,9 +650,38 @@ async function main() {
   await failRequest();
   requests.splice(0);
 
-  // A served folder's page carries no pin, so its diffs carry no controls.
-  await open(recorded.folder_page, commitDiff);
-  step("a served folder's page has no controls", { bars: bars(container) });
+  // The server does not answer for the module: a server restarted on another build, or a
+  // lost connection. The diff is there to show, but the page cannot decide its controls.
+  viewFileModuleUnavailable = true;
+  let logged = await logging(() => open(recorded.page, commitDiff));
+  step("a page whose module does not load says so, and logs the request", {
+    bars: bars(container),
+    failure: failure(container),
+    logged,
+  });
+
+  // A diff that fails first speaks for itself, and the import failing after it is handled.
+  const failed = Object.assign(new Error("the comparison failed"), {
+    status: 500,
+    payload: { message: "This commit's comparison failed." },
+  });
+  logged = await logging(() =>
+    open(recorded.page, { revision: ids.second, raw: Promise.reject(failed) }),
+  );
+  step("a diff that fails while the module fails too says the diff's failure", {
+    bars: bars(container),
+    failure: failure(container),
+    logged,
+  });
+
+  // A served folder asks for nothing, so nothing of the module can fail on one.
+  logged = await logging(() => open(recorded.folder_page, commitDiff));
+  viewFileModuleUnavailable = false;
+  step("a served folder's diff does not depend on the module", {
+    bars: bars(container),
+    failure: failure(container),
+    logged,
+  });
 
   mounted?.dispose();
   finished = true;

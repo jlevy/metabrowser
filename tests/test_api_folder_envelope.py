@@ -20,7 +20,9 @@ import pytest
 
 from metabrowser import server
 from metabrowser.inventory_engine.contract import InventoryEntry
+from tests.git_pin_harness import fast_import_store, pinned_client
 from tests.inventory_harness import inventory_harness
+from tests.required_tools import needs_git
 
 
 class _FakeQuery:
@@ -137,3 +139,108 @@ def test_missing_path_still_404(tmp_path: Path) -> None:
     server._set_root_dir(tmp_path)
     _, response = _api_file(tmp_path, "nope")
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "path",
+    [".hidden", ".hidden/", ".hidden/sub", "shown/.hidden", "shown/.hidden/deeper"],
+)
+def test_hidden_folder_keeps_its_envelope_and_says_it_is_not_indexed(
+    tmp_path: Path, path: str
+) -> None:
+    """The inventory leaves hidden folders out, so the aggregates will never arrive."""
+    (tmp_path / ".hidden" / "sub").mkdir(parents=True)
+    (tmp_path / "shown" / ".hidden" / "deeper").mkdir(parents=True)
+    server._set_root_dir(tmp_path)
+    body, response = _api_file(tmp_path, path)
+    assert response.status_code == 200
+    assert body["kind"] == "folder"
+    assert [view["id"] for view in body["views"]] == ["overview", "treemap"]
+    assert body["dir"]["total_files"] is None
+    assert body["dir"]["state"] == "pending"
+    assert body["dir"]["not_indexed"] == "hidden"
+
+
+def test_hidden_folder_keeps_its_readme(tmp_path: Path) -> None:
+    (tmp_path / ".github").mkdir()
+    (tmp_path / ".github" / "README.md").write_text("# GH readme\n")
+    server._set_root_dir(tmp_path)
+    body, _response = _api_file(tmp_path, ".github/")
+    assert body["readme_path"] == ".github/README.md"
+
+
+def test_file_in_a_hidden_folder_still_opens(tmp_path: Path) -> None:
+    (tmp_path / ".hidden").mkdir()
+    (tmp_path / ".hidden" / "notes.txt").write_text("plain\n")
+    server._set_root_dir(tmp_path)
+    body, response = _api_file(tmp_path, ".hidden/notes.txt")
+    assert response.status_code == 200
+    assert body["kind"] == "text"
+
+
+@pytest.mark.parametrize("path", ["link", "link/", "link/nested"])
+def test_folder_through_a_symlink_says_it_is_not_indexed(tmp_path: Path, path: str) -> None:
+    """The inventory keeps a symlink without following it, so nothing tallies through one."""
+    (tmp_path / "target" / "nested").mkdir(parents=True)
+    (tmp_path / "target" / "README.md").write_text("# target\n")
+    (tmp_path / "link").symlink_to("target")
+    server._set_root_dir(tmp_path)
+    body, response = _api_file(tmp_path, path)
+    assert response.status_code == 200
+    assert body["kind"] == "folder"
+    assert body["dir"]["total_files"] is None
+    assert body["dir"]["not_indexed"] == "symlink"
+
+
+def test_served_root_through_a_symlink_is_an_ordinary_folder(tmp_path: Path) -> None:
+    """A symlink above the root is not on any path the inventory walks."""
+    (tmp_path / "real" / "sub").mkdir(parents=True)
+    (tmp_path / "real" / "sub" / "data.txt").write_text("plain\n")
+    (tmp_path / "alias").symlink_to("real")
+    root = tmp_path / "alias"
+    server._set_root_dir(root)
+    for path in ("", "sub"):
+        body, response = _api_file(root, path)
+        assert response.status_code == 200
+        assert "not_indexed" not in body["dir"], path
+
+
+@pytest.mark.parametrize("path", ["", "sub", ".logs", ".state", ".logs/sub"])
+def test_a_folder_the_inventory_lists_carries_no_reason(tmp_path: Path, path: str) -> None:
+    """`.logs` and `.state` are the inventory's own allowlist, so they are ordinary folders."""
+    for folder in ("sub", ".logs/sub", ".state"):
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "run.txt").write_text("plain\n")
+    server._set_root_dir(tmp_path)
+    body, response = _api_file(tmp_path, path)
+    assert response.status_code == 200
+    assert body["kind"] == "folder"
+    assert body["dir"]["state"] == "complete"
+    assert "not_indexed" not in body["dir"]
+
+
+@needs_git
+def test_a_pins_dot_folder_keeps_its_totals_and_readme(tmp_path: Path) -> None:
+    """A pin answers from its tree, where a dot-folder is a folder like any other."""
+    store, commit = fast_import_store(
+        tmp_path,
+        {b".github/README.md": b"# GH readme\n", b"README.md": b"# root\n"},
+    )
+    wire = "g1-LmdpdGh1Yg"
+
+    async def run() -> tuple[dict[str, Any], dict[str, Any], int]:
+        async with pinned_client(store, commit) as (client, _subject):
+            folder = await client.get("/api/file", params={"path": wire})
+            rollup = await client.get("/api/rollup", params={"path": wire})
+            readme = await client.get("/api/file", params={"path": folder.json()["readme_path"]})
+            assert folder.status_code == 200
+            assert rollup.status_code == 200
+            return folder.json(), rollup.json(), readme.status_code
+
+    folder, rollup, readme_status = asyncio.run(run())
+    assert folder["kind"] == "folder"
+    assert folder["dir"]["total_files"] == 1
+    assert "not_indexed" not in folder["dir"]
+    assert folder["readme_path"] == f"{wire}/g1-UkVBRE1FLm1k"
+    assert readme_status == 200
+    assert rollup["file_type_breakdown"]["metrics"]["all"]["files"] == 1

@@ -51,6 +51,14 @@
   border-collapse: collapse;
 }
 
+/* Names the population the rows are shares of, which follows Show ignored. */
+.file-type-summary-caption {
+  padding-bottom: 4px;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  text-align: left;
+}
+
 .file-type-summary-type-column {
   width: 24%;
 }

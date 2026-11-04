@@ -164,7 +164,9 @@ For code that is large, narrowly used, or both.
 
 The tier applies to data as well as code.
 A bulk payload that only one surface reads follows the same rule as a library that only
-one view calls.
+one view calls. A pull request’s Conversation prefetches Files changed, its comparison
+and the diff plugin’s modules, and `builtin_plugins/github/comparison-prefetch.js`
+records what that costs.
 
 ### The Lazy Loading Mechanism
 
@@ -235,6 +237,8 @@ These are the ones with a measurement on record, and where it is:
 | GitPath wire codec | Eager, on a pinned revision’s shell only | `PIN_STARTUP_SCRIPTS` in `server.py` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
 | Chart.js and its plugins | On demand, at the first chart | `chart` in `on_demand_script_bundles` | the comment beside it |
 | Inert Markdown render and its table of contents | On demand, at the first inert render | `builtin_plugins/markdown/place-rendered.js` | [exp-037](../explorations/performance-loop/experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) |
+| The step that places a Markdown render | On demand, in the Markdown plugin’s module tree at the first Markdown render, a folder’s README included | `builtin_plugins/markdown/place-rendered.js` | the comment at its head |
+| A diff’s View file controls | On demand, at a pinned page’s first diff; a served folder never requests them | `viewFileOpener` in `builtin_plugins/diff/index.js` | the comment beside it |
 
 What would move next, if the budget tightens or a startup script has to grow, measured
 2026-10-01 as the compressed bytes each saves where it stands (gzip level 6, as the
@@ -914,7 +918,8 @@ A push from a linked worktree is the case that exports `GIT_DIR`; one from the p
 checkout does not, which is why the bug can look unreproducible.
 The pre-push command in `lefthook.yml` and `tests/conftest.py` each clear the list for
 everything they start, and `tests/test_git_hook_environment.py` checks both, along with
-the console goldens that build repositories.
+the console goldens that build repositories and every Python fixture that runs
+`git init`.
 
 **`npm` refuses to install.** npm 11.10 and newer enforce the `before` and
 `minimum-release-age` settings and error when a shell environment sets both.

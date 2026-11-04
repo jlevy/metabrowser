@@ -630,6 +630,7 @@ function createShell(pathname, network, options = {}) {
     pageConnections: { suspended: () => false },
     lastInventorySnapshot: null,
     quickFileCatalogFeed: {
+      release() {},
       start: () => {
         counters.catalogFeedStarts += 1;
       },

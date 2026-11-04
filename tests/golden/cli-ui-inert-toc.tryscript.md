@@ -70,7 +70,7 @@ $ node tests/dom/markdown-inert-toc-session.js
   ],
   "enhancerRoot": [
     {
-      "className": "kpress-prose",
+      "className": "kpress-prose kpress-long-text",
       "tocLinks": 0,
       "links": 3
     }
@@ -101,6 +101,11 @@ $ node tests/dom/markdown-inert-toc-session.js
     "drawerOpen": false,
     "backdropVisible": false,
     "toggleShown": true
+  },
+  "toggleNamed": {
+    "accessible": "Table of contents",
+    "tooltip": "Table of contents",
+    "appTooltip": null
   },
   "toggleOpened": {
     "scrollTop": 3900,

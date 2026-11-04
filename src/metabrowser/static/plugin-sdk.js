@@ -67,6 +67,7 @@
 //
 //   Formatting:
 //     formatSize(bytes)                  — "1.5 KB" / "2.3 MB" / etc.
+//     formatAge(secondsSinceEpoch)       — the age primitive: {label, className}
 //     formatTimestamp(secondsSinceEpoch) — local-time short form
 //     countClass(count)                   — shared file-count emphasis class
 //     sizeClass(bytes)                    — shared byte-count emphasis class
@@ -1451,6 +1452,13 @@
     return global.MetabrowserFormatters.formatFileCount(Number(value) || 0);
   }
 
+  // The one age primitive (docs/design-system.md, "Age"): the abbreviation and the
+  // freshness class that owns its hue, weight, size, and numerals.
+  /** @param {number} secondsSinceEpoch */
+  function formatAge(secondsSinceEpoch) {
+    return global.MetabrowserFormatters.age(Number(secondsSinceEpoch) || 0);
+  }
+
   function formatTimestamp(secondsSinceEpoch) {
     // Local-time short form; matches the file header / activity feed.
     if (!secondsSinceEpoch) {
@@ -1669,6 +1677,7 @@
     formatSize: formatSize,
     formatInteger: formatInteger,
     formatFileCount: formatFileCount,
+    formatAge: formatAge,
     formatTimestamp: formatTimestamp,
     countClass: countClass,
     sizeClass: sizeClass,

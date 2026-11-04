@@ -483,6 +483,22 @@ $UV explorations/performance-loop/run.py capture --headed \
   --output "$RESULTS/browser-candidate-1.json" --record
 ```
 
+**Script the control’s capture with its exit status allowed.** `capture --record` keeps
+the row and then exits 1 on any hard-gate miss, and it cannot tell a control from a
+candidate: labels are free-form until `compare` names the candidate, which is its last
+label. An older release can miss a gate by construction.
+On a repository-shaped corpus, v0.1.0 through v0.9.1 miss `first_row_ms`, the gate that
+exists to reject their `.gitignore` pre-walk, and v0.9.1 also reports
+`inventory_delivery_attribution_missing`. So `set -e` stops a driver after its first
+control run, as it did in exp-034. A refused record exits 1 as well, so read the
+`recorded` line rather than ignoring the failure, and leave the verdict to `compare`:
+
+```shell
+$UV explorations/performance-loop/run.py capture --headed \
+  --output "$RESULTS/browser-release-1.json" --record | tee "$RESULTS/capture.log" || true
+grep -q '^recorded ' "$RESULTS/capture.log"
+```
+
 Wait for the `recorded` confirmation before switching the wheel or starting the next
 server: `record` re-attests the installed bytes, so a switch before it refuses the run.
 Repeat each condition at least three times for a large-effect experiment.
@@ -692,6 +708,8 @@ line, and a file holding records from both states is refused.
 
 `cached` is what an installation runs from its second start, and the state a claim about
 a release is made in.
+A round that reports these figures names the state as `method.bytecode` in its artifact,
+and `report.md` marks the round’s row with it.
 The standard library’s bytecode is not read.
 Each record names the interpreter its build ran on, as `python` and `python_base`, and
 builds whose interpreters report different versions are refused; both environments come

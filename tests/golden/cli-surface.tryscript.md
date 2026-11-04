@@ -61,6 +61,15 @@ $ metab --help
 │                                              overrides                       │
 │                                              METABROWSER_CONFIG_DIR and      │
 │                                              XDG_CONFIG_HOME.                │
+│ --checkout                 PATH              Borrow objects from this        │
+│                                              checkout of the Git source      │
+│                                              instead of cloning, so only     │
+│                                              what it lacks is fetched.       │
+│                                              Remembered from then on; never  │
+│                                              written to. Applies when        │
+│                                              serving, --api, --show,         │
+│                                              --check-api, and --no-serve on  │
+│                                              a Git source.                   │
 │ --path                     TEXT              Serve: relative path from ROOT  │
 │                                              to select on launch. Walk:      │
 │                                              subtree for a JSON/YAML         │
@@ -119,8 +128,10 @@ $ metab --help
 │                                              data the browser consumes.      │
 │                                              Show: json reports the four     │
 │                                              layers as an object. Api: json  │
-│                                              (default) or yaml renders the   │
-│                                              envelope.                       │
+│                                              or yaml prints the envelope     │
+│                                              alone, so stdout parses; unset  │
+│                                              prints the route and status     │
+│                                              above it, as JSON.              │
 │                                              [default: text]                 │
 │ --index-timeout            SECONDS [x>=0.1]  Maximum time to wait for the    │
 │                                              inventory to finish. Applies to │

@@ -29,7 +29,7 @@ fast -- only that it moved.
 | `require_canonical_inventory_path_calls_per_entry` | 0 | **2** (accepted on other grounds; see the round) | exp-026 |
 | `browser_event_stream_overflows_per_run` | 0 | **0** (accepted on other grounds; see the round) | exp-031 |
 | `browser_inventory_delivery_batch_items_max` | 17,787 | **4,096** | exp-032 |
-| `cli_show_instr_millions` | 7,401 | **7,689** (accepted on other grounds; see the round) | exp-037 |
+| `cli_show_instr_millions` | 7,401 | **7,689** (accepted on other grounds; see the round; measured without compiled bytecode) | exp-037 |
 
 Each row is one round’s own control and candidate on the same corpus and machine, not a
 running total: they measure different things and do not compose.
@@ -77,6 +77,8 @@ against one that did.
 | exp-036 | [A backend-only comparison finds v0.11.0 equivalent and does not clear it for release](experiments/exp-036-backend-only-partial-does-not-clear-v0110.md) | - | `project10_browser_first_row_ms` | unresolved |
 | exp-037 | [Deferring unused Git imports and view-phase browser code brings v0.12 start-up within 1.05x of v0.11.0 and back under its startup-script gate, except --doctor](experiments/exp-037-startup-imports-and-loading-tiers-for-v012.md) | - | `cli_show_instr_millions` | accepted |
 | exp-038 | [A release rehearsal under load finds the v0.12 candidate equivalent to v0.11.0 and does not clear it](experiments/exp-038-v012-rehearsal-under-load-does-not-clear-the-candidate.md) | - | `project10_browser_first_row_ms` | unresolved |
+| exp-040 | [Files changed on a large pull request recomputes the whole patch on every request, and one deleted empty file makes it fail outright](experiments/exp-040-files-changed-recomputes-the-whole-patch-per-request.md) | - | `files_changed_first_diff_line_ms` | baseline |
+| exp-041 | [PR Files Start from a Prepared Manifest and a Visible Patch Prefix](experiments/exp-041-pr-files-use-a-prepared-manifest-and-visible-prefix.md) | - | `first_text_ms_pr_29121` | accepted |
 
 ## Absolute numbers, per condition
 

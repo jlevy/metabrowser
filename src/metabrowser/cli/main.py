@@ -12,6 +12,7 @@ macOS. Every other operation is a mode flag on the same command:
     metab file:///path/to/repo.git            # serve a Git source, pinned, untrusted
     metab file:///path/to/repo.git --no-serve  # acquire into the cache, no server
     metab https://github.com/owner/repo/blob/main/README.md --show README.md
+    metab https://github.com/owner/repo/pull/1 --checkout ~/src/repo  # borrow, not clone
     metab --remote example-host --path /srv/shared-files  # SSH-tunnel a remote host
     metab --plugins                    # what's discovered?
     metab --plugin example             # one plugin's manifest
@@ -79,6 +80,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "untrusted",
             "no_active_content",
             "allow_edits",
+            "checkout",
         }
     ),
     "walk": frozenset(
@@ -107,6 +109,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "untrusted",
             "no_active_content",
             "allow_edits",
+            "checkout",
         }
     ),
     "show": frozenset(
@@ -118,6 +121,7 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "untrusted",
             "no_active_content",
             "allow_edits",
+            "checkout",
         }
     ),
     "check-api": frozenset(
@@ -128,9 +132,10 @@ _MODE_OPTIONS: dict[str, frozenset[str]] = {
             "untrusted",
             "no_active_content",
             "allow_edits",
+            "checkout",
         }
     ),
-    "no-serve": frozenset({"log_level"}),
+    "no-serve": frozenset({"log_level", "checkout"}),
     "remote": frozenset({"path", "base_port", "no_open", "ssh_options", "gcp", "zone", "project"}),
     "plugins": frozenset({"plugins_dir", "as_json"}),
     "plugin": frozenset({"plugins_dir", "as_json"}),
@@ -180,6 +185,7 @@ _OPTION_LABELS: dict[str, str] = {
     "untrusted": "--untrusted",
     "no_active_content": "--no-active-content",
     "allow_edits": "--allow-edits",
+    "checkout": "--checkout",
 }
 
 
@@ -394,6 +400,14 @@ def _require_root(ctx: typer.Context, root: str | None, mode: str) -> Path:
     raise CLIError(_git_source_closed_message(classified, mode=mode))
 
 
+def _refuse_checkout_on_folder(checkout: Path | None) -> None:
+    if checkout is not None:
+        raise CLIError(
+            "--checkout names a checkout for a Git source to borrow objects from, and ROOT "
+            "is a local path"
+        )
+
+
 def _reject_root(ctx: typer.Context, root: str | None, mode: str) -> None:
     if root is not None:
         message = f"ROOT is not used with {_MODE_LABELS[mode]}"
@@ -447,6 +461,16 @@ def _metab(
         "--config-dir",
         help="Exact configuration directory; overrides METABROWSER_CONFIG_DIR and XDG_CONFIG_HOME.",
         rich_help_panel=_PANEL_SHARED,
+    ),
+    checkout: Path | None = typer.Option(
+        None,
+        "--checkout",
+        metavar="PATH",
+        help="Borrow objects from this checkout of the Git source instead of cloning, so "
+        "only what it lacks is fetched. Remembered from then on; never written to. "
+        "Applies when serving, --api, --show, --check-api, and --no-serve on a Git source.",
+        rich_help_panel=_PANEL_SHARED,
+        show_default=False,
     ),
     # ── Mode selectors ─────────────────────────────────────────────
     walk: bool = typer.Option(
@@ -632,7 +656,8 @@ def _metab(
         help="Output format: text (human report) | json | yaml. "
         "Walk and diff: json/yaml dump the exact data the browser consumes. "
         "Show: json reports the four layers as an object. "
-        "Api: json (default) or yaml renders the envelope.",
+        "Api: json or yaml prints the envelope alone, so stdout parses; "
+        "unset prints the route and status above it, as JSON.",
         rich_help_panel=_PANEL_SHARED,
     ),
     stream: bool = typer.Option(
@@ -813,6 +838,7 @@ def _metab(
             raise typer.Exit()
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
+            _refuse_checkout_on_folder(checkout)
             run_serve(
                 classified,
                 path=path,
@@ -838,6 +864,7 @@ def _metab(
                 log_level=log_level,
                 no_active_content=no_active_content,
                 allow_edits=allow_edits,
+                checkout=checkout,
             )
     elif mode == "walk":
         run_walk(
@@ -872,14 +899,18 @@ def _metab(
         assert api is not None
         from metabrowser.cli.api_cli import run_api
 
+        # Only the unset default is reinterpreted; an explicit --format text is refused
+        # above rather than silently becoming json. Unset is the transcript every golden
+        # pins; a format asked for is that document alone on stdout, for a tool to parse.
+        api_fmt, api_headers = ("json", True) if fmt == "text" else (fmt, False)
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
+            _refuse_checkout_on_folder(checkout)
             run_api(
                 classified,
                 route=api,
-                # Only the unset default is reinterpreted; an explicit --format text
-                # is refused above rather than silently becoming json.
-                fmt="json" if fmt == "text" else fmt,
+                fmt=api_fmt,
+                headers=api_headers,
                 data=data,
                 plugins_dir=plugins_dir,
                 log_level=log_level,
@@ -895,7 +926,8 @@ def _metab(
                 run_api_after_acquire(
                     classified,
                     route=api,
-                    fmt="json" if fmt == "text" else fmt,
+                    fmt=api_fmt,
+                    headers=api_headers,
                     data=data,
                     plugins_dir=plugins_dir,
                     log_level=log_level,
@@ -903,6 +935,7 @@ def _metab(
                     untrusted=untrusted,
                     no_active_content=no_active_content,
                     allow_edits=allow_edits,
+                    checkout=checkout,
                 )
             else:
                 from metabrowser.cli.git_pin_cli import run_pin_api
@@ -910,24 +943,27 @@ def _metab(
                 run_pin_api(
                     classified,
                     route=api,
-                    fmt="json" if fmt == "text" else fmt,
+                    fmt=api_fmt,
+                    headers=api_headers,
                     data=data,
                     plugins_dir=plugins_dir,
                     log_level=log_level,
                     index_timeout_s=index_timeout,
                     no_active_content=no_active_content,
                     allow_edits=allow_edits,
+                    checkout=checkout,
                 )
     elif mode == "no-serve":
         from metabrowser.cli.acquire_cli import run_no_serve
 
-        run_no_serve(_classified_root(ctx, root, mode), log_level=log_level)
+        run_no_serve(_classified_root(ctx, root, mode), log_level=log_level, checkout=checkout)
     elif mode == "show":
         assert show is not None
         from metabrowser.cli.show_cli import run_show
 
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
+            _refuse_checkout_on_folder(checkout)
             run_show(
                 classified,
                 path=show,
@@ -951,10 +987,12 @@ def _metab(
                 index_timeout_s=index_timeout,
                 no_active_content=no_active_content,
                 allow_edits=allow_edits,
+                checkout=checkout,
             )
     elif mode == "check-api":
         classified = _classified_root(ctx, root, mode)
         if isinstance(classified, Path):
+            _refuse_checkout_on_folder(checkout)
             from metabrowser.cli.check_api import run_api_check
 
             run_api_check(
@@ -976,6 +1014,7 @@ def _metab(
                 index_timeout_s=index_timeout,
                 no_active_content=no_active_content,
                 allow_edits=allow_edits,
+                checkout=checkout,
             )
     elif remote is not None:
         _reject_root(ctx, root, mode)

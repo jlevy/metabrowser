@@ -237,6 +237,9 @@ where a folder shows its name, and nothing said its files came out of the cache.
   It is a note after the address, and the tooltip on the name, on the note, and on the
   navigation heading says what the directory is:
   `Mirror of <origin> at <commit>, stored in <location>: a bare Git repository, with no checked-out files.`
+  An overlay store’s adds `, borrowing objects from <checkout>` after the location, and
+  `/api/source/status` has `borrows` beside `location` under the same exception, with
+  `shallow`, true when the store has a boundary.
   The note is whole or absent: a pane too narrow for its start shows none of it, and it
   takes no width from the address.
 - **Only a mirror’s page.** `static/mirror-heading.js` draws the note, the tooltip line,
@@ -359,8 +362,10 @@ These invariants hold for every store:
 - its refs are the origin’s branches under `refs/remotes/origin/`, its tags, and the
   `refs/pull/<n>/head` of each pull request opened from it; Metabrowser writes no ref of
   its own;
-- repository content is self-contained: every object is present, and nothing depends on
-  alternates into a user-owned checkout or on the origin after acquisition;
+- a full store’s content is self-contained: every object is present, and nothing depends
+  on alternates into a user-owned checkout or on the origin after acquisition; an
+  overlay store’s objects are its own or a named checkout’s
+  ([Overlay stores](#overlay-stores));
 - tree enumeration and blob reads are bounded and cancellation-aware; and
 - nothing removes objects: no operation runs `gc`, `prune`, or `repack`, so a commit a
   reader pinned stays readable without a lock or a ref.
@@ -378,8 +383,108 @@ rename into place through the alias commit, and the alias is the sole visibility
 A crash between the two renames leaves a completed store no alias names; it is never a
 visible half-entry, and the next acquisition of the same source reuses it.
 Nothing deletes a published store automatically.
-Attaching a user-owned checkout to a store, and merging stores by provider identity, are
-deferred by the thin-mirror plan.
+Merging stores by provider identity is deferred by the thin-mirror plan.
+
+### Overlay stores
+
+A store has one of two modes, and every reader is the same for both: the served pin, the
+batch readers, `pull_refs.py`, `update.py`, the freshness window, the fetch lock, and
+the pull-request records.
+`/api/cache/stores` reports the `mode`.
+
+| Mode | Objects | When |
+| --- | --- | --- |
+| `full` | Every object, fetched from the origin | No checkout is named, or borrowing is refused |
+| `overlay` | `objects/info/alternates` names a checkout’s objects directory, and the store holds what that lacks | The reader named a checkout with `--checkout` |
+
+The design and its experiments are in
+[the plan](../specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md).
+`cache/lender.py` reads the checkout, and `cache/acquire.py` fills the store:
+
+1. **Only a named checkout lends.** The working directory never does, because any
+   directory a reader stands in can be made to pass for a checkout of any repository,
+   and Git does not verify an object’s hash on read.
+   `metab <url>` inside one clones and prints the flag, once, since a store then exists.
+2. **The checks come first, with no Git in the checkout.** `.git`, `commondir`,
+   `config`, and every ref are read as bounded regular files.
+   A remote whose identity is the source’s, through the provider’s grammar, is required,
+   or the command refuses.
+   A partial clone, a lender with its own alternates, unreadable objects, or another
+   object format falls to a full clone with the reason printed.
+3. **The store’s refs are only what the origin sent.** Nothing is seeded.
+   The acquisition fetch is the mirror’s own, with each tip of the lender’s
+   `refs/remotes/<remote>/` that the store reads as a commit as a `--negotiation-tip`,
+   so the origin sends only what the lender lacks.
+   Those tips are recomputed before every fetch, since a tip the lender has lost makes
+   Git refuse.
+4. **Two more configuration keys.** `core.commitGraph=false`, because the store would
+   otherwise read the lender’s possibly stale commit-graph, and
+   `core.alternateRefsCommand=true`, or Git runs `for-each-ref` inside the lender on
+   each fetch.
+5. **The boundary is live, until the store must write it.** `shallow` is a symbolic link
+   to the lender’s, so the store’s history stops where the checkout’s does and follows
+   it when it deepens; where the checkout is not shallow the link dangles and Git treats
+   the store as not shallow.
+   Git locks the *target* of a symbolic link when it writes `shallow`, so a
+   `fetch --deepen` with the link in place replaces the lender’s file.
+   `own_boundary` replaces the link by a copy, or removes a dangling one, under the
+   fetch lock before any command that writes the boundary.
+6. **A dangling ref is swept.** One ref whose object the lender has collected wedges a
+   fetch that neither brings it nor prunes it: a pull request’s fetch on any such ref,
+   and a refresh on a `refs/pull/<n>/head`, which its refspecs do not name.
+   So before each fetch into an overlay, under the fetch lock, `for-each-ref` and one
+   `cat-file --batch-check` find such refs and `update-ref` deletes them.
+   A ref the origin still has comes back with the fetch.
+   Git answers `missing` alike for an object the lender collected and one it holds and
+   cannot lend now, so a ref is deleted only when the lender shows its object gone: no
+   loose file of it, whatever its mode, and every file of its pack directory readable
+   (`collection_doubt`). Otherwise nothing is deleted and the fetch is refused as
+   `lender_missing`, which also covers a lender whose refs no file holds, as reftable
+   keeps them, so that the probe of its tips through the store has nothing to read.
+7. **The record and the file agree.** `store.yml`’s optional `lender` names the objects
+   directory, the checkout, and the remote.
+   Absent means `full`. A record and an alternates file that disagree is `damaged`,
+   checked at open and reported by the cache routes.
+8. **A lender that has gone is refused at open.** One `stat` of the borrowed directory:
+   `lender_missing`, with the recorded path and the repair, `--checkout <new path>`,
+   which runs the same checks.
+   A refresh in a running server reports `lender_missing` as its outcome and fetches
+   nothing, and a read of a borrowed object answers `object_unavailable`. Cache routes
+   read records and no object, so they still answer.
+
+Complete object reads verify the Git object ID against the header and bytes, using the
+store’s SHA-1 or SHA-256 format.
+A mismatch is `object_corrupt`. Windowed reads hash discarded prefixes and tails only
+when the existing drain bound consumes the complete object.
+A larger partial window stays useful and makes no claim of whole-object authentication;
+verification does not extend its read bound.
+
+A borrowed comparison verifies only the blobs of the files being hydrated, within the
+existing per-run byte budget.
+It does not hash an entire manifest or walk history.
+Detected corruption prevents a response body from being cached and invalidates any
+in-memory manifest for that comparison.
+
+`git/object_failures.py` keeps at most eight observed object IDs for each of sixteen
+store/commit selections, for ten minutes.
+It retains no object bytes or Git diagnostics.
+`cache/object_recovery.py` handles an explicit recovery: check the displayed immutable
+commits and those observed IDs, fetch missing IDs under the existing fetch lock and
+sweep rules, then authenticate them before clearing the observations.
+The recovery has one sixty-second deadline, including lock waits.
+Before declaring success it advances the store reader pool’s generation and reaps idle
+actors, so no later request reads an unlinked obsolete pack.
+Actors already leased to a request finish their transaction and are recycled on release;
+repair does not interrupt that request.
+Cancellation during recycling preserves the stale queue slot for the next reader to
+recycle. An ordinary commit fetch can succeed while leaving a descendant blob absent;
+exact-ID fetching repairs that object without changing a ref or writing the checkout.
+A corrupt lender that Git still claims to have remains a typed refusal, and an origin
+that no longer serves a displayed object is `commits_unavailable`.
+
+Measured on macOS with nine alternating pairs, complete-read hashing added 0.021 ms for
+3.9 KiB, 0.029 ms for 64 KB, and 4.586 ms for 8 MiB. The 32 MiB partial-window path
+calls no hash; its timing pairs were too noisy to establish a difference.
 
 ### Cache record contracts
 
@@ -426,8 +531,13 @@ policy would leave lazy fetch on.
 Blob sizes come from the batch readers’ `info` answers rather than `ls-tree -l`. Git can
 report a failed read on stderr and still exit 0, so stderr from a store read degrades
 the result rather than passing as success.
-Diff, commit-detail, and comparison reads run Git directly, because a full store holds
-every blob they read.
+Diff, commit-detail, and comparison reads run Git directly, because a store has or
+borrows every blob they read.
+Those commands pass neither `--no-ext-diff` nor `--no-textconv`, so they honor the diff
+drivers of the repository’s own configuration.
+A store’s configuration has none, and a borrowed checkout’s is not read, which is one
+reason a checkout’s objects are read only through a store.
+A served checkout’s Git tab does honor its own, as `git diff` there would.
 Diff, history, commit detail, and tree reads receive a trusted Git command target that
 may name either a worktree plus Git directory or the shared worktree-free store.
 
@@ -525,6 +635,37 @@ The source directory is enumerated by nothing, so the layout, probe, sweep, and
 `builtin_plugins/github/pull_record.py` holds its Pydantic models and every bound, with
 the measurements beside the constants; a record whose `schema_version` differs is
 refetched, not migrated.
+PR refresh prepares the comparison manifest before publishing the record.
+`builtin_plugins/github/pull_manifest.py` owns a disposable bank at
+`repository-stores/<store-key>/github-pull-manifests/<slot>.json`: sixteen direct-mapped
+slots, each admitted only within the existing 16 MiB PR-record read bound.
+A slot holds a versioned File Diff Format document with no patches, its digest, and the
+full build, store-token, endpoint, and base-policy identity.
+A collision evicts a slot and causes a later miss; it cannot return another comparison.
+The PR comparison route resolves the requested commits before adopting a validated
+manifest, and a missing, corrupt, or mismatched entry is recomputed once through the
+existing shared comparison-cache task and replaced atomically.
+Persistence failure leaves the PR record and computed answer usable.
+Persisted manifests are adopted only when their private bank currently permits writes,
+including effective access and read-only mount checks; a read-only bank still serves
+recomputed comparisons.
+Detected corruption first attempts to invalidate the exact slot atomically, then
+advances that slot’s epoch beside the bank.
+The epoch makes old data miss even if the slot could not be written and its permissions
+are restored before a restart.
+A manifest captures that epoch before computation, so an older in-flight write cannot
+relabel itself as current.
+A missing epoch starts a new one; a malformed or unreadable epoch disables persistence.
+There are at most sixteen bounded epoch records, one per slot, with no index, scan, or
+lock; invalidating one slot leaves the other disk hits intact.
+If the epoch cannot be written, the response requires clearing the affected repository
+cache before retrying; no process can retain new corruption knowledge across a restart
+when every persistence attempt fails.
+`GET /api/plugin/github/pull-comparison` reads only the selected PR’s published store
+and never fetches. Its initial answer hydrates eight ready files.
+The shared diff service retains its fifty-file default for other callers; encoded bodies
+and entity tags include the initial-file policy, while the manifest key is shared.
+
 It names its reader, always `gh:<login>`, because `gh api` refuses requests while signed
 out, and the account is read before and after the API reads so a record read across an
 account switch is discarded.
@@ -578,8 +719,38 @@ each text as Markdown through `GET /api/plugin/github/pull-markdown?part=<part>`
 renders one text of the cached record through KPress’s sanitized mode and then reduces
 it to an allowlist of plain markup, on the server and again in the page, so nothing in
 it loads, restyles the page, reaches the application’s handlers, or names an element.
+The page sets the result in a KPress article of its own making, under KPress’s
+stylesheets, so a text reads as the same Markdown in a file does.
 Files changed is the diff plugin’s view over the record’s comparison, passed as two
 endpoints with `base_policy=merge_base`.
+
+**A merge base on a shallow store is believed only when it is certain**
+(`git/shallow.py`). `merge-base` on a cut graph can name a common ancestor that is not
+the best one, with no error.
+Its answer *M* is certain when `rev-list <base> <head> ^<M>` names no commit in the
+store’s `shallow` file, or when *M* is one of the tips; the module holds the proof,
+which needs only that the cut graph is a subgraph, so a crafted boundary can make an
+answer uncertain and never certain and wrong.
+An empty answer on a shallow store is uncertain, and not `no_merge_base`. When
+uncertain, the refresh job writes the record with
+`unavailable.comparison: base_uncertain` and no comparison, then fetches `--deepen` of
+the base and the head into the store in up to five growing rounds, within the
+acquisition deadline, and writes the record again if that settles it.
+Offline, or still uncertain, `base_uncertain` stands, and the page shows no diff.
+The comparison route refuses the same way when asked for two tips directly.
+The boundary is read before and after every Git command the check runs, on every return,
+since the store’s `shallow` can be a link to a checkout that deepens or becomes shallow
+meanwhile: an answer computed on another boundary than the one read is uncertain.
+`no_merge_base` is only Git’s own answer that the two share no history; a `merge-base`
+that failed could not read a commit on the walk, on an overlay an ancestor the checkout
+has collected, and that is `commits_unavailable`.
+
+A commit at the boundary is one more cut: Git grafts it into a root, so its own diff
+would be taken against the empty tree and show a whole tree as added.
+`git/shallow.py` reads the commit’s parents from the object itself, which the graft
+never touches, so `/api/plugin/diff/comparison?revision=` answers the typed
+`parent_unavailable` for it and `/api/git/commit/<id>` reports its `stats` as unknown,
+on a store and a served shallow checkout alike; a real root commit is unchanged.
 
 ### Git path and blob semantics
 
@@ -795,7 +966,7 @@ publication holds the alias lock and the store lock together.
 | `absent` | `claim_staging` | `staging_claimed` | `staging_entry` | no | Take `locks/staging/<entry>.lock`, then create `staging/<entry>/` on the cache filesystem. |
 | `staging_claimed` | `lookup_remote_head` | `head_observed` | `staging_entry` | yes | `git ls-remote --symref origin HEAD` records the remote default branch and its object ID. |
 | `staging_claimed` | `remote_unavailable` | `abandoned` | `staging_entry` | no | Typed failure; staging deleted. |
-| `head_observed` | `fetch_started` | `fetching` | `staging_entry` | yes | `init --bare --template=`, Metabrowser-written config with automatic maintenance and gc off, then one fetch of every object with explicit refspecs; no low-speed bound until acquisition stalls are measured, so user cancellation is the guard. |
+| `head_observed` | `fetch_started` | `fetching` | `staging_entry` | yes | `init --bare --template=`, Metabrowser-written config with automatic maintenance and gc off, then one fetch of every object with explicit refspecs; no low-speed bound until acquisition stalls are measured, so user cancellation is the guard. An overlay adds its two configuration keys, its alternates file, and its boundary link first, and the fetch its negotiation tips. |
 | `fetching` | `fetch_failed` | `abandoned` | `staging_entry` | no | Typed failure; staging deleted. |
 | `fetching` | `cancelled` | `abandoned` | `staging_entry` | no | Git terminated (4.4 ms to exit after SIGTERM, `explorations/repository-cache/results/concurrency.json`); staging deleted. |
 | `fetching` | `fetch_succeeded` | `fetched` | `staging_entry` | no | Every object reachable from the fetched branches and tags is present in staging. |
@@ -1059,8 +1230,10 @@ Still open, with owners:
   version string are admitted (Phase 1B-a).
 
 The initial-acquisition stall bound, the first-request deadline, and the first-clone
-size limit were measured on 2026-09-23; each measurement is recorded beside its constant
-in `cache/origin.py` and `builtin_plugins/github/provider.py`.
+size limit were measured on 2026-09-23, and the size limit again on 2026-11-02; each
+measurement is recorded beside its constant in `cache/origin.py` and
+`builtin_plugins/github/provider.py`. `METABROWSER_MAX_FIRST_CLONE_KB` moves the size
+limit, and the acquisition deadline still applies.
 
 These choices may tune cost.
 They may not introduce shared working-tree state, make a local checkout cache authority,

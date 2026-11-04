@@ -12,6 +12,12 @@ A caller that wants to show a first clone running passes two reporters: one is t
 phase as it starts, and the other each progress record of the fetch, as numbers
 (:mod:`metabrowser.git.progress`). Neither is given a path, and a cache hit calls
 neither.
+
+With ``--checkout`` the store is an overlay instead: the same staging, validation, and
+publication, with an ``objects/info/alternates`` naming the checkout's objects, so the fetch
+brings only what the checkout lacks (:mod:`metabrowser.cache.lender`). A published store
+wins whatever its mode, so a URL never silently changes storage. An overlay whose checkout
+has gone is refused at open, and naming the checkout's new place repairs it.
 """
 
 from __future__ import annotations
@@ -39,6 +45,21 @@ from metabrowser.cache.identity import (
     store_key,
 )
 from metabrowser.cache.layout import open_cache, read_config, read_layout
+from metabrowser.cache.lender import (
+    CheckoutRefusedError,
+    Lender,
+    LenderRefusal,
+    attach_lender,
+    check_lender,
+    checkout_command,
+    lender_problem,
+    negotiation_tip_args,
+    object_format_refusal,
+    read_alternates,
+    rebind_lender,
+    show_path,
+    suggested_checkout,
+)
 from metabrowser.cache.locks import (
     CacheLock,
     LockBusyError,
@@ -49,8 +70,10 @@ from metabrowser.cache.locks import (
     run_lock_section,
     source_alias_lock,
     staging_entry_lock,
+    store_fetch_lock,
 )
 from metabrowser.cache.origin import (
+    BRANCH_MIRROR_PREFIX,
     REMOTE_PROBE_TIMEOUT_S,
     OriginHeadError,
     RemoteFailureState,
@@ -82,6 +105,7 @@ from metabrowser.cache.records import (
     RepositoryStoreAlias,
     RepositoryStoreState,
     StoreAcquisition,
+    StoreLender,
     StoreOperation,
     canonical_now,
 )
@@ -118,6 +142,15 @@ _STORE_CONFIG: Final[tuple[tuple[str, str], ...]] = (
     ("transfer.bundleURI", "false"),
     ("core.hooksPath", "/dev/null"),
 )
+# What borrowing from a checkout adds. The store would otherwise read the checkout's
+# ``objects/info/commit-graph``, which can name commits whose objects are gone: measured
+# 2026-11-02, ``rev-list --count`` answered a history 743 commits longer than ``log`` could
+# walk. And Git would run ``for-each-ref`` inside the checkout twice per fetch, under the
+# checkout's configuration; ``true`` makes that read a no-op.
+_OVERLAY_CONFIG: Final[tuple[tuple[str, str], ...]] = (
+    ("core.commitGraph", "false"),
+    ("core.alternateRefsCommand", "true"),
+)
 _ENTRY_ATTEMPTS: Final = 8
 # How a source that is itself a partial clone refuses to send an object it lacks. The
 # fetch's upload-pack inherits GIT_NO_LAZY_FETCH, and acquisition runs Git under
@@ -149,6 +182,36 @@ class AliasConflictError(AcquisitionError):
     """The source already names a different store; the existing alias was left in place."""
 
 
+class StoreDamagedError(ValidationFailedError):
+    """A store's record of what it borrows disagrees with its alternates file."""
+
+    state: Final = "damaged"
+
+
+class LenderMissingError(AcquisitionError):
+    """The checkout an overlay store borrows from cannot be used, so nothing in it is read.
+
+    Gone, grown an alternates file of its own, no longer readable, or no longer a
+    checkout of the repository (:func:`~metabrowser.cache.lender.lender_problem` and
+    :func:`~metabrowser.cache.lender.check_lender`): *problem* says which, and the
+    repair is the same for each.
+    """
+
+    state: Final = "lender_missing"
+
+    def __init__(self, source_url: str, lender: StoreLender, problem: str) -> None:
+        super().__init__(
+            f"{problem}: {show_path(lender.checkout)} (lender_missing), and this mirror of "
+            f"{source_url} cannot be served without it. If it moved, or another checkout of "
+            f"the repository should lend instead, name it: metab {source_url} --checkout "
+            "<new path>"
+        )
+
+
+class _ObjectFormatRefusedError(AcquisitionError):
+    """The origin's object format is not the named checkout's. It is cloned instead."""
+
+
 class RemoteAccessError(AcquisitionError):
     """Git could not reach or read an https origin; ``state`` names why.
 
@@ -161,7 +224,7 @@ class RemoteAccessError(AcquisitionError):
 
 
 class RepositoryTooLargeError(RemoteAccessError):
-    """A provider refused a first clone that could not finish within the deadline."""
+    """A provider refused a first clone over its size limit, which *detail* states."""
 
     def __init__(self, source_url: str, *, detail: str) -> None:
         super().__init__("too_large", source_url, detail=detail)
@@ -169,6 +232,7 @@ class RepositoryTooLargeError(RemoteAccessError):
 
 type PhaseReporter = Callable[[str], None]
 type ProgressReporter = Callable[[GitProgress], None]
+type NoteReporter = Callable[[str], None]
 
 
 def remote_url_for(source: GitSource) -> str:
@@ -220,6 +284,11 @@ def _report(on_phase: PhaseReporter | None, phase: str) -> None:
         on_phase(phase)
 
 
+def _note(on_note: NoteReporter | None, text: str) -> None:
+    if on_note is not None:
+        on_note(text)
+
+
 @dataclass(slots=True)
 class StagingAcquisition:
     """A validated worktree-free Git database still under its staging lock."""
@@ -233,6 +302,7 @@ class StagingAcquisition:
     default_remote_ref: str | None
     default_revision: str
     git_version: str
+    lender: StoreLender | None = None
     _lock: CacheLock | None = field(default=None, repr=False)
 
     def abandon(self) -> None:
@@ -348,6 +418,8 @@ async def acquire_into_staging(
     home: Path,
     on_phase: PhaseReporter | None = None,
     on_progress: ProgressReporter | None = None,
+    lender: Lender | None = None,
+    on_note: NoteReporter | None = None,
 ) -> StagingAcquisition:
     """Fetch *source* into a new staging store and validate it.
 
@@ -355,6 +427,11 @@ async def acquire_into_staging(
     the staging liveness lock until :meth:`StagingAcquisition.abandon`. *on_phase* is
     told each phase as it starts. With *on_progress* the fetch runs with ``--progress``
     and each record Git writes is passed on as numbers; without it Git reports none.
+
+    With *lender*, the store borrows that checkout's objects and fetches what it lacks.
+    No ref comes from the checkout: its tips are only what the fetch tells the origin it
+    has, so the store's refs are what the origin sent, as a full store's are. *on_note* is
+    told that it borrows, once the origin's object format has shown that it can.
     """
     if source.transport not in _ACQUIRED_TRANSPORTS:
         raise AcquisitionError(
@@ -404,7 +481,14 @@ async def acquire_into_staging(
         if default_remote_ref is None:
             # Publication needs a branch. Refuse here, before the fetch is paid for.
             raise ValidationFailedError("the source HEAD is not a branch")
-        advertised_format = "sha256" if len(revision) == 64 else "sha1"
+        advertised_format: ObjectFormat = "sha256" if len(revision) == 64 else "sha1"
+        if lender is not None:
+            mismatch = object_format_refusal(lender, advertised_format)
+            if mismatch is not None:
+                raise _ObjectFormatRefusedError(mismatch.message)
+            _note(on_note, f"borrowing objects from {show_path(lender.root)}")
+            if await asyncio.to_thread(os.path.exists, lender.common_dir / "shallow"):
+                _note(on_note, "history is shallow, as the checkout's is")
         # No ``--ref-format=files``: the flag arrived in Git 2.45 and the admitted
         # floor is 2.43. The isolated environment drops GIT_DEFAULT_REF_FORMAT and
         # reads no user configuration, so nothing ambient selects reftable.
@@ -422,12 +506,37 @@ async def acquire_into_staging(
         for key, value in _STORE_CONFIG:
             await _run(["config", key, value], git_dir=git_dir)
         await _run(["config", "remote.origin.url", remote_url], git_dir=git_dir)
-        _report(on_phase, "fetching every object")
+        negotiation: tuple[str, ...] = ()
+        borrowed = lender.record if lender is not None else None
+        if lender is not None and borrowed is not None:
+            # Admission can change while the origin is probed or staging is opened.
+            # Recheck before any Git process can read through the lender's objects.
+            checked = await asyncio.to_thread(check_lender, lender.root, source)
+            if isinstance(checked, LenderRefusal):
+                raise CheckoutRefusedError(checked.message)
+            if checked.record != borrowed or checked.object_format != lender.object_format:
+                raise CheckoutRefusedError("the checkout changed while preparing its store")
+            for key, value in _OVERLAY_CONFIG:
+                await _run(["config", key, value], git_dir=git_dir)
+            await asyncio.to_thread(attach_lender, git_dir, borrowed)
+            require_no_hierarchy_locks("git")
+            negotiation = await negotiation_tip_args(
+                repository_store_target(git_dir=git_dir),
+                borrowed,
+                preferred=default_remote_ref.removeprefix(BRANCH_MIRROR_PREFIX),
+            )
+        _report(on_phase, "fetching every object" if lender is None else "fetching what it lacks")
         try:
-            # Every object: a published store is complete, so no read ever needs the
-            # origin again, and an origin that would honor a filter is not asked to.
+            # Every object, or for an overlay every object the checkout lacks: nothing is
+            # filtered, so no read ever needs the origin again, and an origin that would
+            # honor a filter is not asked to.
             updated = await _run(
-                mirror_fetch_args(remote_url, prune=False, progress=on_progress is not None),
+                mirror_fetch_args(
+                    remote_url,
+                    prune=False,
+                    progress=on_progress is not None,
+                    negotiation=negotiation,
+                ),
                 git_dir=git_dir,
                 on_progress=on_progress,
             )
@@ -465,6 +574,7 @@ async def acquire_into_staging(
             default_remote_ref=default_remote_ref,
             default_revision=revision,
             git_version=git_version,
+            lender=borrowed,
             _lock=lock,
         )
     except GeneratorExit:
@@ -482,7 +592,8 @@ class PublishedSource:
 
     ``fetched`` is true when the call that returned it fetched the store from the origin
     just now, so a ref the mirror lacks is not one a second fetch would bring.
-    ``last_fetch_at`` is when the store was last fetched, as its record says.
+    ``last_fetch_at`` is when the store was last fetched, as its record says. ``lender``
+    is what an overlay store borrows from, and ``None`` for a full store.
     """
 
     home: Path
@@ -497,6 +608,7 @@ class PublishedSource:
     default_revision: str
     fetched: bool = field(default=False, compare=False)
     last_fetch_at: str | None = field(default=None, compare=False)
+    lender: StoreLender | None = field(default=None, compare=False)
 
 
 def _touch_last_opened(published: PublishedSource) -> None:
@@ -555,6 +667,7 @@ def _write_store_records(staged: StagingAcquisition, store_id: str, at: str) -> 
                 git_version=staged.git_version,
                 object_format=staged.object_format,
             ),
+            lender=staged.lender,
         ),
         REPOSITORY_STORE_CONTRACT_ID,
     )
@@ -643,6 +756,7 @@ def _published(
     default_remote_ref: str,
     default_revision: str,
     last_fetch_at: str | None,
+    lender: StoreLender | None,
 ) -> PublishedSource:
     return PublishedSource(
         home=home,
@@ -656,6 +770,7 @@ def _published(
         default_remote_ref=default_remote_ref,
         default_revision=default_revision,
         last_fetch_at=last_fetch_at,
+        lender=lender,
     )
 
 
@@ -727,10 +842,28 @@ def _publish_store_and_alias(
                 state.default_remote_ref,
                 state.default_revision,
                 state.last_fetch_at,
+                store.lender,
             )
     finally:
         if alias_lock.held:
             alias_lock.release()
+
+
+def _require_consistent_borrowing(git_dir: Path, lender: StoreLender | None) -> None:
+    """Refuse a store whose alternates file is not what its record says it borrows.
+
+    A cache that was tampered with cannot point reads at another directory this way, and
+    a store with no alternates file whose record says it has one would answer ``missing``
+    for every borrowed object.
+    """
+
+    named = read_alternates(git_dir)
+    if named != (lender.objects if lender is not None else None):
+        raise StoreDamagedError(
+            "this cached store's record of what it borrows disagrees with its objects/info/"
+            "alternates file (damaged), so it was not opened. Move the cache directory aside, "
+            "or set METABROWSER_CACHE_DIR to a different directory"
+        )
 
 
 def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
@@ -785,6 +918,7 @@ def _find_published(source: GitSource, home: Path) -> PublishedSource | None:
         state.default_remote_ref,
         state.default_revision,
         state.last_fetch_at,
+        store.lender,
     )
 
 
@@ -817,6 +951,10 @@ async def acquire_source(
     home: Path,
     on_phase: PhaseReporter | None = None,
     on_progress: ProgressReporter | None = None,
+    checkout: Path | None = None,
+    on_note: NoteReporter | None = None,
+    inspecting: bool = False,
+    allow_clone_fallback: bool = True,
 ) -> PublishedSource:
     """Return a published ``file://`` or ``https://`` source, fetching only on a miss.
 
@@ -830,6 +968,17 @@ async def acquire_source(
     opens the cache (and sweeps staging) and fetches, telling *on_phase* each phase
     as it starts and *on_progress* how far the fetch has got. A future layout is refused
     before any write.
+
+    *checkout* is what the reader named with ``--checkout``: on a miss it lends its objects
+    if it can, and needs no size check, since only what it lacks is fetched; a checkout of
+    another repository is refused. *on_note* is told what a reader should know about
+    storage, one line each. Without *checkout*, a command that asks for notes is told when
+    its working directory is a checkout of the source, which is never borrowed from
+    unnamed. An overlay whose checkout has gone is refused unless *inspecting*, which is
+    the cache routes: they read records and no object.
+    With *allow_clone_fallback* false, an unavailable lender or mismatched object format
+    raises ``CheckoutRefusedError`` instead of creating a full clone. A healthy published
+    store is still reused, including a full store.
     """
 
     if source.transport not in _ACQUIRED_TRANSPORTS:
@@ -842,18 +991,210 @@ async def acquire_source(
         functools.partial(_find_or_open_cache, source, home, open_on_miss=False)
     )
     if found is not None:
-        return found
-    await check_first_clone(source)
+        return await _settled_hit(found, checkout, on_note, inspecting=inspecting)
+    lender = await _lender_for_miss(
+        source, checkout, on_note, allow_clone_fallback=allow_clone_fallback
+    )
+    if lender is None:
+        await check_first_clone(source)
     found, home = await run_lock_section(functools.partial(_find_or_open_cache, source, home))
     if found is not None:
-        return found
-    staged = await acquire_into_staging(
-        source, home=home, on_phase=on_phase, on_progress=on_progress
-    )
+        return await _settled_hit(found, checkout, on_note, inspecting=inspecting)
+    try:
+        staged = await acquire_into_staging(
+            source,
+            home=home,
+            on_phase=on_phase,
+            on_progress=on_progress,
+            lender=lender,
+            on_note=on_note,
+        )
+    except _ObjectFormatRefusedError as exc:
+        if not allow_clone_fallback:
+            raise CheckoutRefusedError(str(exc)) from exc
+        # The origin's format is known only after the phase line was printed, so this
+        # note comes after "cloning ... into": it says the clone is instead of borrowing.
+        _note(on_note, f"{exc}; cloning instead")
+        await check_first_clone(source)
+        staged = await acquire_into_staging(
+            source, home=home, on_phase=on_phase, on_progress=on_progress
+        )
     _report(on_phase, "publishing")
     published = await run_lock_section(functools.partial(_publish_and_touch, staged))
     _report(on_phase, "done")
     return dataclasses.replace(published, fetched=True)
+
+
+async def _lender_for_miss(
+    source: GitSource,
+    checkout: Path | None,
+    on_note: NoteReporter | None,
+    *,
+    allow_clone_fallback: bool = True,
+) -> Lender | None:
+    """The checkout to borrow from when *source* has no store yet, saying what is decided."""
+
+    if checkout is None:
+        if not allow_clone_fallback:
+            raise CheckoutRefusedError("a checkout is required to borrow objects")
+        if on_note is not None:
+            await asyncio.to_thread(_suggest_checkout, source, on_note)
+        return None
+    checked = await asyncio.to_thread(check_lender, checkout, source)
+    if isinstance(checked, LenderRefusal):
+        if not allow_clone_fallback:
+            raise CheckoutRefusedError(checked.message)
+        _note(on_note, f"{checked.message}; cloning")
+        return None
+    return checked
+
+
+def _suggest_checkout(source: GitSource, on_note: NoteReporter) -> None:
+    try:
+        working_directory = Path.cwd()
+    except OSError:
+        return
+    suggested = suggested_checkout(source, working_directory)
+    if suggested is not None:
+        on_note(
+            f"this directory is a checkout of {source.normalized}; to borrow its objects "
+            f"instead of cloning: {checkout_command(source.normalized, suggested)}"
+        )
+
+
+async def _settled_hit(
+    found: PublishedSource,
+    checkout: Path | None,
+    on_note: NoteReporter | None,
+    *,
+    inspecting: bool,
+) -> PublishedSource:
+    """A published store as this command may use it; a published store always wins.
+
+    A named checkout is checked first, whatever the store, so a path that is no checkout
+    of the repository is refused the same way on every hit. It changes nothing about a
+    full store or a healthy overlay. It repairs an overlay whose checkout cannot be used
+    any more (:func:`_lender_problem`), once it has passed the checks a new overlay's
+    checkout does, and finishes a repair that stopped before its record was written. A
+    cache route (*inspecting*) reads records and no object, and reports what these checks
+    refuse.
+    """
+
+    if inspecting:
+        if checkout is not None:
+            _note(
+                on_note,
+                "--checkout is not applied to a cache route, which reads records and no "
+                "object; run the command with a source route to repair the mirror",
+            )
+        return found
+    recorded = found.lender
+    checked: Lender | LenderRefusal | None = None
+    if checkout is not None:
+        checked = await asyncio.to_thread(check_lender, checkout, found.source)
+        if recorded is not None and isinstance(checked, Lender):
+            named = checked.record
+            if (
+                named.objects != recorded.objects
+                and await asyncio.to_thread(read_alternates, found.git_dir) == named.objects
+            ):
+                # A repair stopped after the alternates file and before the record:
+                # finish it, rather than refuse the half-written store as damaged.
+                _note(on_note, f"borrowing objects from {show_path(checked.root)}")
+                return await run_lock_section(functools.partial(_rebind, found, named))
+    await asyncio.to_thread(_require_consistent_borrowing, found.git_dir, recorded)
+    if recorded is None:
+        if checkout is not None:
+            _note(
+                on_note,
+                f"a full mirror of {found.source.normalized} is already in the cache, and it "
+                "is kept: --checkout borrowed nothing. This release has no command that "
+                "converts it; to borrow instead, delete the mirror from the cache and run "
+                "this command again",
+            )
+        return found
+    problem = await asyncio.to_thread(_lender_problem, recorded, found.source)
+    if checkout is None:
+        if problem is not None:
+            raise LenderMissingError(found.source.normalized, recorded, problem)
+        return found
+    if problem is None:
+        if isinstance(checked, Lender) and checked.record.objects == recorded.objects:
+            return found
+        _note(
+            on_note,
+            f"this mirror already borrows objects from {show_path(recorded.checkout)}, and it "
+            "keeps doing so: --checkout changed nothing",
+        )
+        return found
+    if isinstance(checked, Lender):
+        mismatch = object_format_refusal(checked, found.object_format)
+        checked = mismatch if mismatch is not None else checked
+    if isinstance(checked, LenderRefusal):
+        raise CheckoutRefusedError(f"--checkout cannot repair this mirror: {checked.message}")
+    assert checked is not None
+    _note(on_note, f"borrowing objects from {show_path(checked.root)}")
+    return await run_lock_section(functools.partial(_rebind, found, checked.record))
+
+
+def _lender_problem(recorded: StoreLender, source: GitSource) -> str | None:
+    """Why the recorded lender cannot be used at open, or ``None``: blocking and bounded.
+
+    The cheap checks every fetch repeats (:func:`~metabrowser.cache.lender.lender_problem`),
+    and then the ones a new lender passes, since the directory may now hold another
+    repository, or a clone that can no longer lend.
+    """
+
+    problem = lender_problem(recorded)
+    if problem is not None:
+        return problem
+    try:
+        checked = check_lender(Path(recorded.checkout), source)
+    except CheckoutRefusedError as exc:
+        return f"the checkout this mirror borrows objects from is not one any more ({exc})"
+    if isinstance(checked, LenderRefusal):
+        return f"the checkout this mirror borrows objects from cannot lend: {checked.message}"
+    if checked.record.objects != recorded.objects:
+        return "the checkout this mirror borrows objects from now keeps its objects elsewhere"
+    return None
+
+
+def _rebind(found: PublishedSource, lender: StoreLender) -> PublishedSource:
+    """Point an overlay whose checkout cannot be used at *lender*, under both of its locks.
+
+    The fetch lock first, as every fetch into the store takes it before the store lock:
+    a refresh or a deepening round in flight reads the alternates file and writes the
+    boundary, and neither may change under it. A fetch that holds the lock now is
+    refused rather than waited on, which the caller reports as a refresh elsewhere.
+
+    A write the disk refuses stops the repair with :class:`AcquisitionError`, whose text
+    names the reason and no path. The record is written last, so it still names the old
+    checkout: either nothing changed, or the alternates file names the new one and the
+    store is refused as damaged until the same command finishes the repair.
+    """
+
+    relative = store_record(found.store_key, "store.yml")
+    fetch_lock = store_fetch_lock(found.home, found.store_key, order=lock_order())
+    try:
+        with repository_store_lock(found.home, found.store_key):
+            store = _require_same_store(found.home, found.store_key, found.store_id)
+            try:
+                rebind_lender(found.git_dir, lender)
+                write_record_atomic(
+                    found.home,
+                    relative,
+                    store.model_copy(update={"lender": lender}),
+                    REPOSITORY_STORE_CONTRACT_ID,
+                )
+            except OSError as exc:
+                reason = exc.strerror or type(exc).__name__
+                raise AcquisitionError(
+                    f"the mirror could not be repaired: {reason}; the same command finishes "
+                    "the repair once its cache can be written"
+                ) from exc
+    finally:
+        fetch_lock.release()
+    return dataclasses.replace(found, lender=lender)
 
 
 def _find_or_open_cache(
@@ -901,6 +1242,8 @@ __all__ = [
     "AcquisitionError",
     "AliasConflictError",
     "FetchFailedError",
+    "LenderMissingError",
+    "NoteReporter",
     "PartialCloneSourceError",
     "PhaseReporter",
     "ProgressReporter",
@@ -910,6 +1253,7 @@ __all__ = [
     "RemoteUnavailableError",
     "RepositoryTooLargeError",
     "StagingAcquisition",
+    "StoreDamagedError",
     "ValidationFailedError",
     "acquire_into_staging",
     "acquire_source",

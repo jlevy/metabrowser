@@ -26,7 +26,8 @@ from pathlib import Path
 import pytest
 
 import metabrowser
-from metabrowser.dotenv import ALLOWED_KEYS, load_dotenv_chain
+from metabrowser import dotenv as dotenv_module
+from metabrowser.dotenv import ALLOWED_KEYS, MAX_DOTENV_BYTES, load_dotenv_chain
 
 
 def test_load_dotenv_chain_picks_up_env_var(tmp_path: Path, monkeypatch) -> None:
@@ -108,6 +109,268 @@ def test_dotenv_contributes_nothing_outside_the_allowlist(
     # The allowlisted key still loads: this is a filter, not a refusal
     # of the file.
     assert os.environ.get("METABROWSER_LOG_LEVEL") == "DEBUG"
+
+
+def test_a_refused_name_cannot_act_on_the_terminal_it_is_reported_to(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The names and the directory are the browsed repository's, and a log goes to a terminal.
+
+    Raw, the escape sequences colour or erase the one line that reports the names were
+    ignored, a bidirectional override reorders it, and a quoted key's line break prints a
+    line of the file's choosing. The warning shows each as a visible escape.
+    """
+
+    root = tmp_path / "repo\x1b[2J"
+    root.mkdir()
+    (root / ".env").write_text(
+        "METABROWSER_\x1b[31mRED\x1b[0m=1\n"
+        "'METABROWSER_A\nFORGED: a line of its own'=1\n"
+        "METABROWSER_B\x08ERASED=1\n"
+        "METABROWSER_\u202eBIDI=1\n"
+        "METABROWSER_雪=1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(root)
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.dotenv"):
+        load_dotenv_chain()
+
+    message = next(
+        record.getMessage() for record in caplog.records if "ignored" in record.getMessage()
+    )
+    assert not {"\x1b", "\n", "\x08", "\u202e"} & set(message)
+    assert "repo\\x1b[2J/.env: ignored " in message
+    assert "METABROWSER_\\x1b[31mRED\\x1b[0m" in message
+    assert "METABROWSER_A\\nFORGED: a line of its own" in message
+    assert "METABROWSER_B\\x08ERASED" in message
+    assert "METABROWSER_\\u202eBIDI" in message
+    # A name a terminal only prints is left readable.
+    assert "METABROWSER_雪" in message
+
+
+def test_a_file_that_is_not_text_does_not_stop_the_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A browsed repository could otherwise keep the browser from opening it at all."""
+
+    root = tmp_path / "repo\x1b[2J"
+    root.mkdir()
+    env = root / ".env"
+    env.write_bytes(b"METABROWSER_LOG_LEVEL=DEBUG\n\xff\xfe\n")
+    (root / ".env.local").write_text("METABROWSER_REQUEST_LOG=1\n", encoding="utf-8")
+    monkeypatch.chdir(root)
+    monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
+    monkeypatch.delenv("METABROWSER_REQUEST_LOG", raising=False)
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.dotenv"):
+        parsed = load_dotenv_chain()
+
+    # The other file still loads, and the bad one is not claimed as parsed.
+    assert parsed == [root / ".env.local"]
+    assert os.environ.get("METABROWSER_REQUEST_LOG") == "1"
+    assert "METABROWSER_LOG_LEVEL" not in os.environ
+    message = next(
+        record.getMessage() for record in caplog.records if "skipped" in record.getMessage()
+    )
+    assert "\x1b" not in message
+    assert "repo\\x1b[2J/.env: skipped" in message
+    assert "UnicodeDecodeError" in message
+
+
+# Prints what the chain parsed and every warning, in a process of its own: a file that
+# blocks would otherwise hang the test run, and it is the block being tested.
+_LOAD_THE_CHAIN = (
+    "import logging, sys\n"
+    "from metabrowser.dotenv import load_dotenv_chain\n"
+    "logging.basicConfig(stream=sys.stdout, format='warning: %(message)s')\n"
+    "print('parsed:', [p.name for p in load_dotenv_chain()])\n"
+)
+
+
+def _load_in_a_process(root: Path, stdin: int | None = subprocess.DEVNULL) -> str:
+    """The chain's report from *root*; a chain that blocks raises ``TimeoutExpired``.
+
+    A *stdin* of ``subprocess.PIPE`` is left open and unwritten for as long as it runs.
+    """
+
+    with subprocess.Popen(
+        [sys.executable, "-c", _LOAD_THE_CHAIN],
+        cwd=root,
+        stdin=stdin,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    ) as process:
+        try:
+            assert process.stdout is not None
+            # A generous limit on a loaded machine: the import is what takes the time.
+            process.wait(timeout=30)
+            return process.stdout.read()
+        finally:
+            process.kill()
+
+
+def _a_fifo(root: Path) -> None:
+    os.mkfifo(root / ".env")
+
+
+def _a_link_to_a_fifo(root: Path) -> None:
+    os.mkfifo(root / "elsewhere")
+    (root / ".env").symlink_to(root / "elsewhere")
+
+
+@pytest.mark.parametrize("make", [_a_fifo, _a_link_to_a_fifo])
+def test_a_fifo_does_not_block_the_command(tmp_path: Path, make) -> None:
+    """A clone can carry a link, and opening a FIFO waits for a writer that never comes."""
+
+    make(tmp_path)
+    (tmp_path / ".env.local").write_text("METABROWSER_REQUEST_LOG=1\n", encoding="utf-8")
+
+    report = _load_in_a_process(tmp_path)
+
+    assert "/.env: skipped, because it is not a regular file." in report
+    assert "parsed: ['.env.local']" in report
+
+
+def test_a_link_to_a_pipe_on_stdin_does_not_block_the_command(tmp_path: Path) -> None:
+    """The link a clone can carry and a harness can complete, by piping `metab` its stdin."""
+
+    (tmp_path / ".env").symlink_to("/dev/stdin")
+
+    report = _load_in_a_process(tmp_path, stdin=subprocess.PIPE)
+
+    assert "/.env: skipped, because it is not a regular file." in report
+    assert "parsed: []" in report
+
+
+@pytest.mark.parametrize("make", ["directory", "link to a directory", "link to a device"])
+def test_what_is_not_a_file_is_passed_over(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, make: str
+) -> None:
+    """A dotenv file further up still counts, and nothing is said about the one that is not.
+
+    This holds without the regular-file check too: ``find_dotenv`` refuses these itself, so
+    the check is the second line for them. It pins the first, which a python-dotenv upgrade
+    could move.
+    """
+
+    below = tmp_path / "repo"
+    below.mkdir()
+    (tmp_path / ".env").write_text("METABROWSER_LOG_LEVEL=DEBUG\n", encoding="utf-8")
+    (tmp_path / "a-directory").mkdir()
+    if make == "directory":
+        (below / ".env").mkdir()
+    else:
+        target = tmp_path / "a-directory" if make == "link to a directory" else "/dev/zero"
+        (below / ".env").symlink_to(target)
+    monkeypatch.chdir(below)
+    monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.dotenv"):
+        parsed = load_dotenv_chain()
+
+    assert parsed == [tmp_path / ".env"]
+    assert os.environ.get("METABROWSER_LOG_LEVEL") == "DEBUG"
+    assert not caplog.records
+
+
+def test_a_file_over_the_cap_is_skipped_with_one_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Parsing it could hold the command for minutes, and an honest dotenv file is kilobytes."""
+
+    binding = "METABROWSER_LOG_LEVEL=DEBUG\n"
+    (tmp_path / ".env").write_text(binding + "#" * MAX_DOTENV_BYTES, encoding="utf-8")
+    (tmp_path / ".env.local").write_text("METABROWSER_REQUEST_LOG=1\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
+    monkeypatch.delenv("METABROWSER_REQUEST_LOG", raising=False)
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.dotenv"):
+        parsed = load_dotenv_chain()
+        again = load_dotenv_chain()
+
+    assert parsed == again == [tmp_path / ".env.local"]
+    assert "METABROWSER_LOG_LEVEL" not in os.environ
+    assert os.environ.get("METABROWSER_REQUEST_LOG") == "1"
+    skipped = [record.getMessage() for record in caplog.records]
+    assert skipped == [f"{tmp_path}/.env: skipped, because it is larger than 64 KB."]
+
+
+def test_a_file_at_the_cap_is_parsed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    binding = "METABROWSER_LOG_LEVEL=DEBUG\n"
+    env = tmp_path / ".env"
+    env.write_text(binding + "#" * (MAX_DOTENV_BYTES - len(binding)), encoding="utf-8")
+    assert env.stat().st_size == MAX_DOTENV_BYTES
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
+
+    assert load_dotenv_chain() == [env]
+    assert os.environ.get("METABROWSER_LOG_LEVEL") == "DEBUG"
+
+
+def test_a_value_is_not_expanded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Expansion is what makes a parse quadratic, and neither allowed name needs it."""
+
+    (tmp_path / ".env").write_text(
+        "METABROWSER_LOG_LEVEL=${HOME}\nMETABROWSER_REQUEST_LOG=${METABROWSER_LOG_LEVEL}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
+    monkeypatch.delenv("METABROWSER_REQUEST_LOG", raising=False)
+
+    load_dotenv_chain()
+
+    assert os.environ.get("METABROWSER_LOG_LEVEL") == "${HOME}"
+    assert os.environ.get("METABROWSER_REQUEST_LOG") == "${METABROWSER_LOG_LEVEL}"
+
+
+def test_a_file_of_bad_statements_warns_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """python-dotenv warns per statement, which the file could make a screenful of screens."""
+
+    (tmp_path / ".env").write_text("=\n" * 100 + "METABROWSER_LOG_LEVEL=DEBUG\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("METABROWSER_LOG_LEVEL", raising=False)
+
+    with caplog.at_level(logging.WARNING, logger="dotenv.main"):
+        load_dotenv_chain()
+        load_dotenv_chain()
+
+    assert len(caplog.records) == 1
+    assert "starting at line 1" in caplog.records[0].getMessage()
+    # The filter was for that parse, and a good binding in the file still counts.
+    assert not logging.getLogger("dotenv.main").filters
+    assert os.environ.get("METABROWSER_LOG_LEVEL") == "DEBUG"
+
+
+def test_the_skip_warning_is_said_once_for_each_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Each of the chain's bootstrap points would otherwise repeat it."""
+
+    first = tmp_path / "first"
+    first.mkdir()
+    (first / ".env").write_bytes(b"\xff")
+    second = tmp_path / "second"
+    second.mkdir()
+    (second / ".env").write_bytes(b"\xff")
+    monkeypatch.setattr(dotenv_module, "_reported", set())
+
+    with caplog.at_level(logging.WARNING, logger="metabrowser.dotenv"):
+        monkeypatch.chdir(first)
+        load_dotenv_chain()
+        load_dotenv_chain()
+        monkeypatch.chdir(second)
+        load_dotenv_chain()
+
+    assert [record.getMessage().split(":")[0] for record in caplog.records] == [
+        str(first / ".env"),
+        str(second / ".env"),
+    ]
 
 
 def test_every_allowlisted_key_is_one_the_package_reads() -> None:

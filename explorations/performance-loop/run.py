@@ -1862,7 +1862,7 @@ def _experiment_records() -> list[dict[str, Any]]:
     """The YAML front matter of every experiment artifact, id-ordered.
 
     Parsed with a deliberately small reader rather than a YAML dependency:
-    the ledger needs six scalars out of the verdict block, and the artifacts
+    the ledger needs a few scalars out of the front matter, and the artifacts
     are schema-validated by `softschema validate` anyway, which is where a
     malformed one should fail.
     """
@@ -1886,6 +1886,9 @@ def _experiment_records() -> list[dict[str, Any]]:
                 match = re.search(rf"^    {key}: \"?([^\"\n]+)\"?$", verdict[1], re.MULTILINE)
                 if match:
                     record[key] = match.group(1).strip()
+        bytecode = re.search(r"^    bytecode: [\"']?(\w+)[\"']?$", front, re.MULTILINE)
+        if bytecode:
+            record["bytecode"] = bytecode.group(1)
         experiment_id = record.get("id")
         if isinstance(experiment_id, str):
             earlier = paths_by_id.get(experiment_id)
@@ -1915,6 +1918,10 @@ _DECISION_MARK = {
     "superseded": "superseded",
     "baseline": "baseline",
     "unresolved": "unresolved",
+}
+_BYTECODE_MARK = {
+    "cached": "measured with compiled bytecode",
+    "uncached": "measured without compiled bytecode",
 }
 
 
@@ -1960,9 +1967,15 @@ def cmd_report(_args: argparse.Namespace) -> int:
             # A round accepted on other grounds still shows the metric it named,
             # with the direction marked. Quietly swapping in whichever metric
             # passed is the exact dishonesty the accept rule forbids.
-            note = ""
+            notes: list[str] = []
             if float(after.replace(",", "")) >= float(before.replace(",", "")):
-                note = " (accepted on other grounds; see the round)"
+                notes.append("accepted on other grounds; see the round")
+            # A start's figures are about a third of themselves once it has bytecode, so
+            # one read without the state reads as this build's cost.
+            state = _BYTECODE_MARK.get(str(record.get("bytecode", "")))
+            if state:
+                notes.append(state)
+            note = f" ({'; '.join(notes)})" if notes else ""
             add(f"| `{metric}` | {before} | **{after}**{note} | {record.get('id')} |")
         add("")
         add("Each row is one round's own control and candidate on the same corpus and")

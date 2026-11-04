@@ -122,6 +122,8 @@ status: 200
   "name": null,
   "origin": null,
   "location": null,
+  "borrows": null,
+  "shallow": false,
   "refreshable": false,
   "latest": null,
   "ref_on_origin": null,
@@ -477,6 +479,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-comparison",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-markdown",
       "methods": [
         "GET",
@@ -655,7 +665,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 48
+  "count": 49
 }
 ? 0
 ```

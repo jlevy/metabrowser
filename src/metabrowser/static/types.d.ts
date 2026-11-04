@@ -4,7 +4,12 @@ type MetabrowserRenderContext = {
   /** A Git revision, when a surface asks a view for a comparison rather than a file. */
   revision?: string;
   /** Two endpoints, when a surface asks the diff view for a comparison between them. */
-  comparison?: { left: string; right: string; base_policy: "direct" | "merge_base" };
+  comparison?: {
+    left: string;
+    right: string;
+    base_policy: "direct" | "merge_base";
+    route?: string;
+  };
   /** The served pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
@@ -16,6 +21,19 @@ type MetabrowserRenderContext = {
 type MetabrowserViewSpec = {
   render: (container: HTMLElement, ctx: MetabrowserRenderContext) => unknown;
   dispose?: (container: HTMLElement) => void;
+  /**
+   * What `render` would fetch for a comparison, fetched before the view is shown, at the
+   * address `render` asks, so the browser's cache answers the render. The diff view has one.
+   */
+  prefetch?: (
+    comparison: {
+      left: string;
+      right: string;
+      base_policy: "direct" | "merge_base";
+      route?: string;
+    },
+    signal?: AbortSignal,
+  ) => Promise<unknown>;
 };
 
 type MetabrowserViewDescriptor = {
@@ -461,6 +479,7 @@ type MetabrowserPullRouteRuntime = Readonly<{
     show(
       route: Readonly<{ number: number; tab: string }>,
     ): Promise<{ status: "opened" | "cancelled" }>;
+    page(): Handle | null;
     shown(): number | null;
   }>;
   parsePull(pathname: string): Readonly<{ number: number; tab: string }> | null;
@@ -685,7 +704,7 @@ type MetabrowserFilterControls = {
     className?: string;
     key: string;
     label: string;
-    title?: string;
+    tip?: string;
   }): string;
   clearHtml(spec?: { className?: string; label?: string }): string;
   escapeHtml(value: unknown): string;
@@ -862,6 +881,7 @@ type MetabrowserFolderEnvelope = {
   dir: {
     gitignored: boolean;
     mtime: number | null;
+    not_indexed?: "hidden" | "symlink";
     state: "pending" | "complete";
     total_files: number | null;
     total_size: number | null;
@@ -1009,6 +1029,7 @@ type MetabrowserSdk = {
   fileTypes: MetabrowserFileTypeTaxonomyRuntime;
   fileTypeClass(path: string): string;
   fileTypeIcon(path: string): MetabrowserFileTypeIcon;
+  formatAge(secondsSinceEpoch: number): { label: string; className: string };
   formatTimestamp(secondsSinceEpoch: number): string;
   prefs: {
     get<T>(name: string, fallback: T): T;
@@ -1676,6 +1697,9 @@ type MetabrowserCatalogFeedApi = Readonly<{
   onResync(): void;
   onSentinelSnapshot(): void;
   start(): void;
+  /** Keep the bulk fetch from starting until `release`. */
+  hold(): void;
+  release(): void;
 }>;
 
 type MetabrowserCatalogFeedRuntime = Readonly<{
@@ -1849,6 +1873,7 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
     getFileIcon?(path: string): { cls?: string; svg?: string };
     maxRows?: number;
     onNotFound?(path: string): void | Promise<void>;
+    onOpen?(): void;
     openFile(path: string): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
     overlay: MetabrowserOverlayRuntime;
     resolveFocusFallback?(previous: HTMLElement | null): HTMLElement | null;
@@ -2231,6 +2256,10 @@ declare global {
     pull_request: number | null;
     selection_state: "pending" | "found" | "not_found" | "fetch_failed" | "superseded" | null;
     selection_href: string | null;
+    /** The checkout a mirror borrows objects from, beside `location`; null otherwise. */
+    borrows: string | null;
+    /** Whether the mirror's history stops at a shallow boundary. */
+    shallow: boolean;
   };
 
   /** The pin and ref a page was rendered for. */
@@ -2264,6 +2293,7 @@ declare global {
     keepsImage(src: string | null, base: string | null): boolean;
     linkHref(href: string | null, base: string | null): { href: string; leaves: boolean } | null;
     outsideLink(href: string | null, base: string | null): string | null;
+    kpressProse(nodes: Node[], doc: Document): HTMLElement;
     sanitizeHtml(html: string, base: string | null): Node[];
     sanitizeNodes(
       nodes: ArrayLike<Node>,
@@ -2289,7 +2319,7 @@ declare global {
    * again. `failed` is a commit route that failed, which says nothing about the commit.
    */
   type MetabrowserMissingCommitModel = {
-    state: "pending" | "not_found" | "fetch_failed" | "failed";
+    state: "pending" | "not_found" | "not_full" | "fetch_failed" | "failed";
     title: string;
     detail: string;
     retry: boolean;
@@ -2463,7 +2493,9 @@ declare global {
   type MetabrowserSourceRefSelectorParts = {
     root: HTMLElement;
     toggle: HTMLButtonElement;
+    label: HTMLElement;
     panel: HTMLElement;
+    kinds: HTMLElement;
     tabs: Record<MetabrowserSourceRefKind, HTMLButtonElement>;
     filter: HTMLInputElement;
     list: HTMLElement;
@@ -2526,13 +2558,17 @@ declare global {
     similarity?: number;
   };
 
+  /**
+   * Every count is null for a commit at a shallow boundary, whose changes are not known
+   * here; the panel shows `?` for each, and the comparison says `parent_unavailable`.
+   */
   type MetabrowserGitCommitStats = {
-    files_changed: number;
-    files_modified: number;
-    files_added: number;
-    files_deleted: number;
-    additions: number;
-    deletions: number;
+    files_changed: number | null;
+    files_modified: number | null;
+    files_added: number | null;
+    files_deleted: number | null;
+    additions: number | null;
+    deletions: number | null;
   };
 
   type MetabrowserGitCommitDetail = {
@@ -2768,6 +2804,10 @@ declare global {
     /** Container kinds by extension; see arch-nav-containers.md. */
     METABROWSER_CONTAINER_EXTS?: Record<string, { kind: string; plugin: string; children: string }>;
     METABROWSER_SETTINGS?: {
+      /** This build's tag, which a request names to be told its answer cannot change. */
+      BUILD_TAG?: string;
+      /** The served store's token, named beside the build for the same reason; a folder has none. */
+      STORE_TAG?: string;
       CAPABILITIES?: {
         active_content: boolean;
         mutations: boolean;

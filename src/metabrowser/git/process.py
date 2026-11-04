@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
 import os
 import re
@@ -116,6 +117,11 @@ class GitProcessPolicy:
     no_lazy_fetch: bool
     ssh_batch: bool = False
     extra_env: Mapping[str, str] | None = None
+    # Read a store's attributes from its empty tree, so no commit's ``.gitattributes``
+    # reaches a read of it: Git 2.43 reads a bare repository's attributes from ``HEAD``,
+    # which a fetch moves, and 2.50 reads no commit's; ``GIT_ATTR_SOURCE`` names the tree
+    # on both. Applied to a spawn on a ``RepositoryStoreTarget``; a worktree keeps its own.
+    attributes_from_empty_tree: bool = False
     # Start Git as the leader of its own process group so a timeout or a
     # cancellation kills the helpers it forks (``upload-pack``, ``index-pack``,
     # ``remote-https``), not only the ``git`` process itself. The terminal's
@@ -157,6 +163,19 @@ ACQUISITION_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
 # ``rev-list``, ``show``, ``diff``. The store holds untrusted content, so the
 # isolation is acquisition-grade and lazy fetch is off. The deadline is the
 # request-path one, because a request is waiting on the answer.
+#
+# A store's answer must be the same for every reader, so its reads see no attributes of the
+# reader's either: Git reads ``$XDG_CONFIG_HOME/git/attributes``, else
+# ``$HOME/.config/git/attributes``, and the system file, whatever ``GIT_CONFIG_*`` say,
+# and ``*.lock -diff`` there turned a comparison's text files binary (review of #284).
+# ``HOME`` and ``XDG_CONFIG_HOME`` hold nothing, as acquisition's ``HOME`` does; nothing a
+# store read runs needs either, and Git is quiet about a path under ``/dev/null``.
+#
+# Nor a commit's: the same answer on every Git the floor admits means the attributes come
+# from the store's empty tree (``attributes_from_empty_tree``), since Git 2.43 reads a bare
+# repository's from ``HEAD``, which a fetch moves, and 2.50 reads none. What a store read
+# honors is the store's own ``info/attributes``, which Git reads whatever else is set.
+_NO_USER_ATTRIBUTES: Final[dict[str, str]] = {"HOME": os.devnull, "XDG_CONFIG_HOME": os.devnull}
 STORE_READ_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     name="store-read",
     timeout_s=GIT_SUBPROCESS_TIMEOUT_S,
@@ -166,7 +185,8 @@ STORE_READ_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     isolate_user_config=True,
     no_lazy_fetch=True,
     ssh_batch=True,
-    extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C"},
+    extra_env={"GCM_INTERACTIVE": "never", "LC_ALL": "C", **_NO_USER_ATTRIBUTES},
+    attributes_from_empty_tree=True,
 )
 BATCH_OBJECT_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     name="batch-object",
@@ -176,7 +196,52 @@ BATCH_OBJECT_POLICY: Final[GitProcessPolicy] = GitProcessPolicy(
     child_umask=0o077,
     isolate_user_config=True,
     no_lazy_fetch=True,
+    extra_env=_NO_USER_ATTRIBUTES,
+    attributes_from_empty_tree=True,
 )
+
+# The object format a store was made with. ``cat-file`` and ``diff`` answer under either;
+# what differs is the length of an object id, and the id of the empty tree.
+type ObjectFormat = Literal["sha1", "sha256"]
+OBJECT_FORMATS: Final[frozenset[str]] = frozenset({"sha1", "sha256"})
+
+# How much of a store's ``config`` is read for its object format. Git writes a store's in a
+# few lines, and ``extensions.objectFormat`` is in the store's own file, never an include.
+_STORE_CONFIG_MAX_BYTES: Final[int] = 64 * 1024
+_CONFIG_SECTION = re.compile(rb"^\s*\[\s*([^\s\]\"]+)")
+_OBJECT_FORMAT_KEY = re.compile(rb"^\s*objectformat\s*=\s*\"?(sha1|sha256)\"?\s*$", re.IGNORECASE)
+
+
+def empty_tree_oid(object_format: ObjectFormat) -> str:
+    """The id of the empty tree under *object_format*: the hash of ``tree 0\\0``, which is
+    what ``git hash-object -t tree /dev/null`` answers, with no Git run."""
+    digest = hashlib.sha256 if object_format == "sha256" else hashlib.sha1
+    return digest(b"tree 0\0").hexdigest()
+
+
+def _store_object_format(git_dir: Path) -> ObjectFormat:
+    """What ``extensions.objectFormat`` in the store's ``config`` says, else SHA-1.
+
+    Git's own rule: the extension names the format, and a repository without it is SHA-1.
+    Read here rather than asked of Git because a target is made on request paths, and a
+    bounded read of a file of a few lines costs nothing a spawn does.
+    """
+    try:
+        with (git_dir / "config").open("rb") as handle:
+            text = handle.read(_STORE_CONFIG_MAX_BYTES)
+    except OSError:
+        return "sha1"
+    in_extensions = False
+    for line in text.splitlines():
+        section = _CONFIG_SECTION.match(line)
+        if section is not None:
+            in_extensions = section.group(1).lower() == b"extensions"
+            continue
+        if in_extensions:
+            found = _OBJECT_FORMAT_KEY.match(line)
+            if found is not None:
+                return "sha256" if found.group(1).lower() == b"sha256" else "sha1"
+    return "sha1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,9 +254,14 @@ class AttachedWorktreeTarget:
 
 @dataclass(frozen=True, slots=True)
 class RepositoryStoreTarget:
-    """A trusted worktree-free Git directory. Construct with the factory."""
+    """A trusted worktree-free Git directory. Construct with the factory.
+
+    ``object_format`` is the store's, read from its ``config`` once when the target is made,
+    so a spawn can name the store's empty tree without asking Git.
+    """
 
     git_dir: Path
+    object_format: ObjectFormat
 
 
 type GitCommandTarget = AttachedWorktreeTarget | RepositoryStoreTarget
@@ -308,11 +378,18 @@ class GitOutputTooLargeError(GitError):
 
 
 class UnsupportedGitVersionError(GitError):
-    """The installed Git is below the acquisition security floor."""
+    """The acquisition security floor refuses this host's Git.
 
-    def __init__(self, detected: str, required: str) -> None:
+    *detected* is the first line ``git version`` printed, empty when it printed nothing
+    usable, and ``None`` when no ``git`` is on ``PATH``: that has no version to blame,
+    so it says what is missing and which release to install.
+    """
+
+    def __init__(self, detected: str | None, required: str) -> None:
         super().__init__(
-            f"unsupported Git version ({detected or 'unparseable'}); "
+            f"git was not found on PATH; acquisition requires Git {required}"
+            if detected is None
+            else f"unsupported Git version ({detected or 'unparseable'}); "
             f"acquisition requires {required}"
         )
         self.detected = detected
@@ -460,7 +537,9 @@ def forget_process_group(proc: asyncio.subprocess.Process) -> None:
     _reaped(proc)
 
 
-def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
+def git_environment(
+    policy: GitProcessPolicy | None = None, *, target: GitCommandTarget | None = None
+) -> dict[str, str]:
     """Environment for a git child process.
 
     Strips the repository-pinning variables above, then:
@@ -472,10 +551,14 @@ def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
     request on a prompt that has no terminal to appear on.
 
     An isolated policy (acquisition, store read, or batch object) also drops every
-    inherited ``GIT_*`` variable, isolates user and system Git configuration,
-    disables implicit lazy fetch, and can force SSH batch mode. Those extras are not
-    applied to ordinary local reads, which keep honoring the caller's Git
+    inherited ``GIT_*`` variable, isolates user and system Git configuration and
+    attributes, disables implicit lazy fetch, and can force SSH batch mode. Those extras
+    are not applied to ordinary local reads, which keep honoring the caller's Git
     environment.
+
+    A policy that reads attributes from the empty tree names the tree of *target*'s
+    object format in ``GIT_ATTR_SOURCE`` when *target* is a store; a worktree's commands
+    read its own attributes, and a spawn with no target has no tree to name.
     """
     env = dict(os.environ)
     for name in _REPO_PINNING_GIT_VARS:
@@ -497,12 +580,16 @@ def git_environment(policy: GitProcessPolicy | None = None) -> dict[str, str]:
         if policy.isolate_user_config:
             env["GIT_CONFIG_GLOBAL"] = os.devnull
             env["GIT_CONFIG_NOSYSTEM"] = "1"
+            # Attributes are not configuration: the system attributes file has its own switch.
+            env["GIT_ATTR_NOSYSTEM"] = "1"
         if policy.no_lazy_fetch:
             env["GIT_NO_LAZY_FETCH"] = "1"
         if policy.ssh_batch:
             env["GIT_SSH_COMMAND"] = "ssh -oBatchMode=yes"
         if policy.extra_env:
             env.update(policy.extra_env)
+        if policy.attributes_from_empty_tree and isinstance(target, RepositoryStoreTarget):
+            env["GIT_ATTR_SOURCE"] = empty_tree_oid(target.object_format)
     return env
 
 
@@ -714,7 +801,7 @@ async def spawn_git_process(
 
     argv = (exe, *GIT_COMMON_ARGS, *prefix, *args)
     child_umask = chosen.child_umask if chosen.child_umask is not None else -1
-    env = git_environment(chosen)
+    env = git_environment(chosen, target=target)
     if chosen.isolate_user_config:
         # A command with no ``--git-dir`` (``ls-remote``, ``init``) still runs
         # repository discovery from its working directory, and a repository that
@@ -857,11 +944,11 @@ def attached_worktree_target(*, worktree: Path, git_dir: Path) -> AttachedWorktr
 
 
 def repository_store_target(*, git_dir: Path) -> RepositoryStoreTarget:
-    """Validate and freeze one worktree-free repository store."""
+    """Validate and freeze one worktree-free repository store, with its object format."""
     resolved = git_dir.expanduser().resolve()
     if not resolved.is_dir():
         raise GitUnavailableError(f"repository store is not a directory: {resolved}")
-    return RepositoryStoreTarget(git_dir=resolved)
+    return RepositoryStoreTarget(git_dir=resolved, object_format=_store_object_format(resolved))
 
 
 def parse_git_version(text: str) -> tuple[int, int, int] | None:
@@ -929,10 +1016,11 @@ def detect_git_version() -> tuple[tuple[int, int, int] | None, str]:
 
 
 def require_acquisition_git() -> tuple[int, int, int]:
-    """Return the installed Git version, or raise if it is below the floor."""
+    """Return the installed Git version, or raise if it is absent or below the floor."""
     version, raw = detect_git_version()
     if version is None or not acquisition_allowed(version):
-        raise UnsupportedGitVersionError(raw, required_acquisition_version_label())
+        detected = None if git_executable() is None else raw
+        raise UnsupportedGitVersionError(detected, required_acquisition_version_label())
     return version
 
 
@@ -951,6 +1039,8 @@ __all__ = [
     "GitProcessPolicy",
     "GitTimeoutError",
     "GitUnavailableError",
+    "OBJECT_FORMATS",
+    "ObjectFormat",
     "READ_POLICY",
     "STORE_READ_POLICY",
     "UnsupportedGitVersionError",
@@ -959,6 +1049,7 @@ __all__ = [
     "as_location",
     "attached_worktree_target",
     "detect_git_version",
+    "empty_tree_oid",
     "failure_detail",
     "git_environment",
     "git_executable",

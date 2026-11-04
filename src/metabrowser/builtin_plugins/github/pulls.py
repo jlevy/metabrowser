@@ -49,6 +49,7 @@ from metabrowser.builtin_plugins.github.gh import (
     gh_account,
     gh_api,
 )
+from metabrowser.builtin_plugins.github.pull_manifest import prepare_pull_manifest
 from metabrowser.builtin_plugins.github.pull_record import (
     API_PAGE_SIZE,
     MAX_BODY_BYTES,
@@ -86,8 +87,11 @@ from metabrowser.builtin_plugins.github.pull_record import (
 from metabrowser.builtin_plugins.github.urls import parse_repository_url
 from metabrowser.cache.providers import PullRequestFetch, PullRequestPin
 from metabrowser.cache.pull_refs import (
+    BaseUncertainError,
+    PullEndpoints,
     PullRefError,
     comparison_endpoints,
+    deepen_until_certain,
     fetch_pull_head,
     has_commit,
     pull_head_ref,
@@ -130,6 +134,7 @@ type PullDataState = Literal[
     "head_mismatch",
     "fetch_failed",
     "refreshing_elsewhere",
+    "lender_missing",
     "git_failed",
     "record_too_large",
     "cache_unwritable",
@@ -537,6 +542,13 @@ def _degrade(exc: PullDataError) -> bool:
     return exc.state in _PART_FAILURES
 
 
+@dataclass(frozen=True, slots=True)
+class _Unavailable:
+    """A part of the pull request that could not be read, and the record stands without."""
+
+    state: PullDataState
+
+
 async def _read_api(
     owner: str, repo: str, number: int, *, previous: PullRecord | None, reader: str
 ) -> PullRecord:
@@ -570,75 +582,121 @@ async def _read_api(
             etags[pull_path] = response.etag
 
     head = pull.head.sha
-    comments = await _read_list_of(
-        f"{base}/issues/{number}/comments",
-        key=None,
-        cap=MAX_ISSUE_COMMENTS,
-        previous=previous,
-        name="issue_comments",
-        build=_issue_comment,
-        etags=etags,
-    )
-    reviews = await _read_list_of(
-        f"{base}/pulls/{number}/reviews",
-        key=None,
-        cap=MAX_REVIEWS,
-        previous=previous,
-        name="reviews",
-        build=_review,
-        etags=etags,
-    )
-    review_comments = await _read_list_of(
-        f"{base}/pulls/{number}/comments",
-        key=None,
-        cap=MAX_REVIEW_COMMENTS,
-        previous=previous,
-        name="review_comments",
-        build=_review_comment,
-        etags=etags,
-    )
-    try:
-        check_runs = await _read_list_of(
-            f"{base}/commits/{head}/check-runs",
-            key="check_runs",
-            cap=MAX_CHECK_RUNS,
-            previous=previous,
-            name="check_runs",
-            build=_check_run,
-            etags=etags,
-        )
-    except PullDataError as exc:
-        if not _degrade(exc):
-            raise
-        check_runs = _ListParts[CheckRun]((), False, False)
-        unavailable["check_runs"] = exc.state
-
     status_path = _first_page(f"{base}/commits/{head}/status")
     status_etag = previous.etags.get(status_path) if previous is not None else None
-    status: CombinedStatus | None = None
-    statuses_cut = False
-    try:
-        response = await _get(status_path, etag=status_etag)
-        if response.status == 304:
-            if previous is None or status_etag is None:
-                raise _unconditional_304()
-            status, statuses_cut = previous.status, previous.truncated.statuses
-            etags[status_path] = status_etag
-        else:
+
+    async def read_check_runs(part_etags: dict[str, str]) -> _ListParts[CheckRun] | _Unavailable:
+        try:
+            return await _read_list_of(
+                f"{base}/commits/{head}/check-runs",
+                key="check_runs",
+                cap=MAX_CHECK_RUNS,
+                previous=previous,
+                name="check_runs",
+                build=_check_run,
+                etags=part_etags,
+            )
+        except PullDataError as exc:
+            if not _degrade(exc):
+                raise
+            return _Unavailable(exc.state)
+
+    async def read_status(
+        part_etags: dict[str, str],
+    ) -> tuple[CombinedStatus | None, bool] | _Unavailable:
+        try:
+            response = await _get(status_path, etag=status_etag)
+            if response.status == 304:
+                if previous is None or status_etag is None:
+                    raise _unconditional_304()
+                part_etags[status_path] = status_etag
+                return previous.status, previous.truncated.statuses
             try:
-                status, statuses_cut = _status(_json(response))
+                read = _status(_json(response))
             except _READ_FAILURES as exc:
                 raise PullDataError(
                     "gh_failed", "GitHub answered with a status Metabrowser cannot read"
                 ) from exc
             if response.etag is not None:
-                etags[status_path] = response.etag
-    except _PageTooLargeError:
-        unavailable["status"] = "gh_failed"
-    except PullDataError as exc:
-        if not _degrade(exc):
-            raise
-        unavailable["status"] = exc.state
+                part_etags[status_path] = response.etag
+            return read
+        except _PageTooLargeError:
+            return _Unavailable("gh_failed")
+        except PullDataError as exc:
+            if not _degrade(exc):
+                raise
+            return _Unavailable(exc.state)
+
+    # The five parts are in flight together, each `gh` spawn its own connection: 0.44 to 0.93 s
+    # each, 3.0 to 4.0 s in sequence, measured 2026-11-02, the same whether it answers 304 or
+    # 200. Five is far inside GitHub's documented limit of 100 concurrent requests, and it is
+    # the same requests the sequence made, each page of a long list still after the one before.
+    # Each part has its own ETags and the first failure in this order is the one raised, so a
+    # record and a refusal read as they did in sequence.
+    part_etags: tuple[dict[str, str], ...] = ({}, {}, {}, {}, {})
+    reading_comments = asyncio.ensure_future(
+        _read_list_of(
+            f"{base}/issues/{number}/comments",
+            key=None,
+            cap=MAX_ISSUE_COMMENTS,
+            previous=previous,
+            name="issue_comments",
+            build=_issue_comment,
+            etags=part_etags[0],
+        )
+    )
+    reading_reviews = asyncio.ensure_future(
+        _read_list_of(
+            f"{base}/pulls/{number}/reviews",
+            key=None,
+            cap=MAX_REVIEWS,
+            previous=previous,
+            name="reviews",
+            build=_review,
+            etags=part_etags[1],
+        )
+    )
+    reading_review_comments = asyncio.ensure_future(
+        _read_list_of(
+            f"{base}/pulls/{number}/comments",
+            key=None,
+            cap=MAX_REVIEW_COMMENTS,
+            previous=previous,
+            name="review_comments",
+            build=_review_comment,
+            etags=part_etags[2],
+        )
+    )
+    reading_runs = asyncio.ensure_future(read_check_runs(part_etags[3]))
+    reading_status = asyncio.ensure_future(read_status(part_etags[4]))
+    # A cancellation of this read cancels all five. Whether each answered is read below.
+    await asyncio.gather(
+        reading_comments,
+        reading_reviews,
+        reading_review_comments,
+        reading_runs,
+        reading_status,
+        return_exceptions=True,
+    )
+    comments = reading_comments.result()
+    reviews = reading_reviews.result()
+    review_comments = reading_review_comments.result()
+    read_runs = reading_runs.result()
+    read_state = reading_status.result()
+    for part in part_etags:
+        etags.update(part)
+
+    if isinstance(read_runs, _Unavailable):
+        check_runs = _ListParts[CheckRun]((), False, False)
+        unavailable["check_runs"] = read_runs.state
+    else:
+        check_runs = read_runs
+    status: CombinedStatus | None = None
+    statuses_cut = False
+    if isinstance(read_state, _Unavailable):
+        unavailable["status"] = read_state.state
+    else:
+        status, statuses_cut = read_state
 
     parts = (comments, reviews, review_comments, check_runs)
     return PullRecord(
@@ -696,6 +754,8 @@ def _fetch_failure(exc: PullRefError) -> PullDataError:
         return PullDataError("network_error", str(exc))
     if exc.state == "refreshing_elsewhere":
         return PullDataError("refreshing_elsewhere", str(exc))
+    if exc.state == "lender_missing":
+        return PullDataError("lender_missing", str(exc))
     return PullDataError("fetch_failed", str(exc))
 
 
@@ -709,23 +769,7 @@ def _git_failure(number: int, exc: GitError) -> PullDataError:
     )
 
 
-async def _comparison(
-    published: PublishedSource, pull: PullRequest, unavailable: dict[UnavailablePart, str]
-) -> Comparison | None:
-    """Files changed, or ``None`` with the reason recorded in *unavailable*."""
-
-    try:
-        endpoints = await comparison_endpoints(
-            published,
-            head=pull.head.sha,
-            base_sha=pull.base.sha,
-            base_branch=pull.base.ref,
-            open_pull=pull.state == "open",
-        )
-    except PullRefError as exc:
-        log.debug("pull request %s has no comparison: %s", pull.number, exc)
-        unavailable["comparison"] = exc.state
-        return None
+def _comparison_of(endpoints: PullEndpoints) -> Comparison:
     return Comparison(
         base=endpoints.base,
         head=endpoints.head,
@@ -737,6 +781,7 @@ async def _comparison(
 async def _write(published: PublishedSource, record: PullRecord) -> PullRecord:
     try:
         final = fit_record(record)
+        await prepare_pull_manifest(published, final)
         await asyncio.to_thread(write_pull_record, published.home, published.slug, final)
     except RecordTooLargeError as exc:
         raise PullDataError("record_too_large", str(exc)) from exc
@@ -746,6 +791,59 @@ async def _write(published: PublishedSource, record: PullRecord) -> PullRecord:
             "cache_unwritable", "its record could not be written to the cache"
         ) from exc
     return final
+
+
+async def _with_comparison(published: PublishedSource, record: PullRecord) -> PullRecord:
+    """Compute Files changed and write the record.
+
+    A comparison that cannot be computed is left out and named in the record's
+    ``unavailable``. One whose merge base is uncertain writes that record first, so a
+    reader sees ``base_uncertain`` and not nothing while the store deepens within this job,
+    and writes the record again if deepening settles it. Offline, the fetch fails at once
+    and the first record stands: a guess is never shown.
+    """
+
+    pull = record.pull
+    unavailable = dict(record.unavailable)
+
+    def without(state: str) -> PullRecord:
+        return record.model_copy(
+            update={"comparison": None, "unavailable": {**unavailable, "comparison": state}}
+        )
+
+    try:
+        endpoints = await comparison_endpoints(
+            published,
+            head=pull.head.sha,
+            base_sha=pull.base.sha,
+            base_branch=pull.base.ref,
+            open_pull=pull.state == "open",
+        )
+    except BaseUncertainError as uncertain:
+        log.debug("pull request %s has an uncertain merge base; deepening", pull.number)
+        await _write(published, without(uncertain.state))
+        try:
+            endpoints = await deepen_until_certain(
+                published,
+                pull.number,
+                head=pull.head.sha,
+                base_branch=pull.base.ref,
+                uncertain=uncertain,
+            )
+        except PullRefError as exc:
+            # Why it could not be settled goes to the log. What the reader needs is that
+            # the base is uncertain, whatever stopped the deepening.
+            log.debug("deepening pull request %s stopped: %s (%s)", pull.number, exc, exc.state)
+            return await _write(published, without(uncertain.state))
+    except PullRefError as exc:
+        log.debug("pull request %s has no comparison: %s", pull.number, exc)
+        return await _write(published, without(exc.state))
+    return await _write(
+        published,
+        record.model_copy(
+            update={"comparison": _comparison_of(endpoints), "unavailable": unavailable}
+        ),
+    )
 
 
 async def _refresh(published: PublishedSource, number: int) -> PullRecord:
@@ -775,12 +873,7 @@ async def _refresh(published: PublishedSource, number: int) -> PullRecord:
             raise PullDataError(
                 "head_mismatch", "its head kept moving while it was read; open it again"
             )
-        unavailable = dict(record.unavailable)
-        comparison = await _comparison(published, pull, unavailable)
-        return await _write(
-            published,
-            record.model_copy(update={"comparison": comparison, "unavailable": unavailable}),
-        )
+        return await _with_comparison(published, record)
     raise AssertionError("unreachable")
 
 

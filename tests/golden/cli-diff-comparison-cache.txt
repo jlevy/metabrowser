@@ -1,0 +1,123 @@
+## Two commit IDs, naming this build and this store: computed
+GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=<STORE>
+status: 200
+cache-control: private, max-age=31536000, immutable
+etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+content-encoding: gzip
+vary: Accept-Encoding
+work: 1 manifest, 1 patch
+
+## The same address again: no Git at all
+GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=<STORE>
+status: 200
+cache-control: private, max-age=31536000, immutable
+etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+content-encoding: gzip
+vary: Accept-Encoding
+work: 0 manifest, 0 patch
+
+## A reload with what it holds: no body
+GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=<STORE>
+status: 304
+cache-control: private, max-age=31536000, immutable
+etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+work: 0 manifest, 0 patch
+
+## Not naming a build: the browser must ask
+GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base
+status: 200
+cache-control: no-cache
+etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+content-encoding: gzip
+vary: Accept-Encoding
+work: 0 manifest, 0 patch
+
+## Naming an older build: the browser must ask too
+GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=000000000000&store=<STORE>
+status: 200
+cache-control: no-cache
+etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+content-encoding: gzip
+vary: Accept-Encoding
+work: 0 manifest, 0 patch
+
+## Naming this build and another store: the browser must ask too
+GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=0000000000000000
+status: 200
+cache-control: no-cache
+etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+content-encoding: gzip
+vary: Accept-Encoding
+work: 0 manifest, 0 patch
+
+## Naming this build and no store: the browser must ask too
+GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>
+status: 200
+cache-control: no-cache
+etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+content-encoding: gzip
+vary: Accept-Encoding
+work: 0 manifest, 0 patch
+
+## Another base policy is another answer
+GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=direct&build=<BUILD>&store=<STORE>
+status: 200
+cache-control: private, max-age=31536000, immutable
+etag: "<BUILD>-comparison-<STORE>-002b0b9aa48d4d17e215dd1ab23ddaaa"
+content-encoding: gzip
+vary: Accept-Encoding
+work: 1 manifest, 1 patch
+
+## One deferred file: its manifest is kept, so one path-limited diff
+GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=<STORE>&file=a.py
+status: 200
+cache-control: private, max-age=31536000, immutable
+etag: "<BUILD>-comparison-<STORE>-b95d75fd2f3b02901d173323a7b3d9a2"
+content-encoding: gzip
+vary: Accept-Encoding
+work: 0 manifest, 1 patch
+
+## That file again: no Git at all
+GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=<STORE>&file=a.py
+status: 200
+cache-control: private, max-age=31536000, immutable
+etag: "<BUILD>-comparison-<STORE>-b95d75fd2f3b02901d173323a7b3d9a2"
+content-encoding: gzip
+vary: Accept-Encoding
+work: 0 manifest, 0 patch
+
+## A client that takes no gzip gets the same answer unpacked
+GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=<STORE>&file=a.py
+status: 200
+cache-control: private, max-age=31536000, immutable
+etag: "<BUILD>-comparison-<STORE>-b95d75fd2f3b02901d173323a7b3d9a2"
+vary: Accept-Encoding, Accept-Encoding
+work: 0 manifest, 0 patch
+
+## A commit against its parent, by ID
+GET /api/plugin/diff/comparison?revision=107738382d9c4ce46f160dfde5230dfedc22a386&build=<BUILD>&store=<STORE>
+status: 200
+cache-control: private, max-age=31536000, immutable
+etag: "<BUILD>-comparison-<STORE>-8a2841149da4f02f23ad01c29f09d433"
+content-encoding: gzip
+vary: Accept-Encoding
+work: 1 manifest, 1 patch
+
+## A name can move: asked every time, and nothing is said
+GET /api/plugin/diff/comparison?left=main~1&right=main
+status: 200
+content-encoding: gzip
+vary: Accept-Encoding
+work: 1 manifest, 1 patch
+
+## HEAD is the pin, which a switch moves
+GET /api/plugin/diff/comparison?revision=HEAD
+status: 200
+content-encoding: gzip
+vary: Accept-Encoding
+work: 1 manifest, 1 patch
+
+## A commit the store lacks is a refusal, never kept
+GET /api/plugin/diff/comparison?left=0000000000000000000000000000000000000000&right=107738382d9c4ce46f160dfde5230dfedc22a386&build=<BUILD>&store=<STORE>
+status: 404
+work: 0 manifest, 0 patch

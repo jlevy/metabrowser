@@ -42,6 +42,7 @@ experiment:
       is summarized here. Every start-up series ran in environments with no compiled
       bytecode; the addendum of 2026-10-01 in the body says what that changes and gives
       the series with bytecode
+    bytecode: uncached
   results:
     - metric: cli_show_instr_millions
       control_median: 7400.8

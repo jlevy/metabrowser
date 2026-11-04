@@ -21,17 +21,19 @@ and emit subtree ``filtered`` totals; empty filter dirs are omitted. File nav
 nodes include ``ext`` from the same bounded compound-tail helper as
 filesystem inventory, so type filters match ``bundle.min.js`` as ``.min.js``
 and do not treat a basename ending in ``md`` as ``.md``.
-Blob ``/api/file`` envelopes include that same ``ext`` so plugin-sdk
-``langForPath`` and ``ctx.ext`` do not fall back to a GitPath wire; they omit
-compressed identity because blobs are stored bytes with no gzip smudge.
+Blob ``/api/file`` envelopes instead carry the name's last extension as ``ext``,
+as a folder's do (``blob_logical_ext``, so ``run.codex.jsonl`` is ``.jsonl``):
+it is what a kind is chosen from, and plugin-sdk ``langForPath`` and ``ctx.ext``
+read it rather than fall back to a GitPath wire. They omit compressed identity
+because blobs are stored bytes with no gzip smudge.
 Markdown blob envelopes include parsed YAML ``frontmatter`` and
 ``frontmatter_error`` the way filesystem ``/api/file`` does; KPress on a pin
 uses that parse rather than an empty mapping.
 Text blobs use the same first-window and highlight bound as filesystem
 listings, and advertise ``bytes_read`` plus preview limits so Load more and
 ``fetchText`` can continue a truncated Git envelope.
-A Git image blob is SPA ``image`` chrome (``ext`` from the compound tail,
-preview view, no inline content); ``/raw`` serves the stored bytes so the
+A Git image blob is SPA ``image`` chrome (preview view, no inline content);
+``/raw`` serves the stored bytes so the
 image plugin can paint. Alternative text uses the display name, not the
 GitPath wire.
 ``/api/file``, ``/raw``, KPress, and plugin sidekicks follow in-tree relative
@@ -97,6 +99,7 @@ from metabrowser.git.tree_source import (
     GitBlobIndex,
     GitBlobTallies,
     GitBlobTooLargeError,
+    GitObjectCorruptError,
     GitObjectUnavailableError,
     GitPath,
     GitPathError,
@@ -104,6 +107,7 @@ from metabrowser.git.tree_source import (
     GitTreeEntry,
     GitTreeSource,
     GitTreeTally,
+    blob_logical_ext,
     display_segment,
     follow_git_symlinks,
     resolve_git_blob_entry,
@@ -245,7 +249,9 @@ def _display_basename(path: GitPath) -> str:
     return path.display().rsplit("/", 1)[-1]
 
 
-def _logical_ext(path: GitPath) -> str:
+def _filter_tail_ext(path: GitPath) -> str:
+    """The compound tail the type filter keys on; a kind is chosen by ``blob_logical_ext``."""
+
     return derive_ext(_display_basename(path))
 
 
@@ -271,7 +277,7 @@ def _plugin_kind_for_git_path(
 
     return classify_identity(
         _PLUGIN_KIND_RULES,
-        ext=_logical_ext(path),
+        ext=blob_logical_ext(path),
         basename=_display_basename(path),
         adapter=adapter,
         json_top_level=json_top_level,
@@ -342,7 +348,7 @@ def _matches_types(
     """Match like the SPA type filter: dotted tokens are logical extensions."""
 
     name = ascii_casefold(_display_basename(path))
-    ext = _logical_ext(path)
+    ext = _filter_tail_ext(path)
     semantic_tokens = semantic if semantic is not None else _semantic_extension_tokens(types)
     for token in types:
         folded = ascii_casefold(token)
@@ -650,7 +656,9 @@ def _blob_too_large_payload(exc: GitBlobTooLargeError) -> dict[str, Any]:
     }
 
 
-def _object_unavailable_payload(exc: GitObjectUnavailableError) -> dict[str, Any]:
+def _object_unavailable_payload(
+    exc: GitObjectUnavailableError | GitObjectCorruptError,
+) -> dict[str, Any]:
     return {"error": str(exc), "code": exc.code, "oid": exc.oid}
 
 
@@ -663,11 +671,11 @@ def git_content_failure_response(exc: GitError) -> JSONResponse:
 
     Statuses match ``/api/git/*``: a timeout is 504 because a retry can
     plausibly fix it, and any other failure is 500. An object the store lacks
-    and an oversized blob keep their own 404 and 413 envelopes.
+    and an oversized blob keep their own 404 and 413 envelopes; a corrupt object is 409.
     """
 
-    if isinstance(exc, GitObjectUnavailableError):
-        return _json(_object_unavailable_payload(exc), status_code=404)
+    if isinstance(exc, (GitObjectUnavailableError, GitObjectCorruptError)):
+        return _json(_object_unavailable_payload(exc), status_code=exc.http_status)
     if isinstance(exc, GitBlobTooLargeError):
         return _json(_blob_too_large_payload(exc), status_code=413)
     if isinstance(exc, GitTimeoutError):
@@ -1278,7 +1286,7 @@ def _gitlink_file_payload(entry: GitTreeEntry) -> dict[str, Any]:
 
 
 async def _blob_file_payload(entry: GitTreeEntry, body: bytes, request: Request) -> dict[str, Any]:
-    ext = _logical_ext(entry.path)
+    ext = blob_logical_ext(entry.path)
     payload: dict[str, Any] = {
         "subject": "git_revision",
         "size": len(body),
@@ -1385,7 +1393,7 @@ async def _windowed_blob_file_response(
     decompression budget.
     """
 
-    ext = _logical_ext(entry.path)
+    ext = blob_logical_ext(entry.path)
     payload: dict[str, Any] = {"subject": "git_revision", "size": size, **_identity_fields(entry)}
     if ext:
         payload["ext"] = ext
@@ -1475,7 +1483,7 @@ async def _windowed_jsonl_response(
 def _patch_container_payload(
     entry: GitTreeEntry, *, wire: str, inner: str, path: GitPath
 ) -> dict[str, Any]:
-    ext = _logical_ext(entry.path)
+    ext = blob_logical_ext(entry.path)
     return {
         "subject": "git_revision",
         "type": "text",
@@ -1514,7 +1522,7 @@ async def git_revision_file(request: Request, subject: GitRevisionSubject) -> JS
             return _json(_NOT_FOUND, status_code=404)
         try:
             entry = await resolve_git_blob_entry(subject.tree_source, path)
-            if entry is None or _logical_ext(entry.path) not in _PATCH_EXTS:
+            if entry is None or blob_logical_ext(entry.path) not in _PATCH_EXTS:
                 return _json(_NOT_FOUND, status_code=404)
         except GitObjectUnavailableError:
             return _json(_NOT_FOUND, status_code=404)
@@ -1590,7 +1598,7 @@ async def git_revision_kpress_render(
     except GitBlobTooLargeError as exc:
         return _json(_blob_too_large_payload(exc), status_code=413)
 
-    ext = _logical_ext(entry.path)
+    ext = blob_logical_ext(entry.path)
     if source_override is not None:
         content = source_override
         logical_size = len(source_override.encode())

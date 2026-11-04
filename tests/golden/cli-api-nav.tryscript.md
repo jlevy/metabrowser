@@ -24,9 +24,9 @@ None had a transcript.
 Mtimes are pinned so the recency window and rollup tallies are deterministic.
 
 `truncated` is reported here as `false`. The true case is not reachable from a golden
-fixture: `max_files` is a hard-coded 500,000, with no request parameter to lower it, so
-a truncated rollup needs a generated corpus rather than a sandbox.
-`mb-1qwp` carries that remainder.
+fixture: `max_files` is a hard-coded 500,000, with no request parameter to lower it.
+`test_rollup_route_reports_a_truncated_index` in `tests/test_rollup_route.py` pins it
+in-process by lowering the discovery budget.
 
 ## Test: a folder rollup
 

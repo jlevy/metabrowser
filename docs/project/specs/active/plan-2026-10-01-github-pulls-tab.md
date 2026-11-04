@@ -2,9 +2,9 @@
 
 **Status:** Planned, not started.
 Nothing this plan designs exists yet: no route, model, tab, or test.
-Work starts after the v0.12 stack lands (`mb-n2ro`), as a new stack of pull requests,
-each merged to `main` before the next one starts.
-[Delivery](#delivery) lists the steps, and
+The v0.12 stack has landed, and the work waits for 0.12.0 to be tagged (`mb-4bd2`). It
+then starts as a new stack of pull requests, each merged to `main` before the next one
+starts. [Delivery](#delivery) lists the steps, and
 [Open Decisions for the User](#open-decisions-for-the-user) lists what is settled first.
 
 This plan builds on the [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), which
@@ -58,8 +58,8 @@ step is reviewed against them:
 Every statement here was checked against the v0.12 stack tip on 2026-10-01. Code is
 cited by module and function, since line numbers go stale.
 Paths are under `src/metabrowser/` unless they begin with `tests/`, `devtools/`, or
-`explorations/`. Step 1 starts by checking these again, because the stack can still
-change before it lands.
+`explorations/`. Step 1 starts by checking these again, because `main` has moved since:
+the stack landed, with [#268](https://github.com/jlevy/metabrowser/pull/268) above it.
 
 ### What Exists
 
@@ -574,7 +574,13 @@ Jobs run on the server’s `RefreshCoordinator`, keyed by the slug.
 - When the checkout’s `HEAD` is the pull request’s head, the page says so and links the
   root.
 
-**Files changed.** Step 5 has two cases:
+**Files changed.** Step 5 has two cases.
+Both are decided differently by
+[Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
+(2026-11-02): Files changed on a folder server reads an overlay store that borrows the
+served checkout’s objects, never the checkout directly, because the diff commands honor
+a checkout’s `diff.external` and textconv drivers and a direct read cannot bring missing
+commits. The text below stands until that plan’s step 4 rewrites it.
 
 - **The commits are in the checkout.** The page checks for the base and head commits
   with a read-only Git command and shows the diff through the existing comparison route,
@@ -599,9 +605,15 @@ Jobs run on the server’s `RefreshCoordinator`, keyed by the slug.
 
 **The alternates option.** A cache-side store could borrow the checkout’s objects
 through `objects/info/alternates` and fetch only what is missing.
-It is left out at first: a `gc`, a repack, or a move of the user’s repository can remove
-objects the borrowing store depends on, which breaks the rule that no object Metabrowser
-showed is ever lost.
+It was left out at first: a `gc`, a repack, or a move of the user’s repository can
+remove objects the borrowing store depends on, which breaks the rule that no object
+Metabrowser showed is ever lost.
+That decision is revised by
+[Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md)
+(2026-11-02), which measured each of those failures and proposes an overlay store with a
+typed state and a healing fetch; its
+[Open Decisions](plan-2026-11-02-pr-review-mirror-and-checkout.md#open-decisions-for-the-user)
+item 1 is the user’s call on the rule.
 
 **Network only when the user opens the tab.** Opening a folder makes no request today,
 and that stays true.
@@ -869,6 +881,10 @@ Each has a recommended default, which the plan above assumes.
      head, which a checkout’s server cannot show.
    - *Alternative:* the in-page fetch into Metabrowser’s mirror, as a sixth step.
    - *Affects:* whether a folder’s server ever clones, and one more step.
+   - *Revised 2026-11-02:* the in-page fetch no longer means a clone.
+     [Pull-Request Review from a Mirror or an Existing Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md#fit-with-the-pulls-tab-plan)
+     makes it an overlay store that borrows the served checkout’s objects, measured at
+     seconds and kilobytes; step 5 here is rewritten when that plan’s step 4 starts.
 
 5. **Whether closed pull requests are listed by default.**
    - *Recommended:* no. Open is the default filter, as on GitHub; Closed and All are

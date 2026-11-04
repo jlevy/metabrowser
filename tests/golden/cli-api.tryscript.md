@@ -224,12 +224,45 @@ status: 200
 ? 0
 ```
 
-## Test: YAML rendering of the same envelope
+## Test: a format asked for is that document alone
+
+`--format json` or `--format yaml` prints the envelope with nothing above it, so a tool
+can parse stdout, and the exit status carries the outcome.
+Without one, the route and the status come first, as in every other transcript here.
+
+```console
+$ metab apiroot --api /api/git/repo --format json
+{
+  "is_repo": false,
+  "root": null,
+  "head": null,
+  "reason": "not_a_repo"
+}
+? 0
+```
+
+A route that answers outside 2xx still prints its envelope and exits non-zero, with the
+error on stderr, and a body that is not JSON is one string, so stdout still parses.
+
+```console
+$ metab apiroot --api '/api/file?path=missing.md' --format json
+{
+  "summary": "Could not open this file.",
+  "error": "This file is no longer available."
+}
+Error: /api/file?path=missing.md returned HTTP 404
+? 1
+```
+
+```console
+$ metab apiroot --api /api/plugin/github/pull-refresh --format json
+"Method Not Allowed"
+Error: /api/plugin/github/pull-refresh returned HTTP 405
+? 1
+```
 
 ```console
 $ metab apiroot --api '/api/tree?depth=1' --format yaml
-api: /api/tree?depth=1
-status: 200
 root: <ROOT>
 tree:
 - name: README.md

@@ -14,6 +14,10 @@
 // makes the anchors; a heading keeps the one it arrives with, which can only name that
 // namespace, so the page and the server agree whatever Unicode version each slugs by.
 //
+// `kpressProse` then sets those nodes in KPress's prose element, with the classes KPress's
+// stylesheets hang a table and a code block on. The classes are this module's, chosen by
+// element, so a document still names none.
+//
 // Loaded on demand (`ensureAsset("inert-html")`) by the views that render untrusted
 // Markdown: the pull-request page and repository Markdown under the untrusted profile.
 // tests/dom/inert-html-session.js runs it from the command line.
@@ -87,11 +91,12 @@
     "video",
   ]);
   // The attributes each tag may keep; every value is checked by allowedAttributes,
-  // except a heading's id, which is always sanitizeNodes' own anchor.
+  // except a heading's id, which is always sanitizeNodes' own anchor, and an image's
+  // loading, which is always lazy.
   const HEADINGS = Object.freeze(["h1", "h2", "h3", "h4", "h5", "h6"]);
   const ALLOWED_ATTRIBUTES = Object.freeze({
     a: Object.freeze(["href", "target", "rel"]),
-    img: Object.freeze(["src", "alt"]),
+    img: Object.freeze(["loading", "src", "alt"]),
     ol: Object.freeze(["start"]),
     td: Object.freeze(["colspan", "rowspan", "align"]),
     th: Object.freeze(["colspan", "rowspan", "align"]),
@@ -312,7 +317,10 @@
         }
       }
     } else if (tag === "img") {
-      kept.push(["src", clean(read("src") ?? "")]);
+      // A constant, so the document has no say in when its images load: a trusted
+      // render's images wait until they near the reader, and these wait the same way.
+      // Ahead of src, for a browser that reads the two in order.
+      kept.push(["loading", "lazy"], ["src", clean(read("src") ?? "")]);
       const alt = read("alt");
       if (alt) {
         kept.push(["alt", alt]);
@@ -481,6 +489,57 @@
     return sanitizeNodes(template.content.childNodes, scratch, base);
   }
 
+  /**
+   * KPress's own wrappers around a render's blocks, which arrive as two bare `<div>`s once
+   * the allowlist has taken their classes. Dropped, so the blocks are the prose element's
+   * children, as KPress's stylesheets and the host's first-heading rule expect. Exactly
+   * these two: a `<div>` beneath them is a table's or the document's own.
+   *
+   * @param {Node[]} nodes
+   * @returns {Node[]}
+   */
+  function withoutRenderWrappers(nodes) {
+    let blocks = nodes;
+    for (let depth = 0; depth < 2; depth += 1) {
+      const present = blocks.filter((node) => node.nodeType !== 3 || node.textContent?.trim());
+      const only = /** @type {Element | undefined} */ (
+        present.length === 1 ? present[0] : undefined
+      );
+      if (only?.tagName !== "DIV") {
+        break;
+      }
+      blocks = Array.from(only.childNodes);
+    }
+    return blocks;
+  }
+
+  /**
+   * Sanitized *nodes* in a `.kpress-prose` element, so KPress's stylesheets set them as they
+   * set a Markdown file. KPress hangs a code block's frame and a table's type on classes the
+   * allowlist removed, so they are put back here by element: `pre`, `table`, and the `<div>`
+   * KPress keeps around a table. The caller provides the article around it.
+   *
+   * @param {Node[]} nodes What `sanitizeHtml` returned.
+   * @param {Document} doc
+   * @returns {HTMLElement}
+   */
+  function kpressProse(nodes, doc) {
+    const prose = doc.createElement("div");
+    prose.className = "kpress-prose";
+    prose.append(...withoutRenderWrappers(nodes));
+    for (const pre of prose.querySelectorAll("pre")) {
+      pre.className = "kpress-code";
+    }
+    for (const table of prose.querySelectorAll("table")) {
+      table.className = "kpress-table";
+      const parent = table.parentElement;
+      if (parent && parent !== prose && parent.tagName === "DIV") {
+        parent.className = "kpress-table-wrap";
+      }
+    }
+    return prose;
+  }
+
   window.MetabrowserInertHtml = Object.freeze({
     ALLOWED_ATTRIBUTES,
     ANCHOR_PREFIX,
@@ -492,6 +551,7 @@
     imageLink,
     isInside,
     keepsImage,
+    kpressProse,
     linkHref,
     outsideLink,
     sanitizeHtml,

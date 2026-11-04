@@ -18,7 +18,9 @@ nav-tree child rows for the container affordance.
 ``?left=&right=[&base_policy=merge_base]``) serves the same document for
 a Git comparison at the active subject's ``GitLocation``, so the history
 view renders diffs through this plugin's view instead of growing a diff
-surface of its own. A pinned revision does not need a working tree.
+surface of its own. A pinned revision does not need a working tree. On a
+store, a request naming full commit IDs is kept and validated;
+``comparison_cache.py`` says what the answer depends on.
 
 The patch handlers read through the content reader, which serves an attached
 folder and a pinned revision alike and keeps the blocking part off the event
@@ -29,12 +31,27 @@ handler is async because ``git`` is.
 from __future__ import annotations
 
 import asyncio
+import gzip
+import hashlib
+import logging
+import re
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
+from metabrowser.builtin_plugins.diff.comparison_cache import (
+    ComparisonCache,
+    ResolvedManifest,
+    encode_body,
+)
 from metabrowser.diff.adapters.base import DiffSourceError
-from metabrowser.diff.adapters.git import GitDiffSource
+from metabrowser.diff.adapters.git import (
+    GitDiffSource,
+    PatchHydration,
+    mark_past_the_bounds,
+    say_left_out,
+)
 from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES, parse_unified_patch
 from metabrowser.diff.format import (
     Availability,
@@ -47,9 +64,23 @@ from metabrowser.diff.format import (
     Totals,
     dump_document,
 )
-from metabrowser.git.process import GitError
+from metabrowser.git.process import (
+    GitError,
+    GitLocation,
+    GitTimeoutError,
+    RepositoryStoreTarget,
+    failure_detail,
+)
 from metabrowser.git.repo import repo_info
 from metabrowser.git.routes import session_git_location
+from metabrowser.http_caching import (
+    BUILD_TAG,
+    build_scoped_etag,
+    etag_headers,
+    immutable_headers,
+    matches_if_none_match,
+    store_tag,
+)
 from metabrowser.inventory_engine.contract import canonical_inventory_path
 from metabrowser.plugin_api import (
     ContentReadError,
@@ -63,6 +94,8 @@ if TYPE_CHECKING:
 
     from metabrowser.plugin_api import ContentRef
 
+log = logging.getLogger(__name__)
+
 _PATCH_EXTS = (".patch", ".diff")
 
 # Hunks hydrated per comparison request. A commit view shows its files
@@ -74,6 +107,11 @@ MAX_HYDRATED_FILES = 50
 
 # A revision compares against its first parent; only two endpoints choose a base.
 _TWO_ENDPOINT_POLICIES = frozenset({BasePolicy.direct.value, BasePolicy.merge_base.value})
+
+# A commit ID in full: SHA-1 or SHA-256. Anything else names what it names now.
+_FULL_COMMIT_ID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
+
+_COMPARISONS = ComparisonCache()
 
 
 def _error(kind: str, message: str, status: int, *, path: str) -> JSONResponse:
@@ -188,8 +226,80 @@ async def document_handler(request: Request) -> JSONResponse:
     return JSONResponse(dump_document(document))
 
 
-async def comparison_handler(request: Request) -> JSONResponse:
-    """A Git comparison at the active subject's location, as a ChangeSetDocument.
+def comparison_cache_key(
+    location: GitLocation, intent: dict[str, Any], store: str
+) -> tuple[str, ...] | None:
+    """The comparison's key in memory, or None for one whose answer can change.
+
+    A store, named by its Git directory and its token *store*, and a request whose every
+    endpoint is a full commit ID. The token is in the key because the store's
+    ``info/attributes`` is in the token (review of #284, D2): an edit to it moves every
+    address and tag, and has to move what this process holds as well, or a request at the
+    new address is answered with the old body. A folder's answer depends on its working
+    tree and its configuration, and a name's on where it points now.
+    """
+    if not isinstance(location.target, RepositoryStoreTarget):
+        return None
+    endpoints = [intent[name] for name in ("revision", "left", "right") if name in intent]
+    if not all(_FULL_COMMIT_ID.fullmatch(endpoint) for endpoint in endpoints):
+        return None
+    policy = str(intent.get("base_policy", ""))
+    return (str(location.target.git_dir), store, *endpoints, policy)
+
+
+def middleware_sends_gzip(accept_encoding: str) -> bool:
+    """The test Starlette's ``GZipMiddleware`` makes of ``Accept-Encoding``, which every
+    response passes through on its way out: a plain substring, so ``gzip;q=0`` is taken for
+    an acceptance. Read by its weights here instead, a kept body sent unpacked for such a
+    client would be compressed again by the middleware, on the event loop, and arrive as
+    gzip all the same. ``tests/test_diff_comparison_cache.py`` holds the two tests equal."""
+    return "gzip" in accept_encoding
+
+
+async def _encoded_response(request: Request, encoded: bytes, headers: dict[str, str]) -> Response:
+    """An answer kept compressed. It goes as it is, which the server's compression leaves be,
+    and is unpacked off the event loop for a client that does not take gzip."""
+    if middleware_sends_gzip(request.headers.get("accept-encoding", "")):
+        return Response(
+            encoded,
+            media_type="application/json",
+            headers={**headers, "Content-Encoding": "gzip", "Vary": "Accept-Encoding"},
+        )
+    return Response(
+        await asyncio.to_thread(gzip.decompress, encoded),
+        media_type="application/json",
+        headers={**headers, "Vary": "Accept-Encoding"},
+    )
+
+
+def _git_failure(exc: GitError, path: str) -> JSONResponse:
+    """A Git failure with no command line in the body: its arguments spell every path asked
+    for, hostile names included. The detail goes to the log."""
+    log.warning("diff/comparison git failure: %s", failure_detail(exc))
+    if isinstance(exc, GitTimeoutError):
+        return _error("diff_comparison", "git diff timed out", 504, path=path)
+    return _error("diff_comparison", "git diff failed", 502, path=path)
+
+
+async def comparison_handler(request: Request) -> Response:
+    """The active subject's Git comparison, through the shared comparison service."""
+
+    return await comparison_at(
+        request, session_git_location(), max_initial_files=MAX_HYDRATED_FILES
+    )
+
+
+async def comparison_at(
+    request: Request,
+    location: GitLocation,
+    *,
+    max_initial_files: int = MAX_HYDRATED_FILES,
+    manifest_loader: Callable[
+        [GitDiffSource, dict[str, Any], tuple[str, ...]], Awaitable[ResolvedManifest]
+    ]
+    | None = None,
+) -> Response:
+    """A Git comparison at the supplied trusted location, as a ChangeSetDocument.
 
     ``?revision=<rev>`` compares a commit against its first parent — the
     same resolution ``metab --diff REV`` performs. ``?left=&right=``
@@ -198,11 +308,21 @@ async def comparison_handler(request: Request) -> JSONResponse:
     hydrated up to a bound; the rest stay ``deferred``, which the renderer
     states rather than eliding.
     ``&file=<path>`` narrows to one change and hydrates it regardless of
-    the bound — the deferred sections' on-demand loader.
+    the bound — the deferred sections' on-demand loader. It is the path exactly, since
+    a name can begin or end with a space.
     On a pinned revision, ``HEAD`` is that object id.
+
+    A request naming two commit IDs on a store sends an entity tag that names the build
+    and the store, answers a matching ``If-None-Match`` with 304 once the store is known
+    to answer, and is kept in memory. With ``&build=`` naming this build and ``&store=``
+    naming this store it is immutable as well, since the address then says everything
+    its answer depends on; a folder's address names no store, and its answer carries
+    neither header.
     """
+    if not 1 <= max_initial_files <= MAX_HYDRATED_FILES:
+        raise ValueError(f"max_initial_files must be between 1 and {MAX_HYDRATED_FILES}")
     revision = request.query_params.get("revision", "").strip()
-    wanted_file = request.query_params.get("file", "").strip()
+    wanted_file = request.query_params.get("file", "")
     left = request.query_params.get("left", "").strip()
     right = request.query_params.get("right", "").strip()
     base_policy = request.query_params.get("base_policy", "").strip()
@@ -225,7 +345,39 @@ async def comparison_handler(request: Request) -> JSONResponse:
             path=revision or f"{left}..{right}",
         )
 
-    location = session_git_location()
+    # The token names the store in the key, the tag and the address alike; one stat a request.
+    store = (
+        store_tag(location.target.git_dir)
+        if isinstance(location.target, RepositoryStoreTarget)
+        else ""
+    )
+    kept_key = comparison_cache_key(location, intent, store)
+    body_generation = _COMPARISONS.body_generation()
+    answer_key: tuple[str, ...] | None = None
+    headers: dict[str, str] = {}
+    # A validator this process did not issue is honored only once the store has answered
+    # for the commits, so a store holding neither answers its plain refusal.
+    revalidate = False
+    if kept_key is not None:
+        answer_key = (*kept_key, wanted_file, str(max_initial_files))
+        # The body identity includes the initial hydration count: callers share the
+        # manifest, but a PR page and a generic comparison can draw different prefixes.
+        identity = hashlib.sha256("\0".join(answer_key[2:]).encode()).hexdigest()[:32]
+        etag = build_scoped_etag(f"comparison-{store}-{identity}")
+        immutable = (
+            request.query_params.get("build", "") == BUILD_TAG
+            and request.query_params.get("store", "") == store
+        )
+        headers = immutable_headers(etag) if immutable else etag_headers(etag)
+        if matches_if_none_match(request, etag):
+            if _COMPARISONS.has_manifest(kept_key):
+                return Response(status_code=304, headers=headers)
+            revalidate = True
+        else:
+            encoded = _COMPARISONS.body(answer_key)
+            if encoded is not None:
+                return await _encoded_response(request, encoded, headers)
+
     context, _info = await repo_info(location)
     if context is None:
         if location.pinned_revision is not None:
@@ -243,9 +395,21 @@ async def comparison_handler(request: Request) -> JSONResponse:
         )
 
     source = GitDiffSource(context.command_location())
-    try:
+
+    async def listed() -> ResolvedManifest:
+        if manifest_loader is not None and kept_key is not None:
+            return await manifest_loader(source, intent, kept_key)
         resolved = await source.resolve(intent)
-        manifest = await source.manifest(resolved)
+        return ResolvedManifest(resolved, await source.manifest(resolved))
+
+    try:
+        if revalidate:
+            await source.resolve(intent)
+            return Response(status_code=304, headers=headers)
+        comparison = (
+            await listed() if kept_key is None else await _COMPARISONS.manifest(kept_key, listed)
+        )
+        resolved, manifest = comparison.resolved, comparison.manifest
         projected: list[FileChange] = []
         hydrate_ids: list[str] = []
         for change in manifest.files:
@@ -254,7 +418,7 @@ async def comparison_handler(request: Request) -> JSONResponse:
             if change.availability is not Availability.ready:
                 projected.append(change)
                 continue
-            if not wanted_file and len(hydrate_ids) >= MAX_HYDRATED_FILES:
+            if not wanted_file and len(hydrate_ids) >= max_initial_files:
                 projected.append(change.model_copy(update={"availability": Availability.deferred}))
                 continue
             projected.append(change)
@@ -268,15 +432,31 @@ async def comparison_handler(request: Request) -> JSONResponse:
             )
         # One diff run and one parse for the whole set (review R3): a
         # commit click costs O(1) subprocesses, not O(files).
-        patches: dict[str, FilePatch] = (
-            await source.file_patches(resolved, hydrate_ids) if hydrate_ids else {}
+        hydration = (
+            await source.hydrate(resolved, hydrate_ids, manifest=manifest)
+            if hydrate_ids
+            else PatchHydration({})
         )
     except DiffSourceError as exc:
         # The source's own refusals carry user-facing messages: unknown
         # revision, no such file in the comparison.
         return _error("diff_comparison", str(exc), 404, path=revision)
     except GitError as exc:
-        return _error("diff_comparison", str(exc), 502, path=revision)
+        if isinstance(location.target, RepositoryStoreTarget):
+            from metabrowser.git.object_failures import observed_object_failures
+
+            commits = (revision,) if revision else (left, right)
+            observed = observed_object_failures.remember(location.target, commits, exc)
+            if observed is not None:
+                if observed.state == "object_corrupt" and kept_key is not None:
+                    _COMPARISONS.invalidate(kept_key)
+                message = (
+                    "An object in this comparison does not match its ID."
+                    if observed.state == "object_corrupt"
+                    else "An object in this comparison is missing. Repair the repository cache, then retry."
+                )
+                return _error(observed.state, message, 409, path=revision)
+        return _git_failure(exc, revision)
 
     if wanted_file:
         counted = [c for c in projected if c.additions is not None or c.binary]
@@ -296,8 +476,22 @@ async def comparison_handler(request: Request) -> JSONResponse:
                 "cursor": None,
             }
         )
-    document = _document_from(resolved, manifest, tuple(projected), patches)
-    return JSONResponse(dump_document(document))
+    if hydration.left_out:
+        projected, resolved = say_left_out(projected, resolved, hydration.left_out)
+    projected = mark_past_the_bounds(projected, hydration)
+    document = _document_from(resolved, manifest, tuple(projected), hydration.patches)
+    # A large answer is seconds of serializing and compressing, so neither is done on the
+    # event loop: 29 MB took 712 ms to serialize, measured in explorations/performance-loop.
+    body = await asyncio.to_thread(_json_body, document)
+    if answer_key is None:
+        return Response(body, media_type="application/json")
+    encoded = await asyncio.to_thread(encode_body, body)
+    _COMPARISONS.remember_body(answer_key, encoded, generation=body_generation)
+    return await _encoded_response(request, encoded, headers)
+
+
+def _json_body(document: ChangeSetDocument) -> bytes:
+    return bytes(JSONResponse(dump_document(document)).body)
 
 
 def _document_from(

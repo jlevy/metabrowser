@@ -20,7 +20,8 @@ when the recording no longer matches.
 The clock is fixed, so fetch times are literal. Entity tags are the session's own, since
 the server's are scoped to the build; which answers share one is kept. The Markdown is
 cut down to the rendered text: KPress's icon sprite and asset manifest are KPress's
-contract, pinned by its own render goldens, and would tie this recording to its version.
+contract, pinned by its own render goldens, and would tie this recording to its version,
+and its stylesheets' manifest is left out for the same reason.
 Every pull envelope carries the whole record, and the story reads one record many
 times, so the recording holds each distinct record once: an answer whose record an
 earlier answer carried names that answer, ``{"same_as": "current"}``, and the session
@@ -69,7 +70,13 @@ from tests.github_pull_fixture import (
     page,
     scenario,
 )
-from tests.golden_harness import JSON_BODY, check_recording, run_session, settle
+from tests.golden_harness import (
+    JSON_BODY,
+    check_recording,
+    normalize_pull_comparison_scopes,
+    run_session,
+    settle,
+)
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -88,6 +95,8 @@ def _answer(response: Any) -> dict[str, Any]:
     """One response as the page sees it: status, entity tag, and body."""
 
     body = None if response.status_code == 304 else response.json()
+    if isinstance(body, dict):
+        body.pop("assets", None)
     return {"status": response.status_code, "etag": response.headers.get("etag"), "body": body}
 
 
@@ -145,7 +154,7 @@ def _session_tags(recorded: dict[str, Any]) -> dict[str, Any]:
     for answer in recorded.values():
         if answer["etag"] is not None:
             answer["etag"] = own.setdefault(answer["etag"], f'"pull-{len(own) + 1}"')
-    return recorded
+    return json.loads(normalize_pull_comparison_scopes(json.dumps(recorded)))
 
 
 def _stored_once(recorded: dict[str, Any]) -> dict[str, Any]:
@@ -383,11 +392,40 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
     allowlisted tags and attributes is a parse, which a reader of the golden cannot do
     by eye: both what the hook sent and what the page's own defense rebuilt from KPress's
     render alone.
+
+    The script prints its first part unless asked, and its golden is split in two for the
+    size of one block, so this asks for both: the second part's typed states are read here
+    too, and none of them may claim to know what the pull request changed.
     """
 
-    transcript = run_session("github-pull-page-session.js")
+    transcript = run_session("github-pull-page-session.js", "--part", "all")
     steps = {step["step"]: step for step in transcript["steps"]}
     hook = steps["the hook sends the comment inert"]["markdown"][0].split(": ", 1)[1]
     assert allowlist_violations(hook) == []
     assert allowlist_violations(transcript["pageDefense"]) == []
     assert "build badge</a>" in transcript["pageDefense"]
+    unavailable = transcript["filesUnavailable"]
+    assert set(unavailable) == {
+        "fetch_failed",
+        "no_merge_base",
+        "base_uncertain",
+        "commits_unavailable",
+        "comparison_timeout",
+        "comparison_too_large",
+    }
+    for state, said in unavailable.items():
+        assert said["files"].startswith("Files changed is "), state
+    assert "does not guess" in unavailable["base_uncertain"]["files"]
+    assert "not readable here" in unavailable["commits_unavailable"]["files"]
+    assert transcript["hunks"] and transcript["place"]
+
+
+def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
+    """Asset and renderer failures recover without a dangling readiness rejection."""
+
+    result = run_session("github-pull-page-mount-behavior.js")
+    assert result == {
+        "failedAssetsRecover": True,
+        "failedRenderRecovers": True,
+        "staleRetryIsInert": True,
+    }

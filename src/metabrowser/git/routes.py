@@ -240,8 +240,13 @@ async def api_git_commit(request: Request) -> JSONResponse:
     if not isinstance(revision, str) or not is_full_revision(revision):
         # Deliberately not echoed back into the message: the value is
         # caller-controlled and this response is rendered in the browser.
+        # Typed, so the browser can say so of a /commit/ address with a short ID or a ref
+        # name rather than that the commit could not be loaded.
         return JSONResponse(
-            {"error": "revision must be a full 40- or 64-character object id"},
+            {
+                "error": "revision must be a full 40- or 64-character object id",
+                "code": "revision_not_full",
+            },
             status_code=400,
         )
 

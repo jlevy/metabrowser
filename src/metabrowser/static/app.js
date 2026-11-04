@@ -1446,10 +1446,10 @@ function reconcileMountedTree(nextTree, chromeHtml) {
 
 function treeTruncationNoteHtml(maxFiles) {
   var reason = maxFiles
-    ? `Metabrowser stopped after ${formatCount(maxFiles)} files`
+    ? `Metabrowser stopped after ${formatCount(maxFiles)}`
     : "Metabrowser reached its file limit";
   return (
-    '<div class="tree-truncation-note" role="status">' +
+    '<div class="notice tree-truncation-note" data-severity="warning" role="status">' +
     "<strong>File list incomplete.</strong> " +
     reason +
     ", so some files and folders are not shown." +
@@ -2419,6 +2419,13 @@ function showTooltip(html, anchor) {
   clearTimeout(tooltipTimer);
   // Small delay before appearing so tooltips don't flash when moving across items
   tooltipTimer = setTimeout(() => {
+    // Replaced during the delay, as a tree row is when its folder re-renders. A
+    // detached element's rect is all zeros, which would put the tooltip at the
+    // top-left corner, and it will never fire the mouseleave that takes it away.
+    if (element && !element.isConnected) {
+      hideTooltip();
+      return;
+    }
     tooltipEl.innerHTML = html;
     tooltipEl.style.display = "block";
     positionTooltip(element);
@@ -4716,7 +4723,7 @@ function applyDrawerOpenState() {
       (filterDrawerOpen ? "Hide more filters" : "Show more filters") +
         (count > 0 ? ` (${count} active)` : ""),
     );
-    toggle.setAttribute("title", filterDrawerOpen ? "Fewer filters" : "More filters");
+    toggle.dataset.tipText = filterDrawerOpen ? "Fewer filters" : "More filters";
   }
 }
 
@@ -5552,6 +5559,10 @@ function folderHeaderSummaryHtml(dirInfo) {
   // skeleton the tree rows use, so the header paints with shape
   // instead of blanks until the live refresher patches it.
   // Omitted aggregates are not pending: a Git tree envelope has no dir.
+  // Nor are a folder's the inventory leaves out: they will never arrive.
+  if (dirInfo.not_indexed) {
+    return "";
+  }
   return (
     sizeHtml(dirInfo.total_size, "file-header-size") +
     countHtml(dirInfo.total_files, "folder-header-count") +
@@ -7690,7 +7701,13 @@ function startInventoryEventStream() {
 // navigation.js is linked by the same shell response, immediately ahead of this
 // script, so the module and this controller always exist together.
 var navigationController = window.MetabrowserNavigationRoute.createController({
-  apply: applyNavigationTarget,
+  apply(target, context) {
+    // A target is a file or a folder, which read the catalog; a pull request's page has none.
+    if (target) {
+      quickFileCatalogFeed?.release();
+    }
+    return applyNavigationTarget(target, context);
+  },
 });
 window.MetabrowserNavigationRoute.attachController(navigationController);
 
@@ -8163,6 +8180,11 @@ function initQuickFileFinder() {
     quickFileCatalogFeed = window.MetabrowserCatalogFeed.create({
       catalog: knownFileCatalog,
     });
+    // A pull request's page does not read the catalog. Its palette and the first file the
+    // reader leaves for do, and each releases it (`catalog-feed.js#hold`).
+    if (window.location.pathname.startsWith(PULL_ROUTE_PREFIX)) {
+      quickFileCatalogFeed.hold();
+    }
     // The stream can open while its on-demand catalog modules are loading.
     // Start here if that open already happened, or if this browser has no live
     // transport; otherwise onopen starts it. JavaScript dispatches neither
@@ -8188,6 +8210,7 @@ function initQuickFileFinder() {
     getCatalogSnapshot: () => knownFileCatalog.snapshot(),
     getFileIcon: getFileIcon,
     maxRows: QUICK_FILE_RESULT_LIMIT,
+    onOpen: () => quickFileCatalogFeed?.release(),
     overlay: window.MetabrowserOverlay,
     // Coverage grows while the palette is open — the bulk feed lands, then
     // live deltas — so an open search re-runs instead of keeping the result
@@ -8224,6 +8247,7 @@ function clearBrowserFileCache(path) {
 if (typeof window !== "undefined") {
   window.metabrowser.debug = Object.freeze({
     clearFileCache: clearBrowserFileCache,
+    pullPage: () => pullPageHost?.page() ?? null,
     selectFile: selectFile,
   });
 

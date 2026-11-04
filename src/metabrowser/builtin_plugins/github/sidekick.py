@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
+from functools import partial
 from typing import TYPE_CHECKING, Final
 
 from starlette.responses import JSONResponse, Response
@@ -35,6 +37,11 @@ _NO_STORE: Final = {"cache-control": "no-store"}
 # A refresh request carries no parameters; a JSON object of any size worth reading fits.
 MAX_REFRESH_REQUEST_BYTES: Final = 1024
 PULL_ROUTE: Final = "/api/plugin/github/pull"
+# Eight ready files covered the visible viewport in three paired browser runs on
+# public Ruff PRs of 1,031 and 1,627 files (2026-11-03, Chrome 152, 1400x900). One
+# left visible reserved space at 1,031. Hydrating fifty cost 112–181 ms in the
+# route; eight cost 21 ms. Later files use the existing on-approach loader.
+INITIAL_PULL_FILES: Final = 8
 
 
 async def pull_handler(request: Request) -> Response:
@@ -63,6 +70,74 @@ async def pull_handler(request: Request) -> Response:
     if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=headers)
     return JSONResponse(dict(envelope), headers=headers)
+
+
+async def pull_comparison_handler(request: Request) -> Response:
+    """The selected PR's comparison, from its trusted store and no network."""
+    from metabrowser.builtin_plugins.diff.sidekick import comparison_at
+    from metabrowser.builtin_plugins.github.pull_manifest import (
+        invalidate_pull_manifest,
+        load_pull_manifest,
+    )
+    from metabrowser.builtin_plugins.github.pull_route import served_pull_view
+    from metabrowser.git.object_failures import observed_object_failures
+    from metabrowser.git.process import GitLocation, RepositoryStoreTarget
+    from metabrowser.home import PrivateStorageError
+
+    view = served_pull_view(mirror_session(request.app), get_source_session().subject)
+    if view is None or view.pin is None:
+        return JSONResponse(
+            {"error": "this server serves no pull request", "code": "no_pull_request"},
+            status_code=409,
+            headers=_NO_STORE,
+        )
+    if request.query_params.get("number", "") != str(view.served.number):
+        return JSONResponse(
+            {"error": "this pull request is not served here", "code": "no_pull_request"},
+            status_code=404,
+            headers=_NO_STORE,
+        )
+    query = request.query_params
+    if (
+        query.get("base_policy") != "merge_base"
+        or query.get("revision")
+        or any(
+            re.fullmatch(r"[0-9a-f]{40}(?:[0-9a-f]{24})?", query.get(name, "")) is None
+            for name in ("left", "right")
+        )
+    ):
+        return JSONResponse(
+            {"error": "name two full commit IDs and merge_base", "code": "invalid_comparison"},
+            status_code=400,
+            headers=_NO_STORE,
+        )
+    published = view.served.published
+    left, right = query["left"], query["right"]
+    target = RepositoryStoreTarget(published.git_dir, published.object_format)
+    location = GitLocation.revision(target, view.pin)
+    response = await comparison_at(
+        request,
+        location,
+        max_initial_files=INITIAL_PULL_FILES,
+        manifest_loader=partial(load_pull_manifest, published),
+    )
+
+    if response.status_code == 409 and any(
+        failure.state == "object_corrupt"
+        for failure in observed_object_failures.pending(target, (left, right))
+    ):
+        try:
+            await asyncio.to_thread(invalidate_pull_manifest, published, (left, right))
+        except (OSError, PrivateStorageError):
+            return JSONResponse(
+                {
+                    "error": "object_corrupt",
+                    "message": "An object does not match its ID, and its cached comparison could not be discarded. Clear the affected repository cache before retrying.",
+                },
+                status_code=409,
+                headers=_NO_STORE,
+            )
+    return response
 
 
 async def pull_markdown_handler(request: Request) -> JSONResponse:
@@ -144,5 +219,6 @@ __all__ = [
     "PULL_ROUTE",
     "pull_handler",
     "pull_markdown_handler",
+    "pull_comparison_handler",
     "pull_refresh_handler",
 ]

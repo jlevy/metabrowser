@@ -16,6 +16,9 @@
 // IntersectionObserver is played by asking for parts in reading order. Each step prints
 // the requests the page made, the timer it left, how many times it painted, what it
 // would paint, whether it reloaded, and which parts it rendered as Markdown.
+//
+// `place` is the reader's place in the pane through history, from createScrollKeeper, on a
+// stage standing for the pane: see placeStory.
 
 const fs = require("node:fs");
 const path = require("node:path");
@@ -320,6 +323,393 @@ function createPage(runtime, options) {
   };
 }
 
+/**
+ * What a first open of a hunk's disclosure does, through the page's own function: nothing
+ * until the disclosure toggles, and then one build of a line each, whatever toggles after.
+ * The browser's part is firing `toggle`; an EventTarget keeps a listener's `once` as it does.
+ */
+function firstOpen(runtime, earlier) {
+  const details = new EventTarget();
+  const built = [];
+  const plain = { replaceWith: (lines) => built.push(lines) };
+  runtime.tintOnFirstOpen(details, plain, earlier, (lines) => lines);
+  assert(built.length === 0, "a disclosure built its lines before it was opened");
+  for (let toggles = 0; toggles < 3; toggles += 1) {
+    details.dispatchEvent(new Event("toggle"));
+  }
+  assert(built.length === 1, `a disclosure built its lines ${built.length} times`);
+  return built[0];
+}
+
+/** Context lines of a long hunk, numbered from *from* to *to*. */
+function context(from, to) {
+  return Array.from({ length: to - from + 1 }, (_, index) => ` line ${from + index}`);
+}
+
+/** A review comment's hunk and where it points, for each thing the page decides of it. */
+function hunkCases() {
+  const header = "@@ -1,30 +1,30 @@ def main():";
+  const single = { line: 30, original_line: 30, start_line: null, original_start_line: null };
+  const hunk = (...lines) => lines.flat(2).join("\n");
+  // Lines 1 to 30 of the new side, where 15 and 25 replaced older lines.
+  const changed = [
+    context(1, 14),
+    "-old 15",
+    "+new 15",
+    context(16, 24),
+    "-old 25",
+    "+new 25",
+    context(26, 30),
+  ];
+  return [
+    ["a short hunk is whole", { ...single, diff_hunk: "@@ -1 +1,2 @@\n one\n+two" }],
+    [
+      "the header and a tail's worth is whole: a disclosure hides no single line",
+      { ...single, diff_hunk: hunk(header, context(23, 30)) },
+    ],
+    ["one line more is past the tail", { ...single, diff_hunk: hunk(header, context(22, 30)) }],
+    ["a long hunk shows its tail", { ...single, diff_hunk: hunk(header, changed) }],
+    [
+      "a range longer than the tail is all shown, from its first line, not counting a deletion",
+      {
+        ...single,
+        start_line: 14,
+        original_start_line: 14,
+        diff_hunk: hunk(header, changed),
+      },
+    ],
+    [
+      "a range on the left counts deletions and not additions",
+      {
+        ...single,
+        side: "LEFT",
+        start_line: 15,
+        original_start_line: 15,
+        diff_hunk: hunk(header, changed),
+      },
+    ],
+    [
+      "an outdated comment's range is its original one",
+      {
+        line: null,
+        start_line: null,
+        original_line: 30,
+        original_start_line: 14,
+        diff_hunk: hunk(header, changed),
+      },
+    ],
+    [
+      "a range above what the record kept shows all it kept",
+      {
+        ...single,
+        start_line: 1,
+        original_start_line: 1,
+        diff_hunk: hunk(context(19, 30)),
+      },
+    ],
+    [
+      "a range of the most shown is all shown",
+      {
+        ...single,
+        line: 130,
+        original_line: 130,
+        start_line: 31,
+        original_start_line: 31,
+        diff_hunk: hunk(header, context(1, 130)),
+      },
+    ],
+    [
+      "a range past the most shown shows the most, and the rest is behind the disclosure",
+      {
+        ...single,
+        line: 130,
+        original_line: 130,
+        start_line: 1,
+        original_start_line: 1,
+        diff_hunk: hunk(header, context(1, 130)),
+      },
+    ],
+    [
+      "the other side's lines do not carry a range past the most shown",
+      {
+        ...single,
+        start_line: 29,
+        original_start_line: 29,
+        diff_hunk: hunk(
+          header,
+          " line 29",
+          Array.from({ length: 150 }, (_, index) => `-old ${index}`),
+          "+new 30",
+        ),
+      },
+    ],
+    [
+      "a hunk's text is only ever text",
+      {
+        ...single,
+        diff_hunk: hunk(
+          header,
+          "+<img src=x onerror=alert(1)>",
+          "-</pre><script>alert(1)</script>",
+          " @@ not a header",
+          "\\ No newline at end of file",
+        ),
+      },
+    ],
+  ];
+}
+
+/**
+ * A reader's place, on a stage that stands for the pane and its page: blocks of the heights
+ * a step gives them under a 120 px header, a scroll offset, and the history entry's state.
+ * The geometry is the production `placeAt` and `scrollTopOf` over those heights; what the
+ * browser does with `scrollTop`, a click, and a wheel is checked in Chrome. Each step prints
+ * where the pane is, what the entry holds, and what the keeper still has running.
+ */
+function placeStory(runtime) {
+  const timers = new Map();
+  let nextTimer = 1;
+  const stage = { heights: [], scrollTop: 0, entry: null, anchored: false, writes: 0 };
+  const tops = () => {
+    let next = 120;
+    return stage.heights.map((height) => {
+      const top = next;
+      next += height;
+      return top;
+    });
+  };
+  const keeperFor = () =>
+    runtime.createScrollKeeper({
+      read: () => stage.entry,
+      write(place) {
+        stage.entry = place;
+        stage.writes += 1;
+      },
+      measure: () => runtime.placeAt(tops(), stage.scrollTop),
+      apply(place) {
+        const top = runtime.scrollTopOf(place, tops());
+        if (top === null) {
+          return false;
+        }
+        stage.scrollTop = top;
+        return true;
+      },
+      anchored: () => stage.anchored,
+      toTop() {
+        stage.scrollTop = 0;
+      },
+      schedule(callback, delayMs) {
+        const id = nextTimer++;
+        timers.set(id, { callback, delayMs });
+        return id;
+      },
+      cancel: (handle) => timers.delete(handle),
+    });
+  const fire = (delayMs) => {
+    for (const [id, timer] of [...timers]) {
+      if (timer.delayMs === delayMs) {
+        timers.delete(id);
+        timer.callback();
+      }
+    }
+  };
+  const fireWrite = () => fire(runtime.PLACE_WRITE_MS);
+  const fireSettle = () => fire(runtime.LANDING_SETTLE_MS);
+  let keeper = keeperFor();
+  // A line per step, so the transcript stays within what tryscript can match.
+  const steps = {};
+  const step = (name, action) => {
+    stage.writes = 0;
+    action();
+    const { holding, writing, settling } = keeper.snapshot();
+    const running = [
+      ...(holding === null ? [] : ["holding"]),
+      ...(writing ? ["write waiting"] : []),
+      ...(settling ? ["settling"] : []),
+    ];
+    steps[name] =
+      `pane at ${stage.scrollTop}; entry ${JSON.stringify(stage.entry)}; ` +
+      `${stage.writes} written; ${running.join(", ") || "nothing running"}`;
+  };
+  /** Another page, as a landing that loads the document again has: the entry alone remains. */
+  const reopen = (heights = []) => {
+    keeper.dispose();
+    keeper = keeperFor();
+    stage.heights = heights;
+    stage.scrollTop = 0;
+  };
+
+  stage.scrollTop = 500;
+  step("a new entry starts at the top and writes nothing", () => keeper.land());
+  stage.heights = [300, 400, 500, 600, 700];
+  step("the page paints: the pane stays at the top", () => keeper.contentChanged());
+  step("the reader scrolls: nothing is written while the pane moves", () => {
+    stage.scrollTop = 600;
+    keeper.scrolled();
+    stage.scrollTop = 900;
+    keeper.scrolled();
+  });
+  step("the pane is still: its place is written", fireWrite);
+  step("still in the header: the scroll offset says where", () => {
+    stage.scrollTop = 80;
+    keeper.scrolled();
+    fireWrite();
+  });
+  step("a click writes a waiting place before it can leave this entry", () => {
+    stage.scrollTop = 900;
+    keeper.scrolled();
+    keeper.flush();
+  });
+  step("with nothing waiting, a click writes nothing", () => keeper.flush());
+
+  // Back onto the entry, which loads the page again. The texts are plain, and shorter, and
+  // what was rendered above the place has not been asked for, so the same pixels would be
+  // somewhere else.
+  reopen();
+  step("back: nothing is painted, so the place waits", () => keeper.land());
+  stage.heights = [200, 300, 500, 600, 700];
+  step("the page paints: the pane goes to the block, not to the pixels", () =>
+    keeper.contentChanged(),
+  );
+  stage.heights = [200, 300, 800, 600, 700];
+  step("a text at the place renders: the block's top has not moved", () => keeper.contentChanged());
+  stage.heights = [200, 650, 800, 600, 700];
+  step("a text above the place renders: the pane is put back", () => keeper.contentChanged());
+  step("the hold's own scrolling is not the reader's and writes nothing", () => keeper.scrolled());
+  step("the page has been still long enough: the landing is over", fireSettle);
+  stage.heights = [200, 900, 800, 600, 700];
+  step("a later change no longer moves the pane", () => keeper.contentChanged());
+
+  stage.entry = { block: 3, offset: 40, top: 2000 };
+  reopen();
+  step("back again: the place waits for the page", () => keeper.land());
+  step("the reader moves first: the place is theirs", () => keeper.readerMoved());
+  stage.heights = [300, 400, 500, 600, 700];
+  step("the page paints: the pane is not moved", () => keeper.contentChanged());
+
+  reopen(stage.heights);
+  step("back with the page there: the pane is placed at once", () => keeper.land());
+  step("the reader moves during the hold", () => {
+    keeper.readerMoved();
+    stage.scrollTop = 2500;
+    keeper.scrolled();
+  });
+  stage.heights = [900, 400, 500, 600, 700];
+  step("a change after that does not undo it", () => keeper.contentChanged());
+  step("and the reader's new place is written", fireWrite);
+
+  stage.entry = { block: 2, offset: 10, top: 900 };
+  stage.anchored = true;
+  reopen(stage.heights);
+  stage.scrollTop = 700;
+  step("an address with a fragment names its own place: the pane is left alone", () =>
+    keeper.land(),
+  );
+  stage.anchored = false;
+
+  stage.entry = { block: 2, offset: 10, top: 900 };
+  reopen(stage.heights);
+  step("back and forward between tabs: this tab's place", () => keeper.land());
+  fireSettle();
+  stage.entry = { block: 1, offset: 5, top: 400 };
+  step("a write still waiting when history moves is dropped with the old entry", () => {
+    stage.scrollTop = 1500;
+    keeper.scrolled();
+    keeper.land();
+  });
+  fireSettle();
+
+  stage.entry = { block: 40, offset: 10, top: 90000 };
+  reopen([300, 400]);
+  step("a page with fewer blocks than the place shows its last", () => keeper.land());
+  keeper.readerMoved();
+
+  for (const value of [{ block: "1", offset: 0, top: 0 }, { block: 1 }, "nonsense"]) {
+    stage.entry = value;
+    reopen([300, 400]);
+    stage.scrollTop = 200;
+    step(`what is not a place is no place: ${JSON.stringify(value)}`, () => keeper.land());
+  }
+
+  stage.entry = { block: 1, offset: 5, top: 400 };
+  reopen([300, 400]);
+  keeper.land();
+  stage.scrollTop = 900;
+  step("dispose ends all of it", () => {
+    keeper.scrolled();
+    keeper.dispose();
+  });
+  assert(timers.size === 0, "a disposed keeper left a timer running");
+  step("a disposed keeper does nothing", () => {
+    keeper.land();
+    keeper.contentChanged();
+    keeper.scrolled();
+    keeper.flush();
+  });
+  assert(timers.size === 0, "a disposed keeper started a timer");
+  // Asserted rather than printed, because this transcript is at the size tryscript can match.
+  // Safari throws past 100 `history.replaceState` calls in 30 s, however the moves are paced.
+  for (const betweenMoves of [101, 150, 200, 333, 351, 400, 1000]) {
+    const written = writesWhileMoving(runtime, betweenMoves);
+    assert(written < 100, `${written} writes in 30 s, moving every ${betweenMoves} ms`);
+  }
+  // A key ends a hold only if it can move the pane: not a bare modifier, and not typing.
+  const field = { closest: () => ({}) };
+  for (const [key, target, moves] of [
+    ["PageDown", null, true],
+    ["ArrowDown", null, true],
+    [" ", null, true],
+    ["Tab", null, true],
+    ["Tab", field, true],
+    ["ArrowDown", field, false],
+    [" ", field, false],
+    ["Shift", null, false],
+    ["Meta", null, false],
+    ["a", null, false],
+  ]) {
+    assert(
+      runtime.keyMovesPane(key, target) === moves,
+      `"${key}"${target ? " in a field" : ""} should${moves ? "" : " not"} end a hold`,
+    );
+  }
+  return steps;
+}
+
+/** How many places a keeper writes in 30 s to a pane that moves every *betweenMs*. */
+function writesWhileMoving(runtime, betweenMs) {
+  const timers = new Map();
+  let nextTimer = 1;
+  let clock = 0;
+  let written = 0;
+  const keeper = runtime.createScrollKeeper({
+    read: () => null,
+    write() {
+      written += 1;
+    },
+    measure: () => ({ block: 0, offset: 0, top: 0 }),
+    apply: () => true,
+    anchored: () => false,
+    toTop() {},
+    schedule(callback, delayMs) {
+      const id = nextTimer++;
+      timers.set(id, { at: clock + delayMs, callback });
+      return id;
+    },
+    cancel: (handle) => timers.delete(handle),
+  });
+  for (clock = 0; clock < 30000; clock += betweenMs) {
+    for (const [id, timer] of [...timers]) {
+      if (timer.at <= clock) {
+        timers.delete(id);
+        timer.callback();
+      }
+    }
+    keeper.scrolled();
+  }
+  keeper.dispose();
+  return written;
+}
+
 async function main() {
   const runtime = await import(pathToFileURL(pagePath).href);
   const record = recorded.current.body.record;
@@ -427,6 +817,24 @@ async function main() {
   steps.push(
     await page.step("shown again, it polls at once", async () => controller.onVisibilityChange()),
   );
+  // A prior failed poll must not survive the pin guard's refusal.
+  server.pull = { status: 502, etag: null, body: null };
+  const failedPoll = await page.step("a poll failed before the pin moved", async () => page.fire());
+  assert(failedPoll.paint.message.includes("502"), "the failed poll did not show its error");
+  // A page Back restores after the pin moved polls before the pin guard reloads it. The
+  // guard's refusal is the guard's to answer, so the page says nothing of its own.
+  server.pull = {
+    status: 409,
+    etag: null,
+    body: { error: "the server now serves another revision", code: "pin_changed", pin: null },
+  };
+  const refused = await page.step("a poll the pin guard refused", async () => page.fire());
+  assert(refused.requests.length === 1, `the refused poll was not sent: ${refused.requests}`);
+  assert(
+    refused.paint !== undefined && refused.paint.message === null,
+    `a pin_changed poll painted: ${JSON.stringify(refused.paint)}`,
+  );
+  server.pull = recorded.refreshed;
   steps.push(await page.step("dispose", async () => controller.dispose()));
 
   // A page opened in a background tab, on its Files changed: it reads the record once so
@@ -437,6 +845,22 @@ async function main() {
   steps.push(
     await background.step("a page opened in the background reads once", () =>
       background.controller.start(),
+    ),
+  );
+
+  // A tab the page does not have, which the route's grammar never sends: taken, it would
+  // select neither tab above the conversation it shows. Asked for at the start or later,
+  // the page stays on a tab it has.
+  const unknownTab = createPage(runtime, { number: 7, tab: "commits" });
+  unknownTab.server.pull = recorded.absent;
+  steps.push(
+    await unknownTab.step("a page opened on a tab it does not have shows the conversation", () =>
+      unknownTab.controller.start(),
+    ),
+  );
+  steps.push(
+    await unknownTab.step("a tab it does not have is not taken later", async () =>
+      unknownTab.controller.setTab("commits"),
     ),
   );
 
@@ -491,21 +915,83 @@ async function main() {
     ["no comparison in the record", recordComparison, null],
   ].map(([when, mounted, next]) => `${when}: ${runtime.filesAction(mounted, next)}`);
 
-  console.log(
-    JSON.stringify(
-      {
-        steps,
-        states,
-        otherNumber: { status: other.status, message: other.message, served: other.served },
-        links,
-        wire: runtime.gitPathWire("src/app.txt"),
-        pageDefense: inert,
-        filesChanged: files,
-      },
-      null,
-      2,
-    ),
+  // What Files changed says instead, for a record whose comparison could not be made and
+  // for one whose merge base the store's shallow history cannot settle.
+  const filesUnavailable = Object.fromEntries(
+    [
+      "fetch_failed",
+      "no_merge_base",
+      "base_uncertain",
+      "commits_unavailable",
+      "comparison_timeout",
+      "comparison_too_large",
+    ].map((why) => {
+      const answer = structuredClone(recorded.current.body);
+      answer.record.comparison = null;
+      answer.record.unavailable = { comparison: why };
+      const model = runtime.describePull(answer, { number: 7, tab: "", nowMs: page.clock.now });
+      return [why, { files: model.filesUnavailable, notes: model.notes }];
+    }),
   );
+
+  // What a review comment shows of its hunk: the recorded pull request with one comment,
+  // whose fields are the case's, through describePull. The stand-in's hunks are short, as
+  // a recording is small, so the long ones are written here. Whatever the case, the two
+  // parts hold the hunk's every line in order, and the tail ends with the hunk's end. What
+  // is painted at once never passes the most shown, with the one line a disclosure is too
+  // big for.
+  const reviewComment = record.review_comments[0];
+  const hunks = Object.fromEntries(
+    hunkCases().map(([name, fields]) => {
+      const answer = structuredClone(recorded.current.body);
+      answer.record.review_comments = [{ ...reviewComment, ...fields }];
+      const [{ hunk }] = runtime.describePull(answer, {
+        number: 7,
+        tab: "",
+        nowMs: page.clock.now,
+      }).reviewComments;
+      const earlier = hunk.earlierLines === 0 ? [] : firstOpen(runtime, hunk.earlier);
+      assert(earlier.length === hunk.earlierLines, `${name}: the disclosure's count is wrong`);
+      const parts = [...earlier, ...hunk.shown].map((line) => line.text);
+      assert(parts.join("\n") === fields.diff_hunk, `${name}: a line of the hunk was lost`);
+      assert(hunk.shown.at(-1).text === parts.at(-1), `${name}: the tail lost the commented line`);
+      assert(hunk.shown.length <= runtime.HUNK_RANGE_LINES + 1, `${name}: past the most shown`);
+      const said = (line) => `${line.kind}: ${line.text}`;
+      const shown = hunk.shown.map(said);
+      return [
+        name,
+        {
+          earlier:
+            earlier.length === 0
+              ? null
+              : `${earlier.length} lines: ${said(earlier[0])} ... ${said(earlier.at(-1))}`,
+          // All of a tail, or its count and its ends where a range has made it long.
+          shown:
+            shown.length <= 40 ? shown : `${shown.length} lines: ${shown[0]} ... ${shown.at(-1)}`,
+        },
+      ];
+    }),
+  );
+
+  // Printed in two parts: this script prints the first, and
+  // github-pull-page-second-session.js, which runs this same session, the second.
+  // tryscript matches a command's expected output as one regular expression, and the
+  // whole transcript in one block is larger than V8 compiles. `--part 2` selects the
+  // second here, and `--part all` prints everything, for a reader.
+  const first = {
+    steps,
+    states,
+    otherNumber: { status: other.status, message: other.message, served: other.served },
+    links,
+    wire: runtime.gitPathWire("src/app.txt"),
+    pageDefense: inert,
+    filesChanged: files,
+  };
+  const second = { filesUnavailable, hunks, place: placeStory(runtime) };
+  const part = process.argv.indexOf("--part");
+  const wanted = part === -1 ? "1" : process.argv[part + 1];
+  const chosen = wanted === "all" ? { ...first, ...second } : wanted === "2" ? second : first;
+  console.log(JSON.stringify(chosen, null, 2));
 }
 
 main().catch((error) => {

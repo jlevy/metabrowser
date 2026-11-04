@@ -1,11 +1,12 @@
 # Plan: v0.12 Thin Mirror for Git and GitHub Browsing
 
-**Status:** Delivered on the unmerged v0.12 stack.
-The design was decided on 2026-09-23 and revised the same day after an independent
-design review. [Delivery](#delivery) maps each step and follow-up to its pull request.
-Nothing is merged: the
-[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
-remains before landing, which waits for the user’s approval (`mb-n2ro`).
+**Status:** Landed on `main`, not yet released; it first ships in 0.12.0, which is not
+tagged. The design was decided on 2026-09-23 and revised the same day after an
+independent design review.
+[Delivery](#delivery) maps each step and follow-up to its pull request, all of them
+merged.
+The [alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists
+what remains before the release, which waits for the user’s approval (`mb-4bd2`).
 
 This plan supersedes the remaining v0.12 phases in
 [Open Repositories from Git URLs](plan-2026-08-11-open-repo-from-git-url.md) (2A onward)
@@ -45,6 +46,9 @@ fresh without making anyone wait, and renders it.
   reclamation stay off, so a commit that was ever shown stays readable, even after a
   force-push upstream.
   Staging directories left by a crash are still swept.
+  This applies to Metabrowser’s own store;
+  [the checkout plan](plan-2026-11-02-pr-review-mirror-and-checkout.md) says what an
+  overlay borrows, which a checkout’s own `gc` can remove.
 - **Seamless caching, never blocking a request.** A cached page opens from the mirror.
   Network work runs only in background jobs: a server request starts or joins one and
   returns at once. Only a first visit, which has nothing to show yet, waits for its
@@ -259,9 +263,13 @@ It claims only `github.com` and `raw.githubusercontent.com`.
 
 ## Capability Map
 
-The Alpha column is delivered on the stack.
+The Alpha column is on `main` and first ships in 0.12.0.
 [QA: v0.12 alpha acceptance](../../qa/qa-2026-09-24-v012-alpha-acceptance.md) records
 the run against it.
+
+The Later column is what v0.12 leaves out.
+Nothing in it gates 0.12.0, and none of it was delivered by the landing: it stays work
+for a later release, with its own plan only where a row links one.
 
 | GitHub web | Alpha | Later |
 | --- | --- | --- |
@@ -303,10 +311,13 @@ maintained, on the `reference/v012-hosted-review` branch, tagged
 
 ## Delivery
 
-Each step is one stacked pull request, implemented and reviewed by separate agents, with
-`make verify` and green CI before the next step starts from its head.
+Each step was one stacked pull request, implemented and reviewed by separate agents,
+with `make verify` and green CI before the next step started from its head.
+All seven landed on `main` with the rest of stack
+[#218](https://github.com/jlevy/metabrowser/stack/218), which merged on 2026-10-02
+(`aa970853`).
 
-| PR | Scope | Checkpoint | Delivered |
+| PR | Scope | Checkpoint | Landed |
 | --- | --- | --- | --- |
 | 1. Design | This plan, bead changes, superseded notes | Plan agreed | [#227](https://github.com/jlevy/metabrowser/pull/227) (`mb-4izu`) |
 | 2. Simplify | Full clones; remove convergence, subject refs, leases, maintenance locks, and store reclamation; edit the unreleased records and fixtures in place | T0 still passes, with less code | [#228](https://github.com/jlevy/metabrowser/pull/228) (`mb-raep`) |
@@ -316,7 +327,8 @@ Each step is one stacked pull request, implemented and reviewed by separate agen
 | 6. PR data | `gh` runner and account checks, PR records, `refs/pull/<n>/head`, comparison endpoints, CLI inspection | `metab <pr-url> --api …` shows the pull request, including offline | [#232](https://github.com/jlevy/metabrowser/pull/232) (`mb-nkmq`) |
 | 7. PR view | Pull-request page: conversation, reviews, review comments, checks, Files changed | Paste a PR URL and read it in the browser; reload and reopen offline | [#233](https://github.com/jlevy/metabrowser/pull/233) (`mb-vrl7`) |
 
-Follow-up pull requests extend those steps, in stack order:
+Follow-up pull requests extended those steps, in stack order, and landed with them;
+#268, the last row, landed above the stack on 2026-10-04 (`0b016e4b`):
 
 | Pull request | Scope | Beads |
 | --- | --- | --- |
@@ -350,11 +362,13 @@ Follow-up pull requests extend those steps, in stack order:
 | [#265](https://github.com/jlevy/metabrowser/pull/265) | The release checklist rehearsed against v0.11.0 (exp-038) | `mb-cf6y` |
 | [#267](https://github.com/jlevy/metabrowser/pull/267) | Regular-folder differences from v0.11.0 that the landing gate’s data and browser differentials found: `STRUCTURED_CACHE_SIZE=0`, the diff document hook on a file not named `.patch` or `.diff`, a stray attribute on tree folder rows, and the line pitch of source that is not highlighted | `mb-55tr` |
 | [#260](https://github.com/jlevy/metabrowser/pull/260) | The QA walk-through, the per-layer review ledger, the list of changes to existing behavior, and the landing status | `mb-65pn` |
+| [#268](https://github.com/jlevy/metabrowser/pull/268) | Separate cache and configuration roots; a page kept for Back releases its event streams, integrating [#262](https://github.com/jlevy/metabrowser/pull/262), which was closed unmerged; the mirror heading’s sizing; the vulnerable glob dependency removed | `mb-j2b7`, `mb-tdmd`, `mb-19fc` |
 
 The test pull requests from #252 on are the release work of the test-suite review
 (`mb-06up`), whose remaining children follow the release.
 The [review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md) records
-how each pull request through #265 was reviewed.
+how each pull request above was reviewed, except #260, which changes documents only and
+has no row.
 
 Later: the pull-request list and pull requests on a local checkout
 ([GitHub Pulls tab](plan-2026-10-01-github-pulls-tab.md)), inline review anchoring, SSH,

@@ -670,6 +670,23 @@ def test_the_markdown_route_drops_the_kpress_icon_sprite(
         assert gone not in html, gone
 
 
+def test_the_markdown_route_names_only_kpress_stylesheets_and_the_same_ones_for_any_text(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """A page sets a text in KPress's stylesheets; a comment must not choose what it loads."""
+
+    _stand, client = pinned_pull
+    answer = client.get("/api/plugin/github/pull-markdown", params={"part": "body"}).json()
+    assets = answer["assets"]["assets"]
+    assert {asset["id"] for asset in assets} >= {"css/document.css", "css/components.css"}
+    assert {asset["loading"] for asset in assets} == {"stylesheet"}
+    assert "import_map" not in answer["assets"]
+    # Computed once, from no text at all.
+    from metabrowser import kpress_adapter
+
+    assert answer["assets"] == kpress_adapter.document_stylesheets()
+
+
 def test_harden_keeps_the_allowlist_and_is_idempotent() -> None:
     from metabrowser.inert_html import harden
 
@@ -881,6 +898,32 @@ def test_a_fetch_that_cannot_write_one_ref_writes_none(stand: _Stand) -> None:
     )
     assert asyncio.run(ref_commit(stand.published, "refs/pull/7/head")) is None
     assert asyncio.run(ref_commit(stand.published, mirrored)) == stand.origin["topic"]
+
+
+def test_a_pull_requests_fetch_brings_no_tags(stand: _Stand) -> None:
+    """A tag pointing into what is fetched would otherwise follow it into the store, where
+    a tag is a name the mirror resolves; only the mirror's own update changes those."""
+
+    _move_origin_ref(stand, "refs/tags/follows-the-head", stand.origin["fork_head"])
+    stand.refresh(7)
+    head = asyncio.run(ref_commit(stand.published, "refs/pull/7/head"))
+    assert head == stand.origin["fork_head"]
+    assert asyncio.run(ref_commit(stand.published, "refs/tags/follows-the-head")) is None
+
+
+@pytest.mark.parametrize("number", [8, 9])
+def test_only_an_open_pull_requests_refresh_fetches_its_base_branch(
+    stand: _Stand, number: int
+) -> None:
+    """A merged or closed one compares from ``base.sha``, so it has no reason to move the
+    mirror's branch, which a reader's pin may name. An open one compares from that branch."""
+
+    mirrored = "refs/remotes/origin/topic"
+    _move_origin_ref(stand, "refs/heads/topic", stand.origin["draft_head"])
+    assert stand.refresh(number).pull.state == "closed"
+    assert asyncio.run(ref_commit(stand.published, mirrored)) == stand.origin["topic"]
+    assert stand.refresh(7).pull.state == "open"
+    assert asyncio.run(ref_commit(stand.published, mirrored)) == stand.origin["draft_head"]
 
 
 def test_a_git_failure_is_reported_without_gits_own_text(
@@ -1386,6 +1429,26 @@ def test_a_one_shot_refresh_is_judged_by_its_own_outcome(
     assert judged == (False, outcome)
 
 
+def test_a_one_shot_refresh_still_running_after_its_wait_is_an_error(tmp_path: Path) -> None:
+    """The command's wait ran out, and leaving stops the refresh, so it did not finish;
+    however the last one ended, that is not this one's success."""
+
+    from metabrowser.cli import api_cli
+    from metabrowser.cli.asgi_client import ApiResponse
+    from metabrowser.errors import CLIError
+
+    running = {"refreshing": True, "last_refresh": {"outcome": "succeeded"}}
+    with pytest.raises(CLIError, match="did not finish"):
+        api_cli._emit_api_response(  # pyright: ignore[reportPrivateUsage]
+            "/api/plugin/github/pull-refresh",
+            ApiResponse(202, b"{}"),
+            "skipped",
+            fmt="json",
+            normalize_root=tmp_path,
+            after=("/api/plugin/github/pull", ApiResponse(200, json.dumps(running).encode())),
+        )
+
+
 def test_a_served_pull_requests_newer_commit_is_fetched_for_a_pin(
     stand: _Stand, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1439,3 +1502,53 @@ def test_the_commit_count_is_kept_only_within_its_bound(value: object, kept: int
                 PullRequest.model_validate(stored)
         else:
             assert PullRequest.model_validate(stored).commits == kept
+
+
+def test_the_parts_are_in_flight_together_and_read_as_they_did_in_sequence(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Five requests at once, and a record whose bytes do not say in what order they answered."""
+    real = pulls.gh_api
+    running = 0
+    most = 0
+    seen: list[str] = []
+
+    async def counted(path: str, **kwargs: Any) -> Any:
+        nonlocal running, most
+        running += 1
+        most = max(most, running)
+        seen.append(path)
+        # Later parts answer sooner, the opposite of the order they were asked in.
+        await asyncio.sleep(0.05 / len(seen))
+        try:
+            return await real(path, **kwargs)
+        finally:
+            running -= 1
+
+    monkeypatch.setattr(pulls, "gh_api", counted)
+    stand.answer(scenario(stand.origin))
+    record = stand.refresh(7)
+    assert most == 5, "the pull is read first, for its head, and then the other five together"
+    assert seen[0] == "repos/octo/demo/pulls/7"
+    # The ETags are written in the order the parts are named, whichever answered first.
+    parts = [
+        "/issues/7/comments",
+        "/pulls/7/reviews",
+        "/pulls/7/comments",
+        "/check-runs",
+        "/status",
+    ]
+    written = [next(i for i, part in enumerate(parts) if part in p) for p in list(record.etags)[1:]]
+    assert written == sorted(written) and len(written) > 1
+
+
+def test_the_first_refusal_in_order_is_the_one_raised(stand: _Stand) -> None:
+    """A refusal reads as it did in sequence, whichever part got its answer first."""
+    answers = scenario(stand.origin)
+    refused = {"status": 404, "body": {"message": "Not Found"}}
+    answers = _api(answers, page("repos/octo/demo/pulls/7/reviews"), refused)
+    answers = _api(answers, page("repos/octo/demo/pulls/7/comments"), {"status": 500, "body": {}})
+    stand.answer(answers)
+    with pytest.raises(pulls.PullDataError) as raised:
+        stand.refresh(7)
+    assert raised.value.state == "not_found_or_private"

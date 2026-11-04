@@ -201,6 +201,8 @@
       dispose,
       onHistory,
       open,
+      /** The handle of the page holding the pane, for what sits beside it, or null. */
+      page: () => shown()?.handle ?? null,
       show,
       shown: () => shown()?.number ?? null,
     });

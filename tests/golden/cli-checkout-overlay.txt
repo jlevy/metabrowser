@@ -1,0 +1,767 @@
+## Name a linked worktree: its common directory lends, and nothing is copied.
+
+# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/feature-x --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+borrows: <ROOT>/checkout
+selection: pull_request
+pin: 806ef37f15fef9c34a47873090c6169008db8cd2 (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+borrowing objects from <ROOT>/checkout
+cloned https://github.com/octo/demo in 0.0 s
+
+# the store's refs
+refs/pull/1/head 806ef37f15fef9c34a47873090c6169008db8cd2
+refs/remotes/origin/trunk 0b51e0167804d26271bf05e7c4304bfd87d67e01
+
+## Remembered: no flag, from any directory.
+
+# metab https://github.com/octo/demo/pull/1 --api /api/source/status
+exit: 0
+--- stdout ---
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "806ef37f15fef9c34a47873090c6169008db8cd2",
+  "ref": "refs/pull/1/head",
+  "ref_name": "refs/pull/1/head",
+  "name": "demo",
+  "origin": "https://github.com/octo/demo",
+  "location": "<HOME>/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "borrows": "<ROOT>/checkout",
+  "shallow": false,
+  "refreshable": true,
+  "latest": "806ef37f15fef9c34a47873090c6169008db8cd2",
+  "ref_on_origin": true,
+  "last_fetch_at": "2026-09-17T12:00:00Z",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "refreshing": false,
+  "stale": false,
+  "pull_request": 1,
+  "selection_state": null,
+  "selection_href": null
+}
+--- stderr ---
+selection: pull_request
+pin: 806ef37f15fef9c34a47873090c6169008db8cd2 (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+
+# metab https://github.com/octo/demo --api '/api/source/refs?kind=branch'
+exit: 0
+--- stdout ---
+api: /api/source/refs?kind=branch
+status: 200
+{
+  "kind": "branch",
+  "query": "",
+  "limit": 100,
+  "pin": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+  "ref": "refs/remotes/origin/trunk",
+  "total": 1,
+  "truncated": false,
+  "refs": [
+    {
+      "name": "trunk",
+      "ref": "refs/remotes/origin/trunk",
+      "commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+      "default": true,
+      "current": true
+    }
+  ]
+}
+--- stderr ---
+
+# metab https://github.com/octo/demo --api /api/cache/stores
+exit: 0
+--- stdout ---
+api: /api/cache/stores
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "stores": [
+    {
+      "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
+      "publication": "published",
+      "mode": "overlay",
+      "lender": "present",
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/trunk",
+        "default_revision": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [
+        {
+          "slug": "github-com--octo--demo--46386669dc01",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---
+
+# the checkout's .git is unchanged, byte for byte
+
+## A published store wins: another checkout named changes nothing.
+
+# metab https://github.com/octo/demo --checkout <ROOT>/other --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+borrows: <ROOT>/checkout
+--- stderr ---
+this mirror already borrows objects from <ROOT>/checkout, and it keeps doing so: --checkout changed nothing
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago, borrowing objects from <ROOT>/checkout
+
+## Inside a checkout without the flag: a full clone, and the flag once.
+
+# metab https://github.com/octo/demo --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+--- stderr ---
+this directory is a checkout of https://github.com/octo/demo; to borrow its objects instead of cloning: metab https://github.com/octo/demo --checkout <ROOT>/checkout
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+
+# metab https://github.com/octo/demo --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+
+# metab https://github.com/octo/demo --api /api/cache/stores
+exit: 0
+--- stdout ---
+api: /api/cache/stores
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "stores": [
+    {
+      "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
+      "publication": "published",
+      "mode": "full",
+      "lender": null,
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/trunk",
+        "default_revision": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_operation": {
+          "kind": "acquire",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [
+        {
+          "slug": "github-com--octo--demo--46386669dc01",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---
+
+## A full mirror already here is kept.
+
+# metab https://github.com/octo/demo --checkout <ROOT>/checkout --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+--- stderr ---
+a full mirror of https://github.com/octo/demo is already in the cache, and it is kept: --checkout borrowed nothing. This release has no command that converts it; to borrow instead, delete the mirror from the cache and run this command again
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago
+
+## A checkout that cannot lend falls to a full clone and says why.
+
+# metab https://github.com/octo/demo --checkout <ROOT>/spoiled-partial --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+--- stderr ---
+the checkout is a partial clone, which cannot be borrowed from; cloning
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+
+# metab https://github.com/octo/demo --checkout <ROOT>/spoiled-promisor --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+--- stderr ---
+the checkout is a partial clone, which cannot be borrowed from; cloning
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+
+# metab https://github.com/octo/demo --checkout <ROOT>/spoiled-alternates --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+--- stderr ---
+the checkout borrows objects itself; cloning
+cloning https://github.com/octo/demo into <HOME>
+cloned https://github.com/octo/demo in 0.0 s
+
+# metab https://github.com/octo/demo --checkout <ROOT>/spoiled-format --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+the checkout's objects are sha256 and the origin's are sha1; cloning instead
+cloned https://github.com/octo/demo in 0.0 s
+
+## A path that is no checkout of the repository is refused, and says what it found.
+
+# metab https://github.com/octo/demo --checkout <ROOT>/elsewhere --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: --checkout <ROOT>/elsewhere is not a checkout of https://github.com/octo/demo: origin is https://github.com/a/b; upstream is https://github.com/c/d
+
+# metab https://github.com/octo/demo --checkout <ROOT>/empty --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: --checkout <ROOT>/empty is not a Git checkout: it has no .git and is no Git directory
+
+# metab <ROOT>/empty --checkout <ROOT>/empty --api /api/source/status
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: --checkout names a checkout for a Git source to borrow objects from, and ROOT is a local path
+
+## A checkout whose remote is a fork lends through the remote that is the source.
+
+# metab https://github.com/octo/demo --checkout <ROOT>/fork --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+borrows: <ROOT>/fork
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+borrowing objects from <ROOT>/fork
+cloned https://github.com/octo/demo in 0.0 s
+
+## A depth-3 clone of a merge-heavy history, where Git alone answers A1 and the truth is A4 (2450c5fafb08ffe7cd0020e0b94edd7f598ccd91). With no rounds of deepening allowed: base_uncertain, no diff.
+
+# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/shallow --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+{
+  "state": "current",
+  "comparison_route": null,
+  "comparison": null,
+  "unavailable": {
+    "comparison": "base_uncertain"
+  }
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+borrowing objects from <ROOT>/shallow
+history is shallow, as the checkout's is
+cloned https://github.com/octo/demo in 0.0 s
+selection: pull_request
+pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+
+# metab https://github.com/octo/demo/pull/1 --api /api/source/status
+exit: 0
+--- stdout ---
+api: /api/source/status
+status: 200
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
+  "ref": "refs/pull/1/head",
+  "ref_name": "refs/pull/1/head",
+  "name": "demo",
+  "origin": "https://github.com/octo/demo",
+  "location": "<HOME>/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "borrows": "<ROOT>/shallow",
+  "shallow": true,
+  "refreshable": true,
+  "latest": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
+  "ref_on_origin": true,
+  "last_fetch_at": "2026-09-17T12:00:00Z",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "refreshing": false,
+  "stale": false,
+  "pull_request": 1,
+  "selection_state": null,
+  "selection_href": null
+}
+--- stderr ---
+selection: pull_request
+pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+
+## The same again, deepening: one round, in the store. Certain at A4.
+
+# metab https://github.com/octo/demo/pull/1 --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 3fe5d55744d3e20e0fdcb2a6c7e774b6d48ea19f
+borrows: <ROOT>/shallow
+selection: pull_request
+pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago, borrowing objects from <ROOT>/shallow
+
+# metab https://github.com/octo/demo/pull/1 --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+{
+  "state": "current",
+  "comparison_route": "/api/plugin/github/pull-comparison?number=1&left=2450c5fafb08ffe7cd0020e0b94edd7f598ccd91&right=59f44dac07a12a7c3907fbbcda78e35721c9013b&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "comparison": {
+    "base": "2450c5fafb08ffe7cd0020e0b94edd7f598ccd91",
+    "head": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
+    "base_commit": "3fe5d55744d3e20e0fdcb2a6c7e774b6d48ea19f",
+    "base_from": "base_branch"
+  },
+  "unavailable": {}
+}
+--- stderr ---
+selection: pull_request
+pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+
+# Files changed: ['p']
+
+# the checkout's .git is unchanged, byte for byte
+
+## A depth-1 clone: Git's answer is empty, which is uncertain and not no history.
+
+# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/shallowest --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+{
+  "state": "current",
+  "comparison_route": null,
+  "comparison": null,
+  "unavailable": {
+    "comparison": "base_uncertain"
+  }
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+borrowing objects from <ROOT>/shallowest
+history is shallow, as the checkout's is
+cloned https://github.com/octo/demo in 0.0 s
+selection: pull_request
+pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+
+# metab https://github.com/octo/demo/pull/1 --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+{
+  "state": "current",
+  "comparison_route": "/api/plugin/github/pull-comparison?number=1&left=2450c5fafb08ffe7cd0020e0b94edd7f598ccd91&right=59f44dac07a12a7c3907fbbcda78e35721c9013b&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "comparison": {
+    "base": "2450c5fafb08ffe7cd0020e0b94edd7f598ccd91",
+    "head": "59f44dac07a12a7c3907fbbcda78e35721c9013b",
+    "base_commit": "3fe5d55744d3e20e0fdcb2a6c7e774b6d48ea19f",
+    "base_from": "base_branch"
+  },
+  "unavailable": {}
+}
+--- stderr ---
+selection: pull_request
+pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+
+# Files changed: ['p']
+
+## Offline: a comparison the record cannot settle stays base_uncertain, and asking the comparison route for the tips directly does not guess either.
+
+# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/offline --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+{
+  "state": "current",
+  "comparison_route": null,
+  "comparison": null,
+  "unavailable": {
+    "comparison": "base_uncertain"
+  }
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+borrowing objects from <ROOT>/offline
+history is shallow, as the checkout's is
+cloned https://github.com/octo/demo in 0.0 s
+selection: pull_request
+pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+
+# metab https://github.com/octo/demo/pull/1 --api '/api/plugin/diff/comparison?left=3fe5d55744d3e20e0fdcb2a6c7e774b6d48ea19f&right=59f44dac07a12a7c3907fbbcda78e35721c9013b&base_policy=merge_base'
+exit: 1
+--- stdout ---
+api: /api/plugin/diff/comparison?left=3fe5d55744d3e20e0fdcb2a6c7e774b6d48ea19f&right=59f44dac07a12a7c3907fbbcda78e35721c9013b&base_policy=merge_base
+status: 404
+{
+  "error": "diff_comparison",
+  "message": "this store's history is too shallow to know what these two commits share (base_uncertain)",
+  "path": ""
+}
+--- stderr ---
+selection: pull_request
+pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/diff/comparison?left=3fe5d55744d3e20e0fdcb2a6c7e774b6d48ea19f&right=59f44dac07a12a7c3907fbbcda78e35721c9013b&base_policy=merge_base returned HTTP 404
+
+## A commit at the boundary, A5 (7793d124d206a7532c17b11dbdce90bd0820a2f6), changes one line of f; Git grafts it into a root. Its own diff is refused as parent_unavailable rather than shown against the empty tree, and its commit detail reports what it changed as unknown.
+
+# metab https://github.com/octo/demo/pull/1 --api '/api/plugin/diff/comparison?revision=7793d124d206a7532c17b11dbdce90bd0820a2f6'
+exit: 1
+--- stdout ---
+api: /api/plugin/diff/comparison?revision=7793d124d206a7532c17b11dbdce90bd0820a2f6
+status: 404
+{
+  "error": "diff_comparison",
+  "message": "this commit's parent is beyond the shallow history here, so what it changed cannot be shown (parent_unavailable); more history would settle it",
+  "path": "7793d124d206a7532c17b11dbdce90bd0820a2f6"
+}
+--- stderr ---
+selection: pull_request
+pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+Error: /api/plugin/diff/comparison?revision=7793d124d206a7532c17b11dbdce90bd0820a2f6 returned HTTP 404
+
+# metab https://github.com/octo/demo/pull/1 --api /api/git/commit/7793d124d206a7532c17b11dbdce90bd0820a2f6
+exit: 0
+--- stdout ---
+api: /api/git/commit/7793d124d206a7532c17b11dbdce90bd0820a2f6
+status: 200
+{
+  "is_repo": true,
+  "commit": {
+    "id": "7793d124d206a7532c17b11dbdce90bd0820a2f6",
+    "short_id": "7793d12",
+    "parent_ids": [],
+    "author": {
+      "name": "Test",
+      "email": "test@example.com"
+    },
+    "authored_at": 1577836800.0,
+    "committed_at": 1577836800.0,
+    "subject": "A5"
+  },
+  "body": "",
+  "stats": {
+    "files_changed": null,
+    "files_modified": null,
+    "files_added": null,
+    "files_deleted": null,
+    "additions": null,
+    "deletions": null
+  },
+  "files": [],
+  "files_truncated": false
+}
+--- stderr ---
+selection: pull_request
+pin: 59f44dac07a12a7c3907fbbcda78e35721c9013b (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+
+## A branch the origin deleted and the checkout collected leaves a dangling ref that would wedge every fetch. The refresh sweeps it first.
+
+# metab https://github.com/octo/demo --checkout <ROOT>/swept --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+borrows: <ROOT>/swept
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+borrowing objects from <ROOT>/swept
+cloned https://github.com/octo/demo in 0.0 s
+
+# the store's refs
+refs/remotes/origin/feat cc527356d4ce8fc77991b6be86bb1545b1e2ad2a
+refs/remotes/origin/trunk 0b51e0167804d26271bf05e7c4304bfd87d67e01
+
+# the refresh's outcome: succeeded
+
+# the store's refs
+refs/remotes/origin/trunk 0b51e0167804d26271bf05e7c4304bfd87d67e01
+
+## The checkout moved: a typed refusal at open, with the recorded path and repair.
+
+# metab https://github.com/octo/demo/pull/1 --api /api/source/status
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: the checkout this mirror borrows objects from is gone: <ROOT>/swept (lender_missing), and this mirror of https://github.com/octo/demo cannot be served without it. If it moved, or another checkout of the repository should lend instead, name it: metab https://github.com/octo/demo --checkout <new path>
+
+# metab https://github.com/octo/demo/pull/1 --show m
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: the checkout this mirror borrows objects from is gone: <ROOT>/swept (lender_missing), and this mirror of https://github.com/octo/demo cannot be served without it. If it moved, or another checkout of the repository should lend instead, name it: metab https://github.com/octo/demo --checkout <new path>
+
+## The cache routes read records and no object, so they still answer.
+
+# metab https://github.com/octo/demo --api /api/cache/stores
+exit: 0
+--- stdout ---
+api: /api/cache/stores
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "stores": [
+    {
+      "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
+      "publication": "published",
+      "mode": "overlay",
+      "lender": "lender_missing",
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/trunk",
+        "default_revision": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_operation": {
+          "kind": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        }
+      },
+      "problems": [],
+      "referenced_by": [
+        {
+          "slug": "github-com--octo--demo--46386669dc01",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---
+
+## Naming where it is now repairs it, and it is remembered.
+
+# metab https://github.com/octo/demo --checkout <ROOT>/moved --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+borrows: <ROOT>/moved
+--- stderr ---
+borrowing objects from <ROOT>/moved
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago, borrowing objects from <ROOT>/moved
+
+# metab https://github.com/octo/demo --no-serve
+exit: 0
+--- stdout ---
+acquired: https://github.com/octo/demo
+slug: github-com--octo--demo--46386669dc01
+store: sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4
+revision: 0b51e0167804d26271bf05e7c4304bfd87d67e01
+borrows: <ROOT>/moved
+--- stderr ---
+using the clone of https://github.com/octo/demo cached in <HOME>, fetched less than a minute ago, borrowing objects from <ROOT>/moved
+
+# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/absent --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: --checkout <ROOT>/absent is not a Git checkout: it has no .git and is no Git directory
+
+## A store whose alternates file disagrees with its record is refused.
+
+# metab https://github.com/octo/demo --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: this cached store's record of what it borrows disagrees with its objects/info/alternates file (damaged), so it was not opened. Move the cache directory aside, or set METABROWSER_CACHE_DIR to a different directory
+
+# metab <ROOT>/empty --api /api/cache/stores
+exit: 0
+--- stdout ---
+api: /api/cache/stores
+status: 200
+{
+  "home": "present",
+  "layout_format": "f01",
+  "stores": [
+    {
+      "id": "sha256:65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4",
+      "publication": "damaged",
+      "mode": "overlay",
+      "lender": "present",
+      "identity": {
+        "created_at": "2026-09-17T12:00:00Z",
+        "acquisition": {
+          "git_version": "<GIT_VERSION>",
+          "object_format": "sha1"
+        }
+      },
+      "state": {
+        "default_remote_ref": "refs/remotes/origin/trunk",
+        "default_revision": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+        "last_fetch_at": "2026-09-17T12:00:00Z",
+        "last_operation": {
+          "kind": "refresh",
+          "outcome": "succeeded",
+          "at": "2026-09-17T12:00:00Z"
+        }
+      },
+      "problems": [
+        {
+          "record": "store.yml",
+          "code": "mismatch",
+          "message": "store.yml disagrees with the store's alternates file about what it borrows."
+        }
+      ],
+      "referenced_by": [
+        {
+          "slug": "github-com--octo--demo--46386669dc01",
+          "generation": 1
+        }
+      ],
+      "reference_state": "referenced"
+    }
+  ],
+  "unrecognized_entries": 0,
+  "limit": 25,
+  "next_after": null
+}
+--- stderr ---
+
+## The checkout collected an ancestor, M3 (1c7d32c9919db8947b6015c121fc24b463909cd1), that the store never held: the comparison needs it, and the record says commits_unavailable, never no_merge_base.
+
+# metab https://github.com/octo/demo/pull/1 --checkout <ROOT>/collected --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+{
+  "state": "current",
+  "comparison_route": "/api/plugin/github/pull-comparison?number=1&left=fbc8399ff0140350e67bec06078d3bbf78200119&right=806ef37f15fef9c34a47873090c6169008db8cd2&base_policy=merge_base&build=<BUILD>&store=<STORE>",
+  "comparison": {
+    "base": "fbc8399ff0140350e67bec06078d3bbf78200119",
+    "head": "806ef37f15fef9c34a47873090c6169008db8cd2",
+    "base_commit": "0b51e0167804d26271bf05e7c4304bfd87d67e01",
+    "base_from": "base_branch"
+  },
+  "unavailable": {}
+}
+--- stderr ---
+cloning https://github.com/octo/demo into <HOME>
+borrowing objects from <ROOT>/collected
+cloned https://github.com/octo/demo in 0.0 s
+selection: pull_request
+pin: 806ef37f15fef9c34a47873090c6169008db8cd2 (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+
+# metab https://github.com/octo/demo/pull/1 --api /api/plugin/github/pull
+exit: 0
+--- stdout ---
+{
+  "state": "current",
+  "comparison_route": null,
+  "comparison": null,
+  "unavailable": {
+    "comparison": "commits_unavailable"
+  }
+}
+--- stderr ---
+selection: pull_request
+pin: 806ef37f15fef9c34a47873090c6169008db8cd2 (pull request 1 head)
+pull_request: 1 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)

@@ -11,6 +11,8 @@ env:
 patterns:
   TIMESTAMP: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
   APP_HOME: '[^\s"]+/home'
+  BUILD: '[0-9a-f]{12}'
+  STORE: '[0-9a-f]{16}'
 before: >-
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
   --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" .
@@ -68,7 +70,7 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
-  "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base",
+  "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=[BUILD]&store=[STORE]",
   "record": {
     "schema_version": 2,
     "source": "https://github.com/octo/demo",
@@ -238,16 +240,16 @@ status: 200
 
 ## Test: Files changed is the merge-base comparison
 
-`base_policy` passes through the diff plugin’s comparison route, so the document says
-how its base was chosen.
+`base_policy` passes through the GitHub route to the shared diff service, so the
+document says how its base was chosen.
 `README.md`, which changed on `topic` after the fork point, is not in it.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base'
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base'
 selection: pull_request
 pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
 pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
-api: /api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base
+api: /api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base
 status: 200
 {
   "schema": "file-diff-v1",
@@ -514,7 +516,7 @@ status: 200
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
-  "comparison_route": "/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base",
+  "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=[BUILD]&store=[STORE]",
   "record": {
     "schema_version": 2,
     "source": "https://github.com/octo/demo",
@@ -619,6 +621,7 @@ status: 200
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/10/files --show docs/draft.md
 selection: pull_request
 pin: 7a7d6596e515735d244dc1d942463c95851e139c (pull request 10 head)
+tab: files
 pull_request: 10 (draft; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
 show: docs/draft.md
 route: /view/g1-ZG9jcw/g1-ZHJhZnQubWQ
@@ -643,7 +646,7 @@ show: /pull/7/files
 route: /pull/7/files
 kind: pull-request
 views: pull-request (default)
-model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 check_runs=2 statuses=1 tab=files comparison_route=/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base
+model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 check_runs=2 statuses=1 tab=files comparison_route=/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=[BUILD]&store=[STORE]
 ? 0
 ```
 
@@ -783,6 +786,42 @@ status: 200
   "name": "demo",
   "origin": "https://github.com/octo/demo",
   "location": "[APP_HOME]/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "borrows": null,
+  "shallow": false,
+  "refreshable": true,
+  "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "ref_on_origin": true,
+  "last_fetch_at": "[TIMESTAMP]",
+  "last_outcome": {
+    "operation": "acquire",
+    "outcome": "succeeded",
+    "at": "[TIMESTAMP]"
+  },
+  "refreshing": false,
+  "stale": true,
+  "pull_request": 7,
+  "selection_state": null,
+  "selection_href": null
+}
+? 0
+```
+
+With `--format json`, stdout is that envelope alone, for a tool to parse; the lines
+above report the selection on stderr.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api /api/source/status --format json 2>/dev/null
+{
+  "subject": "git_revision",
+  "generation": 1,
+  "pin": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+  "ref": "refs/pull/7/head",
+  "ref_name": "refs/pull/7/head",
+  "name": "demo",
+  "origin": "https://github.com/octo/demo",
+  "location": "[APP_HOME]/repository-stores/65157fba6c20ff9076eace172457003c29579e62f37f276de021d59f37cb9ab4/repository.git",
+  "borrows": null,
+  "shallow": false,
   "refreshable": true,
   "latest": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "ref_on_origin": true,
@@ -922,7 +961,7 @@ show: /pull/9/files
 route: /pull/9/files
 kind: pull-request
 views: pull-request (default)
-model: pull envelope; state=stale pull_state=closed fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=0 reviews=0 review_comments=0 check_runs=2 statuses=1 tab=files comparison_route=/api/plugin/diff/comparison?left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base
+model: pull envelope; state=stale pull_state=closed fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=0 reviews=0 review_comments=0 check_runs=2 statuses=1 tab=files comparison_route=/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=[BUILD]&store=[STORE]
 ? 0
 ```
 
@@ -948,7 +987,8 @@ Error: /pull/7: this source serves no pull request
 
 `pull-markdown` renders one text of the record through KPress in its sanitized mode: the
 description (`body`), or one comment, review, or review comment by ID. The answer is the
-record’s fetch time, the part, and its rendered HTML.
+record’s fetch time, the part, its rendered HTML, and the manifest of KPress’s
+stylesheets, the same for every text.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --api '/api/plugin/github/pull-markdown?part=body'
@@ -961,7 +1001,10 @@ status: 200
   "number": 7,
   "fetched_at": "2026-09-17T12:00:00Z",
   "part": "body",
-  "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>"
+  "html": "\n<div><div><p>The app counts to one.</p>\n<p>This teaches it <strong>two</strong>.</p></div></div>",
+  "assets": {
+...
+  }
 }
 ? 0
 ```

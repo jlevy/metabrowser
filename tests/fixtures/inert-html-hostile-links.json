@@ -16,6 +16,8 @@
   },
   "kept": {
     "https": "https://example.com/ok",
-    "http": "http://example.com/ok"
+    "http": "http://example.com/ok",
+    "mixed-case scheme": "HtTp://example.com/ok",
+    "mixed-case scheme with a CR in it": "Ht\rTp://example.com/ok"
   }
 }

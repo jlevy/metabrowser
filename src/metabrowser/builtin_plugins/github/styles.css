@@ -1,28 +1,57 @@
-/* The served pull request's page (pull-page.js). Colors are design tokens. */
+/* The served pull request's page (pull-page.js): docs/design-system.md, "The Pull Request
+   Page". Its controls, notices, ages, and section headings are the shell's primitives, carried
+   in the markup. What is here is their placement, and the few forms only this page has, all
+   from host tokens. Colors are design tokens. */
 
 .github-pull {
+  /* How far a card's text sits inside its border. A card's border box is the measure plus
+     two of these, as `.kpress-long-text`'s is, so its text box is a Markdown file's. */
+  --github-pull-text-inset: var(--pane-header-padding-x);
+  --github-pull-gap: 12px;
+  /* A pull request's texts are messages, not committed documents, so they read in the
+     interface sans whatever the reading font, at that face's width for the same "Max text
+     width" (docs/design-system.md, "Serif Is for Documents"). */
+  --kpress-host-font-prose: var(--prose-sans-font);
+  --message-measure: calc(
+    var(--document-body-font-size) *
+    var(--doc-max-chars) *
+    var(--message-char-advance, var(--sans-char-advance))
+  );
+  --doc-measure: var(--message-measure);
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px 20px 32px;
-  max-width: 1100px;
+  padding: 0;
   color: var(--text);
+}
+/* The reading column: the header and the conversation share its edges at every width, and a
+   pane wider than it keeps it centered, as a Markdown file's card and Overview's stack are.
+   The tab bar between them and the diff under Files changed are as wide as the pane. */
+.github-pull-column {
+  width: 100%;
+  max-width: calc(
+    var(--doc-measure) +
+    2 *
+    var(--github-pull-text-inset) +
+    2 *
+    var(--content-padding-x)
+  );
+  margin-inline: auto;
 }
 .github-pull-header {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding: var(--content-padding-y) var(--content-padding-x);
 }
 .github-pull-title {
-  margin: 0;
-  font-size: 1.5em;
-  font-weight: 600;
+  font-size: var(--page-title-font-size);
+  font-weight: var(--weight-bold);
+  line-height: 1.25;
   overflow-wrap: anywhere;
 }
-.github-pull-number,
-.github-pull-quiet {
+.github-pull-number {
   color: var(--muted);
-  font-weight: normal;
+  font-weight: var(--weight-normal);
 }
 .github-pull-meta {
   display: flex;
@@ -30,16 +59,38 @@
   align-items: center;
   gap: 4px 8px;
 }
-.github-pull-meta code,
-.github-pull-card-head code {
-  overflow-wrap: anywhere;
+/* A branch is a ref, so it takes the ref chip, at this line's size as in a commit's summary. */
+.github-pull-meta .git-ref {
+  font-size: var(--body-font-size);
+  line-height: 20px;
 }
-.github-pull-badge {
-  display: inline-block;
-  padding: 1px 8px;
-  border: 1px solid currentcolor;
-  border-radius: 999px;
+.github-pull-quiet {
+  color: var(--muted);
   font-size: var(--ui-small-font-size);
+}
+.github-pull-header a,
+.github-pull-card-head a,
+.github-pull-checks a {
+  color: var(--link);
+  text-decoration: none;
+}
+.github-pull-header a:hover,
+.github-pull-card-head a:hover,
+.github-pull-checks a:hover {
+  text-decoration: underline;
+}
+.github-pull-header a:focus-visible,
+.github-pull-card-head a:focus-visible,
+.github-pull-checks a:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 1px;
+}
+/* A badge's box and type are `.file-header-badge`; its state is its ink and edge. */
+.github-pull-badge {
+  padding-block: 0;
+  border: 1px solid currentcolor;
+  font-weight: var(--weight-medium);
+  line-height: 16px;
   white-space: nowrap;
 }
 .github-pull-badge[data-state="open"],
@@ -72,12 +123,14 @@
 .github-pull-labels {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--chip-cluster-gap);
 }
+/* A name the pull request carries, not a filter: the tag corner, not a chip's pill. */
 .github-pull-label {
-  padding: 1px 8px;
+  padding: 0 5px;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-tag);
+  color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
 .github-pull-status {
@@ -91,25 +144,11 @@
 .github-pull-failure {
   color: var(--status-warning-strong);
 }
-.github-pull-tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
-}
-.github-pull-tab {
-  padding: 6px 12px;
-  border-bottom: 2px solid transparent;
-  color: var(--muted);
-  text-decoration: none;
-}
-.github-pull-tab[aria-selected="true"] {
-  border-bottom-color: var(--link);
-  color: var(--text);
-}
 .github-pull-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--github-pull-gap);
+  padding: var(--content-padding-y) var(--content-padding-x);
 }
 .github-pull-card {
   border: 1px solid var(--border);
@@ -117,41 +156,148 @@
   overflow: hidden;
 }
 .github-pull-card-head {
-  padding: 6px 12px;
+  min-height: var(--ui-row-height);
+  padding: 3px var(--github-pull-text-inset);
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
   font-size: var(--ui-small-font-size);
 }
+.github-pull-card-head:last-child {
+  border-bottom: 0;
+}
 .github-pull-reply {
-  margin-left: 24px;
+  margin-left: var(--content-padding-x);
 }
 .github-pull-text {
-  padding: 8px 12px;
+  padding: var(--pane-header-padding-y) var(--github-pull-text-inset);
 }
+/* A text before its Markdown arrives, in the type it is about to have. */
 .github-pull-plain {
+  font-family: var(--prose-sans-font);
+  font-size: var(--document-body-font-size);
+  line-height: var(--kpress-line-height-normal);
   white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+/* A text's type, spacing, tables, and code are KPress's, as in a Markdown file. The card's
+   padding is the space around a text, so the first and last block have none of their own. */
+.github-pull-text .kpress-prose > :first-child {
+  margin-block-start: 0;
+}
+.github-pull-text .kpress-prose > :last-child {
+  margin-block-end: 0;
+}
+.github-pull-file {
+  font-size: var(--nav-font-size);
+  font-weight: var(--weight-bold);
   overflow-wrap: anywhere;
 }
-.github-pull-empty,
-.github-pull-note {
-  margin: 0;
+.github-pull-empty {
   color: var(--muted);
-  font-style: italic;
 }
+.github-pull-notice {
+  margin-block: var(--pane-header-padding-y) 0;
+}
+.github-pull-body > .github-pull-notice,
+.github-pull-card > .github-pull-notice {
+  margin-block: 0;
+}
+/* One scroller for all of a hunk, so a disclosure's lines and the tail below them move
+   together, and every line as wide as the widest of both, so a tint reaches the end of a
+   scrolled line. */
+.github-pull-hunk-box,
 .github-pull-hunk {
-  margin: 0;
-  padding: 8px 12px;
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr);
+}
+.github-pull-hunk-box {
+  /* What the fold's width below is measured against. */
+  container-type: inline-size;
   border-bottom: 1px solid var(--border);
   overflow-x: auto;
-  font-size: var(--ui-small-font-size);
 }
-.github-pull-section h2 {
-  margin: 8px 0;
-  font-size: 1.1em;
+.github-pull-hunk {
+  padding: var(--pane-header-padding-y) 0;
+  font-family: var(--font-mono);
+  font-size: var(--mono-block-font-size);
+}
+.github-pull-hunk-line {
+  min-height: 1lh;
+  padding: 0 var(--github-pull-text-inset);
+}
+/* The diff view's row tints (--diff-add-row-bg and --diff-del-row-bg), written out because
+   the diff plugin's stylesheet loads only with Files changed. */
+.github-pull-hunk-line[data-kind="add"] {
+  background: color-mix(in srgb, var(--status-success) 9%, transparent);
+}
+.github-pull-hunk-line[data-kind="del"] {
+  background: color-mix(in srgb, var(--status-error) 9%, transparent);
+}
+.github-pull-hunk-line[data-kind="hunk"],
+.github-pull-hunk-line[data-kind="note"] {
+  color: var(--muted);
+}
+/* The fold of a hunk's earlier lines, on the `.fold-expander` its summary carries. Native, so
+   the browser holds its state; these say what a fold says in each, and move it as every
+   disclosure moves. The expander's top edge is the card head's rule. */
+.github-pull-hunk-earlier > .fold-expander {
+  padding-inline: var(--github-pull-text-inset);
+  border-top: 0;
+  list-style: none;
+}
+/* As wide as the box shows, so it is still the full-width row a fold is, with room to stay
+   put in as the lines beneath it scroll. */
+.github-pull-hunk-earlier > summary {
+  position: sticky;
+  left: 0;
+  width: 100cqi;
+}
+.github-pull-hunk-earlier > .fold-expander::-webkit-details-marker {
+  display: none;
+}
+.github-pull-hunk-earlier .toggle-chevron {
+  transition: transform var(--transition-fast);
+}
+.github-pull-hunk-earlier[open] .toggle-chevron {
+  transform: rotate(90deg);
+}
+.github-pull-fold-chevron {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+.github-pull-hunk-earlier[open] .github-pull-fold-closed,
+.github-pull-hunk-earlier:not([open]) .github-pull-fold-open {
+  display: none;
+}
+.github-pull-hunk-earlier::details-content {
+  interpolate-size: allow-keywords;
+  height: 0;
+  overflow: hidden;
+  transition:
+    height var(--transition-fast),
+    content-visibility var(--transition-fast) allow-discrete;
+}
+.github-pull-hunk-earlier[open]::details-content {
+  height: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .github-pull-hunk-earlier::details-content {
+    transition-duration: 1ms;
+  }
+}
+/* What the hunk's own rule drew before there was a box: the end of the earlier lines. */
+.github-pull-hunk-earlier > .github-pull-hunk {
+  padding-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+.github-pull-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--github-pull-gap);
+  margin-block-start: var(--content-padding-y);
 }
 .github-pull-checks {
-  margin: 0;
-  padding: 0;
   list-style: none;
 }
 .github-pull-checks li {
@@ -159,31 +305,4 @@
 }
 .github-pull-merge[data-state="conflicting"] {
   color: var(--status-error);
-}
-/* A text's Markdown is plain allowlisted markup with no KPress styling of its own. */
-.github-pull-markdown > :first-child {
-  margin-top: 0;
-}
-.github-pull-markdown > :last-child {
-  margin-bottom: 0;
-}
-.github-pull-markdown pre {
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
-  overflow-x: auto;
-}
-.github-pull-markdown blockquote {
-  margin: 0 0 0 4px;
-  padding-left: 12px;
-  border-left: 3px solid var(--border);
-  color: var(--muted);
-}
-.github-pull-markdown table {
-  border-collapse: collapse;
-}
-.github-pull-markdown th,
-.github-pull-markdown td {
-  padding: 4px 8px;
-  border: 1px solid var(--border);
 }

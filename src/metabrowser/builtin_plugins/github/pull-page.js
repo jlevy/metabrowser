@@ -19,7 +19,11 @@
 // class, id, data, style, or event attribute survives, nor any SVG, media, stylesheet,
 // frame, or form; an image becomes a link to it; a link is made absolute against the
 // pull request's github.com page, kept only for http(s), and opened in a new tab with
-// rel="noopener noreferrer"; and no KPress script or stylesheet is loaded for a text.
+// rel="noopener noreferrer"; and no KPress script is loaded for a text. KPress's
+// stylesheets are, the route's one fixed list, and the page sets the rebuilt nodes in a
+// KPress article of its own making, so a text reads as the same Markdown in a file does.
+
+import { createComparisonPrefetch } from "./comparison-prefetch.js";
 
 // The same intervals as the freshness row (static/source-freshness.js), measured there:
 // one second while a refresh runs makes its end visible promptly, and thirty seconds
@@ -28,9 +32,67 @@ export const FAST_POLL_MS = 1000;
 export const SLOW_POLL_MS = 30000;
 // Markdown renders asked for at once. A render is one bounded body through KPress:
 // 4 to 7 ms warm for a short comment (KPress 0.3.5, measured 2026-09-24 in-process on a
-// loaded development machine), and a text scrolls into view before it is asked for, so
-// two keep a long conversation filling in without queueing ahead of the page's polls.
+// loaded development machine), and a text nears the view before it is asked for, so two
+// keep a long conversation filling in without queueing ahead of the page's polls.
 export const MARKDOWN_CONCURRENCY = 2;
+// How far from the view a text's Markdown is asked for: one pane's height above and below
+// it, as an IntersectionObserver margin. A text asked for only once it is on screen shows
+// its raw Markdown until the answer comes, which a fast scroll can catch. A render request
+// took about 10 to 15 ms in a browser (2026-11-01), so one screen ahead is plenty, and it
+// stays lazy: what is further off is not asked for until the reader comes nearer.
+export const MARKDOWN_AHEAD = "100% 0px";
+// How much of a review comment's diff hunk it shows; the rest is behind a disclosure.
+// GitHub's `diff_hunk` runs from the hunk's `@@` line to the commented line, which is
+// last, however long the hunk: on pallets/click#3030 (read 2026-11-01), 37 hunks of up to
+// 253 lines took 35,104 px of a 62,117 px page. The tail is what is shown because that
+// is where the comment anchors, and github.com shows the same end of it. Eight lines is
+// a display choice, enough to read what a comment is about, and not a bound on any cost.
+export const HUNK_TAIL_LINES = 8;
+// The most of a hunk a comment shows, however long its range; the rest is behind the same
+// disclosure. Unlike the tail this bounds a cost, as a commenter picks the range and a line
+// shown is two nodes in a grid. Measured 2026-11-02 in headless Chrome 152 on a loaded
+// development machine, a fresh process a run, from mount through layout: 250 comments of
+// 16 KiB of blank lines, each with a range over all of them, took 26 to 28 s unbounded and
+// 0.6 s here. The worst a record can do at this bound, 1,000 comments past it, took 1.6 to
+// 1.8 s, and 1.0 s at 50, 2.7 s at 200, and 5.0 to 5.4 s at 400, so the cost is linear in it.
+// It cuts little: of 1,858 multi-line comments read that day across 14 repositories, the
+// 99th percentile was 34 lines, and 2 passed 100, both of 129.
+export const HUNK_RANGE_LINES = 100;
+// How long the pane stays still before its place is written to the history entry. A click
+// writes at once, so this only keeps a moving pane from calling `history.replaceState`,
+// which Safari limits to 100 calls in 30 s, and past that throws. Writes this long after the
+// last move are at least this far apart, so 350 ms allows 85 in 30 s, however the reader
+// paces their moves; 100 ms allowed 297 to a reader moving the pane in short tugs.
+export const PLACE_WRITE_MS = 350;
+// How long a landing holds its place after the page last changed height, for a page still
+// rendering what it fetches. Measured 2026-11-02 in Chrome 152, Back onto a page loaded
+// again, the widest gap between two changes in height: 231 ms for 34 files, 501 ms for a
+// PR of 137 files whose diffs load as they come near, and 17 ms for a conversation of 120
+// texts. A page that changes later than this keeps its place by the browser's own scroll
+// anchoring, except in a browser without it.
+export const LANDING_SETTLE_MS = 2000;
+// The blocks a place is counted in: the conversation's cards and sections, and Files
+// changed's files, which keep their order for as long as the page shows one comparison.
+// A place is an index, so a refresh that adds a card above it while a landing holds puts the
+// pane one block off. Accepted: it takes a refresh completing inside the settle window.
+const PLACE_BLOCKS = ".github-pull-card, .github-pull-section, .diff-file";
+// The keys a browser moves a pane with. Tab is one, since moving focus scrolls to what takes it.
+const PANE_KEYS = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "PageUp",
+  "PageDown",
+  "Home",
+  "End",
+  " ",
+  "Tab",
+]);
+// The key of a place in `history.state`, which no other code of the shell writes into.
+const PLACE_KEY = "pullPlace";
+
+// How long an idle browser may take before Files changed is fetched anyway. A page rendering
+// its conversation is not idle, and the comparison should not wait for all of it.
+const PREFETCH_IDLE_TIMEOUT_MS = 300;
 
 const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
@@ -41,9 +103,9 @@ export const TABS = Object.freeze(["", "files"]);
 /** @type {Readonly<Record<string, string>>} */
 const ABSENCE = Object.freeze({
   no_pull_request: "This server serves no pull request.",
-  not_cached: "No data for this pull request is cached yet.",
-  schema_mismatch: "The cached data for this pull request is from another version.",
-  unreadable: "The cached data for this pull request could not be read.",
+  not_cached: "This pull request has not been fetched yet.",
+  schema_mismatch: "The saved copy of this pull request is from another version.",
+  unreadable: "The saved copy of this pull request could not be read.",
 });
 
 /** @type {Readonly<Record<string, string>>} */
@@ -57,9 +119,9 @@ const REVIEW_STATES = Object.freeze({
 
 /** @type {Readonly<Record<string, string>>} */
 const MERGEABLE = Object.freeze({
-  mergeable: "No conflicts with the base branch",
-  conflicting: "Conflicts with the base branch",
-  unknown: "Merge status unknown",
+  mergeable: "No conflicts with the base branch.",
+  conflicting: "Conflicts with the base branch.",
+  unknown: "Merge status unknown.",
 });
 
 /** @type {Readonly<Record<string, string>>} */
@@ -106,6 +168,11 @@ const TRUNCATED = Object.freeze({
  */
 
 /**
+ * @typedef {{kind: "hunk" | "add" | "del" | "context" | "note", text: string}} HunkLine
+ * @typedef {{earlier: string, earlierLines: number, shown: HunkLine[]}} HunkView
+ */
+
+/**
  * @typedef {{
  *   id: number,
  *   part: string,
@@ -117,7 +184,7 @@ const TRUNCATED = Object.freeze({
  *   at: string,
  *   text: string,
  *   truncated: boolean,
- *   hunk: string,
+ *   hunk: HunkView | null,
  *   hunkTruncated: boolean,
  * }} ReviewCommentItem
  */
@@ -148,7 +215,8 @@ const TRUNCATED = Object.freeze({
  *   reviewComments: ReviewCommentItem[],
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
  *   notes: string[],
- *   comparison: {left: string, right: string, headMoved: boolean} | null,
+ *   comparison: {left: string, right: string, route?: string, headMoved: boolean} | null,
+ *   filesUnavailable: string,
  *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
  *   served: number | null,
  * }} PullModel
@@ -328,6 +396,116 @@ function timeline(record) {
 }
 
 /**
+ * What one line of a diff hunk is, by its first character. `\ No newline at end of file`
+ * is a note about the line before it.
+ *
+ * @param {string} line
+ * @returns {HunkLine["kind"]}
+ */
+function hunkLineKind(line) {
+  if (line.startsWith("@@")) {
+    return "hunk";
+  }
+  if (line.startsWith("+")) {
+    return "add";
+  }
+  if (line.startsWith("-")) {
+    return "del";
+  }
+  return line.startsWith("\\") ? "note" : "context";
+}
+
+/**
+ * @param {string} line
+ * @returns {HunkLine}
+ */
+function hunkLine(line) {
+  return { kind: hunkLineKind(line), text: line };
+}
+
+/**
+ * How many lines of its side a review comment covers: one, or a multi-line comment's
+ * range. `original_*` number the commit the hunk is from, and `line` and `start_line` the
+ * head, or are gone when the comment is outdated. A later commit can change the distance
+ * between them, so the larger is taken: a line too many costs nothing, and a range cut
+ * short is what this exists to prevent.
+ *
+ * @param {Record<string, any>} comment
+ */
+function commentedSpan(comment) {
+  /** @param {unknown} start @param {unknown} end */
+  const span = (start, end) =>
+    typeof start === "number" && typeof end === "number" && end >= start ? end - start + 1 : 1;
+  return Math.max(
+    span(comment.start_line, comment.line),
+    span(comment.original_start_line, comment.original_line),
+  );
+}
+
+/**
+ * What a review comment shows of its hunk: `shown` is the tail, from the start of the
+ * commented range if that is further back than `HUNK_TAIL_LINES` and no further than
+ * `HUNK_RANGE_LINES`, and `earlier` is the text of the rest, `earlierLines` of them, for
+ * the disclosure. One string and not a line each, as this runs on every poll and the page
+ * compares what it answers as JSON: a line's kind is worked out when it is painted.
+ * Counted back from the end, where the commented line is, along the comment's side of the
+ * diff, because a hunk cut to fit the record has lost its `@@` line and the numbers it
+ * starts from. A range reaching above what the record kept shows all of it. A comment is
+ * on one side here: the record does not keep `start_side`, so a range starting on the
+ * other side is counted on this one, and any of it that falls outside the tail is in the
+ * disclosure.
+ *
+ * @param {string} hunk
+ * @param {Record<string, any>} comment
+ * @returns {HunkView}
+ */
+export function hunkView(hunk, comment) {
+  const lines = hunk.replace(/\n$/, "").split("\n");
+  const side = comment.side === "LEFT" ? "del" : "add";
+  const furthest = Math.max(0, lines.length - HUNK_RANGE_LINES);
+  let remaining = commentedSpan(comment);
+  let rangeStart = lines.length;
+  for (let index = lines.length - 1; index >= furthest && remaining > 0; index -= 1) {
+    const kind = hunkLineKind(lines[index]);
+    if (kind === "context" || kind === side) {
+      remaining -= 1;
+      rangeStart = index;
+    }
+  }
+  const first = Math.min(rangeStart, lines.length - HUNK_TAIL_LINES);
+  // A disclosure is a row of its own, so it never hides less than a row's worth: one
+  // line, in practice the `@@` line of a hunk just past the tail.
+  const cut = first <= 1 ? 0 : first;
+  return {
+    earlier: lines.slice(0, cut).join("\n"),
+    earlierLines: cut,
+    shown: lines.slice(cut).map(hunkLine),
+  };
+}
+
+/**
+ * A disclosure's lines are one text node until it is first opened, when they become a line
+ * each and take their tints, because a record can hold 2,048,000 lines no one opens: 250
+ * comments of 16 KiB of blank lines made 4.1M nodes and took 3.4 s, and take 28,000 and 0.4 s
+ * this way (`HUNK_RANGE_LINES` says how that was measured). One node and not none, so its
+ * text stays in the page for search, and so nothing moves in the frame the browser paints
+ * before it fires `toggle`: the node is as tall as the lines will be. Once, as the lines
+ * stay; a repaint replaces the disclosure, with its listener, and starts it closed.
+ *
+ * @param {EventTarget} details
+ * @param {ChildNode} plain What it holds until then.
+ * @param {string} earlier
+ * @param {(lines: HunkLine[]) => Node} paintLines
+ */
+export function tintOnFirstOpen(details, plain, earlier, paintLines) {
+  details.addEventListener(
+    "toggle",
+    () => plain.replaceWith(paintLines(earlier.split("\n").map(hunkLine))),
+    { once: true },
+  );
+}
+
+/**
  * Review comments by file, each thread's first comment before its replies.
  *
  * @param {Record<string, any>} record
@@ -369,7 +547,7 @@ function reviewComments(record) {
       at: text(comment.created_at),
       text: text(comment.body),
       truncated: comment.body_truncated === true,
-      hunk: text(comment.diff_hunk),
+      hunk: text(comment.diff_hunk) === "" ? null : hunkView(text(comment.diff_hunk), comment),
       hunkTruncated: comment.diff_hunk_truncated === true,
     }));
 }
@@ -428,6 +606,32 @@ function notes(record) {
 }
 
 /**
+ * What Files changed says in place of a diff, from the state the record names. Pure.
+ *
+ * A merge base the store's shallow history cannot settle is not a failure to read: the
+ * diff could be computed and would be a guess, so the page says that it does not guess
+ * and what would settle it.
+ *
+ * @param {unknown} why The record's `unavailable.comparison`.
+ * @returns {string}
+ */
+export function filesUnavailableText(why) {
+  if (why === "base_uncertain") {
+    return "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
+  }
+  if (why === "comparison_timeout") {
+    return "Files changed is unavailable: checking this pull request's history took too long. Refresh to try again.";
+  }
+  if (why === "comparison_too_large") {
+    return "Files changed is unavailable: checking this pull request's history exceeded the comparison limit.";
+  }
+  if (why === "commits_unavailable") {
+    return "Files changed is unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
+  }
+  return "Files changed is unavailable: the pull request's base could not be compared with its head.";
+}
+
+/**
  * What the page shows for one answer of the pull route. Pure.
  *
  * @param {PullEnvelope | null} envelope
@@ -452,6 +656,7 @@ export function describePull(envelope, page) {
     checks: null,
     notes: [],
     comparison: null,
+    filesUnavailable: filesUnavailableText(null),
     headOffer: null,
     served: null,
   };
@@ -477,7 +682,7 @@ export function describePull(envelope, page) {
     model.message =
       envelope.state === "pending"
         ? "Fetching the pull request…"
-        : (ABSENCE[envelope.reason ?? ""] ?? "No data for this pull request is cached.");
+        : (ABSENCE[envelope.reason ?? ""] ?? ABSENCE.not_cached);
     model.canRefresh =
       envelope.state === "absent" && envelope.reason !== "no_pull_request" && !envelope.refreshing;
     return model;
@@ -486,9 +691,11 @@ export function describePull(envelope, page) {
   model.message = page.error ?? null;
   model.canRefresh = envelope.state === "stale" && !envelope.refreshing;
   const age = relativeAge(record.fetched_at ?? null, page.nowMs);
+  // The account the record was read as, without the tool that read it.
+  const reader = text(record.reader).replace(/^gh:/, "");
   model.freshness = envelope.refreshing
-    ? `Refreshing… · fetched ${age} by ${text(record.reader)}`
-    : `Fetched ${age} by ${text(record.reader)}${envelope.state === "stale" ? " · may be out of date" : ""}`;
+    ? `Refreshing… · fetched ${age} by ${reader}`
+    : `Fetched ${age} by ${reader}${envelope.state === "stale" ? " · may be out of date" : ""}`;
   const pull = record.pull ?? {};
   const crossRepository = pull.head?.repository !== pull.base?.repository;
   const state = displayState(pull);
@@ -541,17 +748,36 @@ export function describePull(envelope, page) {
       text: `This page's code is ${envelope.pin.slice(0, 12)}, not the pull request's head ${head.slice(0, 12)}.`,
     };
   }
+  model.filesUnavailable = filesUnavailableText(record.unavailable?.comparison ?? null);
   const comparison = record.comparison;
   if (comparison && typeof comparison.base === "string" && typeof comparison.head === "string") {
     model.comparison = {
       left: comparison.base,
       right: comparison.head,
+      ...(typeof envelope.comparison_route === "string"
+        ? { route: envelope.comparison_route }
+        : {}),
       // The page's code is the served pin; a record read at a newer head says so
       // rather than moving what the reader sees.
       headMoved: envelope.pin !== null && envelope.pin !== comparison.head,
     };
   }
   return model;
+}
+
+/**
+ * Whether *response* is the pin guard's refusal of a page whose pin moved. The guard
+ * answers it by reloading the page onto the commit now served, so the page says nothing
+ * of its own meanwhile: a page Back restores polls before the guard's check, and its
+ * "unavailable" would be on screen only until the reload.
+ *
+ * @param {{status: number, body: unknown}} response
+ */
+function pinChanged(response) {
+  const body = /** @type {Record<string, unknown> | null} */ (
+    response.body !== null && typeof response.body === "object" ? response.body : null
+  );
+  return response.status === 409 && body?.code === "pin_changed";
 }
 
 /**
@@ -702,7 +928,7 @@ export function createPullController(deps, options) {
           etag = response.etag;
         }
         error = null;
-      } else if (response.status === 304) {
+      } else if (response.status === 304 || pinChanged(response)) {
         error = null;
       } else {
         error = `The pull request is unavailable (HTTP ${response.status}).`;
@@ -816,8 +1042,8 @@ export function createPullController(deps, options) {
   }
 
   /**
-   * Ask for one part's Markdown once per record. The glue asks when the part is on
-   * screen, so a long conversation renders what a reader reaches.
+   * Ask for one part's Markdown once per record. The glue asks when the part is within
+   * `MARKDOWN_AHEAD` of the view, so a long conversation renders what a reader reaches.
    *
    * @param {string} part
    */
@@ -885,6 +1111,207 @@ export function createPullController(deps, options) {
   });
 }
 
+// ── A reader's place in the pane ────────────────────────────────
+
+/**
+ * Where a reader was in a page: the block at the pane's top and how far into it.
+ *
+ * A block rather than a scroll offset, because the pixels above a place depend on what has
+ * rendered: a text is plain until it comes near the view, a file's diff is empty until it
+ * does, and a page opened again renders only what is near where it lands. `block` is -1
+ * above the first block, in the header, where `top`, the scroll offset, says where.
+ *
+ * @typedef {{block: number, offset: number, top: number}} PanePlace
+ */
+
+/**
+ * The place a pane shows. Pure.
+ *
+ * @param {number[]} tops Each block's top in the pane's scroll coordinates, in page order.
+ * @param {number} scrollTop
+ * @returns {PanePlace}
+ */
+export function placeAt(tops, scrollTop) {
+  let block = -1;
+  for (let index = 0; index < tops.length && tops[index] <= scrollTop; index += 1) {
+    block = index;
+  }
+  const offset = block < 0 ? 0 : scrollTop - tops[block];
+  return { block, offset: Math.round(offset), top: Math.round(scrollTop) };
+}
+
+/**
+ * The scroll offset that shows *place*, or null while the page has no blocks to place it
+ * in. A page that now has fewer blocks than it did shows its last.
+ *
+ * @param {PanePlace} place
+ * @param {number[]} tops
+ * @returns {number | null}
+ */
+export function scrollTopOf(place, tops) {
+  if (tops.length === 0) {
+    return null;
+  }
+  return place.block < 0 ? place.top : tops[Math.min(place.block, tops.length - 1)] + place.offset;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is PanePlace}
+ */
+function isPanePlace(value) {
+  const place = /** @type {Record<string, unknown> | null} */ (value);
+  return (
+    typeof value === "object" &&
+    place !== null &&
+    Number.isInteger(place.block) &&
+    Number.isFinite(place.offset) &&
+    Number.isFinite(place.top)
+  );
+}
+
+/**
+ * Whether a key press can move the pane, and so ends a landing's hold. A bare modifier cannot,
+ * and in a field typing a letter or moving the caret does not, so a reader who starts typing
+ * in a filter during the settle window keeps their place. Pure.
+ *
+ * @param {string} key
+ * @param {{closest?: (selector: string) => unknown} | null} target
+ */
+export function keyMovesPane(key, target) {
+  if (!PANE_KEYS.has(key)) {
+    return false;
+  }
+  return key === "Tab" || !target?.closest?.("input, textarea, select, [contenteditable]");
+}
+
+/**
+ * @typedef {{
+ *   read(): unknown,
+ *   write(place: PanePlace): void,
+ *   measure(): PanePlace,
+ *   apply(place: PanePlace): boolean,
+ *   anchored(): boolean,
+ *   toTop(): void,
+ *   schedule(callback: () => void, delayMs: number): unknown,
+ *   cancel(handle: unknown): void,
+ * }} ScrollKeeperDependencies
+ */
+
+/**
+ * Keeps a reader's place in a history entry and puts them back when history lands there.
+ *
+ * Only an entry the reader has been on holds a place, because a new entry's state is null:
+ * so a fresh navigation starts at the top, a reload or a Back that loads the page again
+ * lands where it was, and no navigation type needs reading. A kept page restored from the
+ * back/forward cache never lands, since the browser kept its scroll.
+ *
+ * A landing holds its place while the page renders: each change in height puts the pane
+ * back, until the reader moves it or the page has been still for `LANDING_SETTLE_MS`. An
+ * address with a fragment names its own place, so a landing on one leaves the pane alone.
+ *
+ * *apply* answers whether the page has anything to place the pane in yet.
+ *
+ * @param {ScrollKeeperDependencies} deps
+ */
+export function createScrollKeeper(deps) {
+  /** The place a landing is holding. @type {PanePlace | null} */
+  let holding = null;
+  /** @type {unknown} */
+  let writeTimer = null;
+  /** @type {unknown} */
+  let settleTimer = null;
+  let disposed = false;
+
+  function cancelWrite() {
+    if (writeTimer !== null) {
+      deps.cancel(writeTimer);
+      writeTimer = null;
+    }
+  }
+
+  function cancelSettle() {
+    if (settleTimer !== null) {
+      deps.cancel(settleTimer);
+      settleTimer = null;
+    }
+  }
+
+  function hold() {
+    if (holding === null || !deps.apply(holding)) {
+      return;
+    }
+    cancelSettle();
+    settleTimer = deps.schedule(() => {
+      settleTimer = null;
+      holding = null;
+    }, LANDING_SETTLE_MS);
+  }
+
+  return Object.freeze({
+    /** History arrived at an entry, or the page opened on one. */
+    land() {
+      if (disposed) {
+        return;
+      }
+      // A write still waiting belongs to the entry history just left.
+      cancelWrite();
+      cancelSettle();
+      holding = null;
+      if (deps.anchored()) {
+        return;
+      }
+      const saved = deps.read();
+      if (isPanePlace(saved)) {
+        holding = saved;
+        hold();
+      } else {
+        deps.toTop();
+      }
+    },
+    /** The page changed height. */
+    contentChanged() {
+      if (!disposed) {
+        hold();
+      }
+    },
+    /** The reader moved the pane, or may have: from here the place is theirs. */
+    readerMoved() {
+      holding = null;
+      cancelSettle();
+    },
+    /** The pane scrolled. A place being held is not the reader's doing, so it is not written. */
+    scrolled() {
+      if (disposed || holding !== null) {
+        return;
+      }
+      cancelWrite();
+      writeTimer = deps.schedule(() => {
+        writeTimer = null;
+        deps.write(deps.measure());
+      }, PLACE_WRITE_MS);
+    },
+    /** Write a waiting place now, before a click can move history on from this entry. */
+    flush() {
+      if (writeTimer !== null) {
+        cancelWrite();
+        deps.write(deps.measure());
+      }
+    },
+    dispose() {
+      disposed = true;
+      holding = null;
+      cancelWrite();
+      cancelSettle();
+    },
+    snapshot: () => ({
+      holding,
+      writing: writeTimer !== null,
+      settling: settleTimer !== null,
+    }),
+  });
+}
+
 // ── Browser glue ────────────────────────────────────────────────
 
 /**
@@ -926,8 +1353,8 @@ export function safeLink(href, base) {
  * The diff keeps the comparison it was opened on: a record read at a newer head offers
  * it rather than changing the diff under the reader.
  *
- * @param {{left: string, right: string} | null} mounted The comparison the diff shows.
- * @param {{left: string, right: string} | null} comparison The record's.
+ * @param {{left: string, right: string, route?: string} | null} mounted The comparison the diff shows.
+ * @param {{left: string, right: string, route?: string} | null} comparison The record's.
  * @returns {"unavailable" | "mount" | "keep" | "offer"}
  */
 export function filesAction(mounted, comparison) {
@@ -937,7 +1364,11 @@ export function filesAction(mounted, comparison) {
   if (mounted === null) {
     return "mount";
   }
-  return mounted.left === comparison.left && mounted.right === comparison.right ? "keep" : "offer";
+  return mounted.left === comparison.left &&
+    mounted.right === comparison.right &&
+    mounted.route === comparison.route
+    ? "keep"
+    : "offer";
 }
 
 /**
@@ -1041,9 +1472,11 @@ export function mountPullPage(container, ctx, mb) {
   const number = typeof ctx.number === "number" ? ctx.number : 0;
   const open = typeof ctx.open === "function" ? ctx.open : () => {};
   container.classList.add("github-pull");
-  const header = h("div", { class: "github-pull-header" });
+  const header = h("div", { class: "github-pull-header github-pull-column" });
   const body = h("div", { class: "github-pull-body" });
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
+  // Between the header and the body, as wide as the pane, as a file's views are.
+  const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Pull request" });
   container.replaceChildren(header, body, live);
 
   /** @type {PullModel | null} */
@@ -1060,29 +1493,44 @@ export function mountPullPage(container, ctx, mb) {
     .ensureAsset("inert-html")
     .then(() => window.MetabrowserInertHtml ?? null)
     .catch(() => null);
-  /** @type {{left: string, right: string} | null} */
+  /** @type {{left: string, right: string, route?: string} | null} */
   let diffFor = null;
   /** @type {{dispose?: () => void} | null} */
   let diffHandle = null;
   /** @type {HTMLElement | null} */
   let diffHost = null;
+  const pane = /** @type {HTMLElement | null} */ (container.closest("[data-kpress-viewport]"));
+  // Rooted in the pane that scrolls, which the shell marks. With no root the root is the
+  // window, and a margin on it does nothing here: a text past the pane's edge is clipped
+  // by the pane on its way to the window, before the window's margin is applied.
   const observer =
     typeof IntersectionObserver === "function"
-      ? new IntersectionObserver((entries) => {
-          for (const entry of entries) {
-            const part = entry.isIntersecting ? entry.target.getAttribute("data-part") : null;
-            if (part !== null) {
-              observer?.unobserve(entry.target);
-              controller.requestMarkdown(part);
+      ? new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              const part = entry.isIntersecting ? entry.target.getAttribute("data-part") : null;
+              if (part !== null) {
+                observer?.unobserve(entry.target);
+                controller.requestMarkdown(part);
+              }
             }
-          }
-        })
+          },
+          { root: pane, rootMargin: MARKDOWN_AHEAD },
+        )
       : null;
 
-  /** @param {string} iso */
-  const when = (iso) => {
+  /**
+   * An age, from the one primitive, with the exact time in its tooltip.
+   *
+   * @param {string} iso
+   */
+  const age = (iso) => {
     const at = Date.parse(iso);
-    return Number.isFinite(at) ? mb.formatTimestamp(at / 1000) : iso;
+    if (!Number.isFinite(at)) {
+      return h("span", {}, [iso]);
+    }
+    const { label, className } = mb.formatAge(at / 1000);
+    return h("span", { class: className, "data-tip-text": mb.formatTimestamp(at / 1000) }, [label]);
   };
 
   /**
@@ -1104,9 +1552,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     element.append(h("div", { class: "github-pull-plain" }, [value]));
     if (truncated) {
-      element.append(
-        h("p", { class: "github-pull-note" }, ["This text was cut; the rest is on GitHub."]),
-      );
+      element.append(notice("warning", ["This text was cut; the rest is on GitHub."]));
     }
     texts.set(part, element);
     if (part === "body" || observer === null) {
@@ -1117,26 +1563,38 @@ export function mountPullPage(container, ctx, mb) {
     return element;
   }
 
+  /** KPress's stylesheets, once. A text stays readable under the shell's if they fail. */
+  /** @type {Promise<void> | null} */
+  let documentStyles = null;
+
   /**
    * @param {string} part
    * @param {Record<string, any>} rendered
    */
   function renderMarkdown(part, rendered) {
-    void inertReady.then((inert) => {
+    documentStyles ??= mb.loadKpressAssets(rendered.assets).catch((error) => {
+      console.warn("metabrowser github: the text styles did not load", error);
+    });
+    void Promise.all([inertReady, documentStyles]).then(([inert]) => {
       const element = texts.get(part);
       const plain = element?.querySelector(":scope > .github-pull-plain");
       if (!element || !plain || inert === null) {
         return;
       }
-      const holder = h("div", { class: "github-pull-markdown" });
       // KPress's Markdown HTML, reduced to the allowlist on the server; GitHub's own
-      // body_html is never used, and no KPress script or stylesheet is loaded for it.
+      // body_html is never used, and no KPress script is loaded for it.
       // static/inert-html.js parses it into an inert template and inserts only nodes
       // rebuilt from the same allowlist, links made absolute against the pull request.
-      holder.replaceChildren(
-        ...inert.sanitizeHtml(String(rendered.html), shown?.pull?.htmlUrl ?? "https://github.com/"),
+      // The article and the classes on its tables and code blocks are the page's own.
+      const nodes = inert.sanitizeHtml(
+        String(rendered.html),
+        shown?.pull?.htmlUrl ?? "https://github.com/",
       );
-      plain.replaceWith(holder);
+      plain.replaceWith(
+        h("div", { class: "metabrowser-kpress-host" }, [
+          h("article", { class: "kpress kpress-inert" }, [inert.kpressProse(nodes, document)]),
+        ]),
+      );
     });
   }
 
@@ -1144,11 +1602,11 @@ export function mountPullPage(container, ctx, mb) {
   function fileLink(path, line) {
     const wire = mb.sourceKind() === "git_revision" && path !== "" ? gitPathWire(path) : null;
     if (wire === null) {
-      return h("code", {}, [path]);
+      return h("span", { class: "github-pull-file" }, [path]);
     }
     const target = { path: wire, ...(line === null ? {} : { fragment: `L${line}` }) };
     const link = h("a", { href: mb.navigation.href(target), class: "github-pull-file" }, [
-      h("code", {}, [line === null ? path : `${path}:${line}`]),
+      line === null ? path : `${path}:${line}`,
     ]);
     link.addEventListener("click", (event) => {
       if (!isPlainClick(event)) {
@@ -1186,7 +1644,53 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {string} state @param {string} label @param {string} [kind] */
   const badge = (state, label, kind = "state") =>
-    h("span", { class: `github-pull-badge github-pull-${kind}`, "data-state": state }, [label]);
+    h(
+      "span",
+      { class: `file-header-badge github-pull-badge github-pull-${kind}`, "data-state": state },
+      [`${label.charAt(0).toUpperCase()}${label.slice(1)}`],
+    );
+
+  /**
+   * A box about the content, on the shell's primitive; its severity is its border.
+   *
+   * @param {"warning" | "error" | null} severity
+   * @param {Array<Node | string>} children
+   */
+  const notice = (severity, children) =>
+    h(
+      "div",
+      {
+        class: "notice github-pull-notice",
+        ...(severity === null ? {} : { "data-severity": severity }),
+      },
+      children,
+    );
+
+  /** A branch, as the ref chip names one. @param {string} name */
+  const branch = (name) =>
+    h("span", { class: "git-ref git-ref-remote", "data-tip-text": name }, [name]);
+
+  /** The registry's disclosure chevron, parsed once: a constant, not the pull request's text. */
+  const chevronSvg = new DOMParser().parseFromString(mb.icons.toggle || "", "text/html").body
+    .firstElementChild;
+  function chevron() {
+    return chevronSvg === null
+      ? null
+      : h("span", { class: "github-pull-fold-chevron", "aria-hidden": "true" }, [
+          document.importNode(chevronSvg, true),
+        ]);
+  }
+
+  /** One link per tab, kept across paints so a poll does not take focus from one. */
+  const tabLinks = [
+    { id: "", label: "Conversation" },
+    { id: "files", label: "Files changed" },
+  ].map(({ id, label }) => {
+    const link = pageLink({ number, tab: id }, "tab-btn", [label]);
+    link.setAttribute("role", "tab");
+    tabBar.append(link);
+    return { id, link };
+  });
 
   /** @param {PullModel} model */
   function paintHeader(model) {
@@ -1204,14 +1708,17 @@ export function mountPullPage(container, ctx, mb) {
           h("span", {}, [
             pull.actor === null ? null : h("strong", {}, [pull.actor]),
             `${pull.actor === null ? "" : " "}${pull.action} `,
-            h("code", {}, [pull.base]),
+            branch(pull.base),
             " from ",
-            h("code", {}, [pull.head]),
+            branch(pull.head),
           ]),
         ]),
-        h("div", { class: "github-pull-meta github-pull-quiet" }, [
-          `Opened ${when(pull.created)} · updated ${when(pull.updated)}`,
-          pull.closed && pull.closedLabel ? ` · ${pull.closedLabel} ${when(pull.closed)}` : "",
+        h("div", { class: "github-pull-quiet" }, [
+          "Opened ",
+          age(pull.created),
+          " · updated ",
+          age(pull.updated),
+          ...(pull.closed && pull.closedLabel ? [` · ${pull.closedLabel} `, age(pull.closed)] : []),
           " · ",
           outside(pull.htmlUrl, "", ["View on GitHub"]),
           " · ",
@@ -1270,22 +1777,32 @@ export function mountPullPage(container, ctx, mb) {
       status.append(h("span", { class: "github-pull-offer" }, [model.headOffer.text, " ", button]));
     }
     children.push(status);
-    if (model.pull !== null) {
-      const tabs = h("div", { class: "github-pull-tabs", role: "tablist" });
-      for (const [id, label] of [
-        ["", "Conversation"],
-        ["files", "Files changed"],
-      ]) {
-        const button = pageLink({ number: model.number, tab: id }, "github-pull-tab", [label]);
-        button.setAttribute("role", "tab");
-        button.setAttribute("aria-selected", String(model.tab === id));
-        tabs.append(button);
-      }
-      children.push(tabs);
-    }
     header.replaceChildren(...children.filter((child) => child !== null));
+    if (model.pull === null) {
+      tabBar.remove();
+    } else {
+      for (const { id, link } of tabLinks) {
+        link.classList.toggle("active", model.tab === id);
+        link.setAttribute("aria-selected", String(model.tab === id));
+      }
+      header.after(tabBar);
+    }
     live.textContent = [model.message, model.failure].filter(Boolean).join(" ");
   }
+
+  /**
+   * Lines of a diff hunk, each its own text node, as all of a pull request's text is.
+   *
+   * @param {HunkLine[]} lines
+   */
+  const hunkLines = (lines) =>
+    h(
+      "pre",
+      { class: "github-pull-hunk" },
+      lines.map((line) =>
+        h("span", { class: "github-pull-hunk-line", "data-kind": line.kind }, [line.text]),
+      ),
+    );
 
   /** @param {PullModel} model */
   function paintConversation(model) {
@@ -1296,7 +1813,8 @@ export function mountPullPage(container, ctx, mb) {
       h("section", { class: "github-pull-card" }, [
         h("div", { class: "github-pull-card-head" }, [
           h("strong", {}, [pull.author]),
-          ` opened ${when(pull.created)}`,
+          " opened ",
+          age(pull.created),
         ]),
         textBlock("body", pull.text, pull.truncated),
       ]),
@@ -1308,7 +1826,7 @@ export function mountPullPage(container, ctx, mb) {
       } else {
         head.append(" commented");
       }
-      head.append(item.at === null ? " (pending)" : ` ${when(item.at)}`);
+      head.append(" ", item.at === null ? "(pending)" : age(item.at));
       const card = h("section", { class: `github-pull-card github-pull-${item.kind}` }, [head]);
       if (item.text.trim() !== "" || item.kind === "comment") {
         card.append(textBlock(item.part, item.text, item.truncated));
@@ -1317,7 +1835,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     if (model.reviewComments.length > 0) {
       const threads = h("section", { class: "github-pull-section" }, [
-        h("h2", {}, [`Review comments (${model.reviewComments.length})`]),
+        h("h2", { class: "section-heading" }, [`Review comments (${model.reviewComments.length})`]),
       ]);
       for (const comment of model.reviewComments) {
         const head = h("div", { class: "github-pull-card-head" }, [
@@ -1326,17 +1844,39 @@ export function mountPullPage(container, ctx, mb) {
           comment.outdated ? badge("outdated", "outdated", "review") : null,
           " ",
           h("strong", {}, [comment.author]),
-          ` ${comment.reply ? "replied" : "commented"} ${when(comment.at)}`,
+          ` ${comment.reply ? "replied" : "commented"} `,
+          age(comment.at),
         ]);
         const card = h(
           "div",
           { class: `github-pull-card${comment.reply ? " github-pull-reply" : ""}` },
           [head],
         );
-        if (!comment.reply && comment.hunk !== "") {
-          card.append(h("pre", { class: "github-pull-hunk" }, [comment.hunk]));
+        if (!comment.reply && comment.hunk !== null) {
+          const { earlier, earlierLines, shown: tail } = comment.hunk;
+          // One box scrolls all of a hunk sideways, however far it is opened.
+          const box = h("div", { class: "github-pull-hunk-box" });
+          if (earlierLines > 0) {
+            // Native, so the browser opens and closes it and a repaint just closes it.
+            const lines = `line${earlierLines === 1 ? "" : "s"}`;
+            const plain = hunkLines([{ kind: "context", text: earlier }]);
+            const disclosure = h("details", { class: "github-pull-hunk-earlier" }, [
+              h("summary", { class: "fold-expander" }, [
+                chevron(),
+                h("span", { class: "github-pull-fold-closed" }, [
+                  `${earlierLines} earlier ${lines}`,
+                ]),
+                h("span", { class: "github-pull-fold-open" }, [`Hide ${earlierLines} ${lines}`]),
+              ]),
+              plain,
+            ]);
+            tintOnFirstOpen(disclosure, plain, earlier, hunkLines);
+            box.append(disclosure);
+          }
+          box.append(hunkLines(tail));
+          card.append(box);
           if (comment.hunkTruncated) {
-            card.append(h("p", { class: "github-pull-note" }, ["The start of this hunk was cut."]));
+            card.append(notice("warning", ["The start of this hunk was cut."]));
           }
         }
         card.append(textBlock(comment.part, comment.text, comment.truncated));
@@ -1345,7 +1885,9 @@ export function mountPullPage(container, ctx, mb) {
       sections.push(threads);
     }
     const summary = model.checks;
-    const checksSection = h("section", { class: "github-pull-section" }, [h("h2", {}, ["Checks"])]);
+    const checksSection = h("section", { class: "github-pull-section" }, [
+      h("h2", { class: "section-heading" }, ["Checks"]),
+    ]);
     if (summary === null) {
       checksSection.append(
         h("p", { class: "github-pull-quiet" }, ["No checks or statuses reported."]),
@@ -1378,10 +1920,13 @@ export function mountPullPage(container, ctx, mb) {
     }
     sections.push(checksSection);
     for (const note of model.notes) {
-      sections.push(h("p", { class: "github-pull-note" }, [note]));
+      sections.push(notice("warning", [note]));
     }
     body.replaceChildren(...sections);
   }
+
+  /** Settles when the diff last asked for has mounted, or was replaced. */
+  let diffMounted = Promise.resolve();
 
   function disposeDiff() {
     diffHandle?.dispose?.();
@@ -1390,32 +1935,95 @@ export function mountPullPage(container, ctx, mb) {
     diffFor = null;
   }
 
-  /** @param {{left: string, right: string}} comparison */
+  const prefetch = createComparisonPrefetch({
+    // The diff plugin spells the address, so the request `mountDiff` would make is this
+    // one, byte for byte, and the browser's cache answers a Back from it.
+    async load(comparison, signal) {
+      await mb.ensureKindAssets("diff");
+      const view =
+        /** @type {{prefetch?: (comparison: object, signal: AbortSignal) => Promise<unknown>} | null} */ (
+          mb.getRegisteredView("diff", "diff")
+        );
+      if (typeof view?.prefetch !== "function") {
+        throw new Error("the diff view has no prefetch");
+      }
+      return view.prefetch(
+        {
+          left: comparison.left,
+          right: comparison.right,
+          base_policy: "merge_base",
+          ...(comparison.route === undefined ? {} : { route: comparison.route }),
+        },
+        signal,
+      );
+    },
+    warm() {
+      void mb.ensureKindAssets("diff").catch(() => {});
+    },
+    schedule: (callback) =>
+      typeof window.requestIdleCallback === "function"
+        ? { idle: window.requestIdleCallback(callback, { timeout: PREFETCH_IDLE_TIMEOUT_MS }) }
+        : { timer: window.setTimeout(callback, PREFETCH_IDLE_TIMEOUT_MS) },
+    cancel(handle) {
+      const { idle, timer } = /** @type {{idle?: number, timer?: number}} */ (handle);
+      if (idle !== undefined) {
+        window.cancelIdleCallback(idle);
+      }
+      window.clearTimeout(timer);
+    },
+    isVisible: () => document.visibilityState === "visible",
+  });
+
+  /** @param {{left: string, right: string, route?: string}} comparison */
   async function mountDiff(comparison) {
     disposeDiff();
     const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
     diffHost = host;
     diffFor = comparison;
     body.replaceChildren(host);
-    await mb.ensureKindAssets("diff");
-    const view = mb.getRegisteredView("diff", "diff");
-    if (diffHost !== host) {
-      return;
+    try {
+      const raw = prefetch.take(comparison);
+      await mb.ensureKindAssets("diff");
+      const view = mb.getRegisteredView("diff", "diff");
+      if (diffHost !== host) {
+        return;
+      }
+      if (!view) {
+        host.textContent = "The diff plugin is unavailable.";
+        return;
+      }
+      const prefetched = await raw;
+      if (diffHost !== host) {
+        return;
+      }
+      const handle = /** @type {{dispose?: () => void} | null} */ (
+        await view.render(host, {
+          comparison: {
+            left: comparison.left,
+            right: comparison.right,
+            base_policy: "merge_base",
+            ...(comparison.route === undefined ? {} : { route: comparison.route }),
+          },
+          ...(prefetched === undefined ? {} : { raw: prefetched }),
+        })
+      );
+      if (diffHost !== host) {
+        handle?.dispose?.();
+        return;
+      }
+      diffHandle = handle;
+    } catch {
+      if (diffHost !== host) {
+        return;
+      }
+      const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
+      retry.addEventListener("click", () => {
+        if (diffHost === host) {
+          diffMounted = mountDiff(comparison);
+        }
+      });
+      host.replaceChildren(notice("error", ["Files changed could not load. ", retry]));
     }
-    if (!view) {
-      host.textContent = "The diff plugin is unavailable.";
-      return;
-    }
-    const handle = /** @type {{dispose?: () => void} | null} */ (
-      await view.render(host, {
-        comparison: { left: comparison.left, right: comparison.right, base_policy: "merge_base" },
-      })
-    );
-    if (diffHost !== host) {
-      handle?.dispose?.();
-      return;
-    }
-    diffHandle = handle;
   }
 
   /** @param {PullModel} model */
@@ -1424,27 +2032,28 @@ export function mountPullPage(container, ctx, mb) {
     const action = filesAction(diffFor, comparison);
     if (comparison === null || action === "unavailable") {
       disposeDiff();
-      body.replaceChildren(
-        h("p", { class: "github-pull-note" }, [
-          "Files changed is unavailable: the pull request's base could not be compared with its head.",
-        ]),
-      );
+      body.replaceChildren(notice("error", [model.filesUnavailable]));
       return;
     }
     if (action === "mount") {
-      void mountDiff(comparison);
+      diffMounted = mountDiff(comparison);
     } else if (action === "offer") {
       const offer = h("button", { type: "button", class: "btn github-pull-newer" }, [
         "Show the newer changes",
       ]);
-      offer.addEventListener("click", () => void mountDiff(comparison));
+      offer.addEventListener("click", () => {
+        // What `whenFilesReady` waits for is the diff last asked for, this one included.
+        diffMounted = mountDiff(comparison);
+      });
       body.querySelector(".github-pull-newer-offer")?.remove();
-      body.prepend(
-        h("p", { class: "github-pull-note github-pull-newer-offer" }, [
-          `The pull request now ends at ${comparison.right.slice(0, 12)}. `,
-          offer,
-        ]),
-      );
+      const said = notice(null, [
+        diffFor?.right === comparison.right
+          ? "The comparison has changed. "
+          : `The pull request now ends at ${comparison.right.slice(0, 12)}. `,
+        offer,
+      ]);
+      said.classList.add("github-pull-newer-offer");
+      body.prepend(said);
     }
   }
 
@@ -1452,6 +2061,8 @@ export function mountPullPage(container, ctx, mb) {
   function paint(model) {
     shown = model;
     paintHeader(model);
+    // The conversation reads in the column; a diff takes the pane.
+    body.classList.toggle("github-pull-column", model.tab !== "files");
     if (model.pull === null) {
       disposeDiff();
       texts.clear();
@@ -1466,6 +2077,9 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     disposeDiff();
+    if (model.comparison !== null) {
+      prefetch.want(model.comparison);
+    }
     const key = conversationKey(model);
     const action = conversationAction(
       { key: bodyKey, recordAt: markdownRecord },
@@ -1527,17 +2141,163 @@ export function mountPullPage(container, ctx, mb) {
     { number, tab: typeof ctx.tab === "string" ? ctx.tab : "" },
   );
   const listening = new AbortController();
-  document.addEventListener("visibilitychange", controller.onVisibilityChange, {
-    signal: listening.signal,
-  });
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      controller.onVisibilityChange();
+      // A page opened behind another tab is not prefetched until it is looked at: the
+      // wish is not recorded while hidden, so it is asked again when shown.
+      if (document.visibilityState === "visible" && shown?.tab !== "files") {
+        const comparison = shown?.comparison ?? null;
+        if (comparison !== null) {
+          prefetch.want(comparison);
+        }
+      }
+    },
+    { signal: listening.signal },
+  );
   void controller.start();
+  const place = pane === null ? null : keepPlace(pane, body, () => shown?.tab ?? "", number);
+  place?.keeper.land();
   return Object.freeze({
-    setTab: controller.setTab,
+    /**
+     * Show a tab. A tab owns the address (Browser URL Grammar), so a call from beside the
+     * page goes through the route, which moves the address and calls back here, and Back
+     * then behaves as it does after a click; the route's own calls find the address in
+     * place already.
+     *
+     * @param {string} next
+     */
+    setTab(next) {
+      const route = `/pull/${number}${next ? `/${next}` : ""}`;
+      if (TABS.includes(next) && window.location.pathname.replace(/\/$/, "") !== route) {
+        void open({ number, tab: next });
+        return;
+      }
+      const changed = controller.snapshot().tab !== next;
+      controller.setTab(next);
+      if (changed) {
+        place?.keeper.land();
+      }
+    },
+    /**
+     * Go to a file of Files changed, for a list of the pull request's files beside the page.
+     * docs/large-content-rendering.md ("Going to a file") says what it promises.
+     *
+     * @param {string} path
+     * @returns {import("../diff/diff-view.js").FileJump | {kind: "no_diff", path: string}}
+     */
+    scrollToFile(path) {
+      const jump =
+        /** @type {{scrollToFile?: (path: string) => import("../diff/diff-view.js").FileJump} | null} */ (
+          diffHandle
+        )?.scrollToFile;
+      if (typeof jump !== "function") {
+        return { kind: "no_diff", path };
+      }
+      // A jump is the reader's own move, and a list beside the pane is not an input to it.
+      place?.keeper.readerMoved();
+      return jump(path);
+    },
+    /**
+     * Whether Files changed holds a path, typed as `scrollToFile` is: `no_diff` while no
+     * diff is mounted, else what the diff says, `file` or `not_in_comparison`.
+     *
+     * @param {string} path
+     * @returns {import("../diff/diff-view.js").FileLookup | {kind: "no_diff", path: string}}
+     */
+    fileForPath(path) {
+      const lookup =
+        /** @type {{fileForPath?: (path: string) => import("../diff/diff-view.js").FileLookup} | null} */ (
+          diffHandle
+        )?.fileForPath;
+      return typeof lookup === "function" ? lookup(path) : { kind: "no_diff", path };
+    },
+    /** Settles when a diff asked for by `setTab("files")` has mounted. */
+    whenFilesReady: () => diffMounted,
     dispose() {
       listening.abort();
       observer?.disconnect();
+      place?.dispose();
       controller.dispose();
+      prefetch.dispose();
       disposeDiff();
     },
   });
+}
+
+/**
+ * Wire a scroll keeper to the pane, its page, and the history entry. Browser only.
+ *
+ * @param {HTMLElement} pane
+ * @param {HTMLElement} body
+ * @param {() => string} tab
+ * @param {number} number
+ */
+function keepPlace(pane, body, tab, number) {
+  const tops = () => {
+    const viewTop = pane.getBoundingClientRect().top;
+    return Array.from(
+      body.querySelectorAll(PLACE_BLOCKS),
+      (block) => block.getBoundingClientRect().top - viewTop + pane.scrollTop,
+    );
+  };
+  const keeper = createScrollKeeper({
+    read: () => window.history.state?.[PLACE_KEY],
+    write(place) {
+      // History can move on before this page is told: the entry is written only while
+      // it is still this page's.
+      const route = `/pull/${number}${tab() ? `/${tab()}` : ""}`;
+      if (window.location.pathname.replace(/\/$/, "") === route) {
+        window.history.replaceState({ ...window.history.state, [PLACE_KEY]: place }, "");
+      }
+    },
+    measure: () => placeAt(tops(), pane.scrollTop),
+    apply(place) {
+      const top = scrollTopOf(place, tops());
+      if (top === null) {
+        return false;
+      }
+      pane.scrollTop = top;
+      return true;
+    },
+    anchored: () => window.location.hash !== "",
+    toTop() {
+      pane.scrollTop = 0;
+    },
+    schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
+    cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
+  });
+  const listening = new AbortController();
+  const { signal } = listening;
+  pane.addEventListener("scroll", keeper.scrolled, { passive: true, signal });
+  pane.addEventListener("click", keeper.flush, { capture: true, signal });
+  // Whatever a reader moves the pane with: a wheel, a finger, a scrollbar, a key. Only input
+  // says so, since the browser's own scroll anchoring also moves a page that changes height.
+  // So a scroll with no input the page can see, from assistive technology or the find bar, is
+  // undone by the next change in height inside the settle window: telling it from anchoring
+  // would end the hold on what the hold exists to override.
+  for (const type of ["wheel", "touchstart", "pointerdown"]) {
+    pane.addEventListener(type, keeper.readerMoved, { capture: true, passive: true, signal });
+  }
+  window.addEventListener(
+    "keydown",
+    (event) => {
+      const target = /** @type {HTMLElement | null} */ (event.target);
+      if (keyMovesPane(event.key, target)) {
+        keeper.readerMoved();
+      }
+    },
+    { capture: true, signal },
+  );
+  const heights = new ResizeObserver(() => keeper.contentChanged());
+  heights.observe(body);
+  return {
+    keeper,
+    dispose() {
+      listening.abort();
+      heights.disconnect();
+      keeper.dispose();
+    },
+  };
 }

@@ -72,6 +72,7 @@ import pytest
 from click import unstyle
 
 import metabrowser
+from devtools.check_parity import IN_PROCESS_COMMAND
 from metabrowser import mirror_refresh
 from metabrowser.cache import records
 from metabrowser.cache.acquire import PublishedSource
@@ -201,6 +202,17 @@ def strip_logs(text: str) -> str:
 _BUILD_STATE: Final = re.compile(r"  \[dev build: [^\]]*\]")
 
 
+def normalize_pull_comparison_scopes(text: str) -> str:
+    """Keep a PR comparison's endpoints while labeling build and sandbox-store identity."""
+    return re.sub(
+        r"(/api/plugin/github/pull-comparison\?number=\d+&left=[0-9a-f]{40}(?:[0-9a-f]{24})?"
+        r"&right=[0-9a-f]{40}(?:[0-9a-f]{24})?&base_policy=merge_base&build=)[0-9a-f]{12}"
+        r"(&store=)[0-9a-f]{16}",
+        r"\1<BUILD>\2<STORE>",
+        text,
+    )
+
+
 def normalize_console(text: str, root: Path) -> str:
     """Rich-rendered console output with its sandbox root, build state, and padding removed."""
 
@@ -222,11 +234,21 @@ def block(
 
     *sections* adds named line lists after the streams, such as the ``gh`` calls a
     command made.
+
+    ``devtools/check_parity.py`` reads a transcript's commands back from these headers,
+    and a header inside a stream would read as a command that ran. Once the text is
+    written nothing can tell the two apart, so a block must hold exactly one.
     """
 
     text = f"# {command}\nexit: {exit_code}\n--- stdout ---\n{stdout}--- stderr ---\n{stderr}"
     for name, lines in sections.items():
         text += f"--- {name} ---\n" + "".join(f"{line}\n" for line in lines)
+    headers = IN_PROCESS_COMMAND.findall(text)
+    if len(headers) != 1:
+        raise ValueError(
+            f"{command!r} would record {len(headers)} command headers, not 1: "
+            "devtools/check_parity.py reads each one as a command that ran"
+        )
     return text
 
 
@@ -406,7 +428,8 @@ def elide_clone_timing(stderr: str) -> str:
 _HOME_LINES: Final = (
     r"cloning \S+ into {home}",
     r"using the clone of \S+ cached in {home}"
-    r"(?:, fetched (?:less than a minute ago|\d+ (?:minute|hour|day)s? ago|<AGE>))?",
+    r"(?:, fetched (?:less than a minute ago|\d+ (?:minute|hour|day)s? ago|<AGE>))?"
+    r"(?:, borrowing objects from .*)?",
     r'\s*"location": "{home}/repository-stores/(?:<STORE_KEY[^>"]*>|[0-9a-f]{{64}})'
     r'/repository\.git",',
 )

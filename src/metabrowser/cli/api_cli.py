@@ -166,14 +166,21 @@ def _request_body(data: Path | None) -> bytes:
 
 
 def _echo_envelope(
-    label: str, route: str, response: ApiResponse, ctx: NormalizeContext, fmt: str
+    label: str, route: str, response: ApiResponse, ctx: NormalizeContext, fmt: str, *, headers: bool
 ) -> None:
-    typer.echo(f"{label}: {route}")
-    typer.echo(f"status: {response.status_code}")
+    """Print one answer: a transcript with *headers*, otherwise one document in *fmt*.
+
+    Without headers a tool parses stdout, so a body that is not JSON is a string in *fmt*.
+    """
+
+    if headers:
+        typer.echo(f"{label}: {route}")
+        typer.echo(f"status: {response.status_code}")
     try:
         payload = response.json()
     except ValueError:
-        typer.echo(normalize_text(response.text(), ctx))
+        text = normalize_text(response.text(), ctx)
+        typer.echo(text if headers else _render(text, fmt))
     else:
         typer.echo(_render(normalize_payload(payload, ctx), fmt))
 
@@ -217,9 +224,19 @@ def _emit_api_response(
     normalize_root: Path,
     normalize_keep: tuple[tuple[str, ...], ...] = (),
     after: tuple[str, ApiResponse] | None = None,
+    headers: bool = True,
 ) -> None:
+    """Print the answer and exit non-zero unless it succeeded.
+
+    *headers* is the transcript the goldens pin: the route, the status, and the envelope.
+    Without them stdout is one document, so a request whose work is followed to its end
+    prints only the status that ended it; the exit status reports the failure either way.
+    """
+
     ctx = NormalizeContext(root=normalize_root, keep=normalize_keep)
-    _echo_envelope("api", route, response, ctx, fmt)
+    printed = headers or after is None
+    if printed:
+        _echo_envelope("api", route, response, ctx, fmt, headers=headers)
 
     # An envelope built from an index that never finished is not the envelope
     # the browser would have drawn, so say so rather than letting it read clean.
@@ -227,14 +244,14 @@ def _emit_api_response(
         typer.echo(f"index: {index_detail}", err=True)
     if response.incomplete:
         raise CLIError(
-            f"{route} answered HTTP {response.status_code} and then failed mid-response; "
-            "the body above is truncated"
+            f"{route} answered HTTP {response.status_code} and then failed mid-response"
+            + ("; the body above is truncated" if printed else "")
         )
     if not 200 <= response.status_code < 300:
         raise CLIError(f"{route} returned HTTP {response.status_code}")
     if after is not None:
         follow, followed = after
-        _echo_envelope("after", follow, followed, ctx, fmt)
+        _echo_envelope("after", follow, followed, ctx, fmt, headers=headers)
         running, outcome = _refresh_outcome(followed)
         if running:
             raise CLIError(
@@ -257,6 +274,7 @@ async def aissue_on_active_session(
     untrusted: bool = False,
     no_active_content: bool = False,
     allow_edits: bool = False,
+    headers: bool = True,
 ) -> None:
     """Issue one request against the already-attached subject. No ``_set_root_dir``.
 
@@ -293,6 +311,7 @@ async def aissue_on_active_session(
         normalize_root=normalize_root,
         normalize_keep=normalize_keep,
         after=after,
+        headers=headers,
     )
 
 
@@ -331,6 +350,7 @@ def run_api(
     untrusted: bool = False,
     no_active_content: bool = False,
     allow_edits: bool = False,
+    headers: bool = True,
 ) -> None:
     """Issue one request through the in-process ASGI stack and print it."""
 
@@ -361,4 +381,12 @@ def run_api(
     response, index_detail, after = asyncio.run(
         _issue(server.app, route, body=_request_body(data), index_timeout_s=index_timeout_s)
     )
-    _emit_api_response(route, response, index_detail, fmt=fmt, normalize_root=resolved, after=after)
+    _emit_api_response(
+        route,
+        response,
+        index_detail,
+        fmt=fmt,
+        normalize_root=resolved,
+        after=after,
+        headers=headers,
+    )

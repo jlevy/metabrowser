@@ -23,6 +23,7 @@ from devtools.bench_serving import (
     build_corpus,
     phase_settled,
     resolve_metab_build,
+    split_console_launcher,
 )
 
 
@@ -147,6 +148,103 @@ def test_distinct_wheel_bytes_have_distinct_artifact_identities(tmp_path: Path) 
     assert (
         hashlib.sha256(first.read_bytes()).digest() != hashlib.sha256(second.read_bytes()).digest()
     )
+
+
+_WRAPPED_HEAD = "#!/bin/sh\n'''exec' '{}' \"$0\" \"$@\"\n' '''\n"
+_LAUNCHER_BODY = (
+    "# -*- coding: utf-8 -*-\n"
+    "import sys\n"
+    "from metabrowser.cli.entrypoint import main\n"
+    'if __name__ == "__main__":\n'
+    '    if sys.argv[0].endswith("-script.pyw"):\n'
+    "        sys.argv[0] = sys.argv[0][:-11]\n"
+    '    elif sys.argv[0].endswith(".exe"):\n'
+    "        sys.argv[0] = sys.argv[0][:-4]\n"
+    "    sys.exit(main())\n"
+)
+
+
+def test_installed_build_attestation_accepts_a_launcher_wrapped_for_a_long_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Past 127 characters uv wraps the launcher in ``sh``; it is the same launcher."""
+
+    wheel = tmp_path / "metabrowser-0.6.0-py3-none-any.whl"
+    _write_test_wheel(wheel)
+    executable = tmp_path / "metab"
+    executable.write_text(_WRAPPED_HEAD.format(sys.executable) + _LAUNCHER_BODY, encoding="utf-8")
+    payload = _attestation_payload(wheel)
+    probed: list[str] = []
+
+    def probe(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        probed.append(args[0])
+        return subprocess.CompletedProcess(args, 0, stdout=json.dumps(payload), stderr="")
+
+    monkeypatch.setattr("devtools.bench_serving.subprocess.run", probe)
+
+    attest_installed_wheel(MetabBuild(executable, "metab 0.6.0"), wheel)
+
+    assert probed == [sys.executable]
+
+
+def test_a_wrapped_launcher_must_still_invoke_the_wheels_entry_point(tmp_path: Path) -> None:
+    wheel = tmp_path / "metabrowser-0.6.0-py3-none-any.whl"
+    _write_test_wheel(wheel)
+    executable = tmp_path / "metab"
+    executable.write_text(
+        _WRAPPED_HEAD.format(sys.executable) + "print('metab 0.6.0')\n", encoding="utf-8"
+    )
+
+    with pytest.raises(SystemExit, match="does not invoke"):
+        attest_installed_wheel(MetabBuild(executable, "metab 0.6.0"), wheel)
+
+
+def test_split_console_launcher_finds_the_interpreter_in_either_form(tmp_path: Path) -> None:
+    python = Path(sys.executable)
+    quoted = tmp_path / "it's a venv" / "python"
+    quoted.parent.mkdir()
+    quoted.write_text("", encoding="utf-8")
+    escaped = str(quoted).replace("'", "'\"'\"'")
+
+    assert split_console_launcher(f"#!{python}\nbody\n".encode()) == (python, "body\n")
+    assert split_console_launcher((_WRAPPED_HEAD.format(python) + "body\n").encode()) == (
+        python,
+        "body\n",
+    )
+    assert split_console_launcher((_WRAPPED_HEAD.format(escaped) + "body\n").encode()) == (
+        quoted,
+        "body\n",
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        b"",
+        b"no shebang\n",
+        b"\xff\xfe not text\n",
+        b"#!/bin/sh\nexec something-else\n",
+        b"#!relative/python\nbody\n",
+        b"#!/no/such/interpreter\nbody\n",
+        b"#!/bin/sh\n'''exec' '/no/such/interpreter' \"$0\" \"$@\"\n' '''\nbody\n",
+    ],
+    ids=["empty", "no-shebang", "not-text", "other-sh", "relative", "missing", "wrapped-missing"],
+)
+def test_split_console_launcher_refuses_what_names_no_interpreter(source: bytes) -> None:
+    assert split_console_launcher(source) is None
+
+
+@pytest.mark.parametrize("shell", ["sh", "bash", "dash", "zsh"])
+def test_split_console_launcher_refuses_a_shebang_that_names_a_shell(
+    shell: str, tmp_path: Path
+) -> None:
+    """A shell cannot run the Python probe, so it is no interpreter wherever it is installed."""
+
+    interpreter = tmp_path / shell
+    interpreter.write_text("", encoding="utf-8")
+
+    assert split_console_launcher(f"#!{interpreter}\nbody\n".encode()) is None
 
 
 def test_installed_build_attestation_rejects_a_different_python_launcher(

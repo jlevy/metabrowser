@@ -172,6 +172,9 @@ Those names are examples of a general rule rather than a list of exceptions.
 A `.env` or `.env.local` file may contribute only `METABROWSER_LOG_LEVEL` and
 `METABROWSER_REQUEST_LOG`. Every other name is read from the process environment or not
 at all, and Metabrowser logs a warning naming any of its own variables it ignored.
+A file that is not a regular file or is larger than 64 KB is skipped with a warning, and
+a value’s `${VAR}` is left as written, so a browsed repository’s file cannot hold the
+command by blocking its read or taking minutes to parse.
 
 The rule is an allowlist because the loader cannot tell a file the operator wrote from
 one in the repository being browsed, and a denylist secures only the names somebody
@@ -212,6 +215,46 @@ It answers `/api/cache/…` with `unsupported_for_subject`, so the records that 
 other cached source are never served beside acquired content, and it answers the
 path-shaped `/raw/{path}` the same way, because the preview that is that form’s only
 consumer is never offered there.
+
+A store can borrow objects from a checkout the reader names with `--checkout`, through
+Git’s `objects/info/alternates`. That checkout is a read-only source of object bytes,
+and borrowing does not change what is served or how: a store that borrows is opened,
+read under the same isolated Git policy, and served under the same untrusted profile as
+one that does not, and nothing about it can lift the profile.
+
+- **Its configuration is never consulted.** No Git process runs in the checkout.
+  Its remotes, refs, and object format are files read with a bound on each, and only
+  when they are regular files, so a FIFO cannot block a command.
+  Git reads the borrowed objects under the store’s own configuration, so the checkout’s
+  hooks, `core.fsmonitor`, `core.sshCommand`, and diff drivers do not run.
+  Nothing is written to it: a store takes over its own copy of the shallow boundary
+  before it deepens, because Git writes that file through a symbolic link.
+- **Its bytes are trusted as a served folder’s are.** Git does not verify an object’s
+  hash when it reads one: a forged loose object, pack entry, or commit is served by
+  every read and noticed only by `fsck`. So whoever can write the checkout can decide
+  what a pull request’s files look like.
+  That is already true of `metab <checkout>`, and it is why only a checkout the reader
+  names lends: one found by walking up from the working directory is offered as a
+  printed suggestion and never borrowed from, because any directory a reader stands in
+  can be made to pass for a checkout of any repository.
+- **Its refs and boundary are not believed.** The store’s refs are only what the origin
+  sent, so a branch or tag planted in the checkout is never served; its remote-tracking
+  tips are only hints that tell the origin what need not be sent, and they name commits
+  of the origin. Its local branches never leave the machine.
+  Its shallow boundary is used only as a cut of the commit graph, which can make a merge
+  base uncertain but never certain and wrong: an uncertain one is refused rather than
+  shown.
+- **The alternates file is checked.** A store whose alternates file names anything but
+  the directory its record names is refused as damaged, so a tampered cache cannot point
+  reads at another directory.
+  The checkout is checked again on every open that uses the record and before every
+  fetch: one that has grown an `objects/info/alternates` of its own, whose objects are
+  no longer the reader’s own to read, or whose directory holds another repository is
+  refused as `lender_missing`, so Git never follows a chain of alternates to a directory
+  nothing recorded.
+- **The checkout’s path** appears where a mirror’s location does, in
+  `/api/source/status` and the heading’s tooltip, as display text no route takes back as
+  an input.
 
 Content viewed through Metabrowser gets exactly the privilege a browser would give the
 same file opened directly, and never Metabrowser’s server-side API.

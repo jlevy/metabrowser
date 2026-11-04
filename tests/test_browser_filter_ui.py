@@ -85,12 +85,9 @@ def test_treemap_uses_shared_controls_for_metric_and_scope() -> None:
 
     # Both views mount one row carrying both halves, because the measure and
     # the gitignore switch are the same kind of choice about the same numbers
-    # and splitting them meant each silently moved the other's. No parts
-    # argument is what asks for both, so the absence of one is the assertion.
+    # and splitting them meant each silently moved the other's.
     assert "rollupControls.mount(controls)" in overview_panel
     assert "rollupControls.mount(rollupControlsHost)" in treemap
-    assert "metric: true" not in treemap
-    assert "ignored: true" not in treemap
     # And neither body owns a control row any more.
     for body in (file_totals, file_types):
         assert "rollupControls.mount(" not in body
@@ -253,7 +250,7 @@ def test_wrapped_groups_are_chip_clusters_not_segmented_controls() -> None:
     assert "border: 1px solid var(--viz-border);" in chip_block
     assert "border-radius: var(--radius-pill);" in chip_block
 
-    hover_start = css.index('.chip-group[data-layout="wrap"] > .chip:hover')
+    hover_start = css.index(".chip-group > .chip:hover")
     hover_block = css[hover_start : css.index("}", hover_start)]
     assert "background: var(--hover-bg);" in hover_block
 

@@ -145,6 +145,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_git_revision_open.py \
 	tests/test_git_store_read_policy.py \
 	tests/test_git_tree_source.py \
+	tests/test_git_reader_recovery.py \
 	tests/test_git_revision_content_routes.py \
 	tests/test_git_revision_diff.py \
 	tests/test_cache_resolve.py \
@@ -152,6 +153,8 @@ ADMITTED_GIT_TESTS := \
 	tests/test_acquire_stall_and_hangup.py \
 	tests/test_acquire_phases.py \
 	tests/test_github_pulls.py \
+	tests/test_checkout_overlay.py \
+	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_pull_golden.py \
 	tests/test_cache_async_locks.py \
 	tests/test_cli_no_serve_surface.py \
@@ -164,6 +167,8 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_cache_recovery_golden.py \
 	tests/test_source_refs.py \
 	tests/test_mirror_heading_session.py \
+	tests/test_diff_comparison_cache.py \
+	tests/test_github_pull_manifests.py \
 	tests/test_admitted_git_gate.py
 
 test-admitted-git:
@@ -213,7 +218,9 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_git_pin_golden.py \
 	tests/test_cli_git_refresh_golden.py \
 	tests/test_cli_github_url_golden.py \
-	tests/test_cli_github_pull_golden.py
+	tests/test_cli_github_pull_golden.py \
+	tests/test_cli_checkout_golden.py \
+	tests/test_diff_comparison_cache.py
 
 golden-update:
 	$(UV_RUN) python -m devtools.golden_update $(GOLDEN_RECORDERS)

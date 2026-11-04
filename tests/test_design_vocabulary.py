@@ -868,3 +868,416 @@ def test_one_document_surface_has_one_set_of_breakpoints() -> None:
     assert "Overview renders the README at the same measure" in doc, (
         "the rule belongs in the design system, not only in the stylesheet"
     )
+
+
+# ── Tabs, type sizes, toggles, and reading width ───────────────────
+#
+# Each of these holds a rule in docs/design-system.md across every stylesheet and browser
+# source the app ships, so a new surface cannot fork it. A primitive is carried in markup;
+# a use site positions it. See "Control Families".
+
+
+def _browser_sources() -> list[Path]:
+    """Everything that writes the app's markup: browser sources, plugins, the shell."""
+
+    static = [path for path in sorted(STATIC.glob("*.js")) if path.name != "types.d.ts"]
+    plugins = sorted((REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.js"))
+    return [*static, *plugins, REPO_ROOT / "src/metabrowser/server.py"]
+
+
+def _stylesheets() -> list[Path]:
+    """Every stylesheet the app ships. Vendored ones are not ours to hold to this."""
+
+    return [STATIC / "styles.css", *sorted((REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.css"))]
+
+
+def _declarations(body: str) -> list[tuple[str, str]]:
+    """(property, value) for each declaration of a rule's body."""
+
+    found: list[tuple[str, str]] = []
+    for declaration in body.split(";"):
+        name, separator, value = declaration.partition(":")
+        if separator:
+            found.append((name.strip().lower(), value.strip()))
+    return found
+
+
+def _rules_of(path: Path) -> list[tuple[str, dict[str, str]]]:
+    """(one selector, declarations) for each selector of each rule in *path*."""
+
+    return [
+        (selector.strip(), dict(_declarations(body)))
+        for selectors, body in _style_rules(path.read_text(encoding="utf-8"))
+        for selector in _split_top(selectors, ",")
+    ]
+
+
+_ROLE_TAB = re.compile(r"""role="tab"|"role",\s*"tab"|role:\s*"tab\"""")
+_TAB_SELECTOR = re.compile(r"\.[\w-]*\btabs?\b[\w-]*")
+# The classes the tab primitive and its one bar variant are made of, and names that merely
+# contain the word: `.tree-tab` would not pass, but a number's tabular figures are no tab.
+_TAB_PRIMITIVE = frozenset({".tab-btn", ".tab-bar", ".nav-tab-bar"})
+_TAB_OWNED = frozenset(
+    {
+        "background",
+        "border",
+        "border-bottom",
+        "border-bottom-color",
+        "color",
+        "font",
+        "font-family",
+        "font-size",
+        "font-weight",
+        "letter-spacing",
+        "padding",
+        "text-transform",
+    }
+)
+
+
+def test_every_tab_is_the_tab_primitive() -> None:
+    """A tab is `.tab-btn`, in the markup, and no stylesheet draws one of its own.
+
+    The pull request page's Conversation and Files changed were lowercase links under
+    `.github-pull-tab`, which recreated the primitive's border, color, and padding, beside
+    uppercase OVERVIEW and DOCUMENT everywhere else.
+    """
+
+    for source in _browser_sources():
+        text = source.read_text(encoding="utf-8")
+        for match in _ROLE_TAB.finditer(text):
+            nearby = text[max(0, match.start() - 300) : match.end() + 300]
+            assert "tab-btn" in nearby, (
+                f"{source.name} gives an element role=tab without the .tab-btn primitive"
+            )
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            for name in _TAB_SELECTOR.findall(selector):
+                if name in _TAB_PRIMITIVE:
+                    continue
+                recreated = sorted(_TAB_OWNED & set(declarations))
+                assert not recreated, (
+                    f"{sheet.name}: {selector} recreates the tab primitive's {recreated}"
+                )
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    tab = _rule(styles, ".tab-btn")
+    for token in (
+        "--label-font-size",
+        "--label-font-weight",
+        "--label-text-transform",
+        "--label-letter-spacing",
+    ):
+        assert f"var({token})" in tab, f".tab-btn lost {token}"
+    active = _rule(styles, ".tab-btn.active")
+    assert "border-bottom-color: var(--tab-active-color)" in active
+    # A tab that is an address renders as the same tab.
+    link = _rule(styles, "a.tab-btn")
+    assert "text-decoration: none" in link and "line-height: normal" in link
+    assert "outline: 2px solid var(--link)" in _rule(styles, ".tab-btn:focus-visible")
+    # Only core styles the primitive; a use site adds positioning from its own class.
+    for sheet in _stylesheets()[1:]:
+        for selector, _declared in _rules_of(sheet):
+            assert ".tab-btn" not in selector, f"{sheet.name} restyles .tab-btn: {selector}"
+    page = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-page.js").read_text(encoding="utf-8")
+    assert 'class: "tab-bar", role: "tablist"' in page
+    assert '"tab-btn", [label])' in page
+    assert 'link.classList.toggle("active", model.tab === id)' in page
+    assert 'link.setAttribute("aria-selected", String(model.tab === id))' in page
+
+
+# Every font-size that is not a type-scale token, and why. A literal anywhere else fails.
+_FONT_SIZE_EXEMPT: dict[tuple[str, str], str] = {
+    # A glyph, not text: documented beside the ramp.
+    ("styles.css", ".compression-badge"): "a 7px mark, iconography rather than text",
+    # Paper is sized in points, as --kpress-print-font-size is.
+    ("styles.css", '.preview-pane[data-printable="false"]::before'): "a sentence for print",
+    # The fallback prose path a third-party plugin gets without KPress: its headings step
+    # from whatever size the plugin's container sets, so they are relative on purpose.
+    ("styles.css", ".md-body:not(.metabrowser-kpress-host) h1"): "relative fallback heading",
+    ("styles.css", ".md-body:not(.metabrowser-kpress-host) h2"): "relative fallback heading",
+    ("styles.css", ".md-body:not(.metabrowser-kpress-host) h3"): "relative fallback heading",
+    ("styles.css", ".md-body:not(.metabrowser-kpress-host) h4"): "relative fallback heading",
+    ("styles.css", ".md-body:not(.metabrowser-kpress-host) .checkbox"): "relative to its text",
+    # Reported, not changed: --code-font-size is defined nowhere, so a diff's code reads at
+    # 0.85rem, 13.6px, and follows the browser's root size. The ramp's --mono-block-font-size
+    # is 12px. Moving to it shrinks every diff on every page, which is the owner's decision.
+    ("diff/styles.css", ".metabrowser-diff-host .diff-line"): "13.6px pending mb-ruyu",
+    ("diff/styles.css", ".metabrowser-diff-host .diff-split-side"): "13.6px pending mb-ruyu",
+    # One step below the structured view's mono, in em so it follows that view's size.
+    ("structured/styles.css", ".tok-meta"): "relative to the row it annotates",
+}
+_TYPE_SCALE_VALUE = re.compile(r"var\(--[a-z0-9-]+\)")
+
+
+def _sheet_name(sheet: Path) -> str:
+    if sheet.parent == STATIC:
+        return sheet.name
+    return f"{sheet.parent.name}/{sheet.name}"
+
+
+def test_font_sizes_come_from_the_type_scale() -> None:
+    """No literal font size at a use site, as "Type Scale" says, or a reason named above.
+
+    A plugin's stylesheet is held to it too: it consumes the host's tokens, so a change to
+    the ramp reaches it. `font` shorthands count, since they set a size just the same.
+    """
+
+    offenders: list[str] = []
+    for sheet in _stylesheets():
+        name = _sheet_name(sheet)
+        for selector, declarations in _rules_of(sheet):
+            if (name, selector) in _FONT_SIZE_EXEMPT:
+                continue
+            size = declarations.get("font-size")
+            if size is not None and _TYPE_SCALE_VALUE.fullmatch(size) is None:
+                offenders.append(f"{name}: {selector} sets font-size: {size}")
+            shorthand = declarations.get("font", "")
+            if re.search(r"\d(?:px|em|rem|pt|%)", shorthand):
+                offenders.append(f"{name}: {selector} sets font: {shorthand}")
+    assert not offenders, "\n  ".join(["literal font sizes:", *offenders])
+
+
+def test_a_pill_is_the_pill_token_and_means_a_filter() -> None:
+    """A radius literal is a one-off, and a chip's pill reads as a filter wherever it is."""
+
+    for sheet in _stylesheets():
+        for selector, declarations in _rules_of(sheet):
+            radius = declarations.get("border-radius", "")
+            assert "999px" not in radius, f"{sheet.name}: {selector} spells the pill as a literal"
+    github = _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css")
+    for selector, declarations in github:
+        assert declarations.get("border-radius") != "var(--radius-pill)", (
+            f"{selector} is not a filter, so it does not take a filter's shape"
+        )
+
+
+# The sources that may state a toggle's ARIA, and the primitive each one states it for. A new
+# surface reaches for the renderer, so it never appears here.
+_TOGGLE_SOURCES: dict[str, str] = {
+    "filter-controls.js": "the chip family's renderer",
+    "app.js": ".menu-seg's checked mark and the drawer's .icon-btn toggle",
+    "server.py": ".menu-seg in the shell's menu",
+    "source-ref-selector.js": "marks a chip of its groupHtml in place",
+    "agent_log/index.js": "marks a chip of its groupHtml in place",
+    "folder/treemap.js": "marks a chip of its groupHtml in place",
+}
+_TOGGLE_ARIA = re.compile(
+    r"""aria-pressed|aria-checked|radiogroup|menuitemradio|menuitemcheckbox"""
+    r"""|role="radio"|"role",\s*"radio"|role:\s*"radio\""""
+)
+# What a stylesheet may hang on that ARIA: the family's members.
+_TOGGLE_SELECTORS = (".chip", ".menu-seg", ".menu-item", ".filter-drawer-toggle")
+
+
+def test_a_toggle_cannot_fork_the_family() -> None:
+    """A choice among values is one of the family in "Choosing Among Values".
+
+    `.source-ref-selector-kind` was an exclusive choice drawn from scratch: its own border,
+    no hover, the browser's focus ring, `aria-pressed` where a radio belongs, and no arrow
+    keys, one panel away from the chip group that has all of that.
+    """
+
+    for source in _browser_sources():
+        text = source.read_text(encoding="utf-8")
+        key = source.name if source.parent == STATIC else f"{source.parent.name}/{source.name}"
+        if source.name == "server.py":
+            key = "server.py"
+        if _TOGGLE_ARIA.search(text):
+            assert key in _TOGGLE_SOURCES, (
+                f"{key} states a toggle's ARIA itself. Render it through "
+                "metabrowser.filterControls, or register why it cannot."
+            )
+    for sheet in _stylesheets():
+        for selector, _declared in _rules_of(sheet):
+            if "[aria-pressed" not in selector and "[aria-checked" not in selector:
+                continue
+            assert any(member in selector for member in _TOGGLE_SELECTORS), (
+                f"{sheet.name}: {selector} draws a toggle outside the family"
+            )
+    ref_selector = (STATIC / "source-ref-selector.js").read_text(encoding="utf-8")
+    assert "chipControls().groupHtml" in ref_selector
+    assert "aria-pressed" not in ref_selector, "an exclusive choice is a radio"
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "### Choosing Among Values" in doc
+    assert "test_a_toggle_cannot_fork_the_family" in doc
+
+
+def test_exclusive_choices_share_one_answer_to_each_state() -> None:
+    """A joined chip and a menu segment differ in shape and agree on what a state looks like."""
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    selected = (
+        _rule(styles, '.chip-group[data-select="one"] > .chip[aria-checked="true"]'),
+        _rule(styles, '.menu-seg[aria-checked="true"]'),
+    )
+    for rule in selected:
+        assert "background: var(--highlight-bg)" in rule
+        assert "color: var(--link)" in rule
+    hover_chip = _rule(styles, ".chip-group > .chip:hover")
+    assert "background: var(--hover-bg)" in hover_chip
+    assert "background: var(--hover-bg)" in _rule(styles, ".menu-seg:hover")
+    # Later than the rest fill it ties with, or a joined chip answers the pointer with
+    # nothing, and earlier than the selected fill, which outranks it either way.
+    chip_rest = styles.index(".chip-group > .chip {")
+    wrapped_rest = styles.index('.chip-group[data-layout="wrap"] > .chip {')
+    assert styles.index(".chip-group > .chip:hover {") > max(chip_rest, wrapped_rest)
+    # One focus ring. A fill cannot be the signal, since a checked segment's would hide it.
+    ring = "outline: 2px solid var(--link)"
+    for selector in (".chip:focus-visible", ".menu-seg:focus-visible"):
+        rule = _rule(styles, selector)
+        assert ring in rule, f"{selector} lost the focus ring"
+        assert "outline-offset: -2px" in rule, f"{selector} moved the focus ring"
+    # A consumer repaints a group from its state, so focus has to survive that.
+    controls = (STATIC / "filter-controls.js").read_text(encoding="utf-8")
+    assert "chip.isConnected === false" in controls
+
+
+def test_every_prose_surface_reads_the_measure() -> None:
+    """Prose wraps at the reader's "Max text width", wherever it is, as "Reading Width" says.
+
+    A pull request's description ran the width of a 1100px literal, about 170 characters
+    where a file on the same server wraps at 102, and ignored the setting.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    assert "--doc-measure: calc(" in styles
+    assert "--kpress-measure: var(--doc-measure)" in _rule(
+        styles, ".metabrowser-kpress-host .kpress"
+    )
+    fallback = [
+        declarations["max-width"]
+        for selector, declarations in _rules_of(STATIC / "styles.css")
+        if selector == ".md-body:not(.metabrowser-kpress-host) p" and "max-width" in declarations
+    ]
+    assert fallback == ["var(--doc-measure)"]
+    overview = (REPO_ROOT / BUILTIN_PLUGINS / "folder/overview.css").read_text(encoding="utf-8")
+    assert "var(--doc-measure)" in overview
+    # The pull request page: its column, and no length of its own.
+    github_css = REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"
+    column = dict(_rules_of(github_css))[".github-pull-column"]
+    assert "var(--doc-measure)" in column["max-width"]
+    for selector, declarations in _rules_of(github_css):
+        width = declarations.get("max-width", "")
+        assert re.search(r"\d(?:px|rem|em|ch)", width) is None, (
+            f"{selector} caps prose at a literal: {width}"
+        )
+    # A surface that rebuilds untrusted Markdown sets it in KPress's prose, which is what the
+    # bridge above reaches. Plain rebuilt nodes would read at whatever width they are given.
+    for source in sorted((REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.js")):
+        text = source.read_text(encoding="utf-8")
+        if ".sanitizeHtml(" in text:
+            assert ".kpressProse(" in text, f"{source.name} rebuilds Markdown outside KPress prose"
+    # A document's text is held to the measure by the column class a trusted render carries.
+    inert = (REPO_ROOT / BUILTIN_PLUGINS / "markdown/inert-render.js").read_text(encoding="utf-8")
+    assert 'prose.classList.add("kpress-long-text")' in inert
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "test_every_prose_surface_reads_the_measure" in doc
+
+
+def test_section_headings_and_fold_expanders_are_primitives() -> None:
+    """A section's title and a withheld run of content look the same on every page."""
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    heading = _rule(styles, ".section-heading")
+    for token in (
+        "--body-font-size",
+        "--label-font-weight",
+        "--label-letter-spacing",
+        "--label-text-transform",
+        "--section-heading-divider-gap",
+    ):
+        assert f"var({token})" in heading, f".section-heading lost {token}"
+    fold = _rule(styles, ".fold-expander")
+    for declaration in (
+        "min-height: var(--ui-row-height)",
+        "background: var(--highlight-bg)",
+        "color: var(--muted)",
+    ):
+        assert declaration in fold, f".fold-expander lost {declaration}"
+    assert "background: var(--hover-bg)" in _rule(styles, ".fold-expander:hover")
+    plugins = REPO_ROOT / BUILTIN_PLUGINS
+    overview = (plugins / "folder/overview.js").read_text(encoding="utf-8")
+    assert '"section-heading folder-overview-panel-heading"' in overview
+    diff = (plugins / "diff/diff-view.js").read_text(encoding="utf-8")
+    assert '"fold-expander diff-fold-control"' in diff
+    page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
+    assert page.count('h("h2", { class: "section-heading" }') == 2
+    assert 'h("summary", { class: "fold-expander" }' in page
+    # A hunk's fold states its size and then the inverse, as a fold does.
+    assert "earlier ${lines}" in page and "`Hide ${earlierLines} ${lines}`" in page
+    assert "section-disclosure-trigger" not in page
+    github = plugins / "github/styles.css"
+    for selector, declarations in _rules_of(github):
+        assert not re.search(r"(?:^|\s)h[1-6]\b", selector), (
+            f"{selector} sizes a heading in the page's stylesheet"
+        )
+        assert "text-transform" not in declarations, f"{selector} recreates a label's caps"
+    # The native form of the one motion recipe, and it collapses to nothing at rest. The
+    # first rule for the selector: the print and reduced-motion ones only adjust it.
+    details: dict[str, dict[str, str]] = {}
+    for selector, declarations in _rules_of(github):
+        details.setdefault(selector, declarations)
+    travel = details[".github-pull-hunk-earlier::details-content"]
+    assert "height var(--transition-fast)" in travel["transition"]
+    assert travel["interpolate-size"] == "allow-keywords"
+    assert travel["height"] == "0"
+    assert details[".github-pull-hunk-earlier[open]::details-content"]["height"] == "auto"
+
+
+def test_the_pull_request_page_carries_the_shells_primitives() -> None:
+    """What "The Pull Request Page" says it reuses is what its markup says."""
+
+    page = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-page.js").read_text(encoding="utf-8")
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "## The Pull Request Page" in doc
+    assert "test_the_pull_request_page_carries_the_shells_primitives" in doc
+    # Branch names and file paths are chrome: no `<code>` for either.
+    assert 'h("code"' not in page
+    assert '"git-ref git-ref-remote"' in page
+    # One age, not a timestamp at each call site.
+    assert "mb.formatAge(" in page
+    assert page.count("mb.formatTimestamp(") == 1, "the exact time belongs in the age's tooltip"
+    assert "`file-header-badge github-pull-badge github-pull-${kind}`" in page
+    assert 'class: "notice github-pull-notice"' in page
+    github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
+    # Links take the link token rather than the browser's blue.
+    assert github[".github-pull-header a"]["color"] == "var(--link)"
+    # A hunk is the user's code, at the chrome-context mono size, in the app's mono face.
+    assert github[".github-pull-hunk"]["font-family"] == "var(--font-mono)"
+    assert github[".github-pull-hunk"]["font-size"] == "var(--mono-block-font-size)"
+
+
+# A serif face, named directly or through the token KPress reads it from.
+_SERIF = re.compile(r"--kpress-(?:host-)?font-prose\b|--app-serif-system\b|(?<!sans-)\bserif\b")
+
+
+def test_serif_is_only_for_documents() -> None:
+    """Chrome and messages are sans; serif is a committed document's, as "Serif Is for Documents" says.
+
+    A pull request's description and comments read in the serif of a Markdown file, so a
+    conversation about the content looked like part of it.
+    """
+
+    styles = STATIC / "styles.css"
+    for path in sorted([*STATIC.glob("*.css"), *(REPO_ROOT / BUILTIN_PLUGINS).glob("*/*.css")]):
+        for selector, declarations in _rules_of(path):
+            family = declarations.get("font-family", "")
+            assert _SERIF.search(family) is None, f"{path.name} {selector} sets a serif: {family}"
+            for name, value in declarations.items():
+                if path == styles and selector.startswith(("html[data-", ":root")):
+                    continue  # the reading font and the font sets, which only documents read
+                if name == "--kpress-host-font-prose":
+                    assert value == "var(--prose-sans-font)", (
+                        f"{path.name} {selector} points the prose face at {value}"
+                    )
+    assert dict(_rules_of(styles))['html[data-prose-font="sans"]']["--doc-char-advance"] == (
+        "var(--sans-char-advance)"
+    )
+    # The pull request page is a surface of messages: its prose face and its width.
+    page = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))[".github-pull"]
+    assert page["--kpress-host-font-prose"] == "var(--prose-sans-font)"
+    assert page["--doc-measure"] == "var(--message-measure)"
+    assert "var(--message-char-advance, var(--sans-char-advance))" in page["--message-measure"]
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "### Serif Is for Documents" in doc
+    assert "test_serif_is_only_for_documents" in doc

@@ -186,9 +186,14 @@ def test_neither_side_keeps_a_link_that_is_not_http(base: str | None, written: A
     document = "".join(
         f'<a href="{written(href)}">{name}</a>' for name, href in {**refused, **kept}.items()
     )
+    # A kept link's scheme comes out in lower case on both sides, as a URL parser writes it,
+    # with no CR, which comes out before the scheme is read, or the server's slice of the
+    # address by the scheme's length would land in the wrong place.
+    clean = {name: href.replace("\r", "") for name, href in kept.items()}
     expected = "".join(f"<a>{name}</a>" for name in refused) + "".join(
-        f'<a href="{href}" target="_blank" rel="noopener noreferrer">{name}</a>'
-        for name, href in kept.items()
+        f'<a href="{href[: href.index(":")].lower()}{href[href.index(":") :]}"'
+        f' target="_blank" rel="noopener noreferrer">{name}</a>'
+        for name, href in clean.items()
     )
     assert harden(document, base) == expected
     assert _node({"tree": html_tree(document), "base": base}) == expected
@@ -196,7 +201,7 @@ def test_neither_side_keeps_a_link_that_is_not_http(base: str | None, written: A
 
 def test_a_document_keeps_its_own_references_and_turns_outside_images_into_links() -> None:
     inert = harden(_kpress(HOSTILE_README))
-    assert '<img src="docs/diagram.png" alt="diagram">' in inert
+    assert '<img loading="lazy" src="docs/diagram.png" alt="diagram">' in inert
     assert '<a href="docs/guide.md">Guide</a>' in inert
     assert '<a href="#user-content-readme">Top</a>' in inert
     assert '<a href="../x.md">Up</a>' in inert
@@ -241,6 +246,80 @@ def test_harden_is_idempotent() -> None:
     for base in (None, PR_PAGE):
         once = harden(_kpress(HOSTILE_README), base)
         assert harden(once, base) == once
+
+
+@pytest.mark.parametrize(
+    "written",
+    [
+        '<img src="docs/a.png" alt="a">',
+        '<img src="docs/a.png" alt="a" loading="lazy">',
+        '<img src="docs/a.png" alt="a" loading="eager">',
+        '<img src="docs/a.png" alt="a" loading="LAZY">',
+        '<img src="docs/a.png" alt="a" loading>',
+        '<img src="docs/a.png" alt="a" loading="lazy&quot; onload=&quot;alert(1)">',
+        # Everything else an image can carry, none of which may come along with it.
+        '<img src="docs/a.png" alt="a" loading="eager" srcset="https://example.com/x.png 2x"'
+        ' sizes="1px" fetchpriority="high" decoding="sync" crossorigin="use-credentials"'
+        ' referrerpolicy="unsafe-url" ismap usemap="#m" width="1" height="1" longdesc="x"'
+        ' lowsrc="https://example.com/y.png" attributionsrc="https://example.com/z"'
+        ' style="position:fixed" class="c" id="i" name="n" data-x="1" onerror="alert(1)"'
+        ' onload="alert(2)">',
+    ],
+)
+def test_a_kept_image_is_lazy_whatever_the_document_wrote(written: str) -> None:
+    """A kept image loads as it nears the reader, as KPress's own render has it do.
+
+    ``loading`` is a constant both sides write, so nothing of the document's reaches it:
+    not an ``eager`` that fetches at once, and not a value that carries anything else.
+    """
+
+    expected = '<img loading="lazy" src="docs/a.png" alt="a">'
+    assert harden(written) == expected
+    assert _node({"tree": html_tree(written), "base": None}) == expected
+    # The page hardens the server's answer again, and it comes out the same.
+    assert harden(expected) == expected
+    assert _node({"tree": html_tree(expected), "base": None}) == expected
+    assert allowlist_violations(expected, images=True) == []
+
+
+def test_the_allowlist_check_refuses_any_other_loading_value() -> None:
+    for value in ("eager", "LAZY", "", 'lazy" onload="alert(1)'):
+        written = f"<img loading='{value}' src='docs/a.png'>"
+        assert any("loading" in found for found in allowlist_violations(written, images=True))
+    # A kept image with no `loading` is as eager as one that says so.
+    assert allowlist_violations('<img src="docs/a.png">', images=True) == ["img[loading missing]"]
+    assert allowlist_violations('<img loading="lazy" src="docs/a.png">', images=True) == []
+
+
+@pytest.mark.parametrize(
+    ("base", "written", "expected"),
+    [
+        # A pull-request comment never keeps an image, wherever it points.
+        (
+            PR_PAGE,
+            '<img src="docs/a.png" alt="a" loading="lazy">',
+            '<a href="https://github.com/octo/demo/pull/docs/a.png" target="_blank"'
+            ' rel="noopener noreferrer">a</a>',
+        ),
+        (
+            PR_PAGE,
+            '<img src="https://example.com/a.png" alt="a" loading="eager">',
+            '<a href="https://example.com/a.png" target="_blank" rel="noopener noreferrer">a</a>',
+        ),
+        # Nor does a document keep one from outside the served tree.
+        (
+            None,
+            '<img src="https://example.com/a.png" alt="a" loading="lazy">',
+            '<a href="https://example.com/a.png" target="_blank" rel="noopener noreferrer">a</a>',
+        ),
+        (None, '<img src="/raw?path=a.png" alt="a" loading="lazy">', "<span>a</span>"),
+    ],
+)
+def test_an_image_that_is_not_kept_gains_nothing_from_loading(
+    base: str | None, written: str, expected: str
+) -> None:
+    assert harden(written, base) == expected
+    assert _node({"tree": html_tree(written), "base": base}) == expected
 
 
 FIXTURE_README = REPO_ROOT / "tests" / "fixtures" / "untrusted-markdown" / "README.md"

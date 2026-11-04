@@ -68,6 +68,7 @@ export function buildInertToc(doc, entries) {
   toggle.setAttribute("type", "button");
   toggle.setAttribute("aria-expanded", "false");
   toggle.setAttribute("aria-label", "Table of contents");
+  // The native tooltip, since the app's ignores whatever is inside a rendered document's host.
   toggle.setAttribute("title", "Table of contents");
   toggle.append(doc.createTextNode("☰"));
   const backdrop = doc.createElement("div");

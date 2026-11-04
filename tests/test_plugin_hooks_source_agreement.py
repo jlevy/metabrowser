@@ -4,7 +4,8 @@ Each hook is served the same fixture twice: once from an attached filesystem
 root, once from an immutable Git-revision pin of a tree with the same bytes.
 Whatever a hook reports about the content itself has to match. What legitimately
 differs is the address space -- an inventory path against a ``GitPath`` wire --
-and the fingerprint, an mtime hash against a blob object id.
+and the fingerprint, an mtime hash against a blob object id. ``/api/file`` and
+KPress choose a file's kind for those hooks, so a name's kind has to match too.
 
 This is the regression guard for the content-reader port: a hook that reached
 past it for a host path, or branched on the subject kind, would answer one of
@@ -25,13 +26,20 @@ from cachetools import LRUCache
 from httpx2 import ASGITransport, AsyncClient
 
 import metabrowser.builtin_plugins.binary.sidekick as binary_sidekick
+import metabrowser.builtin_plugins.diff.sidekick as diff_sidekick
 import metabrowser.builtin_plugins.structured as structured_sidekick
 import metabrowser.builtin_plugins.structured.parser as structured_parser
-from metabrowser import paths_safe
+from metabrowser import kpress_adapter, paths_safe
+from metabrowser.diff.adapters.patch_file import MAX_PATCH_BYTES
 from metabrowser.git.tree_source import GitPath
 from metabrowser.paths_safe import _set_root_dir
 from metabrowser.server import app
-from metabrowser.source import AttachedFilesystemSubject, attach_subject, reset_source_session
+from metabrowser.source import (
+    AttachedFilesystemSubject,
+    attach_subject,
+    read_content_window,
+    reset_source_session,
+)
 from tests.git_pin_harness import fast_import_store, overwrite_tree, pinned_client
 
 LOG = (
@@ -55,12 +63,28 @@ PATCH = (
     b"-bye\n"
 )
 BYTES = bytes(range(256)) * 4
+# A name's last extension chooses its kind, on a folder and on a pin, whatever comes before
+# it. Each row states the answer as well, because two sources that both read a file as
+# plain text would agree too. The type filter's compound tail is another matter: it keeps
+# ``.min.js`` whole, on both sources.
+COMPOUND_NAMES: dict[bytes, tuple[bytes, str, str]] = {
+    b"run.codex.jsonl": (LOG, "jsonl", "agent-log"),
+    b"Upper.Case.JSONL": (LOG, "jsonl", "agent-log"),
+    b"plan.runbook.md": (b"---\ntitle: Plan\n---\n# Plan\n", "text", "markdown"),
+    b"conf.prod.json": (CONFIG, "text", "structured"),
+    b"conf.prod.yaml": (b"a: 1\n", "text", "structured"),
+    b"fix.v2.patch": (PATCH, "text", "diff"),
+    b"thumb.small.png": (b"\x89PNG\r\n\x1a\n" + bytes(32), "image", "image"),
+    b"logo.dark.svg": (b"<svg/>", "image", "image"),
+    b"bundle.min.js": (b"var x;\n", "text", "text"),
+}
 FILES: dict[bytes, bytes] = {
     b"session.jsonl": LOG,
     b"config.json": CONFIG,
     b"change.patch": PATCH,
     b"refused.rej": PATCH,
     b"nul.bin": BYTES,
+    **{name: body for name, (body, _type, _kind) in COMPOUND_NAMES.items()},
 }
 
 # Identity and fingerprint are the two fields that must differ between an
@@ -268,6 +292,31 @@ def _diff_responses(tmp_path: Path, route: str, native: str, inner: str = "") ->
     return asyncio.run(_run())
 
 
+def test_a_patch_past_the_cap_is_never_read_past_it_on_both(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bound is on the read, so a multi-GB file never lands in memory.
+
+    This has to watch the read. ``_parse_bytes`` also slices to the cap, so a hook that
+    read a whole file would answer exactly what it answers now.
+    """
+
+    bound = MAX_PATCH_BYTES + 1
+    monkeypatch.setitem(FILES, b"past-the-cap.patch", b"x" * (bound + 1024))
+    asked: list[int] = []
+
+    async def spy(ref: Any, *, offset: int = 0, max_bytes: int) -> Any:
+        asked.append(max_bytes)
+        return await read_content_window(ref, offset=offset, max_bytes=max_bytes)
+
+    monkeypatch.setattr(diff_sidekick, "read_content_window", spy)
+
+    folder, pinned = _diff_responses(tmp_path, "/api/plugin/diff/document", "past-the-cap.patch")
+
+    assert (folder.status_code, pinned.status_code) == (200, 200)
+    assert asked == [bound, bound]
+
+
 @pytest.mark.parametrize(
     ("native", "kinds"),
     [("refused.rej", ["modified", "deleted"]), ("config.json", [])],
@@ -304,3 +353,64 @@ def test_diff_container_stays_scoped_to_patch_names_on_both(tmp_path: Path) -> N
     )
     assert [response.status_code for response in inner] == [404, 404]
     assert [response.json()["error"] for response in inner] == ["diff_document"] * 2
+
+
+def _view_ids(payload: Mapping[str, Any]) -> list[str]:
+    return [view["id"] for view in payload["views"]]
+
+
+def test_a_compound_name_opens_as_the_same_kind_on_both(tmp_path: Path) -> None:
+    """``/api/file`` chooses a kind from the name's last extension on either source."""
+
+    async def _run() -> tuple[dict[bytes, Any], dict[bytes, Any]]:
+        async with _folder_client(tmp_path) as client:
+            folder = {
+                name: (await client.get("/api/file", params={"path": name.decode()})).json()
+                for name in COMPOUND_NAMES
+            }
+        store, commit = fast_import_store(tmp_path / "git", FILES)
+        async with pinned_client(store, commit) as (client, _subject):
+            pinned = {
+                name: (await client.get("/api/file", params={"path": _wire(name.decode())})).json()
+                for name in COMPOUND_NAMES
+            }
+        return folder, pinned
+
+    (tmp_path / "git").mkdir(parents=True, exist_ok=True)
+    folder, pinned = asyncio.run(_run())
+    for name, (_body, expected_type, expected_kind) in COMPOUND_NAMES.items():
+        assert (folder[name]["type"], folder[name]["kind"]) == (expected_type, expected_kind), name
+        assert (pinned[name]["type"], pinned[name]["kind"]) == (expected_type, expected_kind), name
+        assert _view_ids(folder[name]) == _view_ids(pinned[name]), name
+        assert folder[name].get("summary") == pinned[name].get("summary"), name
+        assert folder[name].get("frontmatter") == pinned[name].get("frontmatter"), name
+        # A folder's JSONL and image envelopes carry no ``ext``; a pin's always does.
+        assert pinned[name]["ext"] == folder[name].get("ext", pinned[name]["ext"]), name
+    assert pinned[b"bundle.min.js"]["ext"] == ".js"
+    assert pinned[b"run.codex.jsonl"]["ext"] == ".jsonl"
+    assert pinned[b"plan.runbook.md"]["frontmatter"] == {"title": "Plan"}
+
+
+def test_a_patch_under_a_compound_name_is_a_container_on_both(tmp_path: Path) -> None:
+    folder, pinned = _diff_responses(tmp_path, "/api/file", "fix.v2.patch", "src/app.py")
+    assert (folder.status_code, pinned.status_code) == (200, 200), (folder.text, pinned.text)
+    assert folder.json()["kind"] == pinned.json()["kind"] == "diff"
+    assert folder.json()["ext"] == pinned.json()["ext"] == ".patch"
+    assert pinned.json()["container_inner"] == "src/app.py"
+
+
+def test_kpress_renders_a_compound_markdown_name_as_markdown_on_both(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[dict[str, Any]] = []
+    original = kpress_adapter.render_kpress_view
+
+    def _capture(**kwargs: Any) -> Any:
+        seen.append(kwargs)
+        return original(**kwargs)
+
+    monkeypatch.setattr(kpress_adapter, "render_kpress_view", _capture)
+    _both(tmp_path, "/api/kpress/render", "plan.runbook.md", view="rendered")
+    assert [(call["kind"], call["ext"], call["frontmatter"]) for call in seen] == [
+        ("markdown", ".md", {"title": "Plan"})
+    ] * 2

@@ -32,7 +32,12 @@ from typing import Any, cast
 
 from strif import atomic_write_text
 
-from devtools.bench_serving import MetabBuild, Server, resolve_metab_build
+from devtools.bench_serving import (
+    MetabBuild,
+    Server,
+    resolve_metab_build,
+    split_console_launcher,
+)
 from metabrowser.inventory_engine.contract import canonical_inventory_path
 
 # Workload cadence spans activity-tracker ticks while keeping a diagnostic run short.
@@ -69,13 +74,12 @@ _RUNTIME_PROBE = dedent(r"""
 
 
 def runtime_identity(build: MetabBuild) -> dict[str, Any]:
-    """Require a uv-installed POSIX console script with an explicit interpreter."""
+    """Require a uv-installed POSIX console script, and probe the interpreter it runs under."""
 
-    with build.executable.open() as script:
-        shebang = script.readline().strip()
-    interpreter = Path(shebang.removeprefix("#!"))
-    if not shebang.startswith("#!") or not interpreter.is_absolute() or not interpreter.is_file():
+    parts = split_console_launcher(build.executable.read_bytes())
+    if parts is None:
         raise ValueError("benchmark requires a uv-installed metab console script")
+    interpreter, _body = parts
     probe = subprocess.run(
         [str(interpreter), "-c", _RUNTIME_PROBE],
         check=True,

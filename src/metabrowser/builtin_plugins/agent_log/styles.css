@@ -93,6 +93,12 @@
   background: var(--hover-bg);
 }
 
+/* Inside its box: `.log-event` clips what overflows its rounded corners. */
+.log-event-header:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: -2px;
+}
+
 .log-event-expand {
   width: 16px;
   height: 16px;

@@ -36,6 +36,21 @@ repository, so both sides are bare branch names.
 The last lines show a page for a number the server does not serve, which links a
 rendered text keeps (made absolute against the pull request’s github.com page, http and
 https only), and the `/view/` address a review comment’s file opens at.
+`hunks` is what a review comment shows of its diff hunk, which ends at the commented
+line: the last eight lines, or back to the start of a multi-line comment’s range, with
+the rest behind a disclosure, and each line classed so an addition or deletion is
+tinted. The stand-in’s hunks are short, so the session writes the long ones.
+A page asked for a tab it does not have, which the route’s grammar never sends, stays on
+one it has. `place` is a reader’s place in the pane through history, kept in the history
+entry as a block and how far into it, on a stage that stands for the pane.
+A new entry starts at the top.
+Back onto an entry waits for its page and puts the pane at that block, and back again
+each time the page changes height, until the reader moves it or the page has been still.
+A reader who moved first keeps the pane where they took it, and an address with a
+fragment is left alone.
+It asserts, and so prints nothing for, that no pace of moves writes a place more often
+than Safari’s limit on `history.replaceState`, and that only a key that can move the
+pane ends a hold.
 
 ```console
 $ node tests/dom/github-pull-page-session.js
@@ -51,7 +66,7 @@ $ node tests/dom/github-pull-page-session.js
       "paint": {
         "status": "absent",
         "tab": "conversation",
-        "message": "No data for this pull request is cached yet.",
+        "message": "This pull request has not been fetched yet.",
         "canRefresh": true,
         "freshness": null,
         "failure": null,
@@ -123,13 +138,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -229,13 +244,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -273,13 +288,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "files",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -316,13 +331,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -362,13 +377,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 5 min ago by gh:octo-reader · may be out of date",
+        "freshness": "Fetched 5 min ago by octo-reader · may be out of date",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -408,13 +423,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 5 min ago by gh:octo-reader",
+        "freshness": "Refreshing… · fetched 5 min ago by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -463,13 +478,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -518,13 +533,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -599,13 +614,13 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "files",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by gh:octo-reader",
+        "freshness": "Fetched just now by octo-reader",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
           "enhancement"
         ],
-        "merge": "No conflicts with the base branch",
+        "merge": "No conflicts with the base branch.",
         "timeline": [
           "review maintainer [reviewed] 2026-09-16T12:32:50Z review/3274109685",
           "comment maintainer 2026-09-16T17:34:17Z issue_comment/3341937855",
@@ -630,6 +645,39 @@ $ node tests/dom/github-pull-page-session.js
         "headOffer": "This page's code is c691256511d0, not the pull request's head 85fcb2fa9e77. [Switch to the head] -> refs/pull/7/head",
         "comparison": "f92fd713acd5...85fcb2fa9e77 (head moved)"
       },
+      "markdown": []
+    },
+    {
+      "step": "a page opened on a tab it does not have shows the conversation",
+      "requests": [
+        "GET /api/plugin/github/pull"
+      ],
+      "timer": "slow",
+      "paints": 2,
+      "paint": {
+        "status": "absent",
+        "tab": "conversation",
+        "message": "This pull request has not been fetched yet.",
+        "canRefresh": true,
+        "freshness": null,
+        "failure": null,
+        "header": null,
+        "labels": [],
+        "merge": null,
+        "timeline": [],
+        "reviewComments": [],
+        "checks": null,
+        "notes": [],
+        "headOffer": null,
+        "comparison": null
+      },
+      "markdown": []
+    },
+    {
+      "step": "a tab it does not have is not taken later",
+      "requests": [],
+      "timer": "slow",
+      "paints": 0,
       "markdown": []
     }
   ],
@@ -698,6 +746,259 @@ $ node tests/dom/github-pull-page-session.js
     "open on an older head: offer",
     "no comparison in the record: unavailable"
   ]
+}
+? 0
+```
+
+The session is printed in two parts, by `github-pull-page-session.js` and by
+`github-pull-page-second-session.js`, which runs the same session whole, because
+tryscript matches a command’s expected output as one regular expression, and the
+transcript in one block is larger than V8 compiles.
+The second part is what Files changed says when the comparison is unavailable, the
+review comments’ hunks, and the reader’s place.
+
+```console
+$ node tests/dom/github-pull-page-second-session.js
+{
+  "filesUnavailable": {
+    "fetch_failed": {
+      "files": "Files changed is unavailable: the pull request's base could not be compared with its head.",
+      "notes": [
+        "Files changed could not be read (fetch failed)."
+      ]
+    },
+    "no_merge_base": {
+      "files": "Files changed is unavailable: the pull request's base could not be compared with its head.",
+      "notes": [
+        "Files changed could not be read (no merge base)."
+      ]
+    },
+    "base_uncertain": {
+      "files": "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.",
+      "notes": [
+        "Files changed could not be read (base uncertain)."
+      ]
+    },
+    "commits_unavailable": {
+      "files": "Files changed is unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.",
+      "notes": [
+        "Files changed could not be read (commits unavailable)."
+      ]
+    },
+    "comparison_timeout": {
+      "files": "Files changed is unavailable: checking this pull request's history took too long. Refresh to try again.",
+      "notes": [
+        "Files changed could not be read (comparison timeout)."
+      ]
+    },
+    "comparison_too_large": {
+      "files": "Files changed is unavailable: checking this pull request's history exceeded the comparison limit.",
+      "notes": [
+        "Files changed could not be read (comparison too large)."
+      ]
+    }
+  },
+  "hunks": {
+    "a short hunk is whole": {
+      "earlier": null,
+      "shown": [
+        "hunk: @@ -1 +1,2 @@",
+        "context:  one",
+        "add: +two"
+      ]
+    },
+    "the header and a tail's worth is whole: a disclosure hides no single line": {
+      "earlier": null,
+      "shown": [
+        "hunk: @@ -1,30 +1,30 @@ def main():",
+        "context:  line 23",
+        "context:  line 24",
+        "context:  line 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "one line more is past the tail": {
+      "earlier": "2 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 22",
+      "shown": [
+        "context:  line 23",
+        "context:  line 24",
+        "context:  line 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "a long hunk shows its tail": {
+      "earlier": "25 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 23",
+      "shown": [
+        "context:  line 24",
+        "del: -old 25",
+        "add: +new 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "a range longer than the tail is all shown, from its first line, not counting a deletion": {
+      "earlier": "14 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 13",
+      "shown": [
+        "context:  line 14",
+        "del: -old 15",
+        "add: +new 15",
+        "context:  line 16",
+        "context:  line 17",
+        "context:  line 18",
+        "context:  line 19",
+        "context:  line 20",
+        "context:  line 21",
+        "context:  line 22",
+        "context:  line 23",
+        "context:  line 24",
+        "del: -old 25",
+        "add: +new 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "a range on the left counts deletions and not additions": {
+      "earlier": "15 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 14",
+      "shown": [
+        "del: -old 15",
+        "add: +new 15",
+        "context:  line 16",
+        "context:  line 17",
+        "context:  line 18",
+        "context:  line 19",
+        "context:  line 20",
+        "context:  line 21",
+        "context:  line 22",
+        "context:  line 23",
+        "context:  line 24",
+        "del: -old 25",
+        "add: +new 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "an outdated comment's range is its original one": {
+      "earlier": "14 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 13",
+      "shown": [
+        "context:  line 14",
+        "del: -old 15",
+        "add: +new 15",
+        "context:  line 16",
+        "context:  line 17",
+        "context:  line 18",
+        "context:  line 19",
+        "context:  line 20",
+        "context:  line 21",
+        "context:  line 22",
+        "context:  line 23",
+        "context:  line 24",
+        "del: -old 25",
+        "add: +new 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "a range above what the record kept shows all it kept": {
+      "earlier": null,
+      "shown": [
+        "context:  line 19",
+        "context:  line 20",
+        "context:  line 21",
+        "context:  line 22",
+        "context:  line 23",
+        "context:  line 24",
+        "context:  line 25",
+        "context:  line 26",
+        "context:  line 27",
+        "context:  line 28",
+        "context:  line 29",
+        "context:  line 30"
+      ]
+    },
+    "a range of the most shown is all shown": {
+      "earlier": "31 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 30",
+      "shown": "100 lines: context:  line 31 ... context:  line 130"
+    },
+    "a range past the most shown shows the most, and the rest is behind the disclosure": {
+      "earlier": "31 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... context:  line 30",
+      "shown": "100 lines: context:  line 31 ... context:  line 130"
+    },
+    "the other side's lines do not carry a range past the most shown": {
+      "earlier": "145 lines: hunk: @@ -1,30 +1,30 @@ def main(): ... del: -old 142",
+      "shown": [
+        "del: -old 143",
+        "del: -old 144",
+        "del: -old 145",
+        "del: -old 146",
+        "del: -old 147",
+        "del: -old 148",
+        "del: -old 149",
+        "add: +new 30"
+      ]
+    },
+    "a hunk's text is only ever text": {
+      "earlier": null,
+      "shown": [
+        "hunk: @@ -1,30 +1,30 @@ def main():",
+        "add: +<img src=x onerror=alert(1)>",
+        "del: -</pre><script>alert(1)</script>",
+        "context:  @@ not a header",
+        "note: \\ No newline at end of file"
+      ]
+    }
+  },
+  "place": {
+    "a new entry starts at the top and writes nothing": "pane at 0; entry null; 0 written; nothing running",
+    "the page paints: the pane stays at the top": "pane at 0; entry null; 0 written; nothing running",
+    "the reader scrolls: nothing is written while the pane moves": "pane at 900; entry null; 0 written; write waiting",
+    "the pane is still: its place is written": "pane at 900; entry {\"block\":2,\"offset\":80,\"top\":900}; 1 written; nothing running",
+    "still in the header: the scroll offset says where": "pane at 80; entry {\"block\":-1,\"offset\":0,\"top\":80}; 1 written; nothing running",
+    "a click writes a waiting place before it can leave this entry": "pane at 900; entry {\"block\":2,\"offset\":80,\"top\":900}; 1 written; nothing running",
+    "with nothing waiting, a click writes nothing": "pane at 900; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; nothing running",
+    "back: nothing is painted, so the place waits": "pane at 0; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; holding",
+    "the page paints: the pane goes to the block, not to the pixels": "pane at 700; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; holding, settling",
+    "a text at the place renders: the block's top has not moved": "pane at 700; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; holding, settling",
+    "a text above the place renders: the pane is put back": "pane at 1050; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; holding, settling",
+    "the hold's own scrolling is not the reader's and writes nothing": "pane at 1050; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; holding, settling",
+    "the page has been still long enough: the landing is over": "pane at 1050; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; nothing running",
+    "a later change no longer moves the pane": "pane at 1050; entry {\"block\":2,\"offset\":80,\"top\":900}; 0 written; nothing running",
+    "back again: the place waits for the page": "pane at 0; entry {\"block\":3,\"offset\":40,\"top\":2000}; 0 written; holding",
+    "the reader moves first: the place is theirs": "pane at 0; entry {\"block\":3,\"offset\":40,\"top\":2000}; 0 written; nothing running",
+    "the page paints: the pane is not moved": "pane at 0; entry {\"block\":3,\"offset\":40,\"top\":2000}; 0 written; nothing running",
+    "back with the page there: the pane is placed at once": "pane at 1360; entry {\"block\":3,\"offset\":40,\"top\":2000}; 0 written; holding, settling",
+    "the reader moves during the hold": "pane at 2500; entry {\"block\":3,\"offset\":40,\"top\":2000}; 0 written; write waiting",
+    "a change after that does not undo it": "pane at 2500; entry {\"block\":3,\"offset\":40,\"top\":2000}; 0 written; write waiting",
+    "and the reader's new place is written": "pane at 2500; entry {\"block\":3,\"offset\":580,\"top\":2500}; 1 written; nothing running",
+    "an address with a fragment names its own place: the pane is left alone": "pane at 700; entry {\"block\":2,\"offset\":10,\"top\":900}; 0 written; nothing running",
+    "back and forward between tabs: this tab's place": "pane at 1430; entry {\"block\":2,\"offset\":10,\"top\":900}; 0 written; holding, settling",
+    "a write still waiting when history moves is dropped with the old entry": "pane at 1025; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; holding, settling",
+    "a page with fewer blocks than the place shows its last": "pane at 430; entry {\"block\":40,\"offset\":10,\"top\":90000}; 0 written; holding, settling",
+    "what is not a place is no place: {\"block\":\"1\",\"offset\":0,\"top\":0}": "pane at 0; entry {\"block\":\"1\",\"offset\":0,\"top\":0}; 0 written; nothing running",
+    "what is not a place is no place: {\"block\":1}": "pane at 0; entry {\"block\":1}; 0 written; nothing running",
+    "what is not a place is no place: \"nonsense\"": "pane at 0; entry \"nonsense\"; 0 written; nothing running",
+    "dispose ends all of it": "pane at 900; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; nothing running",
+    "a disposed keeper does nothing": "pane at 900; entry {\"block\":1,\"offset\":5,\"top\":400}; 0 written; nothing running"
+  }
 }
 ? 0
 ```
