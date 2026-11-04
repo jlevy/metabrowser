@@ -5,7 +5,7 @@ title: Refresh user, design, internal and self-documentation maps
 kind: task
 status: in_progress
 priority: 1
-version: 21
+version: 22
 delegate: codex@spud10
 labels: []
 dependencies:
@@ -35,7 +35,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-04T05:44:31.974Z
-updated_at: 2026-11-04T13:48:46.419Z
+updated_at: 2026-11-04T14:58:13.402Z
 started_at: 2026-11-04T13:48:45.627Z
 ---
 InventoryREADME documentationmap,allhuman-authoreddocs,designsystem/architecture/QA/development/releaseguides,shippedselfdocs/CLIhelp/pluginSDK/types/manifests,AGENTS/skillroutesandgeneratedcopies. Readrelevantselfhelp beforegeneration. Correctstaleclaims/links/featurestates, avoidduplicatingpolicy, usecommon-docfooter andpinnedformatter. Verifydoc/help/skilldrift andinstalledartifact; publishrevieweddocsPR ifchangesneeded.
+
+## Notes
+
+2026-11-04: Documentation proposal is prepared and independently reviewed across current operator/setup, architecture, design, QA, portable skill and all 37 plan statuses. Fifty-five logical files change, including two archive moves and one shipped JavaScript comment; no runtime semantic edit is proposed. Seventeen accepted documentation findings are tracked separately. Actual account-fix main is afaf38b85a83443e25002765203c216bd11f8dfa (PR #297). Final factual rendering waits for its current-main CI and clean independent integration review. No documentation source changes or documentation PR have been applied yet.
