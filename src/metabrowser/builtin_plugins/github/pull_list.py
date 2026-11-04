@@ -467,11 +467,12 @@ def read_files_refresh(home: Path, slug: str, number: int) -> PullRefreshStamp |
         if stamp is not None
     ]
     holds = [stamp for stamp in candidates if rate_limit_holds(stamp, now=utc_now())]
-    return (
-        max(holds, key=lambda stamp: (stamp.reset_at or "", stamp.at))
-        if holds
-        else max(candidates, key=lambda stamp: stamp.at, default=None)
-    )
+    if not holds:
+        return max(candidates, key=lambda stamp: stamp.at, default=None)
+    # Outcome time and the provider's retry deadline are independent. Equal-second
+    # outcomes keep the existing stronger-hold precedence; exact ties prefer memory.
+    latest = max(candidates, key=lambda stamp: (stamp.at, stamp.reset_at or ""))
+    return latest.model_copy(update={"reset_at": max(stamp.reset_at or "" for stamp in holds)})
 
 
 def _remember_unwritten(key: str, stamp: PullRefreshStamp) -> None:
