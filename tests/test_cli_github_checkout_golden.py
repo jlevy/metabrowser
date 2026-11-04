@@ -23,12 +23,14 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from itertools import count
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 
-from metabrowser.builtin_plugins.github import pull_list, pulls
+from metabrowser.builtin_plugins.github import pull_files_refresh, pull_list, pulls
 from metabrowser.cache.urls import GitSource
 from tests.checkout_replica import fingerprint
 from tests.github_pull_fixture import (
@@ -80,6 +82,8 @@ class _Session:
         monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
         monkeypatch.setattr(pull_list, "utc_now", lambda: FETCHED_AT)
         monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT)
+        generations = count(1)
+        monkeypatch.setattr(pull_files_refresh, "uuid4", lambda: UUID(int=next(generations)))
         self.blocks: list[str] = []
         self.answers = files_scenario(origin)
         for name, value in install_fake_gh(tmp_path, self.answers).items():

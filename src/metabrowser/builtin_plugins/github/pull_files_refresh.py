@@ -33,6 +33,7 @@ from collections.abc import Callable, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import Final
+from uuid import uuid4
 
 from pydantic import ValidationError
 
@@ -205,6 +206,7 @@ def _assembled(
     *,
     last_page: int | None,
     fetched_at: str,
+    generation: str,
     final: bool,
 ) -> PullFileList:
     """Pages joined into one list: each path once, where it first appeared."""
@@ -222,6 +224,7 @@ def _assembled(
     try:
         return PullFileList(
             schema_version=PULL_FILES_SCHEMA,
+            generation=generation,
             source=repository.source,
             number=number,
             listed_from="github",
@@ -253,7 +256,7 @@ async def _write(repository: ListedRepository, listed: PullFileList) -> None:
 
 
 async def _from_github(
-    repository: ListedRepository, number: int, login: str, slot: Slot
+    repository: ListedRepository, number: int, login: str, slot: Slot, generation: str
 ) -> PullFileList:
     reader = f"gh:{login}"
     cached = await asyncio.to_thread(read_pull_files, repository.home, repository.slug, number)
@@ -283,13 +286,21 @@ async def _from_github(
             pages,
             last_page=last_page,
             fetched_at=fetched_at,
+            generation=generation,
             final=False,
         )
         # Never fewer rows than the file holds, so a reread does not shrink what a reader has.
         if len(partial.rows) > held:
             await _write(repository, partial)
     listed = _assembled(
-        repository, number, reader, pages, last_page=last_page, fetched_at=fetched_at, final=True
+        repository,
+        number,
+        reader,
+        pages,
+        last_page=last_page,
+        fetched_at=fetched_at,
+        generation=generation,
+        final=True,
     )
     async with slot():
         if await active_account() != login:
@@ -303,7 +314,7 @@ async def _from_github(
 
 
 async def _from_comparison(
-    repository: ListedRepository, number: int, local: LocalComparison
+    repository: ListedRepository, number: int, local: LocalComparison, generation: str
 ) -> PullFileList | None:
     """The local comparison's list, or ``None`` when GitHub's is to be read instead."""
 
@@ -349,6 +360,7 @@ async def _from_comparison(
     try:
         return PullFileList(
             schema_version=PULL_FILES_SCHEMA,
+            generation=generation,
             source=repository.source,
             number=number,
             listed_from="comparison",
@@ -380,7 +392,9 @@ async def refresh_pull_files(
 
     # Publish and bind a checkout before using its canonical cache paths.
     repository = await claim_source(repository)
-    listed = await _from_comparison(repository, number, local) if local else None
+    # One identity for the whole refresh, including every progressive page or fallback.
+    generation = uuid4().hex
+    listed = await _from_comparison(repository, number, local, generation) if local else None
     stamp = await asyncio.to_thread(read_files_refresh, repository.home, repository.slug, number)
     held = stamp if rate_limit_holds(stamp, now=pull_list.utc_now()) else None
     # A named comparison can still fail or be truncated. Check at the network
@@ -399,7 +413,7 @@ async def refresh_pull_files(
             async with slot():
                 login = await active_account()
             reader = f"gh:{login}"
-            listed = await _from_github(repository, number, login, slot)
+            listed = await _from_github(repository, number, login, slot, generation)
     except PullDataError as exc:
         stamp = PullRefreshStamp(
             outcome=exc.state,

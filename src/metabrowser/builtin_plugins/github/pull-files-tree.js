@@ -49,6 +49,8 @@
  *   state: "absent" | "pending" | "current" | "stale",
  *   reason: string | null,
  *   number: number,
+ *   source: string | null,
+ *   generation: string | null,
  *   listed_from: "github" | "comparison" | null,
  *   fetched_at: string | null,
  *   reader: string | null,
@@ -350,14 +352,15 @@ export function visibleRows(tree, expansion, options = {}) {
 
 /**
  * Which list an envelope's rows belong to. A list filling page by page keeps one identity,
- * since each page is published with the moment its read began; a new read is a new list.
+ * since each page carries the refresh's persisted generation; timestamps are not identity.
  *
  * @param {FilesEnvelope} envelope
  */
 function listIdentity(envelope) {
   return [
+    envelope.generation,
+    envelope.source,
     envelope.listed_from,
-    envelope.fetched_at,
     envelope.reader,
     envelope.base,
     envelope.head,

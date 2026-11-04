@@ -143,6 +143,8 @@ async function run() {
             reason: null,
             number: 7,
             listed_from: "github",
+            source: "https://github.com/octo/demo",
+            generation: generation.toString(16).padStart(32, "0"),
             fetched_at: `2026-11-03T00:00:0${generation}Z`,
             reader: "gh:test",
             head: null,
