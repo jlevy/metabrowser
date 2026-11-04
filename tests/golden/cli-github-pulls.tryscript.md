@@ -433,7 +433,7 @@ status: 200
   "repository_total": 102,
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
-  "generation": "00000000000000000000000000000001:0",
+  "generation": "00000000000000000000000000000001:1",
   "fetched": 2,
   "complete": true,
   "truncated": false,
