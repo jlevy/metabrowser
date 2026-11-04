@@ -154,6 +154,13 @@ $ node tests/dom/github-pull-files-tree-session.js
         ]
       }
     ],
+    "same-second equally sized refreshes replace the held list": {
+      "atOldEnd": "number=106&offset=1",
+      "restart": "number=106&offset=0",
+      "rows": [
+        "after.js"
+      ]
+    },
     "only automatic row expansions close when the page moves": [
       {
         "expand": [

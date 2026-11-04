@@ -1125,6 +1125,9 @@ def build_file_lists(directory: Path, answers: Mapping[str, Any]) -> None:
     then refreshed, and failed, as this one. 12 and 13 are lists the route cannot use.
     """
 
+    from uuid import UUID
+
+    from metabrowser.builtin_plugins.github import pull_files_refresh
     from metabrowser.cache.paths import source_pull_files
     from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
     from metabrowser.home import write_private_file_atomic
@@ -1155,11 +1158,14 @@ def build_file_lists(directory: Path, answers: Mapping[str, Any]) -> None:
     ]
     request = directory / "files-request.json"
     refresh = "/api/plugin/github/pull-files-refresh"
-    for number, scenario_answers, succeeds in runs:
+    for generation, (number, scenario_answers, succeeds) in enumerate(runs, start=1):
         os.environ.update(install_fake_gh(directory, scenario_answers))
         request.write_text(json.dumps({"number": number, "retry": True}) + "\n", encoding="utf-8")
         try:
-            _run_cli([CANONICAL, "--api", refresh, "--data", str(request)])
+            with _patched(
+                pull_files_refresh, "uuid4", lambda generation=generation: UUID(int=generation)
+            ):
+                _run_cli([CANONICAL, "--api", refresh, "--data", str(request)])
         except SystemExit as exc:
             if (exc.code in (0, None)) != succeeds:
                 raise
@@ -1276,8 +1282,22 @@ def build_checkout_home(directory: Path) -> None:
     (directory / "folder").mkdir(exist_ok=True)
 
 
+def run_files_refresh(args: list[str]) -> None:
+    """The real CLI with only its file-list UUID pinned for the static transcript."""
+
+    from uuid import UUID
+
+    from metabrowser.builtin_plugins.github import pull_files_refresh
+    from metabrowser.cli.main import _run_cli  # pyright: ignore[reportPrivateUsage]
+
+    with _patched(pull_files_refresh, "uuid4", lambda: UUID(int=15)):
+        _run_cli(args)
+
+
 if __name__ == "__main__":
-    if len(sys.argv) == 3 and sys.argv[2] == "--checkout":
+    if len(sys.argv) > 2 and sys.argv[1] == "--files-refresh":
+        run_files_refresh(sys.argv[2:])
+    elif len(sys.argv) == 3 and sys.argv[2] == "--checkout":
         build_checkout_home(Path(sys.argv[1]).resolve())
     elif len(sys.argv) == 5 and sys.argv[2] == "--serve":
         serve_stand_in(Path(sys.argv[1]).resolve(), int(sys.argv[3]), int(sys.argv[4]))
@@ -1287,5 +1307,6 @@ if __name__ == "__main__":
         build_home(Path(sys.argv[1]).resolve())
     else:
         raise SystemExit(
-            "usage: github_pull_fixture.py <directory> [--files | --checkout | --serve <number> <port>]"
+            "usage: github_pull_fixture.py <directory> [--files | --checkout | --serve <number> <port>] "
+            "or --files-refresh <metab arguments>"
         )

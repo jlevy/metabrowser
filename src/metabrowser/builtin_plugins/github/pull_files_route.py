@@ -121,6 +121,7 @@ class PullFilesEnvelope(TypedDict):
     number: int
     listed_from: FileListSource | None
     fetched_at: str | None
+    generation: str | None
     reader: str | None
     head: str | None
     base: str | None
@@ -366,6 +367,7 @@ def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelo
         number=view.number,
         listed_from=None,
         fetched_at=None,
+        generation=None,
         reader=None,
         head=None,
         base=None,
@@ -404,6 +406,7 @@ def pull_files_envelope(view: FilesView, window: FilesWindow) -> PullFilesEnvelo
         "source": listed.source,
         "listed_from": listed.listed_from,
         "fetched_at": listed.fetched_at,
+        "generation": listed.generation,
         "reader": listed.reader,
         "head": listed.head,
         "base": listed.base,
