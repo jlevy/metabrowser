@@ -5,7 +5,7 @@ title: Replace cold PR detail spinner with shared loading skeletons
 kind: feature
 status: in_progress
 priority: 1
-version: 2
+version: 3
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: pulls_navigation
 labels: []
@@ -14,7 +14,11 @@ parent_id: is-01m6hx4w87z6r8ndnbt57avr53
 hold: null
 hold_until: null
 created_at: 2026-11-03T23:59:16.995Z
-updated_at: 2026-11-03T23:59:29.644Z
+updated_at: 2026-11-04T00:28:15.658Z
 started_at: 2026-11-03T23:59:29.644Z
 ---
 Use existing gray pulsing skeleton tokens and loading delay for genuinely cold/pending PR detail. Keep cached PR data readable during refresh; no skeleton on absent/setup/error outcomes. Preserve accessible loading name, reduced-motion treatment and reading-column geometry. Review actual loading states, add targeted session coverage and regenerate truthful affected goldens.
+
+## Notes
+
+Writer handoff above a78ad4c5. Cold/pending PR detail uses nested delayed wrapper/shared neutral recent-loading pulse; cached refresh retains content. PR-only initial shell and no-record Files skeleton use reading column; ordinary preview unchanged. Mounted cold/pending/cache/identity tests and focused shell assertion pass. Source frozen; coordinator owns final formatting/commit/full gate; exact installed-wheel narrow/wide/reduced-motion screenshots pending. See stack-ui-a78ad4c5/frontend-final-handoff.json in durable agent evidence.
