@@ -5,7 +5,7 @@ title: Refresh user, design, internal and self-documentation maps
 kind: task
 status: open
 priority: 1
-version: 17
+version: 18
 labels: []
 dependencies: []
 parent_id: is-01m6jhcsrvevhaa1kg3fh6g8zg
@@ -26,7 +26,8 @@ child_order_hints:
   - is-01m6kb79j512jn9whc5t2jvw6r
   - is-01m6kb79wn3mpeqsfm82gp93hb
   - is-01m6kb7a7528d1apcy8p2s87wf
+  - is-01m6kc1pp5490wfy9ak9jd2q2n
 created_at: 2026-11-04T05:44:31.974Z
-updated_at: 2026-11-04T13:15:54.468Z
+updated_at: 2026-11-04T13:30:19.200Z
 ---
 InventoryREADME documentationmap,allhuman-authoreddocs,designsystem/architecture/QA/development/releaseguides,shippedselfdocs/CLIhelp/pluginSDK/types/manifests,AGENTS/skillroutesandgeneratedcopies. Readrelevantselfhelp beforegeneration. Correctstaleclaims/links/featurestates, avoidduplicatingpolicy, usecommon-docfooter andpinnedformatter. Verifydoc/help/skilldrift andinstalledartifact; publishrevieweddocsPR ifchangesneeded.
