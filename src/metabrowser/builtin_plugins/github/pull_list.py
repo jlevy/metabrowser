@@ -270,7 +270,7 @@ MAX_FILE_PATH_BYTES: Final = 1024
 # bounds allow is 2,124 bytes, and ``tests/test_github_pull_files.py`` writes 3,000 of them and
 # reads them back: 6.38 MB. So every list written can be read.
 MAX_PULL_FILES_BYTES: Final = 8 * 1024 * 1024
-PULL_FILES_SCHEMA: Final = 1
+PULL_FILES_SCHEMA: Final = 2
 
 type FileStatus = Literal[
     "added", "removed", "modified", "renamed", "copied", "changed", "unchanged"
@@ -312,6 +312,8 @@ class FilePageMark(_Model):
 class PullFileList(_Model):
     """The changed files of one pull request, from one of two sources.
 
+    ``generation`` identifies one refresh, shared by all its progressive publications.
+    It is persisted, never inferred from timestamps or minted on read.
     ``complete`` is false while GitHub has pages not yet read, which is the state a list is
     published in while it fills. ``last_page`` is the page count the first page's ``Link``
     header gave, which counts pages and not files. ``capped`` says GitHub stopped at the
@@ -324,10 +326,11 @@ class PullFileList(_Model):
     source: Url
     number: PullNumber
     listed_from: FileListSource
+    generation: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$", max_length=32)]
     fetched_at: Timestamp
     reader: Reader | None
     head: Sha | None
-    # Older comparison lists lack the base and remain readable, but the route calls them stale.
+    # A comparison without a base cannot prove freshness; the route calls it stale.
     base: Sha | None = None
     pages: int = Field(ge=0, le=MAX_FILE_PAGES)
     last_page: Annotated[int, Field(ge=1)] | None
@@ -423,10 +426,25 @@ def read_pull_files(
     return listed if listed.number == number else "unreadable"
 
 
-def write_files_refresh(home: Path, slug: str, number: int, stamp: PullRefreshStamp) -> None:
-    """Keep how the file list's refresh ended beside it, as :func:`write_list_refresh` does."""
+def write_files_refresh(
+    home: Path, slug: str, number: int, stamp: PullRefreshStamp, *, persist: bool = True
+) -> None:
+    """Keep the outcome beside the file list, or only in memory before cache admission.
+
+    ``persist=False`` attempts no lock, directory creation, or file write. The bounded
+    fallback still reports the refusal and holds automatic retries; it cannot shorten
+    an existing network rate-limit deadline.
+    """
 
     relative = source_pull_files_refresh(slug, number)
+    if not persist:
+        held = read_files_refresh(home, slug, number)
+        if held is not None and rate_limit_holds(held, now=utc_now()):
+            stamp = stamp.model_copy(
+                update={"reset_at": max(held.reset_at or "", stamp.reset_at or "")}
+            )
+        _remember_unwritten(str(home / relative), stamp)
+        return
     try:
         write_refresh_stamp(home, slug, relative, stamp)
     except (PrivateStorageError, OSError) as exc:
@@ -440,7 +458,20 @@ def read_files_refresh(home: Path, slug: str, number: int) -> PullRefreshStamp |
     """How the file list's last refresh ended, in any process, or ``None``. Blocking."""
 
     relative = source_pull_files_refresh(slug, number)
-    return _UNWRITTEN_STAMPS.get(str(home / relative)) or read_refresh_stamp(home, relative)
+    candidates = [
+        stamp
+        for stamp in (
+            _UNWRITTEN_STAMPS.get(str(home / relative)),
+            read_refresh_stamp(home, relative),
+        )
+        if stamp is not None
+    ]
+    holds = [stamp for stamp in candidates if rate_limit_holds(stamp, now=utc_now())]
+    return (
+        max(holds, key=lambda stamp: (stamp.reset_at or "", stamp.at))
+        if holds
+        else max(candidates, key=lambda stamp: stamp.at, default=None)
+    )
 
 
 def _remember_unwritten(key: str, stamp: PullRefreshStamp) -> None:
