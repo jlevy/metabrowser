@@ -65,6 +65,7 @@ status: 200
   "number": 7,
   "listed_from": "comparison",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000001",
   "reader": null,
   "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
@@ -126,6 +127,7 @@ status: 200
   "number": 106,
   "listed_from": "github",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000002",
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
@@ -204,6 +206,7 @@ status: 200
   "number": 106,
   "listed_from": "github",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000002",
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
@@ -272,6 +275,7 @@ status: 200
   "number": 105,
   "listed_from": "github",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000003",
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
@@ -314,6 +318,7 @@ status: 200
   "number": 104,
   "listed_from": "github",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000004",
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
@@ -354,6 +359,7 @@ status: 200
   "number": 103,
   "listed_from": "github",
   "fetched_at": "2026-09-17T12:00:00Z",
+  "generation": "00000000000000000000000000000005",
   "reader": "gh:someone-else",
   "head": null,
   "base": null,
@@ -410,6 +416,7 @@ status: 200
   "number": 9,
   "listed_from": null,
   "fetched_at": null,
+  "generation": null,
   "reader": null,
   "head": null,
   "base": null,
@@ -439,6 +446,7 @@ status: 200
   "number": 12,
   "listed_from": null,
   "fetched_at": null,
+  "generation": null,
   "reader": null,
   "head": null,
   "base": null,
@@ -468,6 +476,7 @@ status: 200
   "number": 13,
   "listed_from": null,
   "fetched_at": null,
+  "generation": null,
   "reader": null,
   "head": null,
   "base": null,
@@ -597,6 +606,7 @@ status: 200
   "number": 7,
   "listed_from": null,
   "fetched_at": null,
+  "generation": null,
   "reader": null,
   "head": null,
   "base": null,
@@ -630,10 +640,12 @@ Error: /api/plugin/github/pull-files-refresh returned HTTP 409
 ## Test: a refresh from the local comparison needs no `gh`
 
 A reader’s **Retry** on pull request 7 lists the comparison again from the store, with
-the `gh` that fails every command first on `PATH`, and the command exits 0.
+the `gh` that fails every command first on `PATH`, and the command exits 0. The fixture
+delegates these same arguments to the real CLI, pinning only this test process’s refresh
+UUID; its new generation differs from the cached one.
 
 ```console
-$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data retry-7.json
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../github_pull_fixture.py" --files-refresh https://github.com/octo/demo --api /api/plugin/github/pull-files-refresh --data retry-7.json
 api: /api/plugin/github/pull-files-refresh
 status: 202
 {
@@ -645,6 +657,7 @@ status: 202
     "number": 7,
     "listed_from": "comparison",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "generation": "00000000000000000000000000000001",
     "reader": null,
     "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
     "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
@@ -677,6 +690,7 @@ status: 200
   "number": 7,
   "listed_from": "comparison",
   "fetched_at": "[TIMESTAMP]",
+  "generation": "0000000000000000000000000000000f",
   "reader": null,
   "head": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
   "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
@@ -718,6 +732,7 @@ status: 200
     "number": 106,
     "listed_from": "github",
     "fetched_at": "2026-09-17T12:00:00Z",
+    "generation": "00000000000000000000000000000002",
     "reader": "gh:octo-reader",
     "head": null,
     "base": null,

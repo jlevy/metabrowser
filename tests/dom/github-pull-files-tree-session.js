@@ -113,6 +113,43 @@ async function main() {
     });
   }
   stories["a list fills page by page"] = fill;
+  const replacement = tree.holdFileList(106);
+  replacement.accept(recorded["same second before"]);
+  const atOldEnd = replacement.query();
+  if (replacement.accept(recorded["same second continuation"])) {
+    throw Error("a replacement continuation must not append");
+  }
+  const restart = replacement.query();
+  if (restart !== "number=106&offset=0" || replacement.rows()[0].path !== "before.js") {
+    throw Error("a same-second replacement must restart at zero while retaining the old rows");
+  }
+  replacement.accept(recorded["same second after"]);
+  if (replacement.rows()[0].path !== "after.js" || replacement.rows().length !== 1) {
+    throw Error("the replacement's first window must replace the old rows");
+  }
+  for (const owner of [{ source: "https://github.com/other/repo" }, { reader: "gh:other" }]) {
+    const owned = tree.holdFileList(106);
+    owned.accept(recorded["filling 1"]);
+    if (
+      owned.accept({ ...recorded["filling 2"], ...owner }) ||
+      owned.query() !== "number=106&offset=0"
+    ) {
+      throw Error("different source or reader rows must not join the held list");
+    }
+  }
+  stories["same-second equally sized refreshes replace the held list"] = {
+    atOldEnd,
+    restart,
+    rows: replacement.rows().map((row) => row.path),
+  };
+  const sameRead = tree.holdFileList(106);
+  sameRead.accept(recorded["filling 1"]);
+  if (
+    !sameRead.accept({ ...recorded["filling 2"], fetched_at: "2026-09-17T12:30:00Z" }) ||
+    sameRead.rows().length !== 200
+  ) {
+    throw Error("timestamps must not split the same progressive generation");
+  }
   const rowExpansion = tree.createRowExpansion();
   const expandedRows = [rowExpansion.shown(7), rowExpansion.shown(8)];
   rowExpansion.expand(8);
@@ -194,7 +231,7 @@ async function main() {
   );
 
   // An answer for another read is not joined to what is held.
-  const other = { ...recorded["filling 2"], fetched_at: "2026-09-17T12:30:00Z" };
+  const other = { ...recorded["filling 2"], generation: "f".repeat(32) };
   const restarted = tree.holdFileList(106);
   restarted.accept(recorded["filling 1"]);
   const joined = restarted.accept(other);
