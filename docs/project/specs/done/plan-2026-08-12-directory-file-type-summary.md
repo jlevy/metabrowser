@@ -6,6 +6,16 @@
 
 **Status:** Complete
 
+**Current-state addendum (2026-11-04):** The Overview composition and lifecycle work is
+complete. The original palette-slot allocation and transitional compatibility
+instructions below are implementation history, superseded by the
+[shared taxonomy outcome](plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md#implementation-outcome)
+and [registry color work](plan-2026-08-21-file-type-source-of-truth.md).
+Current consumers use the native registry and `file_type_breakdown` contract; family
+colors come from the registry-derived theme palette rather than per-mount slot leases.
+The [File Rollup Format](../../architecture/file-rollup-format/file-rollup-format.md)
+owns the current schema and conservation rules.
+
 ## Overview
 
 Metabrowser should make every folder a useful destination, not merely a container that

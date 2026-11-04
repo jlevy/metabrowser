@@ -4,14 +4,20 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Shared modal foundation implemented; action menus and file mutations remain
+planned.
+
+`overlay-layer.js` owns modal focus, inert background, and disposal for Quick File and
+keyboard help. That delivered subset does not include the general anchored action menu,
+action registry, inline editor, or rename/trash consumers described below.
 
 ## Overview
 
-Metabrowser has a menu *look* but not a menu *behavior layer*. The settings gear is the
-only menu in the app, and everything that makes it a menu — opening, anchoring,
-dismissal, focus — is hand-written inline in `app.js` against one fixed position in the
-header.
+The original design addressed a menu *look* without a reusable menu *behavior layer*.
+The settings gear’s opening, anchoring, dismissal, and focus were hand-written inline in
+`app.js` against one fixed position in the header.
+The shared modal foundation described above has since landed; the remaining action-menu
+design follows.
 
 This plan adds the missing behavior primitives so a menu can be opened anywhere, from
 any trigger, over any anchor, with one keyboard and dismissal contract; adds an in-place

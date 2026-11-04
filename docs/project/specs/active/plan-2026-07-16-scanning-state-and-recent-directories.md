@@ -4,7 +4,13 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Partly implemented; recent-directory items remain planned.
+
+Inventory lifecycle and coverage, bounded Recent counts, and pending directory
+aggregates are implemented.
+Tree ages represent the newest descendant; the Recent API still returns file leaves,
+with ancestor directories used only for presentation.
+The directory-recency contract and remaining acceptance work below are not complete.
 
 ## Overview
 

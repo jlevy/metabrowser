@@ -20,8 +20,8 @@ Read: the
 the
 [repository-library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md),
 [Git and comparison sources](../architecture/arch-git-and-comparison-sources.md), the
-[HTML trust plan](../specs/active/plan-2026-08-06-html-rendering-and-trust-model.md),
-and the bead graph for all four.
+[HTML trust plan](../specs/done/plan-2026-08-06-html-rendering-and-trust-model.md), and
+the bead graph for all four.
 
 ## Verdict
 
@@ -69,7 +69,7 @@ That is fixed, and the Changes/History header structure is decided.
 set, `--untrusted` profile, and client publication*), which is blocked by `mb-cun0`
 (*sandbox `/raw` responses and require same-origin proof on `/api`*). Both blockers are
 open `P1` tasks belonging to
-[the HTML rendering and content-trust plan](../specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
+[the HTML rendering and content-trust plan](../specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
 — 632 lines, `Status: Draft`, nothing implemented.
 
 This is not a footnote.
@@ -259,7 +259,7 @@ it. That is what keeps R1 from simply adding its cost to the end of the schedule
 
 - [Git status and working-tree diffs](../specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Repository library and open from a Git URL](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
-- [HTML rendering and an explicit content-trust model](../specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
+- [HTML rendering and an explicit content-trust model](../specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
 - [Git and comparison sources](../architecture/arch-git-and-comparison-sources.md)
 - [Repository-library phasing and GitHub content model](review-2026-08-26-repository-library-and-github-model.md)
 

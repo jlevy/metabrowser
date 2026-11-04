@@ -171,8 +171,8 @@ Create a to-do list with the following items then perform all of them:
      commit workflow and update its existing PR with `gh pr edit`. Do not pass
      `--base $TRUNK` or call the flat-PR creation path; either would retarget or replace
      the linked layer.
-   - **Explicit stack request with no stack yet:** if step 3 settled on separate PRs
-     because `github-stacked-prs` is not granted, use the unstacked paths below.
+   - **No stack yet:** if step 3 settled on trunk-targeted PRs because no one asked for
+     a stack and `github-stacked-prs` is not granted, use the unstacked paths below.
      Otherwise follow `tbd shortcut stacked-prs` and the official `gh-stack` skill.
      Use `gh stack init` or `gh stack add` followed by `gh stack submit --auto`, or use
      `gh stack link` for existing PRs.

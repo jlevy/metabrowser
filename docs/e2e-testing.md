@@ -400,9 +400,12 @@ Open the printed URL and verify:
 - the binary Bytes view loads a second chunk on **Load more**, appends without
   re-rendering the bytes already shown, and wraps without horizontal overflow at narrow
   and wide panes in both themes;
-- a binary file above the preview ceiling reports the cutoff instead of loading;
+- a binary file above the preview ceiling renders a bounded prefix and reports where the
+  preview is cut off;
 - changing and deleting files updates tree and recent views;
-- a direct hash path opens independently of the tree crawl;
+- a direct `/view/<path>` address opens the selected file independently of the tree
+  crawl; fragments identify locations within that document, such as headings or source
+  lines;
 - when the served root is in a Git repository, opening a commit that changes the root
   renders its changed-file diff in a fresh browser session;
 - light and dark themes, narrow panes, keyboard focus, and print output remain usable;

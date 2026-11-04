@@ -6,6 +6,15 @@
 
 **Status:** Complete
 
+**Current-state addendum (2026-11-04):** Syntax and both layouts remain implemented.
+The original Unified-default statements below describe that rollout, not the current
+preference policy. A missing or invalid `diff.layout` now selects Split; a narrow pane
+automatically presents Unified unless the reader explicitly insists on Split.
+Layout remains display state rather than URL identity.
+[`readLayoutPreference` and `drawnLayout`](../../../../src/metabrowser/builtin_plugins/diff/diff-view.js)
+own that policy. The dated measurements and intraline addendum below retain their
+original scope; broader context, whitespace, and virtualization work is separate.
+
 ## Overview
 
 Metabrowser’s regular source views use Highlight.js and the shared semantic syntax

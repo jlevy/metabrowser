@@ -208,7 +208,7 @@ The v0.10.0 release candidate establishes the implementation baseline for this p
 - URL-opened roots must apply the landed untrusted capability profile (`mb-vib1`).
   Serving fetched content remains gated on proving that integration at each new entry
   point — see
-  [The gate that decides when this ships](#the-gate-that-decides-when-this-ships).
+  [The gate that decides when this ships](#the-gates-that-decide-when-this-ships).
 - The stack uses SoftSchema 0.8.1 alongside Pydantic, JSON Schema, ruamel.yaml, PyYAML,
   and frontmatter-format.
   Its release review, first-party exception, and artifact hashes are recorded in
@@ -2246,8 +2246,8 @@ The first usable repository URL and branch phases are complete when:
   — acquisition measurements, prior art, and the dated research record
 - [Repository-library and GitHub-model design review](../../reviews/review-2026-08-26-repository-library-and-github-model.md)
   — findings resolved by this rewrite
-- [Git graph view](plan-2026-08-06-git-graph-view.md) — shipped Git history and the
-  repository-root boundary
+- [Git graph view](../done/plan-2026-08-06-git-graph-view.md) — shipped Git history and
+  the repository-root boundary
 - [General diff rendering](plan-2026-08-17-general-diff-rendering.md) — shared
   comparison pipeline and its boundaries with durable acquisition and immutable revision
   subjects
@@ -2257,8 +2257,8 @@ The first usable repository URL and branch phases are complete when:
   — current revision loading and comparison behavior
 - [Unbounded virtualized Git history](../done/plan-2026-08-25-unbounded-virtualized-git-history.md)
   — future history continuation and virtualization
-- [HTML rendering and trust model](plan-2026-08-06-html-rendering-and-trust-model.md) —
-  untrusted-content dependency
+- [HTML rendering and trust model](../done/plan-2026-08-06-html-rendering-and-trust-model.md)
+  — untrusted-content dependency
 - [tbd on-disk format versioning](https://github.com/jlevy/tbd/blob/v0.8.1/docs/tbd-format-versioning.md)
   — fail-closed layout formats and ordered migration publication
 - [SoftSchema v0.8.1 guide](https://github.com/jlevy/softschema/blob/v0.8.1/docs/softschema-guide.md)

@@ -4,7 +4,14 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Implemented; `make verify` green
+**Status:** Implemented; original design and dated validation history
+
+This archived plan records the original implementation.
+Later Git history, comparison, and repository-source work is covered by the current
+[architecture](../../../architecture.md) and
+[Git and comparison sources](../../architecture/arch-git-and-comparison-sources.md).
+The outstanding manual visual pass in the dated 2026-08-11 addendum remains a historical
+receipt gap; archiving this plan does not mark that pass complete.
 
 ## Overview
 
@@ -559,7 +566,7 @@ apply, so run it before and after.
 - [Architecture](../../../architecture.md)
 - [Plugin authoring](../../../plugins.md)
 - [Design system](../../../design-system.md)
-- [Quick file finder and search providers](plan-2026-07-17-scalable-file-search.md)
+- [Quick file finder and search providers](../active/plan-2026-07-17-scalable-file-search.md)
 - [VS Code graph layout and renderer](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/contrib/scm/browser/scmHistory.ts)
 - [VS Code source control styles](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/contrib/scm/browser/media/scm.css)
 - [VS Code git history provider](https://github.com/microsoft/vscode/blob/main/extensions/git/src/historyProvider.ts)

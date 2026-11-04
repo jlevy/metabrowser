@@ -34,10 +34,10 @@ document, which is the practical test of the separability claim.
 | 1 | Patch file, standalone | `.patch`/`.diff` → patch source → render | Implemented: browser view and `metab --diff FILE` |
 | 2 | Git revisions, local repository | rev pair → git source → render | Implemented: the CLI (`--diff A..B`, single revision, `--diff-check`) and the Git history view, which renders a selected commit’s first-parent comparison through the diff view |
 | 3 | GitHub PR as a patch | `gh pr diff N` or the PR’s `.diff` URL → path 1 | Implemented (it is path 1) |
-| 4 | GitHub PR over git transport | fetch `refs/pull/N/head` → merge-base → path 2 | Planned: acquisition and composition |
+| 4 | GitHub PR over git transport | fetch `refs/pull/N/head` → merge-base → path 2 | Implemented: worktree-free source acquisition and commit-pinned PR comparisons |
 | 5 | Uncommitted states | worktree/index vs `HEAD` → git source | Modeled (snapshot kinds, `generation` tokens); source support planned |
 | 6 | Patch anchored to a repository | path 1 + a claimed base revision → validate → enrich | Planned; the oracle it needs is implemented |
-| 7 | Hosted metadata (PR conversation) | provider API → plugin | Planned, plugin territory |
+| 7 | Hosted metadata (PR conversation) | provider API → plugin | Implemented for GitHub: plugin-owned PR records and conversation views |
 | 8 | Document edit history | editor sessions → future source | Format is ready; no source exists |
 
 Statuses are maintained with the code they describe; the roadmap and its issue tracking
@@ -94,12 +94,16 @@ successful result upgraded to an anchored document.
 
 ## Acquisition and materialization
 
-Sources that must fetch or unpack before they can model — a pull request’s refs, a patch
-hydrating against a base, an archive — share one materialization concern: bounded,
-transient cache directories that the normal serving path routes into.
-This is deliberately one mechanism, not one per source; the
-[nav container design](../arch-nav-containers.md) describes the shared routing and the
-plan spec describes the git-specific acquisition workflow.
+Repository and GitHub PR acquisition use worktree-free stores, either full stores or
+stores that borrow objects from an explicitly admitted checkout.
+The normal serving lifespan reads commit-pinned content from those stores; the
+[repository-source architecture](../arch-repository-sources-and-provider-mirrors.md)
+describes acquisition, ownership, and cache policy.
+
+Transient materialization for archives and patches hydrated against a base remains
+future work. The [nav container design](../arch-nav-containers.md) describes the generic
+routing contract for those sources; it does not imply a shared transient materializer
+already exists.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

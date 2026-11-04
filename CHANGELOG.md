@@ -446,9 +446,22 @@ GitHub URLs and HTTPS:
   catalog loading. A pull request’s changed files are new too:
   `POST /api/plugin/github/pull-files-refresh` with `{"number": n}` lists them from the
   mirror’s own comparison when the store holds both commits, with no network, and
-  otherwise from GitHub’s list with `gh` and no Git, publishing each page as it arrives;
+  otherwise from GitHub’s list with `gh` and no Git, checking the active account before
+  each progressive publication and before the complete list; an observed account change
+  stops publication and marks previously checked prefixes stale;
   `/api/plugin/github/pull-files?number=<n>` answers what is held, offline too, while it
   fills, and says when GitHub stopped at 3,000 files.
+
+- Pull-request refreshes distinguish changed-file replacements and edited Markdown even
+  when their timestamps match.
+  File-list generations preserve progressive appends; Markdown content revisions reject
+  superseded replies and stylesheet completions while keeping unchanged text on a
+  freshness-only refresh.
+  A changed-file refresh that cannot admit its application cache reports its error and
+  backs off automatic retries in bounded server memory, without contacting GitHub or
+  writing the refused home.
+  The newest refresh outcome remains visible while active provider deadlines still
+  prevent premature network retries.
 
 - Pulls tab: a GitHub repository opened from its URL has a **Pulls** tab beside Files
   and Git, listing every pull request newest first, with GitHub’s icon for open, draft,

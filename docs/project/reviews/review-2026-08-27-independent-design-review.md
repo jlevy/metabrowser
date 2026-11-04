@@ -23,8 +23,7 @@ the
 [repository-library plan](../specs/active/plan-2026-08-11-open-repo-from-git-url.md),
 the
 [GitHub provider plan](../specs/active/plan-2026-08-27-github-provider-and-pull-requests.md),
-the
-[HTML trust plan](../specs/active/plan-2026-08-06-html-rendering-and-trust-model.md),
+the [HTML trust plan](../specs/done/plan-2026-08-06-html-rendering-and-trust-model.md),
 [Git and comparison sources](../architecture/arch-git-and-comparison-sources.md), the
 bead graph, the `f46bc26` diff, the pre-revision plan at `3d04a78`, and the shipped code
 in `src/metabrowser/git/`, `src/metabrowser/diff/`, and `src/metabrowser/static/`.
@@ -498,7 +497,7 @@ Recorded so the next reviewer does not repeat the work:
 - [Git status and working-tree diffs](../specs/active/plan-2026-08-26-git-status-and-working-tree-diffs.md)
 - [Repository library and open from a Git URL](../specs/active/plan-2026-08-11-open-repo-from-git-url.md)
 - [GitHub provider — content model, acquisition, and pull requests](../specs/active/plan-2026-08-27-github-provider-and-pull-requests.md)
-- [HTML rendering and an explicit content-trust model](../specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
+- [HTML rendering and an explicit content-trust model](../specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
 - [Git and comparison sources](../architecture/arch-git-and-comparison-sources.md)
 - [Delivery order for Git status, the repository cache, and providers](review-2026-08-27-delivery-order-for-status-cache-and-providers.md)
 - [Repository-library phasing and GitHub content model](review-2026-08-26-repository-library-and-github-model.md)

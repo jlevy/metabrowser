@@ -163,13 +163,14 @@ metab .
 ```
 
 `metab` is the standard installed command.
-The `metabrowser` compatibility command matches the package name, which is why the short
-`uvx metabrowser@latest ...` form works.
+The `metabrowser` package-name alias enables the short `uvx metabrowser@latest ...`
+form.
 
 To review GitHub pull requests, open a repository URL or an existing checkout and choose
 **Pulls**, or open a pull-request URL directly.
-Reading GitHub data needs [`gh`](https://cli.github.com/) signed in;
-[reviewing pull requests](docs/reviewing-pull-requests.md) explains Fetch changes,
+Fetching fresh GitHub metadata needs [`gh`](https://cli.github.com/) signed in; cached
+metadata remains readable without it.
+[Reviewing pull requests](docs/reviewing-pull-requests.md) explains Fetch changes,
 refreshing, and the difference between a working folder and cached code.
 
 ```shell

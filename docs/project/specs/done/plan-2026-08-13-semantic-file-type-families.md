@@ -6,6 +6,16 @@
 
 **Status:** Implemented and validated.
 
+**Current-state addendum (2026-11-04):** This is the completed first family-grouping
+implementation. The later
+[shared taxonomy outcome](plan-2026-08-13-shared-file-type-taxonomy-and-breakdowns.md#implementation-outcome)
+supersedes its additive-alias rollout, earlier category set, and singleton-disclosure
+rules. The native registry and `file_type_breakdown` interface are current; the
+`type_tallies` transition alias was removed.
+Do not restore aliases to satisfy this original checklist.
+The [File Rollup Format](../../architecture/file-rollup-format/file-rollup-format.md)
+owns the current definitions and wire contract.
+
 ## Overview
 
 Metabrowser treats the inventory’s bounded logical extension as the visible unit in the

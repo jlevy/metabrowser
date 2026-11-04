@@ -61,10 +61,10 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          # Documented pins are worked examples ("pin the release for a
-          # reproducible run"), so they must name the current release. The agent
-          # skill deliberately carries no pin: it runs metabrowser@latest and
-          # defers the cool-off to the operator's uv configuration.
+          # Public-hygiene checks keep these operator documents versionless.
+          # This release-time check additionally rejects stale pins if one is
+          # introduced; it does not permit pins that public hygiene forbids.
+          # The skill uses metabrowser@latest with the operator's uv cool-off.
           version="${RELEASE_TAG#v}"
           status=0
           for doc in skills/metabrowser/SKILL.md README.md docs/installation.md; do

@@ -1,11 +1,12 @@
 # Plan: GitHub Pulls Tab for Mirrors and Local Checkouts
 
-**Status:** In progress, as a native stack above the v0.12 stack.
-The user decided on 2026-11-02 to build it now and not after 0.12.0 is tagged (see
-[Decisions Already Made](#decisions-already-made)). [Delivery](#delivery) lists the
-steps, and each step’s bead says how far it has got.
-A statement below about what does not exist yet is true of the stack’s base; run
-`tbd list --spec plan-2026-10-01-github-pulls-tab.md` for the current state.
+**Status:** The catalog, Pulls tab, numbered PR pages, changed-file navigation, and
+checkout-backed comparisons are on
+[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b),
+recorded on 2026-11-04. [Delivery](#delivery) records the owning layers; the
+[alpha plan’s landing status](plan-2026-09-22-v012-alpha-testing.md#landing-status)
+records current integration and release evidence.
+The original design prose remains background where a revision supersedes it.
 
 This plan builds on the [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), which
 stays the authority for the mirror, `gh`, and pull-request records.
@@ -770,7 +771,13 @@ repos/<owner>/<repo>/pulls/<n>/files?per_page=100&page=<m>
 
 GitHub’s list is one small read only for a small pull request: the 1,183-file one took
 12 pages at 1.2 to 1.6 s each, 15 to 20 s in all.
-So it is read progressively, and each page is published to the tree as it arrives.
+So it is read progressively.
+Before each prefix publication and the final list, the worker checks that the active
+account still matches the list’s reader.
+An observed account change stops publication and marks previously checked prefixes
+stale; the
+[changed-file contract](../../architecture/arch-repository-sources-and-provider-mirrors.md#changed-files-of-a-pull-request)
+describes the ownership and cache behavior.
 While it fills, the panel says how much it has: N of M files where the record gives M
 (`changed_files`), and otherwise N files with the page count from the `Link` header,
 since that gives pages and not files.
@@ -1047,15 +1054,17 @@ measure GitHub.
 
 ## Delivery
 
-Each step is one pull request and one layer of a native stack, whose base is the top of
-the v0.12 stack, implemented and reviewed by separate agents, with green CI. Nothing
-merges by itself: the stack lands when the user says so, after the stack below it
-(`tbd shortcut stacked-prs`).
+The owning feature layers are merged into
+[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b).
+The
+[postlanding integration review](https://github.com/jlevy/metabrowser/pull/297#pullrequestreview-5770654024)
+records their current source and acceptance evidence.
 
-This stack sits on the stack below’s top, which holds the large-pull-request work and
-the first step of
-[PR Review on a Mirror and a Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md),
-both reviewed and addressed.
+The following step breakdown records the original dependent delivery order.
+The catalog and checkout revisions above supersede its old page caps, filter default and
+implicit acquisition trigger.
+The stack originally depended on the large-pull-request work and the first step of
+[PR Review on a Mirror and a Checkout](plan-2026-11-02-pr-review-mirror-and-checkout.md).
 Step 4’s jump to a file calls the large-pull-request work’s `scrollToFile`. Steps 5 and
 6 follow the owner’s decision on the overlay store in that plan, which revises this
 plan’s alternates rejection and in-page fetch, and step 6 builds on its overlay

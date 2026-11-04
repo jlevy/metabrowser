@@ -4,7 +4,11 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Draft
+**Status:** Mutation workflow planned; startup capability gate implemented.
+
+`--allow-edits` and `METAB_ALLOW_EDITS` already publish the mutations capability.
+No built-in write route consumes it.
+Rename, move, trash, their safety checks, and the editing UI below remain future work.
 
 ## Overview
 

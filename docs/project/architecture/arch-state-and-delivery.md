@@ -19,7 +19,7 @@ later; a structure the server rebuilds per request becomes a browser that never 
 polling. Neither is visible from one side alone.
 
 This document describes the implemented mutable filesystem inventory.
-The planned immutable Git-tree source has no watcher, filesystem mtime, ignore state, or
+The immutable Git-tree source has no watcher, filesystem mtime, ignore state, or
 converging crawl; its entries are valid for a pinned tree object ID. The shared
 content-source and session boundary that keeps those semantics distinct is specified in
 [Repository Sources and Provider Mirrors](arch-repository-sources-and-provider-mirrors.md).
@@ -74,10 +74,10 @@ Everything that follows is those two facts applied to a specific layer.
 ## The Deployable Unit
 
 The server, the browser shell, and the built-in plugins ship as one artifact.
-The index route is served uncached, every script is stamped with a content-derived `?v=`
-token, and the browser’s configuration is inlined into that same response.
-An upgraded server therefore always serves the matching shell, settings, and plugins
-together.
+A newly loaded document receives that build’s shell and inlined configuration from the
+uncached index response and versioned local asset URLs.
+Reload existing tabs after replacing the local server build; an already-open document
+retains its loaded JavaScript until it reloads.
 
 That is why `/api/*`, `window.metabrowser`, `METABROWSER_SETTINGS`, and the plugin
 manifest are internal contracts rather than versioned peers: a change to any of them
@@ -95,13 +95,14 @@ generation lease released when the next subject attaches.
 Today the attached folder is `AttachedFilesystemSubject`. A `GitRevisionSubject` can pin
 a full-OID tree over a worktree-free store.
 `InventoryCoordinator.open_subject` accepts that pin without a filesystem walk.
-`metab file://… --show` and non-cache `--api` open it in-process; a listening server
-still does not. A published-store pin comes from `open_revision`, which checks that the
-commit is in the store and holds no lock and writes no ref: a store is a read-only full
-clone that nothing prunes.
-Git discovery, history, refs, commit detail, file, raw, tree, diffs, KPress, and
-patch-file containers honor that pin through `GitLocation` and `GitPath`. On a pin,
-`/api/plugin/diff/comparison` treats `HEAD` as the pinned object id.
+`metab file://… --show`, non-cache `--api`, and a listening server all support that
+subject. A published-store pin comes from `open_revision`, which checks that the commit
+is readable through the store and writes no ref.
+The store can retain its own objects or borrow from an admitted lender.
+Metabrowser does not prune its store, but the lender’s owner can remove or change the
+borrowed objects. Git discovery, history, refs, commit detail, file, raw, tree, diffs,
+KPress, and patch-file containers honor that pin through `GitLocation` and `GitPath`. On
+a pin, `/api/plugin/diff/comparison` treats `HEAD` as the pinned object id.
 `GitDiffSource.content` reads that blob through the shared cat-file pool.
 `/api/kpress/render` uses the blob object id as its cache key rather than a filesystem
 mtime. A patch-file container inner is a `GitPath` `g1-` prefix plus a host inner path;

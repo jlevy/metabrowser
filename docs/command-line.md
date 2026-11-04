@@ -208,17 +208,24 @@ The refresh command waits for the fetch it asked for, prints the status after it
 `after:`, and exits 1 when the refresh failed, or when it had not finished within one
 Git deadline, in which case leaving stops it; it exits 0 when the fetch ran, or when
 another process was already refreshing the mirror.
-No other one-shot command fetches.
+After URL selection resolves, ordinary reads and cache-only GETs do not fetch or
+implicitly repair Git objects.
+CLI startup can acquire a source and obtain missing PR metadata or required Git head/ref
+data, even when the source store already exists.
+Explicit source and GitHub refresh actions can also fetch in a one-shot command.
 A pin switch through `--api` lasts for that one command, because each command is its own
 server; the next one serves the default branch again.
 
 ## Acquiring a Git source: `--no-serve`
 
-`--no-serve` fetches every object of an `https://` or `file://` source into the
-repository cache under `METABROWSER_CACHE_DIR` (default `~/.cache/metabrowser`) and
-prints the source slug, store identity, and revision, without binding a port or opening
-a browser. The store is a complete, read-only clone, so later reads never need the
-origin. ssh stays closed.
+`--no-serve` acquires or reuses an `https://` or `file://` source in the repository
+cache under `METABROWSER_CACHE_DIR` (default `~/.cache/metabrowser`) and prints the
+source slug, store identity, and revision without binding a port or opening a browser.
+A healthy published store is reused, including an overlay with its remembered lender.
+On a cache miss, `--checkout` can name a lender; acquisition without a selected lender
+creates a full store.
+Borrowing follows the same checkout admission and missing-object rules as serving.
+SSH transport is not supported.
 
 ```shell
 metab file:///path/to/origin.git --no-serve

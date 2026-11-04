@@ -42,10 +42,8 @@ They should not copy OKLCH, HSL, or hexadecimal values from another component.
 When a new concept needs a color, add a token with a semantic name and define its
 dark-theme override alongside it.
 
-New and deliberately adjusted color families use OKLCH because its lightness and chroma
-steps are more perceptually uniform than HSL steps.
-Stable HSL families may migrate when their palette is deliberately adjusted; syntax-only
-mass conversion adds review risk without improving the interface.
+Color families use OKLCH because its lightness and chroma steps are more perceptually
+uniform than HSL steps.
 
 Plugin styles may consume host tokens.
 A plugin-specific visual language belongs in the plugin stylesheet, including any new
@@ -1618,18 +1616,23 @@ Inline percentage widths are allowed because they encode data rather than theme.
 
 #### The categorical palette
 
-A file-type family owns one number: its hue, declared in the type registry (see
+A file-type family’s hue is declared in the type registry (see
 [Family Fields](project/architecture/file-rollup-format/file-rollup-format.md#family-fields)).
 Where GitHub’s linguist names a color for the language, the hue is that color’s,
 unchanged; families GitHub names no color for take a hue clear of every other.
 That is what makes the palette recognizable — Ruby is red because Ruby is red
 everywhere.
 
-Lightness and chroma are not the family’s. Each theme states one pair for the whole set,
-in `color_oklch.py`, so two segments of a stacked bar differ in hue and in nothing else
-and no segment looks heavier than its size.
-Chroma is a target rather than a constant: it is set high enough to stay vivid, above
-what sRGB holds at every hue, so the cyan-blue band comes in under it.
+Each theme defines a `ToneBand` in `color_oklch.py`, with a lightness band and a chroma
+target band. The registry derives each family’s lightness rank and chroma ratio from the
+set of upstream colors; a family without an upstream color sits at the band’s center.
+An explicit registry lightness-rank override changes that axis while retaining the
+family’s derived chroma ratio.
+Families therefore differ in lightness and chroma as well as hue, within the theme’s
+band unless a documented lightness override places one outside it.
+
+Chroma is a target rather than a guarantee: the Python color function reduces it only as
+needed to fit sRGB, preserving the assigned hue and lightness.
 That pullback happens in Python, not in CSS, because a browser handed an out-of-gamut
 `oklch()` clips it — moving lightness and hue by as much as nine degrees, more than the
 separation the palette is built on.
@@ -1740,7 +1743,7 @@ twice the difference.
 
 The **File Overview** section begins expanded.
 It opens with one control row carrying the shared Files / Bytes measure and the **Show
-ignored** checkbox side by side, then a fixed two-row composition table, then the full
+ignored** checkbox side by side, then a fixed three-row composition table, then the full
 type distribution beneath it.
 **Files** comes first and reports the unignored population immediately from the
 inventory snapshot. **Ignored** follows with the excluded population.
@@ -1844,7 +1847,7 @@ after them:
 
 Both views observe one state object and preference key, so changing either control in
 Overview or Treemap updates the other surface without a second interpretation of scope
-or metric. The metric switches both totals rows and the map.
+or metric. The metric switches all three totals rows and the map.
 Show ignored changes map membership but leaves the explicit Files and Ignored rows
 intact.
 

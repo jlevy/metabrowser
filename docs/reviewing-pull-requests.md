@@ -172,10 +172,12 @@ This flag chooses a managed, pinned view of the URL; `metab ~/src/repo` keeps se
 your working folder instead.
 Both can review pull requests.
 
-Only a checkout you name lends.
-Run inside a checkout without the flag, `metab <url>` clones a full mirror and prints
-the command that would have borrowed instead, because a directory you merely stand in
-can be made to look like a checkout of anything.
+Only a checkout you name or have previously named lends.
+A healthy existing store is reused, including an overlay with its remembered lender.
+On a cache miss without a named lender, `metab <url>` clones a full mirror.
+If the current directory is a checkout of that source, it prints the command that would
+have borrowed instead; it never infers permission to borrow from that directory.
+A directory you merely stand in can be made to look like a checkout of anything.
 
 Three things are worth knowing:
 
@@ -245,6 +247,14 @@ A managed source whose cached pinned tree is missing can fail before the server 
 It reports an error without a traceback or automatic replacement clone; the page’s
 Refresh is unavailable until the source can open.
 Repair the affected cache or lender before restarting.
+
+If a changed-file refresh cannot admit the application cache, its error remains visible
+and automatic retries pause in the current server.
+The rejected refresh does not contact GitHub or write into the refused cache; correct
+the reported cache problem before retrying.
+A provider rate-limit hold remains in force without replacing a newer cache error with
+an older outcome. Work admitted before the cache refusal can still finish in another
+process.
 [The source reference](project/architecture/arch-repository-sources-and-provider-mirrors.md#pull-requests-beside-a-checkout)
 describes the recovery limits.
 

@@ -5,8 +5,7 @@
 **Author:** Metabrowser maintainers
 
 **Status:** Implemented and validated in a real browser.
-Follow-ups tracked as beads under epic `mb-pcih`; the open ones are `mb-4k4d` and
-`mb-katw`.
+Follow-up outcomes are recorded in the checklist below.
 
 ## Overview
 
@@ -497,7 +496,7 @@ reading the CSS.
   leads the list makes up the difference — including rows alone under a recency window,
   which renders no tally
 
-### Phase 8: Follow-ups — open
+### Phase 8: Follow-ups — resolved
 
 Tracked as beads under epic `mb-pcih`:
 
@@ -512,8 +511,8 @@ Tracked as beads under epic `mb-pcih`:
   not only its test) plus coverage
 - [x] `mb-9zrh` — superseded by `mb-g675`; what `Live` is turned out to be narrower than
   that bead assumed
-- [ ] `mb-4k4d` — the folder-treemap branch rebases onto the core family and shared
-  state. Belongs to that branch, not this one.
+- [x] `mb-4k4d` — the treemap adopted the core family and shared state; the task is
+  closed and its close record identifies the delivered implementation.
 - [x] `mb-g675` — resolved by defining `Live` as the same 90-second recency window for
   every file and keeping agent-log activity as a separate presentation signal
 - [x] `mb-fqn3` — tree and recent responses keep scan status aligned with their
@@ -524,8 +523,8 @@ Tracked as beads under epic `mb-pcih`:
   fallback
 - [x] `mb-2rj3` — a scanning tree response restarts the idempotent progress poll in case
   an earlier progress request observed completion before the slower response painted
-- [ ] `mb-katw` — optionally mirror extension and size upstream, for directories large
-  enough that a client-side answer is incomplete rather than merely slow
+- [x] `mb-katw` — the tree route accepts `types` and `min_size`, so those predicates can
+  be evaluated over the server inventory; the task is closed
 
 ### Phase 9: Semantic Type Hierarchy
 

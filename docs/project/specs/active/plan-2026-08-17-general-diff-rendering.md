@@ -4,11 +4,20 @@
 
 **Author:** Metabrowser maintainers
 
-**Status:** Core and Git pipeline delivered; remaining renderer work in progress
+**Status:** Comparison model, Git pipeline, and renderer baseline delivered; broader
+comparison workflows remain in progress.
+
+Current delivery includes patch-file rendering, immutable Git comparisons, unified and
+split layouts, intraline refinement, bounded initial hydration, and deferred per-file
+reads. The reusable Python model and adapters live in `metabrowser.diff`; the built-in
+`diff` plugin owns browser routes and rendering.
+Older module names, routes, and core-placement discussion below record the original
+design. General working-tree/index comparisons, watcher-driven staleness, broader
+presets, and patch anchoring remain outside this delivered subset.
 
 ## Overview
 
-Metabrowser can show a repository’s history but not what any commit changed.
+When this plan was written, Metabrowser showed repository history without commit diffs.
 The obvious fix is to add a diff view to the Git panel.
 This plan does the opposite: it builds diff as a first-class capability of its own, with
 a source-agnostic comparison model and one renderer, and makes Git the first consumer
@@ -70,9 +79,9 @@ A comparison model is not a consumer domain.
 It is a rendering primitive, in the same sense that the file-kind registry and the
 Markdown mount are primitives: several unrelated features need the same one, and each
 would otherwise grow its own.
-The [Git graph plan](plan-2026-08-06-git-graph-view.md) made the same argument for Git
-itself — core already depends on Git for ignore semantics, so a history reader extends a
-dependency core has rather than importing a new domain.
+The [Git graph plan](../done/plan-2026-08-06-git-graph-view.md) made the same argument
+for Git itself — core already depends on Git for ignore semantics, so a history reader
+extends a dependency core has rather than importing a new domain.
 
 The distinction this plan draws is between the *comparison model and renderer*, which
 are core, and the *sources*, which are adapters.
@@ -304,7 +313,7 @@ Each is a composition of layers that exist or are already planned:
 | Layer | Provides | Where |
 | --- | --- | --- |
 | Acquisition | A local tree: a path today, a Git URL into the purgeable repo cache | [Open a repo from a Git URL](plan-2026-08-11-open-repo-from-git-url.md) |
-| History | The commit graph over any local repository | [Git graph](plan-2026-08-06-git-graph-view.md) |
+| History | The commit graph over any local repository | [Git graph](../done/plan-2026-08-06-git-graph-view.md) |
 | Comparison | Manifest, file patches, renderer | This plan |
 | Annotation | Anchored threads and marks over a comparison | Deferred; anchor model reserved below |
 
@@ -1010,7 +1019,7 @@ model have to render somewhere.
 - [Web Diff Viewer Architecture and Intermediate Representations](../../research/research-2026-07-17-web-diff-viewer-architecture.md)
 - [Historical Diff View Spike Results](../../research/archive/research-2026-07-18-diff-view-spike-results.md)
 - [Browser Contributor Toolchain and Distribution](../../research/research-2026-07-18-browser-contributor-toolchain.md)
-- [Git graph nav panel and read-only Git API](plan-2026-08-06-git-graph-view.md)
+- [Git graph nav panel and read-only Git API](../done/plan-2026-08-06-git-graph-view.md)
 - [Rendering large content](../../../large-content-rendering.md)
 - [File Patch Formats](../../research/research-2026-08-19-file-patch-formats.md)
 - [Git `diff-highlight`](https://github.com/git/git/tree/master/contrib/diff-highlight)

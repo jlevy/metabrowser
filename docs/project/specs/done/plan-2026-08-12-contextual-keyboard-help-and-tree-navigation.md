@@ -6,6 +6,17 @@
 
 **Status:** Implemented and validated
 
+**Current-state addendum (2026-11-04):** The detailed command tables and validation
+checklist retain the original design.
+Current tree movement opens the newly focused file or folder through the existing
+navigation path, replacing its history entry; it is not a promise of zero preview
+requests. Enter and Space perform disclosure or pagination actions.
+The footer shows Help and Quick File with one preferred binding each; tree commands
+remain in Help, and the current registry also supports J/K browsing.
+The [tree controller](../../../../src/metabrowser/static/tree-keyboard-navigation.js)
+and [Help renderer](../../../../src/metabrowser/static/keyboard-help.js) own the current
+descriptors and presentation.
+
 ## Overview
 
 Metabrowser has useful keyboard behavior, but no single place explains it and no single

@@ -316,7 +316,7 @@ Three facts about Metabrowser’s position:
   the correct default for a tool pointed at arbitrary local directories.
 - Metabrowser serves no Content Security Policy today, and the strict application-shell
   policy is explicitly deferred in
-  [the HTML trust model plan](../specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
+  [the HTML trust model plan](../specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
   pending removal of inline handlers.
   Mermaid rendering therefore has one fewer layer than GitHub’s arrangement, which makes
   keeping `strict` more important, not less.
@@ -545,7 +545,7 @@ Neither changes the recommendation.
   — GitHub community discussion
 - [Rendering large content](../../large-content-rendering.md) — this repository’s cost
   model
-- [Full-page HTML rendering and an explicit trust model](../specs/active/plan-2026-08-06-html-rendering-and-trust-model.md)
+- [Full-page HTML rendering and an explicit trust model](../specs/done/plan-2026-08-06-html-rendering-and-trust-model.md)
   — this repository’s trust posture
 
 <!-- This document follows common-doc-guidelines.md.

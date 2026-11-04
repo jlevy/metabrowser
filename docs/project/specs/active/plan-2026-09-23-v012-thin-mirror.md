@@ -1,12 +1,14 @@
 # Plan: v0.12 Thin Mirror for Git and GitHub Browsing
 
-**Status:** Landed on `main`, not yet released; it first ships in 0.12.0, which is not
-tagged. The design was decided on 2026-09-23 and revised the same day after an
-independent design review.
-[Delivery](#delivery) maps each step and follow-up to its pull request, all of them
-merged.
-The [alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists
-what remains before the release, which waits for the user’s approval (`mb-4bd2`).
+**Status:** Landed on
+[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b).
+The [alpha plan’s landing status](plan-2026-09-22-v012-alpha-testing.md#landing-status)
+records the current integration and release state.
+The design was decided on 2026-09-23 and revised the same day after an independent
+design review. [Delivery](#delivery) maps each step and follow-up to its pull request,
+all of them merged. The
+[alpha test plan](plan-2026-09-22-v012-alpha-testing.md#landing-status) lists what
+remains before the release, which waits for the user’s approval (`mb-4bd2`).
 
 This plan supersedes the remaining v0.12 phases in
 [Open Repositories from Git URLs](plan-2026-08-11-open-repo-from-git-url.md) (2A onward)
@@ -14,6 +16,12 @@ and
 [GitHub Provider and Pull Requests](plan-2026-08-27-github-provider-and-pull-requests.md)
 wherever they disagree.
 Those documents stay as background.
+The later [Pulls tab](plan-2026-10-01-github-pulls-tab.md) and
+[checkout review](plan-2026-11-02-pr-review-mirror-and-checkout.md) plans extend this
+initial design with a resumable PR catalog, checkout borrowing, explicit repair, and
+optional native-stack metadata.
+Their current contracts take precedence over the full-store-only and deferred-discovery
+assumptions retained in this delivery record.
 The repository foundation they record (Phases 0–1B) stays as built, as changed by the
 Simplify step below; the hosted-review foundation was removed, as
 [Retired From Earlier Plans](#retired-from-earlier-plans) records.
