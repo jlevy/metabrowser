@@ -7,7 +7,8 @@
   ``--numstat`` through :class:`GitDiffSource`, with no patch and no network. A manifest
   cut at ``MAX_MANIFEST_FILES``, or one Git cannot list, falls through to GitHub's.
 - **GitHub's list**, which runs no Git: the active account, then one ``gh api
-  repos/<owner>/<repo>/pulls/<n>/files`` request per hundred files, then the account again.
+  repos/<owner>/<repo>/pulls/<n>/files`` request per hundred files, checking the account
+  before each progressive publication and before publishing the complete list.
   Each request takes one of the coordinator's network slots for itself alone, through
   *slot*, so a long list never holds a slot between pages and a fetch the page of code waits
   on gets the next one.
@@ -21,8 +22,9 @@ that fails fails the job, and the file stays as last published.
 
 The list is assembled over the job's duration. A push between two page reads can show a file
 twice, which the path dedupes, or miss one until the next refresh. A list read while the
-active account changed is reported ``account_changed``; the pages it published name the
-account that read them, and the route then calls the list stale.
+active account is observed to change stops before publishing unchecked rows and is
+reported ``account_changed``; previously checked prefixes remain, and the route calls the
+list stale.
 """
 
 from __future__ import annotations
@@ -291,6 +293,14 @@ async def _from_github(
         )
         # Never fewer rows than the file holds, so a reread does not shrink what a reader has.
         if len(partial.rows) > held:
+            # A later page can fail before the final account check runs.
+            async with slot():
+                if await active_account() != login:
+                    raise PullDataError(
+                        "account_changed",
+                        "the active gh account changed during the read, so it is not taken as "
+                        "complete; open the files again",
+                    )
             await _write(repository, partial)
     listed = _assembled(
         repository,
