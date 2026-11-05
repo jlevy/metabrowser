@@ -56,11 +56,11 @@ trusted input, and clocked dwell from the first visible target under All.
 It tested immediate, 350 ms, and 2,000 ms clicks and observed actual readiness
 independently of the planned wait.
 
-A live prepend of PR #299 changed the cached list’s pagination generation while the
-admitted PR summaries were unchanged.
-Two trial 02 ready clicks missed because the old proof depended on pagination order.
-Trial 03 used catalog identity and row validation for already admitted descriptions,
-while new requests still needed the current generation.
+A live prepend of [jlevy/metabrowser#299](https://github.com/jlevy/metabrowser/pull/299)
+changed the cached list’s pagination generation while the admitted PR summaries were
+unchanged. Two trial 02 ready clicks missed because the old proof depended on pagination
+order. Trial 03 used catalog identity and row validation for already admitted
+descriptions, while new requests still needed the current generation.
 The paired timing fixture then held the catalog with #299 already present; the
 stale-list misses are retained separately.
 
