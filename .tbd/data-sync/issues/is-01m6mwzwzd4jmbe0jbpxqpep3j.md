@@ -5,7 +5,7 @@ title: Measure bounded PR core metadata preparation ahead of selection
 kind: task
 status: in_progress
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex-prefetch
 labels: []
@@ -17,7 +17,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-05T03:45:40.332Z
-updated_at: 2026-11-05T09:47:33.529Z
+updated_at: 2026-11-05T10:22:09.672Z
 started_at: 2026-11-05T03:45:40.975Z
 ---
 H81 / exp-050: measure one source-owned background GraphQL batch for at most eight visible, missing PR cores after summary paint. The provider diagnosis rejected attaching descriptions to the catalog. Keep the catalog small and leave discussions, checks, Git fetch, diff and manifest out of speculation. A ready observation can display with its original time while selected acquisition validates a fresh core; the full record wins. The first trial cancels and drains a running batch on foreground intent instead of joining it. Compare exact installed wheels with independent identical held Git and catalog caches, the selected full record absent, trusted input, and actual empty/running/ready states. Keep failures and outliers; require sub-150 ms prepared descriptions and no material critical-path regression or hard budget failure.
@@ -35,3 +35,5 @@ Exp-052 accepted against final H82. Original 15 matched pairs showed 37–40 ms 
 Final head 1a39e43b passed make verify (4847 pytest, 9 expected skips, 380 CLI cases, audits, distribution). All 342 packaged runtime files match the measured wheel. In an isolated no-gh environment cached PRs remained readable, preparation was quiet, and explicit Fetch gave installation and login instructions. Ordinary push hook in progress.
 
 Published as https://github.com/jlevy/metabrowser/pull/301, above #300 in native stack #302. Original exact head 1a39e43b had 9/9 green; PR is in draft pending Qodo review fixes tracked under mb-yuh0. Retain original timings and verify the integrated fixes against the preregistered confirmation.
+
+Final reviewed head 3c8acd21: five ready pairs 34–46 ms vs 1,027–1,391 ms, four exact live sibling-change witnesses, both local outlier repeats cleared, unchanged V20 directory gate passed. Exact manual checkout/managed URL and no-gh passed. Full make verify 4,850 Python / 380 CLI / audits / distribution passed. Normal forward push hook running; keep #301 draft until exact CI and review dispositions.
