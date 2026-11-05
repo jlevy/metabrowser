@@ -227,7 +227,17 @@ function createPage() {
       assert(waiting.length > index, "no request is waiting for an answer");
       const [request] = waiting.splice(index, 1);
       assert(request.route.startsWith("/api/plugin/github/pull?"), "not a read of a record");
-      request.resolve({ status: 200, etag: '"record"', body: { state: "current" } });
+      const number = Number(new URL(request.route, "http://localhost").searchParams.get("number"));
+      const current = pageRecorded.current.body;
+      request.resolve({
+        status: 200,
+        etag: '"record"',
+        body: {
+          ...current,
+          number,
+          record: { ...current.record, number, pull: { ...current.record.pull, number } },
+        },
+      });
       await settle();
     },
     waitingCount: () => waiting.length,

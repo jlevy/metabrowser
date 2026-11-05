@@ -35,6 +35,7 @@ import {
   FAST_POLL_MS,
   h,
   isPlainClick,
+  isEnvelope as isPullEnvelope,
   REFRESH_ASK_MS,
   relativeAge,
   SLOW_POLL_MS,
@@ -46,6 +47,9 @@ import { createPullsWindow } from "./pulls-window.js";
 const PULLS_ROUTE = "/api/plugin/github/pulls";
 const REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
 const PULL_ROUTE = "/api/plugin/github/pull";
+const CORE_PREPARE_ROUTE = "/api/plugin/github/pull-cores-prepare";
+const VISIBLE_CORE_LIMIT = 8;
+const CORE_CONTROL_TIMEOUT_MS = 2000;
 
 export const LISTS = Object.freeze(["open", "closed", "all"]);
 const LIST_LABELS = Object.freeze({ all: "All", open: "Open", closed: "Closed" });
@@ -493,6 +497,8 @@ function pinChanged(response) {
 }
 
 /**
+ * @typedef {{state: string, window: {id: string, generation: string}, numbers: number[]}} CoreWindowRequest
+ * @typedef {{key: string, epoch: number, body: CoreWindowRequest}} CoreDemand
  * @typedef {{status: number, etag: string | null, body: unknown}} PullsResponse
  * @typedef {{
  *   request(
@@ -616,6 +622,14 @@ export function createPullsController(deps, options = {}) {
   const peeked = new Map();
   /** @type {{number: number, controller: AbortController, done: Promise<{etag: string | null, body: unknown} | null>} | null} */
   let reading = null;
+  /** @type {CoreDemand | null} */
+  let coreWanted = null;
+  /** @type {CoreDemand | null} */
+  let coreSent = null;
+  /** Last token that may still own the server window. @type {CoreDemand | null} */
+  let coreHeld = null;
+  let coreEpoch = 0;
+  let sendingCore = false;
 
   /** @returns {HeldList} */
   function held() {
@@ -624,6 +638,114 @@ export function createPullsController(deps, options = {}) {
 
   function live() {
     return shown && !disposed && deps.isVisible();
+  }
+
+  /** @param {CoreWindowRequest} body */
+  async function controlCoreWindow(body) {
+    try {
+      return await deps.request("POST", CORE_PREPARE_ROUTE, {
+        body,
+        // An exact-owner release must still be sendable after panel disposal.
+        signal: AbortSignal.timeout(CORE_CONTROL_TIMEOUT_MS),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  /** @param {CoreDemand} demand */
+  function releaseCoreWindow(demand) {
+    return controlCoreWindow({ ...demand.body, numbers: [] });
+  }
+
+  async function sendCoreWindow() {
+    if (sendingCore) {
+      return;
+    }
+    sendingCore = true;
+    try {
+      while (coreWanted !== coreSent) {
+        const previous = coreHeld;
+        const demand = coreWanted;
+        coreSent = demand;
+        if (demand === null) {
+          coreHeld = null;
+          if (previous !== null) {
+            await releaseCoreWindow(previous);
+          }
+          continue;
+        }
+        const response = await controlCoreWindow(demand.body);
+        const receipt = /** @type {{preparation?: string} | null | undefined} */ (response?.body);
+        const admitted =
+          (response?.status === 202 &&
+            (receipt?.preparation === "started" || receipt?.preparation === "joined")) ||
+          (response?.status === 200 && receipt?.preparation === "ready");
+        const preserved =
+          response?.status === 200 &&
+          (receipt?.preparation === "busy" || receipt?.preparation === "not_owner");
+        if (!preserved) {
+          coreHeld = demand;
+          if (!admitted && previous !== null) {
+            // An uncertain replacement may have left its predecessor owned.
+            await releaseCoreWindow(previous);
+          }
+        }
+        if (demand.epoch !== coreEpoch) {
+          if (coreHeld !== null) {
+            await releaseCoreWindow(coreHeld);
+            coreHeld = null;
+          }
+          coreSent = null;
+        }
+      }
+    } finally {
+      sendingCore = false;
+    }
+  }
+
+  function clearCoreWindow() {
+    coreEpoch += 1;
+    coreWanted = null;
+    void sendCoreWindow();
+  }
+
+  /** @param {number[]} numbers */
+  function prepareVisible(numbers) {
+    if (!live() || walkingTo !== null) {
+      return;
+    }
+    const list = held();
+    const generation = list.envelope?.generation;
+    if (typeof generation !== "string" || list.content === null) {
+      return;
+    }
+    const rows = numbers.slice(0, VISIBLE_CORE_LIMIT).flatMap((number) => {
+      const index = list.keys.get(number);
+      return index === undefined ? [] : [list.rows[index]];
+    });
+    if (rows.length === 0) {
+      clearCoreWindow();
+      return;
+    }
+    const key = JSON.stringify([list.content, rows.map((row) => [row.number, row.updatedAt])]);
+    if (coreWanted?.key === key) {
+      return;
+    }
+    // getRandomValues also works when serving trusted-network plain HTTP.
+    const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+    coreWanted = {
+      key,
+      epoch: coreEpoch,
+      body: {
+        state: filter,
+        window: { id, generation },
+        numbers: rows.map((row) => row.number),
+      },
+    };
+    void sendCoreWindow();
   }
 
   function model() {
@@ -652,7 +774,7 @@ export function createPullsController(deps, options = {}) {
     const envelope = held().envelope;
     const identity =
       envelope === null ? null : { source: envelope.source, reader: envelope.reader };
-    const key = JSON.stringify([{ ...next, rows: null }, identity]);
+    const key = JSON.stringify([{ ...next, rows: null }, identity, held().content]);
     if (key !== painted) {
       painted = key;
       deps.render(next, identity);
@@ -819,6 +941,7 @@ export function createPullsController(deps, options = {}) {
     list.nextAfter = after;
     list.content = content;
     peeked.clear();
+    clearCoreWindow();
     return true;
   }
 
@@ -1187,10 +1310,18 @@ export function createPullsController(deps, options = {}) {
           return null;
         }
         const answer = { etag: response.etag, body: response.body };
-        if (peeked.size >= MAX_PEEKED) {
-          peeked.delete(/** @type {number} */ (peeked.keys().next().value));
+        const envelope = response.body;
+        if (
+          isPullEnvelope(envelope) &&
+          envelope.number === number &&
+          envelope.source === held().envelope?.source &&
+          envelope.record !== null
+        ) {
+          if (peeked.size >= MAX_PEEKED) {
+            peeked.delete(/** @type {number} */ (peeked.keys().next().value));
+          }
+          peeked.set(number, answer);
         }
-        peeked.set(number, answer);
         return answer;
       })
       .catch(() => null)
@@ -1249,6 +1380,7 @@ export function createPullsController(deps, options = {}) {
   }
 
   function cancelReads() {
+    clearCoreWindow();
     requestEpoch += 1;
     inflight?.abort();
     inflight = null;
@@ -1316,6 +1448,7 @@ export function createPullsController(deps, options = {}) {
       void poll();
     },
     setFilter,
+    prepareVisible,
     /**
      * The address says which pull request's page holds the pane. Not a selection: the row
      * only follows it, and no fetch starts.
@@ -1615,6 +1748,10 @@ export function mountPullsPanel(container, ctx, mb) {
   let readingPlace = null;
   /** @type {number | null} */
   let windowFrame = null;
+  /** @type {number | null} */
+  let coreFrame = null;
+  /** @type {number | null} */
+  let coreTimer = null;
   let windowDisposed = false;
 
   /** The minute the rows' ages were last told in. */
@@ -1935,11 +2072,68 @@ export function mountPullsPanel(container, ctx, mb) {
         })
       : null;
 
+  function cancelCoreSample() {
+    if (coreFrame !== null) {
+      window.cancelAnimationFrame(coreFrame);
+      coreFrame = null;
+    }
+    if (coreTimer !== null) {
+      window.clearTimeout(coreTimer);
+      coreTimer = null;
+    }
+  }
+
+  function queueCoreSample() {
+    cancelCoreSample();
+    if (
+      windowDisposed ||
+      !panelShown ||
+      document.visibilityState !== "visible" ||
+      tab.scrollRoot === null ||
+      typeof window.requestAnimationFrame !== "function"
+    ) {
+      return;
+    }
+    coreFrame = window.requestAnimationFrame(() => {
+      coreFrame = null;
+      // A task after the frame leaves the summaries a paint opportunity. A short quiet
+      // period coalesces a moving scroll window before reading its visible headers.
+      coreTimer = window.setTimeout(() => {
+        coreTimer = null;
+        const view = tab.scrollRoot?.getBoundingClientRect();
+        if (
+          windowDisposed ||
+          !panelShown ||
+          document.visibilityState !== "visible" ||
+          view === undefined ||
+          view.bottom <= view.top
+        ) {
+          return;
+        }
+        const ordered = [...painted.entries()].sort(
+          (left, right) => (rowIndices.get(left[0]) ?? 0) - (rowIndices.get(right[0]) ?? 0),
+        );
+        const numbers = [];
+        for (const [number, entry] of ordered) {
+          const row = entry.row.getBoundingClientRect();
+          if (row.bottom > row.top && row.bottom > view.top && row.top < view.bottom) {
+            numbers.push(number);
+            if (numbers.length === VISIBLE_CORE_LIMIT) {
+              break;
+            }
+          }
+        }
+        controller.prepareVisible(numbers);
+      }, PEEK_MS);
+    });
+  }
+
   function paintViewport() {
     if (windowDisposed) {
       return;
     }
     mb.perf.measure("githubPulls:window", paintWindow, { rows: paintedRows.length });
+    queueCoreSample();
   }
 
   function paintWindow() {
@@ -2355,7 +2549,18 @@ export function mountPullsPanel(container, ctx, mb) {
     { signal },
   );
   list.addEventListener("pointerout", () => window.clearTimeout(peekTimer), { signal });
-  document.addEventListener("visibilitychange", controller.onVisibilityChange, { signal });
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+      controller.onVisibilityChange();
+      if (document.visibilityState === "visible") {
+        queueWindow();
+      } else {
+        cancelCoreSample();
+      }
+    },
+    { signal },
+  );
 
   // Rows ahead of the view arrive before they are reached, so a scroll does not stop at the end
   // of a window, and reaching the end is a reader's action, as Load more is.
@@ -2419,6 +2624,11 @@ export function mountPullsPanel(container, ctx, mb) {
       panelShown = visible;
       stacks.setShown(visible);
       controller.setShown(visible);
+      if (visible) {
+        queueWindow();
+      } else {
+        cancelCoreSample();
+      }
       for (const [number, tree] of trees) {
         tree.controller.setShown(visible && painted.has(number));
       }
@@ -2485,6 +2695,7 @@ export function mountPullsPanel(container, ctx, mb) {
     activateFile: () => focused()?.activateAnchor() ?? false,
     dispose() {
       windowDisposed = true;
+      cancelCoreSample();
       if (windowFrame !== null) {
         window.cancelAnimationFrame(windowFrame);
       }

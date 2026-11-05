@@ -54,6 +54,7 @@ from metabrowser.builtin_plugins.github.checkout import (
     served_checkout,
     start_pull_refresh,
 )
+from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreWindow, preparation_key
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     RecordAbsence,
@@ -73,6 +74,7 @@ from metabrowser.http_caching import BUILD_TAG, build_scoped_etag, store_tag
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
     PullJobStart,
+    RefreshCoordinator,
     mirror_session,
     refresh_coordinator,
 )
@@ -233,6 +235,7 @@ class PullHost:
     running: Callable[[int], bool]
     start: Callable[[int], PullJobStart]
     start_comparison: Callable[[int], PullJobStart] | None = None
+    coordinator: RefreshCoordinator | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
@@ -254,11 +257,17 @@ def pull_host(app: Any) -> PullHost | None:
             lambda number: coordinator.running(checkout_job_key(checkout, number)),
             partial(start_pull_refresh, coordinator, checkout),
             partial(start_pull_refresh, coordinator, checkout, comparison=True),
+            coordinator,
         )
     served = session.pull_requests
     if not isinstance(served, ServedPulls):
         return None
-    return PullHost(served, session.pull_refreshing, session.request_pull_refresh)
+    return PullHost(
+        served,
+        session.pull_refreshing,
+        session.request_pull_refresh,
+        coordinator=refresh_coordinator(app),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,6 +286,8 @@ class PullView:
     refreshing: bool
     kept: ServedPull | None
     core_preview: PullCorePreview | None = None
+    core_window: CoreWindow | None = None
+    core_admission: CoreAdmission | None = None
 
 
 def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) -> PullView:
@@ -284,14 +295,24 @@ def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) ->
 
     revision = subject if isinstance(subject, GitRevisionSubject) else None
     kept = None if host is None else host.pulls.held(number)
+    refreshing = host is not None and host.running(number)
+    live = kept.core_preview if kept is not None and refreshing else None
+    adopted = kept.display_core if kept is not None and refreshing and live is None else None
+    window = host.pulls.core_window if host is not None and not refreshing else None
+    prepared = window.preview(number) if window is not None else None
+    admission = window.admission if prepared is not None and window is not None else None
+    if adopted is not None:
+        live, admission = adopted
     return PullView(
         number=number,
         host=host,
         pin=None if revision is None else revision.commit_oid,
         pin_ref=None if revision is None else revision.ref,
-        refreshing=host is not None and host.running(number),
+        refreshing=refreshing,
         kept=kept,
-        core_preview=None if kept is None else kept.core_preview,
+        core_preview=live or prepared,
+        core_window=window if prepared is not None else None,
+        core_admission=admission,
     )
 
 
@@ -346,9 +367,45 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         comparison_route=route,
         record=dumped if isinstance(record, PullRecord) else None,
         core_preview=view.core_preview
-        if not isinstance(record, PullRecord) and view.refreshing
+        if not isinstance(record, PullRecord)
+        and (
+            view.core_admission is None
+            or (record == "not_cached" and view.core_admission.catalog_matches())
+        )
         else None,
     )
+
+
+def note_full_record(view: PullView) -> None:
+    window = view.core_window
+    if (
+        view.host is not None
+        and window is not None
+        and view.host.pulls.core_window is window
+        and window.previews is not None
+    ):
+        window.previews.pop(view.number, None)
+
+
+def core_preview_current(view: PullView, preview: PullCorePreview | None) -> bool:
+    """Reject an observation revoked while the envelope was built off the loop."""
+    if preview is None:
+        return True
+    if view.host is None:
+        return False
+    if view.core_window is not None:
+        return (
+            view.host.pulls.core_window is view.core_window
+            and not view.host.running(view.number)
+            and view.core_window.preview(view.number) is preview
+        )
+    kept = view.kept
+    if kept is None or not view.host.running(view.number):
+        return False
+    if kept.core_preview is not None:
+        return kept.core_preview is preview
+    adopted = kept.display_core
+    return adopted is not None and adopted[0] is preview and adopted[1] is view.core_admission
 
 
 def record_stamp(view: PullView) -> tuple[int, int, int] | None:
@@ -451,6 +508,35 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
 
 
 async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart:
+    if not ask.retry and not ask.comparison:
+        return await _start_refresh(host, ask)
+    served = host.pulls
+    served.foreground_intents += 1
+    try:
+        window = served.core_window
+        prepared = None
+        if window is None or window.previews is None:
+            served.core_window = None
+            coordinator = host.coordinator
+            if coordinator is not None:
+                job = coordinator.cancel(preparation_key(served.source))
+                if job is not None:
+                    await asyncio.shield(asyncio.gather(job, return_exceptions=True))
+        elif ask.wait_core:
+            preview = window.preview(ask.number)
+            if preview is not None:
+                prepared = (window, preview)
+        started = await _start_refresh(host, ask, prepared)
+        if started in {"started", "joined"} and window is not None and window.previews is not None:
+            window.previews.pop(ask.number, None)
+        return started
+    finally:
+        served.foreground_intents -= 1
+
+
+async def _start_refresh(
+    host: PullHost, ask: RefreshRequest, prepared: tuple[CoreWindow, PullCorePreview] | None = None
+) -> PullRefreshStart:
     """Start the refresh *ask* names, join the one running, or say why it starts nothing.
 
     A reader's own action always may start one. An automatic request may only for a
@@ -459,6 +545,7 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
     """
 
     queued: ServedPull | None = None
+    adopt = None
     if ask.retry and not ask.comparison:
         served = await host.pulls.companion(ask.number)
         queued = served
@@ -474,6 +561,12 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
                 served.saw_record(cached.fetched_at, without_store=written_without_store(cached))
             else:
                 served.request_core_preview()
+                if (
+                    cached == "not_cached"
+                    and prepared is not None
+                    and prepared[0].publication is served.published
+                ):
+                    adopt = prepared
     if ask.comparison and host.start_comparison is not None:
         return host.start_comparison(ask.number)
     if host.running(ask.number):
@@ -484,9 +577,27 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
             return "not_cached"
         if not served.is_stale(pulls.utc_now(), window_s=FRESHNESS_WINDOW_S):
             return "not_due"
+    if adopt is not None:
+        window, preview = adopt
+        # This is the last worker read. Start and adoption below are synchronous.
+        catalog_matches = await asyncio.to_thread(window.catalog_matches)
+        if (
+            not catalog_matches
+            or host.pulls.published is not window.publication
+            or host.pulls.core_window is not window
+            or window.preview(ask.number) is not preview
+        ):
+            adopt = None
+    if host.running(ask.number):
+        return "joined"
     started = host.start(ask.number)
-    if started == "too_many" and queued is not None:
-        queued.discard_recovery(ask.recovery)
+    if queued is not None:
+        if started == "too_many":
+            queued.discard_recovery(ask.recovery)
+        elif started == "started" and adopt is not None:
+            window, preview = adopt
+            assert window.admission is not None
+            queued.display_core = (preview, window.admission)
     return started
 
 

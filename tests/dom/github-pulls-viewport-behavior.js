@@ -3,6 +3,38 @@ const assert = require("node:assert/strict");
 const { pathToFileURL } = require("node:url");
 const root = require("node:path").resolve(__dirname, "../..");
 const { FakeNode, FakeElement } = require(`${root}/tests/dom/pulls-test-dom.js`);
+const details = require("../fixtures/github-pull-page-responses.json");
+const source = "https://github.com/octo/demo";
+const observedAt = "2026-11-03T00:00:00Z";
+const absent = { ...details.absent.body, number: 500, source };
+const prepared = {
+  ...absent,
+  core_preview: {
+    source,
+    number: 500,
+    reader: "gh:reader",
+    observed_at: observedAt,
+    revision: "a".repeat(64),
+    comparison_state: "not_started",
+    pull: {
+      ...details.current.body.record.pull,
+      number: 500,
+      body: "Prepared visible description",
+    },
+  },
+};
+const controls = [],
+  detailReads = [],
+  opened = [];
+let readyCore = false,
+  holdAdmission = false,
+  busyAdmission = false,
+  finishAdmission;
+const answer = (body, status = 200) => ({
+  status,
+  headers: { get: () => null },
+  json: async () => body,
+});
 const settle = async () => {
   for (let i = 0; i < 20; i++) {
     await new Promise(setImmediate);
@@ -41,6 +73,10 @@ function height(node) {
   return 0;
 }
 FakeElement.prototype.getBoundingClientRect = function () {
+  if (this.classList.contains("github-pulls-row")) {
+    const { top, left, right, width } = this.parentNode.getBoundingClientRect();
+    return { top, bottom: top + 41.5, height: 41.5, left, right, width };
+  }
   let h = height(this),
     top = 0;
   if (this === scroll) {
@@ -62,6 +98,14 @@ const frames = new Map(),
   timers = new Map(),
   observers = [];
 let serial = 0;
+// Match Web Crypto on a trusted-network HTTP page: randomUUID is secure-context only.
+Object.defineProperty(globalThis, "crypto", {
+  value: {
+    getRandomValues: require("node:crypto").webcrypto.getRandomValues.bind(
+      require("node:crypto").webcrypto,
+    ),
+  },
+});
 Object.assign(globalThis, {
   document: {
     body,
@@ -86,6 +130,7 @@ Object.assign(globalThis, {
     },
     cancelAnimationFrame: (id) => frames.delete(id),
   },
+  getComputedStyle: () => ({ getPropertyValue: () => "24px" }),
   HTMLElement: FakeElement,
   Element: FakeElement,
   DOMParser: class {
@@ -113,8 +158,32 @@ Object.assign(globalThis, {
     observe() {}
     disconnect() {}
   },
-  fetch: async (route) => {
-    const q = new URL(route, "http://localhost").searchParams,
+  fetch: async (route, options) => {
+    const url = new URL(route, "http://localhost");
+    if (url.pathname === "/api/plugin/github/pull-cores-prepare") {
+      const body = JSON.parse(options.body);
+      controls.push(body);
+      if (body.numbers.length === 0) {
+        return answer({ preparation: "released" });
+      }
+      if (busyAdmission) {
+        busyAdmission = false;
+        return answer({ preparation: "busy" });
+      }
+      if (holdAdmission) {
+        holdAdmission = false;
+        return new Promise((resolve) => {
+          finishAdmission = () => resolve(answer({ preparation: "started" }, 202));
+        });
+      }
+      return answer({ preparation: "started" }, 202);
+    }
+    if (url.pathname === "/api/plugin/github/pull") {
+      const number = Number(url.searchParams.get("number"));
+      detailReads.push(number);
+      return answer(readyCore && number === 500 ? prepared : { ...absent, number });
+    }
+    const q = url.searchParams,
       after = Number(q.get("after")),
       start = after ? 501 - after : 0,
       limit = Number(q.get("limit") ?? 100),
@@ -183,7 +252,9 @@ async function paint() {
         refreshAhead: false,
         scrollRoot: scroll,
         file: null,
-        open() {},
+        open(route) {
+          opened.push(route);
+        },
         fileHref: () => null,
         pageFor: () => null,
         onPageChange: () => () => {},
@@ -199,7 +270,18 @@ async function paint() {
     },
   );
   await settle();
-  await paint();
+  assert(perfEntries.includes("githubPulls:rowsReady"));
+  assert.equal(controls.length, 0, "summary DOM commits before a preparation POST");
+  async function sample() {
+    await paint();
+    const due = [...timers].find(([, timer]) => timer.delay === panel.PEEK_MS);
+    assert.ok(due, "the quiet post-paint sample owns a timer");
+    timers.delete(due[0]);
+    due[1].fn();
+    await settle();
+  }
+  await sample();
+  assert.deepEqual(controls[0].numbers, [500, 499, 498], "overscan is outside the visible cohort");
   const list = container.childNodes.find((n) => n.classList?.contains("github-pulls-list"));
   const items = () => list.childNodes.filter((n) => n.classList?.contains("github-pulls-item"));
   for (const label of [
@@ -220,7 +302,20 @@ async function paint() {
       observer.fn([{ target: scroll, borderBoxSize: [{ blockSize: viewHeight }] }]);
     }
   }
-  await paint();
+  holdAdmission = true;
+  await sample();
+  const pending = controls.at(-1);
+  assert.equal(pending.numbers.length, 8);
+  assert.ok(finishAdmission);
+  handle.setShown(false);
+  assert.equal(controls.at(-1), pending, "release is ordered behind the admission");
+  finishAdmission();
+  await settle();
+  assert.deepEqual(controls.at(-1), { ...pending, numbers: [] }, "hide releases its exact token");
+  handle.setShown(true);
+  await settle();
+  await sample();
+  assert.notEqual(controls.at(-1).window.id, pending.window.id);
   const after = items().length;
   const visibleGap = list.childNodes.find(
     (n) =>
@@ -251,6 +346,11 @@ async function paint() {
   await paint();
   assert(list.contains(focused), "focused row remains mounted outside the viewport");
   assert.equal(document.activeElement, focused);
+  await sample();
+  assert(
+    !controls.at(-1).numbers.includes(Number(focused.dataset.number)),
+    "protected offscreen focus is outside the cohort",
+  );
   assert(
     items().length < 160,
     "mounted DOM stays bounded after distant scrolling and protected focus",
@@ -260,6 +360,43 @@ async function paint() {
     Number(focused.getAttribute("aria-posinset")) > 1,
     "ARIA position remains absolute in the catalog",
   );
+  viewHeight = 100;
+  document.activeElement = body;
+  scroll.scrollTop = 0;
+  scroll.listeners.get("scroll")();
+  await paint();
+  const row = items()[0].firstElementChild;
+  list.listeners.get("focusin")({ target: row });
+  await settle();
+  assert.deepEqual(detailReads, [500]);
+  readyCore = true;
+  assert(handle.activateAnchor());
+  await settle();
+  assert.deepEqual(detailReads, [500, 500], "the absent peek cannot hide a prepared core on click");
+  assert.equal(opened[0].reader.initial.body.core_preview.observed_at, observedAt);
+  const page = await import(
+    pathToFileURL(`${root}/src/metabrowser/builtin_plugins/github/pull-page.js`)
+  );
+  assert(page.isEnvelope(opened[0].reader.initial.body));
+  const model = page.describePull(opened[0].reader.initial.body, {
+    number: 500,
+    tab: "",
+    nowMs: Date.parse(observedAt) + 120_000,
+  });
+  assert.equal(model.canRefresh, true, "a prepared-only direct visit still offers Fetch");
+  assert.equal(model.refreshing, false);
+  assert.equal(model.freshness, "Description fetched 2 min ago by reader");
+  assert.equal(model.filesUnavailable, "Files changed has not been fetched.");
+
+  const previous = controls.at(-1);
+  const beforeBusy = controls.length;
+  busyAdmission = true;
+  await sample();
+  assert.equal(controls.length, beforeBusy + 1, "busy scroll replacement keeps the old token");
+  assert.notEqual(controls.at(-1).window.id, previous.window.id);
+  handle.setShown(false);
+  await settle();
+  assert.deepEqual(controls.at(-1), { ...previous, numbers: [] }, "hide releases the old token");
   handle.dispose();
   assert.equal(frames.size, 0);
   assert.equal(timers.size, 0);

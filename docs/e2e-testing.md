@@ -436,6 +436,10 @@ framework:
    between polling ticks.
    Check that the waiting cache read returns the correct full record, and that a
    duplicate or canceled read does not change provider work.
+   To test background description preparation, start in Files and open Pulls.
+   Click once as soon as the row is visible, once while preparation is running, and once
+   after it finishes. Record the actual batch state with each planned dwell.
+   With two tabs, confirm a refused preparation leaves the first tab’s window available.
 4. In Git, compare natural and prepared selection, re-enter the displayed row, and leave
    for a file while deferred requests are active.
    Check exact route and subject, cancellation, queued work, single active ownership and

@@ -86,6 +86,7 @@ against one that did.
 | exp-049 | [Bind the Missing Selected PR Core to the GraphQL Viewer](experiments/exp-049-bind-the-missing-selected-pr-core-to-the-graphql-viewer.md) | - | `sampled_server_tree_rss_mib` | accepted |
 | exp-050 | [Prepare Visible PR Descriptions After Summary Paint](experiments/exp-050-prepare-visible-pr-descriptions-after-summary-paint.md) | - | `prepared_description_ms` | rejected |
 | exp-051 | [Wake a Selected PR Cache Read When Its Refresh Settles](experiments/exp-051-wake-selected-pr-cache-read-on-settlement.md) | - | `publication_to_full_conversation_paint_ms` | accepted |
+| exp-052 | [Confirm Visible PR Description Preparation After Settlement](experiments/exp-052-confirm-visible-pr-descriptions-after-settlement.md) | - | `ready_window_description_ms` | accepted |
 
 ## Absolute numbers, per condition
 
@@ -3821,6 +3822,111 @@ Corpus `3e91e74d3d8e366b`, shape `1`, harness `23`.
 | `viewport_w` | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) |
 | `viewport_h` | 900 (900-900) | 900 (900-900) |
 
+### 12,024 files — exp-052 / tree-684fb0f2
+
+Corpus `3e91e74d3d8e366b`, shape `1`, harness `23`.
+
+**What a reader gets** — browser probe
+
+| metric | directory-v17-h81-control (n=3) | directory-v17-h81-trial (n=3) | directory-v18-h81-control (n=3) | directory-v18-h81-trial (n=3) |
+| --- | ---: | ---: | ---: | ---: |
+| `ttfb_ms` | 13 (13-13) | 12 (12-15) | 12 (12-13) | 13 (12-13) |
+| `response_download_ms` | 1 (0-6) | 1 (0-1) | 1 (1-1) | 1 (1-1) |
+| `dom_interactive_ms` | 79 (77-88) | 85 (78-99) | 86 (85-88) | 87 (81-91) |
+| `first_row_ms` | 76 (76-87) | 84 (77-97) | 83 (82-85) | 84 (78-88) |
+| `first_row_render_ms` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `load_tree_ms` | 5 (4-5) | 5 (4-6) | 4 (4-5) | 4 (4-5) |
+| `tree_fetch_srv_ms` | 1 (1-2) | 2 (1-2) | 1 (1-2) | 1 (1-2) |
+| `tree_fetch_wait_ms` | 2 (2-2) | 3 (2-3) | 2 (2-2) | 2 (2-2) |
+| `tree_fetch_total_ms` | 3 (2-3) | 3 (2-4) | 3 (3-3) | 3 (2-3) |
+| `tree_fetch_kb` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `dcl_ms` | 85 (84-94) | 92 (84-105) | 92 (91-94) | 93 (86-97) |
+| `load_ms` | 86 (85-95) | 92 (85-106) | 92 (92-94) | 94 (87-98) |
+| `last_resource_ms` | 1,868 (1,847-1,871) | 1,864 (1,853-1,879) | 1,873 (1,862-1,874) | 1,864 (1,857-1,875) |
+| `subtree_requests` | 1 (0-1) | 1 (0-1) | 1 (1-1) | 1 (1-1) |
+| `tree_items` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `lazy_stubs` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `collapsed_diff_rows_materialized` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `dom_nodes` | 970 (970-970) | 970 (970-970) | 970 (970-970) | 970 (970-970) |
+| `transferred_kb` | 559 (528-559) | 559 (528-559) | 559 (559-559) | 559 (559-559) |
+| `vendor_first_start_ms` | 90 (90-100) | 98 (90-108) | 96 (96-97) | 98 (91-102) |
+| `fcp_ms` | 76 (72-80) | 84 (68-96) | 80 (80-84) | 80 (76-84) |
+| `lcp_ms` | 76 (72-80) | 84 (68-96) | 80 (80-84) | 80 (76-84) |
+| `cls` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `cls_shifts` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `frame_missing_px` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `filter_bar_shift_px` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `summary_shift_px` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `reserved_region_shift_px` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `tree_region_repaints` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `long_tasks` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `long_task_ms_total` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `total_blocking_time_ms` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms_first_5s` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `long_tasks_over_200ms` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `main_thread_blocked_pct` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_attribution_missing` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_batches` | 4 (4-4) | 4 (4-4) | 4 (4-4) | 4 (4-4) |
+| `inventory_delivery_items` | 4,267 (4,267-4,267) | 4,267 (4,267-4,267) | 4,267 (4,267-4,267) | 4,267 (4,267-4,267) |
+| `inventory_delivery_batch_items_max` | 4,096 (4,096-4,096) | 4,096 (4,096-4,096) | 4,096 (4,096-4,096) | 4,096 (4,096-4,096) |
+| `inventory_delivery_max_ms` | 3 (3-3) | 3 (3-3) | 4 (3-4) | 3 (3-3) |
+| `inventory_delivery_work_ms_total` | 5 (4-5) | 5 (4-5) | 5 (5-5) | 5 (4-5) |
+| `inventory_delivery_work_pct` | 0 (0.2-0.3) | 0 (0.2-0.3) | 0 (0.3-0.3) | 0 (0.2-0.3) |
+| `animation_frames` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `animation_frame_max_ms` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `animation_frames_over_200ms` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_total` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_max` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `animation_frames_blocking_over_200ms` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `forced_style_layout_ms_max` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `interactions` | 0 (0-1) | 0 (0-1) | 0 (0-0) | 1 (0-1) |
+| `interaction_inputs` | 7 (7-7) | 7 (7-7) | 7 (7-7) | 7 (7-7) |
+| `interaction_input_first_ms` | 134 (130-142) | 143 (141-146) | 144 (144-147) | 139 (138-152) |
+| `interaction_input_last_ms` | 1,676 (1,656-1,680) | 1,670 (1,663-1,681) | 1,680 (1,672-1,681) | 1,666 (1,663-1,684) |
+| `interaction_input_span_ms` | 1,534 (1,522-1,550) | 1,527 (1,522-1,535) | 1,533 (1,528-1,537) | 1,528 (1,524-1,532) |
+| `interaction_input_coverage_pct` | 86 (86.1-86.9) | 86 (85.6-86.2) | 86 (85.9-86) | 86 (85.6-86.2) |
+| `interaction_samples_retained` | 0 (0-1) | 0 (0-1) | 0 (0-0) | 1 (0-1) |
+| `interaction_p50_ms` | 24 | 32 | - | 28 (24-32) |
+| `interaction_p95_ms` | 24 | 32 | - | 28 (24-32) |
+| `interaction_max_ms` | 0 (0-24) | 0 (0-32) | 0 (0-0) | 24 (0-32) |
+| `render_spans` | 2 (2-2) | 2 (2-2) | 2 (2-2) | 2 (2-2) |
+| `render_ms_total` | 2 (2-2) | 2 (2-2) | 2 (2-2) | 2 (2-2) |
+| `tree_reprobe_ms` | 3 (2-3) | 3 (3-3) | 3 (2-3) | 3 (3-3) |
+| `tree_reprobe_srv_ms` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `spawn_to_profile_start_ms` | 1,584 (1,511-1,672) | 1,627 (1,621-1,631) | 1,483 (1,479-1,608) | 1,609 (1,598-1,626) |
+| `requests` | 69 (68-69) | 69 (68-69) | 69 (69-69) | 69 (69-69) |
+| `fetches_in_flight` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `fetch_network_errors` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `fetch_aborts` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `fetch_http_4xx` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `fetch_http_5xx` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `rendered_preview_errors` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `page_exceptions` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `resource_timing_capacity` | 500 (500-500) | 500 (500-500) | 500 (500-500) | 500 (500-500) |
+| `resource_timing_buffer_full` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `script_transfer_kb` | 382 (382-382) | 382 (382-382) | 382 (382-382) | 382 (382-382) |
+| `startup_script_requests` | 20 (20-20) | 20 (20-20) | 20 (20-20) | 20 (20-20) |
+| `startup_script_transfer_kb` | 175 (175-175) | 175 (175-175) | 175 (175-175) | 175 (175-175) |
+| `startup_script_last_response_ms` | 71 (71-81) | 78 (71-91) | 77 (76-79) | 78 (72-82) |
+| `startup_script_duration_max_ms` | 55 (51-60) | 57 (55-73) | 55 (55-58) | 58 (56-66) |
+| `startup_style_server_ms_max` | 7 (5.6-8.8) | 7 (7-12.4) | 5 (4.8-7.8) | 7 (5.1-7.1) |
+| `startup_style_wait_ms_max` | 13 (9-17) | 14 (14-20) | 14 (12-15) | 15 (12-15) |
+| `startup_style_last_response_ms` | 41 (40-49) | 48 (41-54) | 47 (47-47) | 46 (40-47) |
+| `style_transfer_kb` | 84 (84-84) | 84 (84-84) | 84 (84-84) | 84 (84-84) |
+| `image_transfer_kb` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `api_transfer_kb` | 65 (34-65) | 65 (34-65) | 65 (65-65) | 65 (65-65) |
+| `largest_resource_kb` | 90 (90-90) | 90 (90-90) | 90 (90-90) | 90 (90-90) |
+| `resource_duration_max_ms` | 107 (105-113) | 94 (92-106) | 107 (106-109) | 105 (97-108) |
+| `js_heap_mb` | 6 (5.9-6.1) | 6 (5.9-6.1) | 6 (6-6.1) | 6 (5.9-6.1) |
+| `js_heap_after_gc_mb` | 3 (3.1-3.1) | 3 (3.1-3.1) | 3 (3.1-3.1) | 3 (3.1-3.1) |
+| `plugin_view_containers` | 2 (2-2) | 2 (2-2) | 2 (2-2) | 2 (2-2) |
+| `plugin_view_nonempty` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `shell_tools_missing` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `file_catalog_incomplete` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `viewport_w` | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) |
+| `viewport_h` | 900 (900-900) | 900 (900-900) | 900 (900-900) | 900 (900-900) |
+
 ## Provenance
 
 | experiment | label | provider | contract | recorded | build | identity | commit | corpus | shape | harness | walk |
@@ -4192,6 +4298,18 @@ Corpus `3e91e74d3d8e366b`, shape `1`, harness `23`.
 | exp-051 | directory-v15-h82-control | python | inventory-provider-v1 | 2026-11-05T07:42 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:58698562a766df9e935ee8c09970bf5c2123497728de548e6ee7eaa7aa046673` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
 | exp-051 | directory-v15-h82-control | python | inventory-provider-v1 | 2026-11-05T07:43 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:58698562a766df9e935ee8c09970bf5c2123497728de548e6ee7eaa7aa046673` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
 | exp-051 | directory-v15-h82-trial | python | inventory-provider-v1 | 2026-11-05T07:43 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:f5b58c02fb1697500b1c81202408c79d872bfbb907565dde2dd4d48f7c0da8ef` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-052 | directory-v17-h81-control | python | inventory-provider-v1 | 2026-11-05T08:03 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:f5b58c02fb1697500b1c81202408c79d872bfbb907565dde2dd4d48f7c0da8ef` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-052 | directory-v17-h81-trial | python | inventory-provider-v1 | 2026-11-05T08:03 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:0e6537986e7c9d66a16d1ebbf28e679a9fe85267caac867c6cff2a179842557a` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-052 | directory-v17-h81-trial | python | inventory-provider-v1 | 2026-11-05T08:03 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:0e6537986e7c9d66a16d1ebbf28e679a9fe85267caac867c6cff2a179842557a` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-052 | directory-v17-h81-control | python | inventory-provider-v1 | 2026-11-05T08:03 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:f5b58c02fb1697500b1c81202408c79d872bfbb907565dde2dd4d48f7c0da8ef` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-052 | directory-v17-h81-control | python | inventory-provider-v1 | 2026-11-05T08:03 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:f5b58c02fb1697500b1c81202408c79d872bfbb907565dde2dd4d48f7c0da8ef` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-052 | directory-v17-h81-trial | python | inventory-provider-v1 | 2026-11-05T08:04 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:0e6537986e7c9d66a16d1ebbf28e679a9fe85267caac867c6cff2a179842557a` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-052 | directory-v18-h81-control | python | inventory-provider-v1 | 2026-11-05T08:13 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:f5b58c02fb1697500b1c81202408c79d872bfbb907565dde2dd4d48f7c0da8ef` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-052 | directory-v18-h81-trial | python | inventory-provider-v1 | 2026-11-05T08:13 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:28f3aab1676e92256f5c6e23e89ab82c09519547a62f1dbb621b048bae1cbbdd` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-052 | directory-v18-h81-trial | python | inventory-provider-v1 | 2026-11-05T08:13 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:28f3aab1676e92256f5c6e23e89ab82c09519547a62f1dbb621b048bae1cbbdd` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-052 | directory-v18-h81-control | python | inventory-provider-v1 | 2026-11-05T08:13 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:f5b58c02fb1697500b1c81202408c79d872bfbb907565dde2dd4d48f7c0da8ef` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-052 | directory-v18-h81-control | python | inventory-provider-v1 | 2026-11-05T08:13 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:f5b58c02fb1697500b1c81202408c79d872bfbb907565dde2dd4d48f7c0da8ef` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-052 | directory-v18-h81-trial | python | inventory-provider-v1 | 2026-11-05T08:14 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:28f3aab1676e92256f5c6e23e89ab82c09519547a62f1dbb621b048bae1cbbdd` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
 
 <!-- Generated file.
 Regenerate with `explorations/performance-loop/run.py report`. -->

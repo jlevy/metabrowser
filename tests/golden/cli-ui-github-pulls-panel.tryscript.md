@@ -974,6 +974,18 @@ $ node tests/dom/github-pulls-file-selection-session.js
 ? 0
 ```
 
+## Test: Prepare the Visible Pulls Window
+
+The mounted panel requests preparation for visible rows and releases its window when it
+hides. The session checks that a prepared description keeps its reader and observation
+time.
+
+```console
+$ node tests/dom/github-pulls-viewport-behavior.js
+{"case":"viewport-height-increase","before":43,"after":113,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000}
+? 0
+```
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

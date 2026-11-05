@@ -8,10 +8,12 @@ source-alias lock; no network operation runs while that lock is held.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import os
 import sqlite3
 import uuid
 from collections.abc import Generator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Self
 
@@ -27,6 +29,7 @@ CATALOG_SCHEMA = 1
 CATALOG_PROJECTION = 1
 PAGE_SIZE = 100
 MAX_WINDOW = 1000
+MAX_CATALOG_MEMBERS = 8
 
 # One exact disposable schema: no user triggers, views, or missing query indexes.
 # Initialization and admission share the same SQL so neither can drift independently.
@@ -213,6 +216,39 @@ def catalog_window(
             return state, wire, rows[-1].number if len(result) > limit and rows else None
     except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
         return None, [], None
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogMember:
+    updated_at: str
+    fingerprint: bytes
+
+
+def catalog_members(
+    home: Path, slug: str, name: PullListName, numbers: tuple[int, ...]
+) -> tuple[CatalogState | None, dict[int, CatalogMember]]:
+    """Fingerprint the bounded summaries found by number in one checkpoint snapshot."""
+    if not numbers or len(numbers) > MAX_CATALOG_MEMBERS or name not in PULL_LIST_NAMES:
+        raise ValueError("invalid catalog membership request")
+    try:
+        with _database(home, slug) as db:
+            db.execute("BEGIN")
+            state = _state(db)
+            placeholders = ",".join("?" for _ in numbers)
+            query = f"SELECT number,updated_at,body FROM pulls WHERE number IN ({placeholders})"
+            values: tuple[int | str, ...] = numbers
+            if name != "all":
+                query += " AND state = ?"
+                values = (*numbers, name)
+            members: dict[int, CatalogMember] = {}
+            for number, stamp, summary in db.execute(query, values):
+                if not isinstance(stamp, str) or not isinstance(summary, str):
+                    return None, {}
+                parse_stamp(stamp)
+                members[number] = CatalogMember(stamp, hashlib.sha256(summary.encode()).digest())
+            return state, members
+    except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
+        return None, {}
 
 
 def catalog_row(home: Path, slug: str, number: int) -> PullListRow | None:
