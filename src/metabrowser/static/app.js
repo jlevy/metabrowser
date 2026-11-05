@@ -7837,12 +7837,14 @@ function pullPageHostDeps(routes) {
     mountList: (claim) => mountView(claim, "pull-request-list", {}),
     pathname: () => window.location.pathname,
     pushHref: (href) => {
+      mainTabIntent += 1;
       window.history.pushState(null, "", href);
       mainTabs?.remember();
       window.MetabrowserPullsNav?.routeChanged();
     },
     // A key's skim replaces, as openTreeRow does.
     replaceHref: (href) => {
+      mainTabIntent += 1;
       window.history.replaceState(null, "", href);
       mainTabs?.remember();
       window.MetabrowserPullsNav?.routeChanged();

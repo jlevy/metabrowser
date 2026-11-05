@@ -383,9 +383,22 @@ async function run() {
   }
   assert(controller.snapshot().rows === 1000, "Fetch more grows display by 500");
   assert(page.filterTotals()?.all === 6000, "an older append cannot roll back newer tallies");
-  steps.push(
-    page.observe("Fetch more displays another 500 cached rows without provider work", controller),
+  const moreCached = page.observe(
+    "Fetch more displays another 500 cached rows without provider work",
+    controller,
   );
+  assert(
+    moreCached.paint.listName.endsWith("6,000 pull requests"),
+    "the selected total stays current",
+  );
+  assert(moreCached.paint.window === "Showing last 1,000", "the display remains a partial window");
+  assert(moreCached.paint.fetching === "Fetching pull requests…", "the refresh still runs");
+  assert(moreCached.timer === "fast", "the append does not slow the refresh poll");
+  assert(
+    moreCached.requests.every((request) => request.startsWith("GET ")),
+    "cached append makes only local reads",
+  );
+  steps.push(moreCached);
   controller.onVisibilityChange();
   await settle();
   await page.answer(recorded.moved_0);
@@ -397,6 +410,31 @@ async function run() {
   steps.push(
     page.observe("a new PR revalidates the display through ten bounded cache pages", controller),
   );
+  controller.dispose();
+
+  // A cached page can arrive with an older successful refresh stamp.
+  page = createPage();
+  controller = panel.createPullsController(page.deps, { filter: "all", current: null });
+  void controller.start({ shown: true });
+  await settle();
+  await page.answer({
+    ...recorded.current,
+    body: {
+      ...recorded.current.body,
+      last_refresh: recorded["failed gh_failed"].body.last_refresh,
+    },
+  });
+  const failedTop = page.observe("provider failed before the cached append", controller);
+  await page.answer(recorded.more_window);
+  const failedMore = page.observe("cached rows append despite the provider failure", controller);
+  assert(failedMore.paint.rowsHeld === 102, "cached rows append after provider failure");
+  assert(failedTop.paint.notice.severity === "warning", "the failed refresh has a warning");
+  assert(
+    failedMore.paint.notice?.text === failedTop.paint.notice.text,
+    "the append cannot clear the newer failure",
+  );
+  assert(failedMore.paint.freshness === failedTop.paint.freshness, "the latest freshness stays");
+  assert(failedMore.requests.length === 0, "a cached append should not ask the provider");
   controller.dispose();
 
   // Holding a key marks only the two changed rows, with one cache-only detail read at rest.

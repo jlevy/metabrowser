@@ -15,6 +15,7 @@
     /** @type {Map<string, {href: string, state: unknown}>} */
     const mainTabDestinations = new Map();
     let keepFilesScrollOnLanding = false;
+    let gitDiscoveryFinished = false;
 
     /** @param {MetabrowserNavPanel} panel */
     function registerNavPanel(panel) {
@@ -76,11 +77,15 @@
       }
     }
 
+    function hasGitPanel() {
+      return navPanels.some((panel) => panel.id === "git");
+    }
+
     async function restoreNeutralGitPanel() {
       if (!deps.isGitHistoryLanding()) {
         return;
       }
-      if (navPanels.some((panel) => panel.id === "git")) {
+      if (hasGitPanel()) {
         activateNavPanel("git");
         return;
       }
@@ -220,6 +225,10 @@
     }
 
     function onHistory() {
+      if (gitDiscoveryFinished && deps.isGitHistoryLanding() && !hasGitPanel()) {
+        void restoreNeutralGitPanel().catch(console.error);
+        return;
+      }
       const panel = mainTabAtAddress();
       const switched = panel !== null && panel !== activeNavPanelId;
       if (switched) {
@@ -241,7 +250,10 @@
     return Object.freeze({
       active: () => activeNavPanelId,
       activate: activateNavPanel,
-      finishGitDiscovery: restoreNeutralGitPanel,
+      finishGitDiscovery() {
+        gitDiscoveryFinished = true;
+        return restoreNeutralGitPanel();
+      },
       onHistory,
       open: openMainTab,
       register: registerNavPanel,

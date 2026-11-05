@@ -848,19 +848,17 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Take one answer's envelope for its list.
+   * Take the envelope from a top-window read or a refresh.
    *
    * @param {HeldList} list
    * @param {PullsEnvelope} envelope
-   * @param {number} [request] Top-window read or refresh, never a paged append.
+   * @param {number} request
    */
   function holdEnvelope(list, envelope, request) {
     list.envelope = envelope;
     list.error = null;
-    if (request !== undefined) {
-      shownRequest = request;
-      filterTotals = envelope.filter_totals ?? null;
-    }
+    shownRequest = request;
+    filterTotals = envelope.filter_totals ?? null;
   }
 
   /** The anchor follows the rows: the current one if it is held, and otherwise the first. */
@@ -1215,12 +1213,14 @@ export function createPullsController(deps, options = {}) {
         if (fresh.length > 0) {
           list.version += 1;
         }
-        holdEnvelope(list, response.body);
+        // Cached pages only advance the rows and cursor. Keep the top window's metadata.
+        list.error = null;
         list.nextAfter = response.body.next_after;
         advanced = fresh.length > 0 && list.nextAfter !== after;
+        const total = list.envelope?.total ?? null;
         if (
           list.rows.length >= list.displayLimit ||
-          (response.body.total !== null && list.rows.length >= response.body.total)
+          (total !== null && list.rows.length >= total)
         ) {
           list.more = false;
         }

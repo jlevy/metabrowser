@@ -477,7 +477,13 @@ function createShell(pathname, network, options = {}) {
     ["nav-filter-bar", fakeElement()],
   ]);
   const scroller = options.scroller ?? fakeElement({ scrollTop: 0 });
-  const panelIds = options.pulls ? ["files", "git", "pulls"] : ["files", "git"];
+  const panelIds = ["files"];
+  if (!options.withoutGit) {
+    panelIds.push("git");
+  }
+  if (options.pulls) {
+    panelIds.push("pulls");
+  }
   const tabButtons = panelIds.map((tab) => fakeElement({ dataset: { tab } }));
   const tabPanels = panelIds.map((tab) => fakeElement({ dataset: { tabContent: tab } }));
   scroller.querySelector = () => ({});
@@ -492,6 +498,7 @@ function createShell(pathname, network, options = {}) {
   }
   let tabClick;
   const navBar = fakeElement({
+    appendChild: (button) => tabButtons.push(button),
     addEventListener(_type, listener) {
       tabClick = listener;
     },
@@ -527,14 +534,20 @@ function createShell(pathname, network, options = {}) {
   function requestScript(script) {
     const name = String(script.src).replace("/static/", "");
     scriptRequests.push(name);
-    setImmediate(() => {
+    function respond() {
       if (refused.has(name)) {
         script.onerror?.();
         return;
       }
       runScript(name);
       script.onload?.();
-    });
+    }
+    const gate = options.scriptGates?.get(name);
+    if (gate) {
+      void gate.then(respond);
+    } else {
+      setImmediate(respond);
+    }
   }
   const writes = [];
   const listeners = new Set();
@@ -986,6 +999,28 @@ async function independentMainTabs() {
   assert.equal(unavailable.pane().owner, "file", "failed discovery falls back to Files root");
   assert.deepEqual(plain(unavailable.sandbox.history.state), { other: 1 });
   assert.deepEqual(unavailable.writes, [], "failed discovery repairs the same history entry");
+  const missingGit = createShell("/view/", read, { withoutGit: true });
+  missingGit.sandbox.addEventListener("popstate", missingGit.sandbox.applyPullHistoryLanding);
+  await missingGit.sandbox.navigationController.start();
+  await missingGit.sandbox.mainTabs.finishGitDiscovery();
+  missingGit.pop("/view/", { gitLanding: true, other: 2 });
+  await settle();
+  assert.equal(missingGit.sandbox.mainTabs.active(), "files");
+  assert.doesNotMatch(missingGit.pane().shows, /Select a commit to preview/);
+  assert.deepEqual(plain(missingGit.sandbox.history.state), { other: 2 });
+  assert.deepEqual(missingGit.writes, [], "Back repairs the same history entry");
+
+  const pendingGit = createShell("/view/", read, { withoutGit: true });
+  pendingGit.sandbox.addEventListener("popstate", pendingGit.sandbox.applyPullHistoryLanding);
+  await pendingGit.sandbox.navigationController.start();
+  pendingGit.pop("/view/", { gitLanding: true });
+  await settle();
+  assert.equal(pendingGit.sandbox.history.state.gitLanding, true, "Back waits for Git discovery");
+  pendingGit.sandbox.mainTabs.register({ id: "git", label: "Git", onFirstShow: null });
+  await pendingGit.sandbox.mainTabs.finishGitDiscovery();
+  assert.equal(pendingGit.sandbox.mainTabs.active(), "git");
+  assert.match(pendingGit.pane().shows, /Select a commit to preview/);
+
   const early = createShell("/view/", read, { pulls: true, deferTabs: true });
   assert.equal(early.sandbox.mainTabs, null, "plain startup does not fetch main tabs");
   early.clickTab("pulls");
@@ -1013,6 +1048,27 @@ async function independentMainTabs() {
     "/view/",
     "startup does not override an early Files click",
   );
+  for (const replace of [false, true]) {
+    const mainTabsScript = deferred();
+    const newerPull = createShell("/pull/7", read, {
+      pulls: true,
+      deferTabs: true,
+      scriptGates: new Map([["main-tabs.js", mainTabsScript.promise]]),
+    });
+    await newerPull.sandbox.navigationController.start();
+    const host = await newerPull.sandbox.loadPullPageHost();
+    newerPull.clickTab("files");
+    await settle();
+    assert(newerPull.scriptRequests.includes("main-tabs.js"), "the Files click requested tabs");
+    assert.equal(newerPull.sandbox.mainTabs, null, "the tab module is still held");
+    await host.open({ number: 7, tab: "files", file: "src/a.py", replace });
+    assert.equal(newerPull.sandbox.location.pathname, selectedPull);
+    mainTabsScript.resolve();
+    await settle();
+    assert.equal(newerPull.sandbox.location.pathname, selectedPull, "the newer PR route wins");
+    assert.equal(newerPull.sandbox.mainTabs.active(), "pulls");
+    assert.deepEqual(newerPull.writes, replace ? [] : [selectedPull]);
+  }
   return {
     selections,
     historyPushes: shell.writes.length,

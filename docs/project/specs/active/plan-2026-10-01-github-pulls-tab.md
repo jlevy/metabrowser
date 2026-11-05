@@ -84,26 +84,33 @@ Five alternating pairs on the 74-event PR took 710–882 ms at 50 events and 830
 100\. The smaller request left a second page to read, while the larger one held all 74
 matched events. These are standalone `gh` timings, so use 100 as a candidate for the
 integrated trial and measure the selected page before choosing a production bound.
+Join discussion by event kind and a shared identifier.
+Use a lossless database ID or carry the GraphQL node ID on both sides.
+Deduplicate events at page boundaries.
 Keep unmatched discussion visible and use its existing time order when provider ordering
 is unavailable.
 
-Bind the projection to the canonical repository, PR number, actual response viewer, and
-verified base and head.
-Cache the bounded metadata for offline reading.
+Bind the projection to the canonical repository, PR number, actual response viewer,
+verified base and head, and the discussion revision it orders.
+A checkout without a comparison store can verify against provider metadata and the held
+PR record.
+Cache the bounded projection independently of the PR record so a late timeline
+can leave held discussion, its text budget, and rendered Markdown intact.
 Represent partial and unavailable results separately from a known empty timeline.
-A failed, superseded, or mismatched read leaves the last compatible published record
+A failed, superseded, or mismatched read leaves the last compatible published data
 available. This is a selected-PR read.
 The catalog and visible-row description preparation continue to use their existing
 lightweight projections.
 Timeline reads request no patches or Git objects.
 
 Use an ordinary, validated commit link.
-The PR-scoped GitHub commit address works for a fork or a commit absent from the local
-object store. Reuse Metabrowser’s `/commit/<oid>` when the active Git source can open
-that object safely. Do not probe each object while drawing the timeline.
-A local miss must offer the GitHub link.
-An existing checkout stays read-only, including a partial checkout that might otherwise
-lazily fetch Git objects during a detail or diff read.
+The PR-scoped GitHub commit address covers forks and commits absent locally while GitHub
+still serves the object.
+Use Metabrowser’s `/commit/<oid>` when the active Git source can open that exact object
+safely, with a GitHub link available if the object disappears.
+Avoid per-object probes while drawing the timeline.
+The local path must avoid both mirror acquisition and lazy object fetches in an existing
+partial checkout, through commit detail and diff hydration.
 
 Before choosing page and cache bounds, measure projected bytes, provider processes,
 description paint, and full Conversation paint on public PRs with a short and a long
@@ -112,10 +119,15 @@ without delaying either readiness marker.
 If it does not, publish timeline rows independently after the useful Conversation is
 visible. Compare the same subjects with and without the projection, with cold and held
 caches. Keep the visible-row request shape unchanged.
-Reuse the browserless Pull page session for ordering, partial and failed reads, account
-and head changes, and exact commit links.
-Use the built-in browser to check a URL-backed repository and an existing checkout,
-including a missing or fork commit.
+Reuse the browserless Pull page session for ordering, 64-bit discussion IDs, pending
+reviews, duplicate events, partial and failed reads, and an in-flight result overtaken
+by a discussion refresh.
+Include an older cached record and one near the text budget.
+Use a timeline longer than the chosen page size to hold a later page, bound requests and
+bytes, and check cancellation when the reader moves to another PR. Use the built-in
+browser to check both source modes, including a fork or missing commit and a partial
+checkout. Check exact commit addresses for ordinary and modified clicks and observe that
+local navigation issues no acquisition or refresh requests.
 
 ## Main Tab Destinations and Progress
 

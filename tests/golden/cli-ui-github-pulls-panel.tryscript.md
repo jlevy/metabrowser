@@ -268,16 +268,17 @@ $ node tests/dom/github-pulls-panel-session.js
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5201",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5101"
       ],
-      "timer": "slow",
+      "timer": "fast",
       "painted": 6,
       "paint": {
         "filter": "closed",
         "status": "current",
-        "listName": "Pull requests of octo/demo: 1,000 pull requests",
+        "listName": "Pull requests of octo/demo: 6,000 pull requests",
         "summary": "6,000 PRs on octo/demo",
-        "progress": "Catalog paused",
-        "freshness": "PRs fetched just now by octo-reader",
-        "live": "Pull requests of octo/demo: 1,000 pull requests",
+        "window": "Showing last 1,000",
+        "fetching": "Fetching pull requests…",
+        "loadMore": "ready",
+        "live": "Fetching pull requests…",
         "rowsHeld": 1000,
         "rows": [
           "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
