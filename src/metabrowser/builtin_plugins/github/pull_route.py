@@ -34,6 +34,7 @@ store to a checkout's pull records.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -59,6 +60,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     read_pull_record,
 )
 from metabrowser.builtin_plugins.github.served_pull import (
+    PullCorePreview,
     PullRefreshOutcome,
     ServedPull,
     ServedPulls,
@@ -78,7 +80,7 @@ from metabrowser.source import RepositorySubject
 from metabrowser.view_routes import parse_pull_number
 
 PULL_ROUTE: Final = "/api/plugin/github/pull"
-_REFRESH_FIELDS: Final = frozenset({"number", "retry", "comparison", "recovery"})
+_REFRESH_FIELDS: Final = frozenset({"number", "retry", "comparison", "recovery", "wait_core"})
 NUMBER_REQUIRED: Final = '"number" is a pull-request number'
 
 type PullState = Literal["absent", "pending", "current", "stale"]
@@ -106,6 +108,7 @@ class PullEnvelope(TypedDict):
     last_refresh: PullRefreshOutcome | None
     comparison_route: str | None
     record: dict[str, Any] | None
+    core_preview: PullCorePreview | None
 
 
 def _parse_stamp(stamp: str) -> datetime:
@@ -273,19 +276,22 @@ class PullView:
     pin_ref: str | None
     refreshing: bool
     kept: ServedPull | None
+    core_preview: PullCorePreview | None = None
 
 
 def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) -> PullView:
     """Pull request *number*'s in-memory state. Reads nothing, so a read adds nothing."""
 
     revision = subject if isinstance(subject, GitRevisionSubject) else None
+    kept = None if host is None else host.pulls.held(number)
     return PullView(
         number=number,
         host=host,
         pin=None if revision is None else revision.commit_oid,
         pin_ref=None if revision is None else revision.ref,
         refreshing=host is not None and host.running(number),
-        kept=None if host is None else host.pulls.held(number),
+        kept=kept,
+        core_preview=None if kept is None else kept.core_preview,
     )
 
 
@@ -308,6 +314,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
             last_refresh=None,
             comparison_route=None,
             record=None,
+            core_preview=None,
         )
     served = host.pulls
     record, dumped, revision = cached_pull_record(served.home, served.slug, view.number)
@@ -338,6 +345,9 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         last_refresh=view.kept.last if view.kept is not None else served.last_refresh(view.number),
         comparison_route=route,
         record=dumped if isinstance(record, PullRecord) else None,
+        core_preview=view.core_preview
+        if not isinstance(record, PullRecord) and view.refreshing
+        else None,
     )
 
 
@@ -359,7 +369,13 @@ def envelope_etag(envelope: PullEnvelope, stamp: tuple[int, int, int] | None) ->
     request no longer matches, and is sent again rather than taken as unchanged.
     """
 
-    fields: dict[str, Any] = {name: value for name, value in envelope.items() if name != "record"}
+    fields: dict[str, Any] = {
+        name: value for name, value in envelope.items() if name not in {"record", "core_preview"}
+    }
+    preview = envelope["core_preview"]
+    fields["core_preview"] = (
+        None if preview is None else (preview["revision"], preview["observed_at"])
+    )
     fields["record_stamp"] = list(stamp) if stamp is not None else None
     digest = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
     return build_scoped_etag(f"pull-{digest[:32]}")
@@ -382,6 +398,7 @@ class RefreshRequest:
     retry: bool
     comparison: bool = False
     recovery: tuple[str, str] | None = None
+    wait_core: bool = False
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
@@ -389,7 +406,7 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
 
     if set(body) - _REFRESH_FIELDS:
         raise PullRequestError(
-            'a refresh request names only "number", "retry", "comparison", and "recovery"'
+            'a refresh request names only "number", "retry", "comparison", "recovery", and "wait_core"'
         )
     number = body.get("number")
     if (
@@ -425,7 +442,12 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
         ):
             raise PullRequestError('"recovery" requires two full commit IDs')
         pair = (base, head)
-    return RefreshRequest(number, retry, comparison, pair)
+    wait_core = body.get("wait_core", False)
+    if not isinstance(wait_core, bool) or (
+        wait_core and (not retry or comparison or pair is not None)
+    ):
+        raise PullRequestError('"wait_core" is true or false and requires only "retry": true')
+    return RefreshRequest(number, retry, comparison, pair, wait_core)
 
 
 async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart:
@@ -444,6 +466,14 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
             raise PullRequestError("this pull request did not issue the requested comparison")
         if not served.request_recovery(ask.recovery):
             return "too_many"
+        if ask.wait_core:
+            cached, _dumped, _revision = await asyncio.to_thread(
+                cached_pull_record, host.pulls.home, host.pulls.slug, ask.number
+            )
+            if isinstance(cached, PullRecord):
+                served.saw_record(cached.fetched_at, without_store=written_without_store(cached))
+            else:
+                served.request_core_preview()
     if ask.comparison and host.start_comparison is not None:
         return host.start_comparison(ask.number)
     if host.running(ask.number):

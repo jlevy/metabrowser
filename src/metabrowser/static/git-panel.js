@@ -1660,7 +1660,14 @@
     // the history compete with the commit the reader actually selected.
     hoverTimer = setTimeout(async () => {
       hoverTimer = null;
-      const preparation = prepareRevision(revision, true);
+      // Hover still reads detail for the tooltip, but the current selection
+      // already owns this comparison. Another preview owner invalidates the
+      // claim, so returning to the same row can prepare it again.
+      const selectedHere =
+        state.selectedId === revision &&
+        lastSelection?.revision === revision &&
+        shell()?.isPreviewClaimCurrent(lastSelection.claim);
+      const preparation = selectedHere ? null : prepareRevision(revision, true);
       const detail = await (preparation?.detail ?? fetchCommitDetail(revision));
       if (!detail) {
         return;
@@ -1701,6 +1708,15 @@
       shell()?.endPreviewNavigation(pendingPreviewClaim);
       pendingPreviewClaim = null;
     }
+  }
+
+  /** Stop work relinquished to another preview owner, retaining the useful DOM and history. */
+  function cancelPending() {
+    clearPendingState();
+    cancelHover();
+    abortPreparation(preparationSlot);
+    preparationSlot = null;
+    commitDiffHandle?.cancelPending?.();
   }
 
   /** @returns {Promise<void>} */
@@ -1875,6 +1891,8 @@
     let selectionClaim = null;
     /** @type {HTMLElement | null} */
     let selectedRowForAnchor = null;
+    /** @type {RevisionPreparation | null} */
+    let selectedPreparation = null;
     return measureAsync(
       "gitRevision:selectToReady",
       async () => {
@@ -1961,6 +1979,7 @@
         }
 
         const preparation = prepareRevision(revision, false);
+        selectedPreparation = preparation;
         if (!preparation) {
           clearPendingState();
           return;
@@ -2033,7 +2052,7 @@
       if (selectionClaim !== null && pendingPreviewClaim === selectionClaim) {
         clearPendingState();
       }
-      if (preparationSlot?.revision === revision && !preparationSlot.speculative) {
+      if (preparationSlot === selectedPreparation && !preparationSlot?.speculative) {
         preparationSlot = null;
       }
     });
@@ -2095,21 +2114,32 @@
     const diffPreparation = preparation ?? {
       ...beginDiffPreparation(commit.id, null),
     };
-    const nextHandle = await mountCommitDiff(stage, commit.id, diffPreparation);
-    if (state.selectedId !== commit.id || !bridge.isPreviewClaimCurrent(previewClaim)) {
-      nextHandle?.dispose?.();
+    // Keep the previous view visible while the diff measures a connected,
+    // inert stage. A detached mount has no viewport geometry and draws every
+    // hydrated file when its first width arrives.
+    const unstage = bridge.stagePreviewNode(stage, previewClaim);
+    if (!unstage) {
       return;
     }
+    try {
+      const nextHandle = await mountCommitDiff(stage, commit.id, diffPreparation, previewClaim);
+      if (state.selectedId !== commit.id || !bridge.isPreviewClaimCurrent(previewClaim)) {
+        nextHandle?.dispose?.();
+        return;
+      }
 
-    wireCommitFileNavigation(stage);
-    const preview = bridge.renderPreviewNode(stage, previewClaim);
-    if (!preview) {
-      nextHandle?.dispose?.();
-      return;
+      wireCommitFileNavigation(stage);
+      const preview = bridge.renderPreviewNode(stage, previewClaim);
+      if (!preview) {
+        nextHandle?.dispose?.();
+        return;
+      }
+      const previousHandle = commitDiffHandle;
+      commitDiffHandle = nextHandle || null;
+      previousHandle?.dispose?.();
+    } finally {
+      unstage();
     }
-    const previousHandle = commitDiffHandle;
-    commitDiffHandle = nextHandle || null;
-    previousHandle?.dispose?.();
   }
 
   /** @param {HTMLElement} root */
@@ -2133,9 +2163,10 @@
    * @param {HTMLElement} preview
    * @param {string} revision
    * @param {{assets: Promise<void>, comparison?: Promise<unknown>}} preparation
+   * @param {MetabrowserPreviewClaim} claim
    * @returns {Promise<{cancelPending?: () => void, dispose?: () => void} | null>}
    */
-  async function mountCommitDiff(preview, revision, preparation) {
+  async function mountCommitDiff(preview, revision, preparation, claim) {
     const host = preview.querySelector(".git-commit-diff");
     const bridge = shell();
     if (!(host instanceof HTMLElement) || !bridge) {
@@ -2146,8 +2177,15 @@
       host.remove();
       return null;
     }
+    // Another owner removes the staged node immediately. Never invoke the
+    // renderer on that detached tree when its earlier preparation resolves.
+    const current = () =>
+      state.selectedId === revision && bridge.isPreviewClaimCurrent(claim) && host.isConnected;
     try {
       await preparation.assets;
+      if (!current()) {
+        return null;
+      }
       const view = pluginSdk.getRegisteredView("diff", "diff");
       if (!view) {
         // The diff plugin is absent: the file list above still stands on
@@ -2155,12 +2193,17 @@
         host.remove();
         return null;
       }
-      return measureAsync(
+      return await measureAsync(
         "gitRevision:diffMount",
-        async () =>
-          /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */ (
-            await view.render(host, { revision, raw: preparation.comparison })
-          ),
+        async () => {
+          const raw = await preparation.comparison;
+          if (!current()) {
+            return null;
+          }
+          return /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */ (
+            await view.render(host, { revision, raw })
+          );
+        },
         { revision },
       );
     } catch (_error) {
@@ -2568,6 +2611,7 @@
 
   window.MetabrowserGitPanel = Object.freeze({
     init,
+    cancelPending,
     // Exposed for tests, which drive the panel without a network.
     _internals: {
       appendPage,

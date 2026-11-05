@@ -1079,6 +1079,89 @@ async function findDeferredRevision(session, timeoutMs) {
   );
 }
 
+/** Capture the exact trusted target click, after driver-owned point resolution. */
+async function dispatchTrustedGitSelection(session, rowIndex, priorRevision, targetRevision) {
+  const point = await pointForSelector(session, ".git-graph-row", rowIndex);
+  if (!point) {
+    throw new Error(`could not click .git-graph-row[${rowIndex}]`);
+  }
+  await evaluate(
+    session,
+    `(() => {
+    if (window.__metabrowserDeferredSelection) throw new Error("selection boundary already armed");
+    const marker = { result: null, listener: null };
+    marker.listener = event => {
+      const row = event.target instanceof Element ? event.target.closest(".git-graph-row") : null;
+      if (!row) return;
+      marker.result = {
+        trusted: event.isTrusted,
+        target_revision: row.dataset.revision || "",
+        prior_selected_revision: document.querySelector(".git-graph-row.selected")?.dataset.revision || "",
+        prior_rendered_revision: document.querySelector(".git-commit-view")?.dataset.revision || "",
+        epoch_ms: Date.now(),
+        performance_ms: performance.now(),
+        completed_fetches: window.metabrowser.perf.snapshot().fetch_samples_seen
+      };
+      window.removeEventListener("click", marker.listener, true);
+    };
+    window.__metabrowserDeferredSelection = marker;
+    window.addEventListener("click", marker.listener, true);
+  })()`,
+  );
+  let boundary;
+  try {
+    await dispatchTrustedClickAtPoint(session, point);
+  } finally {
+    boundary = await evaluate(
+      session,
+      `(() => {
+      const marker = window.__metabrowserDeferredSelection;
+      if (!marker) return null;
+      window.removeEventListener("click", marker.listener, true);
+      delete window.__metabrowserDeferredSelection;
+      return marker.result;
+    })()`,
+    );
+  }
+  if (
+    boundary?.trusted !== true ||
+    boundary.target_revision !== targetRevision ||
+    boundary.prior_selected_revision !== priorRevision ||
+    boundary.prior_rendered_revision !== priorRevision ||
+    !Number.isSafeInteger(boundary.completed_fetches) ||
+    boundary.completed_fetches < 0
+  ) {
+    throw new Error("trusted Git selection boundary did not match the prior and target revisions");
+  }
+  return boundary;
+}
+
+/**
+ * Recorder completion order, rather than a pre-input wall clock, owns this cut.
+ * perf.js increments fetch_samples_seen and appends raw_fetch in the same callback.
+ * Refuse a reset or loss of any post-selection sample rather than infer a good zero.
+ */
+function fetchesAfterGitSelection(snapshot, boundary) {
+  const completed = snapshot.fetch_samples_seen;
+  const before = boundary.completed_fetches;
+  if (
+    !Number.isSafeInteger(completed) ||
+    !Number.isSafeInteger(before) ||
+    before < 0 ||
+    completed < before ||
+    !Array.isArray(snapshot.raw_fetch) ||
+    snapshot.fetch_samples_retained !== snapshot.raw_fetch.length ||
+    completed < snapshot.raw_fetch.length
+  ) {
+    throw new Error("fetch recorder reset or invalid selection completion boundary");
+  }
+  const after = completed - before;
+  if (after > snapshot.raw_fetch.length) {
+    throw new Error("fetch recorder lost post-selection completion samples");
+  }
+  return snapshot.raw_fetch.slice(snapshot.raw_fetch.length - after);
+}
+
 async function runDeferredHydrationScenario(session, timeoutMs) {
   const candidate = await findDeferredRevision(session, timeoutMs);
   await waitForClientQuiescence(session, timeoutMs);
@@ -1105,12 +1188,17 @@ async function runDeferredHydrationScenario(session, timeoutMs) {
   if (!target?.revision) {
     throw new Error("Git deferred hydration scenario has no adjacent target revision");
   }
-  const selectedAt = await evaluate(session, `Date.now()`);
-  await dispatchTrustedClickForSelector(session, ".git-graph-row", targetIndex);
+  const selectionBoundary = await dispatchTrustedGitSelection(
+    session,
+    targetIndex,
+    candidate.revision,
+    target.revision,
+  );
   await waitForGitRevision(session, target.revision, timeoutMs);
   await waitForClientQuiescence(session, timeoutMs);
 
   const snapshot = await evaluate(session, `window.metabrowser.perf.snapshot()`);
+  const afterSelection = new Set(fetchesAfterGitSelection(snapshot, selectionBoundary));
   const candidateFileFetches = snapshot.raw_fetch.filter((sample) => {
     const url = new URL(sample.url, "http://localhost");
     return (
@@ -1132,12 +1220,13 @@ async function runDeferredHydrationScenario(session, timeoutMs) {
     candidate_revision: candidate.revision,
     target_revision: target.revision,
     pending_files: candidate.pendingFiles,
+    selection_boundary: selectionBoundary,
     max_deferred_fetches_in_flight:
       snapshot.fetches_in_flight_max_by_key["/api/plugin/diff/comparison?file"] || 0,
     max_application_fetches_in_flight: snapshot.fetches_in_flight_max,
     fetch_concurrency_keys_overflowed: snapshot.fetch_concurrency_keys_overflowed,
     obsolete_successes: candidateFileFetches.filter(
-      (sample) => sample.ts >= selectedAt && sample.status >= 200,
+      (sample) => afterSelection.has(sample) && sample.status >= 200,
     ).length,
     aborted_requests: candidateFileFetches.filter((sample) => sample.aborted).length,
     mounted_comparisons: convergence.mounts,
@@ -2278,6 +2367,8 @@ module.exports = {
   chromeExecutable,
   dispatchTrustedClickAtPoint,
   dispatchTrustedClickForSelector,
+  dispatchTrustedGitSelection,
+  fetchesAfterGitSelection,
   parseArgs,
   runFileViewScenario,
   runGitFilesRoundTrip,

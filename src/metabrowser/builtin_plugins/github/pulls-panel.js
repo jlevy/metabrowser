@@ -2628,6 +2628,8 @@ export function followLanding(deps) {
  * @param {MetabrowserPublicSdk} mb
  */
 export function mountPullsLanding(container, _ctx, mb) {
+  // The wrapper contains a neutral instruction, not content to retain on selection.
+  container.setAttribute("data-preview-empty", "");
   const said = h("div", { class: "preview-empty" });
   container.replaceChildren(said);
   const landing = followLanding({

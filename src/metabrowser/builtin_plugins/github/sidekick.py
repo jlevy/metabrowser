@@ -106,6 +106,8 @@ async def pull_handler(request: Request) -> Response:
     view = pull_view(pull_host(request.app), get_source_session().subject, number)
     stamp = await asyncio.to_thread(record_stamp, view)
     envelope = await asyncio.to_thread(pull_envelope, view)
+    if view.kept is None or view.kept.core_preview is not envelope["core_preview"]:
+        envelope["core_preview"] = None
     if view.kept is not None:
         view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
     comparison = (envelope.get("record") or {}).get("comparison")
@@ -302,9 +304,15 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
         started = await start_refresh(host, ask)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
+    if ask.wait_core and started in {"started", "joined"}:
+        served = host.pulls.held(ask.number)
+        if served is not None:
+            await served.wait_for_core()
     # Read after the start, on the loop: a job is running, whatever it does next.
     view = pull_view(host, get_source_session().subject, ask.number)
     envelope = await asyncio.to_thread(pull_envelope, view)
+    if view.kept is None or view.kept.core_preview is not envelope["core_preview"]:
+        envelope["core_preview"] = None
     if view.kept is not None:
         view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
     # ``status_route`` is where a one-shot ``--api`` reads how the refresh ended.

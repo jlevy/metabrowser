@@ -580,3 +580,18 @@ def test_pending_file_selection_belongs_to_one_files_visit() -> None:
         "unavailableRetainsSelection": True,
         "replacementRetainsSelection": True,
     }
+
+
+def test_selected_core_preview_waits_for_description_and_keeps_parts_pending() -> None:
+    """A cold selected page retains prior content until its honest core is ready."""
+
+    assert run_session("github-pull-core-preview-behavior.js") == {
+        "description": "plain preview before full conversation",
+        "pendingParts": ["discussion", "checks"],
+        "waitCorePost": {"number": 7, "retry": True, "wait_core": True},
+        "previewMarkdownRequests": 0,
+        "fullMarkdownRequests": 1,
+        "fullRecordWins": True,
+        "crossOwnerRetirement": True,
+        "stagedReplacement": "A retained through B cancellation until C commits",
+    }

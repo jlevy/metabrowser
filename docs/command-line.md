@@ -491,7 +491,14 @@ git -C <location> show <pin>:README.md
 fresh beside the mirror: a stale one is refreshed when serving starts and when a stale
 page becomes visible, and `POST /api/plugin/github/pull-refresh` (a JSON object body
 naming `number`) refreshes it on request and returns at once, with `pending` while no
-record exists yet. A newer head is offered as the source’s `latest` rather than switched
+record exists yet. A selected missing record may request `"wait_core": true` alongside
+`"retry": true`, without `comparison` or `recovery`. Its HTTP response waits up to two
+seconds for an account-verified `core_preview` containing the header and description.
+Discussion, checks, and comparison remain unfinished; `record`, `record_revision`, and
+`fetched_at` remain null until the full record is published.
+A later cache-only GET exposes the preview too.
+The wait does not limit or cancel the refresh job, and an existing full record always
+takes precedence. A newer head is offered as the source’s `latest` rather than switched
 to. The server pins that pull request’s head on the port its `Serving` line reports, and
 opens any other of the repository’s at `/pull/<n>` without moving the pin; several run
 side by side from one cache, one process for each.

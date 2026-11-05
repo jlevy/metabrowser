@@ -13,6 +13,7 @@
 // Only the DOM, the network, the renderer, and unrelated shell services are
 // doubles. Nothing here restates a decision the production code makes.
 
+const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
@@ -339,6 +340,9 @@ const SHELL_FUNCTIONS = [
   "previewPlaceholderHtml",
   "beginPreviewNavigation",
   "endPreviewNavigation",
+  "finishRetainedPullPage",
+  "stagePreviewNode",
+  "createFilePreviewStage",
   "activateNavPanel",
   "fileSelectionFailureOutcome",
   "beginViewCompositionLoad",
@@ -370,6 +374,7 @@ const shellSource = [
   // The host is created on demand, when an address under /pull/ is opened; none of
   // these states opens one, so the pane's claim finds no page to dispose.
   appDeclaration(/^var pullPageHost = null;$/m, "pull-request page host"),
+  appDeclaration(/^var retainedPullPageDispose = null;$/m, "retained pull-request finalizer"),
   appDeclaration(/^var pluginViewLifecycle = null;$/m, "plugin view lifecycle"),
   appDeclaration(/^var navigationController = [\s\S]*?^\}\);$/m, "navigation controller"),
   ...SHELL_FUNCTIONS.map((name) =>
@@ -392,12 +397,15 @@ function fakeElement(fields = {}) {
     },
     dataset: {},
     get firstElementChild() {
-      const match = /^<[a-z]+(?: class="([^"]*)")?/.exec(this.innerHTML);
+      const match = /^<[a-z]+(?: class="([^"]*)")?[^>]*>/.exec(this.innerHTML);
       if (!match) {
         return null;
       }
       const names = new Set((match[1] || "").split(/\s+/).filter(Boolean));
-      return { classList: { contains: (name) => names.has(name) } };
+      return {
+        classList: { contains: (name) => names.has(name) },
+        hasAttribute: (name) => match[0].includes(` ${name}=`),
+      };
     },
     getAttribute: (name) => (attributes.has(name) ? attributes.get(name) : null),
     hasAttribute: (name) => attributes.has(name),
@@ -1156,6 +1164,22 @@ async function onDemandCodeRefused() {
 }
 
 async function shell() {
+  const pulls = createShell("/pulls", refusedFetch);
+  const preview = pulls.sandbox.document.getElementById("preview-pane");
+  preview.innerHTML =
+    '<div class="content-body pull-request-list-host" data-preview-empty="">' +
+    '<div class="preview-empty">Select a pull request.</div></div>';
+  const claim = pulls.sandbox.claimPreview("pull-request", "294");
+  assert.equal(
+    pulls.sandbox.beginPreviewNavigation(claim),
+    false,
+    "the neutral list host cannot hide initial PR loading blocks",
+  );
+  assert.equal(preview.getAttribute("aria-busy"), null);
+  preview.innerHTML = '<article class="github-pull">A useful previous pull request</article>';
+  assert.equal(pulls.sandbox.beginPreviewNavigation(claim), true);
+  assert.equal(preview.getAttribute("aria-busy"), "true");
+
   const shipped = createShell("/view/", refusedFetch);
   return {
     shippedPlaceholderHtml: shipped.sandbox.previewPlaceholderHtml(

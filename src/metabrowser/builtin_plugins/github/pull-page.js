@@ -180,6 +180,8 @@ const TRUNCATED = Object.freeze({
  *   last_refresh: {outcome: string, message: string | null, reset_at: string | null, at: string} | null,
  *   comparison_route: string | null,
  *   record: Record<string, any> | null,
+ *   core_preview: {source: string, number: number, reader: string, observed_at: string,
+ *     revision: string, pull: Record<string, any>, comparison_state: "pending" | "no_store"} | null,
  * }} PullEnvelope
  */
 
@@ -238,6 +240,8 @@ const TRUNCATED = Object.freeze({
  *   tab: string,
  *   status: "loading" | "absent" | "pending" | "current" | "stale" | "unavailable",
  *   recordRevision: string | null,
+ *   corePreview: boolean,
+ *   contentReady: boolean,
  *   message: string | null,
  *   refreshing: boolean,
  *   canRefresh: boolean,
@@ -669,13 +673,58 @@ export function filesUnavailableText(why) {
   return "Files changed is unavailable: the pull request's base could not be compared with its head.";
 }
 
+/** Header and description fields shared by a full record and a validated core preview.
+ * @param {Record<string, any>} pull
+ * @returns {NonNullable<PullModel["pull"]>}
+ */
+function describeCore(pull) {
+  const crossRepository = pull.head?.repository !== pull.base?.repository;
+  const state = displayState(pull);
+  const merge = state === "open" || state === "draft" ? text(pull.mergeable) || "unknown" : null;
+  const commits = typeof pull.commits === "number" ? pull.commits : null;
+  const count = commits === null ? "" : ` ${commits} commit${commits === 1 ? "" : "s"}`;
+  return {
+    title: text(pull.title),
+    number: pull.number,
+    state,
+    stateLabel: state[0].toUpperCase() + state.slice(1),
+    author: who(pull.author),
+    avatar: avatarUrl(pull.author_avatar_url),
+    actorAvatar: avatarUrl(state === "merged" ? pull.merged_by_avatar_url : pull.author_avatar_url),
+    baseRef: text(pull.base?.ref),
+    headRef: text(pull.head?.ref),
+    // github.com's words: "<merger> merged 6 commits into <base> from <head>", and for
+    // an open, draft, or closed pull request "<author> wants to merge 1 commit into".
+    // An account GitHub deleted is its "ghost"; a record that names no merger at all
+    // says only "merged 6 commits into", rather than crediting anyone.
+    actor:
+      state !== "merged"
+        ? who(pull.author)
+        : typeof pull.merged_by === "string" && pull.merged_by
+          ? pull.merged_by
+          : null,
+    action: `${state === "merged" ? "merged" : "wants to merge"}${count} into`,
+    base: sideName(pull.base, crossRepository),
+    head: sideName(pull.head, crossRepository),
+    htmlUrl: text(pull.html_url),
+    created: text(pull.created_at),
+    updated: text(pull.updated_at),
+    closed: state === "merged" ? pull.merged_at : state === "closed" ? pull.closed_at : null,
+    closedLabel: state === "merged" ? "merged" : state === "closed" ? "closed" : null,
+    labels: list(pull.labels).map(text),
+    merge: merge === null ? null : { state: merge, label: MERGEABLE[merge] ?? MERGEABLE.unknown },
+    text: text(pull.body),
+    truncated: pull.body_truncated === true,
+  };
+}
+
 /**
  * What the page shows for one answer of the pull route. Pure.
  *
  * @param {PullEnvelope | null} envelope
  * *checkoutHead* is the served checkout's `HEAD`, on a folder, which has no pin.
  *
- * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, checkoutHead?: string | null}} page
+ * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, waitForReader?: boolean, checkoutHead?: string | null}} page
  * @returns {PullModel}
  */
 export function describePull(envelope, page) {
@@ -685,6 +734,8 @@ export function describePull(envelope, page) {
     tab: page.tab,
     status: "unavailable",
     recordRevision: null,
+    corePreview: false,
+    contentReady: Boolean(page.error),
     message: page.error ?? null,
     refreshing: false,
     canRefresh: false,
@@ -722,11 +773,28 @@ export function describePull(envelope, page) {
     }
   }
   const record = envelope.record;
-  if (envelope.state === "absent" || envelope.state === "pending" || record === null) {
+  if (record === null && envelope.core_preview !== null) {
+    const preview = envelope.core_preview;
+    model.pull = describeCore(preview.pull);
+    model.corePreview = true;
+    model.contentReady = true;
+    model.message = page.error ?? null;
+    model.freshness = `Description fetched ${relativeAge(preview.observed_at, page.nowMs)} by ${preview.reader.replace(/^gh:/, "")} · discussion and checks loading`;
+    model.filesUnavailable =
+      preview.comparison_state === "pending"
+        ? "Files changed is still being prepared."
+        : "Files changed has not been fetched. The description is available while the remaining pull-request details load.";
+    return model;
+  }
+  if (record === null) {
     const fetching = envelope.state === "pending" || page.fetching === true;
+    if (fetching) {
+      model.status = "pending";
+    }
     model.message = fetching
       ? "Fetching the pull request…"
       : (page.error ?? ABSENCE[envelope.reason ?? ""] ?? ABSENCE.not_cached);
+    model.contentReady = Boolean(page.error) || (!fetching && !page.waitForReader);
     model.canRefresh =
       !fetching &&
       envelope.state === "absent" &&
@@ -735,6 +803,7 @@ export function describePull(envelope, page) {
     return model;
   }
   model.recordRevision = envelope.record_revision;
+  model.contentReady = true;
   model.message = page.error ?? null;
   model.canRefresh =
     !envelope.refreshing &&
@@ -752,44 +821,7 @@ export function describePull(envelope, page) {
     ? `Refreshing… · fetched ${age} by ${reader}`
     : `Fetched ${age} by ${reader}${envelope.state === "stale" ? " · may be out of date" : ""}`;
   const pull = record.pull ?? {};
-  const crossRepository = pull.head?.repository !== pull.base?.repository;
-  const state = displayState(pull);
-  const merge = state === "open" || state === "draft" ? text(pull.mergeable) || "unknown" : null;
-  const commits = typeof pull.commits === "number" ? pull.commits : null;
-  const count = commits === null ? "" : ` ${commits} commit${commits === 1 ? "" : "s"}`;
-  model.pull = {
-    title: text(pull.title),
-    number: pull.number,
-    state,
-    stateLabel: state[0].toUpperCase() + state.slice(1),
-    author: who(pull.author),
-    avatar: avatarUrl(pull.author_avatar_url),
-    actorAvatar: avatarUrl(state === "merged" ? pull.merged_by_avatar_url : pull.author_avatar_url),
-    baseRef: text(pull.base?.ref),
-    headRef: text(pull.head?.ref),
-    // github.com's words: "<merger> merged 6 commits into <base> from <head>", and for
-    // an open, draft, or closed pull request "<author> wants to merge 1 commit into".
-    // An account GitHub deleted is its "ghost"; a record that names no merger at all
-    // says only "merged 6 commits into", rather than crediting anyone.
-    actor:
-      state !== "merged"
-        ? who(pull.author)
-        : typeof pull.merged_by === "string" && pull.merged_by
-          ? pull.merged_by
-          : null,
-    action: `${state === "merged" ? "merged" : "wants to merge"}${count} into`,
-    base: sideName(pull.base, crossRepository),
-    head: sideName(pull.head, crossRepository),
-    htmlUrl: text(pull.html_url),
-    created: text(pull.created_at),
-    updated: text(pull.updated_at),
-    closed: state === "merged" ? pull.merged_at : state === "closed" ? pull.closed_at : null,
-    closedLabel: state === "merged" ? "merged" : state === "closed" ? "closed" : null,
-    labels: list(pull.labels).map(text),
-    merge: merge === null ? null : { state: merge, label: MERGEABLE[merge] ?? MERGEABLE.unknown },
-    text: text(pull.body),
-    truncated: pull.body_truncated === true,
-  };
+  model.pull = describeCore(pull);
   model.timeline = timeline(record);
   model.reviewComments = reviewComments(record);
   model.checks = checks(record);
@@ -852,6 +884,27 @@ function pinChanged(response) {
   return response.status === 409 && body?.code === "pin_changed";
 }
 
+/** @param {unknown} value @param {Record<string, unknown>} envelope */
+function isCorePreview(value, envelope) {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  const preview = /** @type {Record<string, any>} */ (value);
+  return (
+    preview.source === envelope.source &&
+    preview.number === envelope.number &&
+    typeof preview.reader === "string" &&
+    preview.reader.startsWith("gh:") &&
+    typeof preview.observed_at === "string" &&
+    typeof preview.revision === "string" &&
+    /^[a-f0-9]{64}$/.test(preview.revision) &&
+    preview.pull !== null &&
+    typeof preview.pull === "object" &&
+    preview.pull.number === envelope.number &&
+    (preview.comparison_state === "pending" || preview.comparison_state === "no_store")
+  );
+}
+
 /**
  * @param {unknown} value
  * @returns {value is PullEnvelope}
@@ -867,6 +920,7 @@ function isEnvelope(value) {
     Number.isInteger(envelope.number) &&
     Number(envelope.number) > 0 &&
     (envelope.record === null || typeof envelope.record === "object") &&
+    (envelope.core_preview === null || isCorePreview(envelope.core_preview, envelope)) &&
     (envelope.record === null
       ? envelope.record_revision === null
       : typeof envelope.record_revision === "string" &&
@@ -945,10 +999,16 @@ export function createPullController(deps, options) {
       tab,
       nowMs: deps.now(),
       error,
-      fetching,
+      fetching: fetching || refreshPending,
+      waitForReader: reader !== null && !readerAsked && envelope?.reason !== "not_github",
       checkoutHead: options.checkoutHead ?? null,
     });
     if (refreshPending) {
+      // The selected refresh has not acknowledged a core yet. Its POST being in flight
+      // must not turn the still-absent envelope into a ready replacement surface.
+      if (!next.pull) {
+        next.contentReady = false;
+      }
       next.refreshing = true;
       next.canRefresh = false;
       next.canFetchComparison = false;
@@ -958,10 +1018,11 @@ export function createPullController(deps, options) {
 
   function render() {
     const next = model();
-    const identity = envelope?.record
+    const owner = envelope?.record ?? envelope?.core_preview;
+    const identity = owner
       ? {
-          source: typeof envelope.record.source === "string" ? envelope.record.source : null,
-          reader: typeof envelope.record.reader === "string" ? envelope.record.reader : null,
+          source: typeof owner.source === "string" ? owner.source : null,
+          reader: typeof owner.reader === "string" ? owner.reader : null,
         }
       : null;
     const key = JSON.stringify([next, identity]);
@@ -1003,7 +1064,8 @@ export function createPullController(deps, options) {
     }, delayMs);
   }
 
-  function scheduleNext() {
+  /** @param {number | null} [fastSince] */
+  function scheduleNext(fastSince = null) {
     clearTimer();
     if (disposed || !deps.isVisible()) {
       return;
@@ -1014,7 +1076,11 @@ export function createPullController(deps, options) {
         timer = null;
         void poll();
       },
-      fast ? FAST_POLL_MS : SLOW_POLL_MS,
+      fast
+        ? fastSince === null
+          ? FAST_POLL_MS
+          : FAST_POLL_MS - (Math.max(0, deps.now() - fastSince) % FAST_POLL_MS)
+        : SLOW_POLL_MS,
     );
   }
 
@@ -1030,7 +1096,7 @@ export function createPullController(deps, options) {
    * @returns {boolean} Whether the page now shows it.
    */
   function accept(next, request) {
-    if (request < shownRequest) {
+    if (next.number !== options.number || request < shownRequest) {
       return false;
     }
     shownRequest = request;
@@ -1115,7 +1181,7 @@ export function createPullController(deps, options) {
     render();
     askAfter(() => {
       fetching = false;
-      void askForRefresh({ number: options.number, retry: true });
+      void askForRefresh({ number: options.number, retry: true, wait_core: true });
     }, reader.fetchAfterMs);
   }
 
@@ -1124,7 +1190,7 @@ export function createPullController(deps, options) {
    * page's own request says nothing to the reader, whose page still shows what it did and
    * still offers Refresh.
    *
-   * @param {{number: number, retry?: boolean, comparison?: boolean, recovery?: {base: string, head: string}}} ask
+   * @param {{number: number, retry?: boolean, wait_core?: boolean, comparison?: boolean, recovery?: {base: string, head: string}}} ask
    */
   async function askForRefresh(ask) {
     if (ask.retry) {
@@ -1133,6 +1199,8 @@ export function createPullController(deps, options) {
     }
     cancelAsk();
     const request = ++sent;
+    // A bounded core wait must not shift the first ordinary poll by its response time.
+    const fastSince = ask.wait_core === true ? deps.now() : null;
     try {
       const response = await deps.request("POST", REFRESH_ROUTE, { body: ask });
       const body = /** @type {{pull?: unknown, error?: unknown} | null} */ (response.body);
@@ -1161,7 +1229,7 @@ export function createPullController(deps, options) {
     }
     if (!disposed) {
       render();
-      scheduleNext();
+      scheduleNext(fastSince);
     }
   }
 
@@ -1175,7 +1243,11 @@ export function createPullController(deps, options) {
       await askForRefresh({
         number: options.number,
         retry: true,
-        ...(recovery === undefined ? {} : { recovery }),
+        ...(recovery === undefined
+          ? envelope?.record === null
+            ? { wait_core: true }
+            : {}
+          : { recovery }),
       });
     }
   }
@@ -1656,6 +1728,7 @@ export function filesAction(mounted, comparison) {
 export function conversationKey(model) {
   return JSON.stringify([
     model.pull,
+    model.corePreview,
     model.timeline,
     model.reviewComments,
     model.checks,
@@ -1861,6 +1934,11 @@ export function mountPullPage(container, ctx, mb) {
   /** @type {PullModel | null} */
   let shown = null;
   let bodyKey = "";
+  /** @type {() => void} */
+  let resolveReady = () => {};
+  const ready = new Promise((resolve) => {
+    resolveReady = () => resolve(undefined);
+  });
   /** The record the conversation last asked for Markdown from. @type {string | null} */
   let markdownRevision = null;
   /** @type {Map<string, HTMLElement>} */
@@ -1874,7 +1952,7 @@ export function mountPullPage(container, ctx, mb) {
     .catch(() => null);
   /** @type {{left: string, right: string, route?: string} | null} */
   let diffFor = null;
-  /** @type {{dispose?: () => void} | null} */
+  /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */
   let diffHandle = null;
   /** @type {HTMLElement | null} */
   let diffHost = null;
@@ -2019,8 +2097,9 @@ export function mountPullPage(container, ctx, mb) {
    * @param {string} part
    * @param {string} value
    * @param {boolean} truncated
+   * @param {boolean} [renderMarkdown]
    */
-  function textBlock(part, value, truncated) {
+  function textBlock(part, value, truncated, renderMarkdown = true) {
     const element = h("div", { class: "github-pull-text", "data-part": part });
     if (value.trim() === "") {
       element.append(
@@ -2033,6 +2112,9 @@ export function mountPullPage(container, ctx, mb) {
     element.append(h("div", { class: "github-pull-plain" }, [value]));
     if (truncated) {
       element.append(notice("warning", ["This text was cut; the rest is on GitHub."]));
+    }
+    if (!renderMarkdown) {
+      return element;
     }
     texts.set(part, element);
     if (part === "body" || observer === null) {
@@ -2430,9 +2512,24 @@ export function mountPullPage(container, ctx, mb) {
           " opened ",
           age(pull.created),
         ]),
-        textBlock("body", pull.text, pull.truncated),
+        textBlock("body", pull.text, pull.truncated, !model.corePreview),
       ]),
     ];
+    if (model.corePreview) {
+      for (const [heading, message] of [
+        ["Discussion", "Comments and reviews are still loading."],
+        ["Checks", "Checks and statuses are still loading."],
+      ]) {
+        sections.push(
+          h("section", { class: "github-pull-section" }, [
+            h("h2", { class: "section-heading" }, [heading]),
+            h("p", { class: "github-pull-quiet", role: "status" }, [message]),
+          ]),
+        );
+      }
+      body.replaceChildren(...sections);
+      return;
+    }
     for (const item of model.timeline) {
       const head = h("div", { class: "github-pull-card-head" }, [
         authorLabel(item.author, item.avatar),
@@ -2564,6 +2661,7 @@ export function mountPullPage(container, ctx, mb) {
     // one, byte for byte, and the browser's cache answers a Back from it.
     async load(comparison, signal) {
       await mb.ensureKindAssets("diff");
+      signal.throwIfAborted();
       const view =
         /** @type {{prefetch?: (comparison: object, signal: AbortSignal) => Promise<unknown>} | null} */ (
           mb.getRegisteredView("diff", "diff")
@@ -2600,24 +2698,28 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {{left: string, right: string, route?: string}} comparison */
   async function mountDiff(comparison) {
+    if (listening.signal.aborted) {
+      return;
+    }
     disposeDiff();
     const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
     diffHost = host;
     diffFor = comparison;
+    const owns = () => !listening.signal.aborted && diffHost === host;
     body.replaceChildren(host);
     try {
       const raw = prefetch.take(comparison);
       await mb.ensureKindAssets("diff");
-      const view = mb.getRegisteredView("diff", "diff");
-      if (diffHost !== host) {
+      if (!owns()) {
         return;
       }
+      const view = mb.getRegisteredView("diff", "diff");
       if (!view) {
         host.textContent = "The diff plugin is unavailable.";
         return;
       }
       const prefetched = await raw;
-      if (diffHost !== host) {
+      if (!owns()) {
         return;
       }
       const handle = /** @type {{dispose?: () => void, currentFile?: () => unknown} | null} */ (
@@ -2625,6 +2727,7 @@ export function mountPullPage(container, ctx, mb) {
           "githubPull:filesRender",
           async () =>
             view.render(host, {
+              comparisonSignal: listening.signal,
               comparison: {
                 left: comparison.left,
                 right: comparison.right,
@@ -2636,7 +2739,7 @@ export function mountPullPage(container, ctx, mb) {
           { number },
         )
       );
-      if (diffHost !== host) {
+      if (!owns()) {
         handle?.dispose?.();
         return;
       }
@@ -2645,16 +2748,16 @@ export function mountPullPage(container, ctx, mb) {
       landFile();
       // Failed diff loads resolve to a disposable notice without the public file API.
       // Do not report that surface, or a replaced mount, as useful Files readiness.
-      if (diffHost === host && typeof handle?.currentFile === "function") {
+      if (owns() && typeof handle?.currentFile === "function") {
         mb.perf.measure("githubPull:filesReady", () => {}, { number });
       }
     } catch {
-      if (diffHost !== host) {
+      if (!owns()) {
         return;
       }
       const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
       retry.addEventListener("click", () => {
-        if (diffHost === host) {
+        if (owns()) {
           diffMounted = mountDiff(comparison);
         }
       });
@@ -2719,7 +2822,7 @@ export function mountPullPage(container, ctx, mb) {
           place?.keeper.flush();
         }
         diffMounted = mountDiff(displayed).then(() => {
-          if (shown?.tab === "files" && diffFor === displayed) {
+          if (!listening.signal.aborted && shown?.tab === "files" && diffFor === displayed) {
             paintFiles(shown);
             place?.keeper.land();
           }
@@ -2733,7 +2836,7 @@ export function mountPullPage(container, ctx, mb) {
     const action = filesAction(diffFor, comparison);
     if (comparison === null || action === "unavailable") {
       disposeDiff();
-      const message = notice("error", [model.filesUnavailable]);
+      const message = notice(model.corePreview ? null : "error", [model.filesUnavailable]);
       if (model.canFetchComparison) {
         const fetchChanges = h(
           "button",
@@ -2772,6 +2875,7 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {PullModel} model */
   function paint(model) {
+    container.dataset.corePreview = String(model.corePreview);
     shown = model;
     if (model.tab !== "files") {
       wantedFile = null;
@@ -2876,14 +2980,23 @@ export function mountPullPage(container, ctx, mb) {
       render(model, identity) {
         stackIdentity = identity;
         mb.perf.measure("githubPull:render", () => paint(model), { number });
+        if (model.contentReady) {
+          resolveReady();
+        }
         if (
           !listening.signal.aborted &&
           shown === model &&
           model.pull !== null &&
           model.tab !== "files"
         ) {
-          // Useful conversation DOM is ready before optional Markdown upgrades, not painted.
-          mb.perf.measure("githubPull:conversationReady", () => {}, { number });
+          // DOM readiness is not a painted milestone; the browser probe observes that boundary.
+          mb.perf.measure("githubPull:descriptionReady", () => {}, {
+            number,
+            preview: model.corePreview,
+          });
+          if (!model.corePreview) {
+            mb.perf.measure("githubPull:conversationReady", () => {}, { number });
+          }
         }
       },
       reload: () => window.location.reload(),
@@ -2919,9 +3032,37 @@ export function mountPullPage(container, ctx, mb) {
     }
   });
   void controller.start();
-  const place = pane === null ? null : keepPlace(pane, body, () => shown?.tab ?? "", number);
-  place?.keeper.land();
+  /** @type {ReturnType<typeof keepPlace> | null} */
+  let place = null;
+  function activate() {
+    if (listening.signal.aborted || place !== null || pane === null) {
+      return;
+    }
+    place = keepPlace(pane, body, () => shown?.tab ?? "", number);
+    place.keeper.land();
+  }
+
+  /** Stop ownership-bound work while preserving this page's inert handoff DOM. */
+  function cancelPending() {
+    resolveReady();
+    filesRefresh = null;
+    wantedFile = null;
+    listening.abort();
+    observer?.disconnect();
+    place?.dispose();
+    controller.dispose();
+    prefetch.dispose();
+    stacks.dispose();
+    cancelCurrentFileBridge();
+    unwatchCurrentFile?.();
+    unwatchCurrentFile = null;
+    diffHandle?.cancelPending?.();
+    currentFileListeners.clear();
+  }
   return Object.freeze({
+    ready,
+    activate,
+    cancelPending,
     /**
      * Show a tab. A tab owns the address (Browser URL Grammar), so a call from beside the
      * page goes through the route, which moves the address and calls back here, and Back
@@ -3011,16 +3152,8 @@ export function mountPullPage(container, ctx, mb) {
       return () => currentFileListeners.delete(listener);
     },
     dispose() {
-      filesRefresh = null;
-      wantedFile = null;
-      listening.abort();
-      observer?.disconnect();
-      place?.dispose();
-      controller.dispose();
-      prefetch.dispose();
-      stacks.dispose();
+      cancelPending();
       disposeDiff();
-      currentFileListeners.clear();
     },
   });
 }

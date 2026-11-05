@@ -479,7 +479,8 @@ status: 200
       "text": false
     },
     "unavailable": {}
-  }
+  },
+  "core_preview": null
 }
 --- stderr ---
 selection: pull_request

@@ -10,6 +10,8 @@ type MetabrowserRenderContext = {
     base_policy: "direct" | "merge_base";
     route?: string;
   };
+  /** The owner of a selected comparison read, while its view is mounting. */
+  comparisonSignal?: AbortSignal;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
@@ -369,6 +371,8 @@ type KpressRenderPayload = {
 
 type DisposableHandle = {
   dispose?: () => void;
+  /** Stop progressive work while retaining inert DOM through a pending handoff. */
+  cancelPending?: () => void;
   /** Initial useful content is ready; later progressive work stays outside this boundary. */
   ready?: Promise<void>;
 };
@@ -528,6 +532,8 @@ type MetabrowserPullRouteRuntime = Readonly<{
       setTab?(tab: string): void;
       showFile?(path: string): unknown;
       flush?(): void;
+      ready?: Promise<void>;
+      cancelPending?(): void;
       dispose?(): void;
     },
   >(deps: {
@@ -544,6 +550,8 @@ type MetabrowserPullRouteRuntime = Readonly<{
     replaceHref(href: string): void;
   }): Readonly<{
     dispose(): void;
+    /** Cancel a visible page now, returning its final DOM disposal for actual handoff. */
+    release(): (() => void) | null;
     onHistory(
       pathname: string,
       heldTarget: boolean,
@@ -566,12 +574,21 @@ type MetabrowserPullRouteRuntime = Readonly<{
     isCurrent(claim: number): boolean;
     renderHtml(html: string, claim: number): unknown;
     renderNode(node: HTMLElement, claim: number): unknown;
+    beginNavigation(claim: number): boolean;
+    endNavigation(claim: number): void;
+    stageNode(node: HTMLElement, claim: number): (() => void) | null;
     showLoadFailure(claim: number, what: string): void;
   }): (
     claim: number,
     kind: string,
     context: Record<string, unknown>,
-  ) => Promise<{ setTab?(tab: string): void; flush?(): void; dispose?(): void } | null>;
+  ) => Promise<{
+    setTab?(tab: string): void;
+    flush?(): void;
+    ready: Promise<void>;
+    cancelPending?(): void;
+    dispose(): void;
+  } | null>;
   /** The host the shell made, for the Pulls tab beside the pane; null until one is made. */
   attachedHost(): { pageFor(number: number): unknown } | null;
   onPageChange(listener: () => void): () => void;
@@ -2756,6 +2773,7 @@ declare global {
 
   type MetabrowserGitPanelRuntime = {
     init(): Promise<void>;
+    cancelPending(): void;
     /** Test-only surface; not part of any supported contract. */
     _internals: Record<string, unknown>;
   };
@@ -2793,6 +2811,7 @@ declare global {
     removeNavPanel(panelId: string): void;
     renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
     renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
+    stagePreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): (() => void) | null;
     shortcuts(): ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null;
     /** The page's freshness controller once it is mounted; null when a folder is served. */
     sourceFreshness(): Promise<MetabrowserSourceFreshnessController | null>;

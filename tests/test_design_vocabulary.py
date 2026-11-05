@@ -1233,7 +1233,9 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     diff = (plugins / "diff/diff-view.js").read_text(encoding="utf-8")
     assert '"fold-expander diff-fold-control"' in diff
     page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
-    assert page.count('h("h2", { class: "section-heading" }') == 2
+    headings = re.findall(r'h\("h2", \{([^}]+)\}', page)
+    assert headings and len(headings) == page.count('h("h2",')
+    assert all('class: "section-heading"' in attributes for attributes in headings)
     assert 'h("summary", { class: "fold-expander" }' in page
     # A hunk's fold states its size and then the inverse, as a fold does.
     assert "earlier ${lines}" in page and "`Hide ${earlierLines} ${lines}`" in page

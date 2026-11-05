@@ -413,6 +413,35 @@ Open the printed URL and verify:
 
 Do not make the manual check the only coverage for a deterministic contract.
 
+### PR and Git Navigation Performance
+
+Use the
+[performance loop](../explorations/performance-loop/README.md#attributing-stateful-navigation-delay)
+for timing and the focused browserless sessions for deterministic behavior.
+Keep a small review playbook beside the experiment rather than adding another test
+framework:
+
+1. Freeze the build, public repository, PR numbers, full Git revisions and viewport.
+   Name Git-object, detailed-record, browser HTTP, asset and prepared-payload cache
+   states separately. Use an isolated test cache for absent-record cases.
+2. Test a first PR from the neutral prompt, then a different uncached PR from a fully
+   rendered, settled cached PR. A neutral prompt is not prior useful content.
+   Require the previous description and reading position to survive until the correct
+   new description or an actionable failure appears.
+3. Measure description readiness separately from completed discussion, checks and
+   comparison. Exercise row selection, direct Fetch, rapid keyboard replacement and
+   cached reopening on both a managed repository and a served checkout.
+   A description preview must not claim that unread sections or Git acquisition are
+   complete.
+4. In Git, compare natural and prepared selection, re-enter the displayed row, and leave
+   for a file while deferred requests are active.
+   Check exact route and subject, cancellation, queued work, single active ownership and
+   final content.
+5. Keep matching request counts and bytes beside painted readiness, Long Tasks, Event
+   Timing, retained heap and sampled backend RSS. Follow the loop’s repetition and
+   acceptance rules; retain failures and distinguish an isolated mechanism probe from a
+   complete navigation result.
+
 ### Headless Screenshots
 
 There is no automated visual-regression layer.

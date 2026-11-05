@@ -598,18 +598,41 @@ function makePullShell(pathname) {
   }
 
   {
-    // A claim that lands while a page mounts supersedes it: the late page is disposed
-    // and never shown. A second route while the first mounts claims again.
+    // Same-number routes join through both module loading and core readiness; only
+    // the latest tab/file intent lands. A genuinely different owner still cancels.
     const shell = makePullShell("/pull/7");
     const first = shell.host.show({ number: 7, tab: "" });
     const second = shell.host.show({ number: 7, tab: "files" });
-    shell.mounts[0].resolve(shell.page(7));
-    observe("a page a later route superseded is cancelled", await first);
+    invariant("same pending number joins the asset mount", shell.mounts.length, 1);
+    let ready;
+    shell.mounts[0].resolve({
+      ...shell.page(7),
+      ready: new Promise((resolve) => {
+        ready = resolve;
+      }),
+    });
+    await shell.tick();
+    const latest = shell.host.show({ number: 7, tab: "files", file: "latest.py" });
+    invariant("same pending number joins core readiness", shell.mounts.length, 1);
+    invariant("pending core is not exposed as the shown page", shell.host.shown(), null);
+    ready();
+    observe("same pending number routes share one completed page", [
+      await first,
+      await second,
+      await latest,
+    ]);
+    invariant(
+      "joined routes apply only the latest intent",
+      shell.log.filter((line) => line.includes("restores")),
+      ["#7 restores the file latest.py"],
+    );
+    observe("the latest pending file intent lands once", shell.log);
+    const different = shell.host.show({ number: 8, tab: "" });
     shell.claimPane("file");
-    shell.mounts[1].resolve(shell.page(7));
-    observe("a page a file claim superseded is cancelled", await second);
+    shell.mounts[1].resolve(shell.page(8));
+    observe("a page a file claim superseded is cancelled", await different);
     observe("a superseded page is never shown", shell.host.shown());
-    observe("superseded pages are disposed as they arrive", shell.log);
+    observe("a different owner disposes the late page", shell.log);
   }
 
   {

@@ -46,7 +46,8 @@ status: 200
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 --- stderr ---
 --- gh ---
@@ -197,7 +198,8 @@ status: 202
     "refreshing": true,
     "last_refresh": null,
     "comparison_route": null,
-    "record": null
+    "record": null,
+    "core_preview": null
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -288,7 +290,8 @@ status: 200
     "unavailable": {
       "comparison": "no_store"
     }
-  }
+  },
+  "core_preview": null
 }
 --- stderr ---
 --- body ---
@@ -816,7 +819,8 @@ status: 200
     "unavailable": {
       "comparison": "no_store"
     }
-  }
+  },
+  "core_preview": null
 }
 --- stderr ---
 cloning https://github.com/octo/demo into <HOME>
@@ -970,7 +974,8 @@ status: 202
       "unavailable": {
         "comparison": "no_store"
       }
-    }
+    },
+    "core_preview": null
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -1064,7 +1069,8 @@ status: 200
       "text": false
     },
     "unavailable": {}
-  }
+  },
+  "core_preview": null
 }
 --- stderr ---
 --- body ---
@@ -1169,7 +1175,8 @@ status: 200
     "unavailable": {
       "comparison": "no_store"
     }
-  }
+  },
+  "core_preview": null
 }
 --- stderr ---
 --- gh ---
@@ -1266,7 +1273,8 @@ status: 202
       "unavailable": {
         "comparison": "no_store"
       }
-    }
+    },
+    "core_preview": null
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -1360,7 +1368,8 @@ status: 200
       "text": false
     },
     "unavailable": {}
-  }
+  },
+  "core_preview": null
 }
 --- stderr ---
 --- body ---

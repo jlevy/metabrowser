@@ -3663,10 +3663,21 @@ function clearPreviewNavigationState(preview) {
  */
 function claimPreview(owner, selection) {
   cancelPendingFilePreviewStage();
+  if (owner !== "git") {
+    window.MetabrowserGitPanel?.cancelPending();
+  }
   // Whatever claims the pane next replaces the pull-request page, including a page
   // for another pull request; only a tab change keeps it (createPullPageHost). There
   // is no host, and so no page, until an address under /pull/ was opened.
-  pullPageHost?.dispose();
+  const retired = pullPageHost?.release();
+  if (retired) {
+    // A later pending claim must not replace the one old visible handoff surface.
+    if (retainedPullPageDispose) {
+      retired();
+    } else {
+      retainedPullPageDispose = retired;
+    }
+  }
   const preview = document.getElementById("preview-pane");
   if (preview) {
     clearPreviewNavigationState(preview);
@@ -3717,7 +3728,12 @@ function beginPreviewNavigation(claim) {
   }
   const preview = document.getElementById("preview-pane");
   const child = preview?.firstElementChild;
-  if (!preview || !child || child.classList.contains("preview-empty")) {
+  if (
+    !preview ||
+    !child ||
+    child.classList.contains("preview-empty") ||
+    child.hasAttribute("data-preview-empty")
+  ) {
     return false;
   }
   preview.classList.add("preview-navigation-pending");
@@ -3865,12 +3881,40 @@ function initNavTabs() {
   });
 }
 
-// Replace the preview pane's contents with shell-owned HTML.
-//
-// Disposal is the reason this is a function rather than an innerHTML
-// assignment at each call site: replacing the pane detaches whatever
-// plugin views are mounted, and skipping their disposers leaks their
-// listeners and retained resources.
+/** Finalize the retired page only after a new owner's content has been installed. */
+function finishRetainedPullPage() {
+  const dispose = retainedPullPageDispose;
+  retainedPullPageDispose = null;
+  dispose?.();
+}
+
+/** Stage a route-backed plugin in the existing connected, inert preview staging layer.
+ * @param {HTMLElement} node
+ * @param {number} claim
+ * @returns {(() => void) | null}
+ */
+function stagePreviewNode(node, claim) {
+  if (!isPreviewClaimCurrent(claim)) {
+    return null;
+  }
+  cancelPendingFilePreviewStage();
+  const preview = document.getElementById("preview-pane");
+  if (!preview) {
+    return null;
+  }
+  const stage = createFilePreviewStage(preview);
+  stage.append(node);
+  const cleanup = () => {
+    stage.remove();
+    if (pendingFilePreviewStageCleanup === cleanup) {
+      pendingFilePreviewStageCleanup = null;
+    }
+  };
+  pendingFilePreviewStageCleanup = cleanup;
+  return cleanup;
+}
+
+// Dispose plugin views before replacing shell-owned preview HTML.
 function renderPreviewHtml(html, claim) {
   if (!isPreviewClaimCurrent(claim)) {
     return null;
@@ -3882,12 +3926,11 @@ function renderPreviewHtml(html, claim) {
   disposeActivePluginViews();
   delete preview.dataset.renderedPath;
   preview.innerHTML = html;
+  finishRetainedPullPage();
   return preview;
 }
 
-// Install a fully staged core view without reparsing its HTML. Git uses this
-// after its comparison renderer has mounted into a detached tree, so the prior
-// revision remains visible until the replacement is complete.
+// Atomically install a prepared view without reparsing its HTML.
 function renderPreviewNode(node, claim) {
   if (!isPreviewClaimCurrent(claim)) {
     return null;
@@ -3899,6 +3942,7 @@ function renderPreviewNode(node, claim) {
   disposeActivePluginViews();
   delete preview.dataset.renderedPath;
   preview.replaceChildren(node);
+  finishRetainedPullPage();
   animatePreviewContentArrival(node);
   return preview;
 }
@@ -3921,6 +3965,7 @@ window.MetabrowserShell = Object.freeze({
   removeNavPanel,
   renderPreviewHtml,
   renderPreviewNode,
+  stagePreviewNode,
   shortcuts: () => shortcutRegistry,
   sourceFreshness,
 });
@@ -5302,6 +5347,7 @@ function fileSelectionFailureOutcome(err, path, cached, preview, previewClaim) {
       stopFolderHeaderSubscription();
       delete preview.dataset.renderedPath;
       preview.innerHTML = previewErrorHtml(failure.summary, failure.detail);
+      finishRetainedPullPage();
     },
   });
 }
@@ -5401,6 +5447,7 @@ async function selectFile(path, preferredViewId) {
             stopFolderHeaderSubscription();
             delete preview.dataset.renderedPath;
             preview.innerHTML = loading;
+            finishRetainedPullPage();
             beginPreviewNavigation(previewClaim);
           }, LOADING_INDICATOR_DELAY_MS);
         }
@@ -6126,6 +6173,7 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
         if (
           !stagedPluginLifecycle.commit(() => {
             preview.replaceChildren(...replacementNodes);
+            finishRetainedPullPage();
             options.onCommit?.();
           })
         ) {
@@ -7743,6 +7791,7 @@ function showNavigationLanding() {
   if (preview) {
     delete preview.dataset.renderedPath;
     preview.innerHTML = previewPlaceholderHtml(previewPane.placeholder(claim)) ?? "";
+    finishRetainedPullPage();
   }
 }
 
@@ -7755,6 +7804,7 @@ function settleUnclaimedPreview() {
   var preview = document.getElementById("preview-pane");
   if (html !== null && preview) {
     preview.innerHTML = html;
+    finishRetainedPullPage();
   }
 }
 
@@ -7798,6 +7848,8 @@ function isPullAddress(pathname) {
 }
 /** @type {ReturnType<NonNullable<Window["MetabrowserPullRoute"]>["createPullPageHost"]> | null} */
 var pullPageHost = null;
+/** @type {(() => void) | null} One canceled page whose DOM remains until actual replacement. */
+var retainedPullPageDispose = null;
 
 /** The pull-request page's host, created once its module has arrived. */
 async function loadPullPageHost() {
@@ -7846,6 +7898,9 @@ function pullPageHostDeps(routes) {
     isCurrent: isPreviewClaimCurrent,
     renderHtml: renderPreviewHtml,
     renderNode: (node, claim) => renderPreviewNode(node, claim),
+    beginNavigation: beginPreviewNavigation,
+    endNavigation: endPreviewNavigation,
+    stageNode: stagePreviewNode,
     showLoadFailure: showPullPageLoadFailure,
   });
   return {
