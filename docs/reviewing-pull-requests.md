@@ -41,8 +41,15 @@ in the background, publishing each page as it arrives and resuming unfinished wo
 It initially displays up to 500 matching pull requests.
 When more exist, **Showing last 500** appears below the total; **Fetch more** expands
 the displayed window.
-Descriptions, comments, reviews, and checks are separate: selecting a row opens its page
-and fetches that record when needed.
+After the list has painted, Metabrowser can prepare descriptions for up to eight visible
+pull requests that lack a cached full record.
+An eligible window can issue one GitHub batch; a selected refresh takes priority.
+If a window is busy, the panel can retry once while the same rows are visible.
+Scrolling to a nearby window can reuse still-current descriptions for overlapping rows.
+Selecting a row shows its prepared description when available.
+For a missing full record, the selected refresh still verifies a fresh description and
+completes the record.
+The background step never fetches comments, reviews, checks, or Git objects.
 Diffs are generated from the Git objects in the cache.
 Mounted content creates lazy author images; the browser controls when nearby images load
 and caches their bytes.

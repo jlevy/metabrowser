@@ -181,7 +181,7 @@ const TRUNCATED = Object.freeze({
  *   comparison_route: string | null,
  *   record: Record<string, any> | null,
  *   core_preview: {source: string, number: number, reader: string, observed_at: string,
- *     revision: string, pull: Record<string, any>, comparison_state: "pending" | "no_store"} | null,
+ *     revision: string, pull: Record<string, any>, comparison_state: "pending" | "no_store" | "not_started"} | null,
  * }} PullEnvelope
  */
 
@@ -779,11 +779,19 @@ export function describePull(envelope, page) {
     model.corePreview = true;
     model.contentReady = true;
     model.message = page.error ?? null;
-    model.freshness = `Description fetched ${relativeAge(preview.observed_at, page.nowMs)} by ${preview.reader.replace(/^gh:/, "")} · discussion and checks loading`;
+    model.freshness = `Description fetched ${relativeAge(preview.observed_at, page.nowMs)} by ${preview.reader.replace(/^gh:/, "")}${envelope.refreshing ? " · discussion and checks loading" : ""}`;
+    model.canRefresh =
+      envelope.state === "absent" &&
+      envelope.reason !== "not_github" &&
+      !envelope.refreshing &&
+      !page.fetching;
     model.filesUnavailable =
-      preview.comparison_state === "pending"
+      preview.comparison_state === "pending" ||
+      (preview.comparison_state === "not_started" && envelope.refreshing)
         ? "Files changed is still being prepared."
-        : "Files changed has not been fetched. The description is available while the remaining pull-request details load.";
+        : preview.comparison_state === "not_started"
+          ? "Files changed has not been fetched."
+          : "Files changed has not been fetched. The description is available while the remaining pull-request details load.";
     return model;
   }
   if (record === null) {
@@ -901,7 +909,9 @@ function isCorePreview(value, envelope) {
     preview.pull !== null &&
     typeof preview.pull === "object" &&
     preview.pull.number === envelope.number &&
-    (preview.comparison_state === "pending" || preview.comparison_state === "no_store")
+    (preview.comparison_state === "pending" ||
+      preview.comparison_state === "no_store" ||
+      preview.comparison_state === "not_started")
   );
 }
 
@@ -909,7 +919,7 @@ function isCorePreview(value, envelope) {
  * @param {unknown} value
  * @returns {value is PullEnvelope}
  */
-function isEnvelope(value) {
+export function isEnvelope(value) {
   if (value === null || typeof value !== "object") {
     return false;
   }
@@ -1751,6 +1761,7 @@ export function conversationKey(model) {
   return JSON.stringify([
     model.pull,
     model.corePreview,
+    ...(model.corePreview ? [model.refreshing] : []),
     model.timeline,
     model.reviewComments,
     model.checks,
@@ -2539,8 +2550,18 @@ export function mountPullPage(container, ctx, mb) {
     ];
     if (model.corePreview) {
       for (const [heading, message] of [
-        ["Discussion", "Comments and reviews are still loading."],
-        ["Checks", "Checks and statuses are still loading."],
+        [
+          "Discussion",
+          model.refreshing
+            ? "Comments and reviews are still loading."
+            : "Comments and reviews have not been fetched.",
+        ],
+        [
+          "Checks",
+          model.refreshing
+            ? "Checks and statuses are still loading."
+            : "Checks and statuses have not been fetched.",
+        ],
       ]) {
         sections.push(
           h("section", { class: "github-pull-section" }, [

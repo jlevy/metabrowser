@@ -25,7 +25,7 @@ from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh, pull_list
+from metabrowser.builtin_plugins.github import gh, pull_list, pulls
 from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
@@ -36,9 +36,11 @@ from tests.github_pull_fixture import (
     account,
     catalog_entries,
     generated_item,
+    graph_core_data,
     install_fake_gh,
     list_item,
     logged_gh_calls,
+    ok,
     pull_bodies,
     scenario,
 )
@@ -61,6 +63,7 @@ pytestmark = [
 
 PULLS = "/api/plugin/github/pulls"
 REFRESH = "/api/plugin/github/pulls-refresh"
+PREPARE = "/api/plugin/github/pull-cores-prepare"
 
 
 class _Session:
@@ -114,11 +117,11 @@ class _Session:
     def get(self, query: str = "") -> Invocation:
         return self._run(CANONICAL, "--api", f"{PULLS}{query}")
 
-    def post(self, body: dict[str, Any]) -> Invocation:
+    def post(self, body: dict[str, Any], *, route: str = REFRESH) -> Invocation:
         path = self.tmp_path / "request.json"
         text = json.dumps(body)
         path.write_text(text + "\n", encoding="utf-8")
-        return self._run(CANONICAL, "--api", REFRESH, "--data", str(path), body=[text])
+        return self._run(CANONICAL, "--api", route, "--data", str(path), body=[text])
 
     def local(self, route: str) -> Invocation:
         """A route read from a local root, which opens no source and asks gh nothing."""
@@ -256,6 +259,42 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
         100,
     )
     assert replaced["generation"].split(":")[0] != generation.split(":")[0]
+
+    session.say("A visible pull request prepares its description from one GraphQL batch.")
+    entry = pull_bodies(session.origin)[7]["pull"]
+    data = graph_core_data(entry, reader=ANOTHER_READER)
+    data["repository"]["p0"] = data["repository"].pop("pull")
+    key = "graphql:visible-cores:7"
+    session.answer(_api(replacement, key, ok(key, {"data": data})))
+    monkeypatch.setattr(pulls, "utc_now", lambda: session.now)
+
+    prepared = session.post(
+        {
+            "state": replaced["list"],
+            "window": {"id": "visible-7", "generation": replaced["generation"]},
+            "numbers": [7],
+        },
+        route=PREPARE,
+    )
+    assert prepared.exit_code == 0, prepared.stderr
+    _, accepted, body = prepared.stdout.partition("status: 202\n")
+    assert accepted
+    ack, _ = json.JSONDecoder().raw_decode(body)
+    assert ack == {"preparation": "started", "status_route": "/api/plugin/github/pull?number=7"}
+    final = _after(prepared)
+    preview = final["core_preview"]
+    assert final["record"] is None and final["refreshing"] is False
+    assert (preview["source"], preview["reader"], preview["number"]) == (
+        replaced["source"],
+        f"gh:{ANOTHER_READER}",
+        7,
+    )
+    assert preview["observed_at"] == session.now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert preview["comparison_state"] == "not_started"
+    assert preview["pull"]["body"] == entry["body"]
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+        "gh api graphql visible-cores numbers=7"
+    ]
 
     cached = session.local(f"/api/cache/source/{origin_identity(CANONICAL).slug}")
     assert cached.exit_code == 0, cached.stderr

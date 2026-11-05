@@ -487,6 +487,13 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-cores-prepare",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-files",
       "methods": [
         "GET",
@@ -718,7 +725,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 56
+  "count": 57
 }
 ? 0
 ```

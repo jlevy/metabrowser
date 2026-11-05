@@ -140,6 +140,9 @@ if args[:1] == ["api"]:
     if path == "graphql":
         if fields.get("query", "").startswith("query PullCore("):
             path = "graphql:core:" + fields.get("number", "missing")
+        elif fields.get("query", "").startswith("query VisiblePullCores("):
+            slots = [f"n{{i}}" for i in range(8)]
+            path = "graphql:visible-cores:" + ",".join(fields[key] for key in slots if key in fields)
         else:
             tail = fields.get("query", "").split("page:pullRequests", 1)[-1]
             state = "updated" if "field:UPDATED_AT" in tail else "closed" if "states:[CLOSED,MERGED]" in tail else "open" if "states:OPEN" in tail else "all"
@@ -603,6 +606,11 @@ def logged_gh_calls(directory: Path) -> list[str]:
             fields = dict(arg.split("=", 1) for arg in args if "=" in arg)
             if fields.get("query", "").startswith("query PullCore("):
                 calls.append(f"gh api graphql core number={fields.get('number', 'missing')}")
+                continue
+            if fields.get("query", "").startswith("query VisiblePullCores("):
+                slots = [f"n{i}" for i in range(8)]
+                numbers = ",".join(fields[key] for key in slots if key in fields)
+                calls.append(f"gh api graphql visible-cores numbers={numbers}")
                 continue
             tail = fields.get("query", "").split("page:pullRequests", 1)[-1]
             state = (

@@ -135,11 +135,7 @@ _SHA = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 
 # Selected, initially missing records use a core whose response names its viewer.
 # Existing full-record refreshes keep conditional REST and their original two checks.
-_CORE_QUERY: Final = """query PullCore($owner:String!,$name:String!,$number:Int!) {
-  viewer { login }
-  repository(owner:$owner,name:$name) {
-    id nameWithOwner
-    pull:pullRequest(number:$number) {
+_CORE_FIELDS: Final = """
       number url title body state isDraft merged createdAt updatedAt closedAt mergedAt
       author { login avatar_url:avatarUrl(size:40) }
       mergedBy { login avatar_url:avatarUrl(size:40) }
@@ -147,10 +143,16 @@ _CORE_QUERY: Final = """query PullCore($owner:String!,$name:String!,$number:Int!
       headRefName headRefOid headRepository { nameWithOwner }
       mergeable mergeCommit { oid } potentialMergeCommit { oid }
       commits(first:1) { totalCount }
-      labels(first:100) { nodes { name } }
-    }
-  }
-}"""
+      labels(first:100) { nodes { name } }"""
+_CORE_QUERY: Final = (
+    """query PullCore($owner:String!,$name:String!,$number:Int!) {
+  viewer { login }
+  repository(owner:$owner,name:$name) {
+    id nameWithOwner
+    pull:pullRequest(number:$number) {"""
+    + _CORE_FIELDS
+    + "\n    }\n  }\n}"
+)
 
 
 def utc_now() -> datetime:
@@ -485,7 +487,14 @@ def _graph_pull(value: object, number: int) -> PullRequest:
     )
 
 
-async def _read_graph_core(owner: str, repo: str, number: int, reader: str) -> PullRequest:
+async def _read_graph_core(
+    owner: str,
+    repo: str,
+    number: int,
+    reader: str,
+    *,
+    observe_reader: Callable[[str], None] | None = None,
+) -> PullRequest:
     """Attribute a selected core to the actual query viewer before staging it."""
     try:
         data = await gh_graphql(
@@ -494,10 +503,13 @@ async def _read_graph_core(owner: str, repo: str, number: int, reader: str) -> P
     except GhError as exc:
         raise PullDataError(exc.state, str(exc), reset_at=exc.reset_at) from exc
     try:
-        viewer = as_dict(data["viewer"])["login"]
-        if not isinstance(viewer, str):
+        viewer = login_of(as_dict(data["viewer"]))
+        if viewer is None:
             raise UnreadableItemError
-        if reader != f"gh:{viewer}":
+        observed = f"gh:{viewer}"
+        if observe_reader is not None:
+            observe_reader(observed)
+        if reader != observed:
             raise PullDataError(
                 "account_changed",
                 "the query viewer changed during the read, so the provisional core was discarded",
@@ -529,6 +541,7 @@ async def _read_api(
     previous: PullRecord | None,
     reader: str,
     on_core: Callable[[PullRequest], Awaitable[None]] | None = None,
+    observe_reader: Callable[[str], None] | None = None,
 ) -> PullRecord:
     """Read every part of the pull request into a record with no comparison yet.
 
@@ -550,7 +563,7 @@ async def _read_api(
         # _refresh enables this only when no full record was cached. The actual
         # response viewer replaces a third local account subprocess; no REST ETag
         # is invented for this GraphQL representation.
-        pull = await _read_graph_core(owner, repo, number, reader)
+        pull = await _read_graph_core(owner, repo, number, reader, observe_reader=observe_reader)
     else:
         try:
             response = await _get(pull_path, etag=pull_etag)
@@ -852,6 +865,7 @@ async def _refresh(
     number: int,
     *,
     on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
+    observe_reader: Callable[[str], None] | None = None,
 ) -> PullRecord:
     owner, repo = _owner_and_repo(published)
     cached = await asyncio.to_thread(read_pull_record, published.home, published.slug, number)
@@ -862,6 +876,8 @@ async def _refresh(
             await progress(None, None)
         login = await active_account()
         reader = f"gh:{login}"
+        if observe_reader is not None:
+            observe_reader(reader)
         previous = cached if isinstance(cached, PullRecord) and cached.reader == reader else None
 
         async def core_ready(pull: PullRequest, selected_reader: str = reader) -> None:
@@ -875,8 +891,12 @@ async def _refresh(
             previous=previous,
             reader=reader,
             on_core=core_ready if progress is not None else None,
+            observe_reader=observe_reader,
         )
-        if await active_account() != login:
+        final_login = await active_account()
+        if observe_reader is not None:
+            observe_reader(f"gh:{final_login}")
+        if final_login != login:
             raise PullDataError(
                 "account_changed",
                 "the active gh account changed during the read, so what was read is "
@@ -960,6 +980,7 @@ async def refresh_pull_request(
     recover: bool = False,
     recovery_pair: tuple[str, str] | None = None,
     on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
+    observe_reader: Callable[[str], None] | None = None,
 ) -> PullRecord:
     """Read pull request *number* of *published* from GitHub and cache it; see the module.
 
@@ -977,7 +998,9 @@ async def refresh_pull_request(
                 published = await claim_source(published)
             elif recover:
                 await _recover_comparison(published, number, recovery_pair)
-            record = await _refresh(published, number, on_core=on_core)
+            record = await _refresh(
+                published, number, on_core=on_core, observe_reader=observe_reader
+            )
         except GitError as exc:
             raise _git_failure(number, exc) from exc
     except PullDataError as exc:

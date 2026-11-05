@@ -95,7 +95,9 @@ async def pull_handler(request: Request) -> Response:
         PullEnvelope,
         PullRequestError,
         PullView,
+        core_preview_current,
         envelope_etag,
+        note_full_record,
         pull_envelope,
         pull_host,
         pull_view,
@@ -128,19 +130,25 @@ async def pull_handler(request: Request) -> Response:
 
     view, stamp, envelope = await snapshot()
     preview = envelope["core_preview"]
+    # Prepared and adopted observations carry catalog admission. A captured live preview
+    # may already have settled while the worker was building its first envelope.
     if (
         wait_after is not None
         and preview is not None
         and preview["revision"] == wait_after
         and envelope["record"] is None
         and view.kept is not None
+        and view.core_window is None
+        and view.core_admission is None
     ):
         kept = view.kept
         waited = await kept.wait_for_full(preview)
         if waited or kept.core_preview is not preview:
             view, stamp, envelope = await snapshot()
-    if view.kept is None or view.kept.core_preview is not envelope["core_preview"]:
+    if not core_preview_current(view, envelope["core_preview"]):
         envelope["core_preview"] = None
+    if envelope["record"] is not None:
+        note_full_record(view)
     if view.kept is not None:
         view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
     comparison = (envelope.get("record") or {}).get("comparison")
@@ -313,6 +321,8 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
 
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
+        core_preview_current,
+        note_full_record,
         pull_envelope,
         pull_host,
         pull_view,
@@ -346,8 +356,10 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     # Read after the start, on the loop: a job is running, whatever it does next.
     view = pull_view(host, get_source_session().subject, ask.number)
     envelope = await asyncio.to_thread(pull_envelope, view)
-    if view.kept is None or view.kept.core_preview is not envelope["core_preview"]:
+    if not core_preview_current(view, envelope["core_preview"]):
         envelope["core_preview"] = None
+    if envelope["record"] is not None:
+        note_full_record(view)
     if view.kept is not None:
         view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
     # ``status_route`` is where a one-shot ``--api`` reads how the refresh ended.
@@ -359,6 +371,35 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
 
 def _invalid_request(message: str, status_code: int = 400) -> JSONResponse:
     return JSONResponse({"error": message, "code": "invalid_request"}, status_code=status_code)
+
+
+async def pull_cores_prepare_handler(request: Request) -> JSONResponse:
+    """Schedule or release a source-owned visible core window."""
+    from metabrowser.builtin_plugins.github.pull_cores import core_request, request_preparation
+    from metabrowser.builtin_plugins.github.pull_route import pull_host, status_route
+
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
+    try:
+        ask = core_request(body)
+    except ValueError as exc:
+        return _invalid_request(str(exc))
+    await _resolve(request)
+    host = pull_host(request.app)
+    if host is None or host.coordinator is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+            headers=_NO_STORE,
+        )
+    preparation = await request_preparation(host.pulls, host.coordinator, ask, host.running)
+    answer: dict[str, str] = {"preparation": preparation}
+    if preparation in {"started", "joined"}:
+        answer["status_route"] = status_route(ask.numbers[0])
+    return JSONResponse(
+        answer, status_code=202 if preparation in {"started", "joined"} else 200, headers=_NO_STORE
+    )
 
 
 async def pulls_handler(request: Request) -> Response:

@@ -42,6 +42,9 @@ from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_record import PullRecord, PullRequest, read_pull_record
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreAttempt, CoreWindow
     from metabrowser.cache.acquire import PublishedSource
 
 # Pull requests whose state is kept in memory. The numbers are request text, so this is a
@@ -73,7 +76,32 @@ class PullCorePreview(TypedDict):
     observed_at: str
     revision: str
     pull: dict[str, Any]
-    comparison_state: Literal["pending", "no_store"]
+    comparison_state: Literal["pending", "no_store", "not_started"]
+
+
+def make_core_preview(
+    source: str,
+    reader: str,
+    core: PullRequest,
+    observed_at: datetime,
+    comparison_state: Literal["pending", "no_store", "not_started"],
+) -> PullCorePreview:
+    content = PullCorePreview(
+        source=source,
+        number=core.number,
+        reader=reader,
+        pull=core.model_dump(mode="json"),
+        comparison_state=comparison_state,
+        observed_at=_stamp(observed_at),
+        revision="",
+    )
+    identity = {
+        key: value for key, value in content.items() if key not in {"revision", "observed_at"}
+    }
+    content["revision"] = hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return content
 
 
 class PullRefreshOutcome(TypedDict):
@@ -125,6 +153,8 @@ class ServedPull:
     _last_attempt: datetime | None = field(default=None, repr=False)
     _refreshing: bool = field(default=False, repr=False)
     core_preview: PullCorePreview | None = field(default=None, repr=False)
+    display_core: tuple[PullCorePreview, CoreAdmission] | None = field(default=None, repr=False)
+    _source_pulls: ServedPulls | None = field(default=None, repr=False)
     _core_requested: bool = field(default=False, repr=False)
     _core_ready: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
     _core_waiter: bool = field(default=False, repr=False)
@@ -209,6 +239,7 @@ class ServedPull:
         if fetched_at is not None and (self.fetched_at is None or fetched_at > self.fetched_at):
             self.fetched_at = fetched_at
             self.without_store = without_store
+            self.display_core = None
 
     def request_core_preview(self) -> None:
         """Prepare only a selected missing record, never replace a full cached record."""
@@ -227,6 +258,7 @@ class ServedPull:
     def bind(self, published: PublishedSource | ListedRepository) -> None:
         """A changed publication relinquishes a preview and any in-flight stage callback."""
         if published is not self.published:
+            self.display_core = None
             self._clear_core_preview()
             self._core_requested = False
             self._core_ready.set()
@@ -275,6 +307,19 @@ class ServedPull:
                 published = self.published
                 epoch: object | None = None
 
+                def observe_reader(
+                    reader: str, *, selected: PublishedSource | ListedRepository = published
+                ) -> None:
+                    if self.published is not selected:
+                        return
+                    # Failure stamp I/O can still be pending after a reader mismatch.
+                    if self.core_preview is not None and self.core_preview["reader"] != reader:
+                        self._clear_core_preview()
+                    if self.display_core is not None and self.display_core[0]["reader"] != reader:
+                        self.display_core = None
+                    if self._source_pulls is not None:
+                        self._source_pulls.observe_reader(selected, reader)
+
                 async def stage_core(
                     core: PullRequest | None,
                     reader: str | None,
@@ -299,40 +344,26 @@ class ServedPull:
                         if isinstance(selected, ListedRepository)
                         else selected.source.normalized
                     )
-                    content: dict[str, Any] = {
-                        "source": source,
-                        "number": self.number,
-                        "reader": reader,
-                        "pull": core.model_dump(mode="json"),
-                        "comparison_state": "no_store"
-                        if isinstance(selected, ListedRepository)
-                        else "pending",
-                    }
-                    revision = hashlib.sha256(
-                        json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
-                    ).hexdigest()
-                    self.core_preview = PullCorePreview(
-                        source=source,
-                        number=self.number,
-                        reader=reader,
-                        observed_at=_stamp(pulls.utc_now()),
-                        revision=revision,
-                        pull=content["pull"],
-                        comparison_state="no_store"
-                        if isinstance(selected, ListedRepository)
-                        else "pending",
+                    self.display_core = None
+                    self.core_preview = make_core_preview(
+                        source,
+                        reader,
+                        core,
+                        pulls.utc_now(),
+                        "no_store" if isinstance(selected, ListedRepository) else "pending",
                     )
                     self._core_ready.set()
 
                 progress = stage_core if self._core_requested and self.fetched_at is None else None
                 try:
-                    if progress is not None:
+                    if progress is not None or self._source_pulls is not None:
                         record = await pulls.refresh_pull_request(
                             published,
                             self.number,
                             recover=recover,
                             recovery_pair=pair,
                             on_core=progress,
+                            observe_reader=observe_reader,
                         )
                     else:
                         record = (
@@ -360,6 +391,7 @@ class ServedPull:
                 if not self._recoveries:
                     return
         finally:
+            self.display_core = None
             self._clear_core_preview()
             self._core_requested = False
             self._core_ready.set()
@@ -425,6 +457,10 @@ class ServedPulls:
     _kept: OrderedDict[int, ServedPull] = field(default_factory=OrderedDict[int, ServedPull])
     _attended: int | None = None
     active: ServedPull | None = field(default=None, repr=False)
+    core_window: CoreWindow | None = field(default=None, repr=False)
+    core_hold_until: datetime | None = field(default=None, repr=False)
+    core_attempts: dict[CoreAttempt, float] = field(default_factory=dict, repr=False)
+    foreground_intents: int = field(default=0, repr=False)
 
     @property
     def home(self) -> Path:
@@ -451,14 +487,46 @@ class ServedPulls:
     def bind(self, published: PublishedSource | ListedRepository) -> None:
         """Use the published source for later reads and refreshes, retaining each number's state."""
 
+        if published is not self.published:
+            window, self.core_window = self.core_window, None
+            if window is not None:
+                window.cancel()
+            self.core_hold_until = None
         self.published = published
         for held in self._kept.values():
             held.bind(published)
         if self.active is not None:
             self.active.bind(published)
 
+    def observe_reader(self, publication: PublishedSource | ListedRepository, reader: str) -> None:
+        """Revoke lookahead owned by a different reader in this exact source binding."""
+        if self.published is not publication:
+            return
+        window = self.core_window
+        if (
+            window is not None
+            and window.admission is not None
+            and window.admission.reader != reader
+        ):
+            self.core_window = None
+            window.cancel()
+        for held in self._kept.values():
+            if (
+                held.published is publication
+                and held.display_core is not None
+                and held.display_core[0]["reader"] != reader
+            ):
+                held.display_core = None
+
     def key(self, number: int) -> str:
         return f"{_job_prefix(self.published)}:pull/{number}"
+
+    def foreground_pending(self, running: Callable[[int], bool]) -> bool:
+        """A foreground start is in progress or a selected missing pull still owns its job."""
+        return bool(self.foreground_intents) or any(
+            held.published is self.published and held._core_requested and running(held.number)
+            for held in self._kept.values()
+        )
 
     def held(self, number: int) -> ServedPull | None:
         """Pull request *number*'s state when it is in memory. Reads nothing."""
@@ -488,6 +556,7 @@ class ServedPulls:
         return last_refresh(self.published, number)
 
     def _keep(self, pull: ServedPull) -> ServedPull:
+        pull._source_pulls = self
         self._kept[pull.number] = pull
         if len(self._kept) > MAX_KEPT_PULLS:
             for number, held in self._kept.items():
