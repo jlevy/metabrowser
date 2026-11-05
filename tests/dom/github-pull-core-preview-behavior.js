@@ -118,6 +118,9 @@ async function heldPostCadence(page, full) {
     }
     const requested = controller.requestRefresh();
     await settle();
+    if (!waitCore) {
+      assert.match(shown.freshness, /^Refreshing… · fetched .+ by /);
+    }
     await advance(heldMs);
     assert.deepEqual(
       gets,
@@ -417,6 +420,7 @@ async function run() {
     container.querySelector(".github-pull-loading"),
     "the selected missing record shows loading blocks while its POST is held",
   );
+  assert.equal(container.querySelector(".spinner"), null, "cold progress uses only blocks");
   current = preview;
   releasePost(preview);
   await settle();
@@ -426,6 +430,12 @@ async function run() {
   assert.match(container.textContent, /Comments and reviews are still loading/);
   assert.match(container.textContent, /Checks and statuses are still loading/);
   assert.doesNotMatch(container.textContent, /No checks or statuses reported/);
+  const progress = container.querySelectorAll(".github-pull-progress");
+  assert.equal(progress.length, 3, "the header, Discussion, and Checks each show active progress");
+  for (const status of progress) {
+    assert.equal(status.getAttribute("role"), "status");
+    assert.equal(status.querySelector(".spinner").getAttribute("aria-hidden"), "true");
+  }
   assert.equal(markdownRequests, 0, "preview stays plain and never asks for full-record Markdown");
   const model = page.describePull(preview, { number: 7, tab: "", nowMs: Date.now() });
   assert.equal(model.browse, null);
@@ -440,11 +450,11 @@ async function run() {
       { ...preview, state: "absent", refreshing: false, core_preview: preparedCore },
       filesPage,
     ).filesUnavailable,
-    "Files changed has not been fetched.",
+    "Changes have not been fetched.",
   );
   assert.equal(
     page.describePull({ ...preview, core_preview: preparedCore }, filesPage).filesUnavailable,
-    "Files changed is still being prepared.",
+    "Changes are still being prepared.",
     "an adopted description does not make the active comparison look unrequested",
   );
   const fullWins = page.describePull(
@@ -465,6 +475,7 @@ async function run() {
   await settle();
   assert.equal(container.dataset.corePreview, "false");
   assert.doesNotMatch(container.textContent, /still loading/);
+  assert.equal(container.querySelector(".spinner"), null, "full arrival clears progress");
   assert.match(container.textContent, /No checks or statuses reported/);
   assert.equal(markdownRequests, 1, "full-record arrival enables the normal Markdown path");
   assert.equal(settlementSignal?.aborted, false);
@@ -477,6 +488,32 @@ async function run() {
   );
   cancelled.dispose();
   await cancelled.ready;
+  for (const refreshing of [true, false]) {
+    current = {
+      ...preview,
+      state: refreshing ? "pending" : "absent",
+      refreshing,
+      core_preview: preparedCore,
+    };
+    const changes = new Element("main");
+    const view = page.mountPullPage(
+      changes,
+      {
+        number: 7,
+        tab: "files",
+        reader: { initial: { body: current, etag: null }, fetchAfterMs: 0 },
+      },
+      mb,
+    );
+    await view.ready;
+    const body = changes.querySelector(".github-pull-body");
+    assert.equal(body.querySelector(".spinner") !== null, refreshing);
+    assert.match(
+      body.textContent,
+      refreshing ? /Changes are still being prepared/ : /Changes have not been fetched/,
+    );
+    view.dispose();
+  }
 
   // The real core mount retains A, cancels pending B, then commits C without resurrecting B.
   const context = { window: {}, document, console, Promise };

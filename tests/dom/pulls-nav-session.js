@@ -426,6 +426,7 @@ async function pageHostStory() {
   Object.assign(context, {
     MetabrowserAssets: { ensureAsset: async () => {} },
     MetabrowserShell: {
+      rememberMainTabAddress() {},
       registerNavPanel(registered) {
         panel = registered;
       },
@@ -804,6 +805,7 @@ function twoTreesPage() {
     MetabrowserKeyboardHelp: { create: () => ({ dispose() {} }) },
     MetabrowserAssets: { ensureAsset: async () => {} },
     MetabrowserShell: {
+      rememberMainTabAddress() {},
       registerNavPanel(panel) {
         shell.panel = panel;
       },

@@ -344,6 +344,13 @@ const SHELL_FUNCTIONS = [
   "stagePreviewNode",
   "createFilePreviewStage",
   "activateNavPanel",
+  "isGitHistoryLanding",
+  "restoreNeutralGitPanel",
+  "mainTabAtAddress",
+  "rememberMainTabAddress",
+  "prepareMainTabLanding",
+  "markMainTabLanding",
+  "openMainTab",
   "fileSelectionFailureOutcome",
   "beginViewCompositionLoad",
   "selectFile",
@@ -475,9 +482,13 @@ function createShell(pathname, network, options = {}) {
     // The one scroller the navigation panels share.
     elements.set("tree-content", options.scroller);
   }
-  const navBar = fakeElement();
-  const tabButtons = ["files", "git"].map((tab) => fakeElement({ dataset: { tab } }));
-  const tabPanels = ["files", "git"].map((tab) => fakeElement({ dataset: { tabContent: tab } }));
+  const panelIds = options.pulls ? ["files", "git", "pulls"] : ["files", "git"];
+  const tabButtons = panelIds.map((tab) => fakeElement({ dataset: { tab } }));
+  const tabPanels = panelIds.map((tab) => fakeElement({ dataset: { tabContent: tab } }));
+  const navBar = fakeElement({
+    querySelector: (selector) =>
+      tabButtons.find((btn) => selector === `.tab-btn[data-tab="${btn.dataset.tab}"]`) ?? null,
+  });
   const fetched = [];
   const panelShows = [];
   const timers = [];
@@ -511,12 +522,25 @@ function createShell(pathname, network, options = {}) {
       script.onload?.();
     });
   }
-  const moveTo = (_state, _title, href) => {
+  const writes = [];
+  const listeners = new Set();
+  const history = {
+    state: null,
+    pushState(state, _title, href) {
+      writes.push(href);
+      moveTo(state, href);
+    },
+    replaceState(state, _title, href) {
+      moveTo(state, href);
+    },
+  };
+  function moveTo(state, href) {
     const url = new URL(href, "http://metabrowser.test");
+    history.state = state;
     location.pathname = url.pathname;
     location.search = url.search;
     location.hash = url.hash;
-  };
+  }
 
   const sandbox = loadNavigation({
     CustomEvent: class {
@@ -525,7 +549,11 @@ function createShell(pathname, network, options = {}) {
         this.detail = init?.detail;
       }
     },
-    addEventListener() {},
+    addEventListener(type, listener) {
+      if (type === "popstate") {
+        listeners.add(listener);
+      }
+    },
     dispatchEvent(event) {
       if (event.type === "metabrowser:navigation-fragment") {
         counters.fragments += 1;
@@ -550,9 +578,14 @@ function createShell(pathname, network, options = {}) {
     },
     TextEncoder,
     URL,
-    history: { pushState: moveTo, replaceState: moveTo },
+    URLSearchParams,
+    history,
     location,
-    removeEventListener() {},
+    removeEventListener(type, listener) {
+      if (type === "popstate") {
+        listeners.delete(listener);
+      }
+    },
     // The navigation bar activateNavPanel toggles.
     navPanels: [
       { id: "files", onFirstShow: null },
@@ -565,6 +598,9 @@ function createShell(pathname, network, options = {}) {
     navPanelsShown: new Set(["files"]),
     activeNavPanelId: "files",
     navPanelScroll: new Map(),
+    mainTabDestinations: new Map(),
+    pullHistoryGeneration: 0,
+    keepFilesScrollOnLanding: false,
     navScrollShadowUpdate: null,
     queryHtml: (selector) =>
       selector === ".nav-tab-bar"
@@ -704,6 +740,13 @@ function createShell(pathname, network, options = {}) {
     outcome,
     pane,
     panelShows,
+    pop(href, state = null) {
+      moveTo(state, href);
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+    writes,
     refused,
     renderedViews,
     scriptRequests,
@@ -717,8 +760,7 @@ function createShell(pathname, network, options = {}) {
 const refusedFetch = () => Promise.reject(new TypeError("Failed to fetch"));
 
 async function tabSwitchDuringLoad() {
-  // A navigation tab switch changes which list is visible, not what is
-  // selected, so the folder still loading underneath keeps the pane and lands.
+  // Marking the tab for a route leaves the existing preview producer in charge.
   const response = deferred();
   const shell = createShell("/view/big/", () => response.promise);
   const started = shell.sandbox.navigationController.start();
@@ -762,6 +804,168 @@ function navPanelsKeepTheirPlace() {
     switches.push(`scrolled to ${scrolled}, ${panel} chosen: shows ${scroller.scrollTop}`);
   }
   return { switches, told };
+}
+
+async function independentMainTabs() {
+  const read = (path) => Promise.resolve(jsonResponse({ kind: "text", path }));
+  const pendingFile = deferred();
+  const scroller = fakeElement({ scrollTop: 0 });
+  const shell = createShell(
+    "/view/notes.md",
+    (path) => (path === "notes.md" ? pendingFile.promise : read(path)),
+    {
+      scroller,
+      pulls: true,
+      async revealInTree(_path, { scroll }) {
+        if (scroll) {
+          scroller.scrollTop = 999;
+        }
+      },
+    },
+  );
+  const { sandbox } = shell;
+  const selectedFile = "/view/notes.md?plain=1#L2";
+  const selectedPull = "/pull/7/files/src/a.py";
+  const older = "b".repeat(40);
+  const commit = `/commit/${older}/src/a.py#diff-2`;
+  const place = { pullPlace: { top: 35 } };
+  const selections = [];
+  sandbox.addEventListener("popstate", sandbox.applyPullHistoryLanding);
+  sandbox.MetabrowserPullsNav = {
+    routeChanged() {
+      if (sandbox.location.pathname === selectedPull) {
+        // The mounted Pulls panel can reveal an offscreen selected row.
+        scroller.scrollTop = 999;
+      }
+    },
+  };
+  const commitLandings = [];
+  sandbox.MetabrowserGitPanel = {
+    cancelPending() {},
+    async restoreCommitLanding() {
+      const parsed = sandbox.MetabrowserNavigationRoute.parseCommit(sandbox.location.pathname);
+      commitLandings.push(parsed.revision);
+      shell.claimGit(parsed.revision);
+    },
+  };
+  sandbox.history.replaceState(null, "", selectedFile);
+  const initial = sandbox.navigationController.start();
+  await settle();
+
+  function snapshot() {
+    const { pathname, search, hash } = sandbox.location;
+    return {
+      address: pathname + search + hash,
+      panel: sandbox.activeNavPanelId,
+      owner: shell.pane().owner,
+      scroll: scroller.scrollTop,
+    };
+  }
+  async function open(panel) {
+    sandbox.openMainTab(panel);
+    await settle();
+    selections.push(snapshot());
+  }
+  scroller.scrollTop = 240;
+  const outgoing = shell.pane().claim;
+  await open("pulls");
+  assert.equal(selections.at(-1).address, "/pulls");
+  assert.equal(selections.at(-1).owner, "pull-request");
+  assert.equal(
+    sandbox.isPreviewClaimCurrent(outgoing),
+    false,
+    "a held Files response lost ownership",
+  );
+  pendingFile.resolve(jsonResponse({ kind: "text", path: "notes.md" }));
+  await initial;
+  await settle();
+  assert.equal(shell.pane().owner, "pull-request", "late Files cannot replace Pulls");
+
+  // A filtered list and a changed file are ordinary browser entries.
+  shell.pop("/pulls?state=closed");
+  await settle();
+  scroller.scrollTop = 80;
+  await open("git");
+  assert.equal(selections.at(-1).address, "/view/");
+  assert.equal(sandbox.history.state.gitLanding, true);
+  assert.match(shell.pane().shows, /Select a commit to preview/);
+  assert.deepEqual(commitLandings, [], "a first Git visit does not open commit detail");
+  sandbox.history.replaceState(null, "", commit);
+  sandbox.rememberMainTabAddress();
+  scroller.scrollTop = 120;
+  await open("pulls");
+  assert.equal(selections.at(-1).address, "/pulls?state=closed");
+  assert.equal(scroller.scrollTop, 80);
+  shell.pop(selectedPull, place);
+  await settle();
+  await open("files");
+  assert.equal(selections.at(-1).address, selectedFile);
+  assert.equal(scroller.scrollTop, 240);
+  await open("pulls");
+  assert.equal(selections.at(-1).address, selectedPull);
+  assert.equal(scroller.scrollTop, 80, "revealing the PR must not replace the saved offset");
+  assert.deepEqual(sandbox.history.state, place);
+  await open("git");
+  assert.equal(selections.at(-1).address, commit);
+  assert.equal(sandbox.history.state.cachedCommit, true);
+  assert.deepEqual(commitLandings, [older]);
+  assert.equal(scroller.scrollTop, 120);
+  const still = shell.pane().claim;
+  const pushed = shell.writes.length;
+  sandbox.openMainTab("git");
+  assert.equal(shell.writes.length, pushed, "the active tab pushes no history");
+  assert.equal(shell.pane().claim, still, "the active tab makes no preview claim");
+
+  shell.pop(selectedFile);
+  await settle();
+  assert.equal(sandbox.activeNavPanelId, "files", "Back activates the address owner");
+  assert.equal(shell.pane().owner, "file");
+  shell.pop(selectedPull, place);
+  await settle();
+  assert.equal(sandbox.activeNavPanelId, "pulls", "Forward activates the address owner");
+  assert.equal(shell.pane().owner, "pull-request");
+  assert.equal(shell.writes.length, pushed, "Back and Forward never write another entry");
+
+  const pullStartup = createShell(selectedPull, read, { pulls: true });
+  pullStartup.sandbox.activeNavPanelId = "pulls";
+  await pullStartup.sandbox.navigationController.start();
+  pullStartup.sandbox.openMainTab("files");
+  await settle();
+  assert.equal(
+    pullStartup.sandbox.location.pathname,
+    "/view/",
+    "the first Files visit opens its root",
+  );
+  const activeAfterHistory = sandbox.activeNavPanelId;
+  shell.pop("/view/", { gitLanding: true });
+  await settle();
+  assert.equal(sandbox.activeNavPanelId, "git");
+  assert.match(shell.pane().shows, /Select a commit to preview/);
+  shell.pop("/view/");
+  await settle();
+  assert.equal(sandbox.activeNavPanelId, "files", "Files and neutral Git can share a pathname");
+  assert.equal(shell.pane().owner, "file");
+
+  const reloaded = createShell("/view/", read);
+  reloaded.sandbox.history.replaceState({ gitLanding: true, other: 1 }, "", "/view/");
+  await reloaded.sandbox.navigationController.start();
+  assert.match(reloaded.pane().shows, /Select a commit to preview/);
+  await reloaded.sandbox.restoreNeutralGitPanel();
+  assert.equal(reloaded.sandbox.activeNavPanelId, "git", "deferred registration restores Git");
+  const unavailable = createShell("/view/", read);
+  unavailable.sandbox.navPanels = unavailable.sandbox.navPanels.filter(({ id }) => id !== "git");
+  unavailable.sandbox.history.replaceState({ gitLanding: true, other: 1 }, "", "/view/");
+  await unavailable.sandbox.navigationController.start();
+  await unavailable.sandbox.restoreNeutralGitPanel();
+  assert.equal(unavailable.pane().owner, "file", "failed discovery falls back to Files root");
+  assert.deepEqual(plain(unavailable.sandbox.history.state), { other: 1 });
+  assert.deepEqual(unavailable.writes, [], "failed discovery repairs the same history entry");
+  return {
+    selections,
+    historyPushes: shell.writes.length,
+    activeAfterHistory,
+    neutralGitDetailOpens: commitLandings.length - 1,
+  };
 }
 
 async function reselectAfterFailure() {
@@ -1187,6 +1391,7 @@ async function shell() {
     ),
     tabSwitchDuringLoad: await tabSwitchDuringLoad(),
     navPanelsKeepTheirPlace: navPanelsKeepTheirPlace(),
+    independentMainTabs: await independentMainTabs(),
     reselectAfterFailure: await reselectAfterFailure(),
     bodyReadFailure: await bodyReadFailure(),
     reconnectRetry: await reconnectRetry(),

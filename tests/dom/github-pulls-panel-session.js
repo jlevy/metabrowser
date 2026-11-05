@@ -244,6 +244,7 @@ function createPage() {
     },
     waitingCount: () => waiting.length,
     rowsVersion: () => model?.rowsVersion,
+    filterTotals: () => model?.filterTotals,
     /** Run the timer with this delay, or the only one. */
     async fire(delayMs) {
       const match = [...timers.entries()].filter(
@@ -287,6 +288,30 @@ async function run() {
     return { selection: await paintStory(panel, true) };
   }
   const steps = [];
+
+  // Restoring the tab's saved scroll should not jump to an older row when its
+  // cached window arrives. A new ordinary address still reveals its selected row.
+  {
+    const page = createPage();
+    const top = recorded.large_0;
+    const next = recorded.large_1;
+    const older = next.body.rows[0].number;
+    const controller = panel.createPullsController(page.deps, { filter: "all", current: null });
+    void controller.start({ shown: true });
+    await page.answer({ ...top, body: { ...top.body, list: "all" } });
+    assert(page.waitingCount() === 1, "the older window is held");
+    controller.setCurrent(older, { preserveScroll: true });
+    controller.setCurrent(older); // A duplicate route notification leaves the policy in place.
+    await page.answer({ ...next, body: { ...next.body, list: "all" } });
+    assert(page.holds(older), "the restored PR arrived in the held window");
+    const restored = page.observe("restored", controller, { paint: false });
+    assert(!restored.reveals, "a late cached page cannot scroll the restored tab");
+    const ordinary = top.body.rows[0].number;
+    controller.setCurrent(ordinary);
+    const selected = page.observe("selected", controller, { paint: false });
+    assert(selected.reveals?.[0] === ordinary, "an ordinary address still reveals its row");
+    controller.dispose();
+  }
   let page = createPage();
   let controller = panel.createPullsController(page.deps, { filter: "all", current: null });
   void controller.start({ shown: false });
@@ -315,6 +340,11 @@ async function run() {
   steps.push(page.observe("reopening reads one tagged cache window", controller, { paint: false }));
   controller.setFilter("open");
   await settle();
+  assert(page.waitingCount() === 1, "switching filters does not read separate counts");
+  assert(
+    page.filterTotals() === recorded.current.body.filter_totals,
+    "counts stay while switching",
+  );
   await page.answer(recorded.open_current);
   steps.push(page.observe("Open has its exact matching count", controller));
   controller.setFilter("closed");
@@ -336,6 +366,7 @@ async function run() {
     await page.answer(recorded[`large_${index}`]);
   }
   assert(controller.snapshot().rows === 500, "initial display must stop at 500");
+  assert(page.filterTotals()?.open === 0, "a known empty filter retains its zero");
   steps.push(page.observe("500 shown while the catalog continues in the background", controller));
   await page.answer(recorded.large_resume_started);
   const beforeProgress = page.rowsVersion();
@@ -351,6 +382,7 @@ async function run() {
     await page.answer(recorded[`large_${index}`]);
   }
   assert(controller.snapshot().rows === 1000, "Fetch more grows display by 500");
+  assert(page.filterTotals()?.all === 6000, "an older append cannot roll back newer tallies");
   steps.push(
     page.observe("Fetch more displays another 500 cached rows without provider work", controller),
   );
@@ -736,6 +768,26 @@ async function paintStory(panel, selection = false) {
   // The work an append could spend on rows already painted: ages told, and rows keyed.
   let aged = 0;
   let keyed = 0;
+  let filterOptions = [];
+  class PanelElement extends FakeElement {
+    set innerHTML(markup) {
+      super.innerHTML = markup;
+      if (this.classList.contains("github-pulls-filters")) {
+        for (const option of filterOptions) {
+          const chip = new FakeElement("button");
+          chip.dataset.chipValue = option.value;
+          chip.append(option.label);
+          this.append(chip);
+        }
+      }
+    }
+    querySelectorAll(selector) {
+      if (selector === "button" && this.classList.contains("github-pulls-filters")) {
+        return this.childNodes;
+      }
+      return super.querySelectorAll();
+    }
+  }
   const document = {
     activeElement: null,
     visibilityState: "visible",
@@ -744,7 +796,7 @@ async function paintStory(panel, selection = false) {
       if (tag === "li") {
         built += 1;
       }
-      return new FakeElement(tag);
+      return new PanelElement(tag);
     },
     createDocumentFragment: () => new FakeNode("#fragment"),
     importNode: (node) => new FakeElement(node.localName),
@@ -804,7 +856,13 @@ async function paintStory(panel, selection = false) {
     const mb = {
       ...require("./sdk-ref-fixture.js").refHelpers(document),
       perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
-      filterControls: { groupHtml: () => "<div></div>", bind: () => () => {} },
+      filterControls: {
+        groupHtml({ options }) {
+          filterOptions = options;
+          return "<div></div>";
+        },
+        bind: () => () => {},
+      },
       formatAge(seconds) {
         aged += 1;
         const minutes = Math.round((now / 1000 - seconds) / 60);
@@ -876,8 +934,33 @@ async function paintStory(panel, selection = false) {
       "the fetch status is announced only once",
     );
     const loading = activity.textContent;
+    const filters = container.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-filters"),
+    );
+    const filterChips = [...filters.querySelectorAll("button")];
+    assert(filterChips.length === 3, "all filter chips have a tally");
+    for (const chip of filterChips) {
+      const tally = chip.childNodes.at(-1);
+      assert(tally.classList.contains("tally-pending"), "unknown tally uses the shared pulse");
+      assert(tally.textContent === "", "unknown count is never zero");
+      assert(
+        chip.getAttribute("aria-label").endsWith("count pending"),
+        "unknown count is announced",
+      );
+    }
+    filterChips.at(-1).focus();
     await answer(first);
     assert(activity.hidden, "a ready list hides the fetch status");
+    assert(document.activeElement === filterChips.at(-1), "tallies leave the focused chip mounted");
+    const filterTallies = filterChips.map((chip) => chip.textContent);
+    assert(
+      filterTallies.join("|") === "Open 100|Closed 2|All 102",
+      "each filter uses its provider total from the first envelope",
+    );
+    assert(
+      filterChips[1].getAttribute("aria-label") === "Closed, 2 pull requests",
+      "tally is named",
+    );
     // The row of the page shown opens its changed files, read from the cache: the tree's
     // session holds what they are, and this one where they hang.
     const filesRead = answers[0].route;
@@ -1138,6 +1221,7 @@ async function paintStory(panel, selection = false) {
     assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {
       "loading status": loading,
+      "filter tallies": filterTallies,
       "the count and repository name are bold": total.childNodes.map((node) => ({
         node: node.nodeName,
         text: node.textContent,

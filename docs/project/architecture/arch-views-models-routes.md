@@ -339,7 +339,9 @@ metadata catalog. `state` is `open` by default, `closed` (including merged), or 
 The envelope is `absent` (`not_github` or `not_cached`), `pending`, `current`, or
 `stale`, with the labelled `reader`, `refreshing`, and `last_refresh`. `total` and
 `repository_total` are GitHub’s selected-filter and all-PR counts, nullable before a
-page arrives; `count_at` dates them.
+page arrives. `filter_totals` carries the open, closed, and all counts from the same
+checkpoint, or null before one is available.
+`count_at` dates the counts.
 `fetched` and `catalog_fetched` count cached matching and all rows independently.
 `complete` means the all-PR backfill reached its end; `truncated` says a row field was
 bounded.
@@ -695,6 +697,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `diff.view-file-sides` | data | `/api/plugin/diff/comparison` | `owned-route` | `metab changesroot --api '/api/plugin/diff/comparison?revision=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&file=src/new_name.py'` | `cli-api-diff-view-file.tryscript.md` |
 | `diff.view-file` | interaction | `builtin_plugins/diff/diff-view-file.js#viewFileSides`, `builtin_plugins/diff/diff-view-file.js#sidePathForAddress`, `builtin_plugins/diff/diff-view-file.js#describeViewFile`, `builtin_plugins/diff/diff-view-file.js#createViewFileOpener`, `builtin_plugins/diff/diff-view-file.js#switchRefusal`, `builtin_plugins/diff/diff-view.js#renderViewFileControl`, `builtin_plugins/diff/index.js#viewFileHost`, `builtin_plugins/diff/index.js#viewFileOpener`, `static/git-path.js#gitPathWire` | `/api/plugin/diff/comparison`, `/api/plugin/diff/document`, `/api/source/pin` | `node tests/dom/diff-view-file-session.js` | `cli-ui-diff-view-file.tryscript.md` |
 | `navigation.pull-page-history` | interaction | `static/pull-route.js#pullHistoryAction`, `static/pull-route.js#createPullPageHost`, `static/pull-route.js#parsePulls`, `static/pull-route.js#pullsHref` | `local-only` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
+| `navigation.main-tab-destinations` | interaction | `static/navigation.js#createController` | `local-only` | `node tests/dom/preview-pane-state-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `github.pulls-tab-host` | interaction | `static/pulls-nav.js#createPullsNav`, `static/pulls-nav.js#tabForAddress`, `static/pulls-nav.js#pullAddress`, `static/pulls-nav.js#registerKeys` | `local-only` | `node tests/dom/pulls-nav-session.js` | `cli-ui-pulls-nav.tryscript.md` |
 | `github.pulls-panel` | interaction | `builtin_plugins/github/pulls-panel.js#describePulls`, `builtin_plugins/github/pulls-panel.js#describeRow`, `builtin_plugins/github/pulls-panel.js#refreshFailure`, `builtin_plugins/github/pulls-panel.js#describeLanding`, `builtin_plugins/github/pulls-panel.js#followLanding`, `builtin_plugins/github/pulls-panel.js#createPullsController`, `builtin_plugins/github/pull-state.js#displayState` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-refresh`, `/api/plugin/github/pull` | `node tests/dom/github-pulls-panel-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.visible-core-window` | interaction | `builtin_plugins/github/pulls-panel.js#mountPullsPanel` | `/api/plugin/github/pulls`, `/api/plugin/github/pull-cores-prepare`, `/api/plugin/github/pull` | `node tests/dom/github-pulls-viewport-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |

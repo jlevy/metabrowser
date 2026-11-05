@@ -112,6 +112,7 @@ const CHECKOUT_NOT_LISTED =
 
 /**
  * @typedef {{outcome: string, message: string | null, reset_at: string | null, at: string}} LastRefresh
+ * @typedef {Record<keyof typeof LIST_LABELS, number>} PullFilterTotals
  * @typedef {{
  *   state: "absent" | "pending" | "current" | "stale",
  *   reason: string | null,
@@ -127,6 +128,7 @@ const CHECKOUT_NOT_LISTED =
  *   truncated: boolean,
  *   total: number | null,
  *   repository_total: number | null,
+ *   filter_totals: PullFilterTotals | null,
  *   catalog_fetched: number,
  *   generation: string | null,
  *   count_at: string | null,
@@ -165,6 +167,7 @@ const CHECKOUT_NOT_LISTED =
  *   setSize: number,
  *   listName: string,
  *   repository: string | null,
+ *   filterTotals: PullFilterTotals | null,
  *   countNumber: string | null,
  *   countSuffix: string | null,
  *   catalogReady: boolean,
@@ -309,6 +312,7 @@ export function refreshFailure(envelope, formatTime) {
  *   filter: string,
  *   rows: PullRow[],
  *   rowsVersion: number,
+ *   filterTotals?: PullFilterTotals | null,
  *   nowMs: number,
  *   formatTime: (iso: string) => string,
  *   more: boolean,
@@ -329,6 +333,8 @@ export function describePulls(envelope, page) {
     setSize: envelope?.total ?? Math.max(envelope?.fetched ?? 0, page.rows.length),
     listName: "Pull requests",
     repository: null,
+    filterTotals:
+      page.filterTotals === undefined ? (envelope?.filter_totals ?? null) : page.filterTotals,
     countNumber: null,
     countSuffix: null,
     catalogReady: envelope?.complete === true && !envelope.refreshing,
@@ -360,9 +366,10 @@ export function describePulls(envelope, page) {
     return model;
   }
   model.repository = repository;
-  if (envelope.repository_total !== null && repository !== null) {
-    model.countNumber = new Intl.NumberFormat("en-US").format(envelope.repository_total);
-    model.countSuffix = envelope.repository_total === 1 ? " PR on " : " PRs on ";
+  const repositoryTotal = model.filterTotals?.all ?? envelope.repository_total;
+  if (repositoryTotal !== null && repository !== null) {
+    model.countNumber = new Intl.NumberFormat("en-US").format(repositoryTotal);
+    model.countSuffix = repositoryTotal === 1 ? " PR on " : " PRs on ";
   }
   if (envelope.total !== null && page.rows.length > 0 && page.rows.length < envelope.total) {
     model.window = `Showing last ${new Intl.NumberFormat("en-US").format(page.rows.length)}`;
@@ -569,6 +576,7 @@ export function createPullsController(deps, options = {}) {
     : "open";
   /** @type {number | null} */
   let current = options.current ?? null;
+  let revealCurrent = true;
   /** The row that takes Tab: the current one, or else the first. @type {number | null} */
   let anchor = null;
   let shown = false;
@@ -612,6 +620,9 @@ export function createPullsController(deps, options = {}) {
   let sendingCore = false;
   /** @type {unknown} */
   let coreRetryTimer = null;
+  // Counts describe the repository, so switching filters keeps the last accepted tallies.
+  /** @type {PullFilterTotals | null} */
+  let filterTotals = null;
 
   /** @returns {HeldList} */
   function held() {
@@ -765,6 +776,7 @@ export function createPullsController(deps, options = {}) {
       filter,
       rows: list.rows,
       rowsVersion: list.version,
+      filterTotals,
       nowMs: deps.now(),
       formatTime: deps.formatTime,
       more: list.more,
@@ -840,10 +852,15 @@ export function createPullsController(deps, options = {}) {
    *
    * @param {HeldList} list
    * @param {PullsEnvelope} envelope
+   * @param {number} [request] Top-window read or refresh, never a paged append.
    */
-  function holdEnvelope(list, envelope) {
+  function holdEnvelope(list, envelope, request) {
     list.envelope = envelope;
     list.error = null;
+    if (request !== undefined) {
+      shownRequest = request;
+      filterTotals = envelope.filter_totals ?? null;
+    }
   }
 
   /** The anchor follows the rows: the current one if it is held, and otherwise the first. */
@@ -998,8 +1015,7 @@ export function createPullsController(deps, options = {}) {
             epoch === requestEpoch &&
             !controller.signal.aborted
           ) {
-            shownRequest = request;
-            holdEnvelope(list, response.body);
+            holdEnvelope(list, response.body, request);
             list.etag = response.etag;
             if (
               list.nextAfter === null &&
@@ -1039,7 +1055,7 @@ export function createPullsController(deps, options = {}) {
     }
     settleAnchor();
     render();
-    if (first && current !== null && list.keys.has(current)) {
+    if (first && revealCurrent && current !== null && list.keys.has(current)) {
       deps.reveal(current);
     }
     chaseCurrent();
@@ -1116,8 +1132,7 @@ export function createPullsController(deps, options = {}) {
         isEnvelope(answer.pulls)
       ) {
         if (request >= shownRequest) {
-          shownRequest = request;
-          holdEnvelope(list, answer.pulls);
+          holdEnvelope(list, answer.pulls, request);
         }
         if (response.status === 202) {
           // The answer changed; the next poll must not be answered by a 304.
@@ -1226,7 +1241,9 @@ export function createPullsController(deps, options = {}) {
       render();
       if (chasing && current !== null && list.keys.has(current)) {
         chasing = false;
-        deps.reveal(current);
+        if (revealCurrent) {
+          deps.reveal(current);
+        }
       }
       if (advanced && list.nextAfter !== null && list.rows.length < list.displayLimit) {
         await loadWindow();
@@ -1447,7 +1464,7 @@ export function createPullsController(deps, options = {}) {
         cancelReads();
         return;
       }
-      if (current !== null && held().keys.has(current)) {
+      if (revealCurrent && current !== null && held().keys.has(current)) {
         deps.reveal(current);
       }
       void poll();
@@ -1459,11 +1476,19 @@ export function createPullsController(deps, options = {}) {
      * only follows it, and no fetch starts.
      *
      * @param {number | null} number
+     * @param {{preserveScroll?: boolean}} [options]
      */
-    setCurrent(number) {
-      if (disposed || number === current) {
+    setCurrent(number, options = {}) {
+      if (disposed) {
         return;
       }
+      if (options.preserveScroll) {
+        revealCurrent = false;
+      }
+      if (number === current) {
+        return;
+      }
+      revealCurrent = !options.preserveScroll;
       // The address moved by itself, by Back or by a link on the page: a row that is still
       // waiting for its record to open does not open over it.
       cancelCoreRetry();
@@ -1476,7 +1501,9 @@ export function createPullsController(deps, options = {}) {
       deps.markCurrent(previous, number);
       settleAnchor();
       if (number !== null && held().keys.has(number)) {
-        deps.reveal(number);
+        if (revealCurrent) {
+          deps.reveal(number);
+        }
       } else {
         chaseCurrent();
       }
@@ -1700,6 +1727,16 @@ export function mountPullsPanel(container, ctx, mb) {
       label: LIST_LABELS[/** @type {keyof typeof LIST_LABELS} */ (value)],
     })),
     value: nav.filter,
+  });
+  /** @type {{chip: HTMLButtonElement, value: keyof typeof LIST_LABELS, tally: HTMLElement}[]} */
+  const tallies = [...filters.querySelectorAll("button")].flatMap((chip) => {
+    const value = chip.dataset.chipValue;
+    if (value !== "open" && value !== "closed" && value !== "all") {
+      return [];
+    }
+    const tally = h("span", { class: "count", "aria-hidden": "true" });
+    chip.append(" ", tally);
+    return [{ chip, value, tally }];
   });
   const status = h("p", { class: "github-pulls-status" });
   const notice = h("div", { class: "github-pulls-notice-host" });
@@ -2325,6 +2362,22 @@ export function mountPullsPanel(container, ctx, mb) {
     } else if (model.setSize !== placedSize) {
       placeRows(model.setSize);
     }
+    for (const { chip, value, tally } of tallies) {
+      const count = model.filterTotals?.[value] ?? null;
+      const pending = count === null && model.fetching !== null;
+      tally.classList.toggle("tally-pending", pending);
+      tally.classList.toggle("tally-pending-narrow", pending);
+      const text = count === null ? (pending ? "" : "—") : count.toLocaleString("en-US");
+      if (tally.textContent !== text) {
+        tally.textContent = text;
+      }
+      const description =
+        count === null ? (pending ? "count pending" : "count unavailable") : pullsCount(count);
+      const label = `${LIST_LABELS[value]}, ${description}`;
+      if (chip.getAttribute("aria-label") !== label) {
+        chip.setAttribute("aria-label", label);
+      }
+    }
     tellAges();
     list.setAttribute("aria-label", model.listName);
     list.hidden = model.rows.length === 0;
@@ -2657,15 +2710,16 @@ export function mountPullsPanel(container, ctx, mb) {
      *
      * @param {number | null} number
      * @param {string | null} [file]
+     * @param {{preserveScroll?: boolean}} [options]
      */
-    setCurrent(number, file = null) {
+    setCurrent(number, file = null, options) {
       if (currentRow !== null && currentRow !== number) {
         trees.get(currentRow)?.controller.cancelWalk();
       }
       if (focusedTree !== null && focusedTree !== number) {
         trees.get(focusedTree)?.controller.cancelWalk();
       }
-      controller.setCurrent(number);
+      controller.setCurrent(number, options);
       currentFile = file;
       const row = number === null ? undefined : painted.get(number)?.row;
       if (row !== undefined) {

@@ -66,7 +66,11 @@ type MetabrowserPullsNavHost = Readonly<{
 /** What the list's view hands the Pulls tab's host. */
 type MetabrowserPullsPanelHandle = Readonly<{
   setShown(shown: boolean): void;
-  setCurrent(number: number | null, file?: string | null): void;
+  setCurrent(
+    number: number | null,
+    file?: string | null,
+    options?: { preserveScroll?: boolean },
+  ): void;
   setFilter(state: string): void;
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
   released(): void;
@@ -212,6 +216,7 @@ type MetabrowserNavigationController = Readonly<{
     target: MetabrowserNavigationTarget,
     options?: { replace?: boolean; viewId?: string },
   ): Promise<unknown>;
+  restore(): Promise<unknown>;
   start(): Promise<unknown>;
 }>;
 
@@ -2774,6 +2779,7 @@ declare global {
   type MetabrowserGitPanelRuntime = {
     init(): Promise<void>;
     cancelPending(): void;
+    restoreCommitLanding(): Promise<void>;
     /** Test-only surface; not part of any supported contract. */
     _internals: Record<string, unknown>;
   };
@@ -2802,6 +2808,7 @@ declare global {
    */
   type MetabrowserShellRuntime = {
     activateNavPanel(panelId: string): void;
+    rememberMainTabAddress(): void;
     beginPreviewNavigation(claim: MetabrowserPreviewClaim): boolean;
     claimPreview(owner: string): MetabrowserPreviewClaim;
     endPreviewNavigation(claim: MetabrowserPreviewClaim): void;
@@ -2916,7 +2923,7 @@ declare global {
       ): void;
       dispose(): void;
       init(): Promise<void>;
-      routeChanged(): void;
+      routeChanged(options?: { preserveScroll?: boolean }): void;
     }>;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;

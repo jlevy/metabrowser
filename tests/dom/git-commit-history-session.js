@@ -113,6 +113,7 @@ class StandIn {
 /** One page: its history, its pane, and a server that answers the Git routes. */
 async function createPage(start, options = {}) {
   const log = [];
+  let repositoryReads = 0;
   const shown = { pane: "nothing", navPanel: "files" };
   const preview = new StandIn();
   preview.connectedRoot = true;
@@ -168,6 +169,7 @@ async function createPage(start, options = {}) {
   async function fetchRoute(url) {
     const route = String(url);
     if (route.startsWith("/api/git/repo")) {
+      repositoryReads += 1;
       await held.get(route);
       if (options.gateFailures > 0) {
         options.gateFailures -= 1;
@@ -307,8 +309,10 @@ async function createPage(start, options = {}) {
   };
 
   sandbox.MetabrowserShell = {
+    rememberMainTabAddress() {},
     activateNavPanel(id) {
       shown.navPanel = id;
+      sandbox.activeNavPanelId = id;
       if (id === "git") {
         panel?.onShow?.();
       }
@@ -394,6 +398,12 @@ async function createPage(start, options = {}) {
     function isPullAddress(pathname) { return pathname.startsWith(PULL_ROUTE_PREFIX) || pathname === PULLS_ROUTE; }
     var previewPane = __previewPane;
     var navigationController = null;
+    var activeNavPanelId = "files";
+    var keepFilesScrollOnLanding = false;
+    function isGitHistoryLanding() { return false; }
+    function rememberMainTabAddress() {}
+    function prepareMainTabLanding() { MetabrowserShell.claimPreview("none"); }
+    function activateNavPanel(id) { MetabrowserShell.activateNavPanel(id); }
     function beginViewCompositionLoad() { return null; }
     function addressedView() { return null; }
     function showPreviewTab() {}
@@ -445,6 +455,7 @@ async function createPage(start, options = {}) {
     entries,
     held,
     history,
+    repositoryReads: () => repositoryReads,
     listeners,
     log,
     options,
@@ -520,7 +531,12 @@ async function createPage(start, options = {}) {
     assert(page.entries.length === 1, "selecting a commit pushed an entry");
     await page.open("src/a.py");
     steps["opening a file pushes one"] = page.read();
+    const beforeGitLanding = page.repositoryReads();
     await page.back();
+    assert(
+      page.repositoryReads() === beforeGitLanding + 1,
+      "an addressed Git activation shares its repo-info read",
+    );
     steps["Back shows the commit"] = page.read();
     assert(steps["Back shows the commit"].pane === `commit ${COMMIT_A.slice(0, 7)}`, "Back");
     assert(steps["Back shows the commit"].owner === "git", "Back left the pane with the file");

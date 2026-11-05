@@ -41,7 +41,7 @@ $ node tests/dom/git-commit-history-session.js
       "url": "/view/src/a.py",
       "pane": "file src/a.py",
       "owner": "file",
-      "navPanel": "git",
+      "navPanel": "files",
       "requests": []
     },
     "Back shows the commit": {
@@ -55,7 +55,7 @@ $ node tests/dom/git-commit-history-session.js
       "url": "/view/src/a.py",
       "pane": "file src/a.py",
       "owner": "file",
-      "navPanel": "git",
+      "navPanel": "files",
       "requests": []
     },
     "Back shows the commit again": {
@@ -78,7 +78,7 @@ $ node tests/dom/git-commit-history-session.js
       "url": "/view/src/a.py",
       "pane": "file src/a.py",
       "owner": "file",
-      "navPanel": "git",
+      "navPanel": "files",
       "requests": []
     },
     "Back lands on the commit now in that entry": {
@@ -103,7 +103,7 @@ $ node tests/dom/git-commit-history-session.js
       "url": "/view/docs/",
       "pane": "file docs",
       "owner": "file",
-      "navPanel": "git",
+      "navPanel": "files",
       "requests": []
     },
     "Back shows the commit, not yet its file": {
@@ -125,14 +125,14 @@ $ node tests/dom/git-commit-history-session.js
     "url": "/view/src/a.py",
     "pane": "file src/a.py",
     "owner": "file",
-    "navPanel": "git",
+    "navPanel": "files",
     "requests": []
   },
   "stepping on while the commit loads": {
     "url": "/view/src/a.py",
     "pane": "file src/a.py",
     "owner": "file",
-    "navPanel": "git",
+    "navPanel": "files",
     "requests": [
       "GET /api/git/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     ]

@@ -107,8 +107,8 @@ read Markdown docs.
   target exactly.
 
 - **GitHub pull-request review.** Paste a pull-request URL to read its description,
-  conversation, reviews, inline review comments, checks, and Files changed beside its
-  code, for public and private repositories, online or from the cache offline.
+  conversation, reviews, inline review comments, checks, and changes beside its code,
+  for public and private repositories, online or from the cache offline.
   See [reviewing pull requests](docs/reviewing-pull-requests.md).
 
 - **Quick File navigation.** Press `/` or `T` to open a fuzzy finder over every

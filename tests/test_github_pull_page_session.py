@@ -524,7 +524,7 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
         "comparison_too_large",
     }
     for state, said in unavailable.items():
-        assert said["files"].startswith("Files changed "), state
+        assert said["files"].startswith("Changes "), state
     assert "does not guess" in unavailable["base_uncertain"]["files"]
     assert "not readable here" in unavailable["commits_unavailable"]["files"]
     # A checkout's page offers nothing that serves or switches code: it has no pin.

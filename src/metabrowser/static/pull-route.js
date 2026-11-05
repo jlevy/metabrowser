@@ -63,7 +63,7 @@
     }
     const segments = typeof file === "string" && tab === "files" ? file.split("/") : [""];
     if (!segments.every(isFileSegment)) {
-      throw new TypeError("pull route names a file of Files changed by a normalized path");
+      throw new TypeError("pull route requires a normalized changed-file path");
     }
     try {
       return `${head}/${segments.map((segment) => encodeURIComponent(segment)).join("/")}`;

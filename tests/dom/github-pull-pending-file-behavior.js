@@ -20,9 +20,9 @@ function setup() {
   };
   globalThis.window = {
     location: { pathname: "/pull/7/files" },
-    setTimeout(callback) {
+    setTimeout(callback, delay) {
       const id = Symbol();
-      timers.set(id, callback);
+      timers.set(id, { callback, delay });
       return id;
     },
     clearTimeout: (id) => timers.delete(id),
@@ -32,28 +32,32 @@ function setup() {
       return { body: { firstElementChild: null } };
     }
   };
+  return timers;
 }
 const response = (body) => ({ status: 200, headers: { get: () => null }, json: async () => body });
 async function run() {
-  const { mountPullPage } = await import(
+  const { FAST_POLL_MS, mountPullPage } = await import(
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
   );
-  const mount = (initial, assets, jumps) =>
+  const mount = (initial, assets, jumps, container, renderReady = Promise.resolve()) =>
     mountPullPage(
-      new Element("main"),
+      container,
       { number: 7, tab: "files", reader: { initial, fetchAfterMs: 0 } },
       {
         perf,
         ensureAsset: async () => {},
         ensureKindAssets: () => assets,
         getRegisteredView: () => ({
-          render: async () => ({
-            scrollToFile(file) {
-              jumps.push(file);
-              return { kind: "jumped", path: file };
-            },
-            dispose() {},
-          }),
+          async render() {
+            await renderReady;
+            return {
+              scrollToFile(file) {
+                jumps.push(file);
+                return { kind: "jumped", path: file };
+              },
+              dispose() {},
+            };
+          },
         }),
         ...require("./sdk-ref-fixture.js").refHelpers(document),
         formatAge: () => ({ label: "now", className: "age" }),
@@ -67,39 +71,81 @@ async function run() {
   globalThis.fetch = async () => ({ status: 304, headers: { get: () => null } });
   const assets = deferred();
   const abandoned = [];
-  const page = mount(recorded.current, assets.promise, abandoned);
+  const loading = new Element("main");
+  const rendering = deferred();
+  const page = mount(recorded.current, assets.promise, abandoned, loading, rendering.promise);
   await settle();
+  const pending = () => loading.querySelector(".mb-delayed-loading");
+  assert.equal(pending()?.getAttribute("aria-label"), "Loading changes");
+  assert.ok(pending().querySelector(".spinner"));
   assert.equal(page.showFile("src/app.txt").kind, "no_diff");
   window.location.pathname = "/pull/7";
   page.setTab("");
+  assert.equal(pending(), null, "leaving Changes retires its pending spinner");
   assets.resolve();
   await settle();
   window.location.pathname = "/pull/7/files";
   page.setTab("files");
   await settle();
+  assert.ok(pending(), "the spinner covers the renderer’s initial request as well as assets");
+  rendering.resolve();
   await page.whenFilesReady();
+  assert.equal(pending(), null, "the diff owns progress after its initial render");
   assert.deepEqual(abandoned, [], "a fileless visit must not consume the abandoned file");
   page.dispose();
 
-  setup();
-  const metadata = deferred();
-  globalThis.fetch = () => metadata.promise;
+  const timers = setup();
+  const acquisition = deferred();
   const unavailable = structuredClone(recorded.current);
   unavailable.body.record.comparison = null;
   unavailable.body.comparison_route = null;
-  unavailable.body.record.unavailable.comparison = "base_uncertain";
+  unavailable.body.record.unavailable.comparison = "no_store";
+  unavailable.body.refreshing = true;
+  let current = { ...unavailable.body, refreshing: false };
+  let asked;
+  globalThis.fetch = (route, options) => {
+    if (options.method === "POST") {
+      asked = JSON.parse(options.body);
+      return acquisition.promise;
+    }
+    return Promise.resolve(response(current));
+  };
   const retained = [];
-  const waiting = mount(unavailable, Promise.resolve(), retained);
+  const changes = new Element("main");
+  const waiting = mount(unavailable, Promise.resolve(), retained, changes);
+  const changesBody = () => changes.querySelector(".github-pull-body");
+  assert.equal(
+    changesBody().querySelector(".spinner"),
+    null,
+    "a metadata refresh cannot acquire changes",
+  );
   await settle();
   assert.equal(waiting.showFile("docs/new.md").kind, "no_diff");
-  metadata.resolve(response(recorded.current.body));
+  changesBody().querySelector(".github-pull-fetch-changes").events.get("click")();
+  assert.deepEqual(asked, { number: 7, retry: true, comparison: true });
+  const assertAcquiring = () => {
+    assert.match(changesBody().textContent, /Fetching changes/);
+    assert.ok(changesBody().querySelector(".spinner"));
+    assert.equal(changesBody().querySelector(".github-pull-fetch-changes"), null);
+  };
+  assertAcquiring();
+  current = unavailable.body;
+  acquisition.resolve({ ...response({ pull: current }), status: 202 });
   await settle();
+  assertAcquiring();
+  async function poll() {
+    const [id, timer] = [...timers].find(([, timer]) => timer.delay === FAST_POLL_MS);
+    timers.delete(id);
+    timer.callback();
+    await settle();
+  }
+  await poll();
+  assertAcquiring();
+  current = recorded.current.body;
+  await poll();
   await waiting.whenFilesReady();
-  assert.deepEqual(
-    retained,
-    ["docs/new.md"],
-    "temporary unavailability in Files retains the current selection",
-  );
+  assert.equal(changesBody().querySelector(".spinner"), null);
+  assert.deepEqual(retained, ["docs/new.md"], "acquiring changes retains the pending file");
   waiting.dispose();
 
   setup();

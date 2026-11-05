@@ -78,7 +78,7 @@ displayed window.
 
 A folder server keeps its filesystem root and does not fetch Git objects merely because
 a pull request is opened.
-If Files changed has no comparison store, **Fetch changes** explicitly opens a healthy
+If **Changes** has no comparison store, **Fetch changes** explicitly opens a healthy
 published store, including an existing full store, or acquires an overlay that borrows
 the checkout’s objects without writing to it.
 Borrowing refusal does not silently start a full clone.
@@ -99,7 +99,7 @@ For an agent, these read everything without a browser or a port, where `<url>` i
 - See the kind and counts: `<invocation> <url> --show /pull/<n>`
 - Read the description, comments, reviews, review comments, and checks:
   `<invocation> <url> --api '/api/plugin/github/pull?number=<n>'`. Its
-  `comparison_route` is Files changed
+  `comparison_route` serves the **Changes** diff
 - Read the diff: `<invocation> <url> --api '<comparison_route>'`
 - Read a file at the head: `git -C <location> show <pin>:<path>`, with `location` and
   `pin` from `<invocation> <url> --api /api/source/status`. Expand a leading `~` in

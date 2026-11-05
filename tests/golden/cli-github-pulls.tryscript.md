@@ -68,6 +68,11 @@ status: 200
   },
   "total": 100,
   "repository_total": 102,
+  "filter_totals": {
+    "all": 102,
+    "open": 100,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
   "generation": "00000000000000000000000000000001:0",
@@ -139,6 +144,11 @@ status: 200
   },
   "total": 102,
   "repository_total": 102,
+  "filter_totals": {
+    "all": 102,
+    "open": 100,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
   "generation": "00000000000000000000000000000001:1",
@@ -215,6 +225,11 @@ status: 200
   },
   "total": 100,
   "repository_total": 102,
+  "filter_totals": {
+    "all": 102,
+    "open": 100,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
   "generation": "00000000000000000000000000000001:0",
@@ -322,6 +337,11 @@ status: 200
   },
   "total": 100,
   "repository_total": 102,
+  "filter_totals": {
+    "all": 102,
+    "open": 100,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
   "generation": "00000000000000000000000000000001:0",
@@ -358,6 +378,11 @@ status: 200
   },
   "total": 100,
   "repository_total": 102,
+  "filter_totals": {
+    "all": 102,
+    "open": 100,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
   "generation": "00000000000000000000000000000001:0",
@@ -431,6 +456,11 @@ status: 200
   },
   "total": 2,
   "repository_total": 102,
+  "filter_totals": {
+    "all": 102,
+    "open": 100,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
   "generation": "00000000000000000000000000000001:1",
@@ -539,6 +569,7 @@ status: 200
   "last_refresh": null,
   "total": null,
   "repository_total": null,
+  "filter_totals": null,
   "count_at": null,
   "catalog_fetched": 0,
   "generation": null,
@@ -639,6 +670,11 @@ status: 202
     },
     "total": 100,
     "repository_total": 102,
+    "filter_totals": {
+      "all": 102,
+      "open": 100,
+      "closed": 2
+    },
     "count_at": "2026-09-17T12:00:00Z",
     "catalog_fetched": 102,
     "generation": "00000000000000000000000000000001:0",
@@ -670,6 +706,11 @@ status: 200
   },
   "total": 100,
   "repository_total": 102,
+  "filter_totals": {
+    "all": 102,
+    "open": 100,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
   "generation": "00000000000000000000000000000001:0",
@@ -712,6 +753,11 @@ status: 200
     },
     "total": 100,
     "repository_total": 102,
+    "filter_totals": {
+      "all": 102,
+      "open": 100,
+      "closed": 2
+    },
     "count_at": "2026-09-17T12:00:00Z",
     "catalog_fetched": 102,
     "generation": "00000000000000000000000000000001:0",

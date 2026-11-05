@@ -274,7 +274,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 1,000 pull requests",
-        "summary": "1,000 PRs on octo/demo",
+        "summary": "6,000 PRs on octo/demo",
         "progress": "Catalog paused",
         "freshness": "PRs fetched just now by octo-reader",
         "live": "Pull requests of octo/demo: 1,000 pull requests",
@@ -845,6 +845,11 @@ $ node tests/dom/github-pulls-panel-second-session.js
   ],
   "paint": {
     "loading status": "Fetching pull requests…",
+    "filter tallies": [
+      "Open 100",
+      "Closed 2",
+      "All 102"
+    ],
     "the count and repository name are bold": [
       {
         "node": "STRONG",
