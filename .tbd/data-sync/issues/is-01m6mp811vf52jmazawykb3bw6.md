@@ -5,7 +5,7 @@ title: Make PR and Git navigation feel immediate with measured prefetching
 kind: feature
 status: in_progress
 priority: 1
-version: 25
+version: 26
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex-prefetch
 labels: []
@@ -32,7 +32,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-05T01:47:46.617Z
-updated_at: 2026-11-05T18:52:56.494Z
+updated_at: 2026-11-05T20:08:30.084Z
 started_at: 2026-11-05T01:47:47.197Z
 ---
 Improve perceived navigation latency for pull-request selection and Git history on a new branch from verified main. Follow the existing performance-loop framework: register a few falsifiable hypotheses before implementation; test their mechanisms on the unchanged build; use frozen subjects and explicit cold, warm, prepared and unprepared cache states; measure trusted input to exact useful painted content, including server, decode, asset and mount phases. Confirm accepted changes with interleaved repeated controls and candidate runs, preserve correctness/cancellation/account/source ownership and bounded background work, and record rejected hypotheses as well. Reuse existing harnesses and concise session/golden tests rather than adding a parallel framework. Preserve the default installed verified build and the two user preview servers while experimenting; install a successor only after verification. Track actual timings, ranges, bytes, request counts/concurrency, long tasks, CPU/RSS and cache provenance. Branch: codex/perf-prefetch-20261104. No speculative product changes before diagnostic evidence.
@@ -50,3 +50,5 @@ Exact full gate passed for 1a39e43b stacked above 034d1491 and PR #299. The two 
 Native stack #302 fully verified and ready for owner merge: #299 0d1b132d, #300 034d1491, #301 3c8acd21. All three clean, non-draft, and 9/9 green. First-layer Qodo dispositions published, and all four top-layer findings fixed/resolved with review evidence. H81/H82/H83 scoped beads closed. Default installed CLI remains verified main. Broader H74/H75 diagnostic beads remain open.
 
 Installation and review follow-up: both default CLI entry points now run the verified stack-tip wheel 0.11.1.dev1162+3c8acd21. The installed doctor passed all 11 plugin checks and the older preview processes were stopped. GitHub still shows the same three heads in native stack #302, each mergeable with all nine checks green. The remaining #299 thread has a recorded rebuttal and awaits reviewer closure. The stack awaits owner merge. The H74 and H75 measurements are open follow-ups outside this delivery.
+
+Pulls UI status follow-up mb-bn0z is complete in PR #303, the fourth layer of native stack #302 above #301. Exact head 5c8cb75b passed all nine GitHub CI jobs. Both installed CLI entry points now run verified 0.11.1.dev1165+5c8cb75b.
