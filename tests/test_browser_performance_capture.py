@@ -768,3 +768,15 @@ def test_probe_attributes_render_blocking_startup_styles() -> None:
     assert "response_end_ms:" in report
     assert "wait_ms:" in report
     assert 'entry.name === "srv"' in report
+
+
+def test_deferred_git_selection_uses_the_trusted_input_boundary() -> None:
+    result = subprocess.run(
+        [require_node(), str(ROOT / "tests/dom/git-deferred-selection-boundary.js")],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith("OK:"), result.stdout

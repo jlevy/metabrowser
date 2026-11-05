@@ -246,7 +246,8 @@ status: 200
       "text": false
     },
     "unavailable": {}
-  }
+  },
+  "core_preview": null
 }
 ? 0
 ```
@@ -628,7 +629,8 @@ status: 200
       "text": false
     },
     "unavailable": {}
-  }
+  },
+  "core_preview": null
 }
 ? 0
 ```
@@ -691,7 +693,8 @@ status: 200
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 ? 0
 ```
@@ -742,7 +745,8 @@ status: 200
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 ? 0
 ```
@@ -812,7 +816,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 ? 0
 ```
@@ -842,7 +847,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 ? 0
 ```
@@ -872,7 +878,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 ? 0
 ```
@@ -994,7 +1001,8 @@ status: 202
       "at": "[TIMESTAMP]"
     },
     "comparison_route": null,
-    "record": null
+    "record": null,
+    "core_preview": null
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1018,7 +1026,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 Error: the refresh ended with gh_failed
 ? 1
@@ -1051,7 +1060,8 @@ status: 202
       "at": "[TIMESTAMP]"
     },
     "comparison_route": null,
-    "record": null
+    "record": null,
+    "core_preview": null
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1075,7 +1085,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 Error: the refresh ended with gh_failed
 ? 1
@@ -1109,7 +1120,8 @@ status: 200
       "at": "[TIMESTAMP]"
     },
     "comparison_route": null,
-    "record": null
+    "record": null,
+    "core_preview": null
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }

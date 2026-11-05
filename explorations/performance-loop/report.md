@@ -79,6 +79,11 @@ against one that did.
 | exp-038 | [A release rehearsal under load finds the v0.12 candidate equivalent to v0.11.0 and does not clear it](experiments/exp-038-v012-rehearsal-under-load-does-not-clear-the-candidate.md) | - | `project10_browser_first_row_ms` | unresolved |
 | exp-040 | [Files changed on a large pull request recomputes the whole patch on every request, and one deleted empty file makes it fail outright](experiments/exp-040-files-changed-recomputes-the-whole-patch-per-request.md) | - | `files_changed_first_diff_line_ms` | baseline |
 | exp-041 | [PR Files Start from a Prepared Manifest and a Visible Patch Prefix](experiments/exp-041-pr-files-use-a-prepared-manifest-and-visible-prefix.md) | - | `first_text_ms_pr_29121` | accepted |
+| exp-045 | [Publish the Selected PR Description Before the Full Conversation](experiments/exp-045-publish-selected-pr-description-before-full-conversation.md) | - | `selected_description_ms` | accepted |
+| exp-046 | [Reuse the Rendered Git Revision on Hover](experiments/exp-046-reuse-the-rendered-git-revision-on-hover.md) | - | `reentry_comparisons` | accepted |
+| exp-047 | [Connect the Git Stage Before Rendering the First Screen](experiments/exp-047-connect-the-git-stage-before-rendering.md) | - | `trusted_git_click_to_paint_ms` | accepted |
+| exp-048 | [Measure Provider Cost for a Visible PR Core Batch](experiments/exp-048-measure-provider-cost-of-preparing-visible-pr-core.md) | - | `catalog_response_decoded_bytes` | baseline |
+| exp-049 | [Bind the Missing Selected PR Core to the GraphQL Viewer](experiments/exp-049-bind-the-missing-selected-pr-core-to-the-graphql-viewer.md) | - | `sampled_server_tree_rss_mib` | accepted |
 
 ## Absolute numbers, per condition
 
@@ -3606,6 +3611,111 @@ Corpus `7fb52ed78d691eab`, shape `1`, harness `22`.
 Walk elapsed across these runs: 9,269-57,754 ms.
 A run loaded during a walk and a run loaded after one are different regimes.
 
+### 12,024 files — exp-047 / tree-684fb0f2
+
+Corpus `3e91e74d3d8e366b`, shape `1`, harness `23`.
+
+**What a reader gets** — browser probe
+
+| metric | directory-v10-baseline (n=3) | directory-v10-candidate03 (n=3) | directory-v11-baseline (n=3) | directory-v11-candidate04 (n=3) |
+| --- | ---: | ---: | ---: | ---: |
+| `ttfb_ms` | 13 (12-14) | 12 (12-13) | 13 (13-13) | 12 (12-13) |
+| `response_download_ms` | 1 (1-1) | 1 (0-1) | 0 (0-1) | 1 (1-1) |
+| `dom_interactive_ms` | 84 (78-107) | 84 (78-85) | 79 (77-91) | 80 (78-82) |
+| `first_row_ms` | 80 (77-104) | 81 (76-84) | 76 (76-89) | 80 (76-81) |
+| `first_row_render_ms` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `load_tree_ms` | 4 (4-5) | 5 (4-5) | 4 (4-6) | 4 (4-4) |
+| `tree_fetch_srv_ms` | 1 (1-2) | 2 (1-2) | 2 (1-2) | 1 (1-2) |
+| `tree_fetch_wait_ms` | 2 (2-2) | 2 (2-3) | 2 (2-2) | 2 (2-2) |
+| `tree_fetch_total_ms` | 3 (2-3) | 3 (3-4) | 3 (3-3) | 3 (2-3) |
+| `tree_fetch_kb` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `dcl_ms` | 89 (84-112) | 89 (84-91) | 85 (84-97) | 87 (84-89) |
+| `load_ms` | 90 (85-113) | 90 (85-92) | 86 (84-98) | 87 (85-89) |
+| `last_resource_ms` | 1,864 (1,849-1,869) | 1,869 (1,863-1,889) | 1,863 (1,856-1,877) | 1,851 (1,851-1,867) |
+| `subtree_requests` | 1 (0-2) | 1 (0-1) | 0 (0-1) | 0 (0-1) |
+| `tree_items` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `lazy_stubs` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `collapsed_diff_rows_materialized` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `dom_nodes` | 970 (970-970) | 970 (970-970) | 970 (970-970) | 970 (970-970) |
+| `transferred_kb` | 558 (528-589) | 559 (528-559) | 528 (528-558) | 528 (528-559) |
+| `vendor_first_start_ms` | 94 (90-117) | 91 (89-97) | 90 (90-104) | 93 (90-94) |
+| `fcp_ms` | 76 (72-96) | 76 (68-80) | 72 (72-80) | 76 (68-76) |
+| `lcp_ms` | 76 (72-96) | 76 (68-80) | 72 (72-80) | 76 (68-76) |
+| `cls` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `cls_shifts` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `frame_missing_px` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `filter_bar_shift_px` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `summary_shift_px` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `reserved_region_shift_px` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `tree_region_repaints` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `long_tasks` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `long_task_ms_total` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `total_blocking_time_ms` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms_first_5s` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `long_tasks_over_200ms` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `main_thread_blocked_pct` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_attribution_missing` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_batches` | 4 (4-4) | 4 (4-4) | 4 (4-4) | 4 (4-4) |
+| `inventory_delivery_items` | 4,267 (4,267-4,267) | 4,267 (4,267-4,267) | 4,267 (4,267-4,267) | 4,267 (4,267-4,267) |
+| `inventory_delivery_batch_items_max` | 4,096 (4,096-4,096) | 4,096 (4,096-4,096) | 4,096 (4,096-4,096) | 4,096 (4,096-4,096) |
+| `inventory_delivery_max_ms` | 4 (3-4) | 3 (3-3) | 3 (3-3) | 3 (3-3) |
+| `inventory_delivery_work_ms_total` | 5 (5-5) | 5 (5-6) | 5 (5-5) | 5 (5-6) |
+| `inventory_delivery_work_pct` | 0 (0.3-0.3) | 0 (0.3-0.3) | 0 (0.3-0.3) | 0 (0.3-0.3) |
+| `animation_frames` | 0 (0-1) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `animation_frame_max_ms` | 0 (0-54) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `animation_frames_over_200ms` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_total` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_max` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `animation_frames_blocking_over_200ms` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `forced_style_layout_ms_max` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `interactions` | 1 (0-1) | 0 (0-0) | 0 (0-1) | 0 (0-0) |
+| `interaction_inputs` | 7 (7-7) | 7 (7-7) | 7 (7-7) | 7 (7-7) |
+| `interaction_input_first_ms` | 128 (128-142) | 144 (136-151) | 138 (138-144) | 134 (134-141) |
+| `interaction_input_last_ms` | 1,663 (1,658-1,673) | 1,676 (1,672-1,681) | 1,670 (1,664-1,682) | 1,660 (1,659-1,676) |
+| `interaction_input_span_ms` | 1,531 (1,530-1,535) | 1,530 (1,528-1,540) | 1,532 (1,526-1,537) | 1,527 (1,525-1,535) |
+| `interaction_input_coverage_pct` | 86 (86.1-86.8) | 86 (85.3-86.4) | 86 (86-86.3) | 86 (86.2-86.4) |
+| `interaction_samples_retained` | 1 (0-1) | 0 (0-0) | 0 (0-1) | 0 (0-0) |
+| `interaction_p50_ms` | 28 (24-32) | - | 32 | - |
+| `interaction_p95_ms` | 28 (24-32) | - | 32 | - |
+| `interaction_max_ms` | 24 (0-32) | 0 (0-0) | 0 (0-32) | 0 (0-0) |
+| `render_spans` | 2 (2-2) | 2 (2-2) | 2 (2-2) | 2 (2-2) |
+| `render_ms_total` | 2 (2-2) | 2 (2-2) | 2 (2-2) | 2 (2-2) |
+| `tree_reprobe_ms` | 3 (2-5) | 3 (2-8) | 3 (2-3) | 3 (2-3) |
+| `tree_reprobe_srv_ms` | 1 (1-1) | 1 (1-2) | 1 (1-1) | 1 (1-1) |
+| `spawn_to_profile_start_ms` | 1,675 (1,528-2,152) | 1,607 (1,526-1,674) | 1,752 (1,506-7,439) | 1,649 (1,495-1,665) |
+| `requests` | 69 (68-70) | 69 (68-69) | 68 (68-69) | 68 (68-69) |
+| `fetches_in_flight` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `fetch_network_errors` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `fetch_aborts` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `fetch_http_4xx` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `fetch_http_5xx` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `rendered_preview_errors` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `page_exceptions` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `resource_timing_capacity` | 500 (500-500) | 500 (500-500) | 500 (500-500) | 500 (500-500) |
+| `resource_timing_buffer_full` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `script_transfer_kb` | 381 (381-381) | 382 (382-382) | 381 (381-381) | 382 (382-382) |
+| `startup_script_requests` | 20 (20-20) | 20 (20-20) | 20 (20-20) | 20 (20-20) |
+| `startup_script_transfer_kb` | 175 (175-175) | 175 (175-175) | 175 (175-175) | 175 (175-175) |
+| `startup_script_last_response_ms` | 75 (71-75) | 75 (70-78) | 71 (71-75) | 73 (70-75) |
+| `startup_script_duration_max_ms` | 56 (55-58) | 54 (54-55) | 55 (55-58) | 56 (54-58) |
+| `startup_style_server_ms_max` | 7 (6-7.2) | 8 (6-9.1) | 8 (7.6-8.6) | 7 (5.3-8.7) |
+| `startup_style_wait_ms_max` | 14 (13-15) | 14 (13-15) | 14 (13-14) | 15 (12-15) |
+| `startup_style_last_response_ms` | 43 (40-45) | 45 (40-49) | 40 (40-43) | 42 (40-44) |
+| `style_transfer_kb` | 84 (84-84) | 84 (84-84) | 84 (84-84) | 84 (84-84) |
+| `image_transfer_kb` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `api_transfer_kb` | 65 (34-95) | 65 (34-65) | 34 (34-65) | 34 (34-65) |
+| `largest_resource_kb` | 90 (90-90) | 90 (90-90) | 90 (90-90) | 90 (90-90) |
+| `resource_duration_max_ms` | 109 (103-109) | 107 (92-117) | 104 (93-109) | 108 (91-112) |
+| `js_heap_mb` | 6 (5.9-6.6) | 6 (5.9-6.1) | 6 (5.9-6.1) | 6 (5.9-6) |
+| `js_heap_after_gc_mb` | 3 (3.1-3.3) | 3 (3.1-3.1) | 3 (3.1-3.1) | 3 (3.1-3.1) |
+| `plugin_view_containers` | 2 (2-2) | 2 (2-2) | 2 (2-2) | 2 (2-2) |
+| `plugin_view_nonempty` | 1 (1-1) | 1 (1-1) | 1 (1-1) | 1 (1-1) |
+| `shell_tools_missing` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `file_catalog_incomplete` | 0 (0-0) | 0 (0-0) | 0 (0-0) | 0 (0-0) |
+| `viewport_w` | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) |
+| `viewport_h` | 900 (900-900) | 900 (900-900) | 900 (900-900) | 900 (900-900) |
+
 ## Provenance
 
 | experiment | label | provider | contract | recorded | build | identity | commit | corpus | shape | harness | walk |
@@ -3959,6 +4069,18 @@ A run loaded during a walk and a run loaded after one are different regimes.
 | exp-038 | exp-038-pyc2-release-v0.11.0 | python | inventory-provider-v1 | 2026-10-01T22:46 | metab 0.11.0 | `wheel:sha256:b099786f84408968df10296fdf7226218dd8853faf1cdb02a25787c5ab396e7f` | 6c278f3f9e10aebcb34a207035aee7768a1bba0e | tree-43a9225a | 1 | 22 | 39,794 ms |
 | exp-038 | exp-038-pyc2-release-v0.11.0 | python | inventory-provider-v1 | 2026-10-01T22:48 | metab 0.11.0 | `wheel:sha256:b099786f84408968df10296fdf7226218dd8853faf1cdb02a25787c5ab396e7f` | 6c278f3f9e10aebcb34a207035aee7768a1bba0e | tree-43a9225a | 1 | 22 | 53,560 ms |
 | exp-038 | exp-038-pyc2-candidate-c16912f8 | python | inventory-provider-v1 | 2026-10-01T22:49 | metab 0.11.1.dev611+c16912f8 | `wheel:sha256:2bb728beea57c713742b9b6190e116af24346ada6a9e266c59c570e1b70b0c65` | c16912f8d1239d74877a0cc616d5223d17b7a0ca | tree-43a9225a | 1 | 22 | 25,186 ms |
+| exp-047 | directory-v10-baseline | python | inventory-provider-v1 | 2026-11-05T05:31 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:d02d53c25e4403a7e1d1734b0ed55ccf372391b4ddac94abc06510740d536219` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
+| exp-047 | directory-v10-candidate03 | python | inventory-provider-v1 | 2026-11-05T05:31 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:b07ecdb40b3f30f3f467f5a1e075991c6f7ee30ae918590a84d2176bce51dc8b` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
+| exp-047 | directory-v10-candidate03 | python | inventory-provider-v1 | 2026-11-05T05:31 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:b07ecdb40b3f30f3f467f5a1e075991c6f7ee30ae918590a84d2176bce51dc8b` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
+| exp-047 | directory-v10-baseline | python | inventory-provider-v1 | 2026-11-05T05:31 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:d02d53c25e4403a7e1d1734b0ed55ccf372391b4ddac94abc06510740d536219` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
+| exp-047 | directory-v10-baseline | python | inventory-provider-v1 | 2026-11-05T05:31 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:d02d53c25e4403a7e1d1734b0ed55ccf372391b4ddac94abc06510740d536219` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
+| exp-047 | directory-v10-candidate03 | python | inventory-provider-v1 | 2026-11-05T05:32 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:b07ecdb40b3f30f3f467f5a1e075991c6f7ee30ae918590a84d2176bce51dc8b` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
+| exp-047 | directory-v11-baseline | python | inventory-provider-v1 | 2026-11-05T06:06 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:d02d53c25e4403a7e1d1734b0ed55ccf372391b4ddac94abc06510740d536219` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
+| exp-047 | directory-v11-candidate04 | python | inventory-provider-v1 | 2026-11-05T06:06 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:c51ef4bc062237668c2c91f74534ff101a25d89459bb7f7b5e0c996de1f11046` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
+| exp-047 | directory-v11-candidate04 | python | inventory-provider-v1 | 2026-11-05T06:06 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:c51ef4bc062237668c2c91f74534ff101a25d89459bb7f7b5e0c996de1f11046` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
+| exp-047 | directory-v11-baseline | python | inventory-provider-v1 | 2026-11-05T06:06 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:d02d53c25e4403a7e1d1734b0ed55ccf372391b4ddac94abc06510740d536219` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
+| exp-047 | directory-v11-baseline | python | inventory-provider-v1 | 2026-11-05T06:06 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:d02d53c25e4403a7e1d1734b0ed55ccf372391b4ddac94abc06510740d536219` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
+| exp-047 | directory-v11-candidate04 | python | inventory-provider-v1 | 2026-11-05T06:07 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:c51ef4bc062237668c2c91f74534ff101a25d89459bb7f7b5e0c996de1f11046` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
 
 <!-- Generated file.
 Regenerate with `explorations/performance-loop/run.py report`. -->

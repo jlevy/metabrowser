@@ -748,7 +748,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "name": "a click on a row with no record fetches it at once",
       "asked": [
         "GET /api/plugin/github/pull?number=7",
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"wait_core\":true}"
       ],
       "waits": [
         30000,
@@ -767,7 +767,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "name": "a key stopping on one waits, so tapping past it spends nothing",
       "asked": [
         "GET /api/plugin/github/pull?number=7",
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"wait_core\":true}"
       ],
       "waits": [
         30000,
@@ -801,7 +801,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       },
       "once let go": {
         "asked": [
-          "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true}"
+          "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"wait_core\":true}"
         ],
         "message": "Fetching the pull request…"
       }
@@ -810,7 +810,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
       "name": "past the bound on jobs it says why, and offers Fetch",
       "asked": [
         "GET /api/plugin/github/pull?number=7",
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"wait_core\":true}"
       ],
       "waits": [
         30000,

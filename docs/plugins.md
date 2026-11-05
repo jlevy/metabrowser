@@ -396,6 +396,14 @@ Resolve `ready` after useful initial content or a handled local error is visible
 include polling, live updates, deferred offscreen work, or other progressive enhancement
 that should continue after the view is usable.
 
+A handle may expose an idempotent `cancelPending()` when it can stop requests, timers,
+observers and progressive rendering while leaving its DOM intact.
+A retained PR-page handoff uses this phase before final `dispose()`: the old subtree
+becomes inert while the next view prepares.
+Final disposal follows actual content replacement, including a file, Git selection,
+failure, or another PR. Cancelling a pending mount disposes it immediately.
+Keep `dispose()` complete and safe after `cancelPending()`.
+
 The supplied container is connected to the live preview.
 Renderers may use layout and observers from that fact; they are not required to support
 detached mounting. During retained file-to-file navigation, the next connected container

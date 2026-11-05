@@ -493,7 +493,8 @@ status: 200
     "unavailable": {
       "comparison": "base_uncertain"
     }
-  }
+  },
+  "core_preview": null
 }
 ? 0
 ```

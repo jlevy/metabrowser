@@ -235,6 +235,28 @@ the store its Files changed needs.
 `comparison: true` without `retry: true` is refused.
 Acquisition leaves the source folder and its pin unchanged, and a request joining a
 metadata refresh retains the comparison action for that job.
+For an explicitly selected missing record, `retry: true` may include `wait_core: true`,
+which is refused with comparison or recovery arguments.
+The POST waits at most two seconds for a verified core or terminal outcome; one waiter
+per PR may hold this lease, and cancelling or timing out the waiter leaves the producer
+running. An ephemeral `core_preview` contains the validated header and description,
+reader, source, observed time and content revision.
+Discussion and checks remain pending, and comparison is `pending` for a managed store or
+`no_store` for a metadata-only checkout.
+It is never a synthetic full record.
+For an initially missing selected record, a GraphQL core names its actual response
+viewer, which must match the initial account check before the preview is staged.
+The existing five part reads then overlap; the final account and Git-head checks still
+guard full publication.
+Detected account changes, source binding changes, head retries, failure or cancellation
+revoke the preview. Existing full-record refreshes retain conditional REST reads.
+A core obtained through GraphQL carries no invented REST ETag: its first later REST
+refresh reads the core and stores its ETag, and subsequent refreshes may answer 304. GET
+reads cache and memory only, captures the preview on the event loop, and rejects a
+revoked snapshot after the bounded worker read.
+The entity tag carries preview identity and removal as well as full-record identity.
+Existing full records take precedence.
+
 The envelope’s `comparison_route` names `GET github/pull-comparison` with the pull
 number, immutable endpoints, and build and store tokens.
 This route reads only the managed store and uses the diff plugin’s comparison service;
@@ -629,6 +651,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `git.history-stale-cursor` | interaction | `static/git-history-window.js#classifyPageFailure` | `/api/git/log` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `git.unfetched-commit` | interaction | `static/source-freshness.js#openMissingCommit`, `static/source-freshness.js#describeMissingCommit`, `static/source-freshness.js#fetchMissing` | `/api/git/commit`, `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `github.pull-page` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#hunkView`, `builtin_plugins/github/pull-page.js#tintOnFirstOpen`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh`, `/api/plugin/github/pull-markdown`, `/api/source/pin` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.selected-core-preview` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pull-core-preview-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.checkout-comparison-fetch` | interaction | `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-checkout-comparison-session.js` | `cli-ui-github-checkout-comparison.tryscript.md` |
 | `github.displayed-comparison-repair` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-prefetch` | interaction | `builtin_plugins/github/comparison-prefetch.js#createComparisonPrefetch` | `/api/plugin/diff/comparison` | `node tests/dom/github-pull-prefetch-session.js` | `cli-ui-github-pull-prefetch.tryscript.md` |

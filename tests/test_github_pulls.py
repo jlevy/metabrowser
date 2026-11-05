@@ -18,6 +18,7 @@ import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
+from dataclasses import field as dataclass_field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -96,6 +97,8 @@ from tests.github_pull_fixture import (
     READER,
     Origin,
     account,
+    graph_core_data,
+    graph_core_entry,
     install_fake_gh,
     ok,
     page,
@@ -2454,3 +2457,609 @@ def test_an_uncacheable_read_keeps_its_parsed_record_revision(
     assert core["record"] is not None
     assert isinstance(core["record_revision"], str)
     assert markdown["record_revision"] == core["record_revision"]
+
+
+def test_selected_core_wait_publishes_no_unread_parts(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _exercise_selected_core_wait(pinned_pull, monkeypatch)
+
+
+def test_revoked_core_cannot_escape_an_already_captured_get_worker(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _exercise_selected_core_wait(pinned_pull, monkeypatch, revoke_in_thread=True)
+
+
+def _exercise_selected_core_wait(
+    pinned_pull: tuple[_Stand, TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    revoke_in_thread: bool = False,
+) -> None:
+    stand, client = pinned_pull
+    answers = scenario(stand.origin)
+    answers["api"]["repos/octo/demo/pulls/8"]["body"]["body"] = "Early **core** description"
+    answers["api"]["graphql:core:8"] = graph_core_entry(
+        answers["api"]["repos/octo/demo/pulls/8"]["body"]
+    )
+    stand.answer(answers)
+    release = threading.Event()
+    started: set[str] = set()
+    read_list, get = pulls._read_list, pulls._get  # pyright: ignore[reportPrivateUsage]
+
+    async def held_list(path: str, **kwargs: Any) -> Any:
+        started.add(path)
+        await asyncio.to_thread(release.wait)
+        return await read_list(path, **kwargs)
+
+    async def held_get(path: str, **kwargs: Any) -> Any:
+        if "/status?" in path:
+            started.add(path)
+            await asyncio.to_thread(release.wait)
+        return await get(path, **kwargs)
+
+    monkeypatch.setattr(pulls, "_read_list", held_list)
+    monkeypatch.setattr(pulls, "_get", held_get)
+    try:
+        response = client.post(
+            "/api/plugin/github/pull-refresh",
+            headers={"content-type": "application/json"},
+            json={"number": 8, "retry": True, "wait_core": True},
+        )
+        assert response.status_code == 202, response.text
+        envelope = response.json()["pull"]
+        assert envelope["state"] == "pending" and envelope["refreshing"]
+        assert envelope["record"] is None
+        assert envelope["record_revision"] is None and envelope["fetched_at"] is None
+        assert envelope["comparison_route"] is None
+        preview = envelope["core_preview"]
+        assert preview["source"] == CANONICAL and preview["number"] == 8
+        assert preview["reader"] == f"gh:{READER}"
+        assert preview["pull"]["number"] == 8
+        assert preview["pull"]["body"] == "Early **core** description"
+        assert preview["comparison_state"] == "pending"
+        assert len(preview["revision"]) == 64
+        assert set(preview) == {
+            "source",
+            "number",
+            "reader",
+            "observed_at",
+            "revision",
+            "pull",
+            "comparison_state",
+        }
+        assert len(started) == 5
+        assert stand.record(8) == "not_cached"
+        first = client.get("/api/plugin/github/pull?number=8")
+        assert first.json()["core_preview"] == preview
+        assert (
+            client.get(
+                "/api/plugin/github/pull?number=8", headers={"if-none-match": first.headers["etag"]}
+            ).status_code
+            == 304
+        )
+        if revoke_in_thread:
+            from metabrowser.builtin_plugins.github import pull_route
+
+            entered, release_worker = threading.Event(), threading.Event()
+            captured: list[PullView] = []
+            responses: list[Any] = []
+            original = pull_route.pull_envelope
+
+            def blocked(view: PullView) -> Any:
+                answer = original(view)
+                if view.number == 8 and answer["core_preview"] is not None:
+                    captured.append(view)
+                    entered.set()
+                    assert release_worker.wait(5)
+                return answer
+
+            monkeypatch.setattr(pull_route, "pull_envelope", blocked)
+            stand.calls()
+            thread = threading.Thread(
+                target=lambda: responses.append(
+                    client.get(
+                        "/api/plugin/github/pull?number=8",
+                        headers={"if-none-match": first.headers["etag"]},
+                    )
+                )
+            )
+            thread.start()
+            try:
+                assert entered.wait(5)
+                view = captured[0]
+                assert view.core_preview is not None
+                assert client.portal is not None
+
+                def revoke() -> None:
+                    assert view.host is not None
+                    published = view.host.pulls.published
+                    assert isinstance(published, PublishedSource)
+                    view.host.pulls.bind(replace(published, fetched=not published.fetched))
+
+                client.portal.call(revoke)
+            finally:
+                release_worker.set()
+                thread.join(5)
+            assert not thread.is_alive() and len(responses) == 1
+            revoked = responses[0]
+            assert revoked.status_code == 200 and revoked.json()["core_preview"] is None
+            assert revoked.headers["etag"] != first.headers["etag"]
+            assert (
+                client.get(
+                    "/api/plugin/github/pull?number=8",
+                    headers={"if-none-match": revoked.headers["etag"]},
+                ).status_code
+                == 304
+            )
+            assert stand.calls() == []
+    finally:
+        release.set()
+    deadline = time.monotonic() + 5
+    final = client.get("/api/plugin/github/pull?number=8").json()
+    while time.monotonic() < deadline:
+        final = client.get("/api/plugin/github/pull?number=8").json()
+        if not final["refreshing"]:
+            break
+        time.sleep(0.005)
+    assert not final["refreshing"] and final["core_preview"] is None
+    assert final["record"] is not None and isinstance(stand.record(8), PullRecord)
+
+
+@dataclass
+class _CoreGate:
+    release: asyncio.Event
+    core: dict[str, Any]
+    accounts: tuple[str, ...] = (READER,)
+    viewer: str = READER
+    started: int = 0
+    finished: int = 0
+    account_reads: int = 0
+    core_reads: int = 0
+    parts_started: asyncio.Event = dataclass_field(default_factory=asyncio.Event)
+    core_started: asyncio.Event = dataclass_field(default_factory=asyncio.Event)
+    release_core: asyncio.Event | None = None
+    second_core: asyncio.Event | None = None
+    release_second: asyncio.Event | None = None
+
+    def install(self, stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> None:
+        async def account() -> str:
+            self.account_reads += 1
+            return self.accounts[min(self.account_reads - 1, len(self.accounts) - 1)]
+
+        async def part() -> None:
+            self.started += 1
+            if self.started == 5:
+                self.parts_started.set()
+            try:
+                await self.release.wait()
+            finally:
+                self.finished += 1
+
+        async def core() -> dict[str, Any]:
+            self.core_reads += 1
+            self.core_started.set()
+            if self.release_core is not None:
+                await self.release_core.wait()
+            body = json.loads(json.dumps(self.core))
+            if self.second_core is not None and self.core_reads == 2:
+                self.second_core.set()
+                assert self.release_second is not None
+                await self.release_second.wait()
+            if self.second_core is not None and self.core_reads == 1:
+                body["head"]["sha"] = stand.origin["fork_earlier"]
+            return body
+
+        async def graph(query: str, variables: Any, **_kwargs: Any) -> dict[str, Any]:
+            assert query == pulls._CORE_QUERY
+            assert variables == {"owner": "octo", "name": "demo", "number": 7}
+            return graph_core_data(await core(), reader=self.viewer)
+
+        async def get(path: str, **_kwargs: Any) -> GhResponse:
+            if "/pulls/7" in path:
+                return GhResponse(200, {}, json.dumps(await core()).encode())
+            await part()
+            return GhResponse(200, {}, b'{"state":"success","statuses":[]}')
+
+        async def listed(_path: str, **_kwargs: Any) -> gh_lists.ListRead:
+            await part()
+            return gh_lists.ListRead([], False, False, None)
+
+        monkeypatch.setattr(pulls, "active_account", account)
+        monkeypatch.setattr(pulls, "gh_graphql", graph)
+        monkeypatch.setattr(pulls, "_get", get)
+        monkeypatch.setattr(pulls, "_read_list", listed)
+
+
+def _core_gate(stand: _Stand, monkeypatch: pytest.MonkeyPatch) -> _CoreGate:
+    gate = _CoreGate(
+        asyncio.Event(), scenario(stand.origin)["api"]["repos/octo/demo/pulls/7"]["body"]
+    )
+    gate.install(stand, monkeypatch)
+    return gate
+
+
+@pytest.mark.parametrize("when", ["before_preview", "after_preview"])
+def test_selected_core_account_change_revokes_and_drains_without_publication(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, when: str
+) -> None:
+    entered, release_stamp = threading.Event(), threading.Event()
+    keep_stamp = pulls._keep_stamp
+
+    def hold_stamp(*args: Any) -> None:
+        entered.set()
+        assert release_stamp.wait(5)
+        keep_stamp(*args)
+
+    monkeypatch.setattr(pulls, "_keep_stamp", hold_stamp)
+
+    async def run() -> None:
+        gate = _core_gate(stand, monkeypatch)
+        gate.viewer = "changed" if when == "before_preview" else READER
+        gate.accounts = (READER,) if when == "before_preview" else (READER, "changed")
+        held = ServedPull(stand.published, 7)
+        held.request_core_preview()
+        job = asyncio.create_task(held.refresh())
+        if when == "after_preview":
+            await held.wait_for_core()
+            assert held.core_preview is not None
+            assert held.core_preview["reader"] == f"gh:{READER}"
+            gate.release.set()
+        try:
+            assert await asyncio.to_thread(entered.wait, 5)
+            assert held.core_preview is None
+        finally:
+            release_stamp.set()
+            await asyncio.wait_for(job, 5)
+        assert held.core_preview is None
+        assert held.last is not None and held.last["outcome"] == "account_changed"
+        assert gate.started == gate.finished == (0 if when == "before_preview" else 5)
+        assert gate.account_reads == (1 if when == "before_preview" else 2)
+        assert stand.record(7) == "not_cached"
+
+    asyncio.run(run())
+
+
+def test_selected_core_does_not_add_auth_or_replace_an_existing_full_record(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original = stand.refresh(7)
+    held = served_pull(stand.published, 7)
+
+    async def run() -> None:
+        gate = _core_gate(stand, monkeypatch)
+        held.request_core_preview()
+        job = asyncio.create_task(held.refresh())
+        await gate.parts_started.wait()
+        await held.wait_for_core()
+        assert not job.done()
+        assert held.core_preview is None
+        assert stand.record(7) == original
+        gate.release.set()
+        await asyncio.wait_for(job, 5)
+        assert gate.account_reads == 2
+        assert held.last is not None and held.last["outcome"] == "succeeded"
+
+    asyncio.run(run())
+
+
+def test_selected_core_head_retry_removes_the_old_attempt_before_the_next_core(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def run() -> None:
+        gate = _core_gate(stand, monkeypatch)
+        gate.second_core, gate.release_second = asyncio.Event(), asyncio.Event()
+        gate.release.set()
+        held = ServedPull(stand.published, 7)
+        held.request_core_preview()
+        job = asyncio.create_task(held.refresh())
+        await asyncio.wait_for(gate.second_core.wait(), 5)
+        assert held.core_preview is None
+        assert stand.record(7) == "not_cached"
+        gate.release_second.set()
+        await asyncio.wait_for(job, 5)
+        assert gate.core_reads == 2 and gate.account_reads == 4
+        assert held.core_preview is None
+        assert held.last is not None and held.last["outcome"] == "succeeded"
+        final = stand.record(7)
+        assert isinstance(final, PullRecord) and final.pull.head.sha == stand.origin["fork_head"]
+
+    asyncio.run(run())
+
+
+def test_selected_core_binding_change_rejects_an_inflight_viewer_checked_core(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def run() -> None:
+        gate = _core_gate(stand, monkeypatch)
+        gate.release_core = asyncio.Event()
+        held = ServedPull(stand.published, 7)
+        held.request_core_preview()
+        job = asyncio.create_task(held.refresh())
+        await asyncio.wait_for(gate.core_started.wait(), 5)
+        held.bind(replace(stand.published, store_id="rebound-store"))
+        gate.release_core.set()
+        await asyncio.wait_for(gate.parts_started.wait(), 5)
+        assert held.core_preview is None
+        gate.release.set()
+        await asyncio.wait_for(job, 5)
+        assert held.core_preview is None
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("finish", ["cancel_waiter", "timeout_waiter", "cancel_job"])
+def test_selected_core_wait_owns_no_producer_and_has_one_lease(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, finish: str
+) -> None:
+    from metabrowser.builtin_plugins.github import served_pull as served_module
+
+    async def run() -> None:
+        gate = _core_gate(stand, monkeypatch)
+        gate.release_core = asyncio.Event()
+        held = ServedPull(stand.published, 7)
+        held.request_core_preview()
+        job = asyncio.create_task(held.refresh())
+        await asyncio.wait_for(gate.core_started.wait(), 5)
+        waiter = asyncio.create_task(held.wait_for_core())
+        await asyncio.sleep(0)
+        assert held._core_waiter
+        await held.wait_for_core()
+        assert not waiter.done() and not job.done()
+        if finish == "timeout_waiter":
+            waiter.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await waiter
+            monkeypatch.setattr(served_module, "CORE_WAIT_TIMEOUT_S", 0)
+            await held.wait_for_core()
+            assert not held._core_waiter and not job.done()
+        elif finish == "cancel_waiter":
+            waiter.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await waiter
+            assert not held._core_waiter and not job.done()
+        else:
+            job.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await job
+            await waiter
+            assert gate.finished == gate.started == 0
+            assert held.core_preview is None and stand.record(7) == "not_cached"
+            return
+        gate.release_core.set()
+        gate.release.set()
+        await asyncio.wait_for(job, 5)
+        assert held.last is not None and held.last["outcome"] == "succeeded"
+
+    asyncio.run(run())
+
+
+def test_selected_checkout_core_has_no_store_or_git_acquisition(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+
+    async def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("metadata-only checkout acquired or fetched Git")
+
+    monkeypatch.setattr(pulls, "fetch_pull_head", forbidden)
+    monkeypatch.setattr(pulls, "_with_comparison", forbidden)
+
+    async def run() -> None:
+        gate = _core_gate(stand, monkeypatch)
+        held = ServedPull(repository, 7)
+        held.request_core_preview()
+        job = asyncio.create_task(held.refresh())
+        await held.wait_for_core()
+        assert held.core_preview is not None
+        assert held.core_preview["comparison_state"] == "no_store"
+        held.bind(stand.published)
+        assert held.core_preview is None
+        gate.release.set()
+        await asyncio.wait_for(job, 5)
+        assert held.core_preview is None
+        record = stand.record(7)
+        assert isinstance(record, PullRecord) and record.unavailable["comparison"] == "no_store"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"wait_core": "yes", "retry": True},
+        {"wait_core": True},
+        {"wait_core": True, "retry": True, "comparison": True},
+        {"wait_core": True, "retry": True, "recovery": {"base": "a" * 40, "head": "b" * 40}},
+    ],
+)
+def test_core_wait_request_requires_only_a_selected_metadata_retry(extra: dict[str, Any]) -> None:
+    from metabrowser.builtin_plugins.github.pull_route import PullRequestError, refresh_request
+
+    with pytest.raises(PullRequestError, match="wait_core"):
+        refresh_request({"number": 7, **extra})
+
+
+# H80 draft: fixed GraphQL answer from the same deterministic core fixture.
+def _h80_graph_answer(rest: dict[str, Any], *, viewer: str = READER) -> dict[str, Any]:
+    return graph_core_data(rest, reader=viewer)
+
+
+@pytest.mark.parametrize("number", [7, 8, 9, 10])
+def test_h80_graph_core_keeps_the_complete_validated_rest_model(stand: _Stand, number: int) -> None:
+    rest = scenario(stand.origin)["api"][f"repos/octo/demo/pulls/{number}"]["body"]
+    answer = _h80_graph_answer(rest)
+    assert pulls._graph_pull(answer["repository"]["pull"], number) == pulls._pull(rest, number)
+
+
+@pytest.mark.parametrize(
+    "damage,expected",
+    [
+        ("viewer_changed", "account_changed"),
+        ("viewer_malformed", "gh_failed"),
+        ("repository_missing", "not_found_or_private"),
+        ("repository_wrong", "gh_failed"),
+        ("pull_missing", "not_found_or_private"),
+        ("number_wrong", "gh_failed"),
+        ("head_invalid", "gh_failed"),
+    ],
+)
+def test_h80_graph_core_refuses_before_any_preview_or_part_can_start(
+    stand: _Stand,
+    monkeypatch: pytest.MonkeyPatch,
+    damage: str,
+    expected: str,
+) -> None:
+    rest = scenario(stand.origin)["api"]["repos/octo/demo/pulls/7"]["body"]
+    answer = _h80_graph_answer(rest)
+    if damage == "viewer_changed":
+        answer["viewer"]["login"] = "changed"
+    elif damage == "viewer_malformed":
+        answer["viewer"]["login"] = 12
+    elif damage == "repository_missing":
+        answer["repository"] = None
+    elif damage == "repository_wrong":
+        answer["repository"]["nameWithOwner"] = "octo/elsewhere"
+    elif damage == "pull_missing":
+        answer["repository"]["pull"] = None
+    elif damage == "number_wrong":
+        answer["repository"]["pull"]["number"] = 8
+    else:
+        answer["repository"]["pull"]["headRefOid"] = "not-a-sha"
+    seen: list[str] = []
+
+    async def graph(query: str, variables: Any, **_kwargs: Any) -> dict[str, Any]:
+        assert query == pulls._CORE_QUERY
+        assert variables == {"owner": "octo", "name": "demo", "number": 7}
+        seen.append("graph")
+        return answer
+
+    async def unexpected(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("refused core must not stage or read any other part")
+
+    monkeypatch.setattr(pulls, "gh_graphql", graph)
+    monkeypatch.setattr(pulls, "_get", unexpected)
+    monkeypatch.setattr(pulls, "_read_list", unexpected)
+    with pytest.raises(PullDataError) as error:
+        asyncio.run(
+            pulls._read_api(
+                "octo", "demo", 7, previous=None, reader=f"gh:{READER}", on_core=unexpected
+            )
+        )
+    assert error.value.state == expected and seen == ["graph"]
+
+
+def test_h80_full_record_refresh_never_enters_the_graph_path(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    original = stand.refresh(7)
+    calls: list[tuple[str, str | None]] = []
+    real_get = pulls._get
+
+    async def unexpected(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("existing full record must retain its conditional REST path")
+
+    async def counted(path: str, *, etag: str | None) -> GhResponse:
+        calls.append((path, etag))
+        return await real_get(path, etag=etag)
+
+    monkeypatch.setattr(pulls, "gh_graphql", unexpected)
+    monkeypatch.setattr(pulls, "_get", counted)
+    held = served_pull(stand.published, 7)
+    held.request_core_preview()
+    asyncio.run(held.refresh())
+    assert held.last is not None and held.last["outcome"] == "succeeded"
+    assert ("repos/octo/demo/pulls/7", original.etags["repos/octo/demo/pulls/7"]) in calls
+    assert held.core_preview is None
+
+
+@pytest.mark.parametrize("damage", ["ghost_merger", "deleted_repositories", "unknown_mergeability"])
+def test_h80_graph_core_preserves_nullable_metadata(stand: _Stand, damage: str) -> None:
+    rest = scenario(stand.origin)["api"]["repos/octo/demo/pulls/8"]["body"]
+    if damage == "ghost_merger":
+        rest["merged_by"] = None
+    elif damage == "deleted_repositories":
+        rest["base"]["repo"] = None
+        rest["head"]["repo"] = None
+    else:
+        rest["mergeable"] = None
+    data = graph_core_data(rest)
+    assert pulls._graph_pull(data["repository"]["pull"], 8) == pulls._pull(rest, 8)
+
+
+def test_h80_cancel_after_verified_core_drains_all_five_parts(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def run() -> None:
+        gate = _core_gate(stand, monkeypatch)
+        held = ServedPull(stand.published, 7)
+        held.request_core_preview()
+        job = asyncio.create_task(held.refresh())
+        await held.wait_for_core()
+        await asyncio.wait_for(gate.parts_started.wait(), 5)
+        assert held.core_preview is not None and gate.started == 5
+        job.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await job
+        assert gate.finished == 5 and held.core_preview is None
+        assert stand.record(7) == "not_cached"
+
+    asyncio.run(run())
+
+
+def test_h80_initial_graph_core_then_real_rest_etag_then_304(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = "repos/octo/demo/pulls/7"
+    replies: list[tuple[int, str | None]] = []
+    original_api = gh_lists.gh_api
+
+    async def observed_api(route: str, **kwargs: Any) -> GhResponse:
+        response = await original_api(route, **kwargs)
+        if route == path:
+            replies.append((response.status, kwargs.get("etag")))
+        return response
+
+    monkeypatch.setattr(gh_lists, "gh_api", observed_api)
+    stand.calls()
+    held = ServedPull(stand.published, 7)
+    held.request_core_preview()
+    asyncio.run(held.refresh())
+    first = stand.record(7)
+    assert isinstance(first, PullRecord) and path not in first.etags and replies == []
+    initial_calls = stand.calls()
+    assert sum(c["args"][:2] == ["auth", "status"] for c in initial_calls) == 2
+    assert sum("graphql" in c["args"] for c in initial_calls) == 1
+    second = stand.refresh(7)
+    assert replies == [(200, None)] and second.etags[path]
+    assert sum(c["args"][:2] == ["auth", "status"] for c in stand.calls()) == 2
+    third = stand.refresh(7)
+    assert replies == [(200, None), (304, second.etags[path])]
+    assert third.pull == first.pull
+    assert sum(c["args"][:2] == ["auth", "status"] for c in stand.calls()) == 2
+
+
+@pytest.mark.parametrize("state,draft", [("open", False), ("open", True), ("closed", False)])
+def test_h80_unmerged_core_keeps_the_non_null_test_merge_sha(
+    stand: _Stand, state: str, draft: bool
+) -> None:
+    rest = scenario(stand.origin)["api"]["repos/octo/demo/pulls/7"]["body"]
+    test_merge = "c" * 40
+    rest.update(
+        state=state,
+        draft=draft,
+        merged=False,
+        merged_at=None,
+        merged_by=None,
+        merge_commit_sha=test_merge,
+        closed_at="2026-09-17T12:00:00Z" if state == "closed" else None,
+    )
+    graph = graph_core_data(rest)["repository"]["pull"]
+    assert graph["mergeCommit"] is None
+    assert graph["potentialMergeCommit"] == {"oid": test_merge}
+    mapped = pulls._graph_pull(graph, 7)
+    assert mapped.merge_commit_sha == test_merge
+    assert mapped == pulls._pull(rest, 7)

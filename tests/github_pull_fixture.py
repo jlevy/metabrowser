@@ -138,9 +138,12 @@ if args[:1] == ["api"]:
             path = arg
         index += 1
     if path == "graphql":
-        tail = fields.get("query", "").split("page:pullRequests", 1)[-1]
-        state = "updated" if "field:UPDATED_AT" in tail else "closed" if "states:[CLOSED,MERGED]" in tail else "open" if "states:OPEN" in tail else "all"
-        path = "graphql:" + state + ":" + fields.get("cursor", "start")
+        if fields.get("query", "").startswith("query PullCore("):
+            path = "graphql:core:" + fields.get("number", "missing")
+        else:
+            tail = fields.get("query", "").split("page:pullRequests", 1)[-1]
+            state = "updated" if "field:UPDATED_AT" in tail else "closed" if "states:[CLOSED,MERGED]" in tail else "open" if "states:OPEN" in tail else "all"
+            path = "graphql:" + state + ":" + fields.get("cursor", "start")
         if fields.get("owner", "").casefold() != "octo" or fields.get("name", "").casefold() != "demo":
             path = "graphql:unavailable-repository"
     entry = pick(path, scenario["api"].get(path, {{"status": 404, "body": {{"message": "Not Found"}}}}))
@@ -598,6 +601,9 @@ def logged_gh_calls(directory: Path) -> list[str]:
             continue
         if "graphql" in args:
             fields = dict(arg.split("=", 1) for arg in args if "=" in arg)
+            if fields.get("query", "").startswith("query PullCore("):
+                calls.append(f"gh api graphql core number={fields.get('number', 'missing')}")
+                continue
             tail = fields.get("query", "").split("page:pullRequests", 1)[-1]
             state = (
                 "updated"
@@ -650,6 +656,60 @@ _RECORD_PART = re.compile(
 )
 
 
+def graph_core_data(item: Mapping[str, Any], *, reader: str = READER) -> dict[str, Any]:
+    """One fixed GraphQL core response, including test-vs-actual merge commit semantics."""
+
+    def side(prefix: str) -> dict[str, Any] | None:
+        repository = item[prefix].get("repo")
+        return None if repository is None else {"nameWithOwner": repository["full_name"]}
+
+    merge_oid = item.get("merge_commit_sha")
+    return {
+        "viewer": {"login": reader},
+        "repository": {
+            "id": "R_demo",
+            "nameWithOwner": "octo/demo",
+            "pull": {
+                "number": item["number"],
+                "url": item["html_url"],
+                "title": item["title"],
+                "body": item.get("body"),
+                "state": "MERGED" if item.get("merged") else item["state"].upper(),
+                "isDraft": item.get("draft", False),
+                "merged": item.get("merged", False),
+                "author": item.get("user"),
+                "mergedBy": item.get("merged_by"),
+                "commits": {"totalCount": item.get("commits")},
+                "mergeCommit": {"oid": merge_oid} if item.get("merged") and merge_oid else None,
+                "potentialMergeCommit": {"oid": merge_oid}
+                if not item.get("merged") and merge_oid
+                else None,
+                "mergeable": "MERGEABLE"
+                if item.get("mergeable") is True
+                else "CONFLICTING"
+                if item.get("mergeable") is False
+                else "UNKNOWN",
+                "labels": {"nodes": item.get("labels", [])},
+                "baseRefName": item["base"]["ref"],
+                "baseRefOid": item["base"]["sha"],
+                "baseRepository": side("base"),
+                "headRefName": item["head"]["ref"],
+                "headRefOid": item["head"]["sha"],
+                "headRepository": side("head"),
+                **{
+                    field + "At": item.get(field + "_at")
+                    for field in ("created", "updated", "closed", "merged")
+                },
+            },
+        },
+    }
+
+
+def graph_core_entry(item: Mapping[str, Any], *, reader: str = READER) -> dict[str, Any]:
+    """The explicit fake-gh entry for its separately named fixed core query."""
+    return ok(f"graphql:core:{item['number']}", {"data": graph_core_data(item, reader=reader)})
+
+
 def api_entries(origin: Origin) -> dict[str, Any]:
     """Every ``gh api`` path of pull requests 7 to 10 and its recorded answer."""
 
@@ -667,6 +727,7 @@ def api_entries(origin: Origin) -> dict[str, Any]:
         }
         for path, body in paths.items():
             entries[path] = ok(path, body)
+        entries[f"graphql:core:{number}"] = graph_core_entry(parts["pull"])
     return entries
 
 

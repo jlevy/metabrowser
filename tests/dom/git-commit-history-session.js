@@ -44,6 +44,8 @@ class StandIn {
   constructor(tag = "div") {
     this.tagName = tag.toUpperCase();
     this.children = [];
+    this.parentNode = null;
+    this.connectedRoot = false;
     this.className = "";
     this.dataset = {};
     this.style = {};
@@ -55,25 +57,53 @@ class StandIn {
     return this.markup;
   }
   set innerHTML(value) {
+    this.replaceChildren();
     this.markup = String(value);
   }
+  get isConnected() {
+    return this.connectedRoot || Boolean(this.parentNode?.isConnected);
+  }
   append(...children) {
-    this.children.push(...children);
+    for (const child of children) {
+      this.appendChild(child);
+    }
   }
   appendChild(child) {
+    child.remove();
+    child.parentNode = this;
     this.children.push(child);
     return child;
+  }
+  replaceChildren(...children) {
+    for (const child of this.children) {
+      child.parentNode = null;
+    }
+    this.children = [];
+    this.markup = "";
+    this.append(...children);
   }
   setAttribute(name, value) {
     this.attributes[name] = String(value);
   }
   addEventListener() {}
-  remove() {}
-  /** What the commit's stage needs: the host its diff mounts in. */
+  remove() {
+    if (this.parentNode) {
+      this.parentNode.children = this.parentNode.children.filter((node) => node !== this);
+      this.parentNode = null;
+    }
+  }
+  /** What the commit's stage needs: a stable child host with real connection ownership. */
   querySelector(selector) {
-    return selector === ".git-commit-diff" && this.markup.includes("git-commit-diff")
-      ? new StandIn()
-      : null;
+    if (selector !== ".git-commit-diff" || !this.markup.includes("git-commit-diff")) {
+      return null;
+    }
+    let host = this.children.find((child) => child.className === "git-commit-diff");
+    if (!host) {
+      host = new StandIn();
+      host.className = "git-commit-diff";
+      this.appendChild(host);
+    }
+    return host;
   }
   querySelectorAll() {
     return [];
@@ -84,6 +114,9 @@ class StandIn {
 async function createPage(start, options = {}) {
   const log = [];
   const shown = { pane: "nothing", navPanel: "files" };
+  const preview = new StandIn();
+  preview.connectedRoot = true;
+  let pendingStageCleanup = null;
   const held = new Map();
   const listeners = new Map();
   const entries = [...(options.behind ?? []), start];
@@ -236,7 +269,12 @@ async function createPage(start, options = {}) {
       },
       ensureKindAssets: async () => {},
       fetchPluginData: async () => ({}),
-      getRegisteredView: () => ({ render: async () => ({ dispose() {} }) }),
+      getRegisteredView: () => ({
+        render: async (host) => {
+          assert(host.isConnected, "Git diff renders inside connected preview staging");
+          return { cancelPending() {}, dispose() {} };
+        },
+      }),
       icons: { copy: "" },
       perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
       tooltip: { hide() {}, show() {} },
@@ -259,12 +297,13 @@ async function createPage(start, options = {}) {
   const previewPane = routes.createPreviewPaneLifecycle();
   let panel = null;
 
-  const paint = (claim, text) => {
+  const paint = (claim, text, node = new StandIn()) => {
     if (!previewPane.isCurrent(claim)) {
       return null;
     }
+    preview.replaceChildren(node);
     shown.pane = text;
-    return {};
+    return preview;
   };
 
   sandbox.MetabrowserShell = {
@@ -275,7 +314,13 @@ async function createPage(start, options = {}) {
       }
     },
     beginPreviewNavigation: () => false,
-    claimPreview: (owner, selection) => previewPane.claim(owner, selection),
+    claimPreview(owner, selection) {
+      pendingStageCleanup?.();
+      if (owner !== "git") {
+        sandbox.MetabrowserGitPanel.cancelPending();
+      }
+      return previewPane.claim(owner, selection);
+    },
     endPreviewNavigation() {},
     isPreviewClaimCurrent: (claim) => previewPane.isCurrent(claim),
     registerNavPanel(next) {
@@ -288,6 +333,26 @@ async function createPage(start, options = {}) {
       panel = null;
     },
     renderPreviewHtml: (html, claim) => paint(claim, html.replace(/<[^>]*>/g, "")),
+    stagePreviewNode(node, claim) {
+      if (!previewPane.isCurrent(claim)) {
+        return null;
+      }
+      pendingStageCleanup?.();
+      const stage = new StandIn();
+      stage.className = "preview-file-stage";
+      stage.setAttribute("aria-hidden", "true");
+      stage.inert = true;
+      stage.appendChild(node);
+      preview.appendChild(stage);
+      const cleanup = () => {
+        stage.remove();
+        if (pendingStageCleanup === cleanup) {
+          pendingStageCleanup = null;
+        }
+      };
+      pendingStageCleanup = cleanup;
+      return cleanup;
+    },
     renderPreviewNode(node, claim) {
       const revision = /data-revision="([^"]*)"/.exec(node.innerHTML)?.[1];
       return paint(
@@ -295,6 +360,7 @@ async function createPage(start, options = {}) {
         revision
           ? `commit ${revision.slice(0, 7)}`
           : node.children.map((child) => child.textContent).join(": "),
+        node,
       );
     },
     sourceFreshness: async () => null,
@@ -302,7 +368,10 @@ async function createPage(start, options = {}) {
   // What app.js calls: opening a file claims the pane, then names the file a task later.
   sandbox.__file = {
     async open(filePath) {
-      const claim = previewPane.claim("file", { folder: false, path: filePath });
+      const claim = sandbox.MetabrowserShell.claimPreview("file", {
+        folder: false,
+        path: filePath,
+      });
       await new Promise((resolve) => setImmediate(resolve));
       paint(claim, `file ${filePath}`);
       previewPane.settle(claim, "content");
@@ -421,6 +490,11 @@ async function createPage(start, options = {}) {
       await settle();
     },
     read() {
+      assert(!pendingStageCleanup, "settled history step releases preview staging");
+      assert(
+        preview.children.every((node) => node.className !== "preview-file-stage"),
+        "settled history step has no hidden stage",
+      );
       const requests = log.splice(0);
       return {
         url: `${location.pathname}${location.hash}`,

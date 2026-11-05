@@ -103,10 +103,10 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "fetch it",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"wait_core\":true}"
       ],
       "timer": "fast",
-      "paints": 2,
+      "paints": 1,
       "paint": {
         "status": "pending",
         "tab": "conversation",
@@ -874,7 +874,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "a press past the bound is refused and says why",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":14,\"retry\":true}"
+        "POST /api/plugin/github/pull-refresh {\"number\":14,\"retry\":true,\"wait_core\":true}"
       ],
       "timer": "slow",
       "paints": 2,
@@ -1301,3 +1301,18 @@ $ node tests/dom/github-pull-page-mount-behavior.js
 {"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsExplicit":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true}
 ? 0
 ```
+
+The selected missing-record session holds the POST until an honest description preview
+is ready. It verifies plain text, explicit unfinished sections, no premature Markdown or
+comparison actions, full-record priority, and cancellation without losing the previous
+useful surface.
+
+```console
+$ node tests/dom/github-pull-core-preview-behavior.js
+{"description":"plain preview before full conversation","pendingParts":["discussion","checks"],"waitCorePost":{"number":7,"retry":true,"wait_core":true},"previewMarkdownRequests":0,"fullMarkdownRequests":1,"fullRecordWins":true,"crossOwnerRetirement":true,"stagedReplacement":"A retained through B cancellation until C commits"}
+? 0
+```
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->

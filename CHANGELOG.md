@@ -11,6 +11,18 @@ All notable changes to Metabrowser are documented here.
   `METABROWSER_HOME` and the old home layout are no longer read; existing files are left
   untouched. Cache initialization preserves configuration.
 
+PR and Git navigation:
+
+- A selected PR can show its verified header and description before discussion, checks
+  and comparison preparation finish.
+  Pending sections stay explicit, cached full records take precedence, and a superseded
+  page stops its work while retaining inert content until the next page is ready.
+- Git diffs mount in a connected hidden stage, so initial rendering can use the pane’s
+  viewport. Hovering the currently displayed revision reuses its detail without fetching
+  its comparison again.
+- The pull envelope gains nullable `core_preview`; an explicit missing-record refresh
+  may set `wait_core: true` to await that stage for up to two seconds.
+
 Page lifecycle:
 
 - A folder page kept for Back releases its inventory and live-log event streams,

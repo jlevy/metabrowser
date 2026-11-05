@@ -122,8 +122,12 @@ Hover or focus a copyable branch chip to reveal its copy control; it copies the 
 branch name. The author’s small circular avatar appears beside the username when
 available. Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”;
 condensed navigation keeps short ages.
-An uncached page shows gray pulsing loading blocks; a cached page keeps its content
-visible while it refreshes.
+An initially empty page shows gray pulsing loading blocks.
+When switching from useful content, that content stays visible until the new description
+or an actionable failure is ready.
+The description can appear while comments, reviews, checks, and Files changed are still
+loading; each unfinished section says so.
+A cached full page keeps its content visible while it refreshes.
 **View on GitHub** opens the pull request on github.com with its state icon.
 External GitHub links in conversation text carry a destination icon; an unknown issue or
 PR state uses a neutral entity icon.

@@ -148,6 +148,135 @@ async function settle() {
     await new Promise((resolve) => setImmediate(resolve));
   }
 }
+async function releasedFilesMounts(page, initial, diffView, errors) {
+  const results = {};
+  for (const phase of ["assets", "renderer", "comparison"]) {
+    let finish;
+    let fail;
+    const held = new Promise((resolve, reject) => {
+      finish = resolve;
+      fail = reject;
+    });
+    let started = 0;
+    let disposed = 0;
+    let requested = 0;
+    let requestSignal;
+    if (phase === "comparison") {
+      window.metabrowser.fetchPluginData = (_plugin, hook, _params, options) => {
+        assert.equal(hook, "pull-comparison");
+        requested += 1;
+        requestSignal = options?.signal;
+        requestSignal?.addEventListener("abort", () => fail(requestSignal.reason), { once: true });
+        return held;
+      };
+    }
+    const readiness = () => perfEntries.filter((label) => label === "githubPull:filesReady").length;
+    const readyBefore = readiness();
+    const errorsBefore = errors.length;
+    const container = new Element("main");
+    const handle = page.mountPullPage(
+      container,
+      { number: 7, tab: "files", reader: { initial, fetchAfterMs: 0 } },
+      {
+        perf,
+        ensureAsset: async () => {},
+        ensureKindAssets: async () => {
+          if (phase === "assets") {
+            await held;
+          }
+        },
+        getRegisteredView: () =>
+          phase === "comparison"
+            ? diffView
+            : {
+                async render() {
+                  started += 1;
+                  if (phase === "renderer") {
+                    await held;
+                  }
+                  return {
+                    currentFile: () => ({ kind: "file", path: "old.txt", fileId: "old" }),
+                    dispose() {
+                      disposed += 1;
+                    },
+                  };
+                },
+              },
+        ...require("./sdk-ref-fixture.js").refHelpers(document),
+        formatAge: () => ({ label: "now", className: "age" }),
+        formatTimestamp: () => "now",
+        navigation: { href: () => "/view/" },
+        sourceKind: () => "git_revision",
+        icons: { toggle: "" },
+      },
+    );
+    await settle();
+    await handle.ready;
+    assert.equal(
+      started,
+      phase === "renderer" ? 1 : 0,
+      `${phase} is held at its intended boundary`,
+    );
+    assert.equal(requested, phase === "comparison" ? 1 : 0);
+    const host = container.querySelector(".github-pull-diff");
+    assert.ok(host);
+    const text = container.textContent;
+    handle.cancelPending();
+    const comparisonAborted = phase === "comparison" ? requestSignal?.aborted === true : null;
+    if (phase === "comparison") {
+      // Also settle the old unbound request on the RED side so the session can inspect it.
+      fail(new DOMException("Released Files page", "AbortError"));
+    } else {
+      finish();
+    }
+    await handle.whenFilesReady();
+    results[phase] = {
+      started,
+      disposed,
+      comparisonAborted,
+      preserved:
+        container.querySelector(".github-pull-diff") === host && container.textContent === text,
+      ownsFile: handle.currentFile() !== null,
+      filesReady: readiness() - readyBefore,
+      errors: errors.length - errorsBefore,
+    };
+    handle.dispose();
+  }
+  assert.deepEqual(
+    results,
+    {
+      assets: {
+        started: 0,
+        disposed: 0,
+        comparisonAborted: null,
+        preserved: true,
+        ownsFile: false,
+        filesReady: 0,
+        errors: 0,
+      },
+      renderer: {
+        started: 1,
+        disposed: 1,
+        comparisonAborted: null,
+        preserved: true,
+        ownsFile: false,
+        filesReady: 0,
+        errors: 0,
+      },
+      comparison: {
+        started: 0,
+        disposed: 0,
+        comparisonAborted: true,
+        preserved: true,
+        ownsFile: false,
+        filesReady: 0,
+        errors: 0,
+      },
+    },
+    "released Files work cannot change the retained surface or publish a late renderer",
+  );
+}
+
 async function markdownOwnership(page) {
   for (const delayed of ["inert", "styles"]) {
     for (const transition of ["response", "replace", "metadata", "tab", "dispose"]) {
@@ -698,6 +827,7 @@ async function run() {
       errors.map((entry) => entry[1].status),
       [404, 409],
     );
+    await releasedFilesMounts(page, initial, diffView, errors);
   } finally {
     console.error = logError;
   }

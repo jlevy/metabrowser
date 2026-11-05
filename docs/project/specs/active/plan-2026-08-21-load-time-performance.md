@@ -554,6 +554,11 @@ The objective’s first two failure modes.
 navigation and a usable viewport.
 
 - H20 ✓ inline the first rows · H32 inline without a warm index · H1 ✓ prefetch on idle
+- H74 cold navigation waterfalls · H75 natural intent timing · H76 prepared render cost
+- H77 first-selection detail availability behind a ready catalog
+- H78 redundant hover preparation after a selected Git revision renders
+- H79 detached Git staging and the first-screen render budget
+- H80 selected core viewer attribution and provider process cost
 - H57 attribute the shell’s own boot · H9 the eager JavaScript count · H17 import cost
 - H19 `/api/events` on the critical path · H29 the first byte waits on a filesystem walk
 - H5 the root tree route under a scan · H8 ✓/H23 ✓ the tally pass per request
@@ -675,6 +680,35 @@ Ordered by the evidence behind them, not by where they sit in the stack.
 | H71 | `for_observed_file` imports `derive_ext` inside the function on every call and `_internal_entry` binds twenty keywords; a module-level import and positional construction remove both. | Per-call cost, then `walk_to_settled_ms` | **Confirmed in isolation, not separable at walk scale** (exp-025). 34 ms over 62,210 entries, against a spread of roughly 50 ms. Kept: one half deletes a function-level import |
 | H72 | Every entry is built as a contract `InventoryEntry`, converted to the provider’s `FsEntry`, and converted back on read, so the walk constructs each entry twice and validates its path four times. Having the walker build the provider’s record directly removes one construction and two validations per entry. | `walk_to_settled_ms`, and the interleaved build comparison against `main` | Open, **P1** (`mb-kicj`). Worth about 190 ms by microbenchmark, which is above what the host can resolve, unlike everything else left on the profile. It is a contract change rather than a local one, and is the same duplication the design review names as F1 |
 | H73 | A fetched PR can prepare its immutable manifest before Files is opened and hydrate only an initial visible prefix, avoiding manifest recomputation and invisible patch work on the first request. | Cold first text, completed initial viewport, all mounted bars, load tasks, and trusted navigation | **Measured and accepted with limits** ([exp-041](../../../../explorations/performance-loop/experiments/exp-041-pr-files-use-a-prepared-manifest-and-visible-prefix.md), `mb-fkd9`). The 1,627-file first-text median is 519 ms against 1,350; the 500 ms goal remains open. All bars remain mounted, load tasks stay below 200 ms, and jump drift is zero. Actual resting text regresses about 13 ms in the larger case while remaining below 150 ms |
+
+### PR and Git Navigation
+
+The November 4, 2026 iteration (`mb-4ifm`) measures the unchanged product before
+selecting an implementation.
+Register each mechanism separately; retained data, in-flight preparation, HTTP-cache
+responses, and cold-origin assets are different conditions.
+The target is useful, exact content painted within 100 ms for prepared or cached
+navigation, with immediate selection feedback and the framework’s existing correctness
+and responsiveness gates.
+This is an investigation target, not a newly measured baseline or a reason to relax a
+gate.
+
+| # | Hypothesis | Metric that would show it | Status |
+| --- | --- | --- | --- |
+| H74 | Cold PR and Git navigation spends avoidable time awaiting on-demand assets and serial independent route work before useful content can render. Preparing only the existing asset bundles outside the input window separates asset wait from backend and render cost. | Trusted input to exact painted PR Conversation or first Git history rows; request start/order, server time, decode, mount, and paint phases on the same cached subjects | **Open for first-tab controls** (`mb-5rm1`, reserved exp-042). Selected Git assets finished before comparison data on the measured path; no eager bundle change. First-tab and empty-pane controls still need separate evidence. |
+| H75 | Intent preparation starts too late for natural clicks, or a selected request fails to join matching preparation. Long scripted hover can therefore overstate the benefit a reader receives. | Preparation hit rate and exact selected-subject request count, alongside painted readiness at 0, 100, 200 and 450 ms dwell and keyboard selection | **Open for intent timing** (`mb-97ex`, reserved exp-043). Keep the existing intent timer. The measured selected-row re-entry duplicate has its own H78 result; a dwell and keyboard sweep is a separate diagnostic. |
+| H76 | Once data is genuinely held, decoding, validation, mounting or paint remains the limiting cost. Additional network prefetch cannot remove that render floor. | Correct painted readiness and client phase spans with held data, matching in-flight data and HTTP-cache data; transferred/decoded bytes, Long Tasks, DOM and retained heap | **Diagnosed for these paths** (`mb-i73o`, [exp-045](../../../../explorations/performance-loop/experiments/exp-045-publish-selected-pr-description-before-full-conversation.md), [exp-047](../../../../explorations/performance-loop/experiments/exp-047-connect-the-git-stage-before-rendering.md)). Held PR descriptions already paint in 42–53 ms. The identical held Git payload exposed avoidable render work, corrected under H79. No extra data fetch is justified for the measured held paths. |
+| H77 | A lightweight catalog can be ready while a first-selected PR has no detailed record. Cache-only hover reads cannot prepare that missing record, so selection waits for full provider hydration and publication. Bounded preparation or honest progressive core availability may remove this wait. | Same-PR absent versus held record: trusted click to exact header and useful description, core versus final publication, provider request/byte costs and background concurrency | **Accepted for early description and continuity** (`mb-tgn3`, [exp-045](../../../../explorations/performance-loop/experiments/exp-045-publish-selected-pr-description-before-full-conversation.md)). Three integrated pairs reached the exact description in 1.27–1.56 s against 3.06–4.09 s. Three transitions retained real prior PR content without a blank frame. Full Conversation has no speed claim; the original outlier and prescribed rerun are retained. [exp-048](../../../../explorations/performance-loop/experiments/exp-048-measure-provider-cost-of-preparing-visible-pr-core.md) and `mb-oywk` track preparation before selection. |
+| H78 | Once a Git revision has rendered, clearing its preparation slot allows a later hover to fetch the same comparison again. Tooltip preparation should reuse selected detail without another comparison while that revision still owns the preview. | Matching comparison request count and decoded bytes after selected-row reentry; painted readiness, cancellation, ownership, Long Tasks and memory alongside them | **Accepted** (`mb-wpyg`, [exp-046](../../../../explorations/performance-loop/experiments/exp-046-reuse-the-rendered-git-revision-on-hover.md)). All five final pairs removed the extra comparison request when hovering the already rendered selected row. Another owner still invalidates that selection. |
+| H79 | A detached Git comparison has no viewport geometry, so its initial screen budget is infinite and its first width report projects every initially hydrated file. A connected stage may preserve atomic handoff while limiting initial work to the visible prefix. | Same held comparison payload and assets: first correct painted text and viewport, model and projection counts, Long Tasks, DOM, heap and requests; then complete trusted Git navigation | **Accepted** (`mb-envd`, [exp-047](../../../../explorations/performance-loop/experiments/exp-047-connect-the-git-stage-before-rendering.md)). The same held payload projected four file models instead of 50. Five final pairs painted in 236–247 ms against 358–387 ms, with no Long Tasks. Separate generic startup gates passed. |
+| H80 | A selected REST core needs another account check before its early preview can be exposed. A GraphQL response can bind the same validated payload to its actual viewer, keeping initial and final account checks while removing a sixth concurrent `gh` process. | Identical core fields and account failures; provider bytes, selected description and full Conversation paint, process concurrency, and sampled RSS | **Accepted for resource cost** (`mb-npyj`, [exp-049](../../../../explorations/performance-loop/experiments/exp-049-bind-the-missing-selected-pr-core-to-the-graphql-viewer.md)). Five pairs reduced sampled peak concurrent `gh` from six to five and median sampled server-family RSS from 353 to 313 MiB. Full Conversation ranges overlap; the cached conditional REST path is preserved. |
+
+Take at least three admissible runs per condition and five or more interleaved pairs for
+expected effects below 2x. Freeze product and browsed corpus independently, record
+provider/cache state and request concurrency, and preserve cancellation and exact
+source/account/record ownership.
+A range that overlaps supports no speed claim.
+Record rejected explanations with the same provenance as accepted ones.
 
 ## Debt Carried into v0.10.0
 
