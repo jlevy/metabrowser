@@ -9,13 +9,25 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
 // Fake time drives the exact production controller; the POST acknowledgement is held
 // across a normal poll tick, while final record publication happens before the next one.
 async function heldPostCadence(page, full) {
-  async function check({ heldMs, waitCore, cancel = false, hide = false }) {
+  async function check({
+    heldMs,
+    waitCore,
+    cancel = false,
+    hide = false,
+    settlement = null,
+    peek = false,
+    noCore = false,
+  }) {
     let now = 0,
       visible = true,
       current,
-      release;
+      release,
+      releaseGet,
+      shown;
     const tasks = new Map(),
-      gets = [];
+      gets = [],
+      routes = [],
+      etags = [];
     const absent = {
       ...full,
       state: "absent",
@@ -40,17 +52,24 @@ async function heldPostCadence(page, full) {
         comparison_state: "no_store",
       },
     };
-    current = waitCore ? absent : { ...full, state: "stale" };
+    current = peek ? preview : waitCore ? absent : { ...full, state: "stale" };
     const controller = page.createPullController(
       {
-        request: async (method) => {
+        request: async (method, route, { etag }) => {
           if (method === "POST") {
             return new Promise((resolve) => {
               release = resolve;
             });
           }
           gets.push(now);
-          return { status: 200, etag: null, body: current };
+          routes.push(route);
+          etags.push(etag);
+          if (settlement !== null && now === (typeof settlement === "number" ? 3000 : 2000)) {
+            return new Promise((resolve) => {
+              releaseGet = resolve;
+            });
+          }
+          return { status: 200, etag: current === preview ? '"preview"' : null, body: current };
         },
         schedule(callback, delay) {
           const token = Symbol();
@@ -60,11 +79,17 @@ async function heldPostCadence(page, full) {
         cancel: (token) => tasks.delete(token),
         now: () => now,
         isVisible: () => visible,
-        render() {},
+        render(model) {
+          shown = model;
+        },
         reload() {},
         navigate() {},
       },
-      { number: 7, tab: "" },
+      {
+        number: 7,
+        tab: "",
+        reader: peek ? { initial: { etag: '"peek"', body: preview }, fetchAfterMs: 0 } : null,
+      },
     );
     async function advance(target) {
       for (;;) {
@@ -81,7 +106,16 @@ async function heldPostCadence(page, full) {
       }
       now = target;
     }
+    const plain = "/api/plugin/github/pull?number=7";
+    const waiting = `${plain}&wait_full_after=${preview.core_preview.revision}`;
     await controller.start();
+    assert.deepEqual(routes, [plain], "the first GET is always plain");
+    if (peek) {
+      await advance(1000);
+      assert.deepEqual(routes, [plain, plain], "a peeked preview cannot opt this page in");
+      controller.dispose();
+      return;
+    }
     const requested = controller.requestRefresh();
     await settle();
     await advance(heldMs);
@@ -97,7 +131,11 @@ async function heldPostCadence(page, full) {
       visible = false;
       controller.onVisibilityChange();
     }
-    current = waitCore ? preview : { ...full, refreshing: true };
+    current = waitCore
+      ? noCore
+        ? { ...preview, core_preview: null }
+        : preview
+      : { ...full, refreshing: true };
     release({ status: 202, etag: null, body: { pull: current } });
     await requested;
     if (cancel || hide) {
@@ -110,15 +148,57 @@ async function heldPostCadence(page, full) {
       waitCore ? 2000 : heldMs + 1000,
       "held core acknowledgement must retain the POST-start poll phase; cached-full refresh stays unchanged",
     );
-    if (waitCore) {
+    if (settlement === "wake" || settlement === "dispose") {
       await advance(2000);
+      assert.deepEqual(
+        routes,
+        [plain, waiting],
+        "the selected GET opts in with the shown revision",
+      );
+      assert.equal(etags[1], null, "the first opted GET can wait without an ETag");
+      await controller.poll();
+      assert.equal(gets.length, 2, "a held GET is the only poll in flight");
+      await advance(2250);
+      assert.equal(shown.corePreview, true);
+      if (settlement === "dispose") {
+        controller.dispose();
+      }
+      releaseGet({ status: 200, etag: '"full"', body: full });
+      await settle();
+      assert.equal(shown.corePreview, settlement === "dispose");
+      if (settlement === "dispose") {
+        assert.equal(tasks.size, 0, "a disposed page does not rearm on a late wake");
+      } else {
+        assert.equal(shown.pull.number, 7);
+        assert.equal(controller.snapshot().etag, '"full"');
+        assert.equal(controller.snapshot().timer, "slow");
+      }
+    } else if (typeof settlement === "number") {
+      await advance(3000);
+      assert.deepEqual(routes, [plain, waiting, waiting]);
+      assert.equal(etags[2], '"preview"');
+      await advance(settlement);
+      releaseGet({ status: 304, etag: '"preview"', body: null });
+      await settle();
+      assert.equal(shown.corePreview, true);
+      assert.deepEqual(
+        [...tasks.values()].map((task) => task.at),
+        [Math.max(4000, settlement)],
+        "304 re-arms against the held GET's start, including overrun",
+      );
+    } else if (waitCore) {
+      current = preview;
+      await advance(2000);
+      assert.equal(routes[1], noCore ? plain : waiting);
       current = full;
       await advance(3000);
-      assert.deepEqual(
-        gets,
-        [0, 2000, 3000],
-        "full publication is observed at the ordinary next one-second tick",
-      );
+      assert.deepEqual(gets, [0, 2000, 3000]);
+      assert.equal(routes[2], waiting, "a later verified core can enable the owned wait");
+      await controller.poll();
+      assert.equal(routes.at(-1), plain, "the full record ends the owned wait");
+    } else {
+      await advance(due);
+      assert.deepEqual(routes, [plain, plain], "a refreshing cached record never waits");
     }
     controller.dispose();
     assert.equal(tasks.size, 0);
@@ -128,6 +208,12 @@ async function heldPostCadence(page, full) {
   await check({ heldMs: 1700, waitCore: false });
   await check({ heldMs: 1700, waitCore: true, cancel: true });
   await check({ heldMs: 1700, waitCore: true, hide: true });
+  await check({ heldMs: 1700, waitCore: true, settlement: "wake" });
+  await check({ heldMs: 1700, waitCore: true, settlement: "dispose" });
+  await check({ heldMs: 1700, waitCore: true, settlement: 3900 });
+  await check({ heldMs: 1700, waitCore: true, settlement: 4100 });
+  await check({ heldMs: 1700, waitCore: true, noCore: true });
+  await check({ peek: true });
 }
 
 async function retentionCapability(routes) {
@@ -269,6 +355,7 @@ async function run() {
   };
   let current = absent,
     releasePost,
+    settlementSignal,
     markdownRequests = 0;
   const posts = [];
   global.fetch = async (route, options) => {
@@ -286,6 +373,9 @@ async function run() {
     if (route.includes("pull-markdown")) {
       markdownRequests++;
       return { status: 404, headers: { get: () => null }, json: async () => ({}) };
+    }
+    if (route.includes("wait_full_after=")) {
+      settlementSignal = options.signal;
     }
     return { status: 200, headers: { get: () => null }, json: async () => current };
   };
@@ -363,7 +453,9 @@ async function run() {
   assert.doesNotMatch(container.textContent, /still loading/);
   assert.match(container.textContent, /No checks or statuses reported/);
   assert.equal(markdownRequests, 1, "full-record arrival enables the normal Markdown path");
+  assert.equal(settlementSignal?.aborted, false);
   handle.dispose();
+  assert.equal(settlementSignal.aborted, true, "the mounted wait shares the page disposal signal");
   const cancelled = page.mountPullPage(
     new Element("main"),
     { number: 7, tab: "", reader: { initial: null, fetchAfterMs: 0 } },

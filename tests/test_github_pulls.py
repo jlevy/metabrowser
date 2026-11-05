@@ -21,7 +21,7 @@ from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import patch
 
 import pytest
@@ -88,7 +88,7 @@ from metabrowser.mirror_refresh import (
 )
 from metabrowser.server import app
 from metabrowser.source import attach_subject
-from metabrowser.source_routes import PIN_HEADER
+from metabrowser.source_routes import PIN_CHANGED_HEADER, PIN_HEADER
 from tests.git_pin_harness import git_env
 from tests.github_pull_fixture import (
     CANONICAL,
@@ -2471,11 +2471,21 @@ def test_revoked_core_cannot_escape_an_already_captured_get_worker(
     _exercise_selected_core_wait(pinned_pull, monkeypatch, revoke_in_thread=True)
 
 
+@pytest.mark.parametrize("settlement", ["same_pin", "switch_pin"])
+def test_selected_full_wait_returns_the_settled_conditional_read(
+    pinned_pull: tuple[_Stand, TestClient],
+    monkeypatch: pytest.MonkeyPatch,
+    settlement: Literal["same_pin", "switch_pin"],
+) -> None:
+    _exercise_selected_core_wait(pinned_pull, monkeypatch, settle_in_get=settlement)
+
+
 def _exercise_selected_core_wait(
     pinned_pull: tuple[_Stand, TestClient],
     monkeypatch: pytest.MonkeyPatch,
     *,
     revoke_in_thread: bool = False,
+    settle_in_get: Literal["same_pin", "switch_pin"] | None = None,
 ) -> None:
     stand, client = pinned_pull
     answers = scenario(stand.origin)
@@ -2539,6 +2549,9 @@ def _exercise_selected_core_wait(
             ).status_code
             == 304
         )
+        if settle_in_get is not None:
+            new_pin = stand.origin["base"] if settle_in_get == "switch_pin" else None
+            _assert_selected_full_wait(client, monkeypatch, first, release, new_pin=new_pin)
         if revoke_in_thread:
             from metabrowser.builtin_plugins.github import pull_route
 
@@ -2605,6 +2618,90 @@ def _exercise_selected_core_wait(
         time.sleep(0.005)
     assert not final["refreshing"] and final["core_preview"] is None
     assert final["record"] is not None and isinstance(stand.record(8), PullRecord)
+
+
+def _assert_selected_full_wait(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    pending: Any,
+    release: threading.Event,
+    *,
+    new_pin: str | None,
+) -> None:
+    from metabrowser.builtin_plugins.github import served_pull as served_module
+    from metabrowser.builtin_plugins.github.pull_route import pull_host
+
+    route = "/api/plugin/github/pull?number=8"
+    revision = pending.json()["core_preview"]["revision"]
+    opted = f"{route}&wait_full_after={revision}"
+    headers = {"if-none-match": pending.headers["etag"], PIN_HEADER: pending.json()["pin"]}
+    # A matching conditional response remains a 304 when the bounded wait expires.
+    with monkeypatch.context() as patcher:
+        patcher.setattr(served_module, "FULL_WAIT_TIMEOUT_S", 0, raising=False)
+        assert client.get(opted, headers=headers).status_code == 304
+    assert client.get(f"{route}&wait_full_after={'0' * 64}", headers=headers).status_code == 304
+    assert client.get(f"{route}&wait_full_after=wrong").status_code == 400
+    assert client.portal is not None
+    replies: list[Any] = []
+    responded = threading.Event()
+
+    def read() -> None:
+        try:
+            replies.append(client.get(opted, headers=headers))
+        finally:
+            responded.set()
+
+    async def waiting_or_returned() -> bool:
+        host = pull_host(app)
+        assert host is not None
+        kept = host.pulls.held(8)
+        assert kept is not None
+        async with asyncio.timeout(5):
+            while not responded.is_set():
+                if getattr(kept, "_full_waiter", None) is not None:
+                    return True
+                await asyncio.sleep(0.001)
+        return False
+
+    # Make the fixture independent of host scheduling during concurrent TestClient calls.
+    # The separate zero-timeout case exercises the timeout path without a real sleep.
+    monkeypatch.setattr(served_module, "FULL_WAIT_TIMEOUT_S", 5, raising=False)
+    thread = threading.Thread(target=read)
+    thread.start()
+    try:
+        assert client.portal.call(waiting_or_returned), (
+            "the selected GET returned before settlement"
+        )
+        assert client.get(route, headers=headers).status_code == 304
+        assert client.get(opted, headers=headers).status_code == 304
+        assert not responded.is_set()
+        if new_pin is not None:
+            switched = client.post("/api/source/pin", json={"oid": new_pin}, headers=_JSON)
+            assert switched.status_code == 200, switched.text
+            assert switched.json()["changed"] and switched.json()["status"]["pin"] == new_pin
+            unclaimed = client.get(opted)
+            assert unclaimed.status_code == 200 and unclaimed.json()["pin"] == new_pin
+            assert not responded.is_set()
+        release.set()
+    finally:
+        release.set()
+        thread.join(10)
+    assert not thread.is_alive() and len(replies) == 1
+    complete = replies[0]
+    if new_pin is not None:
+        body = complete.json()
+        assert (complete.status_code, body.get("code"), body.get("pin")) == (
+            409,
+            "pin_changed",
+            new_pin,
+        )
+        assert complete.headers[PIN_CHANGED_HEADER] == new_pin
+        assert complete.headers["cache-control"] == "no-store"
+        assert "etag" not in complete.headers and "record" not in body
+        return
+    assert complete.status_code == 200 and complete.headers["etag"] != pending.headers["etag"]
+    assert complete.json()["record"]["pull"]["body"] == "Early **core** description"
+    assert complete.json()["core_preview"] is None
 
 
 @dataclass
@@ -2717,6 +2814,44 @@ def test_selected_core_account_change_revokes_and_drains_without_publication(
         assert gate.started == gate.finished == (0 if when == "before_preview" else 5)
         assert gate.account_reads == (1 if when == "before_preview" else 2)
         assert stand.record(7) == "not_cached"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("end_wait", ["cancel", "rebind"])
+def test_selected_full_wait_does_not_own_the_refresh(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, end_wait: str
+) -> None:
+    from metabrowser.builtin_plugins.github import served_pull as served_module
+
+    monkeypatch.setattr(served_module, "FULL_WAIT_TIMEOUT_S", 5)
+
+    async def run() -> None:
+        gate = _core_gate(stand, monkeypatch)
+        held = ServedPull(stand.published, 7)
+        held.request_core_preview()
+        job = asyncio.create_task(held.refresh())
+        try:
+            await held.wait_for_core()
+            preview = held.core_preview
+            assert preview is not None
+            waiter = asyncio.create_task(held.wait_for_full(preview))
+            await asyncio.sleep(0)
+            assert held._full_waiter is not None
+            assert not await held.wait_for_full(preview)
+            if end_wait == "cancel":
+                waiter.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await waiter
+                assert held.core_preview is preview
+            else:
+                held.bind(replace(stand.published, store_id="rebound-store"))
+                assert await asyncio.wait_for(waiter, 1)
+                assert held.core_preview is None
+            assert held._full_waiter is None and not job.done()
+        finally:
+            gate.release.set()
+            await asyncio.wait_for(job, 5)
 
     asyncio.run(run())
 

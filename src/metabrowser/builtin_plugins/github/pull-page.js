@@ -984,6 +984,8 @@ export function createPullController(deps, options) {
   /** Asked for by a reader's selection, and the ask is on its way. */
   let fetching = false;
   let refreshPending = false;
+  // Only this page's acknowledged selected refresh can opt in to a settlement read.
+  let waitForFull = false;
   /** Markdown by part, for the record content revision `markdownFor`. @type {Map<string, Record<string, any>>} */
   const markdown = new Map();
   /** @type {string | null} */
@@ -1064,8 +1066,7 @@ export function createPullController(deps, options) {
     }, delayMs);
   }
 
-  /** @param {number | null} [fastSince] */
-  function scheduleNext(fastSince = null) {
+  function scheduleNext(fastDelay = FAST_POLL_MS) {
     clearTimer();
     if (disposed || !deps.isVisible()) {
       return;
@@ -1076,11 +1077,7 @@ export function createPullController(deps, options) {
         timer = null;
         void poll();
       },
-      fast
-        ? fastSince === null
-          ? FAST_POLL_MS
-          : FAST_POLL_MS - (Math.max(0, deps.now() - fastSince) % FAST_POLL_MS)
-        : SLOW_POLL_MS,
+      fast ? fastDelay : SLOW_POLL_MS,
     );
   }
 
@@ -1101,6 +1098,9 @@ export function createPullController(deps, options) {
     }
     shownRequest = request;
     envelope = next;
+    if (next.record !== null || !next.refreshing) {
+      waitForFull = false;
+    }
     const revision = next.record === null ? null : next.record_revision;
     if (revision !== markdownFor) {
       // Another record: its texts may differ, so nothing rendered from the last one
@@ -1127,8 +1127,15 @@ export function createPullController(deps, options) {
     }
     polling = true;
     const request = ++sent;
+    const coreRevision =
+      !first && waitForFull && envelope?.refreshing && envelope.record === null
+        ? envelope.core_preview?.revision
+        : undefined;
+    const route =
+      coreRevision === undefined ? pullRoute : `${pullRoute}&wait_full_after=${coreRevision}`;
+    const waitStarted = coreRevision === undefined ? null : deps.now();
     try {
-      const response = await deps.request("GET", pullRoute, { etag });
+      const response = await deps.request("GET", route, { etag });
       if (disposed) {
         return;
       }
@@ -1151,7 +1158,12 @@ export function createPullController(deps, options) {
       return;
     }
     render();
-    scheduleNext();
+    // A waiting read spent part (or all) of the interval already.
+    scheduleNext(
+      waitStarted === null
+        ? FAST_POLL_MS
+        : Math.max(0, FAST_POLL_MS - Math.max(0, deps.now() - waitStarted)),
+    );
     fetchForReader();
     if (
       deps.isVisible() &&
@@ -1209,7 +1221,13 @@ export function createPullController(deps, options) {
         body !== null &&
         isEnvelope(body.pull)
       ) {
-        accept(body.pull, request);
+        if (accept(body.pull, request)) {
+          waitForFull =
+            response.status === 202 &&
+            ask.wait_core === true &&
+            body.pull.record === null &&
+            body.pull.refreshing;
+        }
         if (response.status === 202) {
           // The answer changed; the next poll must not be answered by a 304.
           etag = null;
@@ -1229,7 +1247,11 @@ export function createPullController(deps, options) {
     }
     if (!disposed) {
       render();
-      scheduleNext(fastSince);
+      scheduleNext(
+        fastSince === null
+          ? FAST_POLL_MS
+          : FAST_POLL_MS - (Math.max(0, deps.now() - fastSince) % FAST_POLL_MS),
+      );
     }
   }
 

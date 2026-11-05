@@ -256,6 +256,16 @@ reads cache and memory only, captures the preview on the event loop, and rejects
 revoked snapshot after the bounded worker read.
 The entity tag carries preview identity and removal as well as full-record identity.
 Existing full records take precedence.
+A page that started a selected refresh may give the displayed preview’s revision in
+`GET github/pull?number=<n>&wait_full_after=<revision>`. If that exact preview is still
+pending and the full record is absent, one request can wait up to 900 ms for completion
+or revocation.
+The wait shares the POST’s single lease, holds no network slot, and cannot
+cancel or start provider work.
+The route reads a fresh envelope before applying normal ETag handling.
+A pin claim is checked again after the wait, using the same `pin_changed` refusal as
+other data reads. A waiting read spends part of the regular poll interval; the client
+counts that interval from the read’s start.
 
 The envelope’s `comparison_route` names `GET github/pull-comparison` with the pull
 number, immutable endpoints, and build and store tokens.

@@ -61,6 +61,7 @@ MAX_ISSUED_COMPARISONS: Final = 8
 # A measured selected-core path is about 1.7 s. This bounds only the POST's wait,
 # never the provider job; a late core remains available through the ordinary GET.
 CORE_WAIT_TIMEOUT_S: Final = 2.0
+FULL_WAIT_TIMEOUT_S: Final = 0.9
 
 
 class PullCorePreview(TypedDict):
@@ -127,6 +128,7 @@ class ServedPull:
     _core_requested: bool = field(default=False, repr=False)
     _core_ready: asyncio.Event = field(default_factory=asyncio.Event, repr=False)
     _core_waiter: bool = field(default=False, repr=False)
+    _full_waiter: asyncio.Event | None = field(default=None, repr=False)
     _core_epoch: object = field(default_factory=object, repr=False)
     _recoveries: OrderedDict[tuple[str, str] | None, None] = field(
         default_factory=OrderedDict, repr=False
@@ -219,6 +221,8 @@ class ServedPull:
         self.core_preview = None
         self._core_epoch = object()
         self._core_ready.clear()
+        if self._full_waiter is not None:
+            self._full_waiter.set()
 
     def bind(self, published: PublishedSource | ListedRepository) -> None:
         """A changed publication relinquishes a preview and any in-flight stage callback."""
@@ -230,7 +234,7 @@ class ServedPull:
 
     async def wait_for_core(self) -> None:
         """One bounded HTTP waiter; cancelling it cannot cancel the refresh producer."""
-        if not self._core_requested or self._core_waiter:
+        if not self._core_requested or self._core_waiter or self._full_waiter is not None:
             return
         self._core_waiter = True
         try:
@@ -239,6 +243,26 @@ class ServedPull:
             pass
         finally:
             self._core_waiter = False
+
+    async def wait_for_full(self, preview: PullCorePreview) -> bool:
+        """Wait for the exact pending preview to settle or be revoked, without owning its job."""
+        if (
+            not self._refreshing
+            or not self._core_requested
+            or self.core_preview is not preview
+            or self._core_waiter
+            or self._full_waiter is not None
+        ):
+            return False
+        waiter = asyncio.Event()
+        self._full_waiter = waiter
+        try:
+            await asyncio.wait_for(waiter.wait(), FULL_WAIT_TIMEOUT_S)
+        except TimeoutError:
+            pass
+        finally:
+            self._full_waiter = None
+        return True
 
     async def refresh(self) -> None:
         """Read again, consuming explicit recovery requests before the ordinary PR fetch."""

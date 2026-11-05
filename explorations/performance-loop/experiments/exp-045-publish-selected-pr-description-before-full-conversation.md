@@ -126,8 +126,8 @@ The generic directory journeys passed the unchanged performance gate.
 
 A later loading-only correction keeps the gray blocks visible while the first POST is
 outstanding. A held-request session and an installed-wheel browser click confirmed that
-the blocks replace the empty Pulls prompt and give way to the actual Conversation.
-The correction adds no requests; those checks make no timing claim.
+the blocks replace the empty Pulls prompt and give way to the selected title and
+description. The correction adds no requests; those checks make no timing claim.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

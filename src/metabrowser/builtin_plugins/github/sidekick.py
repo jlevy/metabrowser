@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 
@@ -30,6 +31,7 @@ from starlette.responses import JSONResponse, Response
 
 from metabrowser.http_caching import matches_if_none_match
 from metabrowser.source import get_source_session
+from metabrowser.source_routes import PIN_HEADER, pin_changed_response
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -85,11 +87,14 @@ async def pull_handler(request: Request) -> Response:
     The answer carries an entity tag, and a request whose ``If-None-Match`` names it is
     answered ``304`` without the record, so a page can poll it as cheaply as the status
     route. The tag covers everything but the record, which changes only with
-    ``fetched_at``.
+    ``fetched_at``. A matching ``wait_full_after`` revision may hold the cache read
+    briefly until its already-running selected refresh settles or revokes the preview.
     """
 
     from metabrowser.builtin_plugins.github.pull_route import (
+        PullEnvelope,
         PullRequestError,
+        PullView,
         envelope_etag,
         pull_envelope,
         pull_host,
@@ -102,10 +107,38 @@ async def pull_handler(request: Request) -> Response:
         number = requested_number(request.query_params)
     except PullRequestError as exc:
         return _invalid_request(str(exc))
+    wait_after = request.query_params.get("wait_full_after")
+    if wait_after is not None and re.fullmatch(r"[0-9a-f]{64}", wait_after) is None:
+        return _invalid_request('"wait_full_after" is a core preview revision')
+    claimed_pin = request.headers.get(PIN_HEADER) if wait_after is not None else None
+    pinned_subject = None
+    if claimed_pin is not None:
+        if (refusal := pin_changed_response(claimed_pin)) is not None:
+            return refusal
+        # Snapshot pin metadata stays tied to the claim even if the pin changes back.
+        pinned_subject = get_source_session().subject
     await _resolve(request)
-    view = pull_view(pull_host(request.app), get_source_session().subject, number)
-    stamp = await asyncio.to_thread(record_stamp, view)
-    envelope = await asyncio.to_thread(pull_envelope, view)
+
+    async def snapshot() -> tuple[PullView, tuple[int, int, int] | None, PullEnvelope]:
+        subject = pinned_subject if pinned_subject is not None else get_source_session().subject
+        view = pull_view(pull_host(request.app), subject, number)
+        stamp = await asyncio.to_thread(record_stamp, view)
+        envelope = await asyncio.to_thread(pull_envelope, view)
+        return view, stamp, envelope
+
+    view, stamp, envelope = await snapshot()
+    preview = envelope["core_preview"]
+    if (
+        wait_after is not None
+        and preview is not None
+        and preview["revision"] == wait_after
+        and envelope["record"] is None
+        and view.kept is not None
+    ):
+        kept = view.kept
+        waited = await kept.wait_for_full(preview)
+        if waited or kept.core_preview is not preview:
+            view, stamp, envelope = await snapshot()
     if view.kept is None or view.kept.core_preview is not envelope["core_preview"]:
         envelope["core_preview"] = None
     if view.kept is not None:
@@ -114,6 +147,8 @@ async def pull_handler(request: Request) -> Response:
     if view.host is not None and isinstance(comparison, dict):
         served = await view.host.pulls.companion(number)
         served.note_comparison((comparison["base"], comparison["head"]))
+    if claimed_pin is not None and (refusal := pin_changed_response(claimed_pin)) is not None:
+        return refusal
     etag = envelope_etag(envelope, stamp)
     headers = {**_NO_STORE, "etag": etag}
     if matches_if_none_match(request, etag):
