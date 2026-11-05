@@ -5,16 +5,18 @@ title: Interleave commit summaries in PR Conversation
 kind: feature
 status: in_progress
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m6q24e0zp42g259j5cgz1zsy
 parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-05T21:32:29.618Z
-updated_at: 2026-11-05T23:53:01.596Z
+updated_at: 2026-11-05T23:54:00.602Z
 started_at: 2026-11-05T21:34:05.272Z
 ---
 Review the plan and implement compact clickable commits in Conversation for managed repositories and existing checkouts. Use verified bounded GitHub metadata and provider ordering, preserve offline behavior, and keep description and speculative fetch budgets unchanged.
