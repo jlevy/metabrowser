@@ -2799,6 +2799,27 @@ declare global {
     onHide?: (() => void) | null;
   };
 
+  type MetabrowserMainTabsDeps = {
+    cancelPreview(): void;
+    flushPull(): void;
+    isGitHistoryLanding(): boolean;
+    isPullAddress(pathname: string): boolean;
+    restore(): Promise<unknown>;
+    scrollShadow(): void;
+  };
+  type MetabrowserMainTabsController = {
+    active(): string;
+    activate(id: string): void;
+    finishGitDiscovery(): Promise<void>;
+    fileLanding(): void;
+    onHistory(): void;
+    open(id: string): void;
+    register(panel: MetabrowserNavPanel): void;
+    remember(): void;
+    remove(id: string): void;
+    takeFilesScroll(): boolean;
+  };
+
   type MetabrowserPreviewClaim = number;
 
   /**
@@ -2902,6 +2923,9 @@ declare global {
     MetabrowserResourceContext: MetabrowserResourceContextRuntime;
     MetabrowserSearch: MetabrowserSearchRuntime;
     MetabrowserShell?: MetabrowserShellRuntime;
+    MetabrowserMainTabs?: Readonly<{
+      create(deps: MetabrowserMainTabsDeps): MetabrowserMainTabsController;
+    }>;
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;

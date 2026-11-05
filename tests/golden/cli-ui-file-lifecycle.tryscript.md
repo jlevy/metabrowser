@@ -479,9 +479,7 @@ $ node tests/dom/preview-pane-state-session.js
         "scrolled to 250, git chosen: shows 250"
       ],
       "told": [
-        "files hidden",
-        "git hidden",
-        "files hidden"
+        "git hidden"
       ]
     },
     "independentMainTabs": {

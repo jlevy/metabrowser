@@ -1587,7 +1587,10 @@ async def index(
     # eager loading measured ~374 ms of every document's load event whether or
     # not that view was ever opened. See docs/development.md "Asset Loading
     # Tiers" and the load-time plan for the measurement.
+    main_tabs_asset = {"src": _static_asset_url("main-tabs.js"), "provides": "MetabrowserMainTabs"}
     on_demand_script_bundles = {
+        # A main tab click can arrive before the initial tree request settles.
+        "main-tabs": [main_tabs_asset],
         # Navigation, search, Help, and Git controls are application-lifetime
         # tools, but none is needed to paint or fetch the first tree. Keeping
         # their ordered classic scripts behind that usable-state boundary
@@ -1595,6 +1598,7 @@ async def index(
         # begin immediately after loadTree settles, before inventory delivery
         # continues in the background.
         "shell-tools": [
+            main_tabs_asset,
             {"src": known_file_catalog_url},
             {"src": catalog_feed_url},
             {"src": file_fuzzy_match_url},

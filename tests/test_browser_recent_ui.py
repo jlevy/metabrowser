@@ -15,6 +15,7 @@ testable without a browser.
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 from typing import Any, cast
 
@@ -27,6 +28,10 @@ def _read_app_js() -> str:
     return proc_browser.STATIC_DIR.joinpath("app.js").read_text()
 
 
+def _read_main_tabs_js() -> str:
+    return proc_browser.STATIC_DIR.joinpath("main-tabs.js").read_text()
+
+
 def _read_tree_filter_model() -> str:
     return proc_browser.STATIC_DIR.joinpath("tree-filter-model.js").read_text()
 
@@ -37,11 +42,13 @@ def _function_source(js: str, name: str) -> str:
     These assertions used a fixed character window, which made them fail
     for the wrong reason: adding an unrelated line near the top of a
     function pushed the asserted call past the cutoff even though the
-    behavior was intact. Nested functions are indented, so the next
-    column-zero ``function`` is the end of this one.
+    behavior was intact. The next function at the same indentation ends this one.
     """
     start = js.index(f"function {name}(")
-    end = js.find("\nfunction ", start + 1)
+    prefix = js[js.rfind("\n", 0, start) + 1 : start]
+    indent = prefix[: len(prefix) - len(prefix.lstrip())]
+    next_function = re.search(rf"\n{indent}(?:async )?function ", js[start + 1 :])
+    end = start + 1 + next_function.start() if next_function else -1
     return js[start:] if end == -1 else js[start:end]
 
 
@@ -220,22 +227,20 @@ def test_dom_contract_filter_bar_sits_outside_the_scrolling_tree() -> None:
 def test_init_nav_tabs_function_exists_and_wires_tab_bar() -> None:
     """Nav tabs are a registry, not a hardcoded click handler.
 
-    ``initNavTabs`` declares the server-rendered panels and binds each
-    tab button; ``activateNavPanel`` owns the visibility toggle. The
-    split is what lets a conditional panel (Git, which only exists in a
-    repository) register itself later without duplicating either half.
+    The eager shell delegates button clicks while the deferred controller
+    registers and toggles panels, including Git when a repository is discovered.
     """
 
     js = _read_app_js()
     assert "function initNavTabs()" in js
     init_block = _function_source(js, "initNavTabs")
     assert "nav-tab-bar" in init_block
-    # Files is declared here rather than discovered from the DOM, so a
-    # panel can carry its own lazy first-show hook.
-    assert 'registerNavPanel({ id: "files"' in init_block
-    assert "activateNavPanel(panelId)" in init_block
+    assert 'addEventListener("click"' in init_block
+    assert 'ensureAsset("main-tabs")' in init_block
 
-    activate_block = _function_source(js, "activateNavPanel")
+    tabs = _read_main_tabs_js()
+    assert 'id: "files", label: "Files"' in tabs
+    activate_block = _function_source(tabs, "activateNavPanel")
     assert "data-tab-content" in activate_block
     assert "aria-selected" in activate_block
 
@@ -252,10 +257,9 @@ def test_recent_is_not_a_registered_nav_panel() -> None:
     at runtime.
     """
 
-    js = _read_app_js()
-    init_block = _function_source(js, "initNavTabs")
-    assert 'id: "recent"' not in init_block
-    assert "loadRecent" not in init_block
+    tabs = _read_main_tabs_js()
+    assert 'id: "recent"' not in tabs
+    assert "loadRecent" not in tabs
 
 
 def test_switching_panels_hides_the_file_filter_bar() -> None:
@@ -265,8 +269,7 @@ def test_switching_panels_hides_the_file_filter_bar() -> None:
     visibility loop does not reach it, so a panel that is not Files would
     otherwise show file filters above content they cannot filter."""
 
-    js = _read_app_js()
-    activate_block = _function_source(js, "activateNavPanel")
+    activate_block = _function_source(_read_main_tabs_js(), "activateNavPanel")
     assert 'getElementById("nav-filter-bar")' in activate_block
     assert 'panelId === "files" ? "" : "none"' in activate_block
 
@@ -283,13 +286,13 @@ def test_the_scroll_shadow_follows_the_visible_chrome() -> None:
     # The loser is cleared, so a tab switch cannot arm two shadows.
     assert 'other?.classList.remove("scrolled")' in block
     # A tab switch fires no scroll event, so activation re-runs it.
-    activate_block = _function_source(js, "activateNavPanel")
-    assert "navScrollShadowUpdate?.()" in activate_block
+    activate_block = _function_source(_read_main_tabs_js(), "activateNavPanel")
+    assert "deps.scrollShadow()" in activate_block
+    assert "scrollShadow: () => navScrollShadowUpdate?.()" in js
 
 
 def test_nav_panels_support_an_every_show_retry_hook() -> None:
-    js = _read_app_js()
-    activate_block = _function_source(js, "activateNavPanel")
+    activate_block = _function_source(_read_main_tabs_js(), "activateNavPanel")
     assert "panel?.onShow?.()" in activate_block
     assert activate_block.index("panel?.onFirstShow?.()") < activate_block.index(
         "panel?.onShow?.()"
@@ -300,10 +303,8 @@ def test_preview_shell_uses_generation_claims_across_owners() -> None:
     js = _read_app_js()
     assert "function claimPreview(owner, selection)" in js
     assert "function isPreviewClaimCurrent(claim)" in js
-    # Preview producers claim the pane; a tab switch is not one. Claiming on
-    # a switch invalidated the selection still loading underneath it, which
-    # stranded its placeholder and silenced the shown file's Load more.
-    activate_block = _function_source(js, "activateNavPanel")
+    # Marking a tab is visual. The route owner handles preview selection.
+    activate_block = _function_source(_read_main_tabs_js(), "activateNavPanel")
     assert "claimPreview(" not in activate_block
     shell_block = js[js.index("window.MetabrowserShell = Object.freeze") :][:600]
     assert "claimPreview" in shell_block
@@ -857,8 +858,7 @@ def test_set_selected_path_called_from_shared_activation_and_reveal() -> None:
     assert "setSelectedPath(row.dataset.path)" in select_block
 
     # revealInTree uses it.
-    reveal_start = js.index("async function revealInTree(path)")
-    reveal_block = js[reveal_start : reveal_start + 1500]
+    reveal_block = _function_source(js, "revealInTree")
     assert "setSelectedPath(path)" in reveal_block
 
 

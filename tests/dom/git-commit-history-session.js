@@ -399,11 +399,18 @@ async function createPage(start, options = {}) {
     var previewPane = __previewPane;
     var navigationController = null;
     var activeNavPanelId = "files";
-    var keepFilesScrollOnLanding = false;
+    var mainTabIntent = 0;
+    var mainTabs = {
+      takeFilesScroll: () => false,
+      remember() {},
+      fileLanding() {
+        if (activeNavPanelId !== "files") {
+          MetabrowserShell.claimPreview("none");
+          MetabrowserShell.activateNavPanel("files");
+        }
+      },
+    };
     function isGitHistoryLanding() { return false; }
-    function rememberMainTabAddress() {}
-    function prepareMainTabLanding() { MetabrowserShell.claimPreview("none"); }
-    function activateNavPanel(id) { MetabrowserShell.activateNavPanel(id); }
     function beginViewCompositionLoad() { return null; }
     function addressedView() { return null; }
     function showPreviewTab() {}

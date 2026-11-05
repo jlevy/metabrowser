@@ -129,7 +129,8 @@ fragment. Keep each tab’s filter and scroll position with its own panel.
 A direct address or Back and Forward selects the tab that owns the address.
 Restoring an address activates its panel through the existing navigation owner.
 That activation must not launch a second navigation or let an older request overwrite
-the active preview. See `mb-1c0a`.
+the active preview. See `mb-1c0a`. The tab controller loads with the deferred shell
+tools. A deliberate click before that point can load the same controller on demand.
 
 Use small, muted exact totals beside **Open**, **Closed**, and **All**. Read all three
 from the existing cached catalog response, independent of the display window.
