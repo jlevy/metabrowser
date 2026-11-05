@@ -433,6 +433,20 @@ async function run() {
   assert.equal(model.comparison, null);
   assert.equal(model.contentReady, true);
   assert.equal(model.corePreview, true);
+  const preparedCore = { ...preview.core_preview, comparison_state: "not_started" };
+  const filesPage = { number: 7, tab: "files", nowMs: Date.now() };
+  assert.equal(
+    page.describePull(
+      { ...preview, state: "absent", refreshing: false, core_preview: preparedCore },
+      filesPage,
+    ).filesUnavailable,
+    "Files changed has not been fetched.",
+  );
+  assert.equal(
+    page.describePull({ ...preview, core_preview: preparedCore }, filesPage).filesUnavailable,
+    "Files changed is still being prepared.",
+    "an adopted description does not make the active comparison look unrequested",
+  );
   const fullWins = page.describePull(
     { ...full, core_preview: preview.core_preview },
     { number: 7, tab: "", nowMs: Date.now() },

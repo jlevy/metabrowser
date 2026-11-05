@@ -373,9 +373,17 @@ return `invalid_request` (400); no GitHub repository returns `not_github` (409).
 `202` with a cache-only `status_route`. Other outcomes return `200` with `ready`,
 `busy`, `not_owner`, or `released`. An empty `numbers` list releases only the window
 matching its state, ID, and generation.
-A ready description appears in the pull envelope as a reader-labelled `core_preview`
-with its original observation time and `comparison_state: "not_started"`. Selecting a
-pull with no complete record starts its own acquisition.
+The panel retries a busy request once after one second while the same viewport is
+active; it does not retry `not_owner`. A 256-entry per-source attempt limit holds an
+unchanged indexed row for one minute after its provider attempt, regardless of the
+window token or filter.
+When a new batch settles, it can carry exact overlapping descriptions until their
+original expiry. Admission still checks the exact cohort and generation.
+Each result then rechecks its own indexed fingerprint under the same source, reader,
+repository, and catalog epoch, so a change to another row does not discard a stable
+description. A ready description appears in the pull envelope as a reader-labelled
+`core_preview` with its original observation time and `comparison_state: "not_started"`.
+Selecting a pull with no complete record starts its own acquisition.
 
 `GET github/stacks` reads one optional repository stack snapshot with no query
 parameters. Its envelope has `state` (`absent`, `current`, `stale`), `reason`, `source`,

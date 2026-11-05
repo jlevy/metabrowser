@@ -50,6 +50,7 @@ const PULL_ROUTE = "/api/plugin/github/pull";
 const CORE_PREPARE_ROUTE = "/api/plugin/github/pull-cores-prepare";
 const VISIBLE_CORE_LIMIT = 8;
 const CORE_CONTROL_TIMEOUT_MS = 2000;
+export const CORE_BUSY_RETRY_MS = 1000;
 
 export const LISTS = Object.freeze(["open", "closed", "all"]);
 const LIST_LABELS = Object.freeze({ all: "All", open: "Open", closed: "Closed" });
@@ -498,7 +499,7 @@ function pinChanged(response) {
 
 /**
  * @typedef {{state: string, window: {id: string, generation: string}, numbers: number[]}} CoreWindowRequest
- * @typedef {{key: string, epoch: number, body: CoreWindowRequest}} CoreDemand
+ * @typedef {{key: string, epoch: number, body: CoreWindowRequest, canRetry: boolean}} CoreDemand
  * @typedef {{status: number, etag: string | null, body: unknown}} PullsResponse
  * @typedef {{
  *   request(
@@ -630,6 +631,8 @@ export function createPullsController(deps, options = {}) {
   let coreHeld = null;
   let coreEpoch = 0;
   let sendingCore = false;
+  /** @type {unknown} */
+  let coreRetryTimer = null;
 
   /** @returns {HeldList} */
   function held() {
@@ -658,6 +661,16 @@ export function createPullsController(deps, options = {}) {
     return controlCoreWindow({ ...demand.body, numbers: [] });
   }
 
+  function cancelCoreRetry() {
+    if (coreWanted !== null) {
+      coreWanted.canRetry = false;
+    }
+    if (coreRetryTimer !== null) {
+      deps.cancel(coreRetryTimer);
+      coreRetryTimer = null;
+    }
+  }
+
   async function sendCoreWindow() {
     if (sendingCore) {
       return;
@@ -681,9 +694,9 @@ export function createPullsController(deps, options = {}) {
           (response?.status === 202 &&
             (receipt?.preparation === "started" || receipt?.preparation === "joined")) ||
           (response?.status === 200 && receipt?.preparation === "ready");
+        const busy = response?.status === 200 && receipt?.preparation === "busy";
         const preserved =
-          response?.status === 200 &&
-          (receipt?.preparation === "busy" || receipt?.preparation === "not_owner");
+          busy || (response?.status === 200 && receipt?.preparation === "not_owner");
         if (!preserved) {
           coreHeld = demand;
           if (!admitted && previous !== null) {
@@ -697,6 +710,22 @@ export function createPullsController(deps, options = {}) {
             coreHeld = null;
           }
           coreSent = null;
+        } else if (
+          busy &&
+          demand.canRetry &&
+          demand === coreWanted &&
+          live() &&
+          walkingTo === null
+        ) {
+          // Keep both the requested token and its predecessor while the server is busy.
+          demand.canRetry = false;
+          coreRetryTimer = deps.schedule(() => {
+            coreRetryTimer = null;
+            if (coreWanted === demand && live() && walkingTo === null) {
+              coreSent = null;
+              void sendCoreWindow();
+            }
+          }, CORE_BUSY_RETRY_MS);
         }
       }
     } finally {
@@ -705,6 +734,7 @@ export function createPullsController(deps, options = {}) {
   }
 
   function clearCoreWindow() {
+    cancelCoreRetry();
     coreEpoch += 1;
     coreWanted = null;
     void sendCoreWindow();
@@ -732,6 +762,7 @@ export function createPullsController(deps, options = {}) {
     if (coreWanted?.key === key) {
       return;
     }
+    cancelCoreRetry();
     // getRandomValues also works when serving trusted-network plain HTTP.
     const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
       byte.toString(16).padStart(2, "0"),
@@ -739,6 +770,7 @@ export function createPullsController(deps, options = {}) {
     coreWanted = {
       key,
       epoch: coreEpoch,
+      canRetry: true,
       body: {
         state: filter,
         window: { id, generation },
@@ -1275,6 +1307,7 @@ export function createPullsController(deps, options = {}) {
 
   /** @param {number} number */
   function setCurrentRow(number) {
+    cancelCoreRetry();
     const previous = current;
     if (previous !== number) {
       current = number;
@@ -1461,6 +1494,7 @@ export function createPullsController(deps, options = {}) {
       }
       // The address moved by itself, by Back or by a link on the page: a row that is still
       // waiting for its record to open does not open over it.
+      cancelCoreRetry();
       opening += 1;
       if (walkingTo !== null && walkingTo !== number) {
         clearWalk();

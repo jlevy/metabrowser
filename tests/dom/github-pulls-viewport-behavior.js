@@ -28,7 +28,7 @@ const controls = [],
   opened = [];
 let readyCore = false,
   holdAdmission = false,
-  busyAdmission = false,
+  refuseAdmission = null,
   finishAdmission;
 const answer = (body, status = 200) => ({
   status,
@@ -60,6 +60,20 @@ const body = new FakeElement("body"),
 body.append(scroll);
 scroll.append(container);
 scroll.scrollTop = 0;
+// Both the list and its expanded trees subscribe to the same native scroll event.
+const listen = scroll.addEventListener.bind(scroll);
+scroll.addEventListener = (type, listener) => {
+  const previous = scroll.listeners.get(type);
+  listen(
+    type,
+    previous === undefined
+      ? listener
+      : (...args) => {
+          previous(...args);
+          listener(...args);
+        },
+  );
+};
 function height(node) {
   if (node.classList?.contains("github-pulls-spacer")) {
     return Number.parseFloat(node.style.height) || 0;
@@ -166,14 +180,16 @@ Object.assign(globalThis, {
       if (body.numbers.length === 0) {
         return answer({ preparation: "released" });
       }
-      if (busyAdmission) {
-        busyAdmission = false;
-        return answer({ preparation: "busy" });
+      if (refuseAdmission !== null) {
+        const preparation = refuseAdmission;
+        refuseAdmission = null;
+        return answer({ preparation });
       }
       if (holdAdmission) {
         holdAdmission = false;
         return new Promise((resolve) => {
-          finishAdmission = () => resolve(answer({ preparation: "started" }, 202));
+          finishAdmission = (preparation = "started") =>
+            resolve(answer({ preparation }, preparation === "started" ? 202 : 200));
         });
       }
       return answer({ preparation: "started" }, 202);
@@ -388,15 +404,61 @@ async function paint() {
   assert.equal(model.freshness, "Description fetched 2 min ago by reader");
   assert.equal(model.filesUnavailable, "Files changed has not been fetched.");
 
+  const existingTimers = new Set(timers.keys());
+  const retry = () =>
+    [...timers].find(
+      ([id, timer]) =>
+        !existingTimers.has(id) && timer.delay === (panel.CORE_BUSY_RETRY_MS ?? 1000),
+    );
+  const sampleAt = async (top) => {
+    scroll.scrollTop = top;
+    scroll.listeners.get("scroll")();
+    await sample();
+  };
   const previous = controls.at(-1);
   const beforeBusy = controls.length;
-  busyAdmission = true;
+  refuseAdmission = "busy";
   await sample();
+  const demand = controls.at(-1);
   assert.equal(controls.length, beforeBusy + 1, "busy scroll replacement keeps the old token");
-  assert.notEqual(controls.at(-1).window.id, previous.window.id);
+  assert.notEqual(demand.window.id, previous.window.id);
+  const delayed = retry();
+  assert.ok(delayed, "a stable busy window gets one delayed retry");
+  refuseAdmission = "busy";
+  timers.delete(delayed[0]);
+  delayed[1].fn();
+  await settle();
+  assert.equal(controls.length, beforeBusy + 2);
+  assert.deepEqual(controls.at(-1), demand, "retry uses the exact original window");
+  assert.equal(retry(), undefined, "a second busy answer never retries again");
+
+  refuseAdmission = "not_owner";
+  await sampleAt(600);
+  assert.equal(retry(), undefined, "a refusal cannot re-arm the competing window");
+  refuseAdmission = "busy";
+  await sampleAt(1000);
+  assert.ok(retry());
+  await sampleAt(1300);
+  assert.equal(retry(), undefined, "a changed viewport cancels the previous retry");
+  const currentOwner = controls.at(-1);
+
+  holdAdmission = true;
+  await sampleAt(1700);
+  assert(handle.activateAnchor());
+  finishAdmission("busy");
+  await settle();
+  assert.equal(retry(), undefined, "selection also disarms a busy reply still in flight");
+  refuseAdmission = "busy";
+  await sampleAt(2100);
+  assert.ok(retry());
   handle.setShown(false);
   await settle();
-  assert.deepEqual(controls.at(-1), { ...previous, numbers: [] }, "hide releases the old token");
+  assert.equal(retry(), undefined, "hide cancels the queued retry");
+  assert.deepEqual(
+    controls.at(-1),
+    { ...currentOwner, numbers: [] },
+    "hide releases the old token",
+  );
   handle.dispose();
   assert.equal(frames.size, 0);
   assert.equal(timers.size, 0);

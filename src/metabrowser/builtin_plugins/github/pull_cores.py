@@ -8,7 +8,7 @@ import re
 import time
 from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.gh import GhError, gh_graphql
@@ -42,6 +42,9 @@ if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
 
 _TOKEN = re.compile(r"[a-zA-Z0-9_-]{1,64}")
+# Do not evict a live entry: token churn across many rows could then spend it again.
+_MAX_CORE_ATTEMPTS: Final = 256
+type CoreAttempt = tuple[str, str, str, str, int, CatalogMember]
 type Preparation = Literal["started", "joined", "ready", "released", "not_owner", "busy"]
 
 
@@ -113,27 +116,41 @@ class CoreAdmission:
     repository_id: str
     members: tuple[tuple[int, CatalogMember], ...]
 
-    def matching_catalog(self) -> CatalogState | None:
-        """Recheck admitted rows in the same catalog, even if pagination shifted."""
+    def matching_members(
+        self, number: int | None = None
+    ) -> tuple[CatalogState | None, tuple[int, ...]]:
+        """Recheck each requested member in the same catalog, even if pagination shifted."""
+        expected = {
+            member_number: member
+            for member_number, member in self.members
+            if number is None or member_number == number
+        }
+        if not expected:
+            return None, ()
         now, members = catalog_members(
-            self.publication.home,
-            self.publication.slug,
-            self.state,
-            tuple(number for number, _ in self.members),
+            self.publication.home, self.publication.slug, self.state, tuple(expected)
         )
-        if (
-            now is not None
-            and now.source == self.source
-            and now.reader == self.reader
-            and now.repository_id == self.repository_id
-            and now.epoch == self.epoch
-            and members == dict(self.members)
-        ):
-            return now
-        return None
+        if now is None or not self.matches_identity(now):
+            return None, ()
+        return now, tuple(n for n, member in expected.items() if members.get(n) == member)
 
-    def catalog_matches(self) -> bool:
-        return self.matching_catalog() is not None
+    def matches_identity(self, catalog: CatalogState) -> bool:
+        return (
+            catalog.source == self.source
+            and catalog.reader == self.reader
+            and catalog.repository_id == self.repository_id
+            and catalog.epoch == self.epoch
+        )
+
+    def catalog_matches(self, number: int) -> bool:
+        _, matched = self.matching_members(number)
+        return bool(matched)
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedCore:
+    preview: PullCorePreview
+    expires_at: float
 
 
 @dataclass(eq=False, slots=True)
@@ -144,24 +161,28 @@ class CoreWindow:
     publication: PublishedSource | ListedRepository
     source: str
     admission: CoreAdmission | None = None
-    previews: dict[int, PullCorePreview] | None = None
-    expires_at: float = 0
+    previews: dict[int, PreparedCore] | None = None
     checking_replacement: bool = False
 
-    def preview(self, number: int) -> PullCorePreview | None:
-        if self.previews is None or time.monotonic() >= self.expires_at:
-            return None
-        return self.previews.get(number)
+    def prepared(self, number: int) -> PreparedCore | None:
+        entry = self.previews.get(number) if self.previews is not None else None
+        return entry if entry is not None and time.monotonic() < entry.expires_at else None
 
-    def catalog_matches(self) -> bool:
-        return self.admission is not None and self.admission.catalog_matches()
+    def preview(self, number: int) -> PullCorePreview | None:
+        entry = self.prepared(number)
+        return entry.preview if entry is not None else None
+
+    def catalog_matches(self, number: int) -> bool:
+        return self.admission is not None and self.admission.catalog_matches(number)
 
     def availability(self) -> tuple[str | None, tuple[int, ...]]:
         proof = self.admission
-        catalog = proof.matching_catalog() if proof is not None else None
-        if proof is None or catalog is None:
+        if proof is None:
             return None, ()
-        numbers = tuple(number for number, _ in proof.members if _record_missing(self, number))
+        catalog, matched = proof.matching_members()
+        if catalog is None or not matched:
+            return None, ()
+        numbers = tuple(number for number in matched if _record_missing(self, number))
         return catalog.generation(self.ask.state), numbers
 
     def cancel(self) -> asyncio.Task[None] | None:
@@ -200,12 +221,40 @@ def _eligible(window: CoreWindow) -> tuple[CatalogState | None, dict[int, Catalo
     return catalog, {n: members[n] for n in ask.numbers if _record_missing(window, n)}
 
 
+def _attemptable(
+    pulls_set: ServedPulls,
+    catalog: CatalogState,
+    admitted: dict[int, CatalogMember],
+    running: Callable[[int], bool],
+) -> dict[int, CoreAttempt]:
+    """Check a per-source cooldown for this exact catalog row, regardless of its owner."""
+    recent = pulls_set.core_attempts
+    now = time.monotonic()
+    while recent:
+        oldest = next(iter(recent))
+        if recent[oldest] > now:
+            break
+        del recent[oldest]
+    remaining = _MAX_CORE_ATTEMPTS - len(recent)
+    identity = catalog.source, catalog.repository_id, catalog.reader, catalog.epoch
+    allowed: dict[int, CoreAttempt] = {}
+    for number, member in admitted.items():
+        if len(allowed) >= remaining:
+            break
+        key = (*identity, number, member)
+        if key not in recent and not running(number):
+            allowed[number] = key
+    return allowed
+
+
 async def _prepare(
     pulls_set: ServedPulls,
     window: CoreWindow,
     running: Callable[[int], bool],
     eligible: tuple[CatalogState, dict[int, CatalogMember]] | None = None,
+    overlap: dict[int, tuple[CatalogMember, PreparedCore]] | None = None,
 ) -> None:
+    carried = overlap or {}
     publication = window.publication
 
     def owns() -> bool:
@@ -215,16 +264,13 @@ async def _prepare(
         catalog, admitted = (
             await asyncio.to_thread(_eligible, window) if eligible is None else eligible
         )
-        numbers = tuple(number for number in admitted if not running(number))
         slot = window.coordinator.slot()
-        if (
-            not owns()
-            or catalog is None
-            or not numbers
-            or pulls_set.foreground_pending(running)
-            or slot.locked()
-        ):
+        if not owns() or catalog is None or pulls_set.foreground_pending(running) or slot.locked():
             return
+        attempts = _attemptable(pulls_set, catalog, admitted, running)
+        if not attempts:
+            return
+        numbers = tuple(attempts)
         window.admission = CoreAdmission(
             publication,
             window.source,
@@ -232,13 +278,16 @@ async def _prepare(
             catalog.epoch,
             catalog.reader,
             catalog.repository_id,
-            tuple((number, admitted[number]) for number in numbers),
+            tuple((number, admitted[number]) for number in numbers)
+            + tuple((number, member) for number, (member, _entry) in carried.items()),
         )
         owner, repo = pulls._owner_and_repo(publication)
         variables: dict[str, str | int] = {"owner": owner, "name": repo}
         variables.update({f"n{i}": number for i, number in enumerate(numbers)})
         # No await separates the locked check from acquiring the free permit.
         async with slot:
+            retry_at = time.monotonic() + FRESHNESS_WINDOW_S
+            pulls_set.core_attempts.update(dict.fromkeys(attempts.values(), retry_at))
             data = await gh_graphql(_batch_query(len(numbers)), variables, now=pulls.utc_now())
         observed_at = pulls.utc_now()
         expires_at = time.monotonic() + FRESHNESS_WINDOW_S
@@ -260,15 +309,26 @@ async def _prepare(
         _, still_missing = await asyncio.to_thread(window.availability)
         if not owns():
             return
-        window.previews = {
-            number: make_core_preview(
-                window.source, catalog.reader, models[number], observed_at, "not_started"
-            )
-            for number in still_missing
-            if not running(number)
-            and parse_stamp(models[number].updated_at) >= parse_stamp(admitted[number].updated_at)
-        }
-        window.expires_at = expires_at
+        ready: dict[int, PreparedCore] = {}
+        now = time.monotonic()
+        for number in still_missing:
+            if running(number):
+                continue
+            previous = carried.get(number)
+            if previous is not None:
+                _, entry = previous
+                if now < entry.expires_at:
+                    ready[number] = entry
+                continue
+            model = models[number]
+            if parse_stamp(model.updated_at) >= parse_stamp(admitted[number].updated_at):
+                ready[number] = PreparedCore(
+                    make_core_preview(
+                        window.source, catalog.reader, model, observed_at, "not_started"
+                    ),
+                    expires_at,
+                )
+        window.previews = ready
     except GhError as exc:
         if owns() and exc.state == "rate_limited" and exc.reset_at is not None:
             pulls_set.core_hold_until = parse_stamp(exc.reset_at)
@@ -310,7 +370,7 @@ async def request_preparation(
             current.previews = {
                 number: preview
                 for number in available
-                if not running(number) and (preview := current.preview(number)) is not None
+                if not running(number) and (preview := current.prepared(number)) is not None
             }
             if current.previews:
                 return "ready"
@@ -333,6 +393,7 @@ async def request_preparation(
         return "busy"
     window = CoreWindow(ask, coordinator, key, pulls_set.published, pulls_set.source)
     eligible = None
+    carried: dict[int, tuple[CatalogMember, PreparedCore]] = {}
     if current is not None:
         # Keep a ready window while at most one competing token proves eligibility.
         if current.checking_replacement:
@@ -348,10 +409,29 @@ async def request_preparation(
             or busy()
         ):
             return "busy"
-        if catalog is None or not any(not running(number) for number in admitted):
+        if catalog is None:
             return "not_owner"
-        eligible = (catalog, admitted)
+        proof = current.admission
+        if (
+            proof is not None
+            and proof.publication is window.publication
+            and proof.matches_identity(catalog)
+        ):
+            # A still-visible unchanged row needs neither a new read nor a renewed lease.
+            carried = {
+                number: (member, entry)
+                for number, member in proof.members
+                if admitted.get(number) == member
+                and not running(number)
+                and (entry := current.prepared(number)) is not None
+            }
+        remaining = {number: member for number, member in admitted.items() if number not in carried}
+        if not _attemptable(pulls_set, catalog, remaining, running):
+            return "not_owner"
+        eligible = (catalog, remaining)
+    # With no ready owner, the single job also owns its cached eligibility lookup.
+    # It clears the temporary claim if no row can actually be attempted.
     pulls_set.core_window = window
     return coordinator.start(
-        key, partial(_prepare, pulls_set, window, running, eligible), network=False
+        key, partial(_prepare, pulls_set, window, running, eligible, carried), network=False
     )

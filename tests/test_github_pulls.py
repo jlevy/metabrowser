@@ -3273,6 +3273,7 @@ def _visible_core_fixture(
     monkeypatch: pytest.MonkeyPatch,
     *,
     sibling: bool = False,
+    visible: tuple[int, ...] | None = None,
     provider_stamp: str | None = None,
     untrustworthy: bool = False,
     hold_batch: Callable[[], Awaitable[None]] | None = None,
@@ -3314,7 +3315,7 @@ def _visible_core_fixture(
 
     monkeypatch.setattr(pull_cores, "gh_graphql", graph)
     owner = {"id": "visible-8", "generation": catalog.generation("all")}
-    ask = {"state": "all", "window": owner, "numbers": list(numbers)}
+    ask = {"state": "all", "window": owner, "numbers": list(visible or numbers)}
     started = client.post(_PREPARE_CORES, json=ask)
     assert started.status_code == 202
     assert started.json() == {
@@ -3381,11 +3382,96 @@ def test_visible_core_running_window_survives_second_tab(
     assert _read(client, 8).json()["core_preview"]["number"] == 8 and calls == [(8,)]
 
 
+def test_visible_core_attempt_cooldown_ignores_owner_and_filter(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from tests.github_pull_fixture import seed_catalog
+
+    stand, client = pinned_pull
+    ask, rest, calls = _visible_core_fixture(pinned_pull, monkeypatch, sibling=True, visible=(8, 7))
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    catalog = seed_catalog(repository, list(rest.values()), reader=READER)
+    preview = _read(client, 8).json()["core_preview"]
+    assert preview is not None
+    for state in ("all", "open"):
+        rotated = {
+            "state": state,
+            "window": {"id": f"rotate-{state}", "generation": catalog.generation(state)},
+            "numbers": [8],
+        }
+        response = client.post(_PREPARE_CORES, json=rotated)
+        assert response.status_code == 200
+        assert response.json() == {"preparation": "not_owner"}
+        assert _read(client, 8).json()["core_preview"] == preview
+    assert client.post(_PREPARE_CORES, json={**ask, "numbers": []}).json() == {
+        "preparation": "released"
+    }
+    client.post(_PREPARE_CORES, json=rotated)
+    _drain_visible_cores(client)
+    assert calls == [(8,)]
+    assert client.post(_PREPARE_CORES, json={**rotated, "numbers": []}).json() == {
+        "preparation": "not_owner"
+    }
+
+    # Overlap alone cannot refetch #8, but it must not stop the unseen #9.
+    mixed = {**ask, "window": {**ask["window"], "id": "mixed"}, "numbers": [8, 9]}
+    assert client.post(_PREPARE_CORES, json=mixed).status_code == 202
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
+
+    corrected = {**rest[8], "title": "Corrected summary at the same timestamp"}
+    updated = seed_catalog(repository, [rest[7], corrected, rest[9]], reader=READER)
+    changed = {
+        **ask,
+        "window": {"id": "changed", "generation": updated.generation("all")},
+        "numbers": [8],
+    }
+    assert client.post(_PREPARE_CORES, json=changed).status_code == 202
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,), (8,)]
+
+
+def test_visible_core_mixed_viewport_keeps_overlap_until_its_original_expiry(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from metabrowser.builtin_plugins.github import pull_cores
+
+    now = 1000.0
+    monkeypatch.setattr(pull_cores, "time", SimpleNamespace(monotonic=lambda: now))
+    _stand, client = pinned_pull
+    ask, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8, 7)
+    )
+    original = _read(client, 8).json()["core_preview"]
+    assert original is not None
+
+    now += 10
+    successor = {**ask, "window": {**ask["window"], "id": "scrolled"}, "numbers": [8, 9]}
+    assert client.post(_PREPARE_CORES, json=successor).status_code == 202
+    _drain_visible_cores(client)
+    assert calls == [(8,), (9,)]
+    assert _read(client, 8).json()["core_preview"] == original
+    assert _read(client, 9).json()["core_preview"]["number"] == 9
+    assert client.post(_PREPARE_CORES, json={**ask, "numbers": []}).json() == {
+        "preparation": "not_owner"
+    }
+
+    now = 1000 + pull_cores.FRESHNESS_WINDOW_S
+    assert _read(client, 8).json()["core_preview"] is None
+    assert _read(client, 9).json()["core_preview"]["number"] == 9
+    assert client.post(_PREPARE_CORES, json=successor).json() == {"preparation": "ready"}
+
+
 def test_visible_core_stale_competitor_preserves_ready_window(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _stand, client = pinned_pull
-    first, _rest, calls = _visible_core_fixture(pinned_pull, monkeypatch, sibling=True)
+    first, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8, 7)
+    )
     preview = _read(client, 8).json()["core_preview"]
     assert preview is not None
     stale = {
@@ -3395,7 +3481,7 @@ def test_visible_core_stale_competitor_preserves_ready_window(
     }
     response = client.post(_PREPARE_CORES, json=stale)
     assert response.status_code == 200 and response.json() == {"preparation": "not_owner"}
-    assert _read(client, 8).json()["core_preview"] == preview and calls == [(8, 9)]
+    assert _read(client, 8).json()["core_preview"] == preview and calls == [(8,)]
 
     replacement = {**stale, "window": {**first["window"], "id": "second-tab"}}
     response = client.post(_PREPARE_CORES, json=replacement)
@@ -3408,7 +3494,7 @@ def test_visible_core_stale_competitor_preserves_ready_window(
         "preparation": "not_owner"
     }
     assert _read(client, 8).json()["core_preview"] is None
-    assert _read(client, 9).json()["core_preview"]["number"] == 9 and calls == [(8, 9), (9,)]
+    assert _read(client, 9).json()["core_preview"]["number"] == 9 and calls == [(8,), (9,)]
 
 
 def test_visible_core_release_during_last_worker_prevents_adoption(
@@ -3423,10 +3509,10 @@ def test_visible_core_release_during_last_worker_prevents_adoption(
     fresh_entered, fresh_release = threading.Event(), threading.Event()
     real_check = pull_cores.CoreWindow.catalog_matches
 
-    def held_check(window: pull_cores.CoreWindow) -> bool:
+    def held_check(window: pull_cores.CoreWindow, number: int) -> bool:
         catalog_entered.set()
         assert catalog_release.wait(5)
-        return real_check(window)
+        return real_check(window, number)
 
     async def fresh(_query: str, _variables: Any, **_kwargs: Any) -> dict[str, Any]:
         fresh_entered.set()
@@ -3636,6 +3722,38 @@ def test_visible_core_revokes_staged_reader_while_failure_stamp_is_held(
     )
 
 
+def test_visible_core_batch_keeps_unchanged_member_after_sibling_update(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from tests.github_pull_fixture import seed_catalog
+
+    stand, client = pinned_pull
+    entered, release = threading.Event(), threading.Event()
+
+    async def hold_batch() -> None:
+        entered.set()
+        assert await asyncio.to_thread(release.wait, 5)
+
+    ask, rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, hold_batch=hold_batch
+    )
+    try:
+        assert entered.wait(5)
+        repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+        changed = {**rest[9], "updated_at": "2090-01-01T00:00:00Z"}
+        catalog = seed_catalog(repository, [rest[7], rest[8], changed], reader=READER)
+        assert catalog.generation("all") != ask["window"]["generation"]
+    finally:
+        release.set()
+        _drain_visible_cores(client)
+    stable = _read(client, 8).json()
+    assert stable["record"] is None and stable["core_preview"] is not None
+    assert stable["core_preview"]["number"] == 8
+    assert _read(client, 9).json()["core_preview"] is None
+    assert calls == [(8, 9)]
+
+
 def test_visible_core_adopted_display_rechecks_catalog_without_releasing_selected_refresh(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3643,9 +3761,18 @@ def test_visible_core_adopted_display_rechecks_catalog_without_releasing_selecte
     from tests.github_pull_fixture import seed_catalog
 
     stand, client = pinned_pull
-    ask, rest, calls = _visible_core_fixture(pinned_pull, monkeypatch)
-    prepared = _read(client, 8).json()["core_preview"]
+    ask, rest, calls = _visible_core_fixture(pinned_pull, monkeypatch, sibling=True)
+    held = _read(client, 8)
+    prepared = held.json()["core_preview"]
     assert prepared["comparison_state"] == "not_started"
+    assert _read(client, 9).json()["core_preview"] is not None
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    corrected = {**rest[9], "title": "Corrected sibling summary"}
+    members = [rest[7], rest[8], corrected]
+    corrected_catalog = seed_catalog(repository, members, reader=READER)
+    assert corrected_catalog.generation("all") != ask["window"]["generation"]
+    assert _read(client, 9).json()["core_preview"] is None
+    assert _read(client, 8, etag=held.headers["etag"]).status_code == 304
     opted = f"/api/plugin/github/pull?number=8&wait_full_after={prepared['revision']}"
 
     async def unexpected_wait(_served: ServedPull, _preview: Any) -> bool:
@@ -3653,7 +3780,6 @@ def test_visible_core_adopted_display_rechecks_catalog_without_releasing_selecte
 
     monkeypatch.setattr(ServedPull, "wait_for_full", unexpected_wait)
     assert client.get(opted).json()["core_preview"] == prepared
-    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
     fresh_entered, fresh_release = threading.Event(), threading.Event()
     new_body = {
         **rest[8],
@@ -3684,9 +3810,9 @@ def test_visible_core_adopted_display_rechecks_catalog_without_releasing_selecte
         assert client.post(_PREPARE_CORES, json={**ask, "numbers": []}).json() == {
             "preparation": "released"
         }
-        appended = [*rest.values(), {**rest[7], "number": 6}]
+        appended = [*members, {**rest[7], "number": 6}]
         catalog = seed_catalog(repository, appended, reader=READER)
-        assert catalog.generation("all") == ask["window"]["generation"]
+        assert catalog.generation("all") == corrected_catalog.generation("all")
         unchanged = _read(client, 8)
         assert unchanged.json()["core_preview"] == prepared
         prepended = [*appended, {**rest[7], "number": 109}]
@@ -3709,14 +3835,19 @@ def test_visible_core_adopted_display_rechecks_catalog_without_releasing_selecte
     final = _read(client, 8).json()
     assert not final["refreshing"] and final["core_preview"] is None
     assert final["record"]["pull"]["body"] == "Fresh selected description"
-    assert calls == [(8,)]
+    assert calls == [(8, 9)]
 
 
 def test_visible_core_competitor_waits_for_selected_acquisition_to_settle(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from types import SimpleNamespace
+
+    from metabrowser.builtin_plugins.github import pull_cores
     from metabrowser.builtin_plugins.github.pull_route import pull_host
 
+    now = 1000.0
+    monkeypatch.setattr(pull_cores, "time", SimpleNamespace(monotonic=lambda: now))
     _stand, client = pinned_pull
     ask, rest, calls = _visible_core_fixture(pinned_pull, monkeypatch, sibling=True)
     ready = _read(client, 9).json()["core_preview"]
@@ -3764,6 +3895,11 @@ def test_visible_core_competitor_waits_for_selected_acquisition_to_settle(
         final_release.set()
         _drain_visible_cores(client)
     assert _read(client, 8).json()["record"]["number"] == 8
+    client.post(_PREPARE_CORES, json=competitor)
+    _drain_visible_cores(client)
+    assert _read(client, 9).json()["core_preview"] is None and calls == [(8, 9)]
+
+    now += pull_cores.FRESHNESS_WINDOW_S
     admitted = client.post(_PREPARE_CORES, json=competitor)
     assert admitted.status_code == 202 and admitted.json()["preparation"] == "started"
     _drain_visible_cores(client)

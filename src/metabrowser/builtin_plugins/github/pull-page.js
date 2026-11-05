@@ -786,7 +786,8 @@ export function describePull(envelope, page) {
       !envelope.refreshing &&
       !page.fetching;
     model.filesUnavailable =
-      preview.comparison_state === "pending"
+      preview.comparison_state === "pending" ||
+      (preview.comparison_state === "not_started" && envelope.refreshing)
         ? "Files changed is still being prepared."
         : preview.comparison_state === "not_started"
           ? "Files changed has not been fetched."

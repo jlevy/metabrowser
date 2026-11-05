@@ -440,6 +440,11 @@ framework:
    Click once as soon as the row is visible, once while preparation is running, and once
    after it finishes. Record the actual batch state with each planned dwell.
    With two tabs, confirm a refused preparation leaves the first tab’s window available.
+   Hold a batch while scrolling to a second window.
+   Check that the busy window retries once, repeated tokens cannot refetch unchanged
+   rows, and overlapping prepared descriptions retain their original expiry.
+   While a batch runs or after it becomes ready, change one admitted summary and confirm
+   an unchanged sibling is still readable.
 4. In Git, compare natural and prepared selection, re-enter the displayed row, and leave
    for a file while deferred requests are active.
    Check exact route and subject, cancellation, queued work, single active ownership and

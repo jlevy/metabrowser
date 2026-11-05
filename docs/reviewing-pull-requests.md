@@ -44,6 +44,8 @@ the displayed window.
 After the list has painted, Metabrowser can prepare descriptions for up to eight visible
 pull requests that lack a cached full record.
 An eligible window can issue one GitHub batch; a selected refresh takes priority.
+If a window is busy, the panel can retry once while the same rows are visible.
+Scrolling to a nearby window can reuse still-current descriptions for overlapping rows.
 Selecting a row shows its prepared description when available.
 For a missing full record, the selected refresh still verifies a fresh description and
 completes the record.

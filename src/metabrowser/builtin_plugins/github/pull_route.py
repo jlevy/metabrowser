@@ -370,7 +370,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         if not isinstance(record, PullRecord)
         and (
             view.core_admission is None
-            or (record == "not_cached" and view.core_admission.catalog_matches())
+            or (record == "not_cached" and view.core_admission.catalog_matches(view.number))
         )
         else None,
     )
@@ -580,7 +580,7 @@ async def _start_refresh(
     if adopt is not None:
         window, preview = adopt
         # This is the last worker read. Start and adoption below are synchronous.
-        catalog_matches = await asyncio.to_thread(window.catalog_matches)
+        catalog_matches = await asyncio.to_thread(window.catalog_matches, ask.number)
         if (
             not catalog_matches
             or host.pulls.published is not window.publication
@@ -596,8 +596,9 @@ async def _start_refresh(
             queued.discard_recovery(ask.recovery)
         elif started == "started" and adopt is not None:
             window, preview = adopt
-            assert window.admission is not None
-            queued.display_core = (preview, window.admission)
+            admission = window.admission
+            if admission is not None:
+                queued.display_core = (preview, admission)
     return started
 
 

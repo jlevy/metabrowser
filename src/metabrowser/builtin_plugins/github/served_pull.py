@@ -44,7 +44,7 @@ from metabrowser.builtin_plugins.github.pull_record import PullRecord, PullReque
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreWindow
+    from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreAttempt, CoreWindow
     from metabrowser.cache.acquire import PublishedSource
 
 # Pull requests whose state is kept in memory. The numbers are request text, so this is a
@@ -459,6 +459,7 @@ class ServedPulls:
     active: ServedPull | None = field(default=None, repr=False)
     core_window: CoreWindow | None = field(default=None, repr=False)
     core_hold_until: datetime | None = field(default=None, repr=False)
+    core_attempts: dict[CoreAttempt, float] = field(default_factory=dict, repr=False)
     foreground_intents: int = field(default=0, repr=False)
 
     @property
