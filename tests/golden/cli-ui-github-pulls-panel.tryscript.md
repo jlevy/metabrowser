@@ -47,9 +47,10 @@ $ node tests/dom/github-pulls-panel-session.js
       "paint": {
         "filter": "all",
         "status": "absent",
-        "skeleton": true,
         "listName": "Pull requests of octo/demo",
-        "progress": "Catalog paused · 0 cached"
+        "summary": "octo/demo",
+        "fetching": "Fetching pull requests…",
+        "live": "Fetching pull requests…"
       }
     },
     {
@@ -63,9 +64,10 @@ $ node tests/dom/github-pulls-panel-session.js
       "paint": {
         "filter": "all",
         "status": "absent",
-        "skeleton": true,
         "listName": "Pull requests of octo/demo",
-        "progress": "Catalog paused · 0 cached"
+        "summary": "octo/demo",
+        "fetching": "Fetching pull requests…",
+        "live": "Fetching pull requests…"
       }
     },
     {
@@ -78,10 +80,10 @@ $ node tests/dom/github-pulls-panel-session.js
       "paint": {
         "filter": "all",
         "status": "pending",
-        "skeleton": true,
         "listName": "Pull requests of octo/demo",
-        "progress": "Fetching catalog… · 0 cached",
-        "live": "Waiting for the list of pull requests…"
+        "summary": "octo/demo",
+        "fetching": "Fetching pull requests…",
+        "live": "Fetching pull requests…"
       }
     },
     {
@@ -98,7 +100,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "current",
         "listName": "Pull requests of octo/demo: 102 pull requests",
-        "count": "102 PRs on octo/demo",
+        "summary": "102 PRs on octo/demo",
         "window": "Showing last 100",
         "freshness": "Fetched just now by octo-reader",
         "loadMore": "ready",
@@ -122,7 +124,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "current",
         "listName": "Pull requests of octo/demo: 102 pull requests",
-        "count": "102 PRs on octo/demo",
+        "summary": "102 PRs on octo/demo",
         "freshness": "Fetched just now by octo-reader",
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 102,
@@ -166,7 +168,7 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "open",
         "status": "current",
         "listName": "Pull requests of octo/demo: 100 pull requests",
-        "count": "102 PRs on octo/demo",
+        "summary": "102 PRs on octo/demo",
         "freshness": "Fetched just now by octo-reader",
         "live": "Pull requests of octo/demo: 100 pull requests",
         "rowsHeld": 100,
@@ -215,9 +217,9 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 1,000 pull requests",
-        "count": "1,000 PRs on octo/demo",
+        "summary": "1,000 PRs on octo/demo",
         "window": "Showing last 500",
-        "progress": "Catalog paused · 1,000 cached",
+        "progress": "Catalog paused",
         "freshness": "Fetched just now by octo-reader",
         "loadMore": "ready",
         "live": "Pull requests of octo/demo: 1,000 pull requests",
@@ -242,12 +244,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
-        "count": "6,000 PRs on octo/demo",
+        "summary": "6,000 PRs on octo/demo",
         "window": "Showing last 500",
-        "progress": "Fetching catalog… · 6,000 cached",
-        "freshness": "Refreshing… · fetched just now by octo-reader",
+        "fetching": "Fetching pull requests…",
         "loadMore": "ready",
-        "live": "Pull requests of octo/demo: 6,000 pull requests",
+        "live": "Fetching pull requests…",
         "rowsHeld": 500,
         "rows": [
           "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
@@ -273,8 +274,8 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 1,000 pull requests",
-        "count": "1,000 PRs on octo/demo",
-        "progress": "Catalog paused · 1,000 cached",
+        "summary": "1,000 PRs on octo/demo",
+        "progress": "Catalog paused",
         "freshness": "Fetched just now by octo-reader",
         "live": "Pull requests of octo/demo: 1,000 pull requests",
         "rowsHeld": 1000,
@@ -307,12 +308,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,001 pull requests",
-        "count": "6,001 PRs on octo/demo",
+        "summary": "6,001 PRs on octo/demo",
         "window": "Showing last 1,000",
-        "progress": "Fetching catalog… · 6,001 cached",
-        "freshness": "Refreshing… · fetched just now by octo-reader",
+        "fetching": "Fetching pull requests…",
         "loadMore": "ready",
-        "live": "Pull requests of octo/demo: 6,001 pull requests",
+        "live": "Fetching pull requests…",
         "rowsHeld": 1000,
         "rows": [
           "[Closed] Work item 6001 | #6001 · contributor · topic ← work-6001 | /pull/6001",
@@ -844,14 +844,19 @@ $ node tests/dom/github-pulls-panel-second-session.js
     }
   ],
   "paint": {
-    "only the exact number is bold": [
+    "loading status": "Fetching pull requests…",
+    "the count and repository name are bold": [
       {
         "node": "STRONG",
         "text": "102"
       },
       {
         "node": "#text",
-        "text": " PRs on octo/demo"
+        "text": " PRs on "
+      },
+      {
+        "node": "STRONG",
+        "text": "octo/demo"
       }
     ],
     "the list": "ul .github-pulls-list role=\"tree\" aria-label=\"Pull requests of octo/demo: 102 pull requests\"",

@@ -13,6 +13,8 @@ All notable changes to Metabrowser are documented here.
 
 PR and Git navigation:
 
+- The Pulls tab names the repository once in bold and uses a single spinner line for
+  loading and refresh.
 - The Pulls tab prepares descriptions for up to eight visible PRs after summaries paint.
   Selection takes priority, and only the selected PR fetches discussion, checks, and Git
   objects.

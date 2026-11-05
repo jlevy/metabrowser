@@ -1438,21 +1438,26 @@ async def index(
     if pulls_tab:
         pulls_container = (
             '\n        <div id="tab-pulls" data-tab-content="pulls">'
-            '<div class="recent-loading mb-delayed-loading" role="status"'
-            ' aria-label="Loading pull requests"></div></div>'
+            '<div class="loading mb-delayed-loading" role="status">'
+            '<div class="spinner spinner-sm" aria-hidden="true"></div>'
+            '<span class="sr-only">Fetching pull requests…</span></div></div>'
             if pulls_in_front
             else '\n        <div id="tab-pulls" data-tab-content="pulls"'
             ' style="display: none"></div>'
         )
-    # The PR route knows it will show text. Its cold shell uses the same row skeleton
-    # as the plugin, while unrelated previews keep their indeterminate placeholder.
-    preview_loading = (
-        '<div class="pull-request-placeholder mb-delayed-loading" role="status" aria-label="Loading pull request">'
-        '<div class="recent-loading" aria-hidden="true"></div></div>'
-        if pull_page
-        else '<div class="loading mb-delayed-loading"><div class="spinner"></div>'
-        '<span class="sr-only">Loading preview…</span></div>'
-    )
+    # The Pulls landing has no selection to load. Its spinner belongs in the sidebar.
+    if pull_list and pulls_in_front:
+        preview_loading = '<div class="preview-empty">Select a pull request.</div>'
+    elif pull_page:
+        preview_loading = (
+            '<div class="pull-request-placeholder mb-delayed-loading" role="status" aria-label="Loading pull request">'
+            '<div class="recent-loading" aria-hidden="true"></div></div>'
+        )
+    else:
+        preview_loading = (
+            '<div class="loading mb-delayed-loading"><div class="spinner"></div>'
+            '<span class="sr-only">Loading preview…</span></div>'
+        )
     source_kind_json = _json.dumps("git_revision" if git_pin else "filesystem")
     # The tree's first rows, inlined. Without this the reader waits for a round
     # trip the server did not have to make them take: time to first row is

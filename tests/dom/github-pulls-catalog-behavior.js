@@ -146,7 +146,8 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   assert.equal(page.controller.snapshot().rows, 500);
   assert.equal(page.requests.length, 5);
   assert.equal(page.model().countNumber, "9,000");
-  assert.equal(page.model().countSuffix, " PRs on jlevy/metabrowser");
+  assert.equal(page.model().countSuffix, " PRs on ");
+  assert.equal(page.model().repository, "jlevy/metabrowser");
   assert.equal(page.model().window, "Showing last 500");
   const version = page.model().rowsVersion;
   page.state.cached = 7000;
@@ -286,6 +287,7 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   const refreshRace = rig(panel);
   refreshRace.state.refreshing = false;
   await refreshRace.controller.start({ shown: true });
+  assert.match(refreshRace.model().progress, /^Catalog paused · [\d,]+ cached$/);
   const oldVersion = refreshRace.model().rowsVersion;
   refreshRace.state.automatic = false;
   refreshRace.state.generation = "two";
@@ -301,7 +303,8 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   assert.equal(refreshRace.waiting.length, 0);
   assert.equal(refreshRace.model().rowsVersion, oldVersion);
   assert.equal(refreshRace.model().rows[0].number, 8000);
-  assert.match(refreshRace.model().progress, /Fetching catalog/);
+  assert.equal(refreshRace.model().fetching, "Fetching pull requests…");
+  assert.equal(refreshRace.model().freshness, null);
   assert.equal(refreshRace.controller.snapshot().timer, "fast");
   refreshRace.controller.onVisibilityChange();
   await settle();

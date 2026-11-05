@@ -79,9 +79,7 @@ export const PEEK_MS = 60;
 // Records read ahead and not yet opened. A record is at most MAX_PULL_RECORD_BYTES, and a
 // reader rests on a few rows at most before opening one.
 export const MAX_PEEKED = 4;
-// An initially empty catalog explains a long wait after this presentation delay. Metadata
-// backfill and selected pull-request detail acquisition remain separate backend jobs.
-export const LONG_WAIT_MS = 10000;
+const FETCHING = "Fetching pull requests…";
 // Folders start open up to the measured file-list cap. Chrome 152, 2026-11-03: the
 // first 1,183 files of django/django#15387 made 1,503 rows; 3,000 stress files made
 // 4,539. With windowed paint, mounting cost 13.2 and 10.4 ms respectively, and a key's
@@ -106,12 +104,7 @@ const FAILURES = Object.freeze({
     "The repository was not found, or the signed-in account cannot read its pull requests.",
 });
 
-/** @type {Readonly<Record<string, string>>} */
-const ABSENCE = Object.freeze({
-  not_github: "This server serves no GitHub repository.",
-  schema_mismatch: "The saved list is from another version, and is being replaced.",
-  unreadable: "The saved list could not be read, and is being replaced.",
-});
+const NO_GITHUB = "This server serves no GitHub repository.";
 // A checkout's tab is drawn for an `origin` on github.com that the plugin's grammar may still
 // refuse, which the route answers as `not_github`.
 const CHECKOUT_NOT_LISTED =
@@ -170,13 +163,13 @@ const CHECKOUT_NOT_LISTED =
  *   rows: PullRow[],
  *   rowsVersion: number,
  *   setSize: number,
- *   skeleton: boolean,
  *   listName: string,
- *   origin: string | null,
- *   count: string | null,
+ *   repository: string | null,
  *   countNumber: string | null,
  *   countSuffix: string | null,
+ *   catalogReady: boolean,
  *   window: string | null,
+ *   fetching: string | null,
  *   progress: string | null,
  *   freshness: string | null,
  *   empty: string | null,
@@ -309,7 +302,7 @@ export function refreshFailure(envelope, formatTime) {
  * What the panel shows for one list. Pure.
  *
  * *rows* are the rows held so far, already described; the envelope is the last answer, whose
- * own `rows` are only a window. *waitedMs* is how long a list with no rows has been waited on.
+ * own `rows` are only a window.
  *
  * @param {PullsEnvelope | null} envelope
  * @param {{
@@ -319,7 +312,6 @@ export function refreshFailure(envelope, formatTime) {
  *   nowMs: number,
  *   formatTime: (iso: string) => string,
  *   more: boolean,
- *   waitedMs: number,
  *   error: string | null,
  *   checkout?: boolean,
  * }} page
@@ -335,13 +327,13 @@ export function describePulls(envelope, page) {
     // How many rows the list has, which a window appended does not move: each row's place is
     // told against it, and not against the rows held or drawn so far.
     setSize: envelope?.total ?? Math.max(envelope?.fetched ?? 0, page.rows.length),
-    skeleton: false,
     listName: "Pull requests",
-    origin: null,
-    count: null,
+    repository: null,
     countNumber: null,
     countSuffix: null,
+    catalogReady: envelope?.complete === true && !envelope.refreshing,
     window: null,
+    fetching: null,
     progress: null,
     freshness: null,
     empty: null,
@@ -352,10 +344,10 @@ export function describePulls(envelope, page) {
   };
   if (envelope === null) {
     model.status = page.error === null ? "loading" : "unavailable";
-    model.skeleton = page.error === null;
+    model.fetching = page.error === null ? FETCHING : null;
     model.notice =
       page.error === null ? null : { severity: "error", text: page.error, retry: false };
-    model.live = page.error ?? "";
+    model.live = page.error ?? FETCHING;
     return model;
   }
   model.status = envelope.state;
@@ -363,61 +355,54 @@ export function describePulls(envelope, page) {
   const failure = refreshFailure(envelope, page.formatTime);
   const holding = envelope.fetched > 0 || page.rows.length > 0;
   if (envelope.state === "absent" && envelope.reason === "not_github") {
-    model.empty = page.checkout === true ? CHECKOUT_NOT_LISTED : ABSENCE.not_github;
+    model.empty = page.checkout === true ? CHECKOUT_NOT_LISTED : NO_GITHUB;
     model.live = model.empty;
     return model;
   }
-  if (page.checkout === true && repository !== null) {
-    // A checkout's heading is its folder, and on a fork its `origin` is the fork, whose list
-    // is often empty: so the tab names the repository it lists, and how it chose it.
-    model.origin = `Pull requests of ${repository}, this checkout's origin`;
-  }
+  model.repository = repository;
   if (envelope.repository_total !== null && repository !== null) {
     model.countNumber = new Intl.NumberFormat("en-US").format(envelope.repository_total);
-    model.countSuffix = ` PR${envelope.repository_total === 1 ? "" : "s"} on ${repository}`;
-    model.count = model.countNumber + model.countSuffix;
+    model.countSuffix = envelope.repository_total === 1 ? " PR on " : " PRs on ";
   }
   if (envelope.total !== null && page.rows.length > 0 && page.rows.length < envelope.total) {
     model.window = `Showing last ${new Intl.NumberFormat("en-US").format(page.rows.length)}`;
   }
-  if (!envelope.complete || envelope.refreshing) {
-    const cached = new Intl.NumberFormat("en-US").format(envelope.catalog_fetched);
-    model.progress = `${envelope.refreshing ? "Fetching catalog…" : "Catalog paused"} · ${cached} cached`;
+  if (
+    failure === null &&
+    page.error === null &&
+    (envelope.refreshing ||
+      envelope.state === "pending" ||
+      envelope.state === "absent" ||
+      page.more)
+  ) {
+    model.fetching = FETCHING;
   }
-  if (!holding && (envelope.state === "absent" || envelope.state === "pending")) {
-    // Nothing to show yet. The shape of rows, unless the wait is one a reader must act on.
-    model.skeleton = failure === null;
-    const reason = envelope.reason === null ? undefined : ABSENCE[envelope.reason];
-    if (reason !== undefined && failure === null) {
-      model.notice = { severity: null, text: reason, retry: false };
-    }
-    if (envelope.refreshing && page.waitedMs >= LONG_WAIT_MS) {
-      model.notice = {
-        severity: null,
-        text: "Still waiting for the pull-request catalog…",
-        retry: false,
-      };
-    }
-    model.live = envelope.refreshing ? "Waiting for the list of pull requests…" : "";
+  if (model.fetching === null && !envelope.complete && envelope.catalog_fetched > 0) {
+    model.progress =
+      envelope.catalog_fetched === envelope.repository_total
+        ? "Catalog paused"
+        : `Catalog paused · ${new Intl.NumberFormat("en-US").format(envelope.catalog_fetched)} cached`;
   }
   const name = repository === null ? "Pull requests" : `Pull requests of ${repository}`;
   if (envelope.state === "current" || envelope.state === "stale") {
     model.listName = `${name}: ${pullsCount(envelope.total ?? envelope.fetched)}`;
-    const reader = text(envelope.reader).replace(/^gh:/, "");
-    const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
-    const stale = envelope.state === "stale" ? " · may be out of date" : "";
-    model.freshness = envelope.refreshing
-      ? `Refreshing… · fetched ${age} by ${reader}`
-      : `Fetched ${age} by ${reader}${stale}`;
+    if (model.fetching === null) {
+      const reader = text(envelope.reader).replace(/^gh:/, "");
+      const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
+      const stale = envelope.state === "stale" ? " · may be out of date" : "";
+      model.freshness = `Fetched ${age}${reader === "" ? "" : ` by ${reader}`}${stale}`;
+    }
     if (envelope.total === 0 || (envelope.fetched === 0 && envelope.complete)) {
       model.empty =
         page.filter === "all" ? "No pull requests." : `No ${page.filter} pull requests.`;
     }
-    // The list's name, whether or not a refresh is running: so a refresh that changes nothing
-    // announces nothing, a minute after a minute, and a change in the count does.
     model.live = model.listName;
   } else {
     model.listName = name;
+  }
+  if (model.fetching !== null) {
+    // Polls update the display without announcing each step of the same fetch.
+    model.live = model.fetching;
   }
   if (failure !== null) {
     model.notice = { severity: "warning", ...failure };
@@ -453,7 +438,7 @@ export function describePulls(envelope, page) {
  */
 export function describeLanding(envelope, formatTime, checkout = false) {
   if (envelope?.reason === "not_github") {
-    return checkout ? CHECKOUT_NOT_LISTED : ABSENCE.not_github;
+    return checkout ? CHECKOUT_NOT_LISTED : NO_GITHUB;
   }
   const failure = envelope === null ? null : refreshFailure(envelope, formatTime);
   if (envelope !== null && envelope.fetched === 0 && failure !== null) {
@@ -539,7 +524,6 @@ function pinChanged(response) {
  *   content: string | null,
  *   nextAfter: number | null,
  *   askedAt: number | null,
- *   waitingSince: number | null,
  *   more: boolean,
  *   error: string | null,
  *   displayLimit: number,
@@ -558,7 +542,6 @@ function emptyList() {
     content: null,
     nextAfter: null,
     askedAt: null,
-    waitingSince: null,
     more: false,
     error: null,
     displayLimit: DISPLAY_ROWS,
@@ -782,7 +765,6 @@ export function createPullsController(deps, options = {}) {
 
   function model() {
     const list = held();
-    const waiting = list.waitingSince === null ? 0 : deps.now() - list.waitingSince;
     return describePulls(list.envelope, {
       filter,
       rows: list.rows,
@@ -790,7 +772,6 @@ export function createPullsController(deps, options = {}) {
       nowMs: deps.now(),
       formatTime: deps.formatTime,
       more: list.more,
-      waitedMs: waiting,
       error: list.error,
       checkout,
     });
@@ -867,11 +848,6 @@ export function createPullsController(deps, options = {}) {
   function holdEnvelope(list, envelope) {
     list.envelope = envelope;
     list.error = null;
-    if (envelope.refreshing) {
-      list.waitingSince ??= deps.now();
-    } else {
-      list.waitingSince = null;
-    }
   }
 
   /** The anchor follows the rows: the current one if it is held, and otherwise the first. */
@@ -1736,11 +1712,13 @@ export function mountPullsPanel(container, ctx, mb) {
   // sees these rows.
   const list = h("ul", { class: "github-pulls-list", role: "tree" });
   const empty = h("p", { class: "github-pulls-empty" });
-  const skeleton = h("div", {
-    class: "recent-loading mb-delayed-loading",
-    role: "status",
-    "aria-label": "Loading pull requests",
-  });
+  const fetchLabel = h("span");
+  // The live region announces the same activity once, including across polling updates.
+  const activity = h(
+    "p",
+    { class: "github-pulls-activity mb-delayed-loading", "aria-hidden": "true", hidden: "" },
+    [h("span", { class: "spinner spinner-sm" }), fetchLabel],
+  );
   const foot = h("div", { class: "github-pulls-foot" });
   const moreButton = /** @type {HTMLButtonElement} */ (
     h("button", { type: "button", class: "btn github-pulls-more" }, ["Fetch more"])
@@ -1748,7 +1726,7 @@ export function mountPullsPanel(container, ctx, mb) {
   moreButton.addEventListener("click", () => void controller.loadMore());
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   container.classList.add("github-pulls");
-  container.replaceChildren(filters, status, notice, skeleton, list, empty, foot, live);
+  container.replaceChildren(filters, status, activity, notice, list, empty, foot, live);
 
   /**
    * What is painted of each row held, by number: its elements, the key of what it shows, and
@@ -2354,26 +2332,37 @@ export function mountPullsPanel(container, ctx, mb) {
     tellAges();
     list.setAttribute("aria-label", model.listName);
     list.hidden = model.rows.length === 0;
-    skeleton.hidden = !model.skeleton;
     const lines = [];
-    if (model.countNumber !== null && model.countSuffix !== null) {
+    if (model.repository !== null) {
+      const repository = h("strong", { class: "github-pulls-total" }, [model.repository]);
       lines.push(
-        h("span", { class: "github-pulls-total-line" }, [
-          h("strong", { class: "github-pulls-total" }, [model.countNumber]),
-          model.countSuffix,
-        ]),
+        h(
+          "span",
+          { class: "github-pulls-total-line" },
+          model.countNumber === null || model.countSuffix === null
+            ? [repository]
+            : [
+                h("strong", { class: "github-pulls-total" }, [model.countNumber]),
+                model.countSuffix,
+                repository,
+              ],
+        ),
       );
     }
     if (model.window !== null) {
       lines.push(h("span", { class: "github-pulls-window" }, [model.window]));
     }
-    for (const line of [model.origin, model.progress, model.freshness]) {
+    for (const line of [model.progress, model.freshness]) {
       if (line !== null) {
         lines.push(h("span", { class: "github-pulls-progress" }, [line]));
       }
     }
     status.replaceChildren(...lines);
     status.hidden = lines.length === 0;
+    if (fetchLabel.textContent !== (model.fetching ?? "")) {
+      fetchLabel.textContent = model.fetching ?? "";
+    }
+    activity.hidden = model.fetching === null;
     empty.textContent = model.empty ?? "";
     empty.hidden = model.empty === null;
     if (model.notice === null) {
@@ -2466,7 +2455,7 @@ export function mountPullsPanel(container, ctx, mb) {
         if (model.rows.length > 0) {
           mb.perf.measure("githubPulls:rowsReady", () => {}, { rows: model.rows.length });
         }
-        if (model.countNumber !== null && model.progress === null) {
+        if (model.countNumber !== null && model.catalogReady) {
           mb.perf.measure("githubPulls:catalogReady", () => {});
         }
       },

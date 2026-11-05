@@ -1177,9 +1177,9 @@ Everything goes through `pullStateIcon` and `displayState` in
 | PR number and username | `--nav-font-size`; number uses text ink, username uses `.github-pull-author` | Both are readable context; usernames stay bold and muted across PR surfaces |
 | Base and head | `--ui-small-font-size`, remote-ref ink | Ref context is smaller than the number and username |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | [Choosing Among Values](#choosing-among-values) |
-| Count and freshness | Bold numeric total with “PRs on owner/repo”; a separate “Showing last 500” line when the display is partial, followed by muted freshness | A status sentence is the [Age](#age) exception |
+| Count and freshness | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Muted freshness tells when the list was last fetched after activity ends. |
 | A refresh’s failure, cut rows | [`.notice`](#notices), `warning`, with **Retry** in it when a reader can act | A cached list still shows under it |
-| No rows yet | The `.recent-loading` shape under `.mb-delayed-loading` | [Loading States Are Shapes](#loading-states-are-shapes-not-sentences) |
+| Loading and refresh | One delayed status line with the shared small gray spinner | Cached rows stay visible. |
 | Fetch more, Retry | `.btn` | [Control Families](#control-families) |
 
 A row is two lines and one target, because a pane is narrower than its parts: the state
@@ -2425,6 +2425,8 @@ That text is not visible copy; the rule is about what is painted.
 Visible copy is for a state neither form can express — a scan still running behind an
 empty result, an index that failed — and it says what that state is rather than that
 something is loading.
+For a background fetch alongside usable content, the Pulls tab pairs one gray spinner
+with a short status, as the Files tab does for scanning.
 
 ## Text Selection
 
