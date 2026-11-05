@@ -40,7 +40,7 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
       reader: "gh:reader",
       fresh_for_s: 60,
       refreshing: state.refreshing,
-      last_refresh: null,
+      last_refresh: state.lastRefresh ?? null,
       fetched: state.cached,
       total: state.total,
       repository_total: state.repositoryTotal,
@@ -157,14 +157,30 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   assert.equal(page.controller.snapshot().rows, 500);
   assert.equal(page.model().rowsVersion, version);
   assert.equal(page.requests.length, 1, "older catalog growth preserves the displayed prefix");
+  page.state.refreshing = false;
+  page.state.lastRefresh = {
+    outcome: "rate_limited",
+    reset_at: null,
+    message: null,
+    at: "2026-09-17T12:00:00Z",
+  };
+  page.controller.onVisibilityChange();
+  await settle();
   page.requests.length = 0;
-  await page.controller.loadMore();
+  const expansion = page.controller.loadMore();
+  assert.equal(page.model().fetching, "Fetching pull requests…");
+  assert.equal(page.model().live, page.model().fetching);
+  assert.match(page.model().notice.text, /rate limit/);
+  await expansion;
+  assert.equal(page.model().fetching, null);
   assert.equal(page.controller.snapshot().rows, 1000);
   assert.equal(page.requests.length, 5);
   assert(
     page.requests.every((request) => request.method === "GET"),
     "cached expansion needs no provider work",
   );
+  page.state.lastRefresh = null;
+  page.state.refreshing = true;
   page.state.generation = "two";
   page.state.first += 1;
   page.requests.length = 0;

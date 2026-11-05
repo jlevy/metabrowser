@@ -173,7 +173,7 @@ const CHECKOUT_NOT_LISTED =
  *   progress: string | null,
  *   freshness: string | null,
  *   empty: string | null,
- *   notice: {severity: "warning" | "error" | null, text: string, retry: boolean, help?: "install" | "update"} | null,
+ *   notice: {severity: "warning" | "error", text: string, retry: boolean, help?: "install" | "update"} | null,
  *   loadMore: "ready" | "loading" | null,
  *   github: string | null,
  *   live: string,
@@ -367,14 +367,10 @@ export function describePulls(envelope, page) {
   if (envelope.total !== null && page.rows.length > 0 && page.rows.length < envelope.total) {
     model.window = `Showing last ${new Intl.NumberFormat("en-US").format(page.rows.length)}`;
   }
-  if (
-    failure === null &&
-    page.error === null &&
-    (envelope.refreshing ||
-      envelope.state === "pending" ||
-      envelope.state === "absent" ||
-      page.more)
-  ) {
+  const catalogPending =
+    envelope.refreshing || envelope.state === "pending" || envelope.state === "absent";
+  // Fetch more can still page through the cache after a provider failure.
+  if (page.error === null && (page.more || (catalogPending && failure === null))) {
     model.fetching = FETCHING;
   }
   if (model.fetching === null && !envelope.complete && envelope.catalog_fetched > 0) {
@@ -406,8 +402,8 @@ export function describePulls(envelope, page) {
   }
   if (failure !== null) {
     model.notice = { severity: "warning", ...failure };
-    model.live = failure.text;
-  } else if (envelope.truncated && model.notice === null) {
+    model.live = model.fetching ?? failure.text;
+  } else if (envelope.truncated) {
     model.notice = {
       severity: "warning",
       text: "Some rows were cut to fit, or could not be read.",
@@ -2372,7 +2368,7 @@ export function mountPullsPanel(container, ctx, mb) {
         "div",
         {
           class: "notice github-pulls-notice",
-          ...(model.notice.severity === null ? {} : { "data-severity": model.notice.severity }),
+          "data-severity": model.notice.severity,
         },
         [h("span", {}, [model.notice.text])],
       );
