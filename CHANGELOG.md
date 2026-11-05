@@ -20,6 +20,8 @@ PR and Git navigation:
 - Git diffs mount in a connected hidden stage, so initial rendering can use the pane’s
   viewport. Hovering the currently displayed revision reuses its detail without fetching
   its comparison again.
+- Once a selected PR shows its description, a waiting cache read can show the full
+  Conversation as soon as the refresh settles, without waiting for the next poll.
 - The pull envelope gains nullable `core_preview`; an explicit missing-record refresh
   may set `wait_core: true` to await that stage for up to two seconds.
 

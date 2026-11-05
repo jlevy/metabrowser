@@ -432,7 +432,10 @@ framework:
    comparison. Exercise row selection, direct Fetch, rapid keyboard replacement and
    cached reopening on both a managed repository and a served checkout.
    A description preview must not claim that unread sections or Git acquisition are
-   complete.
+   complete. Hold the selected refresh after its description appears and finish it
+   between polling ticks.
+   Check that the waiting cache read returns the correct full record, and that a
+   duplicate or canceled read does not change provider work.
 4. In Git, compare natural and prepared selection, re-enter the displayed row, and leave
    for a file while deferred requests are active.
    Check exact route and subject, cancellation, queued work, single active ownership and

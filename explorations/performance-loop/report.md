@@ -84,6 +84,8 @@ against one that did.
 | exp-047 | [Connect the Git Stage Before Rendering the First Screen](experiments/exp-047-connect-the-git-stage-before-rendering.md) | - | `trusted_git_click_to_paint_ms` | accepted |
 | exp-048 | [Measure Provider Cost for a Visible PR Core Batch](experiments/exp-048-measure-provider-cost-of-preparing-visible-pr-core.md) | - | `catalog_response_decoded_bytes` | baseline |
 | exp-049 | [Bind the Missing Selected PR Core to the GraphQL Viewer](experiments/exp-049-bind-the-missing-selected-pr-core-to-the-graphql-viewer.md) | - | `sampled_server_tree_rss_mib` | accepted |
+| exp-050 | [Prepare Visible PR Descriptions After Summary Paint](experiments/exp-050-prepare-visible-pr-descriptions-after-summary-paint.md) | - | `prepared_description_ms` | rejected |
+| exp-051 | [Wake a Selected PR Cache Read When Its Refresh Settles](experiments/exp-051-wake-selected-pr-cache-read-on-settlement.md) | - | `publication_to_full_conversation_paint_ms` | accepted |
 
 ## Absolute numbers, per condition
 
@@ -3716,6 +3718,109 @@ Corpus `3e91e74d3d8e366b`, shape `1`, harness `23`.
 | `viewport_w` | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) |
 | `viewport_h` | 900 (900-900) | 900 (900-900) | 900 (900-900) | 900 (900-900) |
 
+### 12,024 files — exp-051 / tree-684fb0f2
+
+Corpus `3e91e74d3d8e366b`, shape `1`, harness `23`.
+
+**What a reader gets** — browser probe
+
+| metric | directory-v15-h82-control (n=3) | directory-v15-h82-trial (n=3) |
+| --- | ---: | ---: |
+| `ttfb_ms` | 12 (12-12) | 12 (12-12) |
+| `response_download_ms` | 1 (0-1) | 1 (0-1) |
+| `dom_interactive_ms` | 87 (82-87) | 86 (77-88) |
+| `first_row_ms` | 84 (79-85) | 83 (75-84) |
+| `first_row_render_ms` | 1 (1-1) | 1 (1-1) |
+| `load_tree_ms` | 4 (4-4) | 4 (4-4) |
+| `tree_fetch_srv_ms` | 1 (1-2) | 1 (1-2) |
+| `tree_fetch_wait_ms` | 2 (2-2) | 2 (2-2) |
+| `tree_fetch_total_ms` | 2 (2-3) | 3 (3-3) |
+| `tree_fetch_kb` | 1 (1-1) | 1 (1-1) |
+| `dcl_ms` | 93 (88-93) | 92 (84-93) |
+| `load_ms` | 94 (89-94) | 92 (84-94) |
+| `last_resource_ms` | 1,875 (1,874-1,879) | 1,873 (1,864-1,874) |
+| `subtree_requests` | 1 (1-1) | 1 (1-1) |
+| `tree_items` | 1 (1-1) | 1 (1-1) |
+| `lazy_stubs` | 1 (1-1) | 1 (1-1) |
+| `collapsed_diff_rows_materialized` | 0 (0-0) | 0 (0-0) |
+| `dom_nodes` | 970 (970-970) | 970 (970-970) |
+| `transferred_kb` | 559 (559-559) | 559 (559-559) |
+| `vendor_first_start_ms` | 98 (94-99) | 98 (89-99) |
+| `fcp_ms` | 84 (84-88) | 84 (76-84) |
+| `lcp_ms` | 84 (84-88) | 84 (76-84) |
+| `cls` | 0 (0-0) | 0 (0-0) |
+| `cls_shifts` | 0 (0-0) | 0 (0-0) |
+| `frame_missing_px` | 0 (0-0) | 0 (0-0) |
+| `filter_bar_shift_px` | 0 (0-0) | 0 (0-0) |
+| `summary_shift_px` | 0 (0-0) | 0 (0-0) |
+| `reserved_region_shift_px` | 0 (0-0) | 0 (0-0) |
+| `tree_region_repaints` | 1 (1-1) | 1 (1-1) |
+| `long_tasks` | 0 (0-0) | 0 (0-0) |
+| `long_task_ms_total` | 0 (0-0) | 0 (0-0) |
+| `total_blocking_time_ms` | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms` | 0 (0-0) | 0 (0-0) |
+| `long_task_max_ms_first_5s` | 0 (0-0) | 0 (0-0) |
+| `long_tasks_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `main_thread_blocked_pct` | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_attribution_missing` | 0 (0-0) | 0 (0-0) |
+| `inventory_delivery_batches` | 4 (4-4) | 4 (4-4) |
+| `inventory_delivery_items` | 4,267 (4,267-4,267) | 4,267 (4,267-4,267) |
+| `inventory_delivery_batch_items_max` | 4,096 (4,096-4,096) | 4,096 (4,096-4,096) |
+| `inventory_delivery_max_ms` | 3 (3-3) | 3 (3-3) |
+| `inventory_delivery_work_ms_total` | 5 (5-5) | 5 (5-6) |
+| `inventory_delivery_work_pct` | 0 (0.3-0.3) | 0 (0.3-0.3) |
+| `animation_frames` | 0 (0-0) | 0 (0-0) |
+| `animation_frame_max_ms` | 0 (0-0) | 0 (0-0) |
+| `animation_frames_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_total` | 0 (0-0) | 0 (0-0) |
+| `animation_frame_blocking_ms_max` | 0 (0-0) | 0 (0-0) |
+| `animation_frames_blocking_over_200ms` | 0 (0-0) | 0 (0-0) |
+| `forced_style_layout_ms_max` | 0 (0-0) | 0 (0-0) |
+| `interactions` | 0 (0-0) | 0 (0-0) |
+| `interaction_inputs` | 7 (7-7) | 7 (7-7) |
+| `interaction_input_first_ms` | 150 (148-150) | 149 (140-150) |
+| `interaction_input_last_ms` | 1,684 (1,682-1,685) | 1,678 (1,672-1,683) |
+| `interaction_input_span_ms` | 1,534 (1,532-1,538) | 1,531 (1,529-1,533) |
+| `interaction_input_coverage_pct` | 86 (85.7-85.9) | 86 (85.6-86.2) |
+| `interaction_samples_retained` | 0 (0-0) | 0 (0-0) |
+| `interaction_max_ms` | 0 (0-0) | 0 (0-0) |
+| `render_spans` | 2 (2-2) | 2 (2-2) |
+| `render_ms_total` | 2 (2-2) | 2 (2-2) |
+| `tree_reprobe_ms` | 3 (3-3) | 3 (2-3) |
+| `tree_reprobe_srv_ms` | 1 (1-1) | 1 (1-1) |
+| `spawn_to_profile_start_ms` | 1,469 (1,448-1,567) | 1,577 (1,520-1,645) |
+| `requests` | 69 (69-69) | 69 (69-69) |
+| `fetches_in_flight` | 0 (0-0) | 0 (0-0) |
+| `fetch_network_errors` | 0 (0-0) | 0 (0-0) |
+| `fetch_aborts` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_4xx` | 0 (0-0) | 0 (0-0) |
+| `fetch_http_5xx` | 0 (0-0) | 0 (0-0) |
+| `rendered_preview_errors` | 0 (0-0) | 0 (0-0) |
+| `page_exceptions` | 0 (0-0) | 0 (0-0) |
+| `resource_timing_capacity` | 500 (500-500) | 500 (500-500) |
+| `resource_timing_buffer_full` | 0 (0-0) | 0 (0-0) |
+| `script_transfer_kb` | 382 (382-382) | 382 (382-382) |
+| `startup_script_requests` | 20 (20-20) | 20 (20-20) |
+| `startup_script_transfer_kb` | 175 (175-175) | 175 (175-175) |
+| `startup_script_last_response_ms` | 79 (73-79) | 78 (70-79) |
+| `startup_script_duration_max_ms` | 54 (53-55) | 55 (54-55) |
+| `startup_style_server_ms_max` | 7 (4.1-8.1) | 7 (5.9-9.5) |
+| `startup_style_wait_ms_max` | 13 (12-14) | 14 (13-15) |
+| `startup_style_last_response_ms` | 49 (44-49) | 48 (41-51) |
+| `style_transfer_kb` | 84 (84-84) | 84 (84-84) |
+| `image_transfer_kb` | 0 (0-0) | 0 (0-0) |
+| `api_transfer_kb` | 65 (65-65) | 65 (65-65) |
+| `largest_resource_kb` | 90 (90-90) | 90 (90-90) |
+| `resource_duration_max_ms` | 109 (107-113) | 110 (107-112) |
+| `js_heap_mb` | 6 (5.9-6.1) | 6 (6.1-6.2) |
+| `js_heap_after_gc_mb` | 3 (3.1-3.1) | 3 (3.1-3.1) |
+| `plugin_view_containers` | 2 (2-2) | 2 (2-2) |
+| `plugin_view_nonempty` | 1 (1-1) | 1 (1-1) |
+| `shell_tools_missing` | 0 (0-0) | 0 (0-0) |
+| `file_catalog_incomplete` | 0 (0-0) | 0 (0-0) |
+| `viewport_w` | 1,600 (1,600-1,600) | 1,600 (1,600-1,600) |
+| `viewport_h` | 900 (900-900) | 900 (900-900) |
+
 ## Provenance
 
 | experiment | label | provider | contract | recorded | build | identity | commit | corpus | shape | harness | walk |
@@ -4081,6 +4186,12 @@ Corpus `3e91e74d3d8e366b`, shape `1`, harness `23`.
 | exp-047 | directory-v11-baseline | python | inventory-provider-v1 | 2026-11-05T06:06 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:d02d53c25e4403a7e1d1734b0ed55ccf372391b4ddac94abc06510740d536219` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
 | exp-047 | directory-v11-baseline | python | inventory-provider-v1 | 2026-11-05T06:06 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:d02d53c25e4403a7e1d1734b0ed55ccf372391b4ddac94abc06510740d536219` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
 | exp-047 | directory-v11-candidate04 | python | inventory-provider-v1 | 2026-11-05T06:07 | metab 0.11.1.dev1154+db52ec09 | `wheel:sha256:c51ef4bc062237668c2c91f74534ff101a25d89459bb7f7b5e0c996de1f11046` | db52ec09cf839269da3a56fd396e44f3092995a9 | tree-684fb0f2 | 1 | 23 | done |
+| exp-051 | directory-v15-h82-control | python | inventory-provider-v1 | 2026-11-05T07:42 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:58698562a766df9e935ee8c09970bf5c2123497728de548e6ee7eaa7aa046673` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-051 | directory-v15-h82-trial | python | inventory-provider-v1 | 2026-11-05T07:42 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:f5b58c02fb1697500b1c81202408c79d872bfbb907565dde2dd4d48f7c0da8ef` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-051 | directory-v15-h82-trial | python | inventory-provider-v1 | 2026-11-05T07:42 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:f5b58c02fb1697500b1c81202408c79d872bfbb907565dde2dd4d48f7c0da8ef` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-051 | directory-v15-h82-control | python | inventory-provider-v1 | 2026-11-05T07:42 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:58698562a766df9e935ee8c09970bf5c2123497728de548e6ee7eaa7aa046673` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-051 | directory-v15-h82-control | python | inventory-provider-v1 | 2026-11-05T07:43 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:58698562a766df9e935ee8c09970bf5c2123497728de548e6ee7eaa7aa046673` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
+| exp-051 | directory-v15-h82-trial | python | inventory-provider-v1 | 2026-11-05T07:43 | metab 0.11.1.dev1155+0d1b132d | `wheel:sha256:f5b58c02fb1697500b1c81202408c79d872bfbb907565dde2dd4d48f7c0da8ef` | 0d1b132da180e6b086189a3bb80434a2884a03ef | tree-684fb0f2 | 1 | 23 | done |
 
 <!-- Generated file.
 Regenerate with `explorations/performance-loop/run.py report`. -->

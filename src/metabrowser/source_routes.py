@@ -542,6 +542,24 @@ PIN_CHANGED_HEADER: Final = "x-metabrowser-pin-changed"
 _PIN_EXEMPT_PREFIX: Final = "/api/source/"
 
 
+def pin_changed_response(claimed: str | None) -> JSONResponse | None:
+    """Return the standard refusal when a caller names a different served pin."""
+    if claimed is None:
+        return None
+    current = _served_pin()
+    if current is None or claimed.strip() == current:
+        return None
+    return JSONResponse(
+        {
+            "error": "the server now serves another revision; reload the page",
+            "code": "pin_changed",
+            "pin": current or None,
+        },
+        status_code=409,
+        headers={PIN_CHANGED_HEADER: current, "cache-control": "no-store"},
+    )
+
+
 class SourcePinGuard:
     """Refuse an ``/api`` request made for a commit the server does not serve.
 
@@ -558,18 +576,8 @@ class SourcePinGuard:
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope.get("type") == "http" and _guarded(scope):
-            claimed = _header(scope, PIN_HEADER.encode())
-            current = _served_pin() if claimed is not None else None
-            if claimed is not None and current is not None and claimed != current:
-                response = JSONResponse(
-                    {
-                        "error": "the server now serves another revision; reload the page",
-                        "code": "pin_changed",
-                        "pin": current or None,
-                    },
-                    status_code=409,
-                    headers={PIN_CHANGED_HEADER: current, "cache-control": "no-store"},
-                )
+            response = pin_changed_response(_header(scope, PIN_HEADER.encode()))
+            if response is not None:
                 await response(scope, receive, send)
                 return
         await self.app(scope, receive, send)
@@ -586,7 +594,7 @@ def _guarded(scope: dict[str, Any]) -> bool:
 def _header(scope: dict[str, Any], name: bytes) -> str | None:
     for key, value in scope.get("headers") or []:
         if key == name:
-            return bytes(value).decode("latin-1").strip()
+            return bytes(value).decode("latin-1")
     return None
 
 
