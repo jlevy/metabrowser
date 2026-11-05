@@ -3,9 +3,9 @@ type: is
 id: is-01m6mpjbqxs81cdgeg8fgjgjat
 title: Measure the prepared navigation render floor before adding more prefetch
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex-prefetch
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m6mp811vf52jmazawykb3bw6
 hold: null
 hold_until: null
 created_at: 2026-11-05T01:53:25.244Z
-updated_at: 2026-11-05T03:19:52.850Z
+updated_at: 2026-11-05T07:18:59.325Z
 started_at: 2026-11-05T01:53:25.760Z
+closed_at: 2026-11-05T07:18:59.325Z
+close_reason: "Implemented or diagnosed in Metabrowser PR #299 at 0d1b132d. Independent review, paired evidence, local make verify and all nine GitHub CI jobs passed; PR is mergeable. Merge remains with the owner."
+resolution: null
+duplicate_of: null
 ---
 On unchanged db52, separate genuinely retained payload, matching in-flight preparation and browser HTTP-cache response paths with the same subjects/assets. Determine whether decoding, schema validation, mounting or paint dominates after server/transfer time disappears. Record bytes, long tasks, DOM/retained heap and exact correctness so further network preparation is not credited for work it cannot remove. Follow the existing Web Performance Framework and performance-loop accept rule. At least three admissible runs per condition; use five or more interleaved pairs for expected effects below 2x. Preserve both installed user previews and actual frozen corpus/cache/build identities. Parent mb-4ifm; branch codex/perf-prefetch-20261104.
 
