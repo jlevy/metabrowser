@@ -5,7 +5,7 @@ title: Measure bounded PR core metadata preparation ahead of selection
 kind: task
 status: in_progress
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex-prefetch
 labels: []
@@ -13,10 +13,11 @@ dependencies: []
 parent_id: is-01m6mp811vf52jmazawykb3bw6
 child_order_hints:
   - is-01m6ngsms9m08a746a7fwhpprp
+  - is-01m6nhph8tm9csbswp3mbyvky0
 hold: null
 hold_until: null
 created_at: 2026-11-05T03:45:40.332Z
-updated_at: 2026-11-05T09:38:51.811Z
+updated_at: 2026-11-05T09:47:33.529Z
 started_at: 2026-11-05T03:45:40.975Z
 ---
 H81 / exp-050: measure one source-owned background GraphQL batch for at most eight visible, missing PR cores after summary paint. The provider diagnosis rejected attaching descriptions to the catalog. Keep the catalog small and leave discussions, checks, Git fetch, diff and manifest out of speculation. A ready observation can display with its original time while selected acquisition validates a fresh core; the full record wins. The first trial cancels and drains a running batch on foreground intent instead of joining it. Compare exact installed wheels with independent identical held Git and catalog caches, the selected full record absent, trusted input, and actual empty/running/ready states. Keep failures and outliers; require sub-150 ms prepared descriptions and no material critical-path regression or hard budget failure.
