@@ -105,6 +105,7 @@ async function run() {
   let asked;
   globalThis.fetch = (route, options) => {
     if (options.method === "POST") {
+      assert.equal(route, "/api/plugin/github/pull-refresh");
       asked = JSON.parse(options.body);
       return acquisition.promise;
     }
