@@ -184,7 +184,7 @@ async function heldPostCadence(page, full) {
       assert.deepEqual(
         [...tasks.values()].map((task) => task.at),
         [Math.max(4000, settlement)],
-        "304 re-arms against the held GET's start, including overrun",
+        "304 re-arms from the start of the held GET, including overrun",
       );
     } else if (waitCore) {
       current = preview;
