@@ -390,7 +390,7 @@ export function describePulls(envelope, page) {
       const reader = text(envelope.reader).replace(/^gh:/, "");
       const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
       const stale = envelope.state === "stale" ? " · may be out of date" : "";
-      model.freshness = `Fetched ${age}${reader === "" ? "" : ` by ${reader}`}${stale}`;
+      model.freshness = `PRs fetched ${age}${reader === "" ? "" : ` by ${reader}`}${stale}`;
     }
     if (envelope.total === 0 || (envelope.fetched === 0 && envelope.complete)) {
       model.empty =
