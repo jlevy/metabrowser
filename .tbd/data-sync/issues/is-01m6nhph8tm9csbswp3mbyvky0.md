@@ -3,9 +3,9 @@ type: is
 id: is-01m6nhph8tm9csbswp3mbyvky0
 title: Keep a prepared PR readable when an unrelated visible summary changes
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex@spud10
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m6mwzwzd4jmbe0jbpxqpep3j
 hold: null
 hold_until: null
 created_at: 2026-11-05T09:47:33.529Z
-updated_at: 2026-11-05T10:22:10.691Z
+updated_at: 2026-11-05T10:57:39.338Z
 started_at: 2026-11-05T09:47:34.005Z
+closed_at: 2026-11-05T10:57:39.337Z
+close_reason: Accepted H83 exp-054 at 3c8acd21. Four exact live sibling-update witnesses stayed ready; all five prepared clicks 34–46 ms, unchanged hard gate and exact CI 9/9 passed.
+resolution: null
+duplicate_of: null
 ---
 H83, from exp-053 on PR #301: live catalog generation changed only the indexed member for #300, invalidating all three stable #294 prepared reads. Keep exact full-cohort admission and viewer/repository proof, then validate each member for publication, cache read, and adoption. Hold both race interleavings and repeat the installed comparison with live catalog update.
 

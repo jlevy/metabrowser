@@ -5,7 +5,7 @@ title: Make PR and Git navigation feel immediate with measured prefetching
 kind: feature
 status: in_progress
 priority: 1
-version: 22
+version: 23
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex-prefetch
 labels: []
@@ -31,7 +31,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-05T01:47:46.617Z
-updated_at: 2026-11-05T09:19:49.860Z
+updated_at: 2026-11-05T10:57:40.110Z
 started_at: 2026-11-05T01:47:47.197Z
 ---
 Improve perceived navigation latency for pull-request selection and Git history on a new branch from verified main. Follow the existing performance-loop framework: register a few falsifiable hypotheses before implementation; test their mechanisms on the unchanged build; use frozen subjects and explicit cold, warm, prepared and unprepared cache states; measure trusted input to exact useful painted content, including server, decode, asset and mount phases. Confirm accepted changes with interleaved repeated controls and candidate runs, preserve correctness/cancellation/account/source ownership and bounded background work, and record rejected hypotheses as well. Reuse existing harnesses and concise session/golden tests rather than adding a parallel framework. Preserve the default installed verified build and the two user preview servers while experimenting; install a successor only after verification. Track actual timings, ranges, bytes, request counts/concurrency, long tasks, CPU/RSS and cache provenance. Branch: codex/perf-prefetch-20261104. No speculative product changes before diagnostic evidence.
@@ -45,3 +45,5 @@ PR #299 is mergeable and all nine GitHub CI jobs passed, including admitted Git 
 Confirmed two more layers using the existing hypothesis, paired measurement, and unchanged gate workflow: selected settlement (mb-dmby, exp-051), then bounded visible descriptions (mb-oywk, exp-052). H81 depends on H82. Both manually verified in existing checkout and URL-managed mode, with repository verification running. Default CLI remains verified main.
 
 Exact full gate passed for 1a39e43b stacked above 034d1491 and PR #299. The two additional layers are in the ordinary atomic pre-push gate; native stack linking and exact CI remain.
+
+Native stack #302 fully verified and ready for owner merge: #299 0d1b132d, #300 034d1491, #301 3c8acd21. All three clean, non-draft, and 9/9 green. First-layer Qodo dispositions published, and all four top-layer findings fixed/resolved with review evidence. H81/H82/H83 scoped beads closed. Default installed CLI remains verified main. Broader H74/H75 diagnostic beads remain open.
