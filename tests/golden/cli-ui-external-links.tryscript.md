@@ -61,6 +61,14 @@ $ node tests/dom/external-links-session.js
       "icon": "pull"
     },
     {
+      "href": "https://github.com/octo/demo/pull/7/commits",
+      "icon": "pull"
+    },
+    {
+      "href": "https://github.com/octo/demo/pull/7/commits/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "icon": "github"
+    },
+    {
       "href": "https://github.com/octo/demo/issues/0",
       "icon": "github"
     },

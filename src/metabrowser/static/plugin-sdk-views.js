@@ -1568,7 +1568,14 @@
       return null;
     }
     const entity = url.hostname === "github.com" ? entityPath.exec(url.pathname) : null;
-    return entity ? (entity[1].toLowerCase() === "issues" ? "issue" : "pull") : "github";
+    if (
+      entity === null ||
+      (entity[1] === "pull" &&
+        /^commits\/[a-f0-9]{40}\/?$/i.test(url.pathname.slice(entity[0].length)))
+    ) {
+      return "github";
+    }
+    return entity[1] === "issues" ? "issue" : "pull";
   }
 
   /* GitHub mark: Primer Octicons mark-github-16.svg, unchanged path, at

@@ -1317,3 +1317,35 @@ $ node tests/dom/github-pull-core-preview-behavior.js
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
+
+Conversation paints before its commit timeline request.
+A later partial timeline interleaves commit summaries with existing cards in provider
+order, keeps unmatched and pending discussion, and retains the rendered Markdown and
+focus. The pending request uses the shared delayed spinner.
+A stale page can show a held timeline before its metadata refresh.
+A cache miss waits for metadata settlement before asking the provider, and an old
+response cannot publish after a revision change or a tab switch.
+
+```console
+$ node tests/dom/github-pull-timeline-session.js
+{
+  "interleaved": [
+    "body",
+    "issue_comment/9007199254740993",
+    "<img> First commit",
+    "review/9007199254740993",
+    "Last commit",
+    "review/3279967139",
+    "review/15",
+    "Some commits may be missing."
+  ],
+  "destination": "https://github.com/octo/demo/pull/7/commits/0123456789012345678901234567890123456789",
+  "heldMarkdownAndFocus": true,
+  "staleCacheHitBeforeMetadata": true,
+  "staleCacheMissWaited": true,
+  "supersededReadAborted": true,
+  "departedReadAborted": true,
+  "unavailableKeepsDiscussion": true
+}
+? 0
+```

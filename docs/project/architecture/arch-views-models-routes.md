@@ -69,7 +69,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | `unknown-jsonl` | Other `.jsonl` | Log, Raw JSON | File envelope |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | Bounded byte-chunk hook |
-| `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `github/pull-comparison` for Files changed, at one changed file for `/pull/<n>/files/<path>` |
+| `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `github/pull-timeline` for Conversation commits; `github/pull-comparison` for Files changed, at one changed file for `/pull/<n>/files/<path>` |
 | `pull-request-list` | No file; the shell mounts it in the Pulls tab, and in the pane at `/pulls` | Pull requests | `github/pulls` envelope; `github/pulls-refresh` for resumable catalog warming; `github/pull` for a row’s record |
 
 Two kinds are also **containers** — folder-like entries whose children are addressable
@@ -166,15 +166,16 @@ reservation and its invariants, is in
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
-`github/pull-refresh`, `github/pull-markdown`, `github/pull-comparison`, `github/pulls`,
-`github/pulls-refresh`, `github/pull-cores-prepare`, `github/stacks`,
-`github/stacks-refresh`, `github/pull-files`, `github/pull-files-refresh`. On a
-`GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
-`GitDiffSource.content` reads blobs through the shared cat-file pool; patch
-`document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
-`GitPath` and follow in-tree relative symlink blobs.
-`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
-and reports it in the document.
+`github/pull-refresh`, `github/pull-markdown`, `github/pull-timeline`,
+`github/pull-comparison`, `github/pulls`, `github/pulls-refresh`,
+`github/pull-cores-prepare`, `github/stacks`, `github/stacks-refresh`,
+`github/pull-files`, `github/pull-files-refresh`. On a `GitRevisionSubject`,
+`diff/comparison` honors the pin through `GitLocation` and `GitDiffSource.content` reads
+blobs through the shared cat-file pool; patch `document`/`children`, `binary/chunk`,
+`structured/parsed`, and `agent-log/charts` honor `GitPath` and follow in-tree relative
+symlink blobs.
+`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or
+`merge_base`, and reports it in the document.
 
 On a page that shows a pinned revision, the diff view’s file bars offer **View file** at
 each side of a change that exists, for a commit’s diff and a pull request’s Files
@@ -333,6 +334,17 @@ KPress’s asset list is not sent, so no script KPress adds for a text’s conte
 The page applies the same allowlist again, rebuilding the nodes it inserts.
 See
 [Pull-request records](arch-repository-sources-and-provider-mirrors.md#pull-request-records).
+
+`POST github/pull-timeline` accepts `number` and the visible pull record’s
+`record_revision`. It returns the revision, a `complete`, `partial`, or `unavailable`
+state, and ordered commit, comment, and review identifiers.
+Commit events carry a subject and optional commit date.
+Discussion IDs are decimal strings.
+The browser asks after the selected Conversation paints and inserts the commit rows
+among its existing discussion cards.
+During metadata refresh it can set `cached_only: true` to read the held projection.
+Provider work uses a separate slot after that refresh settles.
+The bounded projection has its own cache entry.
 
 `github/pulls?state=&limit=&after=` reads an indexed window of the served repository’s
 metadata catalog. `state` is `open` by default, `closed` (including merged), or `all`.
@@ -516,6 +528,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-checkout-overlay.txt` |
 | `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
+| `/api/plugin/github/pull-timeline` | covered | `--api --data` | `cli-github-pull-timeline.txt` |
 | `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-checkout.txt` |
 | `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt` |
 | `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
@@ -682,6 +695,8 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `git.history-stale-cursor` | interaction | `static/git-history-window.js#classifyPageFailure` | `/api/git/log` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `git.unfetched-commit` | interaction | `static/source-freshness.js#openMissingCommit`, `static/source-freshness.js#describeMissingCommit`, `static/source-freshness.js#fetchMissing` | `/api/git/commit`, `/api/source/status`, `/api/source/refresh` | `node tests/dom/source-freshness-session.js` | `cli-ui-source-freshness.tryscript.md` |
 | `github.pull-page` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#hunkView`, `builtin_plugins/github/pull-page.js#tintOnFirstOpen`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh`, `/api/plugin/github/pull-markdown`, `/api/source/pin` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
+| `github.pull-timeline-data` | data | `/api/plugin/github/pull-timeline` | `owned-route` | `metab https://github.com/octo/demo/pull/7 --api /api/plugin/github/pull-timeline --data timeline.json` | `cli-github-pull-timeline.txt` |
+| `github.pull-timeline` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage` | `/api/plugin/github/pull-timeline` | `node tests/dom/github-pull-timeline-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.selected-core-preview` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pull-core-preview-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.checkout-comparison-fetch` | interaction | `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-checkout-comparison-session.js` | `cli-ui-github-checkout-comparison.tryscript.md` |
 | `github.displayed-comparison-repair` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |

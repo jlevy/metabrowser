@@ -698,7 +698,12 @@ def _check_functional_parity(doc: str) -> list[str]:
             if not path.exists():
                 problems.append(f"{row.aspect}: golden {golden} does not exist")
                 continue
-            commands = _console_commands(path.read_text(encoding="utf-8"))
+            text = path.read_text(encoding="utf-8")
+            commands = (
+                _route_evidence_commands(golden, text)
+                if row.tier == "data"
+                else _console_commands(text)
+            )
             if not any(
                 command.command == row.command and command.status == 0 for command in commands
             ):

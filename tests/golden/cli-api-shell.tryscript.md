@@ -524,6 +524,13 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-timeline",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pulls",
       "methods": [
         "GET",
@@ -725,7 +732,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 57
+  "count": 58
 }
 ? 0
 ```
