@@ -95,7 +95,7 @@ import pytest
 
 from metabrowser.git.tree_source import GitPath
 from metabrowser.settings import TEXT_PREVIEW_REQUEST_MAX_BYTES
-from metabrowser.wire_models import validate_rollup_node
+from metabrowser.wire_models import validate_rollup_envelope
 from tests.git_pin_harness import git_env
 from tests.golden_harness import (
     Invocation,
@@ -429,8 +429,9 @@ def test_golden_pin_rollup_and_catalog(pin: _Pin) -> None:
 
     rollup = pin.api("/api/rollup?depth=1").payload()
     catalog = pin.api("/api/catalog").payload()
-    # The node is a File Rollup Format node, which only this check holds it to.
-    validate_rollup_node(rollup["node"])
+    # Treemap renders a completed pin using the same rollup contract as a folder.
+    validate_rollup_envelope(rollup)
+    assert rollup["index_status"] == "done"
     # The catalog keeps Git's recursive blob order, where "a/…" sorts after "a.txt".
     assert [row["p"] for row in catalog["files"]] == [
         _wire(*segments) for _mode, segments, _body in sorted(PIN_ORIGIN_BLOBS, key=_blob_order)
