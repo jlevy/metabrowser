@@ -91,7 +91,9 @@ Keep unmatched discussion visible and use its existing time order when provider 
 is unavailable.
 
 Bind the projection to the canonical repository, PR number, actual response viewer,
-verified base and head, and the discussion revision it orders.
+target branch name, head commit, and the discussion revision it orders.
+An advance of the same target branch leaves the recorded conversation order usable.
+A PR retarget or head change requires a new projection.
 A checkout without a comparison store can verify against provider metadata and the held
 PR record.
 Cache the bounded projection independently of the PR record so a late timeline
@@ -114,8 +116,10 @@ The selected page then asks for its timeline.
 A held projection can appear during metadata refresh.
 Provider work starts after that refresh settles and uses one independent slot per app.
 Fetch up to two pages of 100 events.
-Cache the projection by viewer, repository, PR, base and head, and the identity of the
-discussion it orders.
+Keep the verified first page visible if the second page encounters a transient provider
+failure. The active page can retry once.
+Cache the projection by viewer, repository, PR, target branch, head commit, and
+discussion identity.
 
 In the paired built-in browser runs, provider reads of the two public timelines took
 846–1,010 ms from identical fresh records, beginning 20–53 ms after the existing

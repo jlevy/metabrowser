@@ -1325,6 +1325,8 @@ focus. The pending request uses the shared delayed spinner.
 A stale page can show a held timeline before its metadata refresh.
 A cache miss waits for metadata settlement before asking the provider, and an old
 response cannot publish after a revision change or a tab switch.
+An explicitly retryable provider failure can try again once while the reader stays.
+A partial timeline and its focused commit link remain in place during the retry.
 
 ```console
 $ node tests/dom/github-pull-timeline-session.js
@@ -1345,7 +1347,8 @@ $ node tests/dom/github-pull-timeline-session.js
   "staleCacheMissWaited": true,
   "supersededReadAborted": true,
   "departedReadAborted": true,
-  "unavailableKeepsDiscussion": true
+  "unavailableKeepsDiscussion": true,
+  "transientRetryIsBoundedAndKeepsPartial": true
 }
 ? 0
 ```

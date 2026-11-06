@@ -114,6 +114,8 @@ const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
 const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
 const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
+// Give a transient queue or provider failure one chance to clear while the reader stays.
+export const TIMELINE_RETRY_MS = 1000;
 const PIN_ROUTE = "/api/source/pin";
 export const TABS = Object.freeze(["", "files"]);
 
@@ -203,7 +205,7 @@ const TRUNCATED = Object.freeze({
 /**
  * @typedef {{kind: "commit", oid: string, subject: string, committed_at: string | null}} TimelineCommit
  * @typedef {{kind: "comment" | "review", id: string} | TimelineCommit} TimelineEvent
- * @typedef {{state: "complete" | "partial" | "unavailable", events: TimelineEvent[]}} TimelineProjection
+ * @typedef {{state: "complete" | "partial" | "unavailable", events: TimelineEvent[], retryable: boolean}} TimelineProjection
  */
 
 /**
@@ -483,7 +485,7 @@ function readTimelineProjection(value, revision) {
       events.push({ kind: event.kind, id: event.id });
     }
   }
-  return { state, events };
+  return { state, events, retryable: state !== "complete" && answer.retryable === true };
 }
 
 /** The exact PR's GitHub commit page, built from the held record's source. @param {string} source @param {number} number @param {string} oid */
@@ -2062,11 +2064,11 @@ export function mountPullPage(container, ctx, mb) {
   /** @type {Map<string, HTMLElement>} */
   const texts = new Map();
   /** @type {{description: HTMLElement, cards: Map<string, {node: HTMLElement, pending: boolean}>,
-   *   inserts: HTMLElement[], projection: TimelineProjection | null} | null} */
+   *   inserts: Map<string, HTMLElement>, projection: TimelineProjection | null} | null} */
   let discussion = null;
   let active = false;
   /** @type {{revision: string, source: string, projection: TimelineProjection | null,
-   *   settled: boolean, cacheMiss: boolean,
+   *   settled: boolean, cacheMiss: boolean, retryPending: boolean,
    *   read: {cachedOnly: boolean, abort: AbortController} | null} | null} */
   let commitTimeline = null;
   // The allowlist a text's Markdown passes through before it is inserted; a text stays
@@ -2645,15 +2647,14 @@ export function mountPullPage(container, ctx, mb) {
     if (discussion === null || discussion.projection === projection) {
       return;
     }
-    const { description, cards, inserts } = discussion;
-    for (const node of inserts.splice(0)) {
-      node.remove();
-    }
+    const { description, cards, inserts: previousInserts } = discussion;
+    /** @type {Map<string, HTMLElement>} */
+    const inserts = new Map();
     discussion.projection = projection;
+    discussion.inserts = inserts;
     const unmatched = new Map(cards);
     /** @type {HTMLElement[]} */
     const ordered = [];
-    const commits = new Set();
     if (projection !== null && projection.state !== "unavailable") {
       for (const event of projection.events) {
         if (event.kind !== "commit") {
@@ -2665,32 +2666,40 @@ export function mountPullPage(container, ctx, mb) {
           }
           continue;
         }
-        if (commits.has(event.oid)) {
+        if (inserts.has(event.oid)) {
           continue;
         }
-        commits.add(event.oid);
         const href = timelineCommitHref(source, number, event.oid);
         if (href === null) {
           continue;
         }
-        const row = h("div", { class: "github-pull-commit" }, [
-          h("span", { class: "github-pull-commit-subject" }, [event.subject || "Commit"]),
-          event.committed_at !== null && Number.isFinite(Date.parse(event.committed_at))
-            ? h("span", { class: "github-pull-quiet" }, ["committed ", age(event.committed_at)])
-            : null,
-          outside(mb, href, "", [event.oid.slice(0, 7)], "github-pull-commit-id git-commit-sha"),
-        ]);
+        const row =
+          previousInserts.get(event.oid) ??
+          h("div", { class: "github-pull-commit" }, [
+            h("span", { class: "github-pull-commit-subject" }, [event.subject || "Commit"]),
+            event.committed_at !== null && Number.isFinite(Date.parse(event.committed_at))
+              ? h("span", { class: "github-pull-quiet" }, ["committed ", age(event.committed_at)])
+              : null,
+            outside(mb, href, "", [event.oid.slice(0, 7)], "github-pull-commit-id git-commit-sha"),
+          ]);
         ordered.push(row);
-        inserts.push(row);
+        inserts.set(event.oid, row);
       }
     }
     for (const { node } of unmatched.values()) {
       ordered.push(node);
     }
     if (projection?.state === "partial") {
-      const note = h("p", { class: "github-pull-quiet" }, ["Some commits may be missing."]);
+      const note =
+        previousInserts.get("partial") ??
+        h("p", { class: "github-pull-quiet" }, ["Some commits may be missing."]);
       ordered.push(note);
-      inserts.push(note);
+      inserts.set("partial", note);
+    }
+    for (const [key, node] of previousInserts) {
+      if (!inserts.has(key)) {
+        node.remove();
+      }
     }
 
     const focused = ordered.findIndex((node) => node.contains(document.activeElement));
@@ -2728,7 +2737,7 @@ export function mountPullPage(container, ctx, mb) {
     const sections = [description];
     discussion = model.corePreview
       ? null
-      : { description, cards: new Map(), inserts: [], projection: null };
+      : { description, cards: new Map(), inserts: new Map(), projection: null };
     if (model.corePreview) {
       for (const [heading, message] of [
         [
@@ -3203,7 +3212,15 @@ export function mountPullPage(container, ctx, mb) {
       cancelTimeline();
       commitTimeline =
         revision !== null && source !== null
-          ? { revision, source, projection: null, settled: false, cacheMiss: false, read: null }
+          ? {
+              revision,
+              source,
+              projection: null,
+              settled: false,
+              cacheMiss: false,
+              retryPending: false,
+              read: null,
+            }
           : null;
     }
     const held = commitTimeline;
@@ -3220,12 +3237,16 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     const providerAllowed = controller.timelineAllowed();
-    if (held.settled || held.read?.cachedOnly || (held.read && providerAllowed)) {
+    if (held.read && (held.read.cachedOnly || providerAllowed)) {
       return;
     }
     cancelTimeline();
-    // A held projection can paint during a stale metadata refresh. A miss waits for
-    // settlement before it asks the provider, at most once for the remaining revision.
+    const retrying = held.retryPending;
+    if (held.settled || (retrying && !providerAllowed)) {
+      return;
+    }
+    // A held projection can paint during a stale metadata refresh. A cache miss waits
+    // for settlement before it asks the provider.
     const cachedOnly = !providerAllowed;
     if (cachedOnly && (held.cacheMiss || (shown?.status !== "stale" && !shown?.refreshing))) {
       return;
@@ -3243,6 +3264,11 @@ export function mountPullPage(container, ctx, mb) {
       if (!cachedOnly && !controller.timelineAllowed()) {
         followTimeline();
         return;
+      }
+      if (retrying) {
+        // The retry budget is spent when the provider request starts, even if it is aborted.
+        held.retryPending = false;
+        held.settled = true;
       }
       const spinner = cachedOnly
         ? null
@@ -3285,23 +3311,37 @@ export function mountPullPage(container, ctx, mb) {
         return;
       }
       held.read = null;
-      if (projection === null || projection.state === "unavailable") {
-        if (cachedOnly) {
-          held.cacheMiss = true;
-          followTimeline();
-        } else {
-          held.settled = true;
+      if (
+        projection !== null &&
+        projection.state !== "unavailable" &&
+        (held.projection === null ||
+          projection.state === "complete" ||
+          projection.events.length > held.projection.events.length)
+      ) {
+        const first = held.projection === null;
+        const next = projection;
+        held.projection = next;
+        mb.perf.measure("githubPull:timelinePaint", () => paintTimeline(next, held.source), {
+          number,
+        });
+        if (first) {
+          mb.perf.measure("githubPull:timelineReady", () => {}, { number });
         }
-        return;
       }
-      held.settled = true;
-      held.projection = projection;
-      mb.perf.measure("githubPull:timelinePaint", () => paintTimeline(projection, held.source), {
-        number,
-      });
-      mb.perf.measure("githubPull:timelineReady", () => {}, { number });
+      if (cachedOnly && held.projection === null) {
+        held.cacheMiss = true;
+        followTimeline();
+      } else if (!cachedOnly && !retrying && projection?.retryable) {
+        held.retryPending = true;
+        followTimeline();
+      } else {
+        held.settled = true;
+      }
     };
-    if (typeof window.requestAnimationFrame === "function") {
+    if (retrying) {
+      const timer = window.setTimeout(() => void load(), TIMELINE_RETRY_MS);
+      read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
+    } else if (typeof window.requestAnimationFrame === "function") {
       let frame = window.requestAnimationFrame(() => {
         frame = window.requestAnimationFrame(() => void load());
       });

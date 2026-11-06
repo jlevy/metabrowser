@@ -42,7 +42,7 @@ query MetabrowserPullTimeline($owner: String!, $name: String!, $number: Int!, $c
   repository(owner: $owner, name: $name) {
     nameWithOwner
     pullRequest(number: $number) {
-      number baseRefOid headRefOid
+      number baseRefName headRefOid
       timelineItems(first: 100, after: $cursor,
         itemTypes: [PULL_REQUEST_COMMIT, ISSUE_COMMENT, PULL_REQUEST_REVIEW]) {
         pageInfo { hasNextPage endCursor }
@@ -90,6 +90,7 @@ class _Timeline(_Model):
     record_revision: _Revision
     state: Literal["complete", "partial", "unavailable"]
     events: tuple[_Event, ...] = Field(default=(), max_length=PAGE_SIZE * MAX_PAGES)
+    retryable: Literal[True] | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class _StoredTimeline(_Model):
@@ -99,12 +100,12 @@ class _StoredTimeline(_Model):
 
 def _discussion_revision(record: PullRecord) -> str:
     # These are the inputs the projection orders. Edits to displayed text, checks, or
-    # a comparison leave their provider order intact.
+    # a comparison leave their provider order intact. A base tip advance is also safe.
     identity = (
         record.source,
         record.number,
         record.reader,
-        record.pull.base.sha,
+        record.pull.base.ref,
         record.pull.head.sha,
         [(comment.id, comment.created_at) for comment in record.issue_comments],
         [(review.id, review.submitted_at) for review in record.reviews if review.submitted_at],
@@ -112,8 +113,8 @@ def _discussion_revision(record: PullRecord) -> str:
     return hashlib.sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
 
 
-def unavailable(ask: TimelineRequest) -> _Timeline:
-    return _Timeline(record_revision=ask.record_revision, state="unavailable")
+def unavailable(ask: TimelineRequest, *, retryable: Literal[True] | None = None) -> _Timeline:
+    return _Timeline(record_revision=ask.record_revision, state="unavailable", retryable=retryable)
 
 
 def _event(raw: object) -> _Event | None:
@@ -156,7 +157,7 @@ def _page(
         or repository_name.casefold() != f"{owner}/{name}".casefold()
         or type(request["number"]) is not int
         or request["number"] != record.number
-        or request["baseRefOid"] != record.pull.base.sha
+        or request["baseRefName"] != record.pull.base.ref
         or request["headRefOid"] != record.pull.head.sha
     ):
         raise ValueError("the timeline describes another record")
@@ -182,16 +183,29 @@ def _page(
     return events, following
 
 
-async def _project(owner: str, name: str, record: PullRecord, ask: TimelineRequest) -> _Timeline:
+async def _project(
+    owner: str, name: str, record: PullRecord, ask: TimelineRequest, *, deadline: float
+) -> _Timeline:
     events: list[_Event] = []
     seen: set[tuple[str, str]] = set()
     cursor = None
     for _ in range(MAX_PAGES):
-        data = await gh_graphql(
-            _QUERY,
-            {"owner": owner, "name": name, "number": ask.number, "cursor": cursor},
-            max_bytes=MAX_PROVIDER_BYTES,
-        )
+        try:
+            async with asyncio.timeout_at(deadline):
+                data = await gh_graphql(
+                    _QUERY,
+                    {"owner": owner, "name": name, "number": ask.number, "cursor": cursor},
+                    max_bytes=MAX_PROVIDER_BYTES,
+                )
+        except (GhError, TimeoutError) as exc:
+            if isinstance(exc, GhError) and exc.state != "network_error":
+                raise
+            return _Timeline(
+                record_revision=ask.record_revision,
+                state="unavailable" if cursor is None else "partial",
+                events=tuple(events),
+                retryable=True,
+            )
         page, cursor = _page(data, owner, name, record, cursor)
         for event in page:
             key = (event.kind, event.oid if isinstance(event, _Commit) else event.id)
@@ -228,8 +242,10 @@ def _read_sidecar(
         stored = _StoredTimeline.model_validate_json(data)
     except (OSError, RecordError, PrivateStorageError, ValidationError):
         return None
-    if stored.timeline.state == "unavailable" or stored.discussion_revision != _discussion_revision(
-        record
+    if (
+        stored.timeline.state == "unavailable"
+        or stored.timeline.retryable
+        or stored.discussion_revision != _discussion_revision(record)
     ):
         return None
     return stored.timeline.model_copy(update={"record_revision": ask.record_revision})
@@ -271,19 +287,30 @@ async def read_timeline(served: ServedPulls, ask: TimelineRequest, gate: asyncio
         return cached
     if ask.cached_only or record is None or ask.number > _GRAPHQL_MAX_NUMBER:
         return unavailable(ask)
+    deadline = asyncio.get_running_loop().time() + TIMEOUT_S
     try:
-        async with asyncio.timeout(TIMEOUT_S), gate:
+        async with asyncio.timeout_at(deadline):
+            await gate.acquire()
+    except TimeoutError:
+        return unavailable(ask, retryable=True)
+    try:
+        async with asyncio.timeout_at(deadline):
             record, cached = await asyncio.to_thread(_snapshot, home, slug, source, ask)
-            if cached is not None:
-                return cached
-            if record is None or served.published is not publication:
-                return unavailable(ask)
-            repository = parse_repository_url(source)
-            if repository is None:
-                return unavailable(ask)
-            timeline = await _project(*repository, record, ask)
-            if served.published is not publication:
-                return unavailable(ask)
+        if cached is not None:
+            return cached
+        if record is None or served.published is not publication:
+            return unavailable(ask)
+        repository = parse_repository_url(source)
+        if repository is None:
+            return unavailable(ask)
+        timeline = await _project(*repository, record, ask, deadline=deadline)
+        if served.published is not publication:
+            return unavailable(ask)
+        if timeline.retryable:
+            # Keep a verified first page for this view without making it a held result.
+            record, cached = await asyncio.to_thread(_snapshot, home, slug, source, ask)
+            return (cached or timeline) if record is not None else unavailable(ask)
+        async with asyncio.timeout_at(deadline):
             return await run_lock_section(partial(_publish, home, slug, source, ask, timeline))
     except (
         GhError,
@@ -294,3 +321,5 @@ async def read_timeline(served: ServedPulls, ask: TimelineRequest, gate: asyncio
         ValueError,
     ):
         return unavailable(ask)
+    finally:
+        gate.release()

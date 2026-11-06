@@ -112,8 +112,15 @@ function mount(mountPullPage, envelope) {
         timelines.push({
           request,
           signal: options.signal,
-          answer: (state, events, revision = request.record_revision) =>
-            finish(response({ state, events, record_revision: revision })),
+          answer: (state, events, revision = request.record_revision, retryable = false) =>
+            finish(
+              response({
+                state,
+                events,
+                record_revision: revision,
+                ...(retryable ? { retryable } : {}),
+              }),
+            ),
         }),
       );
     }
@@ -169,6 +176,9 @@ function mount(mountPullPage, envelope) {
         callback();
       }
     },
+    hasTimer(delay) {
+      return [...timers.values()].some((timer) => timer.delay === delay);
+    },
     timer(delay) {
       const found = [...timers].findLast(([, timer]) => timer.delay === delay);
       assert.ok(
@@ -202,9 +212,10 @@ function order(body) {
 }
 
 async function run() {
-  const { mountPullPage, REFRESH_ASK_MS, FAST_POLL_MS, SLOW_POLL_MS } = await import(
-    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
-  );
+  const { mountPullPage, REFRESH_ASK_MS, FAST_POLL_MS, SLOW_POLL_MS, TIMELINE_RETRY_MS } =
+    await import(
+      pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
+    );
   const session = mount(mountPullPage, fixture());
   await session.handle.ready;
   await settle();
@@ -376,8 +387,81 @@ async function run() {
       stale.frame();
       stale.frame();
       assert.equal(stale.timelines.length, 2, "the settled provider result is not requested again");
+      assert.equal(stale.hasTimer(TIMELINE_RETRY_MS), false, "an unflagged failure never retries");
     }
     stale.handle.dispose();
+  }
+  // The provider may flag one transient failure. The retry keeps partial output and
+  // does not compete with metadata or leave its owning Conversation.
+  for (const outcome of ["partial", "unavailable", "departed"]) {
+    const transient = mount(mountPullPage, fixture());
+    await transient.handle.ready;
+    await settle();
+    transient.handle.activate();
+    transient.frame();
+    transient.frame();
+    const firstRead = transient.timelines[0];
+    firstRead.answer(
+      outcome === "partial" ? "partial" : "unavailable",
+      [commit],
+      firstRevision,
+      true,
+    );
+    await settle();
+    assert.ok(transient.hasTimer(TIMELINE_RETRY_MS));
+    assert.equal(transient.timelines.length, 1);
+    if (outcome === "departed") {
+      window.location.pathname = "/pull/7/files";
+      transient.handle.setTab("files");
+      assert.equal(transient.hasTimer(TIMELINE_RETRY_MS), false);
+      transient.handle.dispose();
+      continue;
+    }
+    const commitLink = transient
+      .body()
+      .querySelector(".github-pull-commit")
+      ?.querySelector("a[href]");
+    if (outcome === "partial") {
+      assert.ok(commitLink);
+      document.activeElement = commitLink;
+      transient.replace({ ...fixture(), refreshing: true });
+      transient.timer(SLOW_POLL_MS);
+      await settle();
+      assert.equal(transient.timelines.length, 1);
+      assert.equal(
+        transient.body().querySelector(".github-pull-commit")?.querySelector("a[href]"),
+        commitLink,
+      );
+      transient.replace(fixture());
+      transient.timer(FAST_POLL_MS);
+      await settle();
+    }
+    transient.timer(TIMELINE_RETRY_MS);
+    assert.equal(transient.timelines.length, 2);
+    assert.deepEqual(transient.timelines[1].request, firstRead.request);
+    if (outcome === "partial") {
+      assert.equal(
+        transient.body().querySelector(".github-pull-commit")?.querySelector("a[href]"),
+        commitLink,
+      );
+      transient.timelines[1].answer("complete", [
+        { kind: "commit", oid: lastCommit, subject: "Recovered commit", committed_at: null },
+        commit,
+      ]);
+      await settle();
+      assert.equal(transient.body().querySelectorAll(".github-pull-commit").length, 2);
+      assert.equal(document.activeElement, commitLink);
+      assert.ok(transient.body().querySelectorAll(".github-pull-commit")[1].contains(commitLink));
+      assert.equal(
+        transient.marks.filter((label) => label === "githubPull:timelineReady").length,
+        1,
+      );
+    } else {
+      transient.timelines[1].answer("unavailable", [], firstRevision, true);
+      await settle();
+    }
+    assert.equal(transient.hasTimer(TIMELINE_RETRY_MS), false, "the retry budget is exhausted");
+    transient.handle.dispose();
   }
   return {
     interleaved: interleaved.slice(0, 8),
@@ -388,6 +472,7 @@ async function run() {
     supersededReadAborted: true,
     departedReadAborted: true,
     unavailableKeepsDiscussion: true,
+    transientRetryIsBoundedAndKeepsPartial: true,
   };
 }
 

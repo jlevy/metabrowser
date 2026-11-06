@@ -344,6 +344,8 @@ The browser asks after the selected Conversation paints and inserts the commit r
 among its existing discussion cards.
 During metadata refresh it can set `cached_only: true` to read the held projection.
 Provider work uses a separate slot after that refresh settles.
+A transient provider failure can return a verified prefix with `retryable: true`. The
+active Conversation can retry once.
 The bounded projection has its own cache entry.
 
 `github/pulls?state=&limit=&after=` reads an indexed window of the served repository’s

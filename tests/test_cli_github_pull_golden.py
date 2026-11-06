@@ -375,7 +375,7 @@ def test_golden_pull_timeline_fetch_and_offline(
     envelope = cached.payload()
     record = envelope["record"]
     head = record["pull"]["head"]["sha"]
-    base = record["pull"]["base"]["sha"]
+    base_ref = record["pull"]["base"]["ref"]
     comment = str(record["issue_comments"][0]["id"])
     review = str(record["reviews"][0]["id"])
     first = pull_origin["fork_earlier"]
@@ -385,7 +385,7 @@ def test_golden_pull_timeline_fetch_and_offline(
             "nameWithOwner": "octo/demo",
             "pullRequest": {
                 "number": 7,
-                "baseRefOid": base,
+                "baseRefName": base_ref,
                 "headRefOid": head,
                 "timelineItems": {
                     "nodes": [
