@@ -429,8 +429,8 @@ framework:
    Require the previous description and reading position to survive until the correct
    new description or an actionable failure appears.
 3. Measure description readiness separately from completed discussion, checks and
-   comparison. Exercise row selection, direct Fetch, rapid keyboard replacement and
-   cached reopening on both a managed repository and a served checkout.
+   comparison. Exercise row selection, a cold direct link, retry after failure, rapid
+   keyboard replacement, and cached reopening on a managed repository and a checkout.
    A description preview must not claim that unread sections or Git acquisition are
    complete. Hold the selected refresh after its description appears and finish it
    between polling ticks.

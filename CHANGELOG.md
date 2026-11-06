@@ -13,6 +13,7 @@ All notable changes to Metabrowser are documented here.
 
 PR and Git navigation:
 
+- A visible direct PR link fetches and caches its record on the first visit.
 - Treemap and its file totals load for folders in Git-backed repositories.
 - Conversation interleaves clickable commit summaries with comments and reviews in
   GitHub’s order. Cached timelines are available offline.

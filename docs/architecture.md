@@ -388,7 +388,8 @@ One changed file, `/pull/<n>/files/<path>`, opens Files changed with the diff at
 file; its path is the pull request’s text, so it reaches an address only through the
 route’s encoder and never reaches a filesystem call.
 A server serves one repository, and the number selects any of its pull requests.
-An address alone shows what is cached, whatever it was reached by, and moves no pin.
+The address reads cached data and keeps the code pin.
+A visible first visit without a PR record starts a separate request to fill the cache.
 `/compare/` is specified here and not yet built.
 
 The query slot is carried verbatim: it exists so a query an author wrote survives

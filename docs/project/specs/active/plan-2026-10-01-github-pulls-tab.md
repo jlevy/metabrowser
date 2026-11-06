@@ -532,13 +532,11 @@ bounded set, plus a direct start of any number’s refresh by the plugin’s `PO
 
 **What starts a fetch.**
 
-- A pull request with no record is fetched only by a reader’s action in the shell’s own
-  chrome: selecting a row in the Pulls tab, pressing **Fetch** on its page, or opening a
-  file from an expanded row.
-  Expanding a row fetches that pull request’s file list and not its record.
-  An address alone shows what is cached, whether it was typed, followed from rendered
-  content, or reached by Back.
-  So nothing a link can do adds to the cache.
+- A visible PR page fills a cold record cache once after its initial cache read.
+  A selected row or changed file can start the same fetch.
+  Expanding a row fetches that PR’s file list.
+  After a failed fetch, **Fetch** offers a retry.
+  A checkout can acquire a comparison store through **Fetch changes**.
 - A pull request with a record refreshes in the background when its page is visible and
   the record is stale, as a stale mirror does.
   The page’s controller asks for it, once a reader has stayed on the page

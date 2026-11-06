@@ -136,7 +136,8 @@ When switching from useful content, that content stays visible until the new des
 or an actionable failure is ready.
 The description can appear while comments, reviews, checks, and changes are still
 loading. Active sections show the shared gray spinner.
-A cached full page keeps its content visible while it refreshes.
+A visible PR opened from a row or a direct link fetches its record on the first visit.
+A cached full page renders from disk and keeps its content visible while it refreshes.
 **View on GitHub** opens the pull request on github.com with its state icon.
 External GitHub links in conversation text carry a destination icon; an unknown issue or
 PR state uses a neutral entity icon.
@@ -224,8 +225,7 @@ other users can read.
 A clone that fails stops the command with an `Error:` line and exit status 1. When
 opening a PR URL, a pull request that cannot be read does not: `metab` serves the
 default branch, exits 0 in the one-shot modes, and says why on the `Pull request:` line.
-The page says `This pull request has not been fetched yet.`, gives the reason, and
-offers **Fetch** for its record.
+The page gives the reason and offers **Fetch** to retry the missing record.
 Once the cause is fixed, use that action or run the command again.
 This is separate from **Fetch changes**, which obtains the store needed for a folder’s
 comparison.

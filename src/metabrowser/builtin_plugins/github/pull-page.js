@@ -1078,6 +1078,18 @@ export function createPullController(deps, options) {
   const asked = new Set();
   let inFlight = 0;
 
+  function directColdMiss() {
+    return (
+      reader === null &&
+      deps.isVisible() &&
+      error === null &&
+      envelope?.state === "absent" &&
+      envelope.reason === "not_cached" &&
+      envelope.last_refresh === null &&
+      !envelope.refreshing
+    );
+  }
+
   function model() {
     const next = describePull(envelope, {
       number: options.number,
@@ -1245,7 +1257,6 @@ export function createPullController(deps, options) {
     if (disposed) {
       return;
     }
-    render();
     // A waiting read spent part (or all) of the interval already.
     scheduleNext(
       waitStarted === null
@@ -1253,10 +1264,12 @@ export function createPullController(deps, options) {
         : Math.max(0, FAST_POLL_MS - Math.max(0, deps.now() - waitStarted)),
     );
     fetchForReader();
+    render();
     if (
       deps.isVisible() &&
       envelope?.state === "stale" &&
       !envelope.refreshing &&
+      !fetching &&
       !refreshAskedWhileVisible
     ) {
       refreshAskedWhileVisible = true;
@@ -1266,12 +1279,11 @@ export function createPullController(deps, options) {
   }
 
   /**
-   * A reader chose this page's row in the Pulls tab, and the cache has no record of it: that
-   * is the action that adds one, as a press of Fetch is. A row a key stopped on waits a
-   * moment, so that a reader tapping past it spends nothing.
+   * The selected PR can fill its cache once. A direct link waits for a visible cold miss,
+   * and a row reached by keyboard waits for the reader to stop there.
    */
   function fetchForReader() {
-    if (readerAsked || reader === null || envelope === null) {
+    if (readerAsked || envelope === null || (reader === null && !directColdMiss())) {
       return;
     }
     readerAsked = true;
@@ -1282,8 +1294,13 @@ export function createPullController(deps, options) {
     render();
     askAfter(() => {
       fetching = false;
+      if (reader === null && !directColdMiss()) {
+        readerAsked = false;
+        render();
+        return;
+      }
       void askForRefresh({ number: options.number, retry: true, wait_core: true });
-    }, reader.fetchAfterMs);
+    }, reader?.fetchAfterMs ?? 0);
   }
 
   /**
