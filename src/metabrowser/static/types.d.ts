@@ -2810,6 +2810,7 @@ declare global {
   type MetabrowserMainTabsController = {
     active(): string;
     activate(id: string): void;
+    bindShortcuts(shortcuts: MetabrowserShortcutRegistry): void;
     finishGitDiscovery(): Promise<void>;
     fileLanding(): void;
     onHistory(): void;

@@ -936,6 +936,7 @@ function twoTreesPage() {
   const shellSource = [
     ...[
       "shortcutRegistry",
+      "mainTabs",
       "keyboardHelp",
       "treeKeyboard",
       "applicationFocusRegion",

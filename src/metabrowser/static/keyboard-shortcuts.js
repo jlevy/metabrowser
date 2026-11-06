@@ -62,7 +62,7 @@
   const MODIFIER_DEFINITIONS = Object.freeze({
     alt: Object.freeze({ aria: "Alt", spoken: "Alt", visible: "Alt" }),
     control: Object.freeze({ aria: "Control", spoken: "Control", visible: "Ctrl" }),
-    meta: Object.freeze({ aria: "Meta", spoken: "Meta", visible: "Meta" }),
+    meta: Object.freeze({ aria: "Meta", spoken: "Command", visible: "⌘" }),
     shift: Object.freeze({ aria: "Shift", spoken: "Shift", visible: "Shift" }),
   });
 
@@ -89,6 +89,11 @@
       context: "Available outside text fields.",
       label: "Anywhere",
       order: 10,
+    }),
+    "main-tabs": Object.freeze({
+      context: "Use the number alone if your browser reserves Command and numbers.",
+      label: "Main tabs",
+      order: 15,
     }),
     navigation: Object.freeze({
       context: "Available while a file-tree row has focus.",
@@ -118,9 +123,9 @@
     if (known) {
       return known;
     }
-    if (/^[a-z]$/i.test(key)) {
-      const letter = key.toUpperCase();
-      return Object.freeze({ aria: letter, spoken: letter, visible: letter });
+    if (/^[a-z0-9]$/i.test(key)) {
+      const label = key.toUpperCase();
+      return Object.freeze({ aria: label, spoken: label, visible: label });
     }
     throw new TypeError(`Unsupported shortcut key: ${key}`);
   }
