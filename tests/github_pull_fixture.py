@@ -140,6 +140,8 @@ if args[:1] == ["api"]:
     if path == "graphql":
         if fields.get("query", "").startswith("query PullCore("):
             path = "graphql:core:" + fields.get("number", "missing")
+        elif fields.get("query", "").lstrip().startswith("query MetabrowserPullTimeline("):
+            path = "graphql:timeline:" + fields.get("number", "missing") + ":" + fields.get("cursor", "start")
         elif fields.get("query", "").startswith("query VisiblePullCores("):
             slots = [f"n{{i}}" for i in range(8)]
             path = "graphql:visible-cores:" + ",".join(fields[key] for key in slots if key in fields)
@@ -606,6 +608,12 @@ def logged_gh_calls(directory: Path) -> list[str]:
             fields = dict(arg.split("=", 1) for arg in args if "=" in arg)
             if fields.get("query", "").startswith("query PullCore("):
                 calls.append(f"gh api graphql core number={fields.get('number', 'missing')}")
+                continue
+            if fields.get("query", "").lstrip().startswith("query MetabrowserPullTimeline("):
+                calls.append(
+                    f"gh api graphql timeline number={fields.get('number', 'missing')} "
+                    f"cursor={fields.get('cursor', 'start')}"
+                )
                 continue
             if fields.get("query", "").startswith("query VisiblePullCores("):
                 slots = [f"n{i}" for i in range(8)]

@@ -443,6 +443,7 @@ async def gh_graphql(
     variables: Mapping[str, str | int | bool | None],
     *,
     now: datetime | None = None,
+    max_bytes: int = GH_API_MAX_BYTES,
 ) -> dict[str, Any]:
     """Execute an internal fixed read-only query with separately encoded variables.
 
@@ -462,7 +463,7 @@ async def gh_graphql(
             args.extend(("-f", f"{name}={value}"))
         else:
             args.extend(("-F", f"{name}={json.dumps(value)}"))
-    completed = await _run(args, timeout_s=GH_API_TIMEOUT_S, max_bytes=GH_API_MAX_BYTES)
+    completed = await _run(args, timeout_s=GH_API_TIMEOUT_S, max_bytes=max_bytes)
     response = parse_included_response(completed.stdout)
     if response is None:
         raise _failure_without_response(completed)

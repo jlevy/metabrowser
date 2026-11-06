@@ -373,6 +373,55 @@ def _invalid_request(message: str, status_code: int = 400) -> JSONResponse:
     return JSONResponse({"error": message, "code": "invalid_request"}, status_code=status_code)
 
 
+async def pull_timeline_handler(request: Request) -> JSONResponse:
+    """Read the selected PR's independently cached Conversation projection."""
+
+    from pydantic import ValidationError
+
+    from metabrowser.builtin_plugins.github.pull_route import pull_host
+    from metabrowser.builtin_plugins.github.pull_timeline import (
+        TimelineRequest,
+        read_timeline,
+        unavailable,
+    )
+
+    body = await _json_body(request)
+    if isinstance(body, tuple):
+        return _invalid_request(*body)
+    try:
+        ask = TimelineRequest.model_validate(body)
+    except ValidationError:
+        return _invalid_request('a timeline request requires "number" and "record_revision"')
+    await _resolve(request)
+    host = pull_host(request.app)
+    answer = unavailable(ask)
+    if host is not None:
+        # Pages run serially, with at most one optional gh process per app.
+        # Foreground refresh keeps its own network slots.
+        gate = getattr(request.app.state, "github_pull_timeline_gate", None)
+        if gate is None:
+            gate = request.app.state.github_pull_timeline_gate = asyncio.Lock()
+
+        async def disconnected() -> None:
+            while (await request.receive())["type"] != "http.disconnect":
+                pass
+
+        async with asyncio.TaskGroup() as group:
+            reading = group.create_task(read_timeline(host.pulls, ask, gate))
+            disconnect = group.create_task(disconnected())
+            finished, _ = await asyncio.wait(
+                (reading, disconnect), return_when=asyncio.FIRST_COMPLETED
+            )
+            if disconnect in finished:
+                reading.cancel()
+            else:
+                answer = reading.result()
+            disconnect.cancel()
+    if (refusal := pin_changed_response(request.headers.get(PIN_HEADER))) is not None:
+        return refusal
+    return JSONResponse(answer.model_dump(mode="json"), headers=_NO_STORE)
+
+
 async def pull_cores_prepare_handler(request: Request) -> JSONResponse:
     """Schedule or release a source-owned visible core window."""
     from metabrowser.builtin_plugins.github.pull_cores import core_request, request_preparation

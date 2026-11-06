@@ -142,7 +142,10 @@ External GitHub links in conversation text carry a destination icon; an unknown 
 PR state uses a neutral entity icon.
 Below the header are two tabs:
 
-- **Conversation:** the description, then comments and reviews in time order.
+- **Conversation:** the description, followed by comments, reviews, and commit
+  summaries. Commit rows follow GitHub’s conversation order.
+  The short commit ID opens the exact commit on GitHub.
+  Cached timelines are readable offline.
   **Review comments** lists each inline review comment with its file and diff hunk, and
   **Checks** summarizes check runs and statuses, with links to their details.
 - **Changes:** the comparison from the merge base to the head, split or unified.

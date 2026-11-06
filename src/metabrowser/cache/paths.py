@@ -77,6 +77,12 @@ def source_pull_list_refresh(slug: str, name: PullListName) -> str:
     return f"{source_pulls_directory(slug)}/list-{name}.refresh.json"
 
 
+def source_pull_timeline(slug: str, number: int) -> str:
+    """Return the bounded Conversation projection beside the pull request record."""
+
+    return source_pull_record(slug, number).removesuffix(".json") + ".timeline.json"
+
+
 def source_pull_files(slug: str, number: int) -> str:
     """Return ``sources/<slug>/pulls/<n>.files.json``: the pull request's changed files."""
 
@@ -128,6 +134,7 @@ __all__ = [
     "source_pull_list_refresh",
     "source_pull_record",
     "source_pull_refresh",
+    "source_pull_timeline",
     "source_pulls_directory",
     "source_record",
     "source_stacks",

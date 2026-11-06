@@ -13,6 +13,8 @@ All notable changes to Metabrowser are documented here.
 
 PR and Git navigation:
 
+- Conversation interleaves clickable commit summaries with comments and reviews in
+  GitHub’s order. Cached timelines are available offline.
 - The PR diff tab is called **Changes**. A PR that already shows content uses the shared
   gray spinner for active refreshes and pending sections.
 - Files, Pulls, and Git each restore their own selection when switching tabs.

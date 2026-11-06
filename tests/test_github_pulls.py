@@ -3972,3 +3972,358 @@ def test_visible_core_running_batch_drains_before_selected_refresh(
     final = _read(client, number).json()
     assert final["record"]["pull"]["number"] == number and not final["refreshing"]
     assert final["core_preview"] is None and calls == [(8,)]
+
+
+_TIMELINE_ROUTE = "/api/plugin/github/pull-timeline"
+
+
+def _timeline_page(
+    record: PullRecord,
+    nodes: list[dict[str, Any]],
+    cursor: str | None,
+    *,
+    reader: str = READER,
+    base_ref: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "viewer": {"login": reader},
+        "repository": {
+            "nameWithOwner": "octo/demo",
+            "pullRequest": {
+                "number": record.number,
+                "baseRefName": record.pull.base.ref if base_ref is None else base_ref,
+                "baseRefOid": "f" * 40,  # The provider target tip can advance.
+                "headRefOid": record.pull.head.sha,
+                "timelineItems": {
+                    "nodes": nodes,
+                    "pageInfo": {"hasNextPage": cursor is not None, "endCursor": cursor},
+                },
+            },
+        },
+    }
+
+
+def test_timeline_bounds_and_reuses_the_ordered_discussion(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_timeline
+    from metabrowser.cache.paths import source_pull_timeline
+    from metabrowser.mirror_refresh import refresh_coordinator
+
+    stand, client = pinned_pull
+    home, slug = stand.published.home, stand.published.slug
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    ident = (1 << 53) + 1
+    comment = record.issue_comments[0].model_copy(update={"id": ident})
+    record = record.model_copy(update={"issue_comments": (comment,), "projection_version": 0})
+    write_pull_record(home, slug, record)
+    record_path = home / source_pull_record(slug, 7)
+    before = record_path.read_bytes()
+    envelope = _read(client, 7).json()
+    revision = envelope["record_revision"]
+    assert envelope["record"]["issue_comments"][0]["timeline_id"] == str(ident)
+    assert (
+        client.get(
+            "/api/plugin/github/pull-markdown",
+            params={"number": 7, "part": f"issue_comment/{ident}"},
+        ).status_code
+        == 200
+    )
+    page_one = [
+        {
+            "__typename": "PullRequestCommit",
+            "commit": {
+                "oid": record.pull.head.sha,
+                "messageHeadline": "A subject",
+                "committedDate": record.pull.created_at,
+            },
+        },
+        {"__typename": "IssueComment", "fullDatabaseId": ident},
+        {"__typename": "PullRequestReview", "state": "PENDING", "fullDatabaseId": None},
+        *({"__typename": "IssueComment", "fullDatabaseId": value} for value in range(1, 98)),
+    ]
+    page_two = [
+        {"__typename": "IssueComment", "fullDatabaseId": str(ident)},
+        {
+            "__typename": "PullRequestReview",
+            "state": "APPROVED",
+            "fullDatabaseId": str(record.reviews[0].id),
+        },
+        *({"__typename": "IssueComment", "fullDatabaseId": value} for value in range(98, 196)),
+    ]
+    cursors: list[str | None] = []
+
+    async def graph(query: str, variables: dict[str, Any], *, max_bytes: int) -> dict[str, Any]:
+        assert "first: 100" in query and "fullDatabaseId" in query
+        assert "baseRefName" in query and "baseRefOid" not in query
+        assert max_bytes == pull_timeline.MAX_PROVIDER_BYTES
+        assert [variables[key] for key in ("owner", "name", "number")] == ["octo", "demo", 7]
+        cursor = variables["cursor"]
+        cursors.append(cursor)
+        if cursor is None:
+            return _timeline_page(record, page_one, "page-two")
+        assert cursor == "page-two"
+        return _timeline_page(record, page_two, "still-more")
+
+    monkeypatch.setattr(pull_timeline, "gh_graphql", graph)
+    ask = {"number": 7, "record_revision": revision}
+    cache_only = {**ask, "cached_only": True}
+    assert client.post(_TIMELINE_ROUTE, json=cache_only, headers=_JSON).json() == {
+        "record_revision": revision,
+        "state": "unavailable",
+        "events": [],
+    }
+    assert (
+        client.post(_TIMELINE_ROUTE, json={**ask, "cached_only": "true"}, headers=_JSON).status_code
+        == 400
+    )
+    assert cursors == []
+    coordinator = refresh_coordinator(app)
+    assert coordinator is not None and client.portal is not None
+    slot = coordinator.slot()
+
+    async def take_foreground_slots() -> int:
+        count = 0
+        while not slot.locked():
+            await slot.acquire()
+            count += 1
+        return count
+
+    held_slots = client.portal.call(take_foreground_slots)
+    assert held_slots > 0
+    try:
+        # The optional provider must run even while the foreground pool is occupied.
+        response = client.post(_TIMELINE_ROUTE, json=ask, headers=_JSON)
+    finally:
+        for _ in range(held_slots):
+            client.portal.call(slot.release)
+    assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
+    timeline = response.json()
+    assert timeline["record_revision"] == revision and timeline["state"] == "partial"
+    events = timeline["events"]
+    assert len(events) == 198
+    assert [item["kind"] for item in events[:2]] == ["commit", "comment"]
+    assert events[1] == {"kind": "comment", "id": str(ident)}
+    assert [item["kind"] for item in events if item["kind"] == "review"] == ["review"]
+    assert cursors == [None, "page-two"]
+    assert record_path.read_bytes() == before
+    cache = home / source_pull_timeline(slug, 7)
+    assert cache.is_file()
+    held = cache.read_bytes()
+    assert client.post(_TIMELINE_ROUTE, json=cache_only, headers=_JSON).json() == timeline
+
+    # Text and base-tip changes alter the full revision while preserving timeline inputs.
+    advanced = record.pull.base.model_copy(update={"sha": "f" * 40})
+    newer = record.model_copy(
+        update={"pull": record.pull.model_copy(update={"body": "Edit", "base": advanced})}
+    )
+    write_pull_record(home, slug, newer)
+    next_revision = _read(client, 7).json()["record_revision"]
+    assert next_revision != revision
+    assert client.post(_TIMELINE_ROUTE, json=ask, headers=_JSON).json()["state"] == "unavailable"
+    assert client.post(
+        _TIMELINE_ROUTE, json={**cache_only, "record_revision": next_revision}, headers=_JSON
+    ).json() == {**timeline, "record_revision": next_revision}
+    retargeted = advanced.model_copy(update={"ref": "another-target"})
+    write_pull_record(
+        home,
+        slug,
+        newer.model_copy(update={"pull": newer.pull.model_copy(update={"base": retargeted})}),
+    )
+    retargeted_revision = _read(client, 7).json()["record_revision"]
+    assert (
+        client.post(
+            _TIMELINE_ROUTE,
+            json={**cache_only, "record_revision": retargeted_revision},
+            headers=_JSON,
+        ).json()["state"]
+        == "unavailable"
+    )
+    assert cursors == [None, "page-two"] and cache.read_bytes() == held
+
+
+def test_timeline_refuses_a_changed_viewer_or_superseded_record(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_timeline
+    from metabrowser.cache.paths import source_pull_timeline
+
+    stand, client = pinned_pull
+    home, slug = stand.published.home, stand.published.slug
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    revision = _read(client, 7).json()["record_revision"]
+    cache = home / source_pull_timeline(slug, 7)
+    ask = {"number": 7, "record_revision": revision}
+    absent = {"record_revision": revision, "state": "unavailable", "events": []}
+    cursors: list[str | None] = []
+    failure = "viewer"
+
+    async def graph(_query: str, variables: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
+        cursor = variables["cursor"]
+        cursors.append(cursor)
+        if cursor is None:
+            return _timeline_page(
+                record,
+                [{"__typename": "IssueComment", "fullDatabaseId": "7"}],
+                "page-two",
+            )
+        if failure == "viewer":
+            return _timeline_page(record, [], None, reader="someone-else")
+        if failure == "target":
+            return _timeline_page(record, [], None, base_ref="another-target")
+        if failure == "malformed":
+            return _timeline_page(record, [{"__typename": "IssueComment"}], None)
+        newer = record.model_copy(update={"pull": record.pull.model_copy(update={"body": "Edit"})})
+        await asyncio.to_thread(write_pull_record, home, slug, newer)
+        return _timeline_page(record, [], None)
+
+    monkeypatch.setattr(pull_timeline, "gh_graphql", graph)
+    for reason in ("viewer", "target", "malformed", "superseded"):
+        failure = reason
+        assert client.post(_TIMELINE_ROUTE, json=ask, headers=_JSON).json() == absent
+        assert not cache.exists()
+    assert client.post(_TIMELINE_ROUTE, json=ask, headers=_JSON).json() == absent
+    assert cursors == [None, "page-two"] * 4
+
+
+def test_timeline_disconnect_cancels_a_held_second_page(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from starlette.types import Message, Receive, Scope, Send
+
+    from metabrowser.builtin_plugins.github import pull_timeline
+    from metabrowser.cache.paths import source_pull_timeline
+
+    stand, client = pinned_pull
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    revision = _read(client, 7).json()["record_revision"]
+    ask = {"number": 7, "record_revision": revision}
+    started = asyncio.Event()
+    cancelled = False
+
+    async def graph(_query: str, variables: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
+        nonlocal cancelled
+        if variables["cursor"] is None:
+            return _timeline_page(
+                record,
+                [{"__typename": "IssueComment", "fullDatabaseId": "7"}],
+                "page-two",
+            )
+        started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled = True
+            raise
+        raise AssertionError("the disconnected request kept its provider process")
+
+    async def disconnected(scope: Scope, receive: Receive, send: Send) -> None:
+        body_read = False
+
+        async def disconnect_after_second_page_starts() -> Message:
+            nonlocal body_read
+            if not body_read:
+                body_read = True
+                return await receive()
+            await started.wait()
+            return {"type": "http.disconnect"}
+
+        await app(scope, disconnect_after_second_page_starts, send)
+
+    monkeypatch.setattr(pull_timeline, "gh_graphql", graph)
+    with TestClient(disconnected) as disconnected_client:
+        response = disconnected_client.post(_TIMELINE_ROUTE, json=ask, headers=_JSON)
+    assert response.json() == {
+        "record_revision": revision,
+        "state": "unavailable",
+        "events": [],
+    }
+    assert cancelled
+    assert not (stand.published.home / source_pull_timeline(stand.published.slug, 7)).exists()
+
+
+def test_timeline_keeps_only_verified_transient_results_in_the_current_view(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_timeline
+    from metabrowser.cache.paths import source_pull_timeline
+
+    stand, client = pinned_pull
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    revision = _read(client, 7).json()["record_revision"]
+    ask = {"number": 7, "record_revision": revision}
+    absent = {"record_revision": revision, "state": "unavailable", "events": []}
+    first = {"kind": "comment", "id": "7"}
+    cache = stand.published.home / source_pull_timeline(stand.published.slug, 7)
+    provider_error: Exception | None = None
+    failure_cursor: str | None = None
+    cursors: list[str | None] = []
+
+    async def graph(_query: str, variables: dict[str, Any], **_kwargs: Any) -> dict[str, Any]:
+        cursor = variables["cursor"]
+        cursors.append(cursor)
+        if provider_error is not None and cursor == failure_cursor:
+            if isinstance(provider_error, TimeoutError):
+                await asyncio.Event().wait()
+            raise provider_error
+        if cursor is None:
+            return _timeline_page(
+                record, [{"__typename": "IssueComment", "fullDatabaseId": "7"}], "page-two"
+            )
+        return _timeline_page(record, [{"__typename": "IssueComment", "fullDatabaseId": "8"}], None)
+
+    monkeypatch.setattr(pull_timeline, "gh_graphql", graph)
+    gate = asyncio.Lock()
+    monkeypatch.setattr(app.state, "github_pull_timeline_gate", gate, raising=False)
+    assert client.portal is not None
+    client.portal.call(gate.acquire)
+    try:
+        with monkeypatch.context() as fast:
+            fast.setattr(pull_timeline, "TIMEOUT_S", 0.05)
+            assert client.post(_TIMELINE_ROUTE, json=ask, headers=_JSON).json() == {
+                **absent,
+                "retryable": True,
+            }
+    finally:
+        client.portal.call(gate.release)
+    assert cursors == []
+
+    network_error = GhError("connection reset", state="network_error")
+    provider_error = network_error
+    assert client.post(_TIMELINE_ROUTE, json=ask, headers=_JSON).json() == {
+        **absent,
+        "retryable": True,
+    }
+    failure_cursor = "page-two"
+    with monkeypatch.context() as fast:
+        fast.setattr(pull_timeline, "TIMEOUT_S", 1.0)
+        for error in (network_error, TimeoutError()):
+            provider_error = error
+            assert client.post(_TIMELINE_ROUTE, json=ask, headers=_JSON).json() == {
+                "record_revision": revision,
+                "state": "partial",
+                "events": [first],
+                "retryable": True,
+            }
+            assert not cache.exists()
+    for error in (
+        GhError("gh missing", state="gh_missing"),
+        GhError("sign in", state="not_logged_in"),
+        GhError("rate limit", state="rate_limited"),
+    ):
+        provider_error = error
+        assert client.post(_TIMELINE_ROUTE, json=ask, headers=_JSON).json() == absent
+        assert not cache.exists()
+
+    provider_error = None
+    complete = client.post(_TIMELINE_ROUTE, json=ask, headers=_JSON).json()
+    assert complete == {
+        "record_revision": revision,
+        "state": "complete",
+        "events": [first, {"kind": "comment", "id": "8"}],
+    }
+    assert cache.is_file()

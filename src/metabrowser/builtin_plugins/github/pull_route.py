@@ -215,6 +215,11 @@ def cached_pull_record(
         return record, None, None
     dumped = record.model_dump(mode="json")
     revision = _record_revision(dumped)
+    # JSON numbers above JavaScript's safe integer range still need exact part IDs.
+    for kind in ("issue_comments", "reviews"):
+        for item in dumped[kind]:
+            if abs(item["id"]) > (1 << 53) - 1:
+                item["timeline_id"] = str(item["id"])
     if stamp is not None:
         with _PARSED_LOCK:
             if key not in _PARSED and len(_PARSED) >= _MAX_PARSED:

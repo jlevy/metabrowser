@@ -56,7 +56,7 @@ records the final artifact and cache conditions without a new testing framework.
 
 ## Conversation Commit Timeline
 
-**Planned in `mb-c3vw`.** Keep the description first.
+**Tracked in `mb-c3vw`.** Conversation keeps the description first.
 Add compact commit rows among top-level comments and submitted reviews, in GitHub’s
 timeline order when it reports the events together.
 Each row has a plain-text subject and a link labelled with the short commit ID. The full
@@ -91,7 +91,9 @@ Keep unmatched discussion visible and use its existing time order when provider 
 is unavailable.
 
 Bind the projection to the canonical repository, PR number, actual response viewer,
-verified base and head, and the discussion revision it orders.
+target branch name, head commit, and the discussion revision it orders.
+An advance of the same target branch leaves the recorded conversation order usable.
+A PR retarget or head change requires a new projection.
 A checkout without a comparison store can verify against provider metadata and the held
 PR record.
 Cache the bounded projection independently of the PR record so a late timeline
@@ -103,22 +105,33 @@ The catalog and visible-row description preparation continue to use their existi
 lightweight projections.
 Timeline reads request no patches or Git objects.
 
-Use an ordinary, validated commit link.
-The PR-scoped GitHub commit address covers forks and commits absent locally while GitHub
-still serves the object.
-Use Metabrowser’s `/commit/<oid>` when the active Git source can open that exact object
-safely, with a GitHub link available if the object disappears.
-Avoid per-object probes while drawing the timeline.
-The local path must avoid both mirror acquisition and lazy object fetches in an existing
-partial checkout, through commit detail and diff hydration.
+Use the validated PR-scoped GitHub commit address.
+It covers forks and commits absent locally while GitHub still serves the object.
+Local commit links are tracked in `mb-g47g`. They need a cache-only address that
+survives reload and modified clicks, plus read-only enforcement through commit detail
+and diff hydration.
 
-Before choosing page and cache bounds, measure projected bytes, provider processes,
-description paint, and full Conversation paint on public PRs with a short and a long
-timeline. Test whether the projection fits alongside the existing selected refresh
-without delaying either readiness marker.
-If it does not, publish timeline rows independently after the useful Conversation is
-visible. Compare the same subjects with and without the projection, with cold and held
-caches. Keep the visible-row request shape unchanged.
+Conversation paints from the held PR record.
+The selected page then asks for its timeline.
+A held projection can appear during metadata refresh.
+Provider work starts after that refresh settles and uses one independent slot per app.
+Fetch up to two pages of 100 events.
+Keep the verified first page visible if the second page encounters a transient provider
+failure. The active page can retry once.
+Cache the projection by viewer, repository, PR, target branch, head commit, and
+discussion identity.
+
+In the paired built-in browser runs, provider reads of the two public timelines took
+846–1,010 ms from identical fresh records, beginning 20–53 ms after the existing
+Conversation readiness mark.
+The responses transferred 985 and 3,211 encoded body bytes.
+Held responses took 4–25 ms with fresh metadata.
+With stale metadata, the held commit rows were ready 80–108 ms after Conversation while
+its metadata refresh continued.
+A synthetic 200-commit timeline took 6 ms to insert in the same browser.
+These local samples measure the optional work and its ordering relative to the
+foreground render.
+
 Reuse the browserless Pull page session for ordering, 64-bit discussion IDs, pending
 reviews, duplicate events, partial and failed reads, and an in-flight result overtaken
 by a discussion refresh.

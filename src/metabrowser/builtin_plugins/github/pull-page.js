@@ -113,6 +113,9 @@ const PREFETCH_IDLE_TIMEOUT_MS = 300;
 const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
 const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
+const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
+// Give a transient queue or provider failure one chance to clear while the reader stays.
+export const TIMELINE_RETRY_MS = 1000;
 const PIN_ROUTE = "/api/source/pin";
 export const TABS = Object.freeze(["", "files"]);
 
@@ -188,7 +191,7 @@ const TRUNCATED = Object.freeze({
 /**
  * @typedef {{
  *   kind: "comment" | "review",
- *   id: number,
+ *   id: string,
  *   part: string,
  *   author: string,
  *   avatar: string | null,
@@ -197,6 +200,12 @@ const TRUNCATED = Object.freeze({
  *   truncated: boolean,
  *   review: {state: string, label: string} | null,
  * }} TimelineItem
+ */
+
+/**
+ * @typedef {{kind: "commit", oid: string, subject: string, committed_at: string | null}} TimelineCommit
+ * @typedef {{kind: "comment" | "review", id: string} | TimelineCommit} TimelineEvent
+ * @typedef {{state: "complete" | "partial" | "unavailable", events: TimelineEvent[], retryable: boolean}} TimelineProjection
  */
 
 /**
@@ -399,10 +408,11 @@ function timeline(record) {
   /** @type {TimelineItem[]} */
   const items = [];
   for (const comment of list(record.issue_comments)) {
+    const id = text(comment.timeline_id) || String(comment.id);
     items.push({
       kind: "comment",
-      id: comment.id,
-      part: `issue_comment/${comment.id}`,
+      id,
+      part: `issue_comment/${id}`,
       author: who(comment.author),
       avatar: avatarUrl(comment.author_avatar_url),
       at: text(comment.created_at) || null,
@@ -413,10 +423,11 @@ function timeline(record) {
   }
   for (const review of list(record.reviews)) {
     const state = text(review.state);
+    const id = text(review.timeline_id) || String(review.id);
     items.push({
       kind: "review",
-      id: review.id,
-      part: `review/${review.id}`,
+      id,
+      part: `review/${id}`,
       author: who(review.author),
       avatar: avatarUrl(review.author_avatar_url),
       at: typeof review.submitted_at === "string" ? review.submitted_at : null,
@@ -430,8 +441,58 @@ function timeline(record) {
   return items.sort(
     (left, right) =>
       (left.at ?? "￿").localeCompare(right.at ?? "￿") ||
-      (left.kind === right.kind ? left.id - right.id : left.kind === "comment" ? -1 : 1),
+      (left.kind === right.kind
+        ? left.id.length - right.id.length || left.id.localeCompare(right.id)
+        : left.kind === "comment"
+          ? -1
+          : 1),
   );
+}
+
+/** @param {unknown} value @param {string} revision @returns {TimelineProjection | null} */
+function readTimelineProjection(value, revision) {
+  if (value === null || typeof value !== "object") {
+    return null;
+  }
+  const answer = /** @type {Record<string, unknown>} */ (value);
+  const state = answer.state;
+  if (
+    answer.record_revision !== revision ||
+    (state !== "complete" && state !== "partial" && state !== "unavailable") ||
+    !Array.isArray(answer.events)
+  ) {
+    return null;
+  }
+  /** @type {TimelineEvent[]} */
+  const events = [];
+  for (const event of answer.events) {
+    if (
+      event?.kind === "commit" &&
+      typeof event.oid === "string" &&
+      /^[a-f0-9]{40}$/.test(event.oid)
+    ) {
+      events.push({
+        kind: "commit",
+        oid: event.oid,
+        subject: text(event.subject),
+        committed_at: typeof event.committed_at === "string" ? event.committed_at : null,
+      });
+    } else if (
+      (event?.kind === "comment" || event?.kind === "review") &&
+      typeof event.id === "string" &&
+      /^[1-9][0-9]*$/.test(event.id)
+    ) {
+      events.push({ kind: event.kind, id: event.id });
+    }
+  }
+  return { state, events, retryable: state !== "complete" && answer.retryable === true };
+}
+
+/** The exact PR's GitHub commit page, built from the held record's source. @param {string} source @param {number} number @param {string} oid */
+function timelineCommitHref(source, number, oid) {
+  return /^https:\/\/github\.com\/[a-z0-9-]+\/[a-z0-9_.-]+$/i.test(source)
+    ? `${source}/pull/${number}/commits/${oid}`
+    : null;
 }
 
 /**
@@ -955,6 +1016,7 @@ export function isEnvelope(value) {
  *   isVisible(): boolean,
  *   render(model: PullModel, identity: import("./pull-stacks.js").StackIdentity | null): void,
  *   renderMarkdown(part: string, rendered: Record<string, any>): void,
+ *   timelineStateChanged?(): void,
  *   reload(): void,
  *   navigate(href: string): void,
  * }} PullDependencies
@@ -985,6 +1047,8 @@ export function createPullController(deps, options) {
   /** @type {unknown} */
   let timer = null;
   let polling = false;
+  let hasPolled = false;
+  let inFlightRefreshes = 0;
   let disposed = false;
   // One refresh asked for by itself per visible period: a stale page whose refresh cannot
   // run must not ask again on every poll.
@@ -1176,6 +1240,7 @@ export function createPullController(deps, options) {
       error = "The server did not answer.";
     } finally {
       polling = false;
+      hasPolled = true;
     }
     if (disposed) {
       return;
@@ -1197,6 +1262,7 @@ export function createPullController(deps, options) {
       refreshAskedWhileVisible = true;
       askAfter(() => void askForRefresh({ number: options.number }), REFRESH_ASK_MS);
     }
+    deps.timelineStateChanged?.();
   }
 
   /**
@@ -1228,6 +1294,7 @@ export function createPullController(deps, options) {
    * @param {{number: number, retry?: boolean, wait_core?: boolean, comparison?: boolean, recovery?: {base: string, head: string}}} ask
    */
   async function askForRefresh(ask) {
+    inFlightRefreshes += 1;
     if (ask.retry) {
       refreshPending = ask.comparison ? "comparison" : "metadata";
       render();
@@ -1268,6 +1335,7 @@ export function createPullController(deps, options) {
         error = "The refresh request failed.";
       }
     }
+    inFlightRefreshes -= 1;
     if (ask.retry) {
       refreshPending = null;
     }
@@ -1278,6 +1346,7 @@ export function createPullController(deps, options) {
           ? FAST_POLL_MS
           : FAST_POLL_MS - (Math.max(0, deps.now() - fastSince) % FAST_POLL_MS),
       );
+      deps.timelineStateChanged?.();
     }
   }
 
@@ -1467,6 +1536,8 @@ export function createPullController(deps, options) {
       return poll(true);
     },
     poll: () => poll(),
+    timelineAllowed: () =>
+      hasPolled && askTimer === null && inFlightRefreshes === 0 && envelope?.refreshing === false,
     requestRefresh,
     requestComparison,
     switchToHead,
@@ -1992,6 +2063,14 @@ export function mountPullPage(container, ctx, mb) {
   let markdownRevision = null;
   /** @type {Map<string, HTMLElement>} */
   const texts = new Map();
+  /** @type {{description: HTMLElement, cards: Map<string, {node: HTMLElement, pending: boolean}>,
+   *   inserts: Map<string, HTMLElement>, projection: TimelineProjection | null} | null} */
+  let discussion = null;
+  let active = false;
+  /** @type {{revision: string, source: string, projection: TimelineProjection | null,
+   *   settled: boolean, cacheMiss: boolean, retryPending: boolean,
+   *   read: {cachedOnly: boolean, abort: AbortController} | null} | null} */
+  let commitTimeline = null;
   // The allowlist a text's Markdown passes through before it is inserted; a text stays
   // plain if it cannot load.
   /** @type {Promise<MetabrowserInertHtmlRuntime | null>} */
@@ -2557,21 +2636,108 @@ export function mountPullPage(container, ctx, mb) {
       ),
     );
 
+  /**
+   * Install the provider order around the existing cards. Keep the focused card in
+   * place and move its neighbors around it, so even a reordered review keeps focus.
+   *
+   * @param {TimelineProjection | null} projection
+   * @param {string} source
+   */
+  function paintTimeline(projection, source) {
+    if (discussion === null || discussion.projection === projection) {
+      return;
+    }
+    const { description, cards, inserts: previousInserts } = discussion;
+    /** @type {Map<string, HTMLElement>} */
+    const inserts = new Map();
+    discussion.projection = projection;
+    discussion.inserts = inserts;
+    const unmatched = new Map(cards);
+    /** @type {HTMLElement[]} */
+    const ordered = [];
+    if (projection !== null && projection.state !== "unavailable") {
+      for (const event of projection.events) {
+        if (event.kind !== "commit") {
+          const key = `${event.kind}/${event.id}`;
+          const card = unmatched.get(key);
+          if (card !== undefined && !card.pending) {
+            ordered.push(card.node);
+            unmatched.delete(key);
+          }
+          continue;
+        }
+        if (inserts.has(event.oid)) {
+          continue;
+        }
+        const href = timelineCommitHref(source, number, event.oid);
+        if (href === null) {
+          continue;
+        }
+        const row =
+          previousInserts.get(event.oid) ??
+          h("div", { class: "github-pull-commit" }, [
+            h("span", { class: "github-pull-commit-subject" }, [event.subject || "Commit"]),
+            event.committed_at !== null && Number.isFinite(Date.parse(event.committed_at))
+              ? h("span", { class: "github-pull-quiet" }, ["committed ", age(event.committed_at)])
+              : null,
+            outside(mb, href, "", [event.oid.slice(0, 7)], "github-pull-commit-id git-commit-sha"),
+          ]);
+        ordered.push(row);
+        inserts.set(event.oid, row);
+      }
+    }
+    for (const { node } of unmatched.values()) {
+      ordered.push(node);
+    }
+    if (projection?.state === "partial") {
+      const note =
+        previousInserts.get("partial") ??
+        h("p", { class: "github-pull-quiet" }, ["Some commits may be missing."]);
+      ordered.push(note);
+      inserts.set("partial", note);
+    }
+    for (const [key, node] of previousInserts) {
+      if (!inserts.has(key)) {
+        node.remove();
+      }
+    }
+
+    const focused = ordered.findIndex((node) => node.contains(document.activeElement));
+    let next = ordered[focused];
+    for (let index = focused - 1; index >= 0; index -= 1) {
+      const node = ordered[index];
+      if (next.previousElementSibling !== node) {
+        body.insertBefore(node, next);
+      }
+      next = node;
+    }
+    let previous = ordered[focused] ?? description;
+    for (let index = focused + 1; index < ordered.length; index += 1) {
+      const node = ordered[index];
+      if (previous.nextElementSibling !== node) {
+        body.insertBefore(node, previous.nextElementSibling);
+      }
+      previous = node;
+    }
+  }
+
   /** @param {PullModel} model */
   function paintConversation(model) {
     const pull = /** @type {NonNullable<PullModel["pull"]>} */ (model.pull);
     texts.clear();
     observer?.disconnect();
-    const sections = [
-      h("section", { class: "github-pull-card" }, [
-        h("div", { class: "github-pull-card-head" }, [
-          authorLabel(pull.author, pull.avatar),
-          " opened ",
-          age(pull.created),
-        ]),
-        textBlock("body", pull.text, pull.truncated, !model.corePreview),
+    const description = h("section", { class: "github-pull-card" }, [
+      h("div", { class: "github-pull-card-head" }, [
+        authorLabel(pull.author, pull.avatar),
+        " opened ",
+        age(pull.created),
       ]),
-    ];
+      textBlock("body", pull.text, pull.truncated, !model.corePreview),
+    ]);
+    const sections = [description];
+    discussion = model.corePreview
+      ? null
+      : { description, cards: new Map(), inserts: new Map(), projection: null };
     if (model.corePreview) {
       for (const [heading, message] of [
         [
@@ -2614,6 +2780,10 @@ export function mountPullPage(container, ctx, mb) {
         card.append(textBlock(item.part, item.text, item.truncated));
       }
       sections.push(card);
+      discussion?.cards.set(`${item.kind}/${item.id}`, {
+        node: card,
+        pending: item.kind === "review" && (item.at === null || item.review?.state === "PENDING"),
+      });
     }
     if (model.reviewComments.length > 0) {
       const threads = h("section", { class: "github-pull-section" }, [
@@ -2970,6 +3140,7 @@ export function mountPullPage(container, ctx, mb) {
     body.classList.toggle("github-pull-column", model.pull === null || model.tab !== "files");
     if (model.pull === null) {
       disposeDiff();
+      discussion = null;
       texts.clear();
       // A known text layout uses the shell's neutral pulse. The reveal wrapper has its
       // own node so its animation does not replace the skeleton's pulse/reduced motion.
@@ -2993,6 +3164,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     if (model.tab === "files") {
       bodyKey = "";
+      discussion = null;
       texts.clear();
       paintFiles(model);
       return;
@@ -3022,6 +3194,164 @@ export function mountPullPage(container, ctx, mb) {
       }
     }
     markdownRevision = model.recordRevision;
+  }
+
+  function cancelTimeline() {
+    if (commitTimeline?.read) {
+      const { abort } = commitTimeline.read;
+      commitTimeline.read = null;
+      abort.abort();
+    }
+  }
+
+  /** Timeline work follows an active, painted Conversation, never a preview or Changes. */
+  function followTimeline() {
+    const revision = shown?.recordRevision ?? null;
+    const source = stackIdentity?.source ?? null;
+    if (commitTimeline?.revision !== revision || commitTimeline.source !== source) {
+      cancelTimeline();
+      commitTimeline =
+        revision !== null && source !== null
+          ? {
+              revision,
+              source,
+              projection: null,
+              settled: false,
+              cacheMiss: false,
+              retryPending: false,
+              read: null,
+            }
+          : null;
+    }
+    const held = commitTimeline;
+    paintTimeline(held?.projection ?? null, source ?? "");
+    if (
+      !active ||
+      listening.signal.aborted ||
+      discussion === null ||
+      held === null ||
+      document.visibilityState !== "visible" ||
+      !onPageRoute(window.location.pathname, number, "")
+    ) {
+      cancelTimeline();
+      return;
+    }
+    const providerAllowed = controller.timelineAllowed();
+    if (held.read && (held.read.cachedOnly || providerAllowed)) {
+      return;
+    }
+    cancelTimeline();
+    const retrying = held.retryPending;
+    if (held.settled || (retrying && !providerAllowed)) {
+      return;
+    }
+    // A held projection can paint during a stale metadata refresh. A cache miss waits
+    // for settlement before it asks the provider.
+    const cachedOnly = !providerAllowed;
+    if (cachedOnly && (held.cacheMiss || (shown?.status !== "stale" && !shown?.refreshing))) {
+      return;
+    }
+    const read = { cachedOnly, abort: new AbortController() };
+    held.read = read;
+    const owns = () =>
+      commitTimeline === held &&
+      held.read === read &&
+      onPageRoute(window.location.pathname, number, "");
+    const load = async () => {
+      if (!owns()) {
+        return;
+      }
+      if (!cachedOnly && !controller.timelineAllowed()) {
+        followTimeline();
+        return;
+      }
+      if (retrying) {
+        // The retry budget is spent when the provider request starts, even if it is aborted.
+        held.retryPending = false;
+        held.settled = true;
+      }
+      const spinner = cachedOnly
+        ? null
+        : h(
+            "span",
+            {
+              class: "github-pull-timeline-loading mb-delayed-loading",
+              role: "status",
+              "aria-label": "Loading commits…",
+            },
+            [h("span", { class: "spinner spinner-sm", "aria-hidden": "true" })],
+          );
+      if (spinner !== null) {
+        discussion?.description.querySelector(".github-pull-card-head")?.append(spinner);
+        read.abort.signal.addEventListener("abort", () => spinner.remove(), { once: true });
+      }
+      /** @type {TimelineProjection | null} */
+      let projection = null;
+      try {
+        const response = await fetch(TIMELINE_ROUTE, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            number,
+            record_revision: held.revision,
+            ...(cachedOnly ? { cached_only: true } : {}),
+          }),
+          signal: read.abort.signal,
+        });
+        if (response.status === 200 && owns()) {
+          projection = readTimelineProjection(await response.json(), held.revision);
+        }
+      } catch {
+        // The held discussion is already readable when the optional projection fails.
+      } finally {
+        spinner?.remove();
+      }
+      if (!owns()) {
+        return;
+      }
+      held.read = null;
+      if (
+        projection !== null &&
+        projection.state !== "unavailable" &&
+        (held.projection === null ||
+          projection.state === "complete" ||
+          projection.events.length > held.projection.events.length)
+      ) {
+        const first = held.projection === null;
+        const next = projection;
+        held.projection = next;
+        mb.perf.measure("githubPull:timelinePaint", () => paintTimeline(next, held.source), {
+          number,
+        });
+        if (first) {
+          mb.perf.measure("githubPull:timelineReady", () => {}, { number });
+        }
+      }
+      if (cachedOnly && held.projection === null) {
+        held.cacheMiss = true;
+        followTimeline();
+      } else if (!cachedOnly && !retrying && projection?.retryable) {
+        held.retryPending = true;
+        followTimeline();
+      } else {
+        held.settled = true;
+      }
+    };
+    if (retrying) {
+      const timer = window.setTimeout(() => void load(), TIMELINE_RETRY_MS);
+      read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
+    } else if (typeof window.requestAnimationFrame === "function") {
+      let frame = window.requestAnimationFrame(() => {
+        frame = window.requestAnimationFrame(() => void load());
+      });
+      read.abort.signal.addEventListener("abort", () => window.cancelAnimationFrame(frame), {
+        once: true,
+      });
+    } else {
+      const timer = window.setTimeout(() => void load(), 0);
+      read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
+    }
   }
 
   // Disposing a page ends its work: a superseded page's requests are cancelled, whatever
@@ -3082,10 +3412,12 @@ export function mountPullPage(container, ctx, mb) {
             mb.perf.measure("githubPull:conversationReady", () => {}, { number });
           }
         }
+        followTimeline();
       },
       reload: () => window.location.reload(),
       navigate: (href) => window.location.assign(href),
       renderMarkdown,
+      timelineStateChanged: followTimeline,
     },
     {
       number,
@@ -3098,6 +3430,7 @@ export function mountPullPage(container, ctx, mb) {
     "visibilitychange",
     () => {
       controller.onVisibilityChange();
+      followTimeline();
       // A page opened behind another tab is not prefetched until it is looked at: the
       // wish is not recorded while hidden, so it is asked again when shown.
       if (document.visibilityState === "visible" && shown?.tab !== "files") {
@@ -3119,7 +3452,12 @@ export function mountPullPage(container, ctx, mb) {
   /** @type {ReturnType<typeof keepPlace> | null} */
   let place = null;
   function activate() {
-    if (listening.signal.aborted || place !== null || pane === null) {
+    if (listening.signal.aborted || active) {
+      return;
+    }
+    active = true;
+    followTimeline();
+    if (pane === null) {
       return;
     }
     place = keepPlace(pane, body, () => shown?.tab ?? "", number);
@@ -3132,6 +3470,7 @@ export function mountPullPage(container, ctx, mb) {
     filesRefresh = null;
     wantedFile = null;
     listening.abort();
+    cancelTimeline();
     body.querySelector(".github-pull-diff-loading")?.remove();
     observer?.disconnect();
     place?.dispose();

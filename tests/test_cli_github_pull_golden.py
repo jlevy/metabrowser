@@ -361,3 +361,100 @@ def test_golden_pull_requests_fetch_refresh_and_read_offline(
     # One full print of each distinct record: pull request 7's, 10's, and 8's.
     assert session.in_full == [7, 10, 8]
     check_golden("cli-github-pull-refresh.txt", rendered)
+
+
+def test_golden_pull_timeline_fetch_and_offline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    selected = f"{PULL}/7"
+    acquired = session.run(selected, "--no-serve")
+    assert acquired.exit_code == 0, acquired.stderr
+    cached = run_metab((selected, "--api", f"{ROUTE}?number=7"))
+    assert cached.exit_code == 0, cached.stderr
+    envelope = cached.payload()
+    record = envelope["record"]
+    head = record["pull"]["head"]["sha"]
+    base_ref = record["pull"]["base"]["ref"]
+    comment = str(record["issue_comments"][0]["id"])
+    review = str(record["reviews"][0]["id"])
+    first = pull_origin["fork_earlier"]
+    page = {
+        "viewer": {"login": record["reader"].removeprefix("gh:")},
+        "repository": {
+            "nameWithOwner": "octo/demo",
+            "pullRequest": {
+                "number": 7,
+                "baseRefName": base_ref,
+                "headRefOid": head,
+                "timelineItems": {
+                    "nodes": [
+                        {
+                            "__typename": "PullRequestCommit",
+                            "commit": {
+                                "oid": first,
+                                "messageHeadline": "Prepare the fixture",
+                                "committedDate": "2026-08-29T00:00:00Z",
+                            },
+                        },
+                        {"__typename": "IssueComment", "fullDatabaseId": comment},
+                        {
+                            "__typename": "PullRequestCommit",
+                            "commit": {
+                                "oid": head,
+                                "messageHeadline": "Address the review",
+                                "committedDate": "2026-08-29T01:00:00Z",
+                            },
+                        },
+                        {
+                            "__typename": "PullRequestReview",
+                            "fullDatabaseId": review,
+                            "state": "APPROVED",
+                        },
+                    ],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                },
+            },
+        },
+    }
+    online = scenario(pull_origin)
+    path = "graphql:timeline:7:start"
+    session.answer(_api(online, path, ok(path, {"data": page})))
+    revision = envelope["record_revision"]
+    body = tmp_path / "timeline.json"
+    body.write_text(json.dumps({"number": 7, "record_revision": revision}), encoding="utf-8")
+    args = (selected, "--api", f"{ROUTE}-timeline", "--data", str(body))
+    live = session.run(*args)
+    assert live.exit_code == 0, live.stderr
+    assert live.payload() == {
+        "record_revision": revision,
+        "state": "complete",
+        "events": [
+            {
+                "kind": "commit",
+                "oid": first,
+                "subject": "Prepare the fixture",
+                "committed_at": "2026-08-29T00:00:00Z",
+            },
+            {"kind": "comment", "id": comment},
+            {
+                "kind": "commit",
+                "oid": head,
+                "subject": "Address the review",
+                "committed_at": "2026-08-29T01:00:00Z",
+            },
+            {"kind": "review", "id": review},
+        ],
+    }, session.blocks[-1]
+    session.answer(
+        _with(online, api_failure={"stderr": "error connecting to api.github.com\n", "exit": 1})
+    )
+    held = session.run(*args)
+    assert held.exit_code == 0, held.stderr
+    assert held.payload() == live.payload()
+    assert "gh api graphql timeline" not in session.blocks[-1]
+    unchanged = run_metab((selected, "--api", f"{ROUTE}?number=7"))
+    assert unchanged.payload() == envelope
+    rendered = label_home(Labels().apply("".join(session.blocks)), session.home)
+    assert str(tmp_path) not in rendered
+    check_golden("cli-github-pull-timeline.txt", rendered)
