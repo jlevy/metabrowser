@@ -542,6 +542,13 @@ $ node tests/dom/preview-pane-state-session.js
         "/view/"
       ]
     },
+    "quickSearchPullRoute": {
+      "opened": [
+        "/pull/307"
+      ],
+      "backTo": "/view/notes.md?plain=1#L2",
+      "superseded": "cancelled"
+    },
     "reselectAfterFailure": {
       "afterGitClaim": {
         "fetches": 2,

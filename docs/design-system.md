@@ -1336,14 +1336,14 @@ surface-specific constraints:
 
 | Copy | Form | Example |
 | --- | --- | --- |
-| Action or trigger label | Short sentence-case noun or verb phrase; no punctuation | `Quick File` |
+| Action or trigger label | Short sentence-case noun or verb phrase; no punctuation | `Quick Search` |
 | Compact hint | One to three words; sentence case; no punctuation | `Toggle folder` |
 | Help description | One complete active-voice sentence describing context or result | `Open the selected file.` |
 | Context note | One complete sentence saying when the group applies | `Available while a file-tree row has focus.` |
 
 Copy never repeats the rendered key name, uses a slash to mean “or,” or says “click” for
 an action that also works from the keyboard.
-Use the canonical product terms “Help,” “Quick File,” “navigation pane,” “file tree,”
+Use the canonical product terms “Help,” “Quick Search,” “navigation pane,” “file tree,”
 and “main pane.” Key abbreviations belong only inside `.kbd`; ordinary prose uses the
 full key name.
 
@@ -1355,6 +1355,17 @@ instead of duplicating it.
 The project link identifies GitHub and announces that it opens a new tab.
 Help has a visible labelled trigger, so learning the `?` shortcut is never a
 prerequisite for opening it.
+
+### Quick Search Results
+
+Quick Search uses one option list for files and pull requests.
+File rows show the filename and path.
+Pull request rows show the title first, with the PR number and state below it.
+The accessible option name includes that context.
+
+Use the same arrow, Enter, and Escape behavior for every result type.
+Keep the active option selected by identity as providers return, and open the result
+through its normal navigation route.
 
 ## Icons and Icon Buttons
 

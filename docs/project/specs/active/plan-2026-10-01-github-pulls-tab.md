@@ -31,6 +31,33 @@ record the original design.
 The current route and storage contracts are in
 [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
 
+## Search From the Catalog
+
+The same repository catalog supplies Quick Search on a checkout or managed mirror
+(`mb-s3fi`). `GET /api/plugin/github/pulls?q=<query>` reads a bounded completion list
+across all cached PR states and returns each matching number, title, and state.
+`complete` reports whether the catalog has finished backfilling.
+`limited` reports whether the title scan hit its work limit.
+A `#123` lookup uses the number index across the entire cache.
+Title searches use a bounded scan with newest numbers first.
+The query window is independent of the Pulls display window and its Open, Closed, or All
+filter.
+
+Search reads catalog summaries without invoking Git or `gh`. An incomplete catalog can
+grow through the same Pulls refresh job.
+Quick Search shares a running job without changing the Pulls tab’s priority and waits
+between refresh requests.
+The query route itself only reads.
+PR detail is opened through the normal Conversation address after the reader selects a
+result. See the
+[Quick Search plan](plan-2026-07-17-scalable-file-search.md#pull-request-completions)
+for result presentation and selection.
+
+The cache-only route golden covers exact number and title matches, empty and incomplete
+coverage, and an older PR outside the first display window.
+Check result selection and opening in the Quick Search browserless session, then
+exercise the same flow on both source modes with a built-in browser.
+
 ## Optional Stacks and Presentation Revision
 
 The owner’s follow-up requests are delivered as a separate layer above the catalog,

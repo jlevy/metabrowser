@@ -9,6 +9,7 @@ import shlex
 import sqlite3
 import subprocess
 import threading
+from dataclasses import replace
 from datetime import timedelta
 from functools import partial
 from pathlib import Path
@@ -19,6 +20,7 @@ import pytest
 from metabrowser.builtin_plugins.github import (
     gh,
     gh_lists,
+    pull_catalog,
     pull_list,
     pull_list_refresh,
     pull_list_route,
@@ -29,6 +31,7 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
     CATALOG_PROJECTION,
     CatalogState,
     catalog_row,
+    catalog_search,
     catalog_window,
     publish_page,
     read_catalog,
@@ -53,6 +56,7 @@ from metabrowser.builtin_plugins.github.pull_list_route import (
     pull_list_envelope,
     refresh_request,
     refresh_wanted,
+    search_query,
 )
 from metabrowser.cache.locks import run_lock_section, source_alias_lock
 from metabrowser.cache.paths import PullListName
@@ -154,6 +158,45 @@ def test_backfill_all_beyond_old_cap_with_small_indexed_windows(
     assert not refresh_wanted(ListView(repository, None, False), RefreshRequest("open", 2000))
     assert asyncio.run(refresh_pull_list(repository, "open", target=2000)).cached == state.cached
     assert calls == []
+
+
+def test_pull_search_respects_title_budget_and_indexes_exact_numbers(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    items = [generated_item(number) for number in range(1, 16)]
+    items[0].update(title="Straße: 100% _ready", draft=True)
+    _seed(repository, items, complete=False)
+    before = _fingerprint(repository.home)
+
+    assert catalog_search(repository, "STRASSE _READY 100%") == {
+        "rows": [{"number": 1, "title": "Straße: 100% _ready", "state": "draft"}],
+        "complete": False,
+        "limited": False,
+        "truncated": False,
+    }
+    assert not catalog_search(repository, "100_")["rows"]
+    common = catalog_search(repository, "item")
+    assert [row["number"] for row in common["rows"]] == list(range(15, 3, -1))
+    assert common["truncated"] and not common["limited"]
+
+    monkeypatch.setattr(pull_catalog, "_SEARCH_TITLE_ROWS", 3)
+    assert catalog_search(repository, "Straße") == {
+        "rows": [],
+        "complete": False,
+        "limited": True,
+        "truncated": False,
+    }
+    exact = catalog_search(repository, "#1")
+    assert exact["rows"][0]["number"] == 1 and not exact["limited"] and not exact["truncated"]
+    assert not catalog_search(repository, "#0")["rows"]
+    assert not catalog_search(repository, "#999999999999")["rows"]
+    assert catalog_search(replace(repository, repo="other"), "#1") == {
+        "rows": [],
+        "complete": False,
+        "limited": False,
+        "truncated": False,
+    }
+    assert _fingerprint(repository.home) == before
 
 
 def test_actual_gh_transport_keeps_only_lightweight_metadata(
@@ -378,6 +421,12 @@ def test_untrusted_catalog_reads_are_bounded_and_never_modify(
         path.chmod(0o644)
     before = _fingerprint(repository.home)
     assert catalog_window(repository.home, repository.slug, "all", limit=100) == (None, [], None)
+    assert catalog_search(repository, "#1") == {
+        "rows": [],
+        "complete": False,
+        "limited": False,
+        "truncated": False,
+    }
     assert _fingerprint(repository.home) == before
 
 
@@ -477,6 +526,10 @@ def test_late_demand_joins_and_cancel_cleans_coordinator_state(
             pull_list_route.start_refresh(view, RefreshRequest("closed", 1500, True), wanted=True)
             == "joined"
         )
+        assert (
+            pull_list_route.start_refresh(view, refresh_request({"background": True}), wanted=True)
+            == "joined"
+        )
         release.set()
         await coordinator.drain(timeout_s=2)
         assert observed == [("closed", 1500), True, False]
@@ -496,11 +549,25 @@ def test_invalid_window_is_refused(params: dict[str, str]) -> None:
 
 
 @pytest.mark.parametrize(
-    "body", [{"more": True}, {"target": True}, {"target": 0}, {"retry": 1}, {"state": "merged"}]
+    "body",
+    [
+        {"more": True},
+        {"target": True},
+        {"target": 0},
+        {"retry": 1},
+        {"background": 1},
+        {"state": "merged"},
+    ],
 )
 def test_invalid_refresh_is_refused(body: dict[str, Any]) -> None:
     with pytest.raises(ListRequestError):
         refresh_request(body)
+
+
+@pytest.mark.parametrize("query", ["", "  ", "a" * 257])
+def test_invalid_search_query_is_refused(query: str) -> None:
+    with pytest.raises(ListRequestError):
+        search_query(query)
 
 
 def test_default_open_and_unbounded_display_target() -> None:

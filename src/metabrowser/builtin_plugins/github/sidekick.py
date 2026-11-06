@@ -452,20 +452,31 @@ async def pull_cores_prepare_handler(request: Request) -> JSONResponse:
 
 
 async def pulls_handler(request: Request) -> Response:
-    """``GET /api/plugin/github/pulls?state=&limit=&after=`` — see :mod:`.pull_list_route`.
+    """Catalog window or lightweight search projection — see :mod:`.pull_list_route`.
 
-    From the cache alone. Like the pull route, the answer carries an entity tag, and a
-    request whose ``If-None-Match`` names it is answered ``304`` without the rows, so a
-    page can poll it cheaply.
+    Both read from the cache alone. A window carries an entity tag so the tab can
+    poll cheaply. Search returns only its lightweight results and catalog status.
     """
 
+    from metabrowser.builtin_plugins.github.pull_catalog import catalog_search
     from metabrowser.builtin_plugins.github.pull_list_route import (
         ListRequestError,
         envelope_etag,
         list_view,
         list_window,
         pull_list_envelope,
+        search_query,
     )
+
+    if (raw_query := request.query_params.get("q")) is not None:
+        try:
+            query = search_query(raw_query)
+        except ListRequestError as exc:
+            return _invalid_request(str(exc))
+        await _resolve(request)
+        view = list_view(request.app, "all")
+        matches = await asyncio.to_thread(catalog_search, view.repository, query)
+        return JSONResponse({**matches, "refreshing": view.refreshing}, headers=_NO_STORE)
 
     try:
         window = list_window(request.query_params)
@@ -485,7 +496,8 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     """Start/join automatic catalog backfill; state/target prioritize a display window.
 
     The default state is open and target is 500. The background worker continues to
-    all metadata after that prefix. Retry cannot bypass a provider rate-limit hold.
+    all metadata after that prefix. A background ask joins without reprioritizing.
+    Retry cannot bypass a provider rate-limit hold.
     """
 
     from metabrowser.builtin_plugins.github.pull_list_route import (

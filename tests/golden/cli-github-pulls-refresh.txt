@@ -519,6 +519,121 @@ status: 200
 }
 --- stderr ---
 --- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?q=%239'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?q=%239
+status: 200
+{
+  "rows": [
+    {
+      "number": 9,
+      "title": "spam",
+      "state": "closed"
+    }
+  ],
+  "complete": true,
+  "limited": false,
+  "truncated": false,
+  "refreshing": false
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?q=GUIDE+say'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?q=GUIDE+say
+status: 200
+{
+  "rows": [
+    {
+      "number": 8,
+      "title": "Say more in the guide",
+      "state": "merged"
+    }
+  ],
+  "complete": true,
+  "limited": false,
+  "truncated": false,
+  "refreshing": false
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?q=work+item+5'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?q=work+item+5
+status: 200
+{
+  "rows": [
+    {
+      "number": 605,
+      "title": "Work item 605",
+      "state": "open"
+    },
+    {
+      "number": 599,
+      "title": "Work item 599",
+      "state": "open"
+    },
+    {
+      "number": 598,
+      "title": "Work item 598",
+      "state": "open"
+    },
+    {
+      "number": 597,
+      "title": "Work item 597",
+      "state": "open"
+    },
+    {
+      "number": 596,
+      "title": "Work item 596",
+      "state": "open"
+    },
+    {
+      "number": 595,
+      "title": "Work item 595",
+      "state": "open"
+    },
+    {
+      "number": 594,
+      "title": "Work item 594",
+      "state": "open"
+    },
+    {
+      "number": 593,
+      "title": "Work item 593",
+      "state": "open"
+    },
+    {
+      "number": 592,
+      "title": "Work item 592",
+      "state": "open"
+    },
+    {
+      "number": 591,
+      "title": "Work item 591",
+      "state": "open"
+    },
+    {
+      "number": 590,
+      "title": "Work item 590",
+      "state": "open"
+    },
+    {
+      "number": 589,
+      "title": "Work item 589",
+      "state": "open"
+    }
+  ],
+  "complete": true,
+  "limited": false,
+  "truncated": true,
+  "refreshing": false
+}
+--- stderr ---
+--- gh ---
 ## The clock moves on 61 s, to 2026-09-17T12:01:01Z.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0

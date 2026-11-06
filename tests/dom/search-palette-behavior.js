@@ -72,6 +72,7 @@ class FakeElement {
     this.focusCalls = 0;
     this.selectCalls = 0;
     this.scrollCalls = 0;
+    this.scrollTop = 0;
   }
 
   get isConnected() {
@@ -312,21 +313,28 @@ function searchResult(pathname, score, matchRanges = []) {
 }
 
 const document = new FakeDocument();
-const sandbox = { clearTimeout, document, setTimeout };
+const sandbox = {
+  AbortController,
+  AbortSignal,
+  clearTimeout,
+  document,
+  setTimeout,
+  URLSearchParams,
+};
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 for (const filename of [
   "navigation.js",
+  "file-fuzzy-match.js",
+  "known-file-catalog.js",
+  "search-controller.js",
   "keyboard-shortcuts.js",
   "overlay-layer.js",
   "search-palette.js",
 ]) {
-  vm.runInContext(
-    fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", filename), "utf-8"),
-    sandbox,
-    { filename },
-  );
+  const sourcePath = path.join(repoRoot, "src/metabrowser/static", filename);
+  vm.runInContext(fs.readFileSync(sourcePath, "utf-8"), sandbox, { filename: sourcePath });
 }
 
 const failures = [];
@@ -1046,7 +1054,365 @@ async function main() {
   process.stdout.write("OK accessible search palette\n");
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error?.stack || error}\n`);
-  process.exit(1);
-});
+async function pullSearchSession() {
+  const catalog = sandbox.MetabrowserKnownFileCatalog.create();
+  catalog.observeRecent([
+    { path: "render.js", type: "file" },
+    { path: "src/renderer.js", type: "file" },
+    { path: "notes/123.md", type: "file" },
+  ]);
+  const runtime = sandbox.MetabrowserSearch;
+  const controller = runtime.createController();
+  controller.registerProvider(
+    runtime.createLocalFileProvider({ catalog, matcher: sandbox.MetabrowserFileFuzzyMatch }),
+  );
+  const requests = [];
+  const readyPull = { number: 123, title: "Fix <em>renderer</em>", state: "merged" };
+  const newerPull = { number: 124, title: "Render the latest state", state: "closed" };
+  const reply = (rows, flags = {}) => ({
+    ok: true,
+    json: async () => ({
+      complete: true,
+      limited: false,
+      refreshing: false,
+      rows,
+      truncated: false,
+      ...flags,
+    }),
+  });
+  const delayed = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  const growth = Promise.withResolvers();
+  const growthStarted = Promise.withResolvers();
+  const exactRecheck = Promise.withResolvers();
+  const exactRecheckStarted = Promise.withResolvers();
+  const obsolete = Promise.withResolvers();
+  const obsoleteStarted = Promise.withResolvers();
+  let renderReads = 0;
+  let obsoleteReads = 0;
+  let now = 1_000;
+  sandbox.Date = class extends Date {
+    static now() {
+      return now;
+    }
+  };
+  let coldReads = 0;
+  let warmRequests = 0;
+  let lookupSignal;
+  controller.registerProvider(
+    runtime.createPullProvider({
+      fetch: (url, init) => {
+        requests.push({ url, method: init.method ?? "GET" });
+        if (init.method === "POST") {
+          equal("warming preserves active Pulls priority", JSON.parse(init.body), {
+            background: true,
+          });
+          check(
+            "warming has its own timeout, separate from the query",
+            init.signal !== lookupSignal && !init.signal.aborted,
+          );
+          return Promise.resolve({ status: ++warmRequests === 1 ? 202 : 200 });
+        }
+        lookupSignal = init.signal;
+        if (url.endsWith("?q=render")) {
+          renderReads += 1;
+          if (renderReads === 1) {
+            started.resolve();
+            return delayed.promise;
+          }
+          if (renderReads === 2) {
+            growthStarted.resolve(init.signal);
+            return growth.promise;
+          }
+          return Promise.resolve(reply([newerPull, readyPull], { truncated: true }));
+        }
+        if (url.endsWith("?q=obsolete")) {
+          obsoleteReads += 1;
+          if (obsoleteReads === 1) {
+            return Promise.resolve(
+              reply([{ number: 998, title: "Obsolete cached match", state: "open" }], {
+                complete: false,
+                refreshing: true,
+              }),
+            );
+          }
+          obsoleteStarted.resolve(init.signal);
+          return obsolete.promise;
+        }
+        if (url.endsWith("?q=%23123")) {
+          return Promise.resolve(reply([readyPull], { complete: false, refreshing: true }));
+        }
+        if (url.endsWith("?q=older")) {
+          return Promise.resolve(reply([], { limited: true }));
+        }
+        if (url.endsWith("?q=%2377")) {
+          coldReads += 1;
+          if (coldReads === 2) {
+            exactRecheckStarted.resolve(init.signal);
+            return exactRecheck.promise;
+          }
+          return Promise.resolve(
+            coldReads < 4
+              ? reply([], { complete: false, refreshing: coldReads > 1 })
+              : reply([{ number: 77, title: "Cold catalog match", state: "open" }]),
+          );
+        }
+        return Promise.resolve(reply([], { complete: false }));
+      },
+    }),
+  );
+  const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document });
+  const opened = [];
+  const landing = document.createElement("button");
+  document.body.append(landing);
+  const palette = sandbox.MetabrowserSearchPalette.create({
+    controller,
+    document,
+    describeOpenFailure: sandbox.MetabrowserNavigationRoute.openFailureOutcome,
+    getCatalogSnapshot: () => catalog.snapshot(),
+    subscribeCatalog: (listener) => catalog.subscribe(listener),
+    openFile: (path) => {
+      opened.push(path);
+      return { status: "opened" };
+    },
+    openPull: (number) => {
+      if (number === 77) {
+        throw new Error("fixture: cannot load the PR page");
+      }
+      opened.push(number);
+      return { focusTarget: landing, status: "opened" };
+    },
+    overlay: sandbox.MetabrowserOverlay,
+    shortcuts,
+  });
+  const dialog = palette.element.querySelector('[role="dialog"]');
+  const input = dialog.querySelector('[role="combobox"]');
+  const listbox = dialog.querySelector('[role="listbox"]');
+  const choices = () => Array.from(listbox.children, (row) => row.getAttribute("aria-label"));
+  const currentChoice = () =>
+    listbox.children
+      .find((row) => row.getAttribute("aria-selected") === "true")
+      ?.getAttribute("aria-label");
+
+  function type(query) {
+    input.value = query;
+    input.dispatchEvent(fakeEvent("input", { target: input }));
+  }
+  function key(key) {
+    return input.dispatchEvent(fakeEvent("keydown", { key, target: input }));
+  }
+  function searchCompletes() {
+    return new Promise((resolve) => {
+      const remove = controller.subscribe((state) => {
+        if (state.phase === "complete") {
+          remove();
+          resolve();
+        }
+      });
+    });
+  }
+
+  palette.open();
+  const heading = dialog.querySelector(".modal-title").textContent;
+  const placeholder = input.getAttribute("placeholder");
+  const titleComplete = searchCompletes();
+  type("render");
+  await started.promise;
+  const firstPaint = choices();
+  const progress = dialog.querySelector('[role="status"]');
+  check(
+    "the shared spinner marks a pending PR lookup",
+    progress.querySelector(".spinner") !== null,
+  );
+  equal("file results paint before the PR lookup settles", firstPaint, [
+    "render.js",
+    "src/renderer.js",
+  ]);
+  key("ArrowDown");
+  const beforeMerge = currentChoice();
+  let selectedAfterInsertion = null;
+  const unsubscribe = controller.subscribe((state) => {
+    if (state.phase === "searching" && state.results.some((result) => result.kind === "pull")) {
+      selectedAfterInsertion = listbox.children[2];
+    }
+  });
+  delayed.resolve(reply([readyPull], { complete: false, refreshing: true }));
+  const growthSignal = await growthStarted.promise;
+  check(
+    "cached PR matches paint before the refresh settles",
+    controller.state().phase === "searching",
+  );
+  unsubscribe();
+  const mixed = choices();
+  const afterMerge = currentChoice();
+  equal("a late PR preserves the selected file", afterMerge, beforeMerge);
+  equal("one file and one PR of the same rank both stay near the top", mixed, [
+    "render.js",
+    "Pull request #123, Fix <em>renderer</em>, Merged",
+    "src/renderer.js",
+  ]);
+  const pullOption = listbox.querySelector(".search-palette-option-pull");
+  check(
+    "the title renders as text, even with tag-like content",
+    pullOption.querySelector("em") === null,
+  );
+  const titleHighlight = pullOption.querySelector("mark").textContent;
+  const details = pullOption.querySelector(".search-palette-description").textContent;
+  check("a late insertion keeps the selected row in view", selectedAfterInsertion?.scrollCalls > 0);
+
+  key("ArrowUp");
+  equal("the first cached PR can be selected during backfill", currentChoice(), mixed[1]);
+  catalog.observeRecent([{ path: "z/render-guide.md", type: "file" }]);
+  catalog.observeRecent([{ path: "z/render-notes.md", type: "file" }]);
+  await waitMs(220);
+  const mixedKeptReading = !growthSignal.aborted && renderReads === 2;
+  check("file growth leaves an active title recheck running", mixedKeptReading);
+  growth.resolve(reply([newerPull, readyPull], { truncated: true }));
+  await titleComplete;
+  check(
+    "the spinner clears when the PR lookup settles",
+    progress.querySelector(".spinner") === null,
+  );
+  const grown = choices();
+  const selectedAfterGrowth = currentChoice();
+  const truncatedStatus = progress.textContent;
+  equal("newly cached PRs update the standing title query", grown, [
+    "render.js",
+    "Pull request #124, Render the latest state, Closed",
+    "src/renderer.js",
+    mixed[1],
+  ]);
+  equal("refresh preserves the chosen PR as its rank changes", selectedAfterGrowth, mixed[1]);
+  check(
+    "the API result cap reaches the palette independently of its scan scope",
+    truncatedStatus.includes("Showing the top matches.") && !truncatedStatus.includes("older"),
+  );
+
+  const catalogRefreshComplete = searchCompletes();
+  await Promise.race([catalogRefreshComplete, waitMs(600)]);
+  const afterFileGrowth = choices();
+  const selectedAfterFileGrowth = currentChoice();
+  equal("the two file events coalesce into one search", renderReads, 3);
+  check(
+    "the deferred refresh finds newly indexed files",
+    afterFileGrowth.includes("z/render-guide.md") && afterFileGrowth.includes("z/render-notes.md"),
+  );
+  equal("file growth preserves the selected PR", selectedAfterFileGrowth, mixed[1]);
+
+  const limitedComplete = searchCompletes();
+  type("older");
+  await limitedComplete;
+  const limitedStatus = progress.textContent;
+  check(
+    "limited title coverage is distinct from the result cap",
+    limitedStatus.includes("Search by number for older pull requests.") &&
+      !limitedStatus.includes("Showing the top matches."),
+  );
+
+  type("obsolete");
+  const obsoleteSignal = await obsoleteStarted.promise;
+  check(
+    "an active refresh paints its cached matches before the next response",
+    choices()[0]?.includes("Obsolete cached match"),
+  );
+  const numberComplete = searchCompletes();
+  type("#123");
+  key("Enter");
+  equal("an obsolete file cannot open while the query changes", opened, []);
+  await numberComplete;
+  const exact = choices();
+  equal("a hash number limits the search to PRs", exact, [mixed[1]]);
+  const staleRequestAborted = obsoleteSignal.aborted;
+  check("typing a new query aborts the pending catalog read", staleRequestAborted);
+  obsolete.resolve(reply([{ number: 999, title: "Obsolete result", state: "open" }]));
+  await settle();
+  equal("a superseded result cannot repaint the palette", choices(), exact);
+  key("Enter");
+  await settle();
+  check(
+    "opening by keyboard closes and focuses the PR landing",
+    !palette.isOpen() && document.activeElement === landing,
+  );
+
+  palette.open();
+  const bareComplete = searchCompletes();
+  type("123");
+  await bareComplete;
+  const bare = choices();
+  equal("bare digits keep file matches and include the exact PR", bare, ["notes/123.md", mixed[1]]);
+  const barePull = listbox.querySelector(".search-palette-option-pull");
+  barePull.dispatchEvent(fakeEvent("click", { target: barePull }));
+  await settle();
+
+  palette.open();
+  const warmComplete = searchCompletes();
+  type("#77");
+  const exactSignal = await exactRecheckStarted.promise;
+  catalog.observeRecent([{ path: "new/exact-77.txt", type: "file" }]);
+  await waitMs(220);
+  const exactKeptReading = !exactSignal.aborted && coldReads === 2;
+  check("explicit PR numbers ignore file-catalog updates during a recheck", exactKeptReading);
+  exactRecheck.resolve(reply([], { complete: false, refreshing: true }));
+  await warmComplete;
+  const cold = choices();
+  equal("an empty cold catalog can populate within one query", cold, [
+    "Pull request #77, Cold catalog match, Open",
+  ]);
+  key("Enter");
+  await settle();
+  const pullOpenFailure = dialog.querySelector('[role="status"]').textContent;
+  check(
+    "open failure describes a pull request",
+    pullOpenFailure.includes("Could not open this pull request."),
+  );
+
+  const noMatchComplete = searchCompletes();
+  type("#999");
+  await noMatchComplete;
+  equal("nearby misses share the refresh cooldown", warmRequests, 1);
+  now += 60_001;
+  const afterCooldown = searchCompletes();
+  type("#998");
+  await afterCooldown;
+  equal("a later miss can ask for a new refresh", warmRequests, 2);
+  delete sandbox.Date;
+  const result = {
+    heading,
+    placeholder,
+    firstPaint,
+    mixed,
+    afterMerge,
+    titleHighlight,
+    details,
+    grown,
+    selectedAfterGrowth,
+    truncatedStatus,
+    mixedKeptReading,
+    afterFileGrowth,
+    selectedAfterFileGrowth,
+    limitedStatus,
+    exact,
+    staleRequestAborted,
+    bare,
+    opened,
+    cold,
+    exactKeptReading,
+    pullOpenFailure,
+    requests: requests.map(({ method, url }) => `${method} ${url}`),
+  };
+  palette.dispose();
+  controller.dispose();
+  shortcuts.dispose();
+  if (failures.length > 0) {
+    throw new Error(failures.join("\n"));
+  }
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error?.stack || error}\n`);
+    process.exit(1);
+  });
+}
+module.exports = { pullSearchSession };

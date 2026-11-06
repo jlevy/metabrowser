@@ -7785,6 +7785,21 @@ async function loadPullPageHost() {
   return pullPageHost;
 }
 
+/** @param {number} number @returns {Promise<QuickFileOpenOutcome>} */
+async function openQuickSearchPull(number) {
+  const intent = ++mainTabIntent;
+  const claim = previewPane.snapshot().claim;
+  const host = await loadPullPageHost();
+  if (intent !== mainTabIntent || !isPreviewClaimCurrent(claim)) {
+    return { status: "cancelled" };
+  }
+  mainTabs?.remember();
+  const outcome = await host.open({ number, tab: "" });
+  return outcome.status === "opened"
+    ? { ...outcome, focusTarget: document.getElementById("preview-pane") }
+    : outcome;
+}
+
 /**
  * The pane when the pull-request page's code could not be loaded.
  *
@@ -7840,6 +7855,7 @@ function pullPageHostDeps(routes) {
       mainTabIntent += 1;
       window.history.pushState(null, "", href);
       mainTabs?.remember();
+      mainTabs?.activate("pulls");
       window.MetabrowserPullsNav?.routeChanged();
     },
     // A key's skim replaces, as openTreeRow does.
@@ -8188,7 +8204,7 @@ function initQuickFileFinder() {
     !shortcutRegistry ||
     !window.MetabrowserOverlay
   ) {
-    console.warn("Quick File dependencies are unavailable");
+    console.warn("Quick Search dependencies are unavailable");
     return;
   }
 
@@ -8220,6 +8236,10 @@ function initQuickFileFinder() {
     maxResults: QUICK_FILE_RESULT_LIMIT,
   });
   quickFileSearchController.registerProvider(localProvider);
+  const hasPulls = window.metabrowser.repository !== null;
+  if (hasPulls) {
+    quickFileSearchController.registerProvider(window.MetabrowserSearch.createPullProvider());
+  }
   quickFilePalette = window.MetabrowserSearchPalette.create({
     controller: quickFileSearchController,
     // The same distinction the preview pane makes: an unreachable server is a
@@ -8237,6 +8257,7 @@ function initQuickFileFinder() {
     onNotFound: (path) => {
       quickFileCatalogFeed?.onEventChange([{ op: "remove", path }]);
     },
+    openPull: hasPulls ? openQuickSearchPull : undefined,
     openFile: (path) => {
       // Search hits can outlive deep inventory changes that are outside the
       // shallow event stream. Force the existing ETag path to confirm the file

@@ -1896,7 +1896,7 @@ type MetabrowserFileFuzzyMatchRuntime = Readonly<{
 type MetabrowserSearchRequest = Readonly<{
   match: "fuzzy";
   query: string;
-  target: "file";
+  target: "all" | "file";
 }>;
 
 type MetabrowserSearchFileResult = Readonly<{
@@ -1912,17 +1912,35 @@ type MetabrowserSearchFileResult = Readonly<{
   score: number;
 }>;
 
+type MetabrowserSearchPullState = "open" | "draft" | "closed" | "merged";
+
+type MetabrowserSearchPullResult = Readonly<{
+  id: string;
+  kind: "pull";
+  label: string;
+  matchRanges: ReadonlyArray<Readonly<{ start: number; end: number }>>;
+  number: number;
+  providerId: string;
+  score: number;
+  state: MetabrowserSearchPullState;
+}>;
+
+type MetabrowserSearchResult = MetabrowserSearchFileResult | MetabrowserSearchPullResult;
+
 type MetabrowserSearchBatch = Readonly<{
   candidateCount?: number;
   complete: boolean;
   providerId: string;
-  results: ReadonlyArray<MetabrowserSearchFileResult>;
+  results: ReadonlyArray<MetabrowserSearchResult>;
   revision?: number;
   statusMessage?: string;
   truncated: boolean;
 }>;
 
-type MetabrowserSearchContext = Readonly<{ requestId: number }>;
+type MetabrowserSearchContext = Readonly<{
+  requestId: number;
+  publishBatch?(batch: MetabrowserSearchBatch): void;
+}>;
 
 type MetabrowserSearchProvider = Readonly<{
   activation?: "fallback" | "immediate";
@@ -1953,7 +1971,7 @@ type MetabrowserSearchState = Readonly<{
   phase: "idle" | "searching" | "complete";
   request: MetabrowserSearchRequest | null;
   requestId: number;
-  results: ReadonlyArray<MetabrowserSearchFileResult>;
+  results: ReadonlyArray<MetabrowserSearchResult>;
   statusMessage: string;
   truncated: boolean;
 }>;
@@ -1980,6 +1998,11 @@ type MetabrowserSearchRuntime = Readonly<{
     syncThreshold?: number;
     yieldControl?: (signal: AbortSignal) => Promise<void>;
   }): MetabrowserSearchProvider;
+  createPullProvider(options?: {
+    fetch?: typeof fetch;
+    maxResults?: number;
+  }): MetabrowserSearchProvider;
+  isPullNumberQuery(query: string): boolean;
 }>;
 
 /** A failed open always says why, so the palette never has to classify it again. */
@@ -2020,6 +2043,7 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
     onNotFound?(path: string): void | Promise<void>;
     onOpen?(): void;
     openFile(path: string): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
+    openPull?(number: number): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
     overlay: MetabrowserOverlayRuntime;
     resolveFocusFallback?(previous: HTMLElement | null): HTMLElement | null;
     shortcuts: MetabrowserShortcutRegistry;

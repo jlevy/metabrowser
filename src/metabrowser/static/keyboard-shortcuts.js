@@ -106,8 +106,8 @@
       order: 25,
     }),
     "quick-file": Object.freeze({
-      context: "Available while Quick File is open.",
-      label: "Quick File",
+      context: "Available while Quick Search is open.",
+      label: "Quick Search",
       order: 30,
     }),
     help: Object.freeze({
