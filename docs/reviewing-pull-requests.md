@@ -41,8 +41,9 @@ state. The status gives the repository’s total and name, with the number in bo
 Metabrowser caches a lightweight catalog of titles, authors, states, branches, and dates
 in the background, publishing each page as it arrives and resuming unfinished work.
 It initially displays up to 500 matching pull requests.
-When more exist, **Showing last 500** appears below the total; **Fetch more** expands
-the displayed window.
+When more exist, **Showing last 500** appears below the total.
+Scrolling toward the end loads the next window for the current filter.
+**Fetch more** advances the list explicitly.
 After the list has painted, Metabrowser can prepare descriptions for up to eight visible
 pull requests that lack a cached full record.
 An eligible window can issue one GitHub batch; a selected refresh takes priority.

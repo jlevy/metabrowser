@@ -20,8 +20,8 @@ which predate the thin mirror (beads `mb-lnkl`, `mb-iw1v`, `mb-cbak`; this plan 
 Owner testing on 2026-11-03 supersedes the original list-paging design below (bead
 `mb-m13a`). The current design uses one lightweight catalog, automatically backfilled
 and incrementally refreshed, with exact totals and resumable page cursors.
-The displayed list starts at 500 matching PRs and grows through **Fetch more**; that
-display window does not cap the catalog.
+The displayed list starts at 500 matching PRs and grows as the reader nears its tail;
+that display window does not cap the catalog.
 Filters are **Open**, **Closed**, and **All**, with Open selected initially.
 Heavy PR records and Git comparisons remain separate from catalog metadata.
 The PR tab bar aligns with the reading column.
@@ -80,6 +80,20 @@ numbers, normal-size bold gray usernames, and smaller branch refs.
 The
 [focused QA session](../../../qa-v012-repository-library.md#57b-optional-stacks-and-pr-presentation)
 records the final artifact and cache conditions without a new testing framework.
+
+## Extend Pulls on Scroll
+
+Bead `mb-axa7` uses Git history’s near-end paging for Pulls.
+A filter starts with up to 500 matching summaries.
+When the reader approaches the end of the visible prefix, the list admits one more
+bounded window from the local catalog.
+If the catalog still needs rows, the shared refresh job fills the missing metadata.
+**Fetch more** remains available for an explicit larger request and recovery.
+
+Keep the active row, its scroll position, and the selected filter while rows append.
+Preserve the server’s page cursor across partial windows and stop at the filter’s real
+end. The list’s initial render and the catalog’s background crawl stay independent of
+scrolling.
 
 ## Pull Request Checks
 

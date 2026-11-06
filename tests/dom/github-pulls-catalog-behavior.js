@@ -15,6 +15,7 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
     cached,
     automatic,
     refreshing: true,
+    complete: false,
     generation: "one",
     first: 8000,
     total: 8000,
@@ -46,7 +47,7 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
       repository_total: state.repositoryTotal,
       catalog_fetched: state.cached + 100,
       generation: state.generation,
-      complete: false,
+      complete: state.complete,
       truncated: false,
       limit,
       next_after: start + limit < state.cached ? state.first - start - limit + 1 : null,
@@ -196,6 +197,162 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   assert.equal(page.model().countNumber, null, "unknown totals must not become zero");
   page.dispose();
 
+  // Near the tail, add one cache page while holding selection and the existing prefix.
+  const tail = rig(panel, { cached: 645 });
+  tail.state.complete = true;
+  tail.state.refreshing = false;
+  tail.state.total = 645;
+  await tail.controller.start({ shown: true });
+  tail.controller.setCurrent(7750, { preserveScroll: true });
+  tail.controller.setShown(false);
+  tail.requests.length = 0;
+  await tail.controller.reachedEnd();
+  assert.equal(tail.requests.length, 0, "a hidden tail never reads ahead");
+  tail.controller.setShown(true);
+  await settle();
+  tail.requests.length = 0;
+  await Promise.all([tail.controller.reachedEnd(), tail.controller.reachedEnd()]);
+  const scrollRows = tail.controller.snapshot().rows;
+  assert.equal(scrollRows, 600);
+  assert.equal(tail.controller.snapshot().current, 7750);
+  assert.equal(tail.controller.snapshot().anchor, 7750);
+  assert.equal(tail.requests.length, 1, "repeated approaches share the in-flight page");
+  assert.match(tail.requests[0].route, /limit=100&after=7501$/u);
+  await tail.controller.reachedEnd();
+  const terminalRows = tail.controller.snapshot().rows;
+  assert.equal(terminalRows, 645);
+  assert.match(tail.requests[1].route, /limit=45&after=7401$/u);
+  assert.equal(tail.model().loadMore, null);
+  assert.equal(tail.model().window, null);
+  await tail.controller.reachedEnd();
+  await tail.controller.loadMore();
+  assert.equal(tail.requests.length, 2, "the real filter tail is idle");
+  assert(tail.requests.every((request) => request.method === "GET"));
+  tail.dispose();
+
+  // A partially cached page can finish later. Its remaining budget must determine
+  // the request limit, so the next cursor cannot skip rows we did not hold.
+  const growingTail = rig(panel, { cached: 500 });
+  await growingTail.controller.start({ shown: true });
+  growingTail.requests.length = 0;
+  await growingTail.controller.reachedEnd();
+  await growingTail.controller.reachedEnd();
+  assert.deepEqual(
+    growingTail.requests.map((request) => request.body),
+    [{ state: "open", target: 600 }],
+  );
+  growingTail.state.cached = 550;
+  growingTail.controller.onVisibilityChange();
+  await settle();
+  assert.equal(growingTail.controller.snapshot().rows, 550);
+  growingTail.state.cached = 700;
+  growingTail.controller.onVisibilityChange();
+  await settle();
+  assert.equal(growingTail.controller.snapshot().rows, 600);
+  assert.match(growingTail.requests.at(-1).route, /limit=50&after=7451$/u);
+  await growingTail.controller.reachedEnd();
+  assert.equal(growingTail.controller.snapshot().rows, 700);
+  assert.deepEqual(
+    growingTail
+      .model()
+      .rows.slice(500)
+      .map((row) => row.number),
+    Array.from({ length: 200 }, (_, index) => 7500 - index),
+  );
+  growingTail.dispose();
+
+  // The top poll can learn about older cache rows before the reader widens the budget.
+  const cachedAhead = rig(panel, { cached: 500 });
+  await cachedAhead.controller.start({ shown: true });
+  assert.equal(cachedAhead.controller.snapshot().nextAfter, null);
+  cachedAhead.state.cached = 700;
+  cachedAhead.controller.onVisibilityChange();
+  await settle();
+  assert.equal(cachedAhead.controller.snapshot().nextAfter, null);
+  cachedAhead.requests.length = 0;
+  await cachedAhead.controller.reachedEnd();
+  assert.equal(cachedAhead.controller.snapshot().rows, 600);
+  assert.deepEqual(
+    cachedAhead.requests.map(({ method, route }) => [method, route]),
+    [["GET", "/api/plugin/github/pulls?state=open&limit=100&after=7501"]],
+  );
+  cachedAhead.dispose();
+
+  // A refresh can report a new generation before its prefix is held. Read the new
+  // top first, since the old tail would be a cursor into different content.
+  const replacedTail = rig(panel, { cached: 500 });
+  await replacedTail.controller.start({ shown: true });
+  replacedTail.state.cached = 700;
+  replacedTail.state.generation = "two";
+  replacedTail.state.first += 1;
+  await replacedTail.controller.retry();
+  replacedTail.requests.length = 0;
+  await replacedTail.controller.reachedEnd();
+  assert.equal(replacedTail.controller.snapshot().rows, 600);
+  assert.equal(replacedTail.model().rows[0].number, 8001);
+  assert.equal(replacedTail.requests[0].route, "/api/plugin/github/pulls?state=open&limit=100");
+  assert.match(replacedTail.requests.at(-1).route, /after=7502$/u);
+  replacedTail.dispose();
+
+  // A refused tail read keeps automatic scrolling idle and restores the button.
+  const refusedTail = rig(panel);
+  await refusedTail.controller.start({ shown: true });
+  refusedTail.state.automatic = false;
+  const refused = refusedTail.controller.reachedEnd();
+  await settle();
+  assert.equal(refusedTail.model().loadMore, "loading");
+  await refusedTail.respond(0, { status: 503, etag: null, body: null });
+  await refused;
+  assert.equal(refusedTail.controller.snapshot().rows, 500);
+  assert.equal(refusedTail.model().loadMore, "ready");
+  assert.match(refusedTail.model().notice.text, /HTTP 503/u);
+  refusedTail.requests.length = 0;
+  await refusedTail.controller.reachedEnd();
+  assert.equal(refusedTail.requests.length, 0);
+  refusedTail.state.automatic = true;
+  await refusedTail.controller.loadMore();
+  assert.equal(refusedTail.controller.snapshot().rows, 1100);
+  assert.equal(refusedTail.model().notice, null);
+  assert(refusedTail.requests.every((request) => request.method === "GET"));
+  refusedTail.dispose();
+
+  const filterTail = rig(panel);
+  await filterTail.controller.start({ shown: true });
+  filterTail.state.automatic = false;
+  const oldTail = filterTail.controller.reachedEnd();
+  await settle();
+  assert.equal(filterTail.waiting.length, 1);
+  filterTail.controller.setFilter("closed");
+  assert.equal(filterTail.waiting[0].signal.aborted, true);
+  await filterTail.respond();
+  await oldTail;
+  assert.equal(filterTail.controller.snapshot().filter, "closed");
+  assert.equal(filterTail.controller.snapshot().rows, 0);
+  while (filterTail.waiting.length > 0) {
+    await filterTail.respond();
+  }
+  assert.equal(filterTail.controller.snapshot().rows, 500);
+  assert.equal(filterTail.controller.snapshot().displayLimit, 500);
+  filterTail.dispose();
+
+  const failedTail = rig(panel, { cached: 550 });
+  failedTail.state.refreshing = false;
+  failedTail.state.lastRefresh = {
+    outcome: "gh_missing",
+    reset_at: null,
+    message: null,
+    at: "2026-09-17T12:00:00Z",
+  };
+  await failedTail.controller.start({ shown: true });
+  await settle();
+  failedTail.requests.length = 0;
+  await failedTail.controller.reachedEnd();
+  assert.equal(failedTail.controller.snapshot().rows, 550);
+  await failedTail.controller.reachedEnd();
+  assert.equal(failedTail.requests.length, 1, "a failed provider leaves only cached continuation");
+  assert.equal(failedTail.requests[0].method, "GET");
+  failedTail.dispose();
+
   const emptyFilter = {
     ...page.envelope("/api/plugin/github/pulls?limit=0"),
     fetched: 0,
@@ -340,23 +497,35 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   assert.equal(failed.requests.length, 2);
   failed.dispose();
   console.log(
-    JSON.stringify({
-      defaultFilter: "open",
-      initialRows: 500,
-      explicitRows: 1000,
-      progressOnlyReads: 1,
-      generationPages: 10,
-      detailReads: 0,
-      priorityTarget: 1000,
-      lateWindowRejected: true,
-      ownerTransferred: true,
-      mixedGenerationRejected: true,
-      lateFilterRejected: true,
-      failedWindowDoesNotSpin: true,
-      newerRefreshKeepsOwnership: true,
-      emptyFilterDoesNotHideOtherPulls: true,
-      freshPartialCatalogResumes: true,
-    }),
+    JSON.stringify(
+      {
+        defaultFilter: "open",
+        initialRows: 500,
+        explicitRows: 1000,
+        scrollRows,
+        terminalRows,
+        repeatedScrollSharesRequest: true,
+        keepsSelection: true,
+        cachedGrowthKeepsEveryRow: true,
+        failedProviderUsesCacheOnly: true,
+        hiddenTailIsIdle: true,
+        staleTailCannotChangeFilter: true,
+        progressOnlyReads: 1,
+        generationPages: 10,
+        detailReads: 0,
+        priorityTarget: 1000,
+        lateWindowRejected: true,
+        ownerTransferred: true,
+        mixedGenerationRejected: true,
+        lateFilterRejected: true,
+        failedWindowDoesNotSpin: true,
+        newerRefreshKeepsOwnership: true,
+        emptyFilterDoesNotHideOtherPulls: true,
+        freshPartialCatalogResumes: true,
+      },
+      null,
+      2,
+    ),
   );
 })().catch((error) => {
   console.error(error);

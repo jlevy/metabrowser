@@ -73,9 +73,9 @@ resolves one.
 Open a GitHub repository URL, a pull-request URL, or an existing checkout.
 A recognized main or linked worktree, including a served subdirectory, has a **Pulls**
 tab. The catalog starts with Open PRs; Closed includes merged PRs.
-Metadata loads incrementally in the background, while **Fetch more** expands the
-displayed window. Press `T` or `/` to find cached PRs in **Quick Search** by number or
-title.
+Metadata loads incrementally in the background.
+Scrolling near the end or choosing **Fetch more** extends the displayed window.
+Press `T` or `/` to find cached PRs in **Quick Search** by number or title.
 
 A folder server keeps its filesystem root and does not fetch Git objects merely because
 a pull request is opened.
