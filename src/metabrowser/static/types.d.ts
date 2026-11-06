@@ -1995,7 +1995,10 @@ type MetabrowserSearchRuntime = Readonly<{
     syncThreshold?: number;
     yieldControl?: (signal: AbortSignal) => Promise<void>;
   }): MetabrowserSearchProvider;
-  createPullProvider(options?: { fetch?: typeof fetch; maxResults?: number }): MetabrowserSearchProvider;
+  createPullProvider(options?: {
+    fetch?: typeof fetch;
+    maxResults?: number;
+  }): MetabrowserSearchProvider;
 }>;
 
 /** A failed open always says why, so the palette never has to classify it again. */

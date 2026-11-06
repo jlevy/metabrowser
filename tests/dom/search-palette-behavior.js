@@ -1300,7 +1300,7 @@ async function pullSearchSession() {
   if (failures.length > 0) {
     throw new Error(failures.join("\n"));
   }
-  process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 
 if (require.main === module) {
