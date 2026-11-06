@@ -412,6 +412,7 @@ let freshnessController = null;
 const removedPanels = [];
 let registeredPanel = null;
 sandbox.MetabrowserShell = {
+  rememberMainTabAddress() {},
   claimPreview: () => {
     pendingStageCleanup?.();
     previewClaim += 1;
@@ -2734,6 +2735,37 @@ async function run() {
       null,
     );
     assertEqual("missing commit: state on the element", previewNode.dataset.state, "not_found");
+
+    const cachedMissing = "9".repeat(40);
+    let askedForFreshness = false;
+    freshnessController = {
+      fetchMissing() {
+        askedForFreshness = true;
+        throw new Error("tab restoration must not start source refresh");
+      },
+    };
+    responses.set(`/api/git/commit/${cachedMissing}`, notFound);
+    const originalLocation = sandbox.location;
+    const originalParse = sandbox.MetabrowserNavigationRoute.parseCommit;
+    sandbox.location = { pathname: `/commit/${cachedMissing}` };
+    sandbox.MetabrowserNavigationRoute.parseCommit = () => ({ revision: cachedMissing });
+    sandbox.history.state = { cachedCommit: true };
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
+    });
+    await panel.init();
+    internals.teardown();
+    sandbox.location = originalLocation;
+    sandbox.MetabrowserNavigationRoute.parseCommit = originalParse;
+    delete sandbox.history.state;
+    assertEqual("missing cached selection: no refresh", askedForFreshness, false);
+    assertContains(
+      "missing cached selection: names the local miss",
+      previewHtml,
+      "not available in the local repository",
+    );
 
     // A request that failed is still a load failure, not a missing commit.
     responses.set(`/api/git/commit/${SHA_BROKEN}`, {

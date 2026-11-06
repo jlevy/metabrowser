@@ -767,6 +767,7 @@ status: 202
     "last_refresh": null,
     "total": null,
     "repository_total": null,
+    "filter_totals": null,
     "count_at": null,
     "catalog_fetched": 0,
     "generation": null,
@@ -798,6 +799,11 @@ status: 200
   },
   "total": 1,
   "repository_total": 1,
+  "filter_totals": {
+    "all": 1,
+    "open": 1,
+    "closed": 0
+  },
   "count_at": "2026-09-17T12:02:00Z",
   "catalog_fetched": 1,
   "generation": "<CATALOG_EPOCH_1>:0",

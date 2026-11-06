@@ -158,6 +158,9 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     "cached refreshing page remains readable",
   );
   assert(warm.textContent.includes(current.body.record.pull.title));
+  const refreshing = warm.querySelector(".github-pull-status");
+  assert.match(refreshing.textContent, /^Refreshing… · fetched .+ by /);
+  assert(refreshing.querySelector(".spinner"), "cached refreshing status includes a spinner");
   resolveStacks({
     status: optionalStacks.current.status,
     headers: { get: () => optionalStacks.current.etag },

@@ -836,7 +836,7 @@ async function main() {
     ),
   );
 
-  steps.push(await page.step("open Files changed", async () => controller.setTab("files")));
+  steps.push(await page.step("open Changes", async () => controller.setTab("files")));
   steps.push(await page.step("back to the conversation", async () => controller.setTab("")));
 
   page.clock.now = Date.parse("2026-09-17T12:05:30Z");

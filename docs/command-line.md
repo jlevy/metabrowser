@@ -435,8 +435,8 @@ A `/pull/<n>/files` URL selects the same pull request as `/pull/<n>` and adds
 `tab: files` to the selection lines, and a server opens at `/pull/<n>/files`, as its
 `Serving` line prints.
 The tab says only where a server opens: `--show` and `--api` answer the path or route
-they are given, so `--show /pull/<n>/files` is the way to ask for Files changed without
-a browser. A `/pull/<n>/commits` URL is the same as `/pull/<n>`, because the page has no
+they are given, so `--show /pull/<n>/files` is the way to inspect **Changes** without a
+browser. A `/pull/<n>/commits` URL is the same as `/pull/<n>`, because the page has no
 Commits tab. Other pull-request pages, such as `/pull/<n>/checks`, and a repository’s
 `/pulls` list are refused.
 A URL selects one pull request, and `--show` and `--api` answer for any number:
@@ -461,8 +461,8 @@ model: pull envelope; state=current pull_state=merged fetched_at=2026-11-02T21:4
 
 `/api/plugin/github/pull?number=<n>` reports the record with a state: `current` within a
 minute of its fetch, `stale` after, or `absent` with a reason.
-Its `comparison_route` is Files changed, the merge base of the base branch and the head
-to the head, as GitHub shows it; issue it with `--api` to get the diff.
+Its `comparison_route` serves the **Changes** diff, from the merge base to the head.
+Issue it with `--api` to get the diff.
 `--diff` does not open an `https://` source, so this route is the way to read one.
 `--format json` prints the envelope alone, for a tool such as `jq`:
 
@@ -521,7 +521,8 @@ The second command reads a cached window, offline too, with no `gh` and no Git.
 `next_after` names another cached window, not a remote page.
 
 `total` is GitHub’s exact count for the selected filter, `repository_total` its count
-for all pull requests, and `count_at` says when those counts were read.
+for all pull requests, and `filter_totals` holds all three filter counts when the
+catalog knows them. `count_at` says when those counts were read.
 `fetched` counts cached matching rows; `catalog_fetched` counts all cached rows.
 `complete` becomes true when the background catalog reaches the end.
 Displaying another 500 rows does not cap or restart that catalog.
@@ -646,8 +647,8 @@ base there is used only when it is provably right.
 When it is not, the pull request’s refresh fetches more history into the mirror, never
 the checkout, in up to five growing rounds; a depth-limited CI checkout is where this
 most often happens. Meanwhile, and offline, the record’s `unavailable.comparison` is
-`base_uncertain`, `comparison_route` is `null`, and the page shows no Files changed
-rather than a guess.
+`base_uncertain`, `comparison_route` is `null`, and the page omits the comparison rather
+than a guess.
 
 A commit the comparison needs that the checkout no longer holds, an ancestor it has
 collected, is `commits_unavailable` in the record’s `unavailable.comparison`, never

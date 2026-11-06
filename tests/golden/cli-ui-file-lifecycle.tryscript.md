@@ -479,10 +479,51 @@ $ node tests/dom/preview-pane-state-session.js
         "scrolled to 250, git chosen: shows 250"
       ],
       "told": [
-        "files hidden",
-        "git hidden",
-        "files hidden"
+        "git hidden"
       ]
+    },
+    "independentMainTabs": {
+      "selections": [
+        {
+          "address": "/pulls",
+          "panel": "pulls",
+          "owner": "pull-request",
+          "scroll": 0
+        },
+        {
+          "address": "/view/",
+          "panel": "git",
+          "owner": "none",
+          "scroll": 0
+        },
+        {
+          "address": "/pulls?state=closed",
+          "panel": "pulls",
+          "owner": "pull-request",
+          "scroll": 80
+        },
+        {
+          "address": "/view/notes.md?plain=1#L2",
+          "panel": "files",
+          "owner": "file",
+          "scroll": 240
+        },
+        {
+          "address": "/pull/7/files/src/a.py",
+          "panel": "pulls",
+          "owner": "pull-request",
+          "scroll": 80
+        },
+        {
+          "address": "/commit/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/src/a.py#diff-2",
+          "panel": "git",
+          "owner": "git",
+          "scroll": 120
+        }
+      ],
+      "historyPushes": 6,
+      "activeAfterHistory": "pulls",
+      "neutralGitDetailOpens": 0
     },
     "reselectAfterFailure": {
       "afterGitClaim": {
@@ -808,7 +849,7 @@ $ node tests/dom/preview-pane-state-session.js
           "plugin-sdk-views.js"
         ],
         "pane": {
-          "claim": 1,
+          "claim": 2,
           "owner": "pull-request",
           "path": null,
           "phase": "external",
@@ -862,7 +903,7 @@ $ node tests/dom/preview-pane-state-session.js
       },
       "pullRoutesOnAHistoryLanding": {
         "pane": {
-          "claim": 2,
+          "claim": 3,
           "owner": "pull-request",
           "path": null,
           "phase": "external",
@@ -887,7 +928,7 @@ $ node tests/dom/preview-pane-state-session.js
         },
         "nextRoute": {
           "pane": {
-            "claim": 2,
+            "claim": 3,
             "owner": "pull-request",
             "path": null,
             "phase": "external",

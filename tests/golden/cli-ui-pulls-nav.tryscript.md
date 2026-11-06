@@ -521,12 +521,12 @@ $ node tests/dom/pulls-nav-session.js
       {
         "keys": "Up arrow or K",
         "action": "Previous changed file",
-        "description": "Show the previous changed file in Files changed."
+        "description": "Show the previous changed file in Changes."
       },
       {
         "keys": "Down arrow or J",
         "action": "Next changed file",
-        "description": "Show the next changed file in Files changed."
+        "description": "Show the next changed file in Changes."
       },
       {
         "keys": "Left arrow",

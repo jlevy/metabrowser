@@ -15,6 +15,7 @@ status: 200
   "last_refresh": null,
   "total": null,
   "repository_total": null,
+  "filter_totals": null,
   "count_at": null,
   "catalog_fetched": 0,
   "generation": null,
@@ -49,6 +50,7 @@ status: 202
     "last_refresh": null,
     "total": null,
     "repository_total": null,
+    "filter_totals": null,
     "count_at": null,
     "catalog_fetched": 0,
     "generation": null,
@@ -80,6 +82,11 @@ status: 200
   },
   "total": 598,
   "repository_total": 600,
+  "filter_totals": {
+    "all": 600,
+    "open": 598,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 600,
   "generation": "<CATALOG_EPOCH_1>:0",
@@ -128,6 +135,11 @@ status: 200
   },
   "total": 598,
   "repository_total": 600,
+  "filter_totals": {
+    "all": 600,
+    "open": 598,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 600,
   "generation": "<CATALOG_EPOCH_1>:0",
@@ -197,6 +209,11 @@ status: 200
   },
   "total": 598,
   "repository_total": 600,
+  "filter_totals": {
+    "all": 600,
+    "open": 598,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 600,
   "generation": "<CATALOG_EPOCH_1>:0",
@@ -266,6 +283,11 @@ status: 200
   },
   "total": 598,
   "repository_total": 600,
+  "filter_totals": {
+    "all": 600,
+    "open": 598,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 600,
   "generation": "<CATALOG_EPOCH_1>:0",
@@ -322,6 +344,11 @@ status: 200
     },
     "total": 598,
     "repository_total": 600,
+    "filter_totals": {
+      "all": 600,
+      "open": 598,
+      "closed": 2
+    },
     "count_at": "2026-09-17T12:00:00Z",
     "catalog_fetched": 600,
     "generation": "<CATALOG_EPOCH_1>:0",
@@ -360,6 +387,11 @@ status: 200
   },
   "total": 598,
   "repository_total": 600,
+  "filter_totals": {
+    "all": 600,
+    "open": 598,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 600,
   "generation": "<CATALOG_EPOCH_1>:0",
@@ -394,6 +426,11 @@ status: 200
   },
   "total": 2,
   "repository_total": 600,
+  "filter_totals": {
+    "all": 600,
+    "open": 598,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 600,
   "generation": "<CATALOG_EPOCH_1>:1",
@@ -465,6 +502,11 @@ status: 200
   },
   "total": 600,
   "repository_total": 600,
+  "filter_totals": {
+    "all": 600,
+    "open": 598,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 600,
   "generation": "<CATALOG_EPOCH_1>:0",
@@ -502,6 +544,11 @@ status: 202
     },
     "total": 598,
     "repository_total": 600,
+    "filter_totals": {
+      "all": 600,
+      "open": 598,
+      "closed": 2
+    },
     "count_at": "2026-09-17T12:00:00Z",
     "catalog_fetched": 600,
     "generation": "<CATALOG_EPOCH_1>:0",
@@ -533,6 +580,11 @@ status: 200
   },
   "total": 599,
   "repository_total": 601,
+  "filter_totals": {
+    "all": 601,
+    "open": 599,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:01:01Z",
   "catalog_fetched": 601,
   "generation": "<CATALOG_EPOCH_1>:1",
@@ -571,6 +623,11 @@ status: 200
   },
   "total": 599,
   "repository_total": 601,
+  "filter_totals": {
+    "all": 601,
+    "open": 599,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:01:01Z",
   "catalog_fetched": 601,
   "generation": "<CATALOG_EPOCH_1>:1",
@@ -640,6 +697,11 @@ status: 200
   },
   "total": 599,
   "repository_total": 601,
+  "filter_totals": {
+    "all": 601,
+    "open": 599,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:01:01Z",
   "catalog_fetched": 601,
   "generation": "<CATALOG_EPOCH_1>:1",
@@ -694,6 +756,11 @@ status: 202
     },
     "total": 599,
     "repository_total": 601,
+    "filter_totals": {
+      "all": 601,
+      "open": 599,
+      "closed": 2
+    },
     "count_at": "2026-09-17T12:01:01Z",
     "catalog_fetched": 601,
     "generation": "<CATALOG_EPOCH_1>:1",
@@ -725,6 +792,11 @@ status: 200
   },
   "total": 599,
   "repository_total": 601,
+  "filter_totals": {
+    "all": 601,
+    "open": 599,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:01:01Z",
   "catalog_fetched": 601,
   "generation": "<CATALOG_EPOCH_1>:1",
@@ -764,6 +836,11 @@ status: 200
   },
   "total": 599,
   "repository_total": 601,
+  "filter_totals": {
+    "all": 601,
+    "open": 599,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:01:01Z",
   "catalog_fetched": 601,
   "generation": "<CATALOG_EPOCH_1>:1",
@@ -800,6 +877,11 @@ status: 202
     },
     "total": 599,
     "repository_total": 601,
+    "filter_totals": {
+      "all": 601,
+      "open": 599,
+      "closed": 2
+    },
     "count_at": "2026-09-17T12:01:01Z",
     "catalog_fetched": 601,
     "generation": "<CATALOG_EPOCH_1>:1",
@@ -831,6 +913,11 @@ status: 200
   },
   "total": 98,
   "repository_total": 100,
+  "filter_totals": {
+    "all": 100,
+    "open": 98,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:01:01Z",
   "catalog_fetched": 100,
   "generation": "<CATALOG_EPOCH_2>:0",

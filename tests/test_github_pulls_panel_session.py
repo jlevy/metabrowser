@@ -399,8 +399,10 @@ def test_recording_is_what_a_served_mirror_answers(
 ) -> None:
     recorded, provider_calls = _record(tmp_path, monkeypatch, pull_origin)
     assert recorded["absent"]["body"]["reason"] == "not_cached"
+    assert recorded["absent"]["body"]["filter_totals"] is None
     assert recorded["refresh_started"]["status"] == 202
     assert recorded["pending"]["body"]["state"] == "pending"
+    assert recorded["pending"]["body"]["filter_totals"] is None
     current = recorded["current"]["body"]
     assert (
         current["repository_total"],
@@ -412,6 +414,8 @@ def test_recording_is_what_a_served_mirror_answers(
     assert len(recorded["more_window"]["body"]["rows"]) == 2
     assert recorded["open_current"]["body"]["total"] == 100
     assert recorded["closed_current"]["body"]["total"] == 2
+    for label in ("current", "open_current", "closed_current", "more_window"):
+        assert recorded[label]["body"]["filter_totals"] == {"all": 102, "open": 100, "closed": 2}
     assert recorded["stale"]["body"]["state"] == "stale"
     assert recorded["not_due"]["body"]["refresh"] == "not_due"
     assert recorded["rate_limit_holds"]["body"]["refresh"] == "not_due"
@@ -446,6 +450,11 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["pin_changed"]["body"]["code"] == "pin_changed"
     assert recorded["landing_gh_missing"]["body"]["last_refresh"]["outcome"] == "gh_missing"
     assert recorded["landing_empty_refreshing"]["body"]["fetched"] == 0
+    assert recorded["landing_empty_refreshing"]["body"]["filter_totals"] == {
+        "all": 0,
+        "open": 0,
+        "closed": 0,
+    }
     assert recorded["landing_empty_refreshing"]["body"]["refreshing"] is True
     assert recorded["landing_found_rows"]["body"]["fetched"] == 102
     # Keep complete route answers, split by scenario so each recording is reviewable.

@@ -728,8 +728,8 @@
    * loading indicator rather than a prompt. "Select a file to preview." is the
    * placeholder only when nothing is selected and nothing is loading.
    *
-   * Switching navigation tabs is not a claim. It changes which list is visible,
-   * not what is selected, so the selection underneath keeps loading and lands.
+   * Marking an address's navigation tab does not claim the preview. Its
+   * route's producer owns the selection.
    */
   function createPreviewPaneLifecycle() {
     let generation = 0;
@@ -1001,13 +1001,13 @@
       return options.apply(target, context);
     }
 
-    /** @param {"startup" | "popstate"} source */
-    async function applyLocation(source) {
+    /** @param {"startup" | "popstate"} source @param {boolean} [force] */
+    async function applyLocation(source, force = false) {
       if (disposed) {
         return;
       }
       const target = parse(browserLocation.pathname, browserLocation.search, browserLocation.hash);
-      if (initialized && targetsEqual(target, currentTarget)) {
+      if (!force && initialized && targetsEqual(target, currentTarget)) {
         return;
       }
       return applyTarget(target, source);
@@ -1068,6 +1068,10 @@
           browserHistory.pushState(null, "", routeHref);
         }
         return applyTarget(normalized, "user", openOptions.viewId);
+      },
+      /** Apply the address after a main-tab click pushed its history entry. */
+      restore() {
+        return applyLocation("popstate", true);
       },
       async start() {
         if (disposed) {

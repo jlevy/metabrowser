@@ -280,7 +280,7 @@ def test_navigation_returns_explicit_palette_outcomes_and_revalidates_hits() -> 
 
     apply_navigation = js[
         js.index("async function applyNavigationTarget(target, context)") : js.index(
-            "async function revealInTree(path)"
+            "async function revealInTree("
         )
     ]
     # The palette's view wins; otherwise an anchored address asks for the Source view.

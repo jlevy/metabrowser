@@ -46,8 +46,7 @@
    * Which tab an address shows, given the tab that is showing; null to leave it. A pull
    * request's address shows Pulls, and a file's address shows Files: leaving the first for the
    * second is the one way a file opens with Pulls in front, by a link on the page or by Back.
-   * Selecting a tab by hand changes no address, so nothing here moves it off that tab until
-   * the address changes.
+   * This only marks a panel for the address the shell already owns.
    *
    * @param {MetabrowserPublicPullRouteRuntime} routes
    * @param {string} pathname
@@ -94,6 +93,7 @@
     let filter = "open";
     /** @type {string | null} */
     let lastPlace = null;
+    let preserveScroll = false;
 
     function address() {
       const { pathname, search } = deps.location();
@@ -173,7 +173,7 @@
           // The reader may have moved on while it loaded.
           handle?.setShown(shown);
           const there = address();
-          handle?.setCurrent(there?.page ?? null, there?.file ?? null);
+          handle?.setCurrent(there?.page ?? null, there?.file ?? null, { preserveScroll });
         } catch (error) {
           console.error("metabrowser pulls tab: the list could not load", error);
           if (shown && !disposed) {
@@ -231,25 +231,29 @@
 
     /**
      * The address changed, by history or in the page: which tab, and what the panel marks.
-     * A step that stays in one place, such as a fragment in a file, moves no tab, so a reader
-     * who chose Pulls there by hand keeps it; Back from one filter of the list to another is
-     * a new place, and shows the list.
+     * A step that stays in one place, such as a fragment in a file, moves no tab.
+     * Back from one filter of the list to another shows the list.
      */
-    function routeChanged() {
+    /** @param {{preserveScroll?: boolean}} [options] */
+    function routeChanged(options = {}) {
       if (disposed) {
         return;
       }
       const { pathname, search } = deps.location();
-      if (place(pathname, search) !== lastPlace) {
-        lastPlace = place(pathname, search);
+      const herePlace = place(pathname, search);
+      if (herePlace !== lastPlace) {
+        preserveScroll = options.preserveScroll === true;
+        lastPlace = herePlace;
         const tab = tabForAddress(deps.routes, pathname, search, deps.activeTab());
         if (tab !== null) {
           deps.activate(tab);
         }
+      } else if (options.preserveScroll) {
+        preserveScroll = true;
       }
       const here = address();
       if (handle !== null) {
-        handle.setCurrent(here?.page ?? null, here?.file ?? null);
+        handle.setCurrent(here?.page ?? null, here?.file ?? null, { preserveScroll });
         if (here?.filter) {
           handle.setFilter(here.filter);
         }
@@ -366,7 +370,7 @@
         copy: {
           action: "Show changed files",
           description: "Show the focused pull request's changed files, or go to the first.",
-          hint: "Files",
+          hint: "Changes",
         },
         group: "pull-requests",
         handler: () => nav.expand(),
@@ -380,7 +384,7 @@
         copy: {
           action: "Hide changed files",
           description: "Hide the focused pull request's changed files.",
-          hint: "Files",
+          hint: "Changes",
         },
         group: "pull-requests",
         handler: () => nav.collapse(),
@@ -390,12 +394,12 @@
         surfaces: { help: "always" },
       }),
       // A pull request's changed files, a collection of their own: moving shows the file in
-      // Files changed, and the folders open and close as the Files tree's do.
+      // Changes, and the folders open and close as the Files tree's do.
       shortcuts.register({
         bindings: [{ key: "ArrowUp" }, { key: "k" }],
         copy: {
           action: "Previous changed file",
-          description: "Show the previous changed file in Files changed.",
+          description: "Show the previous changed file in Changes.",
           hint: "Browse",
         },
         group: "pull-requests",
@@ -410,7 +414,7 @@
         bindings: [{ key: "ArrowDown" }, { key: "j" }],
         copy: {
           action: "Next changed file",
-          description: "Show the next changed file in Files changed.",
+          description: "Show the next changed file in Changes.",
           hint: "Browse",
         },
         group: "pull-requests",
@@ -550,7 +554,10 @@
       // a GitHub checkout.
       checkout: sdk.sourceKind() === "filesystem",
       location: () => window.location,
-      pushHref: (href) => window.history.pushState(null, "", href),
+      pushHref: (href) => {
+        window.history.pushState(null, "", href);
+        shell.rememberMainTabAddress();
+      },
       activeTab: () =>
         document.querySelector(".nav-tab-bar .tab-btn.active")?.getAttribute("data-tab") ?? null,
       registerPanel: shell.registerNavPanel,
@@ -622,7 +629,7 @@
       },
       { signal },
     );
-    window.addEventListener("popstate", nav.routeChanged, { signal });
+    window.addEventListener("popstate", () => nav.routeChanged(), { signal });
   }
 
   /** End the tab and everything it holds: the view, the keys, and the listeners. */
@@ -642,7 +649,8 @@
     init,
     pullAddress,
     registerKeys,
-    routeChanged: () => current?.routeChanged(),
+    routeChanged: (/** @type {{preserveScroll?: boolean}} */ options) =>
+      current?.routeChanged(options),
     tabForAddress,
   });
 })();

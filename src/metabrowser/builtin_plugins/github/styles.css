@@ -148,6 +148,14 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
+.github-pull-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.github-pull-progress > .spinner {
+  flex: none;
+}
 .github-pull-failure {
   color: var(--status-warning-strong);
 }
@@ -373,6 +381,13 @@
   z-index: 1;
   padding: 6px var(--pane-header-padding-x);
   background: var(--sidebar-bg);
+}
+.github-pulls-filters .chip-group {
+  max-width: 100%;
+}
+.github-pulls-filters .chip {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .github-pulls-status,
 .github-pulls-activity,

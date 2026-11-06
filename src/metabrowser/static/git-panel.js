@@ -158,6 +158,9 @@
   /** @type {Promise<void> | null} */
   let rangeLoadPromise = null;
   let historyGeneration = 0;
+  let landingGeneration = 0;
+  /** @type {{generation: number, pending: ReturnType<typeof readRepoInfo>} | null} */
+  let repoInfoRead = null;
   let historyAbortController = new AbortController();
   /** @type {HTMLElement | null} */
   let scrollOwner = null;
@@ -389,7 +392,21 @@
    *
    * @returns {Promise<MetabrowserGitRepoInfo | null>}
    */
-  async function fetchRepoInfo() {
+  function fetchRepoInfo() {
+    const generation = historyGeneration;
+    if (repoInfoRead?.generation === generation) {
+      return repoInfoRead.pending;
+    }
+    const pending = readRepoInfo().finally(() => {
+      if (repoInfoRead?.pending === pending) {
+        repoInfoRead = null;
+      }
+    });
+    repoInfoRead = { generation, pending };
+    return pending;
+  }
+
+  async function readRepoInfo() {
     try {
       const response = await apiFetch("/api/git/repo");
       if (!response.ok) {
@@ -1712,6 +1729,7 @@
 
   /** Stop work relinquished to another preview owner, retaining the useful DOM and history. */
   function cancelPending() {
+    landingGeneration += 1;
     clearPendingState();
     cancelHover();
     abortPreparation(preparationSlot);
@@ -1877,7 +1895,7 @@
 
   /**
    * @param {string} revision
-   * @param {{fromRoute?: boolean, rowElement?: HTMLElement}} [options]
+   * @param {{fromRoute?: boolean, cachedOnly?: boolean, rowElement?: HTMLElement}} [options]
    *   `fromRoute` when the URL is already this commit (restore on load), so
    *   the route is not rewritten. Pointer and keyboard paths pass their row
    *   so immediate feedback does not search the mounted history.
@@ -1928,6 +1946,7 @@
                   typeof window.history?.replaceState === "function"
                 ) {
                   window.history.replaceState(null, "", routes.commitHref(revision));
+                  bridge.rememberMainTabAddress();
                 }
                 state.selectedId = revision;
               },
@@ -2009,7 +2028,20 @@
         }
         if (!detail) {
           disposeCommitDiff();
-          if (missingRevisions.has(revision)) {
+          if (missingRevisions.has(revision) && options.cachedOnly) {
+            bridge.renderPreviewNode(
+              missingCommitNode(
+                {
+                  state: "not_found",
+                  title: "Commit not found",
+                  detail: "This commit is not available in the local repository.",
+                  retry: false,
+                },
+                null,
+              ),
+              previewClaim,
+            );
+          } else if (missingRevisions.has(revision)) {
             // Waits for the first state only, so the pane stays busy until it shows
             // one; a mirror's fetch from the origin continues after it.
             await showMissingCommit(revision, previewClaim);
@@ -2458,6 +2490,9 @@
     // activation is what catches that; the response is TTL-cached
     // server-side, so a tab switch that changes nothing costs nothing.
     const info = await fetchRepoInfo();
+    if (generation !== historyGeneration) {
+      return;
+    }
     if (!info) {
       // The served root stopped being a repository under us.
       teardown();
@@ -2528,9 +2563,11 @@
    * @returns {Promise<void>}
    */
   async function restoreCommitLanding() {
+    const landing = ++landingGeneration;
     const routes = window.MetabrowserNavigationRoute;
     const bridge = shell();
-    const wanted = routes?.parseCommit?.(window.location?.pathname ?? "")?.revision;
+    const pathname = window.location?.pathname ?? "";
+    const wanted = routes?.parseCommit?.(pathname)?.revision;
     if (!wanted || !bridge) {
       return;
     }
@@ -2547,9 +2584,14 @@
       if (
         started &&
         viewHelpersReady &&
-        routes.parseCommit(window.location.pathname)?.revision === wanted
+        landing === landingGeneration &&
+        window.location.pathname === pathname &&
+        !(lastSelection?.revision === wanted && bridge.isPreviewClaimCurrent(lastSelection.claim))
       ) {
-        await selectCommit(wanted, { fromRoute: true });
+        await selectCommit(wanted, {
+          fromRoute: true,
+          cachedOnly: window.history.state?.cachedCommit === true,
+        });
       }
     } catch (error) {
       console.error(
@@ -2612,6 +2654,7 @@
   window.MetabrowserGitPanel = Object.freeze({
     init,
     cancelPending,
+    restoreCommitLanding,
     // Exposed for tests, which drive the panel without a network.
     _internals: {
       appendPage,

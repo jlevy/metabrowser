@@ -13,6 +13,10 @@ All notable changes to Metabrowser are documented here.
 
 PR and Git navigation:
 
+- The PR diff tab is called **Changes**. A PR that already shows content uses the shared
+  gray spinner for active refreshes and pending sections.
+- Files, Pulls, and Git each restore their own selection when switching tabs.
+  The Open, Closed, and All filters show their exact totals from the Pulls catalog.
 - The Pulls tab names the repository once in bold and uses a single spinner line for
   loading and refresh.
 - The Pulls tab prepares descriptions for up to eight visible PRs after summaries paint.

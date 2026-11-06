@@ -82,6 +82,7 @@ class PullListEnvelope(TypedDict):
     last_refresh: LastRefresh | None
     total: int | None
     repository_total: int | None
+    filter_totals: dict[str, int] | None
     count_at: str | None
     catalog_fetched: int
     generation: str | None
@@ -225,6 +226,7 @@ def pull_list_envelope(view: ListView, window: ListWindow) -> PullListEnvelope:
         last_refresh=None,
         total=None,
         repository_total=None,
+        filter_totals=None,
         count_at=None,
         catalog_fetched=0,
         generation=None,
@@ -266,6 +268,7 @@ def pull_list_envelope(view: ListView, window: ListWindow) -> PullListEnvelope:
         "reader": listed.reader,
         "total": listed.totals[window.name],
         "repository_total": listed.totals["all"],
+        "filter_totals": listed.totals,
         "count_at": listed.count_at,
         "catalog_fetched": listed.cached["all"],
         "generation": listed.generation(window.name),

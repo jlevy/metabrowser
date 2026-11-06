@@ -62,7 +62,13 @@ class Element {
     this.children.unshift(...children);
   }
   replaceChildren(...children) {
-    this.children = children;
+    for (const child of this.children) {
+      if (typeof child !== "string" && child.parentNode === this) {
+        child.parentNode = null;
+      }
+    }
+    this.children = [];
+    this.append(...children);
   }
   get textContent() {
     return this.children
@@ -115,7 +121,19 @@ class Element {
   closest() {
     return null;
   }
-  after() {}
+  after(...nodes) {
+    const parent = this.parentNode;
+    if (!parent) {
+      return;
+    }
+    for (const node of nodes) {
+      if (typeof node !== "string") {
+        node.remove();
+        node.parentNode = parent;
+      }
+    }
+    parent.children.splice(parent.children.indexOf(this) + 1, 0, ...nodes);
+  }
   remove() {
     if (this.parentNode) {
       this.parentNode.children = this.parentNode.children.filter((node) => node !== this);
@@ -548,7 +566,17 @@ async function run() {
     );
     await settle();
     await handle.whenFilesReady();
-    assert.match(container.textContent, /Files changed could not load/);
+    assert.deepEqual(
+      container
+        .querySelectorAll(".tab-btn")
+        .filter((tab) => tab.getAttribute("role") === "tab")
+        .map((tab) => [tab.textContent, tab.getAttribute("href")]),
+      [
+        ["Conversation", "/pull/7"],
+        ["Changes", "/pull/7/files"],
+      ],
+    );
+    assert.match(container.textContent, /Changes could not load/);
     assert.equal(
       perfEntries.filter((label) => label === "githubPull:filesReady").length,
       readyBefore,

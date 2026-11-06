@@ -1035,19 +1035,21 @@ body, in that order.
 The header and the conversation share a **reading column**: `--doc-measure` plus two
 card insets, centered in a wider pane as a Markdown file’s card and Overview’s stack
 are. So a card’s text box is the one a file’s text has, and the title lines up with the
-cards under it. The Conversation and Files changed tabs follow that same column, so the
-first tab aligns with the content on both narrow and wide screens.
-The Files changed body keeps the full pane: a diff needs room for Split.
+cards under it. The Conversation and Changes tabs follow that same column, so the first
+tab aligns with the content on both narrow and wide screens.
+The Changes body keeps the full pane so a diff has room for Split.
 A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
-reading column even when Files changed is selected.
+reading column even when Changes is selected.
 Its reveal wrapper and skeleton are separate nodes, so the shared loading delay does not
 replace the pulse or reduced-motion rule.
 A cached page stays readable during refresh.
+Use a shared small gray spinner beside each active section’s status after the page has
+rendered. Idle and failed sections use static notices.
 
 Native stack navigation uses the repository snapshot’s verified membership and order.
 The quiet Stack #N disclosure, position, and Previous PR / Next PR links share the
 reading column. The disclosure creates its ordered member links when opened.
-A member selection preserves Conversation or Files changed and clears the previous file
+A member selection preserves Conversation or Changes and clears the previous file
 selection. Unknown membership and unavailable optional tooling add no placeholder or
 setup notice; known cached membership remains visible during refresh or failure.
 
@@ -1176,7 +1178,7 @@ Everything goes through `pullStateIcon` and `displayState` in
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | PR number and username | `--nav-font-size`; number uses text ink, username uses `.github-pull-author` | Both are readable context; usernames stay bold and muted across PR surfaces |
 | Base and head | `--ui-small-font-size`, remote-ref ink | Ref context is smaller than the number and username |
-| Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | [Choosing Among Values](#choosing-among-values) |
+| Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count and freshness | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Muted freshness tells when the list was last fetched after activity ends. |
 | A refresh’s failure, cut rows | [`.notice`](#notices), `warning`, with **Retry** in it when a reader can act | A cached list still shows under it |
 | Loading and refresh | One delayed status line with the shared small gray spinner | Cached rows stay visible. |
@@ -1917,8 +1919,8 @@ itself requires independent horizontal or virtual scrolling.
 ### The Tab Bar
 
 A tab is `.tab-btn` in a `.tab-bar`, everywhere: OVERVIEW and TREEMAP, DOCUMENT and
-SOURCE, FILES and GIT, and CONVERSATION and FILES CHANGED. Markup keeps the label’s
-natural case, “Files changed”, and the caps are presentational.
+SOURCE, FILES and GIT, and CONVERSATION and CHANGES. Markup keeps the label’s natural
+case, and the caps are presentational.
 `.active` paints the selected tab; under `role="tab"`, `aria-selected` says the same to
 assistive technology, and both are set together.
 
@@ -1926,6 +1928,11 @@ A tab that is an address is `<a class="tab-btn" href>`, so back, forward, and op
 new tab keep working.
 `a.tab-btn` states what a `<button>` gets from the browser, so the two render as one
 tab.
+
+Files, Pulls, and Git each keep their last selection and navigation scroll position.
+A reader who switches tabs returns to that tab’s destination, or to its default on the
+first visit. A direct URL or a browser history step selects the tab that owns the
+destination.
 
 The bar is as wide as the pane and sits under the identity it belongs to and over the
 content it switches.

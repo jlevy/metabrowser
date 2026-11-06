@@ -24,7 +24,7 @@ The displayed list starts at 500 matching PRs and grows through **Fetch more**; 
 display window does not cap the catalog.
 Filters are **Open**, **Closed**, and **All**, with Open selected initially.
 Heavy PR records and Git comparisons remain separate from catalog metadata.
-The Conversation and Files changed tabs align with the reading column.
+The Conversation and Changes tabs align with the reading column.
 
 The earlier page caps, All default, whole-list files, and `more` request fields below
 record the original design.
@@ -53,6 +53,108 @@ numbers, normal-size bold gray usernames, and smaller branch refs.
 The
 [focused QA session](../../../qa-v012-repository-library.md#57b-optional-stacks-and-pr-presentation)
 records the final artifact and cache conditions without a new testing framework.
+
+## Conversation Commit Timeline
+
+**Planned in `mb-c3vw`.** Keep the description first.
+Add compact commit rows among top-level comments and submitted reviews, in GitHub’s
+timeline order when it reports the events together.
+Each row has a plain-text subject and a link labelled with the short commit ID. The full
+ID identifies the destination.
+Show a commit age only when there is a timestamp for it, and distinguish the commit date
+from a push date. Keep inline review threads and checks in their existing sections.
+
+Use GitHub’s
+[pull request timeline connection](https://docs.github.com/en/graphql/reference/pulls#pullrequest)
+with commit, issue comment, and pull request review event types.
+Request a compact commit summary and only the identifiers needed to match cached
+comments and reviews.
+The provider’s order matters when a commit was created before a comment and added to the
+PR after it. A read of
+[Metabrowser pull request 301](https://github.com/jlevy/metabrowser/pull/301) returned
+three commits, then comments and a review, then the follow-up commit and its
+disposition. Preserve that ordering without duplicating discussion bodies.
+The compact response held 8 events in 1.8 kB.
+[Metabrowser pull request 283](https://github.com/jlevy/metabrowser/pull/283) held 74
+events in 17.1 kB, and
+[Metabrowser pull request 303](https://github.com/jlevy/metabrowser/pull/303) held 5
+events in 1.4 kB. The connection’s total count also included events filtered out of the
+returned page, so use the pagination flags to decide whether more matched events remain.
+Five alternating pairs on the 74-event PR took 710–882 ms at 50 events and 830–947 ms at
+100\. The smaller request left a second page to read, while the larger one held all 74
+matched events. These are standalone `gh` timings, so use 100 as a candidate for the
+integrated trial and measure the selected page before choosing a production bound.
+Join discussion by event kind and a shared identifier.
+Use a lossless database ID or carry the GraphQL node ID on both sides.
+Deduplicate events at page boundaries.
+Keep unmatched discussion visible and use its existing time order when provider ordering
+is unavailable.
+
+Bind the projection to the canonical repository, PR number, actual response viewer,
+verified base and head, and the discussion revision it orders.
+A checkout without a comparison store can verify against provider metadata and the held
+PR record.
+Cache the bounded projection independently of the PR record so a late timeline
+can leave held discussion, its text budget, and rendered Markdown intact.
+Represent partial and unavailable results separately from a known empty timeline.
+A failed, superseded, or mismatched read leaves the last compatible published data
+available. This is a selected-PR read.
+The catalog and visible-row description preparation continue to use their existing
+lightweight projections.
+Timeline reads request no patches or Git objects.
+
+Use an ordinary, validated commit link.
+The PR-scoped GitHub commit address covers forks and commits absent locally while GitHub
+still serves the object.
+Use Metabrowser’s `/commit/<oid>` when the active Git source can open that exact object
+safely, with a GitHub link available if the object disappears.
+Avoid per-object probes while drawing the timeline.
+The local path must avoid both mirror acquisition and lazy object fetches in an existing
+partial checkout, through commit detail and diff hydration.
+
+Before choosing page and cache bounds, measure projected bytes, provider processes,
+description paint, and full Conversation paint on public PRs with a short and a long
+timeline. Test whether the projection fits alongside the existing selected refresh
+without delaying either readiness marker.
+If it does not, publish timeline rows independently after the useful Conversation is
+visible. Compare the same subjects with and without the projection, with cold and held
+caches. Keep the visible-row request shape unchanged.
+Reuse the browserless Pull page session for ordering, 64-bit discussion IDs, pending
+reviews, duplicate events, partial and failed reads, and an in-flight result overtaken
+by a discussion refresh.
+Include an older cached record and one near the text budget.
+Use a timeline longer than the chosen page size to hold a later page, bound requests and
+bytes, and check cancellation when the reader moves to another PR. Use the built-in
+browser to check both source modes, including a fork or missing commit and a partial
+checkout. Check exact commit addresses for ordinary and modified clicks and observe that
+local navigation issues no acquisition or refresh requests.
+
+## Main Tab Destinations and Progress
+
+A deliberate switch between Files, Pulls, and Git restores the destination that tab last
+showed in this browser page.
+On first visit, Files opens the served root, Pulls opens the Open list, and Git shows
+history with a prompt to select a commit.
+Opening Git without a selection does not read a commit or its diff.
+Store each tab’s route, including any selected file, PR tab, PR file, commit, or
+fragment. Keep each tab’s filter and scroll position with its own panel.
+A direct address or Back and Forward selects the tab that owns the address.
+Restoring an address activates its panel through the existing navigation owner.
+That activation must not launch a second navigation or let an older request overwrite
+the active preview. See `mb-1c0a`. The tab controller loads with the deferred shell
+tools. A deliberate click before that point can load the same controller on demand.
+
+Use small, muted exact totals beside **Open**, **Closed**, and **All**. Read all three
+from the existing cached catalog response, independent of the display window.
+A known zero is visible; an unknown count does not imply zero.
+The tally introduces no provider requests.
+See `mb-z8mj`.
+
+Use **Changes** as the user-facing tab label and keep `/pull/<n>/files` as its address.
+Keep the pulsing blocks for an empty PR page, and use the shared gray spinner when a
+rendered PR or one of its sections is actively fetching.
+Static notices explain failures and work that has not started.
+See `mb-ykyl` and `mb-rofh`.
 
 ## Goal
 

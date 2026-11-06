@@ -2,7 +2,7 @@
 
 Metabrowser reviews GitHub pull requests from a repository URL, an existing checkout, or
 a pull-request URL. The Pulls tab lists the repository’s pull requests; each page shows
-the description, conversation, reviews, checks, and Files changed.
+the description, conversation, reviews, checks, and changes.
 Records and Git objects are cached locally, so previously fetched data remains readable
 offline while those objects are available.
 
@@ -33,6 +33,8 @@ A folder without a recognized GitHub repository has no Pulls tab.
 Choose **Pulls** beside Files and Git.
 It starts on **Open**; the filters are **Open**, **Closed**, and **All**. Closed
 includes merged pull requests.
+Small tallies show each filter’s total when the catalog knows it.
+Switching among Files, Pulls, and Git restores each tab’s last selection.
 The list shows the newest pull requests first, with their open, draft, merged, or closed
 state. The status gives the repository’s total and name, with the number in bold.
 
@@ -61,7 +63,7 @@ representations once on an accepted refresh; later refreshes reuse conditional r
 as usual. A failed refresh retains the displayed record.
 
 Expand a row to see its changed files, grouped into folders with change counts.
-Selecting a file opens Files changed at that file.
+Selecting a file opens **Changes** at that file.
 Use J, K, or the up and down arrows to walk rows; the page opens the row where the walk
 stops. Keyboard walks keep focus in the tree and replace one browser history entry, so
 Back leaves the walk in one step.
@@ -69,7 +71,7 @@ The selected file follows the diff as you scroll; Back and Forward restore the s
 file and reading position.
 
 For a served folder, reading the list and conversation does not require a second Git
-copy. If Files changed has no cached store yet, it offers **Fetch changes**. That action
+copy. If **Changes** has no cached store yet, it offers **Fetch changes**. That action
 uses a healthy existing store or creates one borrowing the named checkout’s objects,
 fetching what it lacks into the cache.
 It leaves the served folder and Git tab on your checkout and runs no Git or writes in
@@ -83,8 +85,8 @@ With the optional [gh-stack extension](installation.md#git-and-github-setup), a 
 shows **Stack #N** when native GitHub metadata names its membership.
 The PR page shows its position, **Previous PR** and **Next PR**, and a disclosure of
 member PR links in bottom-to-top order.
-Moving between members keeps Conversation or Files changed selected and clears the
-previous PR’s file selection.
+Moving between members keeps Conversation or Changes selected and clears the previous
+PR’s file selection.
 Expanded trees retain their keyboard position; the current-file highlight belongs to the
 PR being viewed.
 
@@ -116,9 +118,9 @@ Serving https://github.com/pallets/click at http://127.0.0.1:8411/pull/3866
 Later runs reuse that clone and say so
 (`using the clone of … cached in ~/.cache/metabrowser, fetched 3 hours ago`).
 
-A `/pull/123/files` URL copied from GitHub opens on **Files changed**, and the `Serving`
-line prints that address, `http://127.0.0.1:8411/pull/123/files`. A `/pull/123/commits`
-URL opens on Conversation, because the page has no Commits tab.
+A `/pull/123/files` URL copied from GitHub opens on **Changes**, and the `Serving` line
+prints that address, `http://127.0.0.1:8411/pull/123/files`. A `/pull/123/commits` URL
+opens on Conversation, because the page has no Commits tab.
 
 ## What the Page Shows
 
@@ -132,8 +134,8 @@ condensed navigation keeps short ages.
 An initially empty page shows gray pulsing loading blocks.
 When switching from useful content, that content stays visible until the new description
 or an actionable failure is ready.
-The description can appear while comments, reviews, checks, and Files changed are still
-loading; each unfinished section says so.
+The description can appear while comments, reviews, checks, and changes are still
+loading. Active sections show the shared gray spinner.
 A cached full page keeps its content visible while it refreshes.
 **View on GitHub** opens the pull request on github.com with its state icon.
 External GitHub links in conversation text carry a destination icon; an unknown issue or
@@ -143,7 +145,7 @@ Below the header are two tabs:
 - **Conversation:** the description, then comments and reviews in time order.
   **Review comments** lists each inline review comment with its file and diff hunk, and
   **Checks** summarizes check runs and statuses, with links to their details.
-- **Files changed:** the comparison from the merge base to the head, split or unified.
+- **Changes:** the comparison from the merge base to the head, split or unified.
   The changed-files tree in Pulls navigates this comparison.
 
 The code controls depend on how the repository was opened:
@@ -192,10 +194,10 @@ A directory you merely stand in can be made to look like a checkout of anything.
 
 Three things are worth knowing:
 
-- **A shallow checkout may not settle Files changed at once.** If its history stops
+- **A shallow checkout may not settle the comparison at once.** If its history stops
   before the pull request’s merge base, `metab` fetches more history into the mirror.
-  Until that succeeds, and offline, **Files changed** says the history is too shallow to
-  know what the pull request changed, rather than show a guess.
+  Until that succeeds, and offline, **Changes** says the history is too shallow to know
+  what the pull request changed, rather than show a guess.
 - **If you move or delete the checkout,** `metab` refuses with `lender_missing`, prints
   the recorded path, and tells you to run the command again with
   `--checkout <new path>`.
@@ -235,7 +237,7 @@ comparison.
 | `lender_missing` | The checkout this mirror borrows from has moved or gone, or can no longer lend: it borrows objects itself, its objects cannot be read, or it holds another repository now | Run the command again with `--checkout <new path>` |
 | `network_unreachable`, `network_error` | GitHub could not be reached, by Git or by `gh` | See [Offline](#offline) |
 
-The conversation can remain available when Files changed cannot be read:
+The conversation can remain available when the comparison cannot be read:
 
 | Name | What it means | What to do |
 | --- | --- | --- |
@@ -324,7 +326,7 @@ The page shows how old the record is and which account read it
 when the page adds `may be out of date`. A managed PR URL refreshes a stale record when
 the server starts; a visible stale PR page also requests a refresh.
 **Refresh** is also available after a failed refresh or an unavailable comparison, and
-on Files changed even while the record is current.
+on **Changes** even while the record is current.
 A managed source’s row at the foot of the navigation pane separately reports when its
 Git store was fetched and can refresh it.
 

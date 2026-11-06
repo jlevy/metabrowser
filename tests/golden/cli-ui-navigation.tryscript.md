@@ -622,7 +622,7 @@ $ node tests/dom/navigation-route-behavior.js
     "reject invalid pull-request href 7/commits": "TypeError: pull route requires a pull-request number and a known tab",
     "a changed file's href": ["/pull/7/files/src/app.py","/pull/7/files/docs/a%20b/%E9%9B%AA.md","/pull/7/files/a%25b%3F%23c"],
     "a changed file's route parses back": [{"number":7,"tab":"files","file":"src/app.py"},{"number":7,"tab":"files","file":"docs/a b/雪.md"},{"number":7,"tab":"files","file":"a%b?#c"}],
-    "a changed file's href refuses what is not a normalized path": ["TypeError: pull route names a file of Files changed by a normalized path","TypeError: pull route names a file of Files changed by a normalized path","TypeError: pull route names a file of Files changed by a normalized path","TypeError: pull route names a file of Files changed by a normalized path","TypeError: pull route names a file by a path that is not Unicode"],
+    "a changed file's href refuses what is not a normalized path": ["TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route names a file by a path that is not Unicode"],
     "back between a page's tabs switches the tab": {"action":"tab","tab":"files"},
     "back onto a page whose pane a commit took mounts it": {"action":"mount","number":7,"tab":""},
     "back onto another pull request's page mounts it": {"action":"mount","number":7,"tab":"files"},

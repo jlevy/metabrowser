@@ -66,7 +66,11 @@ type MetabrowserPullsNavHost = Readonly<{
 /** What the list's view hands the Pulls tab's host. */
 type MetabrowserPullsPanelHandle = Readonly<{
   setShown(shown: boolean): void;
-  setCurrent(number: number | null, file?: string | null): void;
+  setCurrent(
+    number: number | null,
+    file?: string | null,
+    options?: { preserveScroll?: boolean },
+  ): void;
   setFilter(state: string): void;
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
   released(): void;
@@ -212,6 +216,7 @@ type MetabrowserNavigationController = Readonly<{
     target: MetabrowserNavigationTarget,
     options?: { replace?: boolean; viewId?: string },
   ): Promise<unknown>;
+  restore(): Promise<unknown>;
   start(): Promise<unknown>;
 }>;
 
@@ -2774,6 +2779,7 @@ declare global {
   type MetabrowserGitPanelRuntime = {
     init(): Promise<void>;
     cancelPending(): void;
+    restoreCommitLanding(): Promise<void>;
     /** Test-only surface; not part of any supported contract. */
     _internals: Record<string, unknown>;
   };
@@ -2793,6 +2799,27 @@ declare global {
     onHide?: (() => void) | null;
   };
 
+  type MetabrowserMainTabsDeps = {
+    cancelPreview(): void;
+    flushPull(): void;
+    isGitHistoryLanding(): boolean;
+    isPullAddress(pathname: string): boolean;
+    restore(): Promise<unknown>;
+    scrollShadow(): void;
+  };
+  type MetabrowserMainTabsController = {
+    active(): string;
+    activate(id: string): void;
+    finishGitDiscovery(): Promise<void>;
+    fileLanding(): void;
+    onHistory(): void;
+    open(id: string): void;
+    register(panel: MetabrowserNavPanel): void;
+    remember(): void;
+    remove(id: string): void;
+    takeFilesScroll(): boolean;
+  };
+
   type MetabrowserPreviewClaim = number;
 
   /**
@@ -2802,6 +2829,7 @@ declare global {
    */
   type MetabrowserShellRuntime = {
     activateNavPanel(panelId: string): void;
+    rememberMainTabAddress(): void;
     beginPreviewNavigation(claim: MetabrowserPreviewClaim): boolean;
     claimPreview(owner: string): MetabrowserPreviewClaim;
     endPreviewNavigation(claim: MetabrowserPreviewClaim): void;
@@ -2895,6 +2923,9 @@ declare global {
     MetabrowserResourceContext: MetabrowserResourceContextRuntime;
     MetabrowserSearch: MetabrowserSearchRuntime;
     MetabrowserShell?: MetabrowserShellRuntime;
+    MetabrowserMainTabs?: Readonly<{
+      create(deps: MetabrowserMainTabsDeps): MetabrowserMainTabsController;
+    }>;
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
@@ -2916,7 +2947,7 @@ declare global {
       ): void;
       dispose(): void;
       init(): Promise<void>;
-      routeChanged(): void;
+      routeChanged(options?: { preserveScroll?: boolean }): void;
     }>;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;

@@ -347,7 +347,7 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "open Files changed",
+      "step": "open Changes",
       "requests": [],
       "timer": "slow",
       "paints": 1,
@@ -997,9 +997,10 @@ The session is printed in two parts, by `github-pull-page-session.js` and by
 `github-pull-page-second-session.js`, which runs the same session whole, because
 tryscript matches a command’s expected output as one regular expression, and the
 transcript in one block is larger than V8 compiles.
-The second part is what Files changed says when the comparison is unavailable, a server
-with no store among them, the page on a checkout, the review comments’ hunks, and the
-reader’s place. A checkout’s page has no pin, so no Browse code and no switch, and it
+The second part is what the Changes tab says when the comparison is unavailable, a
+server with no store among them, the page on a checkout, the review comments’ hunks, and
+the reader’s place.
+A checkout’s page has no pin, so no Browse code and no switch, and it
 says only when the checkout’s is the pull request’s head.
 
 ```console
@@ -1007,45 +1008,45 @@ $ node tests/dom/github-pull-page-second-session.js
 {
   "filesUnavailable": {
     "fetch_failed": {
-      "files": "Files changed is unavailable: the pull request's base could not be compared with its head.",
+      "files": "Changes are unavailable: the pull request's base could not be compared with its head.",
       "notes": [
-        "Files changed could not be read (fetch failed)."
+        "Changes could not be read (fetch failed)."
       ]
     },
     "no_merge_base": {
-      "files": "Files changed is unavailable: the pull request's base could not be compared with its head.",
+      "files": "Changes are unavailable: the pull request's base could not be compared with its head.",
       "notes": [
-        "Files changed could not be read (no merge base)."
+        "Changes could not be read (no merge base)."
       ]
     },
     "base_uncertain": {
-      "files": "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.",
+      "files": "Changes are not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.",
       "notes": [
-        "Files changed could not be read (base uncertain)."
+        "Changes could not be read (base uncertain)."
       ]
     },
     "commits_unavailable": {
-      "files": "Files changed is unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.",
+      "files": "Changes are unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.",
       "notes": [
-        "Files changed could not be read (commits unavailable)."
+        "Changes could not be read (commits unavailable)."
       ]
     },
     "no_store": {
-      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged.",
+      "files": "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged.",
       "notes": [
-        "Files changed could not be read (no store)."
+        "Changes could not be read (no store)."
       ]
     },
     "comparison_timeout": {
-      "files": "Files changed is unavailable: checking this pull request's history took too long. Refresh to try again.",
+      "files": "Changes are unavailable: checking this pull request's history took too long. Refresh to try again.",
       "notes": [
-        "Files changed could not be read (comparison timeout)."
+        "Changes could not be read (comparison timeout)."
       ]
     },
     "comparison_too_large": {
-      "files": "Files changed is unavailable: checking this pull request's history exceeded the comparison limit.",
+      "files": "Changes are unavailable: checking this pull request's history exceeded the comparison limit.",
       "notes": [
-        "Files changed could not be read (comparison too large)."
+        "Changes could not be read (comparison too large)."
       ]
     }
   },
@@ -1055,21 +1056,21 @@ $ node tests/dom/github-pull-page-second-session.js
       "headOffer": null,
       "checkoutAtHead": "This checkout's HEAD is this pull request's head.",
       "comparison": null,
-      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
+      "files": "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
     },
     "HEAD is elsewhere": {
       "browse": null,
       "headOffer": null,
       "checkoutAtHead": null,
       "comparison": null,
-      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
+      "files": "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
     },
     "no repository context": {
       "browse": null,
       "headOffer": null,
       "checkoutAtHead": null,
       "comparison": null,
-      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
+      "files": "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
     },
     "a mirror's page, whatever it is handed": {
       "browse": "switches to refs/pull/7/head",
