@@ -1084,6 +1084,8 @@ async function pullSearchSession() {
   const started = Promise.withResolvers();
   const growth = Promise.withResolvers();
   const growthStarted = Promise.withResolvers();
+  const exactRecheck = Promise.withResolvers();
+  const exactRecheckStarted = Promise.withResolvers();
   const obsolete = Promise.withResolvers();
   const obsoleteStarted = Promise.withResolvers();
   let renderReads = 0;
@@ -1118,8 +1120,11 @@ async function pullSearchSession() {
             started.resolve();
             return delayed.promise;
           }
-          growthStarted.resolve();
-          return growth.promise;
+          if (renderReads === 2) {
+            growthStarted.resolve(init.signal);
+            return growth.promise;
+          }
+          return Promise.resolve(reply([newerPull, readyPull], { truncated: true }));
         }
         if (url.endsWith("?q=obsolete")) {
           obsoleteReads += 1;
@@ -1142,6 +1147,10 @@ async function pullSearchSession() {
         }
         if (url.endsWith("?q=%2377")) {
           coldReads += 1;
+          if (coldReads === 2) {
+            exactRecheckStarted.resolve(init.signal);
+            return exactRecheck.promise;
+          }
           return Promise.resolve(
             coldReads < 4
               ? reply([], { complete: false, refreshing: coldReads > 1 })
@@ -1161,6 +1170,7 @@ async function pullSearchSession() {
     document,
     describeOpenFailure: sandbox.MetabrowserNavigationRoute.openFailureOutcome,
     getCatalogSnapshot: () => catalog.snapshot(),
+    subscribeCatalog: (listener) => catalog.subscribe(listener),
     openFile: (path) => {
       opened.push(path);
       return { status: "opened" };
@@ -1227,7 +1237,7 @@ async function pullSearchSession() {
     }
   });
   delayed.resolve(reply([readyPull], { complete: false, refreshing: true }));
-  await growthStarted.promise;
+  const growthSignal = await growthStarted.promise;
   check(
     "cached PR matches paint before the refresh settles",
     controller.state().phase === "searching",
@@ -1252,6 +1262,11 @@ async function pullSearchSession() {
 
   key("ArrowUp");
   equal("the first cached PR can be selected during backfill", currentChoice(), mixed[1]);
+  catalog.observeRecent([{ path: "z/render-guide.md", type: "file" }]);
+  catalog.observeRecent([{ path: "z/render-notes.md", type: "file" }]);
+  await waitMs(220);
+  const mixedKeptReading = !growthSignal.aborted && renderReads === 2;
+  check("file growth leaves an active title recheck running", mixedKeptReading);
   growth.resolve(reply([newerPull, readyPull], { truncated: true }));
   await titleComplete;
   check(
@@ -1272,6 +1287,17 @@ async function pullSearchSession() {
     "the API result cap reaches the palette independently of its scan scope",
     truncatedStatus.includes("Showing the top matches.") && !truncatedStatus.includes("older"),
   );
+
+  const catalogRefreshComplete = searchCompletes();
+  await Promise.race([catalogRefreshComplete, waitMs(600)]);
+  const afterFileGrowth = choices();
+  const selectedAfterFileGrowth = currentChoice();
+  equal("the two file events coalesce into one search", renderReads, 3);
+  check(
+    "the deferred refresh finds newly indexed files",
+    afterFileGrowth.includes("z/render-guide.md") && afterFileGrowth.includes("z/render-notes.md"),
+  );
+  equal("file growth preserves the selected PR", selectedAfterFileGrowth, mixed[1]);
 
   const limitedComplete = searchCompletes();
   type("older");
@@ -1321,6 +1347,12 @@ async function pullSearchSession() {
   palette.open();
   const warmComplete = searchCompletes();
   type("#77");
+  const exactSignal = await exactRecheckStarted.promise;
+  catalog.observeRecent([{ path: "new/exact-77.txt", type: "file" }]);
+  await waitMs(220);
+  const exactKeptReading = !exactSignal.aborted && coldReads === 2;
+  check("explicit PR numbers ignore file-catalog updates during a recheck", exactKeptReading);
+  exactRecheck.resolve(reply([], { complete: false, refreshing: true }));
   await warmComplete;
   const cold = choices();
   equal("an empty cold catalog can populate within one query", cold, [
@@ -1355,12 +1387,16 @@ async function pullSearchSession() {
     grown,
     selectedAfterGrowth,
     truncatedStatus,
+    mixedKeptReading,
+    afterFileGrowth,
+    selectedAfterFileGrowth,
     limitedStatus,
     exact,
     staleRequestAborted,
     bare,
     opened,
     cold,
+    exactKeptReading,
     pullOpenFailure,
     requests: requests.map(({ method, url }) => `${method} ${url}`),
   };

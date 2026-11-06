@@ -2002,6 +2002,7 @@ type MetabrowserSearchRuntime = Readonly<{
     fetch?: typeof fetch;
     maxResults?: number;
   }): MetabrowserSearchProvider;
+  isPullNumberQuery(query: string): boolean;
 }>;
 
 /** A failed open always says why, so the palette never has to classify it again. */

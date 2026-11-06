@@ -215,48 +215,53 @@
     let renderedQuery = "";
     /** @type {ReturnType<typeof setTimeout> | null} */
     let catalogRefreshTimer = null;
+    let catalogRefreshPending = false;
 
-    // Coverage arrives in bursts — one bulk payload, then a stream of deltas
-    // while the walk finishes. Re-running per delta would thrash, so changes
-    // coalesce into at most one re-run per window. Leading-edge coalescing
-    // rather than a trailing debounce: on a large root the deltas may never
-    // pause, and a trailing timer would keep resetting and never fire.
+    // File coverage can change in bursts. Coalesce them, and let a mixed
+    // search finish its PR reads before replacing its file snapshot.
     const CATALOG_REFRESH_WINDOW_MS = 150;
 
-    /**
-     * The catalog moved underneath an open palette.
-     *
-     * A search reads one immutable snapshot, so results reflect coverage at
-     * the moment the query ran. Without this a query typed while the bulk feed
-     * was still arriving would keep its original, thinner result set even
-     * after the catalog completed, and the user would have to edit the query
-     * to see the rest.
-     *
-     * Re-running is safe rather than disruptive: the controller cancels the
-     * superseded search, consumeState re-selects by result id so the keyboard
-     * position survives, and because the query text is unchanged the rows
-     * never go inert — the held-rows path repaints them without a flicker.
-     */
-    function onCatalogChanged() {
-      if (disposed || overlay.hidden || opening || catalogRefreshTimer !== null) {
+    function searchHoldsCatalogRefresh() {
+      return includesPulls && searchState?.phase === "searching";
+    }
+
+    function scheduleCatalogRefresh() {
+      if (!catalogRefreshPending || catalogRefreshTimer !== null || searchHoldsCatalogRefresh()) {
         return;
       }
       catalogRefreshTimer = setTimeout(() => {
         catalogRefreshTimer = null;
         if (disposed || overlay.hidden || opening) {
+          catalogRefreshPending = false;
           return;
         }
+        if (searchHoldsCatalogRefresh()) {
+          return;
+        }
+        catalogRefreshPending = false;
         if (input.value.trim()) {
           runSearch(true);
         } else {
-          // No query to re-run, but the idle line quotes the observed count,
-          // which is exactly what just changed.
           renderStatus();
         }
       }, CATALOG_REFRESH_WINDOW_MS);
     }
 
+    function onCatalogChanged() {
+      if (
+        disposed ||
+        overlay.hidden ||
+        opening ||
+        (includesPulls && window.MetabrowserSearch.isPullNumberQuery(input.value))
+      ) {
+        return;
+      }
+      catalogRefreshPending = true;
+      scheduleCatalogRefresh();
+    }
+
     function clearCatalogRefresh() {
+      catalogRefreshPending = false;
       if (catalogRefreshTimer !== null) {
         clearTimeout(catalogRefreshTimer);
         catalogRefreshTimer = null;
@@ -498,22 +503,26 @@
         return;
       }
       searchState = state;
-      // A search publishes "searching" once before any provider has returned,
-      // so that first composition is always empty. Rendering it would blank the
-      // list between keystrokes and refill it a few milliseconds later. Hold
-      // the rows already on screen instead — the same reason selectFile leaves
-      // the previous file in the preview during a fast fetch rather than
-      // flashing a spinner. A completed search with no matches still clears,
-      // because it is no longer pending.
-      if (state.phase === "searching" && state.results.length === 0 && results.length > 0) {
+      const sameQuery = rowsMatchQuery();
+      const previousSelection = selectedResultId;
+      // Hold the painted rows through the empty first composition. On a
+      // same-query refresh, also keep the selection while its provider waits.
+      if (
+        state.phase === "searching" &&
+        results.length > 0 &&
+        (state.results.length === 0 ||
+          (includesPulls &&
+            sameQuery &&
+            previousSelection !== null &&
+            !state.results.some((result) => result.id === previousSelection)))
+      ) {
         renderStatus();
         return;
       }
       if (state.phase === "complete") {
         clearSearchingStatus();
+        scheduleCatalogRefresh();
       }
-      const previousSelection = selectedResultId;
-      const sameQuery = rowsMatchQuery();
       const previousIndex = sameQuery ? activeIndex : -1;
       const scrollTop = sameQuery ? listbox.scrollTop : 0;
       results = state.results.slice(0, maxRows);
@@ -709,6 +718,9 @@
     function handleInput(event) {
       if (/** @type {{isComposing?: boolean}} */ (event).isComposing) {
         return;
+      }
+      if (includesPulls) {
+        clearCatalogRefresh();
       }
       runSearch();
     }

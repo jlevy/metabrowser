@@ -908,5 +908,6 @@
     createController,
     createLocalFileProvider,
     createPullProvider,
+    isPullNumberQuery,
   });
 })();

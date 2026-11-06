@@ -14,7 +14,8 @@ notices.
 
 A hash number searches PRs alone.
 Bare digits include file matches too.
-An obsolete response cannot replace a newer query.
+File indexing leaves those PR reads running and refreshes mixed results once they
+settle. An obsolete response cannot replace a newer query.
 A cold catalog starts one shared refresh and the standing query finds the result when it
 reaches disk.
 
@@ -43,7 +44,17 @@ $ node tests/dom/quick-search-pulls-session.js
   ],
   "selectedAfterGrowth": "Pull request #123, Fix <em>renderer</em>, Merged",
   "truncatedStatus": "2 matching files in 3 indexed files. Scanning continues. 2 pull requests shown. Showing the top matches.",
-  "limitedStatus": "No matches in 3 indexed files. Scanning continues. No matching cached pull requests. Search by number for older pull requests.",
+  "mixedKeptReading": true,
+  "afterFileGrowth": [
+    "render.js",
+    "Pull request #124, Render the latest state, Closed",
+    "src/renderer.js",
+    "Pull request #123, Fix <em>renderer</em>, Merged",
+    "z/render-guide.md",
+    "z/render-notes.md"
+  ],
+  "selectedAfterFileGrowth": "Pull request #123, Fix <em>renderer</em>, Merged",
+  "limitedStatus": "No matches in 5 indexed files. Scanning continues. No matching cached pull requests. Search by number for older pull requests.",
   "exact": [
     "Pull request #123, Fix <em>renderer</em>, Merged"
   ],
@@ -59,8 +70,10 @@ $ node tests/dom/quick-search-pulls-session.js
   "cold": [
     "Pull request #77, Cold catalog match, Open"
   ],
+  "exactKeptReading": true,
   "pullOpenFailure": "Could not open this pull request. Try again.",
   "requests": [
+    "GET /api/plugin/github/pulls?q=render",
     "GET /api/plugin/github/pulls?q=render",
     "GET /api/plugin/github/pulls?q=render",
     "GET /api/plugin/github/pulls?q=older",
