@@ -1068,14 +1068,26 @@ async function pullSearchSession() {
   );
   const requests = [];
   const readyPull = { number: 123, title: "Fix <em>renderer</em>", state: "merged" };
+  const newerPull = { number: 124, title: "Render the latest state", state: "closed" };
   const reply = (rows, flags = {}) => ({
     ok: true,
-    json: async () => ({ complete: true, limited: false, refreshing: false, rows, ...flags }),
+    json: async () => ({
+      complete: true,
+      limited: false,
+      refreshing: false,
+      rows,
+      truncated: false,
+      ...flags,
+    }),
   });
   const delayed = Promise.withResolvers();
   const started = Promise.withResolvers();
+  const growth = Promise.withResolvers();
+  const growthStarted = Promise.withResolvers();
   const obsolete = Promise.withResolvers();
   const obsoleteStarted = Promise.withResolvers();
+  let renderReads = 0;
+  let obsoleteReads = 0;
   let now = 1_000;
   sandbox.Date = class extends Date {
     static now() {
@@ -1101,15 +1113,32 @@ async function pullSearchSession() {
         }
         lookupSignal = init.signal;
         if (url.endsWith("?q=render")) {
-          started.resolve();
-          return delayed.promise;
+          renderReads += 1;
+          if (renderReads === 1) {
+            started.resolve();
+            return delayed.promise;
+          }
+          growthStarted.resolve();
+          return growth.promise;
         }
         if (url.endsWith("?q=obsolete")) {
+          obsoleteReads += 1;
+          if (obsoleteReads === 1) {
+            return Promise.resolve(
+              reply([{ number: 998, title: "Obsolete cached match", state: "open" }], {
+                complete: false,
+                refreshing: true,
+              }),
+            );
+          }
           obsoleteStarted.resolve(init.signal);
           return obsolete.promise;
         }
         if (url.endsWith("?q=%23123")) {
-          return Promise.resolve(reply([readyPull]));
+          return Promise.resolve(reply([readyPull], { complete: false, refreshing: true }));
+        }
+        if (url.endsWith("?q=older")) {
+          return Promise.resolve(reply([], { limited: true }));
         }
         if (url.endsWith("?q=%2377")) {
           coldReads += 1;
@@ -1197,11 +1226,11 @@ async function pullSearchSession() {
       selectedAfterInsertion = listbox.children[2];
     }
   });
-  delayed.resolve(reply([readyPull]));
-  await titleComplete;
+  delayed.resolve(reply([readyPull], { complete: false, refreshing: true }));
+  await growthStarted.promise;
   check(
-    "the spinner clears when the PR lookup settles",
-    progress.querySelector(".spinner") === null,
+    "cached PR matches paint before the refresh settles",
+    controller.state().phase === "searching",
   );
   unsubscribe();
   const mixed = choices();
@@ -1221,8 +1250,45 @@ async function pullSearchSession() {
   const details = pullOption.querySelector(".search-palette-description").textContent;
   check("a late insertion keeps the selected row in view", selectedAfterInsertion?.scrollCalls > 0);
 
+  key("ArrowUp");
+  equal("the first cached PR can be selected during backfill", currentChoice(), mixed[1]);
+  growth.resolve(reply([newerPull, readyPull], { truncated: true }));
+  await titleComplete;
+  check(
+    "the spinner clears when the PR lookup settles",
+    progress.querySelector(".spinner") === null,
+  );
+  const grown = choices();
+  const selectedAfterGrowth = currentChoice();
+  const truncatedStatus = progress.textContent;
+  equal("newly cached PRs update the standing title query", grown, [
+    "render.js",
+    "Pull request #124, Render the latest state, Closed",
+    "src/renderer.js",
+    mixed[1],
+  ]);
+  equal("refresh preserves the chosen PR as its rank changes", selectedAfterGrowth, mixed[1]);
+  check(
+    "the API result cap reaches the palette independently of its scan scope",
+    truncatedStatus.includes("Showing the top matches.") && !truncatedStatus.includes("older"),
+  );
+
+  const limitedComplete = searchCompletes();
+  type("older");
+  await limitedComplete;
+  const limitedStatus = progress.textContent;
+  check(
+    "limited title coverage is distinct from the result cap",
+    limitedStatus.includes("Search by number for older pull requests.") &&
+      !limitedStatus.includes("Showing the top matches."),
+  );
+
   type("obsolete");
   const obsoleteSignal = await obsoleteStarted.promise;
+  check(
+    "an active refresh paints its cached matches before the next response",
+    choices()[0]?.includes("Obsolete cached match"),
+  );
   const numberComplete = searchCompletes();
   type("#123");
   key("Enter");
@@ -1286,6 +1352,10 @@ async function pullSearchSession() {
     afterMerge,
     titleHighlight,
     details,
+    grown,
+    selectedAfterGrowth,
+    truncatedStatus,
+    limitedStatus,
     exact,
     staleRequestAborted,
     bare,

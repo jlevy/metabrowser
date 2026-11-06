@@ -1937,7 +1937,10 @@ type MetabrowserSearchBatch = Readonly<{
   truncated: boolean;
 }>;
 
-type MetabrowserSearchContext = Readonly<{ requestId: number }>;
+type MetabrowserSearchContext = Readonly<{
+  requestId: number;
+  publishBatch?(batch: MetabrowserSearchBatch): void;
+}>;
 
 type MetabrowserSearchProvider = Readonly<{
   activation?: "fallback" | "immediate";

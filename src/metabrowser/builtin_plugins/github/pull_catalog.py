@@ -241,11 +241,12 @@ class PullSearchEnvelope(TypedDict):
     rows: list[PullSearchRow]
     complete: bool
     limited: bool
+    truncated: bool
 
 
 def catalog_search(repository: ListedRepository | None, query: str) -> PullSearchEnvelope:
     """Search the current source's local metadata across open and closed PRs."""
-    empty = PullSearchEnvelope(rows=[], complete=False, limited=False)
+    empty = PullSearchEnvelope(rows=[], complete=False, limited=False, truncated=False)
     if repository is None:
         return empty
     digits = query[1:] if query.startswith("#") else ""
@@ -285,7 +286,7 @@ def catalog_search(repository: ListedRepository | None, query: str) -> PullSearc
                     "SELECT body FROM pulls WHERE number >= ? "
                     "AND title_matches(json_extract(body, '$.title')) "
                     "ORDER BY number DESC LIMIT ?",
-                    (oldest, _SEARCH_RESULT_LIMIT),
+                    (oldest, _SEARCH_RESULT_LIMIT + 1),
                 )
             rows: list[PullSearchRow] = []
             for (body,) in cursor:
@@ -301,7 +302,12 @@ def catalog_search(repository: ListedRepository | None, query: str) -> PullSearc
                         else row.state,
                     }
                 )
-            return {"rows": rows, "complete": complete, "limited": limited}
+            return {
+                "rows": rows[:_SEARCH_RESULT_LIMIT],
+                "complete": complete,
+                "limited": limited,
+                "truncated": len(rows) > _SEARCH_RESULT_LIMIT,
+            }
     except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
         return empty
 

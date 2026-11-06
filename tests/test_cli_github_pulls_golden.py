@@ -215,9 +215,14 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
             "rows": [row],
             "complete": True,
             "limited": False,
+            "truncated": False,
             "refreshing": False,
         }
         assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
+
+    broad = session.get("?q=work+item+5").payload()
+    assert len(broad["rows"]) == 12 and broad["truncated"] and not broad["limited"]
+    assert broad["complete"] and not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
 
     # A changed PR is merged through UPDATED_AT without rescanning the old creation pages.
     session.advance(61)

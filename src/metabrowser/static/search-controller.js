@@ -7,8 +7,8 @@
   const PULL_QUERY_DELAY_MS = 120;
   const PULL_WARM_COOLDOWN_MS = 60_000;
   const PULL_WARM_TIMEOUT_MS = 6_000;
-  // A cold authenticated fetch can outlast the first two local cache reads.
-  const COLD_PULL_RECHECK_DELAYS_MS = [180, 400, 800, 1_600, 3_000];
+  // Catalog backfill can publish several pages while a query stays open.
+  const PULL_RECHECK_DELAYS_MS = [180, 400, 800, 1_600, 3_000];
   const MAX_PULL_QUERY_LENGTH = 256;
   const PULL_STATES = /** @type {const} */ (["open", "draft", "closed", "merged"]);
   const PROVIDER_ACTIVATION_FALLBACK = "fallback";
@@ -126,7 +126,12 @@
    * @property {boolean} truncated
    */
 
-  /** @typedef {Readonly<{requestId: number}>} MetabrowserSearchContext */
+  /**
+   * @typedef {Readonly<{
+   *   requestId: number,
+   *   publishBatch?: (batch: MetabrowserSearchBatch) => void,
+   * }>} MetabrowserSearchContext
+   */
 
   /**
    * @typedef {object} MetabrowserSearchProvider
@@ -428,11 +433,11 @@
 
     /**
      * @param {MetabrowserSearchRequest} request
-     * @param {MetabrowserSearchContext} _context
+     * @param {MetabrowserSearchContext} context
      * @param {AbortSignal} signal
      * @returns {Promise<MetabrowserSearchBatch>}
      */
-    async function search(request, _context, signal) {
+    async function search(request, context, signal) {
       // Let file results paint as the reader types. Superseded queries never
       // reach the server if they change again before this short pause.
       await defaultYieldControl(signal, PULL_QUERY_DELAY_MS);
@@ -447,6 +452,7 @@
        *   complete: boolean,
        *   limited: boolean,
        *   refreshing: boolean,
+       *   truncated: boolean,
        * }>} */
       async function lookup() {
         const response = await read(`/api/plugin/github/pulls?${params}`, { signal });
@@ -456,15 +462,75 @@
         return response.json();
       }
 
+      const exactNumber = isPullNumberQuery(query);
+      const titlePattern = pullTitlePattern(query);
+
+      /** @param {Awaited<ReturnType<typeof lookup>>} body @returns {MetabrowserSearchBatch} */
+      function toBatch(body) {
+        /** @type {MetabrowserSearchPullResult[]} */
+        const results = body.rows.slice(0, maxResults).flatMap((row, index) => {
+          if (
+            !Number.isSafeInteger(row.number) ||
+            row.number <= 0 ||
+            typeof row.title !== "string" ||
+            !PULL_STATES.includes(row.state)
+          ) {
+            return [];
+          }
+          return [
+            {
+              id: `pull:${row.number}`,
+              kind: "pull",
+              label: row.title,
+              matchRanges: titlePattern
+                ? Array.from(row.title.matchAll(titlePattern), (match) => ({
+                    start: match.index,
+                    end: match.index + match[0].length,
+                  }))
+                : [],
+              number: row.number,
+              providerId: PULL_PROVIDER_ID,
+              score: maxResults - index,
+              state: row.state,
+            },
+          ];
+        });
+        const statusMessage =
+          results.length > 0
+            ? `${results.length} pull ${results.length === 1 ? "request" : "requests"} shown.`
+            : body.refreshing
+              ? "The pull request catalog is still incomplete. Try again shortly."
+              : "No matching cached pull requests.";
+        const coverage = body.limited ? " Search by number for older pull requests." : "";
+        return {
+          complete: body.complete,
+          providerId: PULL_PROVIDER_ID,
+          results,
+          statusMessage: statusMessage + coverage,
+          truncated: body.truncated || body.rows.length > maxResults,
+        };
+      }
+
       let body = await lookup();
       throwIfAborted(signal);
-      if (!body.complete || (body.rows.length === 0 && !body.limited)) {
+      if (
+        (!exactNumber || body.rows.length === 0) &&
+        (body.refreshing || !body.complete || (body.rows.length === 0 && !body.limited))
+      ) {
         const asked = !body.refreshing && warmCatalog();
         let mayHaveNewRows =
           body.refreshing || asked || (warmRequest !== null && warmStatus === null);
-        for (const delayMs of COLD_PULL_RECHECK_DELAYS_MS) {
-          if (!mayHaveNewRows || body.rows.length > 0 || body.limited) {
+        let lastProgress = "";
+        for (const delayMs of PULL_RECHECK_DELAYS_MS) {
+          if (!mayHaveNewRows || (exactNumber && body.rows.length > 0)) {
             break;
+          }
+          if (context.publishBatch && body.rows.length > 0) {
+            const progress = JSON.stringify(body);
+            if (progress !== lastProgress) {
+              lastProgress = progress;
+              context.publishBatch(toBatch(body));
+            }
           }
           await defaultYieldControl(signal, delayMs);
           if (!body.refreshing && warmStatus !== null && warmStatus !== 202) {
@@ -475,49 +541,7 @@
           mayHaveNewRows = body.refreshing || (warmRequest !== null && warmStatus === null);
         }
       }
-      const titlePattern = pullTitlePattern(query);
-      /** @type {MetabrowserSearchPullResult[]} */
-      const results = body.rows.slice(0, maxResults).flatMap((row, index) => {
-        if (
-          !Number.isSafeInteger(row.number) ||
-          row.number <= 0 ||
-          typeof row.title !== "string" ||
-          !PULL_STATES.includes(row.state)
-        ) {
-          return [];
-        }
-        return [
-          {
-            id: `pull:${row.number}`,
-            kind: "pull",
-            label: row.title,
-            matchRanges: titlePattern
-              ? Array.from(row.title.matchAll(titlePattern), (match) => ({
-                  start: match.index,
-                  end: match.index + match[0].length,
-                }))
-              : [],
-            number: row.number,
-            providerId: PULL_PROVIDER_ID,
-            score: maxResults - index,
-            state: row.state,
-          },
-        ];
-      });
-      const statusMessage =
-        results.length > 0
-          ? `${results.length} pull ${results.length === 1 ? "request" : "requests"} shown.`
-          : body.refreshing
-            ? "The pull request catalog is still incomplete. Try again shortly."
-            : "No matching cached pull requests.";
-      const coverage = body.limited ? " Search by number for older pull requests." : "";
-      return {
-        complete: body.complete,
-        providerId: PULL_PROVIDER_ID,
-        results,
-        statusMessage: statusMessage + coverage,
-        truncated: body.rows.length > maxResults,
-      };
+      return toBatch(body);
     }
 
     return Object.freeze({
@@ -782,13 +806,12 @@
         publishComposition("searching");
         await Promise.all(
           providers.map(async ({ provider }) => {
-            try {
-              const batch = await provider.search(
-                request,
-                Object.freeze({ requestId }),
-                controller.signal,
-              );
-              if (controller.signal.aborted || active?.requestId !== requestId) {
+            let acceptingProgress = true;
+            const isCurrent = () => !controller.signal.aborted && active?.requestId === requestId;
+
+            /** @param {MetabrowserSearchBatch} batch */
+            function publishBatch(batch) {
+              if (!isCurrent()) {
                 return;
               }
               batches.set(
@@ -801,16 +824,29 @@
                   truncated: batch.truncated === true,
                 }),
               );
+              publishComposition("searching");
+            }
+
+            try {
+              const context = Object.freeze({
+                requestId,
+                /** @param {MetabrowserSearchBatch} batch */
+                publishBatch: (batch) => {
+                  if (acceptingProgress) {
+                    publishBatch(batch);
+                  }
+                },
+              });
+              const batch = await provider.search(request, context, controller.signal);
+              publishBatch(batch);
             } catch (error) {
-              if (controller.signal.aborted || active?.requestId !== requestId) {
-                return;
-              }
-              const detail = error instanceof Error ? error.message : String(error);
-              errors.set(provider.id, `${provider.id}: ${detail}`);
-            } finally {
-              if (!controller.signal.aborted && active?.requestId === requestId) {
+              if (isCurrent()) {
+                const detail = error instanceof Error ? error.message : String(error);
+                errors.set(provider.id, `${provider.id}: ${detail}`);
                 publishComposition("searching");
               }
+            } finally {
+              acceptingProgress = false;
             }
           }),
         );

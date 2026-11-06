@@ -7,6 +7,10 @@ sandbox: false
 The production search controller and palette display file matches while a PR title
 lookup is pending. The selected file stays selected when the PR arrives.
 The result shows the title, number, and state and opens with Enter or a click.
+A title query shows cached PRs while the catalog refreshes and keeps the selected PR as
+more results arrive.
+The result cap and the limit on how far back the title search looks have separate
+notices.
 
 A hash number searches PRs alone.
 Bare digits include file matches too.
@@ -31,6 +35,15 @@ $ node tests/dom/quick-search-pulls-session.js
   "afterMerge": "src/renderer.js",
   "titleHighlight": "render",
   "details": "#123 · Merged",
+  "grown": [
+    "render.js",
+    "Pull request #124, Render the latest state, Closed",
+    "src/renderer.js",
+    "Pull request #123, Fix <em>renderer</em>, Merged"
+  ],
+  "selectedAfterGrowth": "Pull request #123, Fix <em>renderer</em>, Merged",
+  "truncatedStatus": "2 matching files in 3 indexed files. Scanning continues. 2 pull requests shown. Showing the top matches.",
+  "limitedStatus": "No matches in 3 indexed files. Scanning continues. No matching cached pull requests. Search by number for older pull requests.",
   "exact": [
     "Pull request #123, Fix <em>renderer</em>, Merged"
   ],
@@ -49,6 +62,9 @@ $ node tests/dom/quick-search-pulls-session.js
   "pullOpenFailure": "Could not open this pull request. Try again.",
   "requests": [
     "GET /api/plugin/github/pulls?q=render",
+    "GET /api/plugin/github/pulls?q=render",
+    "GET /api/plugin/github/pulls?q=older",
+    "GET /api/plugin/github/pulls?q=obsolete",
     "GET /api/plugin/github/pulls?q=obsolete",
     "GET /api/plugin/github/pulls?q=%23123",
     "GET /api/plugin/github/pulls?q=%23123",

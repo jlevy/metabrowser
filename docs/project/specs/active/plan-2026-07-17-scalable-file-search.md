@@ -371,8 +371,12 @@ The endpoint reads the same private SQLite catalog as the Pulls tab and projects
 number, title, and state.
 Typing reads only cached summary data.
 Catalog warming uses the shared Pulls refresh job and its existing rate and retry
-controls. The response reports catalog completeness and whether a title scan reached its
-work limit separately.
+controls. Cached matches appear as soon as they are available.
+While the catalog is refreshing, the active title query checks for new results within a
+bounded window.
+The response separates catalog completeness, the title scan’s work limit,
+and the result limit.
+The palette labels a list that has more matching results.
 See
 [Search From the Catalog](plan-2026-10-01-github-pulls-tab.md#search-from-the-catalog).
 

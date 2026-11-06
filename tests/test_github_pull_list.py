@@ -172,22 +172,29 @@ def test_pull_search_respects_title_budget_and_indexes_exact_numbers(
         "rows": [{"number": 1, "title": "Straße: 100% _ready", "state": "draft"}],
         "complete": False,
         "limited": False,
+        "truncated": False,
     }
     assert not catalog_search(repository, "100_")["rows"]
-    assert [row["number"] for row in catalog_search(repository, "item")["rows"]] == list(
-        range(15, 3, -1)
-    )
+    common = catalog_search(repository, "item")
+    assert [row["number"] for row in common["rows"]] == list(range(15, 3, -1))
+    assert common["truncated"] and not common["limited"]
 
     monkeypatch.setattr(pull_catalog, "_SEARCH_TITLE_ROWS", 3)
-    assert catalog_search(repository, "Straße") == {"rows": [], "complete": False, "limited": True}
+    assert catalog_search(repository, "Straße") == {
+        "rows": [],
+        "complete": False,
+        "limited": True,
+        "truncated": False,
+    }
     exact = catalog_search(repository, "#1")
-    assert exact["rows"][0]["number"] == 1 and not exact["limited"]
+    assert exact["rows"][0]["number"] == 1 and not exact["limited"] and not exact["truncated"]
     assert not catalog_search(repository, "#0")["rows"]
     assert not catalog_search(repository, "#999999999999")["rows"]
     assert catalog_search(replace(repository, repo="other"), "#1") == {
         "rows": [],
         "complete": False,
         "limited": False,
+        "truncated": False,
     }
     assert _fingerprint(repository.home) == before
 
@@ -414,7 +421,12 @@ def test_untrusted_catalog_reads_are_bounded_and_never_modify(
         path.chmod(0o644)
     before = _fingerprint(repository.home)
     assert catalog_window(repository.home, repository.slug, "all", limit=100) == (None, [], None)
-    assert catalog_search(repository, "#1") == {"rows": [], "complete": False, "limited": False}
+    assert catalog_search(repository, "#1") == {
+        "rows": [],
+        "complete": False,
+        "limited": False,
+        "truncated": False,
+    }
     assert _fingerprint(repository.home) == before
 
 
