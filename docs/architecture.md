@@ -336,7 +336,7 @@ which space it belongs to:
 | `/view/<path>` | Content in the served tree or a pinned Git revision | A served-root-relative path, or a `GitPath` wire when the session is a `GitRevisionSubject` |
 | `/commit/<rev>` | One commit’s change set, compared against its first parent | A revision |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
-| `/pull/<n>`, `/pull/<n>/files` | A pull request’s page: its conversation, or its Files changed | A pull-request number, then an optional tab |
+| `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | A pull request’s Conversation, Changes, or Checks tab | A pull-request number, then an optional tab |
 | `/pull/<n>/files/<inner>` | One changed file of that page’s Files changed | A pull-request number, then a path within its comparison |
 | `/pulls` | A repository’s list of pull requests, with none selected | Open by default; `?state=closed` or `?state=all` selects another filter |
 | `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
@@ -384,11 +384,11 @@ selection in the Git panel.
 `/pull/` is a pull request’s page: the shell mounts the view a plugin registers for the
 `pull-request` kind, the GitHub plugin’s, and a tab is part of the URL, so back,
 forward, and reload keep it.
-One changed file, `/pull/<n>/files/<path>`, opens Files changed with the diff at that
-file; its path is the pull request’s text, so it reaches an address only through the
-route’s encoder and never reaches a filesystem call.
+One changed file, `/pull/<n>/files/<path>`, opens Changes with the diff at that file;
+its path is the pull request’s text, so it reaches an address only through the route’s
+encoder and never reaches a filesystem call.
 A server serves one repository, and the number selects any of its pull requests.
-The address reads cached data and keeps the code pin.
+Checks reads the same cached PR record and keeps the code pin.
 A visible first visit without a PR record starts a separate request to fill the cache.
 `/compare/` is specified here and not yet built.
 
@@ -555,8 +555,8 @@ invalidates that snapshot before it can replace newer state.
 
 The category, family, canonical-extension, and raw tallies behind the type menu come
 from one complete-index pass too.
-The Quick File catalog excludes gitignored entries and a menu built from it would
-undercount everything the tree still shows.
+The file catalog for Quick Search excludes gitignored entries and a menu built from it
+would undercount everything the tree still shows.
 The chooser orders broad categories, present semantic families, and canonical/raw
 children as distinct tiers; all selections use the same longest-declared-suffix
 predicate as the rollup.

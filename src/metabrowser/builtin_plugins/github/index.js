@@ -1,7 +1,7 @@
 // GitHub built-in plugin.
 //
 // Owns two views. ("pull-request", "pull-request") is a pull request's page at
-// /pull/<n>[/files], which the shell mounts for that route; pull-page.js holds it.
+// /pull/<n> and its tab routes, which the shell mounts; pull-page.js holds it.
 // ("pull-request-list", "pull-request-list") is the list of them: the shell mounts it in the
 // Pulls tab, with its host, and in the pane at /pulls; pulls-panel.js holds it.
 // The URL reducer, the gh credential helper, and the records are Python.

@@ -1042,26 +1042,28 @@ tests named beside each primitive.
 
 The page is a header, optional native stack navigation, a [tab bar](#the-tab-bar), and a
 body, in that order.
-The header and the conversation share a **reading column**: `--doc-measure` plus two
-card insets, centered in a wider pane as a Markdown file’s card and Overview’s stack
+The header, Conversation, and Checks share a **reading column**: `--doc-measure` plus
+two card insets, centered in a wider pane as a Markdown file’s card and Overview’s stack
 are. So a card’s text box is the one a file’s text has, and the title lines up with the
-cards under it. The Conversation and Changes tabs follow that same column, so the first
-tab aligns with the content on both narrow and wide screens.
+cards under it. The tab bar follows that same column, so the first tab aligns with the
+content on both narrow and wide screens.
 The Changes body keeps the full pane so a diff has room for Split.
 A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
 reading column even when Changes is selected.
 Its reveal wrapper and skeleton are separate nodes, so the shared loading delay does not
 replace the pulse or reduced-motion rule.
 A cached page stays readable during refresh.
-Use a shared small gray spinner beside each active section’s status after the page has
-rendered. Idle and failed sections use static notices.
+The Checks tab uses the same heading, status badges, and detail links for check runs and
+status contexts. Use a shared small gray spinner beside each active section’s status
+after the page has rendered.
+Idle and failed sections use static notices.
 
 Native stack navigation uses the repository snapshot’s verified membership and order.
 The quiet Stack #N disclosure, position, and Previous PR / Next PR links share the
 reading column. The disclosure creates its ordered member links when opened.
-A member selection preserves Conversation or Changes and clears the previous file
-selection. Unknown membership and unavailable optional tooling add no placeholder or
-setup notice; known cached membership remains visible during refresh or failure.
+A member selection preserves the current PR tab and clears the previous file selection.
+Unknown membership and unavailable optional tooling add no placeholder or setup notice;
+known cached membership remains visible during refresh or failure.
 
 ### Text
 

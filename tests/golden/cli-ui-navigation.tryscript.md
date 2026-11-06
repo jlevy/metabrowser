@@ -606,10 +606,13 @@ $ node tests/dom/navigation-route-behavior.js
     "pull-request Files changed href": "/pull/7/files",
     "pull-request page parses": {"number":7,"tab":"","file":""},
     "pull-request tab parses with a trailing slash": {"number":7,"tab":"files","file":""},
+    "Checks has its own PR address": ["/pull/7/checks",{"number":7,"tab":"checks","file":""},{"action":"mount","number":7,"tab":"checks"}],
     "reject pull-request route /pull/0": null,
     "reject pull-request route /pull/07": null,
     "reject pull-request route /pull/7/commits": null,
     "reject pull-request route /pull/7/commits/x": null,
+    "reject pull-request route /pull/7/checks/src/app.py": null,
+    "reject pull-request route /pull/7/%63hecks": null,
     "reject pull-request route /pull/x": null,
     "reject pull-request route /pull/7/files/src/": null,
     "reject pull-request route /pull/7/files//x": null,
@@ -622,7 +625,7 @@ $ node tests/dom/navigation-route-behavior.js
     "reject invalid pull-request href 7/commits": "TypeError: pull route requires a pull-request number and a known tab",
     "a changed file's href": ["/pull/7/files/src/app.py","/pull/7/files/docs/a%20b/%E9%9B%AA.md","/pull/7/files/a%25b%3F%23c"],
     "a changed file's route parses back": [{"number":7,"tab":"files","file":"src/app.py"},{"number":7,"tab":"files","file":"docs/a b/雪.md"},{"number":7,"tab":"files","file":"a%b?#c"}],
-    "a changed file's href refuses what is not a normalized path": ["TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route names a file by a path that is not Unicode"],
+    "a changed file's href refuses what is not a normalized path": ["TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route requires a normalized changed-file path","TypeError: pull route names a file by a path that is not Unicode"],
     "back between a page's tabs switches the tab": {"action":"tab","tab":"files"},
     "back onto a page whose pane a commit took mounts it": {"action":"mount","number":7,"tab":""},
     "back onto another pull request's page mounts it": {"action":"mount","number":7,"tab":"files"},
@@ -713,7 +716,7 @@ $ node tests/dom/navigation-route-behavior.js
     "a tab link opens the tab": {"status":"opened"},
     "the shown page's route opens without a push": {"status":"opened"},
     "a landing the controller applies is left to it": null,
-    "a tab keeps the page and puts the tab in the URL": ["claim 1 (pull-request)","mount /pull/7","#7 writes its place","push /pull/7/files","#7 tab \"files\"","#7 tab \"files\"","#7 restores tab \"\""],
+    "a tab keeps the page and puts the tab in the URL": ["claim 1 (pull-request)","mount /pull/7","#7 writes its place","push /pull/7/files","#7 tab \"files\"","#7 tab \"files\"","#7 writes its place","push /pull/7/checks","#7 tab \"checks\"","#7 restores tab \"files\"","#7 restores tab \"checks\"","#7 restores tab \"\""],
     "page availability reports mounting then the ready handle": [false,false,true],
     "a removed page watcher gets no disposal notification": [false,false,true],
     "the list's address holds the pane": "list",
@@ -755,7 +758,6 @@ $ node tests/dom/navigation-route-behavior.js
     "a hash-only landing applies no target": [null]
   }
 }
-? 0
 ```
 
 The asset loader session pins lazy construction, dependency order, concurrent request

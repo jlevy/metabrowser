@@ -174,7 +174,13 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
             )
             assert 'id="nav-filter-bar"></div>' in elsewhere
 
-            for route in ("/pull/7", "/pull/7/files", "/pulls", "/pulls?state=closed"):
+            for route in (
+                "/pull/7",
+                "/pull/7/files",
+                "/pull/7/checks",
+                "/pulls",
+                "/pulls?state=closed",
+            ):
                 html = client.get(route).text
                 assert _tabs(html) == {"files": False, "pulls": True}, route
                 # The Files tree and its filters are behind the Pulls tab from first paint.

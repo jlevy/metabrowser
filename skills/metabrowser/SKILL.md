@@ -74,7 +74,8 @@ Open a GitHub repository URL, a pull-request URL, or an existing checkout.
 A recognized main or linked worktree, including a served subdirectory, has a **Pulls**
 tab. The catalog starts with Open PRs; Closed includes merged PRs.
 Metadata loads incrementally in the background, while **Fetch more** expands the
-displayed window.
+displayed window. Press `T` or `/` to find cached PRs in **Quick Search** by number or
+title.
 
 A folder server keeps its filesystem root and does not fetch Git objects merely because
 a pull request is opened.
@@ -107,9 +108,10 @@ For an agent, these read everything without a browser or a port, where `<url>` i
 
 To give a person the page, run `<invocation> <url> --no-open` in the background and
 report the address on its `Serving … at` line.
-Each server takes its own port and pins one head; it opens any other pull request of the
-repository at `/pull/<n>`. **Refresh** retries metadata or an unavailable comparison;
-**Show the newer changes** selects a newly reported head.
+Each server takes its own port and pins one head.
+Open another pull request at `/pull/<n>`, its **Changes** at `/pull/<n>/files`, or its
+**Checks** at `/pull/<n>/checks`. **Refresh** retries metadata or an unavailable
+comparison; **Show the newer changes** selects a newly reported head.
 A refresh keeps the displayed immutable comparison until the reader chooses to move.
 Optional `gh-stack` support adds authoritative stack membership and navigation; its
 absence does not block ordinary PR reading.

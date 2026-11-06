@@ -147,6 +147,10 @@ def test_repository_spellings_share_one_canonical_source(value: str) -> None:
             RepositorySelection(kind="pull_request", pull_request=12, pull_tab="files"),
         ),
         (
+            "https://github.com/octo/demo/pull/12/checks?check_run_id=987",
+            RepositorySelection(kind="pull_request", pull_request=12, pull_tab="checks"),
+        ),
+        (
             "https://github.com/octo/demo/pull/12/commits",
             RepositorySelection(kind="pull_request", pull_request=12),
         ),
@@ -191,7 +195,7 @@ def test_web_url_shapes_carry_their_selection(value: str, expected: RepositorySe
         ("https://github.com/octo/demo/pull/0", "invalid_pull_request", CANONICAL),
         ("https://github.com/octo/demo/pull/x", "invalid_pull_request", CANONICAL),
         (
-            "https://github.com/octo/demo/pull/12/checks",
+            "https://github.com/octo/demo/pull/12/checks/extra",
             "unsupported_github_url",
             f"this GitHub page is not opened; open the repository at {CANONICAL}",
         ),
