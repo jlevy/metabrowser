@@ -364,6 +364,7 @@ const SHELL_FUNCTIONS = [
   "loadViewComposition",
   "isPullAddress",
   "loadPullPageHost",
+  "openQuickSearchPull",
   "showPullPageLoadFailure",
   "pullPageHostDeps",
   "applyPullHistoryLanding",
@@ -913,6 +914,45 @@ async function mainTabShortcuts() {
     tabOrder: tabButtons.map((button) => button.dataset.tab),
     ariaKeys: tabButtons.map((button) => button.getAttribute("aria-keyshortcuts")),
     keyboardRoutes: shell.writes,
+  };
+}
+
+async function quickSearchPullRoute() {
+  const read = async (path) => jsonResponse({ kind: "text", path });
+  const selectedFile = "/view/notes.md?plain=1#L2";
+  const shell = createShell("/view/notes.md", read, { pulls: true });
+  const { sandbox } = shell;
+  sandbox.history.replaceState(null, "", selectedFile);
+  sandbox.addEventListener("popstate", sandbox.applyPullHistoryLanding);
+  await sandbox.navigationController.start();
+  const opened = await sandbox.openQuickSearchPull(307);
+  assert.equal(opened.status, "opened");
+  assert.equal(opened.focusTarget, sandbox.document.getElementById("preview-pane"));
+  assert.equal(sandbox.mainTabs.active(), "pulls");
+  assert.equal(shell.pane().owner, "pull-request");
+  assert.deepEqual(shell.writes, ["/pull/307"], "opening makes a single history step");
+  shell.pop(selectedFile);
+  await settle();
+  assert.equal(sandbox.mainTabs.active(), "files");
+  assert.equal(shell.pane().owner, "file");
+
+  const gate = deferred();
+  const pending = createShell("/view/notes.md", read, {
+    pulls: true,
+    scriptGates: new Map([["pull-route.js", gate.promise]]),
+  });
+  await pending.sandbox.navigationController.start();
+  const earlier = pending.sandbox.openQuickSearchPull(307);
+  await pending.sandbox.navigateToPath("newer.md");
+  gate.resolve();
+  const superseded = await earlier;
+  assert.equal(superseded.status, "cancelled");
+  assert.equal(pending.sandbox.location.pathname, "/view/newer.md");
+
+  return {
+    opened: shell.writes,
+    backTo: sandbox.location.pathname + sandbox.location.search + sandbox.location.hash,
+    superseded: superseded.status,
   };
 }
 
@@ -1571,6 +1611,7 @@ async function shell() {
     navPanelsKeepTheirPlace: navPanelsKeepTheirPlace(),
     independentMainTabs: await independentMainTabs(),
     mainTabShortcuts: await mainTabShortcuts(),
+    quickSearchPullRoute: await quickSearchPullRoute(),
     reselectAfterFailure: await reselectAfterFailure(),
     bodyReadFailure: await bodyReadFailure(),
     reconnectRetry: await reconnectRetry(),

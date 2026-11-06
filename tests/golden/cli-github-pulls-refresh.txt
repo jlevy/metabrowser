@@ -519,6 +519,44 @@ status: 200
 }
 --- stderr ---
 --- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?q=%239'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?q=%239
+status: 200
+{
+  "rows": [
+    {
+      "number": 9,
+      "title": "spam",
+      "state": "closed"
+    }
+  ],
+  "complete": true,
+  "limited": false,
+  "refreshing": false
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?q=GUIDE+say'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?q=GUIDE+say
+status: 200
+{
+  "rows": [
+    {
+      "number": 8,
+      "title": "Say more in the guide",
+      "state": "merged"
+    }
+  ],
+  "complete": true,
+  "limited": false,
+  "refreshing": false
+}
+--- stderr ---
+--- gh ---
 ## The clock moves on 61 s, to 2026-09-17T12:01:01Z.
 # metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
 exit: 0

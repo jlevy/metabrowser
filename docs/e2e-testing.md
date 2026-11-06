@@ -454,6 +454,24 @@ framework:
    acceptance rules; retain failures and distinguish an isolated mechanism probe from a
    complete navigation result.
 
+### Quick Search and Main Tabs
+
+Open the same public GitHub repository in a checkout and a managed mirror.
+From Files or a selected commit, press `T` and try a PR number with `#` and a title
+fragment. Check the title, number, state, and accessible option name.
+Press Enter and verify that Conversation opens in one history step.
+Back returns to the previous view.
+
+With an isolated cache, try a search before opening Pulls.
+A catalog refresh should start once, and subsequent queries should read the local
+catalog. Reopen a cached result with `gh` unavailable.
+In a plain folder, the dialog should still say Quick Search and search only files.
+
+After Git discovery, check Files, Git, and Pulls order and the fixed numbers in Help.
+Try the plain digits if the browser owns the Command chords.
+In a plain folder, check that the Files shortcut still uses `1` and the other numbers
+leave the selection alone.
+
 ### Headless Screenshots
 
 There is no automated visual-regression layer.

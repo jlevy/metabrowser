@@ -277,6 +277,17 @@ describes the recovery limits.
 [The command-line guide](command-line.md#pull-requests) lists the record’s failure
 names.
 
+## Find a Pull Request With Quick Search
+
+Press `/` or `T` and type a title fragment or a number such as `#307`. Results include
+open, closed, merged, and draft PRs in the local catalog.
+A result shows its title, number, and state.
+Press Enter to open its Conversation tab.
+
+The catalog grows in the background, and cached results are available offline.
+An exact number searches every cached entry.
+Title searches check up to the 50,000 newest entries.
+
 ## Large Repositories
 
 A **mirror** is a full bare clone of the repository, so it is a second copy of the

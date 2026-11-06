@@ -1,19 +1,20 @@
-# Feature: Quick File Finder and Search Providers
+# Feature: Quick Search
 
-**Date:** 2026-07-17 (last updated 2026-08-12)
+**Date:** 2026-07-17 (last updated 2026-11-06)
 
 **Author:** Metabrowser maintainers
 
-**Status:** Phases 1 and 2 implemented and validated; Phase 2 was redefined as the
-client-complete catalog feed (decision `mb-ci04`); Phases 3 and 4 planned
+**Status.** The client file catalog and fuzzy finder are implemented (decision
+`mb-ci04`). The Pulls stack adds repository PR completions (`mb-s3fi`). Full-text search
+and further indexing are planned.
 
 ## Overview
 
-Metabrowser opens a keyboard-first file finder when the user presses `T` or `/`. The
-finder fuzzy-matches every non-gitignored file under the served root and opens the
+Press `T` or `/` to open the keyboard-first search palette.
+It fuzzy-matches non-gitignored files under the served root in the browser and opens the
 selected file through the existing navigation path.
-Matching remains client-side: opening the finder or typing a query makes no per-query
-server request.
+On a GitHub repository, Quick Search also finds cached pull requests by exact number or
+title. The same palette searches files in a plain folder.
 
 The browser intentionally knows less than the server inventory.
 The initial event stream contains only the served root through depth two, lazy subtree
@@ -32,8 +33,9 @@ server-side full-text provider plugs into the same runtime without changing it.
   basename matches weighted above parent-path matches
 - Search every non-gitignored file admitted by the inventory, independent of navigation
   age, type, size, and gitignored filter presentation
-- Navigate the result list with the keyboard and open the selected file with the
-  existing `navigateToPath` behavior
+- Navigate the result list with the keyboard and open each result through its existing
+  route
+- Find PRs for the served repository by number or title, across all Pulls filters
 - Keep one minimal client catalog seeded by browser observations, completed by one
   gzipped bulk payload, and maintained by live inventory events
 - Report how many files are searchable and whether the inventory is still scanning or
@@ -60,7 +62,7 @@ server-side full-text provider plugs into the same runtime without changing it.
 
 ## Current State
 
-The browser now implements the complete-catalog Quick File phases over the existing
+The browser implements the complete-catalog file search phases over the existing
 inventory and navigation prerequisites.
 
 | Capability | Current State | Consequence |
@@ -71,9 +73,10 @@ inventory and navigation prerequisites.
 | Recent files | `/api/recent` returns up to 2,000 files from the all-known inventory into `recentBaseEntries` | Recent files are another useful bounded candidate source |
 | Navigation | `navigateToPath` reveals a tree row when possible and calls `selectFile` even when the row is unmounted | Finder selection can reuse existing preview and route behavior |
 | Live updates | Scoped `fs.change` operations update shallow `FileStore` entries, while minimal `catalog.change` events pass through every scope | Deep filename coverage remains live without expanding the tree |
-| Client search | A palette opened by `T` or `/`, complete known-file catalog, fuzzy matcher, and DOM-independent provider runtime search locally without a query request | Quick File is fast and reports scanning or capped coverage honestly |
+| Client search | The `T` and `/` palette, known-file catalog, and fuzzy matcher find files in the browser | Quick Search reports scanning or capped file coverage |
 | Catalog feed | `/api/catalog` transfers minimal `{p, e}` rows once; events and authoritative reconnect fetches maintain membership | The client covers every indexed non-gitignored filename and retires deletions across gaps |
-| Server search | No filename-query or content-search route exists | Deferred bounded providers can reuse the palette and local matcher if measurements justify them |
+| Repository PR search | The GitHub catalog supplies compact title and number matches | Search covers cached PRs across all states and opens Conversation through its regular route |
+| Server file search | No filename-query or content-search route exists | Deferred bounded providers can reuse the palette and local matcher if measurements justify them |
 
 The earlier design treated keyword search as a filtered tree and as a shared filter
 dimension.
@@ -81,7 +84,8 @@ That couples three distinct tasks: jumping to one file, filtering a hierarchy,
 and finding text occurrences.
 This plan separates them:
 
-- **Quick file** returns a ranked flat list and opens one path
+- **Quick Search** returns a ranked flat list and opens the selected file or pull
+  request
 - **Filter projection** returns a hierarchy and belongs to the unified-filtering plan
 - **Full text** returns path and location matches and runs on the server
 
@@ -113,7 +117,7 @@ common quick-input vocabulary:
   It can show text results when other categories have few or no matches, but it also
   provides a dedicated Find tool window for deeper result inspection.
 
-The Metabrowser design follows the common separation: Quick File is optimized for
+The Metabrowser design follows the common separation: Quick Search is optimized for
 low-latency navigation; content search is optimized for retrieval, progress, grouping,
 and locations. They share provider and cancellation machinery, not a
 lowest-common-denominator result list.
@@ -132,7 +136,7 @@ letting search modules reach into private `app.js` globals.
 
 UI surfaces consume the controller:
 
-- `static/search-palette.js` is the Phase 1 transient, keyboard-first Quick File dialog
+- `static/search-palette.js` is the transient, keyboard-first Quick Search dialog
 - a future navigation-panel search box is a persistent surface that can show file
   groups, content excerpts, progress, scope controls, and more results
 - later plugins may add entry points only through the documented SDK and provider
@@ -144,7 +148,7 @@ promise-compatible contract:
 ```text
 SearchRequest
   query
-  target: file | content
+  target: file | all | content
   match: fuzzy | literal | regex | approximate
   scope (optional)
 
@@ -174,6 +178,13 @@ FileResult
   score
   match_ranges[]
 
+PullResult
+  kind: pull
+  id
+  number
+  title
+  state
+
 TextResult
   kind: text
   id
@@ -192,10 +203,10 @@ late batch whose request identity is no longer active.
 Activation defaults to `immediate`, and immediate providers run together.
 Fallback providers run only when the immediate composition is empty and incomplete, or
 when a surface explicitly requests complete coverage.
-For file results it merges batches by path, keeps the highest-scored duplicate, and uses
-provider priority plus stable path order for deterministic ties.
+It deduplicates results by kind and identity, using the path for a file and the number
+for a PR in the served repository.
 Each surface preserves its selected result by identity when asynchronous results arrive
-so the highlight does not jump.
+so the highlight stays on the same item.
 
 Phase 1 has one filename provider, so its ordinal scores are meaningful within one
 batch. Before local and server filename batches can appear together, Phase 2 must either
@@ -205,18 +216,18 @@ It must likewise define when complete server coverage supersedes incomplete loca
 coverage in aggregate status; provider-local ordinals and a conjunction of batch
 completeness are not sufficient for an explicit complete search.
 
-The first entry point always sends `{target: file, match: fuzzy}`. The contract reserves
-literal and regex content search and an evidence-gated approximate-content provider
-without implying that the filename fuzzy scorer can search file contents.
-A future navigation-panel surface can select these capabilities explicitly and group
-`TextResult` values by path without changing the Phase 1 palette.
+A folder search sends `{target: file, match: fuzzy}`. A GitHub repository uses
+`target: all` to let the repository PR provider participate alongside the file provider.
+The contract reserves literal, regex, and approximate matching for separate content
+providers.
+A future navigation-panel surface can select these capabilities explicitly and
+group `TextResult` values by path without changing the Phase 1 palette.
 For an empty Phase 1 query, the combobox placeholder explains what the field accepts and
 the status region reports the observed file count and catalog completeness.
 The two elements do not repeat the same instruction.
 
-The initial implementation should keep the request and result unions no larger than the
-Phase 1 code needs, but its module boundary and tests must not bind providers to dialog
-elements.
+Keep the request and result unions limited to the kinds in use.
+Providers stay independent of dialog elements.
 
 ### Known File Catalog
 
@@ -346,12 +357,39 @@ without user intent.
 It is also compatible with a persistent nav search box: that surface can expose file and
 content modes continuously, while the palette stays specialized for navigation.
 
+### Pull-Request Completions
+
+A GitHub checkout or managed repository offers the PR provider in Quick Search.
+An explicit number such as `#123` looks up that exact PR across open, closed, merged,
+and draft states. A bare number checks the same PR and also matches files.
+Other queries look for title terms alongside file matches.
+Title terms match case-insensitively as literal substrings.
+Multiple terms must all match the title.
+
+The provider sends an abortable, debounced GET to the Pulls endpoint’s `q` mode.
+The endpoint reads the same private SQLite catalog as the Pulls tab and projects the PR
+number, title, and state.
+Typing reads only cached summary data.
+Catalog warming uses the shared Pulls refresh job and its existing rate and retry
+controls. The response reports catalog completeness and whether a title scan reached its
+work limit separately.
+See
+[Search From the Catalog](plan-2026-10-01-github-pulls-tab.md#search-from-the-catalog).
+
+A PR option shows its title, number, and state in the same listbox as file options.
+The accessible name identifies the result as a pull request.
+Keep the selected result by identity when another provider replies and make held rows
+inactive while the input describes a different query.
+Selecting a PR opens its Conversation through the same route as a direct link.
+The address activates Pulls and adds one history entry.
+Back returns to the previous selection.
+
 ### Keyboard and Accessibility Contract
 
 The shared dispatcher, canonical key presentation, Help copy, hints, and modal shell are
 owned by the
 [contextual keyboard Help and tree-navigation plan](../done/plan-2026-08-12-contextual-keyboard-help-and-tree-navigation.md).
-The rules below remain the Quick File interaction contract that migration must preserve.
+The same keyboard contract applies to file and PR results.
 
 - `T` or `/` opens the finder with an empty query; `/` prevents the browser’s quick-find
   action
@@ -663,6 +701,12 @@ retained scope.
 - Real-browser-test opening `T` and `/`, fuzzy selection and location reveal for an
   unmounted file, keyboard movement and dismissal, and honest complete-catalog status;
   test zero-local fallback and full-text mode switching with their later phases
+- Golden-test exact PR number, title terms, mixed file and PR results, and late query
+  responses. Verify the browserless palette opens the selected PR through its route.
+- Browser-test PR completions on a GitHub checkout and a managed repository with warm
+  and cold catalog data.
+  Check keyboard and pointer selection, Back, and readable results from a saved catalog
+  with `gh` unavailable.
 - Record server work, client input delay, payload size, and mounted result count against
   public synthetic large-tree and large-text fixtures
 
@@ -676,7 +720,7 @@ retained scope.
 | Server results reorder the highlighted local row | Preserve selection by result identity and use deterministic provider priority and tie-breaking |
 | Automatic full-text fallback surprises users or scans large roots | Offer an explicit content-search action rather than starting content work automatically |
 | One endpoint accumulates incompatible result shapes | Keep `/api/search/files`, `/api/search/text`, and `/api/filter/tree` separate behind one UI provider contract |
-| A printable Quick File shortcut interferes with document editing or browser behavior | Ignore editable, composing, modified, and already-handled events; cover every guard in DOM and real-browser tests |
+| A printable Quick Search shortcut interferes with document editing or browser behavior | Ignore editable, composing, modified, and already-handled events; cover every guard in DOM and real-browser tests |
 
 ## Rollout Plan
 

@@ -51,6 +51,7 @@ PULLS_ROUTE: Final = "/api/plugin/github/pulls"
 DEFAULT_LIST: Final[PullListName] = "open"
 DEFAULT_LIMIT: Final = 100
 DEFAULT_TARGET: Final = 500
+MAX_SEARCH_QUERY_CHARS: Final = 256
 _MAX_TARGET: Final = MAX_PULL_REQUEST_NUMBER
 _JOB_STOPPED: Final = "the refresh stopped on an unexpected error, which the server log names"
 
@@ -130,6 +131,13 @@ def list_window(params: Mapping[str, str]) -> ListWindow:
         _number(params.get("limit", str(DEFAULT_LIMIT)), MAX_WINDOW, "limit", zero=True),
         _number(after, MAX_PULL_REQUEST_NUMBER, "after") if after is not None else None,
     )
+
+
+def search_query(value: str) -> str:
+    query = value.strip()
+    if len(value) > MAX_SEARCH_QUERY_CHARS or not query:
+        raise ListRequestError(f'"q" must contain 1 to {MAX_SEARCH_QUERY_CHARS} characters')
+    return query
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:

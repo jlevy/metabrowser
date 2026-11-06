@@ -1,19 +1,11 @@
-// Accessible, keyboard-first surface for browser-local file navigation.
+// Accessible, keyboard-first surface for navigating to Quick Search results.
 
 (() => {
   /** Default DOM cap for the transient result list. */
   const DEFAULT_MAX_ROWS = 100;
   let paletteSerial = 0;
 
-  /**
-   * @typedef {object} PaletteResult
-   * @property {string} description
-   * @property {string} id
-   * @property {"file"} kind
-   * @property {string} label
-   * @property {readonly Readonly<{start: number, end: number}>[]} matchRanges
-   * @property {string} path
-   */
+  /** @typedef {ReturnType<ReturnType<Window["MetabrowserSearch"]["createController"]>["state"]>["results"][number]} PaletteResult */
 
   /**
    * @typedef {object} PaletteSearchState
@@ -28,7 +20,7 @@
   /**
    * @typedef {object} PaletteController
    * @property {() => void} cancel
-   * @property {(request: {target: "file", match: "fuzzy", query: string}) =>
+   * @property {(request: {target: "all" | "file", match: "fuzzy", query: string}) =>
    *   Promise<PaletteSearchState | null>} search
    * @property {(listener: (state: PaletteSearchState) => void) => () => void} subscribe
    */
@@ -96,6 +88,7 @@
    *   onNotFound?: (path: string) => void | Promise<void>,
    *   onOpen?: () => void,
    *   openFile: (path: string) => OpenOutcome | Promise<OpenOutcome>,
+   *   openPull?: (number: number) => OpenOutcome | Promise<OpenOutcome>,
    *   overlay: Window["MetabrowserOverlay"],
    *   resolveFocusFallback?: (previous: HTMLElement | null) => HTMLElement | null,
    *   shortcuts: ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]>,
@@ -121,27 +114,34 @@
       typeof options.maxRows === "number" && Number.isFinite(options.maxRows) && options.maxRows > 0
         ? Math.floor(options.maxRows)
         : DEFAULT_MAX_ROWS;
+    const includesPulls = typeof options.openPull === "function";
     paletteSerial += 1;
-    const idPrefix = `metabrowser-quick-file-${paletteSerial}`;
+    const idPrefix = `metabrowser-quick-search-${paletteSerial}`;
 
     const input = hostDocument.createElement("input");
     input.className = "search-palette-input";
     input.id = `${idPrefix}-query`;
     input.setAttribute("type", "text");
     input.setAttribute("role", "combobox");
-    input.setAttribute("aria-label", "Find a known file");
+    input.setAttribute(
+      "aria-label",
+      includesPulls ? "Find a file or pull request" : "Find a known file",
+    );
     input.setAttribute("aria-autocomplete", "list");
     input.setAttribute("aria-controls", `${idPrefix}-results`);
     input.setAttribute("aria-expanded", "false");
     input.setAttribute("autocomplete", "off");
     input.setAttribute("spellcheck", "false");
-    input.setAttribute("placeholder", "Type a file name or path");
+    input.setAttribute(
+      "placeholder",
+      includesPulls ? "Type a file name, path, PR title, or #number" : "Type a file name or path",
+    );
 
     const listbox = hostDocument.createElement("div");
     listbox.className = "search-palette-results";
     listbox.id = `${idPrefix}-results`;
     listbox.setAttribute("role", "listbox");
-    listbox.setAttribute("aria-label", "Known file matches");
+    listbox.setAttribute("aria-label", includesPulls ? "Search matches" : "Known file matches");
 
     const status = hostDocument.createElement("div");
     status.className = "search-palette-status";
@@ -159,8 +159,8 @@
       allowInEditable: true,
       bindings: [{ key: "Escape" }],
       copy: {
-        action: "Close Quick File",
-        description: "Close Quick File and restore focus to the previous control.",
+        action: "Close Quick Search",
+        description: "Close Quick Search and restore focus to the previous control.",
         hint: "Close",
       },
       group: "quick-file",
@@ -186,7 +186,7 @@
       resolveFocusFallback: options.resolveFocusFallback,
       scope: "quick-file",
       shortcuts: options.shortcuts,
-      title: "Quick File",
+      title: "Quick Search",
     });
     const overlay = modal.element;
     overlay.classList.add("search-palette-overlay");
@@ -322,7 +322,8 @@
           : snapshot.truncated
             ? " Indexing stopped at the file limit."
             : " Scanning continues.";
-        status.textContent = `Search includes ${scope}.${coverage}`;
+        const pulls = includesPulls ? " and cached pull requests" : "";
+        status.textContent = `Search includes ${scope}${pulls}.${coverage}`;
         return;
       }
       if (!searchState || searchState.phase === "searching") {
@@ -333,7 +334,11 @@
         }
         const snapshot = options.getCatalogSnapshot();
         const scope = fileCount(snapshot.observedCount, snapshot.complete ? "" : "indexed");
-        status.textContent = `Searching ${scope}…`;
+        const spinner = hostDocument.createElement("span");
+        spinner.className = "spinner spinner-sm";
+        spinner.setAttribute("aria-hidden", "true");
+        const message = includesPulls ? "Searching…" : `Searching ${scope}…`;
+        status.replaceChildren(spinner, hostDocument.createTextNode(message));
         return;
       }
       const limitMessage = searchState.truncated ? " Showing the top matches." : "";
@@ -402,6 +407,64 @@
       setActiveIndex(next < 0 ? next + results.length : next);
     }
 
+    /** @param {HTMLElement} option @param {Extract<PaletteResult, {kind: "file"}>} result */
+    function appendFileResult(option, result) {
+      option.setAttribute(
+        "aria-label",
+        [result.description, result.label].filter(Boolean).join("/"),
+      );
+      const icon = hostDocument.createElement("span");
+      icon.className = "search-palette-icon";
+      icon.setAttribute("aria-hidden", "true");
+      const iconData = options.getFileIcon?.(result.path);
+      if (iconData?.cls && /^ft-[a-z0-9-]+$/u.test(iconData.cls)) {
+        icon.classList.add(iconData.cls);
+      }
+      if (typeof iconData?.svg === "string") {
+        icon.innerHTML = iconData.svg;
+      }
+
+      const text = hostDocument.createElement("span");
+      text.className = "search-palette-option-text";
+      const label = hostDocument.createElement("span");
+      label.className = "search-palette-label";
+      const labelOffset = result.description ? result.description.length + 1 : 0;
+      appendHighlightedText(hostDocument, label, result.label, result.matchRanges, labelOffset);
+      text.append(label);
+      if (result.description) {
+        const description = hostDocument.createElement("span");
+        description.className = "search-palette-description";
+        appendHighlightedText(hostDocument, description, result.description, result.matchRanges, 0);
+        // Add the parent-path separator after highlighting so path offsets and
+        // text selection both stay accurate.
+        description.append(hostDocument.createTextNode("/"));
+        text.append(description);
+      }
+      option.append(icon, text);
+    }
+
+    /** @param {HTMLElement} option @param {Extract<PaletteResult, {kind: "pull"}>} result */
+    function appendPullResult(option, result) {
+      option.classList.add("search-palette-option-pull");
+      const number = `#${result.number}`;
+      const state = result.state[0].toUpperCase() + result.state.slice(1);
+      option.setAttribute("aria-label", `Pull request ${number}, ${result.label}, ${state}`);
+
+      const text = hostDocument.createElement("span");
+      text.className = "search-palette-option-text";
+      const label = hostDocument.createElement("span");
+      label.className = "search-palette-label";
+      appendHighlightedText(hostDocument, label, result.label, result.matchRanges, 0);
+      const description = hostDocument.createElement("span");
+      description.className = "search-palette-description";
+      const identifier = hostDocument.createElement("span");
+      identifier.className = "search-palette-pull-number";
+      identifier.textContent = number;
+      description.append(identifier, hostDocument.createTextNode(` · ${state}`));
+      text.append(label, description);
+      option.append(text);
+    }
+
     function renderResults() {
       listbox.replaceChildren();
       for (let index = 0; index < results.length; index += 1) {
@@ -410,49 +473,12 @@
         option.className = "search-palette-option";
         option.id = optionId(index);
         option.setAttribute("role", "option");
-        option.setAttribute(
-          "aria-label",
-          [result.description, result.label].filter(Boolean).join("/"),
-        );
         option.setAttribute("aria-selected", "false");
-
-        const icon = hostDocument.createElement("span");
-        icon.className = "search-palette-icon";
-        icon.setAttribute("aria-hidden", "true");
-        const iconData = options.getFileIcon?.(result.path);
-        if (iconData?.cls && /^ft-[a-z0-9-]+$/u.test(iconData.cls)) {
-          icon.classList.add(iconData.cls);
+        if (result.kind === "pull") {
+          appendPullResult(option, result);
+        } else {
+          appendFileResult(option, result);
         }
-        if (typeof iconData?.svg === "string") {
-          icon.innerHTML = iconData.svg;
-        }
-
-        const text = hostDocument.createElement("span");
-        text.className = "search-palette-option-text";
-        const label = hostDocument.createElement("span");
-        label.className = "search-palette-label";
-        const labelOffset = result.description ? result.description.length + 1 : 0;
-        appendHighlightedText(hostDocument, label, result.label, result.matchRanges, labelOffset);
-        text.append(label);
-        if (result.description) {
-          const description = hostDocument.createElement("span");
-          description.className = "search-palette-description";
-          appendHighlightedText(
-            hostDocument,
-            description,
-            result.description,
-            result.matchRanges,
-            0,
-          );
-          // Trailing separator so the line reads as the enclosing directory
-          // rather than a path fragment. Appended after the highlighted text
-          // instead of joining the provider's string, because match ranges are
-          // offsets into the raw path and would all shift by one. Real text,
-          // not generated content, so the path stays selectable.
-          description.append(hostDocument.createTextNode("/"));
-          text.append(description);
-        }
-        option.append(icon, text);
         option.addEventListener("pointermove", () => {
           setActiveIndex(index, false);
         });
@@ -467,7 +493,7 @@
 
     /** @param {PaletteSearchState} state */
     function consumeState(state) {
-      if (overlay.hidden || state.request?.query !== input.value) {
+      if (overlay.hidden || state === searchState || state.request?.query !== input.value) {
         return;
       }
       searchState = state;
@@ -482,8 +508,13 @@
         renderStatus();
         return;
       }
-      clearSearchingStatus();
+      if (state.phase === "complete") {
+        clearSearchingStatus();
+      }
       const previousSelection = selectedResultId;
+      const sameQuery = rowsMatchQuery();
+      const previousIndex = sameQuery ? activeIndex : -1;
+      const scrollTop = sameQuery ? listbox.scrollTop : 0;
       results = state.results.slice(0, maxRows);
       renderedQuery = state.request?.query ?? "";
       activeIndex = previousSelection
@@ -495,6 +526,12 @@
         activeIndex = 0;
       }
       renderResults();
+      listbox.scrollTop = scrollTop;
+      if (previousIndex >= 0 && activeIndex !== previousIndex) {
+        // A late provider can rank ahead of a selected row. Keep the same
+        // result selected and in view as its position changes.
+        syncActiveOption(true);
+      }
       renderStatus();
     }
 
@@ -520,7 +557,7 @@
       syncRowActivation();
       renderStatus();
       options.controller
-        .search({ match: "fuzzy", query, target: "file" })
+        .search({ match: "fuzzy", query, target: includesPulls ? "all" : "file" })
         .then((state) => {
           if (state) {
             consumeState(state);
@@ -528,7 +565,7 @@
         })
         .catch((error) => {
           if (!overlay.hidden && input.value === query) {
-            console.warn("Quick File search failed", error);
+            console.warn("Quick Search search failed", error);
             actionStatus = "Could not complete the search. Try again.";
             renderStatus();
           }
@@ -540,7 +577,7 @@
       const result = results[index];
       // Held rows stay painted so typing does not flicker, but they describe
       // the query that produced them, not what is in the box now. Opening one
-      // would navigate to a file that matched the previous query — a fast
+      // would open a result that matched the previous query — a fast
       // typist entering B lands on a hit for A. Rows go live again the moment
       // their own completion arrives.
       if (!result || opening || !rowsMatchQuery()) {
@@ -549,14 +586,18 @@
       actionSerial += 1;
       const actionId = actionSerial;
       opening = true;
-      actionStatus = `Opening ${result.path}…`;
+      const name = result.kind === "file" ? result.path : `#${result.number}`;
+      actionStatus = `Opening ${name}…`;
       renderStatus();
       /** @type {OpenOutcome} */
       let outcome;
       try {
-        outcome = await options.openFile(result.path);
+        outcome =
+          result.kind === "file"
+            ? await options.openFile(result.path)
+            : ((await options.openPull?.(result.number)) ?? { status: "cancelled" });
       } catch (error) {
-        console.warn("Quick File open failed", error);
+        console.warn("Quick Search open failed", error);
         outcome = options.describeOpenFailure(error);
       }
       if (disposed || actionId !== actionSerial || overlay.hidden) {
@@ -571,11 +612,14 @@
         return;
       }
       if (outcome.status === "not-found") {
-        actionStatus = outcome.message || "That file is no longer available.";
+        const kind = result.kind === "file" ? "file" : "pull request";
+        actionStatus = outcome.message || `That ${kind} is no longer available.`;
         try {
-          await options.onNotFound?.(result.path);
+          if (result.kind === "file") {
+            await options.onNotFound?.(result.path);
+          }
         } catch (error) {
-          console.warn("Quick File stale-result cleanup failed", error);
+          console.warn("Quick Search stale-result cleanup failed", error);
           actionStatus = "Could not refresh search results. Try again.";
           renderStatus();
           return;
@@ -583,11 +627,13 @@
         if (disposed || actionId !== actionSerial || overlay.hidden) {
           return;
         }
-        results = results.filter((candidate) => candidate.path !== result.path);
+        results = results.filter((candidate) => candidate.id !== result.id);
         activeIndex = Math.min(index, results.length - 1);
         selectedResultId = results[activeIndex]?.id || null;
         renderResults();
-        runSearch(true);
+        if (result.kind === "file") {
+          runSearch(true);
+        }
         renderStatus();
         return;
       }
@@ -687,9 +733,9 @@
           bindings: [{ key: "t" }, { key: "/" }],
           control: modal?.control,
           copy: {
-            action: "Quick File",
-            description: "Find and open a file from the current folder.",
-            hint: "Quick File",
+            action: "Quick Search",
+            description: "Find and open a file or, on GitHub, a cached pull request.",
+            hint: "Quick Search",
           },
           group: "anywhere",
           handler: (context) => {
@@ -709,7 +755,7 @@
           bindings: [{ key: "ArrowUp" }],
           copy: {
             action: "Previous result",
-            description: "Move to the previous Quick File result, wrapping at the top.",
+            description: "Move to the previous Quick Search result, wrapping at the top.",
             hint: "Move",
           },
           group: "quick-file",
@@ -728,7 +774,7 @@
           bindings: [{ key: "ArrowDown" }],
           copy: {
             action: "Next result",
-            description: "Move to the next Quick File result, wrapping at the bottom.",
+            description: "Move to the next Quick Search result, wrapping at the bottom.",
             hint: "Move",
           },
           group: "quick-file",
@@ -753,7 +799,7 @@
           bindings: [{ key: "Enter" }],
           copy: {
             action: "Open result",
-            description: "Open the active Quick File result.",
+            description: "Open the active Quick Search result.",
             hint: "Open",
           },
           group: "quick-file",

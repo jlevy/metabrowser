@@ -72,6 +72,7 @@ class FakeElement {
     this.focusCalls = 0;
     this.selectCalls = 0;
     this.scrollCalls = 0;
+    this.scrollTop = 0;
   }
 
   get isConnected() {
@@ -312,21 +313,21 @@ function searchResult(pathname, score, matchRanges = []) {
 }
 
 const document = new FakeDocument();
-const sandbox = { clearTimeout, document, setTimeout };
+const sandbox = { AbortController, clearTimeout, document, setTimeout, URLSearchParams };
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 for (const filename of [
   "navigation.js",
+  "file-fuzzy-match.js",
+  "known-file-catalog.js",
+  "search-controller.js",
   "keyboard-shortcuts.js",
   "overlay-layer.js",
   "search-palette.js",
 ]) {
-  vm.runInContext(
-    fs.readFileSync(path.join(repoRoot, "src/metabrowser/static", filename), "utf-8"),
-    sandbox,
-    { filename },
-  );
+  const sourcePath = path.join(repoRoot, "src/metabrowser/static", filename);
+  vm.runInContext(fs.readFileSync(sourcePath, "utf-8"), sandbox, { filename: sourcePath });
 }
 
 const failures = [];
@@ -1046,7 +1047,234 @@ async function main() {
   process.stdout.write("OK accessible search palette\n");
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error?.stack || error}\n`);
-  process.exit(1);
-});
+async function pullSearchSession() {
+  const catalog = sandbox.MetabrowserKnownFileCatalog.create();
+  catalog.observeRecent([
+    { path: "render.js", type: "file" },
+    { path: "src/renderer.js", type: "file" },
+    { path: "notes/123.md", type: "file" },
+  ]);
+  const runtime = sandbox.MetabrowserSearch;
+  const controller = runtime.createController();
+  controller.registerProvider(
+    runtime.createLocalFileProvider({ catalog, matcher: sandbox.MetabrowserFileFuzzyMatch }),
+  );
+  const requests = [];
+  const readyPull = { number: 123, title: "Fix <em>renderer</em>", state: "merged" };
+  const reply = (rows, flags = {}) => ({
+    ok: true,
+    json: async () => ({ complete: true, limited: false, refreshing: false, rows, ...flags }),
+  });
+  const delayed = Promise.withResolvers();
+  const started = Promise.withResolvers();
+  const obsolete = Promise.withResolvers();
+  const obsoleteStarted = Promise.withResolvers();
+  let coldReads = 0;
+  controller.registerProvider(
+    runtime.createPullProvider({
+      fetch: (url, init) => {
+        requests.push({ url, method: init.method ?? "GET" });
+        if (init.method === "POST") {
+          equal("a warm request uses the shared all-state coordinator", JSON.parse(init.body), {
+            state: "open",
+            target: 500,
+          });
+          check("the warm request outlives query cancellation", !init.signal);
+          return Promise.resolve({ status: 202 });
+        }
+        if (url.endsWith("?q=render")) {
+          started.resolve();
+          return delayed.promise;
+        }
+        if (url.endsWith("?q=obsolete")) {
+          obsoleteStarted.resolve(init.signal);
+          return obsolete.promise;
+        }
+        if (url.endsWith("?q=%23123")) {
+          return Promise.resolve(reply([readyPull]));
+        }
+        if (url.endsWith("?q=%2377")) {
+          coldReads += 1;
+          return Promise.resolve(
+            coldReads < 4
+              ? reply([], { complete: false, refreshing: coldReads > 1 })
+              : reply([{ number: 77, title: "Cold catalog match", state: "open" }]),
+          );
+        }
+        return Promise.resolve(reply([], { complete: false }));
+      },
+    }),
+  );
+  const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document });
+  const opened = [];
+  const landing = document.createElement("button");
+  document.body.append(landing);
+  const palette = sandbox.MetabrowserSearchPalette.create({
+    controller,
+    document,
+    describeOpenFailure: sandbox.MetabrowserNavigationRoute.openFailureOutcome,
+    getCatalogSnapshot: () => catalog.snapshot(),
+    openFile: (path) => {
+      opened.push(path);
+      return { status: "opened" };
+    },
+    openPull: (number) => {
+      opened.push(number);
+      return { focusTarget: landing, status: "opened" };
+    },
+    overlay: sandbox.MetabrowserOverlay,
+    shortcuts,
+  });
+  const dialog = palette.element.querySelector('[role="dialog"]');
+  const input = dialog.querySelector('[role="combobox"]');
+  const listbox = dialog.querySelector('[role="listbox"]');
+  const choices = () => Array.from(listbox.children, (row) => row.getAttribute("aria-label"));
+  const currentChoice = () =>
+    listbox.children
+      .find((row) => row.getAttribute("aria-selected") === "true")
+      ?.getAttribute("aria-label");
+
+  function type(query) {
+    input.value = query;
+    input.dispatchEvent(fakeEvent("input", { target: input }));
+  }
+  function key(key) {
+    return input.dispatchEvent(fakeEvent("keydown", { key, target: input }));
+  }
+  function searchCompletes() {
+    return new Promise((resolve) => {
+      const remove = controller.subscribe((state) => {
+        if (state.phase === "complete") {
+          remove();
+          resolve();
+        }
+      });
+    });
+  }
+
+  palette.open();
+  const heading = dialog.querySelector(".modal-title").textContent;
+  const placeholder = input.getAttribute("placeholder");
+  const titleComplete = searchCompletes();
+  type("render");
+  await started.promise;
+  const firstPaint = choices();
+  const progress = dialog.querySelector('[role="status"]');
+  check(
+    "the shared spinner marks a pending PR lookup",
+    progress.querySelector(".spinner") !== null,
+  );
+  equal("file results paint before the PR lookup settles", firstPaint, [
+    "render.js",
+    "src/renderer.js",
+  ]);
+  key("ArrowDown");
+  const beforeMerge = currentChoice();
+  let selectedAfterInsertion = null;
+  const unsubscribe = controller.subscribe((state) => {
+    if (state.phase === "searching" && state.results.some((result) => result.kind === "pull")) {
+      selectedAfterInsertion = listbox.children[2];
+    }
+  });
+  delayed.resolve(reply([readyPull]));
+  await titleComplete;
+  check(
+    "the spinner clears when the PR lookup settles",
+    progress.querySelector(".spinner") === null,
+  );
+  unsubscribe();
+  const mixed = choices();
+  const afterMerge = currentChoice();
+  equal("a late PR preserves the selected file", afterMerge, beforeMerge);
+  equal("one file and one PR of the same rank both stay near the top", mixed, [
+    "render.js",
+    "Pull request #123, Fix <em>renderer</em>, Merged",
+    "src/renderer.js",
+  ]);
+  const pullOption = listbox.querySelector(".search-palette-option-pull");
+  check(
+    "the title renders as text, even with tag-like content",
+    pullOption.querySelector("em") === null,
+  );
+  const titleHighlight = pullOption.querySelector("mark").textContent;
+  const details = pullOption.querySelector(".search-palette-description").textContent;
+  check("a late insertion keeps the selected row in view", selectedAfterInsertion?.scrollCalls > 0);
+
+  type("obsolete");
+  const obsoleteSignal = await obsoleteStarted.promise;
+  const numberComplete = searchCompletes();
+  type("#123");
+  key("Enter");
+  equal("an obsolete file cannot open while the query changes", opened, []);
+  await numberComplete;
+  const exact = choices();
+  equal("a hash number limits the search to PRs", exact, [mixed[1]]);
+  const staleRequestAborted = obsoleteSignal.aborted;
+  check("typing a new query aborts the pending catalog read", staleRequestAborted);
+  obsolete.resolve(reply([{ number: 999, title: "Obsolete result", state: "open" }]));
+  await settle();
+  equal("a superseded result cannot repaint the palette", choices(), exact);
+  key("Enter");
+  await settle();
+  check(
+    "opening by keyboard closes and focuses the PR landing",
+    !palette.isOpen() && document.activeElement === landing,
+  );
+
+  palette.open();
+  const bareComplete = searchCompletes();
+  type("123");
+  await bareComplete;
+  const bare = choices();
+  equal("bare digits keep file matches and include the exact PR", bare, ["notes/123.md", mixed[1]]);
+  const barePull = listbox.querySelector(".search-palette-option-pull");
+  barePull.dispatchEvent(fakeEvent("click", { target: barePull }));
+  await settle();
+
+  palette.open();
+  const warmComplete = searchCompletes();
+  type("#77");
+  await warmComplete;
+  const cold = choices();
+  equal("an empty cold catalog can populate within one query", cold, [
+    "Pull request #77, Cold catalog match, Open",
+  ]);
+  const noMatchComplete = searchCompletes();
+  type("#999");
+  await noMatchComplete;
+  equal(
+    "there is only one warm request even after a later miss",
+    requests.filter((request) => request.method === "POST").length,
+    1,
+  );
+  const result = {
+    heading,
+    placeholder,
+    firstPaint,
+    mixed,
+    afterMerge,
+    titleHighlight,
+    details,
+    exact,
+    staleRequestAborted,
+    bare,
+    opened,
+    cold,
+    requests: requests.map(({ method, url }) => `${method} ${url}`),
+  };
+  palette.dispose();
+  controller.dispose();
+  shortcuts.dispose();
+  if (failures.length > 0) {
+    throw new Error(failures.join("\n"));
+  }
+  process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    process.stderr.write(`${error?.stack || error}\n`);
+    process.exit(1);
+  });
+}
+module.exports = { pullSearchSession };

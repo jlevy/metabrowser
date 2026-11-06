@@ -15,6 +15,8 @@ PR and Git navigation:
 
 - Files, Git, and Pulls appear in that order and open with `⌘1`, `⌘2`, and `⌘3`. Help
   lists plain digits for browsers that reserve the Command chords.
+- **Quick Search** finds files and cached GitHub pull requests.
+  Search PRs by number or title and open their Conversation from the completion list.
 - A visible direct PR link fetches and caches its record on the first visit.
 - Treemap and its file totals load for folders in Git-backed repositories.
 - Conversation interleaves clickable commit summaries with comments and reviews in

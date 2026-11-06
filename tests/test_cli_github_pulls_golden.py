@@ -206,6 +206,19 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
     ] == [(9, False), (8, True)]
     assert session.get("?state=all&limit=0").payload()["total"] == 600
 
+    # Search reaches the cached PRs beyond the first list window, without calling gh.
+    for query, row in (
+        ("%239", {"number": 9, "title": "spam", "state": "closed"}),
+        ("GUIDE+say", {"number": 8, "title": "Say more in the guide", "state": "merged"}),
+    ):
+        assert session.get(f"?q={query}").payload() == {
+            "rows": [row],
+            "complete": True,
+            "limited": False,
+            "refreshing": False,
+        }
+        assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
+
     # A changed PR is merged through UPDATED_AT without rescanning the old creation pages.
     session.advance(61)
     changed = dict(

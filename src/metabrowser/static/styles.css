@@ -4668,7 +4668,7 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--ui-small-font-size);
 }
 
-/* ── Quick-file palette ─────────────────────────────────────────
+/* ── Quick Search palette ─────────────────────────────────────────
    A body-level modal surface so tree and preview replacement cannot
    discard its state. Search work and selection state stay in the
    injected controller; this block owns only the bounded result DOM. */
@@ -4726,6 +4726,10 @@ pre.code-block.metabrowser-source-lines > code {
   cursor: pointer;
   user-select: var(--toggle-user-select);
 }
+.search-palette-option-pull {
+  grid-template-columns: minmax(0, 1fr);
+  padding-inline-start: 36px;
+}
 .search-palette-option:hover,
 .search-palette-option.active,
 .search-palette-option[aria-selected="true"] {
@@ -4768,6 +4772,9 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--nav-font-size);
   font-weight: var(--weight-normal);
 }
+.search-palette-pull-number {
+  color: var(--text);
+}
 .search-palette-option mark {
   color: inherit;
   background: var(--highlight-bg);
@@ -4780,7 +4787,13 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--ui-small-font-size);
 }
 .search-palette-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-height: 28px;
+}
+.search-palette-status .spinner {
+  flex: none;
 }
 /* Keys render through .kbd; the connecting words are ordinary chrome
    text, so the row reads as a sentence rather than a legend. */
