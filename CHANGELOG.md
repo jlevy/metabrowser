@@ -13,6 +13,8 @@ All notable changes to Metabrowser are documented here.
 
 PR and Git navigation:
 
+- Files, Git, and Pulls appear in that order and open with `⌘1`, `⌘2`, and `⌘3`. Help
+  lists plain digits for browsers that reserve the Command chords.
 - A visible direct PR link fetches and caches its record on the first visit.
 - Treemap and its file totals load for folders in Git-backed repositories.
 - Conversation interleaves clickable commit summaries with comments and reviews in

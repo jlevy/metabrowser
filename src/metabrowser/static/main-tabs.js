@@ -1,5 +1,15 @@
-// Deferred shell controller for the Files, Pulls, and Git tabs.
+// Deferred shell controller for the Files, Git, and Pulls tabs.
 (() => {
+  const MAIN_TABS = [
+    { id: "files", label: "Files", key: "1" },
+    { id: "git", label: "Git", key: "2" },
+    { id: "pulls", label: "Pulls", key: "3" },
+  ];
+
+  /** @param {string} key @returns {Parameters<Window["MetabrowserKeyboardShortcuts"]["describeBindings"]>[0]} */
+  function tabBindings(key) {
+    return [{ key, modifiers: { meta: "require" } }, { key }];
+  }
   /** @param {MetabrowserMainTabsDeps} deps */
   function create(deps) {
     const navBar = document.querySelector(".nav-tab-bar");
@@ -16,6 +26,43 @@
     const mainTabDestinations = new Map();
     let keepFilesScrollOnLanding = false;
     let gitDiscoveryFinished = false;
+
+    /** @param {string} panelId */
+    function tabButton(panelId) {
+      return /** @type {HTMLElement | null} */ (
+        navBar?.querySelector(`.tab-btn[data-tab="${panelId}"]`) ?? null
+      );
+    }
+
+    /** @param {ReturnType<Window["MetabrowserKeyboardShortcuts"]["create"]>} shortcuts */
+    function bindShortcuts(shortcuts) {
+      for (const { id, label, key } of MAIN_TABS) {
+        const action = `Open ${label}`;
+        const bindings = tabBindings(key);
+        shortcuts.register({
+          id: `main-tabs.${id}`,
+          group: "main-tabs",
+          scope: "global",
+          order: Number(key),
+          bindings,
+          copy: { action, description: `Switch to the ${label} tab when available.`, hint: label },
+          surfaces: { help: "always" },
+          handler() {
+            const button = tabButton(id);
+            if (!button) {
+              return false;
+            }
+            button.focus();
+            openMainTab(id);
+            return true;
+          },
+        });
+        tabButton(id)?.setAttribute(
+          "aria-keyshortcuts",
+          shortcuts.describeBindings(bindings).ariaKeyshortcuts,
+        );
+      }
+    }
 
     /** @param {MetabrowserNavPanel} panel */
     function registerNavPanel(panel) {
@@ -35,7 +82,7 @@
       if (!navBar || !content) {
         return;
       }
-      if (!navBar.querySelector(`.tab-btn[data-tab="${panel.id}"]`)) {
+      if (!tabButton(panel.id)) {
         const btn = document.createElement("button");
         btn.className = "tab-btn";
         btn.type = "button";
@@ -43,7 +90,15 @@
         btn.setAttribute("aria-selected", "false");
         btn.dataset.tab = panel.id;
         btn.textContent = panel.label;
-        navBar.appendChild(btn);
+        const shortcut = MAIN_TABS.find(({ id }) => id === panel.id);
+        if (shortcut && window.MetabrowserKeyboardShortcuts) {
+          const binding = window.MetabrowserKeyboardShortcuts.describeBindings(
+            tabBindings(shortcut.key),
+          );
+          btn.setAttribute("aria-keyshortcuts", binding.ariaKeyshortcuts);
+        }
+        // Pulls can be present in the server shell before Git discovery finishes.
+        navBar.insertBefore(btn, panel.id === "git" ? tabButton("pulls") : null);
       }
       if (!content.querySelector(`[data-tab-content="${panel.id}"]`)) {
         const container = document.createElement("div");
@@ -58,7 +113,7 @@
     function removeNavPanel(panelId) {
       navPanels = navPanels.filter((panel) => panel.id !== panelId);
       navPanelsShown.delete(panelId);
-      const button = navBar?.querySelector(`.tab-btn[data-tab="${panelId}"]`);
+      const button = tabButton(panelId);
       const container = document
         .getElementById("tree-content")
         ?.querySelector(`[data-tab-content="${panelId}"]`);
@@ -176,7 +231,8 @@
     /** @param {string} panelId */
     function activateNavPanel(panelId) {
       if (
-        !navBar?.querySelector(`.tab-btn[data-tab="${panelId}"]`) ||
+        !navBar ||
+        !tabButton(panelId) ||
         (panelId === activeNavPanelId && navPanelsShown.has(panelId))
       ) {
         return;
@@ -250,6 +306,7 @@
     return Object.freeze({
       active: () => activeNavPanelId,
       activate: activateNavPanel,
+      bindShortcuts,
       finishGitDiscovery() {
         gitDiscoveryFinished = true;
         return restoreNeutralGitPanel();

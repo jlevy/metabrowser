@@ -211,6 +211,8 @@ glyph itself.
 | `?` | `?` | Question mark | Omitted when matched as a produced character |
 | `/` | `/` | Slash | Omitted when matched as a produced character |
 | Letter key | Uppercase letter, such as `T` | The letter | Uppercase letter, such as `T` |
+| Digit key | The digit | The digit | The digit |
+| Command modifier | `⌘` | Command | `Meta` |
 | `ArrowUp` | `↑` | Up arrow | `ArrowUp` |
 | `ArrowDown` | `↓` | Down arrow | `ArrowDown` |
 | `ArrowLeft` | `←` | Left arrow | `ArrowLeft` |
@@ -237,6 +239,14 @@ When modifier bindings are introduced, the formatter owns both platform labels a
 serialization; no call site chooses between names such as Control, Command, or Meta.
 Adding a key that is not in this vocabulary requires adding its display, spoken, and
 ARIA policy together with formatter tests.
+
+#### Main Tab Shortcuts
+
+The sidebar orders Files, Git, and Pulls in that order.
+Help shows the fixed shortcuts: `⌘1` for Files, `⌘2` for Git, and `⌘3` for Pulls.
+A missing tab keeps its number reserved.
+Use the number alone outside text fields and dialogs when the browser uses the Command
+chord for its own tab bar.
 
 #### Binding Grammar and Accessibility
 

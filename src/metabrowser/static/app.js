@@ -8106,6 +8106,7 @@ function initKeyboardInfrastructure() {
     return;
   }
   shortcutRegistry = window.MetabrowserKeyboardShortcuts.create({ document: document });
+  mainTabs?.bindShortcuts(shortcutRegistry);
   window.MetabrowserPullsNav?.bindShortcuts(shortcutRegistry);
   keyboardHelp = window.MetabrowserKeyboardHelp.create({
     document: document,

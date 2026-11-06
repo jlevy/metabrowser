@@ -525,6 +525,23 @@ $ node tests/dom/preview-pane-state-session.js
       "activeAfterHistory": "pulls",
       "neutralGitDetailOpens": 0
     },
+    "mainTabShortcuts": {
+      "tabOrder": [
+        "files",
+        "git",
+        "pulls"
+      ],
+      "ariaKeys": [
+        "Meta+1 1",
+        "Meta+2 2",
+        "Meta+3 3"
+      ],
+      "keyboardRoutes": [
+        "/pulls",
+        "/view/",
+        "/view/"
+      ]
+    },
     "reselectAfterFailure": {
       "afterGitClaim": {
         "fetches": 2,

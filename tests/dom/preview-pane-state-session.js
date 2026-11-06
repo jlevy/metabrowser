@@ -484,7 +484,7 @@ function createShell(pathname, network, options = {}) {
   if (options.pulls) {
     panelIds.push("pulls");
   }
-  const tabButtons = panelIds.map((tab) => fakeElement({ dataset: { tab } }));
+  const tabButtons = panelIds.map((tab) => fakeElement({ dataset: { tab }, focus() {} }));
   const tabPanels = panelIds.map((tab) => fakeElement({ dataset: { tabContent: tab } }));
   scroller.querySelector = () => ({});
   scroller.querySelectorAll = () => tabPanels;
@@ -498,7 +498,9 @@ function createShell(pathname, network, options = {}) {
   }
   let tabClick;
   const navBar = fakeElement({
-    appendChild: (button) => tabButtons.push(button),
+    insertBefore(button, next) {
+      tabButtons.splice(next ? tabButtons.indexOf(next) : tabButtons.length, 0, button);
+    },
     addEventListener(_type, listener) {
       tabClick = listener;
     },
@@ -551,6 +553,7 @@ function createShell(pathname, network, options = {}) {
   }
   const writes = [];
   const listeners = new Set();
+  let keydown;
   const history = {
     state: null,
     pushState(state, _title, href) {
@@ -588,10 +591,14 @@ function createShell(pathname, network, options = {}) {
       return true;
     },
     document: {
-      addEventListener() {},
+      addEventListener(type, listener) {
+        if (type === "keydown") {
+          keydown = listener;
+        }
+      },
       body: { append() {} },
       cookie: "",
-      createElement: () => fakeElement({ remove() {} }),
+      createElement: () => fakeElement({ focus() {}, remove() {} }),
       documentElement: { getAttribute: () => null },
       getElementById: (id) => elements.get(id) ?? null,
       querySelector: (selector) => (selector === ".nav-tab-bar" ? navBar : null),
@@ -766,6 +773,18 @@ function createShell(pathname, network, options = {}) {
       return claim;
     },
     counters,
+    tabButtons,
+    pressTabShortcut(key, options) {
+      let consumed = false;
+      keydown({
+        key,
+        ...options,
+        preventDefault: () => {
+          consumed = true;
+        },
+      });
+      return consumed;
+    },
     clickTab: (panel) => tabClick({ target: tabButtons.find((btn) => btn.dataset.tab === panel) }),
     /** Let the loading-indicator delay elapse. */
     elapseLoadingDelay() {
@@ -845,6 +864,56 @@ function navPanelsKeepTheirPlace() {
     switches.push(`scrolled to ${scrolled}, ${panel} chosen: shows ${scroller.scrollTop}`);
   }
   return { switches, told };
+}
+
+async function mainTabShortcuts() {
+  // The server supplies Files and Pulls. Git can arrive after the keyboard registry.
+  const shell = createShell(
+    "/view/",
+    (path) => Promise.resolve(jsonResponse({ kind: "text", path })),
+    {
+      pulls: true,
+      withoutGit: true,
+      startupScripts: ["keyboard-shortcuts.js"],
+    },
+  );
+  const { sandbox, tabButtons } = shell;
+  const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: sandbox.document });
+  sandbox.mainTabs.bindShortcuts(shortcuts);
+  const press = (key, options) => shell.pressTabShortcut(key, options);
+  assert.equal(press("2", { metaKey: true }), false, "absent Git leaves Command-2 alone");
+  assert.equal(press("3", { metaKey: true }), true, "Pulls keeps Command-3 while Git is absent");
+  assert.equal(sandbox.mainTabs.active(), "pulls");
+  await settle();
+
+  sandbox.mainTabs.register({ id: "git", label: "Git", onFirstShow: null });
+  assert.deepEqual(
+    tabButtons.map((button) => button.dataset.tab),
+    ["files", "git", "pulls"],
+  );
+  assert.equal(press("2", { metaKey: true, target: { tagName: "INPUT" } }), false);
+  assert.equal(press("2", { metaKey: true, shiftKey: true }), false);
+  const closeModal = shortcuts.activateScope("help", { exclusive: true });
+  assert.equal(press("2", { metaKey: true }), false, "modal scopes own their keys");
+  closeModal();
+  assert.equal(press("2", { metaKey: true }), true);
+  assert.equal(sandbox.mainTabs.active(), "git");
+  await settle();
+  assert.equal(press("1", {}), true, "a plain number is the browser fallback");
+  assert.equal(sandbox.mainTabs.active(), "files");
+  await settle();
+
+  const help = shortcuts.snapshot("help").find((group) => group.id === "main-tabs");
+  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), [
+    "Command plus 1 or 1",
+    "Command plus 2 or 2",
+    "Command plus 3 or 3",
+  ]);
+  return {
+    tabOrder: tabButtons.map((button) => button.dataset.tab),
+    ariaKeys: tabButtons.map((button) => button.getAttribute("aria-keyshortcuts")),
+    keyboardRoutes: shell.writes,
+  };
 }
 
 async function independentMainTabs() {
@@ -1501,6 +1570,7 @@ async function shell() {
     tabSwitchDuringLoad: await tabSwitchDuringLoad(),
     navPanelsKeepTheirPlace: navPanelsKeepTheirPlace(),
     independentMainTabs: await independentMainTabs(),
+    mainTabShortcuts: await mainTabShortcuts(),
     reselectAfterFailure: await reselectAfterFailure(),
     bodyReadFailure: await bodyReadFailure(),
     reconnectRetry: await reconnectRetry(),
