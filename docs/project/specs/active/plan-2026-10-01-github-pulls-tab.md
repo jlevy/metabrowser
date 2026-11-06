@@ -45,6 +45,8 @@ filter.
 
 Search reads catalog summaries without invoking Git or `gh`. An incomplete catalog can
 grow through the same Pulls refresh job.
+Quick Search shares a running job without changing the Pulls tab’s priority and waits
+between refresh requests.
 The query route itself only reads.
 PR detail is opened through the normal Conversation address after the reader selects a
 result. See the

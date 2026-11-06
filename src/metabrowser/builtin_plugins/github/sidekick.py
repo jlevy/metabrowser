@@ -496,7 +496,8 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     """Start/join automatic catalog backfill; state/target prioritize a display window.
 
     The default state is open and target is 500. The background worker continues to
-    all metadata after that prefix. Retry cannot bypass a provider rate-limit hold.
+    all metadata after that prefix. A background ask joins without reprioritizing.
+    Retry cannot bypass a provider rate-limit hold.
     """
 
     from metabrowser.builtin_plugins.github.pull_list_route import (

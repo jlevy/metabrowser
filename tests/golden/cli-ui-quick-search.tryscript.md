@@ -46,6 +46,7 @@ $ node tests/dom/quick-search-pulls-session.js
   "cold": [
     "Pull request #77, Cold catalog match, Open"
   ],
+  "pullOpenFailure": "Could not open this pull request. Try again.",
   "requests": [
     "GET /api/plugin/github/pulls?q=render",
     "GET /api/plugin/github/pulls?q=obsolete",
@@ -56,7 +57,9 @@ $ node tests/dom/quick-search-pulls-session.js
     "GET /api/plugin/github/pulls?q=%2377",
     "GET /api/plugin/github/pulls?q=%2377",
     "GET /api/plugin/github/pulls?q=%2377",
-    "GET /api/plugin/github/pulls?q=%23999"
+    "GET /api/plugin/github/pulls?q=%23999",
+    "GET /api/plugin/github/pulls?q=%23998",
+    "POST /api/plugin/github/pulls-refresh"
   ]
 }
 ? 0

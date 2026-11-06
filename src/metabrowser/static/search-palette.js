@@ -598,7 +598,11 @@
             : ((await options.openPull?.(result.number)) ?? { status: "cancelled" });
       } catch (error) {
         console.warn("Quick Search open failed", error);
-        outcome = options.describeOpenFailure(error);
+        const failure = options.describeOpenFailure(error);
+        outcome =
+          result.kind === "pull" && failure.status === "error"
+            ? { status: "error", message: "Could not open this pull request. Try again." }
+            : failure;
       }
       if (disposed || actionId !== actionSerial || overlay.hidden) {
         return;

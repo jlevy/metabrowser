@@ -107,6 +107,7 @@ class RefreshRequest:
     name: PullListName
     target: int = DEFAULT_TARGET
     retry: bool = False
+    background: bool = False
 
 
 def _list_name(value: object) -> PullListName:
@@ -141,12 +142,18 @@ def search_query(value: str) -> str:
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
-    if set(body) - {"state", "target", "retry"}:
-        raise ListRequestError('a catalog request names only "state", "target", and "retry"')
-    retry, target = body.get("retry", False), body.get("target", DEFAULT_TARGET)
+    if set(body) - {"state", "target", "retry", "background"}:
+        raise ListRequestError(
+            'a catalog request names only "state", "target", "retry", and "background"'
+        )
+    retry = body.get("retry", False)
+    background = body.get("background", False)
+    target = body.get("target", DEFAULT_TARGET)
+    if not isinstance(background, bool):
+        raise ListRequestError('"background" is boolean')
     if not isinstance(retry, bool) or type(target) is not int or not 1 <= target <= _MAX_TARGET:
         raise ListRequestError('"retry" is boolean and "target" is a positive PR count')
-    return RefreshRequest(_list_name(body.get("state", DEFAULT_LIST)), target, retry)
+    return RefreshRequest(_list_name(body.get("state", DEFAULT_LIST)), target, retry, background)
 
 
 def listed_repository(mirror: MirrorSession | None) -> ListedRepository | None:
@@ -370,7 +377,7 @@ def start_refresh(view: ListView, ask: RefreshRequest, *, wanted: bool) -> ListR
     assert repository is not None and coordinator is not None
     key = _job_key(repository)
     if coordinator.running(key):
-        if wanted:
+        if wanted and not ask.background:
             demand = _DEMANDS[_demand_key(repository, coordinator)]
             demand.name, demand.target = ask.name, ask.target
             demand.retry = demand.retry or ask.retry

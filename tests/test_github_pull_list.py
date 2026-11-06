@@ -514,6 +514,10 @@ def test_late_demand_joins_and_cancel_cleans_coordinator_state(
             pull_list_route.start_refresh(view, RefreshRequest("closed", 1500, True), wanted=True)
             == "joined"
         )
+        assert (
+            pull_list_route.start_refresh(view, refresh_request({"background": True}), wanted=True)
+            == "joined"
+        )
         release.set()
         await coordinator.drain(timeout_s=2)
         assert observed == [("closed", 1500), True, False]
@@ -533,7 +537,15 @@ def test_invalid_window_is_refused(params: dict[str, str]) -> None:
 
 
 @pytest.mark.parametrize(
-    "body", [{"more": True}, {"target": True}, {"target": 0}, {"retry": 1}, {"state": "merged"}]
+    "body",
+    [
+        {"more": True},
+        {"target": True},
+        {"target": 0},
+        {"retry": 1},
+        {"background": 1},
+        {"state": "merged"},
+    ],
 )
 def test_invalid_refresh_is_refused(body: dict[str, Any]) -> None:
     with pytest.raises(ListRequestError):

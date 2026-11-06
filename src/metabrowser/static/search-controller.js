@@ -5,6 +5,8 @@
   const PULL_PROVIDER_ID = "cached-pull-requests";
   const PULL_PROVIDER_PRIORITY = 15;
   const PULL_QUERY_DELAY_MS = 120;
+  const PULL_WARM_COOLDOWN_MS = 60_000;
+  const PULL_WARM_TIMEOUT_MS = 6_000;
   // A cold authenticated fetch can outlast the first two local cache reads.
   const COLD_PULL_RECHECK_DELAYS_MS = [180, 400, 800, 1_600, 3_000];
   const MAX_PULL_QUERY_LENGTH = 256;
@@ -379,11 +381,15 @@
     let warmRequest = null;
     /** @type {number | null} */
     let warmStatus = null;
+    let warmAfter = 0;
 
     function warmCatalog() {
-      if (warmRequest !== null) {
+      const now = Date.now();
+      if (warmRequest !== null || now < warmAfter) {
         return false;
       }
+      warmAfter = now + PULL_WARM_COOLDOWN_MS;
+      warmStatus = null;
       // Catalog work is shared with Pulls and outlives the query that asked
       // for it. Retyping or closing the palette only cancels local reads.
       warmRequest = Promise.resolve()
@@ -391,7 +397,8 @@
           read("/api/plugin/github/pulls-refresh", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ state: "open", target: 500 }),
+            body: JSON.stringify({ background: true }),
+            signal: AbortSignal.timeout(PULL_WARM_TIMEOUT_MS),
           }),
         )
         .then(
@@ -401,7 +408,10 @@
           () => {
             warmStatus = 0;
           },
-        );
+        )
+        .finally(() => {
+          warmRequest = null;
+        });
       return true;
     }
 

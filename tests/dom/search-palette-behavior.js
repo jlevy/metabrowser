@@ -313,7 +313,14 @@ function searchResult(pathname, score, matchRanges = []) {
 }
 
 const document = new FakeDocument();
-const sandbox = { AbortController, clearTimeout, document, setTimeout, URLSearchParams };
+const sandbox = {
+  AbortController,
+  AbortSignal,
+  clearTimeout,
+  document,
+  setTimeout,
+  URLSearchParams,
+};
 sandbox.window = sandbox;
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
@@ -1069,19 +1076,30 @@ async function pullSearchSession() {
   const started = Promise.withResolvers();
   const obsolete = Promise.withResolvers();
   const obsoleteStarted = Promise.withResolvers();
+  let now = 1_000;
+  sandbox.Date = class extends Date {
+    static now() {
+      return now;
+    }
+  };
   let coldReads = 0;
+  let warmRequests = 0;
+  let lookupSignal;
   controller.registerProvider(
     runtime.createPullProvider({
       fetch: (url, init) => {
         requests.push({ url, method: init.method ?? "GET" });
         if (init.method === "POST") {
-          equal("a warm request uses the shared all-state coordinator", JSON.parse(init.body), {
-            state: "open",
-            target: 500,
+          equal("warming preserves active Pulls priority", JSON.parse(init.body), {
+            background: true,
           });
-          check("the warm request outlives query cancellation", !init.signal);
-          return Promise.resolve({ status: 202 });
+          check(
+            "warming has its own timeout, separate from the query",
+            init.signal !== lookupSignal && !init.signal.aborted,
+          );
+          return Promise.resolve({ status: ++warmRequests === 1 ? 202 : 200 });
         }
+        lookupSignal = init.signal;
         if (url.endsWith("?q=render")) {
           started.resolve();
           return delayed.promise;
@@ -1119,6 +1137,9 @@ async function pullSearchSession() {
       return { status: "opened" };
     },
     openPull: (number) => {
+      if (number === 77) {
+        throw new Error("fixture: cannot load the PR page");
+      }
       opened.push(number);
       return { focusTarget: landing, status: "opened" };
     },
@@ -1239,14 +1260,24 @@ async function pullSearchSession() {
   equal("an empty cold catalog can populate within one query", cold, [
     "Pull request #77, Cold catalog match, Open",
   ]);
+  key("Enter");
+  await settle();
+  const pullOpenFailure = dialog.querySelector('[role="status"]').textContent;
+  check(
+    "open failure describes a pull request",
+    pullOpenFailure.includes("Could not open this pull request."),
+  );
+
   const noMatchComplete = searchCompletes();
   type("#999");
   await noMatchComplete;
-  equal(
-    "there is only one warm request even after a later miss",
-    requests.filter((request) => request.method === "POST").length,
-    1,
-  );
+  equal("nearby misses share the refresh cooldown", warmRequests, 1);
+  now += 60_001;
+  const afterCooldown = searchCompletes();
+  type("#998");
+  await afterCooldown;
+  equal("a later miss can ask for a new refresh", warmRequests, 2);
+  delete sandbox.Date;
   const result = {
     heading,
     placeholder,
@@ -1260,6 +1291,7 @@ async function pullSearchSession() {
     bare,
     opened,
     cold,
+    pullOpenFailure,
     requests: requests.map(({ method, url }) => `${method} ${url}`),
   };
   palette.dispose();
