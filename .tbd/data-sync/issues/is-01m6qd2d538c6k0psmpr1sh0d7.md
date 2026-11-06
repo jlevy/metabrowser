@@ -5,16 +5,18 @@ title: Automatically fill the PR cache from a visible direct link
 kind: bug
 status: closed
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
 dependencies: []
 parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
+child_order_hints:
+  - is-01m6rsf8q3wnc8b005gk8q8r14
 hold: null
 hold_until: null
 created_at: 2026-11-06T03:05:08.515Z
-updated_at: 2026-11-06T04:24:46.230Z
+updated_at: 2026-11-06T16:01:07.298Z
 started_at: 2026-11-06T03:05:09.001Z
 closed_at: 2026-11-06T04:24:46.229Z
 close_reason: "Completed and verified in PR #307."
