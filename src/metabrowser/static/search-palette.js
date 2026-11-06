@@ -322,8 +322,9 @@
           : snapshot.truncated
             ? " Indexing stopped at the file limit."
             : " Scanning continues.";
-        const pulls = includesPulls ? " and cached pull requests" : "";
-        status.textContent = `Search includes ${scope}${pulls}.${coverage}`;
+        status.textContent = includesPulls
+          ? `Search includes ${scope} and cached pull requests.${coverage}`
+          : `Search includes ${scope}.${coverage}`;
         return;
       }
       if (!searchState || searchState.phase === "searching") {
