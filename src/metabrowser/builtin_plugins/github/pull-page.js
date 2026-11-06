@@ -1257,14 +1257,14 @@ export function createPullController(deps, options) {
     if (disposed) {
       return;
     }
-    fetchForReader();
-    render();
     // A waiting read spent part (or all) of the interval already.
     scheduleNext(
       waitStarted === null
         ? FAST_POLL_MS
         : Math.max(0, FAST_POLL_MS - Math.max(0, deps.now() - waitStarted)),
     );
+    fetchForReader();
+    render();
     if (
       deps.isVisible() &&
       envelope?.state === "stale" &&

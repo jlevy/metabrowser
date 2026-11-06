@@ -729,20 +729,22 @@ $ node tests/dom/github-pulls-panel-second-session.js
   ],
   "reader": [
     {
-      "name": "an address alone fetches nothing",
+      "name": "a visible cold direct link fills the cache",
       "asked": [
-        "GET /api/plugin/github/pull?number=7"
+        "GET /api/plugin/github/pull?number=7",
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"wait_core\":true}"
       ],
       "waits": [
-        30000
+        30000,
+        0
       ],
       "before": {
-        "message": "This pull request has not been fetched yet.",
-        "canRefresh": true
+        "message": "Fetching the pull request…",
+        "canRefresh": false
       },
       "after": {
-        "message": "This pull request has not been fetched yet.",
-        "canRefresh": true
+        "message": "Fetching the pull request…",
+        "canRefresh": false
       }
     },
     {

@@ -668,8 +668,8 @@ async function run() {
 }
 
 /**
- * The page a reader's selection opens: it is the selection that adds a record, as a press of
- * Fetch is, so only such a page asks, and past the bound on jobs it says why.
+ * How a visible cold direct page or a reader's row selection fills the record cache,
+ * and what the page says when it reaches the job limit.
  */
 async function readerStory() {
   const page = await import(pathToFileURL(pagePath).href);
@@ -739,7 +739,10 @@ async function readerStory() {
     controller.dispose();
   }
   const { absent, refresh_started: started, too_many: tooMany, current } = pageRecorded;
-  await opened("an address alone fetches nothing", null, { pull: absent });
+  await opened("a visible cold direct link fills the cache", null, {
+    pull: absent,
+    refresh: started,
+  });
   await opened(
     "a click on a row with no record fetches it at once",
     { fetchAfterMs: 0, initial: null },
