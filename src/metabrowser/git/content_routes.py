@@ -889,7 +889,7 @@ def _git_rollup_payload(
         "node": node,
         "ext_tallies": built["ext_tallies"],
         "file_type_breakdown": built["file_type_breakdown"],
-        "index_status": "complete",
+        "index_status": "done",
         "indexed_files": node["total_files"],
         "max_files": INVENTORY_MAX_FILES,
         "truncated": False,

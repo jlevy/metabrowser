@@ -13,6 +13,7 @@ All notable changes to Metabrowser are documented here.
 
 PR and Git navigation:
 
+- Treemap and its file totals load for folders in Git-backed repositories.
 - Conversation interleaves clickable commit summaries with comments and reviews in
   GitHub’s order. Cached timelines are available offline.
 - The PR diff tab is called **Changes**. A PR that already shows content uses the shared

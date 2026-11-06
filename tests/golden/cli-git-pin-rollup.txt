@@ -506,7 +506,7 @@ status: 200
       "others": null
     }
   },
-  "index_status": "complete",
+  "index_status": "done",
   "indexed_files": 16,
   "max_files": 500000,
   "truncated": false
