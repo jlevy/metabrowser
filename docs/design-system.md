@@ -1191,10 +1191,9 @@ Everything goes through `pullStateIcon` and `displayState` in
 | PR number and username | `--nav-font-size`; number uses text ink, username uses `.github-pull-author` | Both are readable context; usernames stay bold and muted across PR surfaces |
 | Base and head | `--ui-small-font-size`, remote-ref ink | Ref context is smaller than the number and username |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
-| Count and freshness | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Muted freshness tells when the list was last fetched after activity ends. |
-| A refresh’s failure, cut rows | [`.notice`](#notices), `warning`, with **Retry** in it when a reader can act | A cached list still shows under it |
-| Loading and refresh | One delayed status line with the shared small gray spinner | Cached rows stay visible. |
-| Fetch more, Retry | `.btn` | [Control Families](#control-families) |
+| Count | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Counts describe the repository and the displayed window. |
+| Connection | One live status row with the shared small gray spinner during work, a quiet update age when idle, and actionable copy during failures | Cached rows stay visible. |
+| Fetch more, Reload | `.btn` | Fetch more extends the display window. Reload checks GitHub for updates. See [Control Families](#control-families). |
 
 A row is two lines and one target, because a pane is narrower than its parts: the state
 icon and the title with the age beside it, sharing a baseline, then the metadata line

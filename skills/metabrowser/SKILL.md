@@ -73,7 +73,9 @@ resolves one.
 Open a GitHub repository URL, a pull-request URL, or an existing checkout.
 A recognized main or linked worktree, including a served subdirectory, has a **Pulls**
 tab. The catalog starts with Open PRs; Closed includes merged PRs.
-Metadata loads incrementally in the background.
+Metadata loads incrementally and stays current while Pulls or a PR page is visible.
+During a disconnection, the Pulls connection status keeps cached rows available and
+offers **Reload**. The catalog resumes updates automatically when GitHub is reachable.
 Scrolling near the end or choosing **Fetch more** extends the displayed window.
 Press `T` or `/` to find cached PRs in **Quick Search** by number or title.
 

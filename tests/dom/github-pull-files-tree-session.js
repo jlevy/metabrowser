@@ -24,7 +24,6 @@ for (const envelope of Object.values(recorded)) {
   envelope.rows = envelope.rows.map((row) => JSON.parse(row));
 }
 const treePath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pull-files-tree.js");
-const panelPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pulls-panel.js");
 // Open every folder up to this many files. The panel's measured threshold is the next step's;
 // here one list is under the first and over the second.
 const LARGE = 300;
@@ -80,11 +79,10 @@ function show(rows) {
 
 async function main() {
   const tree = await import(pathToFileURL(treePath).href);
-  const panel = await import(pathToFileURL(panelPath).href);
   const formatTime = (iso) => iso;
   const describe = (envelope) => {
     const model = tree.describeFileList(envelope);
-    const failure = panel.refreshFailure(envelope, formatTime);
+    const failure = tree.fileListFailure(envelope, formatTime);
     return { ...model, failure: model.failure?.outcome ?? null, says: failure?.text ?? null };
   };
   const stories = {};

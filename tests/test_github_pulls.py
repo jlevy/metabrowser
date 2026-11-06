@@ -315,6 +315,20 @@ def test_gh_api_returns_304_and_types_refusals(stand: _Stand) -> None:
         asyncio.run(gh_api(path))
     assert refused.value.state == "not_logged_in"
 
+    stand.answer(_api(scenario(stand.origin), path, {"status": 502}))
+    with pytest.raises(GhError) as upstream:
+        asyncio.run(gh_api(path))
+    assert upstream.value.state == "network_error"
+
+    api_failure = {
+        "stderr": "error connecting to api.github.com\nPlease try gh auth login\n",
+        "exit": 1,
+    }
+    stand.answer({**scenario(stand.origin), "api_failure": api_failure})
+    with pytest.raises(GhError) as offline:
+        asyncio.run(gh_api(path))
+    assert offline.value.state == "network_error"
+
 
 def test_account_is_the_active_login_even_in_an_error_state() -> None:
     assert parse_account(account("octo", state="error")["stdout"].encode()) == "octo"
@@ -323,6 +337,27 @@ def test_account_is_the_active_login_even_in_an_error_state() -> None:
     assert parse_account(json.dumps(inactive).encode()) is None
     with pytest.raises(GhError):
         parse_account(b'{"hosts":{"github.com":[{"active":true,"login":"bad login"}]}}')
+
+
+@pytest.mark.parametrize(
+    ("state", "diagnostic", "outcome", "message"),
+    [
+        ("error", "dial tcp: no such host", "network_error", "gh could not reach api.github.com"),
+        ("timeout", None, "network_error", "gh could not reach api.github.com"),
+        ("error", "HTTP 503: private diagnostic", "network_error", "GitHub answered HTTP 503"),
+        ("error", "HTTP 401: private diagnostic", "not_logged_in", "gh auth login"),
+        ("error", "private diagnostic", "gh_failed", "not a GitHub login"),
+    ],
+)
+def test_environment_token_login_resolution_failure_is_typed(
+    state: str, diagnostic: str | None, outcome: str, message: str
+) -> None:
+    active = {"active": True, "login": "", "state": state, "error": diagnostic}
+    payload = {"hosts": {"github.com": [active]}}
+    with pytest.raises(GhError) as failure:
+        parse_account(json.dumps(payload).encode())
+    assert failure.value.state == outcome
+    assert message in str(failure.value) and "private diagnostic" not in str(failure.value)
 
 
 # ── refresh ────────────────────────────────────────────────────

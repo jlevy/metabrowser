@@ -14,6 +14,9 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   const state = {
     cached,
     automatic,
+    now: Date.parse("2026-09-17T12:00:30Z"),
+    online: true,
+    visible: true,
     refreshing: true,
     complete: false,
     generation: "one",
@@ -100,8 +103,9 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
       return id;
     },
     cancel: (id) => timers.delete(id),
-    now: () => Date.parse("2026-09-17T12:00:30Z"),
-    isVisible: () => true,
+    now: () => state.now,
+    isVisible: () => state.visible,
+    isOnline: () => state.online,
     formatTime: (at) => at,
     render: (next) => {
       model = next;
@@ -169,11 +173,10 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   await settle();
   page.requests.length = 0;
   const expansion = page.controller.loadMore();
-  assert.equal(page.model().fetching, "Fetching pull requests…");
-  assert.equal(page.model().live, page.model().fetching);
-  assert.match(page.model().notice.text, /rate limit/);
+  assert.equal(page.model().connection.state, "paused");
+  assert.match(page.model().connection.text, /rate limit/);
   await expansion;
-  assert.equal(page.model().fetching, null);
+  assert.equal(page.model().connection.state, "paused");
   assert.equal(page.controller.snapshot().rows, 1000);
   assert.equal(page.requests.length, 5);
   assert(
@@ -281,11 +284,13 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   // A refresh can report a new generation before its prefix is held. Read the new
   // top first, since the old tail would be a cursor into different content.
   const replacedTail = rig(panel, { cached: 500 });
+  replacedTail.state.refreshing = false;
   await replacedTail.controller.start({ shown: true });
+  await settle();
   replacedTail.state.cached = 700;
   replacedTail.state.generation = "two";
   replacedTail.state.first += 1;
-  await replacedTail.controller.retry();
+  await replacedTail.controller.reload();
   replacedTail.requests.length = 0;
   await replacedTail.controller.reachedEnd();
   assert.equal(replacedTail.controller.snapshot().rows, 600);
@@ -305,14 +310,14 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   await refused;
   assert.equal(refusedTail.controller.snapshot().rows, 500);
   assert.equal(refusedTail.model().loadMore, "ready");
-  assert.match(refusedTail.model().notice.text, /HTTP 503/u);
+  assert.match(refusedTail.model().connection.text, /HTTP 503/u);
   refusedTail.requests.length = 0;
   await refusedTail.controller.reachedEnd();
   assert.equal(refusedTail.requests.length, 0);
   refusedTail.state.automatic = true;
   await refusedTail.controller.loadMore();
   assert.equal(refusedTail.controller.snapshot().rows, 1100);
-  assert.equal(refusedTail.model().notice, null);
+  assert.notEqual(refusedTail.model().connection.state, "unavailable");
   assert(refusedTail.requests.every((request) => request.method === "GET"));
   refusedTail.dispose();
 
@@ -353,38 +358,33 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   assert.equal(failedTail.requests[0].method, "GET");
   failedTail.dispose();
 
-  const emptyFilter = {
-    ...page.envelope("/api/plugin/github/pulls?limit=0"),
-    fetched: 0,
-    total: 0,
-    repository_total: 17,
-    complete: true,
-  };
-  assert.equal(
-    panel.describeLanding(emptyFilter, (at) => at),
-    "Select a pull request.",
-  );
-  assert.equal(
-    panel.describeLanding({ ...emptyFilter, repository_total: 0 }, (at) => at),
-    "No pull requests.",
-  );
-  assert.equal(
-    panel.describeLanding({ ...emptyFilter, repository_total: null }, (at) => at),
-    "Select a pull request.",
-  );
-
   // A priority request raises the matching display target while the durable backfill runs.
   const partial = rig(panel, { cached: 100 });
   await partial.controller.start({ shown: true });
   await settle();
   assert.deepEqual(
     partial.requests.filter((request) => request.method === "POST").map((request) => request.body),
-    [{ state: "open", target: 500 }],
+    [{ state: "open", target: 500, background: true }],
   );
   await partial.controller.loadMore();
   assert.equal(partial.controller.snapshot().displayLimit, 1000);
   assert.deepEqual(partial.requests.at(-1).body, { state: "open", target: 1000 });
   partial.dispose();
+
+  const priorityFilter = rig(panel, { cached: 100 });
+  await priorityFilter.controller.start({ shown: true });
+  await settle();
+  priorityFilter.requests.length = 0;
+  priorityFilter.controller.setFilter("closed");
+  await settle();
+  assert.deepEqual(
+    priorityFilter.requests
+      .filter((request) => request.method === "POST")
+      .map((request) => request.body),
+    [{ state: "closed", target: 500 }],
+    "a reader's filter change can reprioritize an active catalog job",
+  );
+  priorityFilter.dispose();
 
   const resume = rig(panel, { cached: 500 });
   resume.state.refreshing = false;
@@ -395,7 +395,7 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   assert.equal(resume.controller.snapshot().rows, 500);
   assert.deepEqual(
     resume.requests.filter((request) => request.method === "POST").map((request) => request.body),
-    [{ state: "open", target: 500 }],
+    [{ state: "open", target: 500, background: true }],
     "a fresh partial catalog resumes even when its matching window is full",
   );
   resume.controller.onVisibilityChange();
@@ -460,7 +460,7 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   const refreshRace = rig(panel);
   refreshRace.state.refreshing = false;
   await refreshRace.controller.start({ shown: true });
-  assert.match(refreshRace.model().progress, /^Catalog paused · [\d,]+ cached$/);
+  assert.match(refreshRace.model().connection.text, /Fetching pull requests|Catalog paused/u);
   const oldVersion = refreshRace.model().rowsVersion;
   refreshRace.state.automatic = false;
   refreshRace.state.generation = "two";
@@ -468,7 +468,7 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   refreshRace.controller.onVisibilityChange();
   await settle();
   await refreshRace.respond();
-  void refreshRace.controller.retry();
+  void refreshRace.controller.reload();
   await settle();
   refreshRace.state.refreshing = true;
   await refreshRace.respond(1);
@@ -476,8 +476,8 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   assert.equal(refreshRace.waiting.length, 0);
   assert.equal(refreshRace.model().rowsVersion, oldVersion);
   assert.equal(refreshRace.model().rows[0].number, 8000);
-  assert.equal(refreshRace.model().fetching, "Fetching pull requests…");
-  assert.equal(refreshRace.model().freshness, null);
+  assert.equal(refreshRace.model().connection.state, "working");
+  assert.equal(refreshRace.model().connection.reload, false);
   assert.equal(refreshRace.controller.snapshot().timer, "fast");
   refreshRace.controller.onVisibilityChange();
   await settle();
@@ -486,6 +486,145 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   }
   assert.equal(refreshRace.model().rows[0].number, 8001);
   refreshRace.dispose();
+
+  const at = (time) => new Date(time).toISOString();
+  const makeFailure = (outcome, time, reset = null) => ({
+    outcome,
+    reset_at: reset,
+    message: null,
+    at: at(time),
+  });
+  const providerAsks = (test) =>
+    test.requests.filter((request) => request.method === "POST").map((request) => request.body);
+  async function tick(test) {
+    const [id, task] = [...test.timers][0];
+    test.timers.delete(id);
+    task.callback();
+    await settle();
+  }
+  async function watchRig(outcome, age = 0, reset = null) {
+    const test = rig(panel, { cached: 500 });
+    test.state.complete = true;
+    test.state.refreshing = false;
+    test.state.total = 500;
+    test.state.lastRefresh = makeFailure(outcome, test.state.now - age, reset);
+    await test.controller.start({ shown: true });
+    await settle();
+    return test;
+  }
+
+  const watch = await watchRig("network_error");
+  assert.equal(watch.model().connection.state, "paused");
+  assert.equal(watch.model().rows.length, 500);
+  watch.requests.length = 0;
+  watch.state.online = false;
+  watch.controller.onOffline();
+  await watch.controller.reload();
+  assert.equal(watch.model().connection.text, "Offline. Showing cached pull requests.");
+  assert.equal(watch.model().connection.reload, false);
+  await tick(watch);
+  assert.deepEqual(providerAsks(watch), []);
+  watch.state.online = true;
+  watch.controller.onOnline();
+  watch.controller.onFocus();
+  await settle();
+  assert.deepEqual(providerAsks(watch), [
+    { state: "open", target: 500, background: true, reconnect: true },
+  ]);
+  watch.requests.length = 0;
+  watch.controller.pause();
+  watch.controller.onFocus();
+  await settle();
+  assert.equal(watch.requests.length, 0, "a parked page does not watch");
+  watch.controller.resume();
+  await settle();
+  assert.equal(watch.requests.length, 1, "pageshow resumes the cache read");
+  assert.deepEqual(providerAsks(watch), []);
+  watch.dispose();
+
+  const transient = await watchRig("network_error");
+  assert.deepEqual(providerAsks(transient), []);
+  transient.state.now += 60_001;
+  await tick(transient);
+  assert.deepEqual(providerAsks(transient), [{ state: "open", target: 500, background: true }]);
+  transient.dispose();
+
+  const localFailure = await watchRig("network_error");
+  localFailure.state.now += 60_001;
+  localFailure.state.automatic = false;
+  localFailure.controller.onFocus();
+  await localFailure.respond(0, { status: 503, etag: null, body: null });
+  assert.deepEqual(providerAsks(localFailure), [], "a failed local read never asks from old state");
+  assert.equal(localFailure.model().connection.state, "unavailable");
+  assert.equal(localFailure.model().rows.length, 500);
+  localFailure.dispose();
+
+  const auth = await watchRig("not_logged_in");
+  assert.match(auth.model().connection.text, /gh auth login/u);
+  auth.state.now += 90_000;
+  await tick(auth);
+  assert.deepEqual(providerAsks(auth), [], "setup does not probe at the normal freshness window");
+  auth.state.now += 30_001;
+  await tick(auth);
+  assert.deepEqual(providerAsks(auth), [{ state: "open", target: 500, background: true }]);
+  auth.dispose();
+
+  const focus = await watchRig("gh_missing", 61_000);
+  assert.deepEqual(providerAsks(focus), []);
+  focus.controller.onFocus();
+  focus.controller.onFocus();
+  await settle();
+  assert.deepEqual(providerAsks(focus), [{ state: "open", target: 500, background: true }]);
+  focus.dispose();
+
+  const reload = await watchRig("not_found_or_private");
+  reload.state.automatic = false;
+  const reloading = reload.controller.reload();
+  await reload.controller.reload();
+  assert.equal(reload.model().connection.state, "working");
+  assert.equal(reload.model().connection.reload, false);
+  assert.deepEqual(providerAsks(reload), [{ state: "open", target: 500, retry: true }]);
+  await reload.respond();
+  await reloading;
+  reload.dispose();
+
+  const rate = await watchRig(
+    "rate_limited",
+    61_000,
+    at(Date.parse("2026-09-17T12:00:30Z") + 8_000),
+  );
+  assert.match(rate.model().connection.text, /Next attempt after/u);
+  assert.equal(rate.model().connection.reload, false);
+  await rate.controller.reload();
+  assert.deepEqual(providerAsks(rate), []);
+  assert.equal([...rate.timers.values()][0].delay, 8_000);
+  rate.state.now += 8_001;
+  await tick(rate);
+  assert.deepEqual(providerAsks(rate), [{ state: "open", target: 500, background: true }]);
+  rate.dispose();
+
+  // The tail of a canceled filter must leave a reconnect hint for the new list's top read.
+  const wakeRace = rig(panel, { automatic: false });
+  const oldStart = wakeRace.controller.start({ shown: true });
+  await wakeRace.respond();
+  assert.match(wakeRace.waiting[0].route, /state=open.*after=/u);
+  wakeRace.controller.setFilter("closed");
+  wakeRace.controller.onOnline();
+  assert.equal(wakeRace.waiting[0].signal.aborted, true);
+  await wakeRace.respond();
+  await oldStart;
+  assert.equal(wakeRace.timers.size, 0, "the old tail schedules nothing on the new filter");
+  wakeRace.state.cached = 0;
+  wakeRace.state.total = 0;
+  wakeRace.state.complete = true;
+  wakeRace.state.refreshing = false;
+  wakeRace.state.lastRefresh = makeFailure("network_error", wakeRace.state.now);
+  await wakeRace.respond();
+  assert.deepEqual(providerAsks(wakeRace), [
+    { state: "closed", target: 500, background: true, reconnect: true },
+  ]);
+  await wakeRace.respond();
+  wakeRace.dispose();
 
   // An unsuccessful cache window waits for the regular poll instead of a tight retry loop.
   const failed = rig(panel, { automatic: false });
@@ -520,8 +659,18 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
         lateFilterRejected: true,
         failedWindowDoesNotSpin: true,
         newerRefreshKeepsOwnership: true,
-        emptyFilterDoesNotHideOtherPulls: true,
         freshPartialCatalogResumes: true,
+        offlineKeepsCache: true,
+        reconnectUsesBackgroundHint: true,
+        interactiveFilterKeepsPriority: true,
+        transientRetriesAutomatically: true,
+        localReadFailureDoesNotPost: true,
+        setupUsesQuietProbe: true,
+        focusCoalesces: true,
+        parkAndResume: true,
+        rateResetWake: true,
+        reloadCoalesces: true,
+        abortedTailKeepsWake: true,
       },
       null,
       2,

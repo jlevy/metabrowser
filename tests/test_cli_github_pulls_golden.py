@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -98,15 +99,16 @@ class _Session:
         self.now += timedelta(seconds=seconds)
         self.say(f"The clock moves on {seconds:g} s, to {self.now:%Y-%m-%dT%H:%M:%SZ}.")
 
-    def _run(self, *args: str, **sections: list[str]) -> Invocation:
+    def _run(self, *args: str, summarize: bool = False, **sections: list[str]) -> Invocation:
         result = run_metab(args)
         catalog = read_catalog(self.home, origin_identity(CANONICAL).slug)
         if catalog is not None and catalog.epoch not in self.epochs:
             self.epochs.add(catalog.epoch)
             self.labels.add(catalog.epoch, f"<CATALOG_EPOCH_{len(self.epochs)}>")
         shown = [arg.removeprefix(f"{self.tmp_path}/") for arg in args]
+        shown_result = replace(result, stdout=_watch_summary(result)) if summarize else result
         self.blocks.append(
-            result.block(
+            shown_result.block(
                 " ".join(quoted(arg) for arg in shown),
                 **sections,
                 gh=logged_gh_calls(self.tmp_path),
@@ -117,11 +119,15 @@ class _Session:
     def get(self, query: str = "") -> Invocation:
         return self._run(CANONICAL, "--api", f"{PULLS}{query}")
 
-    def post(self, body: dict[str, Any], *, route: str = REFRESH) -> Invocation:
+    def post(
+        self, body: dict[str, Any], *, route: str = REFRESH, summarize: bool = False
+    ) -> Invocation:
         path = self.tmp_path / "request.json"
         text = json.dumps(body)
         path.write_text(text + "\n", encoding="utf-8")
-        return self._run(CANONICAL, "--api", route, "--data", str(path), body=[text])
+        return self._run(
+            CANONICAL, "--api", route, "--data", str(path), summarize=summarize, body=[text]
+        )
 
     def local(self, route: str) -> Invocation:
         """A route read from a local root, which opens no source and asks gh nothing."""
@@ -136,6 +142,19 @@ def _after(result: Invocation) -> dict[str, Any]:
 
     return json.loads(
         result.stdout[result.stdout.rindex("status: 200\n{") + len("status: 200\n") :]
+    )
+
+
+def _watch_summary(result: Invocation) -> str:
+    """Project a watch transition without repeating the catalog envelope."""
+    _, status, rest = result.stdout.partition("status: 202\n")
+    assert status
+    ack, _ = json.JSONDecoder().raw_decode(rest)
+    envelope = _after(result)
+    return (
+        f"status: 202 {ack['refresh']}\n"
+        f"status: 200 {envelope['last_refresh']['outcome']}, "
+        f"{envelope['fetched']} cached PRs\n"
     )
 
 
@@ -401,6 +420,32 @@ def test_golden_pull_list_failures(
     assert _after(unwritable)["last_refresh"]["outcome"] == "cache_unwritable"
     session.answer(online)
     assert _after(session.post({"retry": True}))["last_refresh"]["outcome"] == "succeeded"
+
+    session.say("An environment token cannot resolve its login while offline.")
+    offline_account = {
+        "active": True,
+        "login": "",
+        "state": "error",
+        "error": "dial tcp: lookup api.github.com: no such host",
+    }
+    auth = {"stdout": json.dumps({"hosts": {"github.com": [offline_account]}}), "exit": 0}
+    session.answer(_with(online, auth=auth))
+    refused = session.post({"retry": True}, summarize=True)
+    assert refused.exit_code == 1
+    refused_catalog = _after(refused)
+    assert refused_catalog["last_refresh"]["outcome"] == "network_error"
+    assert refused_catalog["fetched"] == baseline["fetched"]
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == ["gh auth status"]
+
+    session.say("A reconnect can refresh metadata immediately once GitHub is reachable.")
+    session.answer(online)
+    recovered = session.post({"reconnect": True}, summarize=True)
+    assert recovered.exit_code == 0
+    assert _after(recovered)["last_refresh"]["outcome"] == "succeeded"
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+        "gh auth status",
+        "gh api graphql catalog state=updated cursor=start",
+    ]
 
     rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered

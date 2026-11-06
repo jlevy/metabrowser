@@ -510,15 +510,10 @@ def test_the_recording_holds_every_failure_the_plan_names() -> None:
         assert f"failed {name}" in recording, name
 
 
-def test_polling_checkout_landing_keeps_its_origin_refusal() -> None:
-    """Landing polling keeps the served-checkout context and stops after its refusal."""
-
-    landing = run_session("github-pulls-panel-session.js", "--part", "all")["landing"]
-    assert landing["a polling checkout landing preserves its origin refusal"] == {
-        "said": ["This checkout's origin is not a GitHub repository Metabrowser can list."],
-        "requests": ["GET /api/plugin/github/pulls?limit=0"],
-        "timers": [],
-    }
+def test_pulls_landing_leaves_connection_status_to_the_sidebar() -> None:
+    paint = run_session("github-pulls-panel-session.js", "--part", "all")["paint"]
+    assert paint["landing"] == "Select a pull request."
+    assert paint["ready action"] == "Reload"
 
 
 def test_catalog_windows_and_late_request_ownership() -> None:
@@ -544,8 +539,18 @@ def test_catalog_windows_and_late_request_ownership() -> None:
         "lateFilterRejected": True,
         "failedWindowDoesNotSpin": True,
         "newerRefreshKeepsOwnership": True,
-        "emptyFilterDoesNotHideOtherPulls": True,
         "freshPartialCatalogResumes": True,
+        "offlineKeepsCache": True,
+        "reconnectUsesBackgroundHint": True,
+        "interactiveFilterKeepsPriority": True,
+        "transientRetriesAutomatically": True,
+        "localReadFailureDoesNotPost": True,
+        "setupUsesQuietProbe": True,
+        "focusCoalesces": True,
+        "parkAndResume": True,
+        "rateResetWake": True,
+        "reloadCoalesces": True,
+        "abortedTailKeepsWake": True,
     }
 
 

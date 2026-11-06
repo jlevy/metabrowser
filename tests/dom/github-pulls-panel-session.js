@@ -78,11 +78,8 @@ function summarize(model) {
         ? model.repository
         : model.countNumber + model.countSuffix + model.repository,
     window: model.window,
-    fetching: model.fetching,
-    progress: model.progress,
-    freshness: model.freshness,
+    connection: model.connection,
     empty: model.empty,
-    notice: model.notice,
     loadMore: model.loadMore,
     github: model.github,
     live: model.live || null,
@@ -392,7 +389,7 @@ async function run() {
     "the selected total stays current",
   );
   assert(moreCached.paint.window === "Showing last 1,000", "the display remains a partial window");
-  assert(moreCached.paint.fetching === "Fetching pull requests…", "the refresh still runs");
+  assert(moreCached.paint.connection.state === "working", "the refresh still runs");
   assert(moreCached.timer === "fast", "the append does not slow the refresh poll");
   assert(
     moreCached.requests.every((request) => request.startsWith("GET ")),
@@ -428,12 +425,11 @@ async function run() {
   await page.answer(recorded.more_window);
   const failedMore = page.observe("cached rows append despite the provider failure", controller);
   assert(failedMore.paint.rowsHeld === 102, "cached rows append after provider failure");
-  assert(failedTop.paint.notice.severity === "warning", "the failed refresh has a warning");
+  assert(failedTop.paint.connection.state === "paused", "the failed refresh is visible");
   assert(
-    failedMore.paint.notice?.text === failedTop.paint.notice.text,
+    failedMore.paint.connection.text === failedTop.paint.connection.text,
     "the append cannot clear the newer failure",
   );
-  assert(failedMore.paint.freshness === failedTop.paint.freshness, "the latest freshness stays");
   assert(failedMore.requests.length === 0, "a cached append should not ask the provider");
   controller.dispose();
 
@@ -497,8 +493,7 @@ async function run() {
     });
     failures[name.slice("failed ".length)] = {
       status: model.status,
-      freshness: model.freshness,
-      notice: model.notice,
+      connection: model.connection,
     };
   }
   for (const [name, context] of [
@@ -547,121 +542,12 @@ async function run() {
     { number: 8, state: "open", base_ref: "main", head_ref: "topic", head_repository: "OCTO/demo" },
     "octo/demo",
   ).refs;
-  const formatTime = (iso) => new Date(iso).toISOString();
-  const landing = {
-    "a server with no repository": panel.describeLanding(recorded.not_github.body, formatTime),
-    "a checkout whose origin cannot be listed": panel.describeLanding(
-      recorded.not_github.body,
-      formatTime,
-      true,
-    ),
-    "a mirror": panel.describeLanding(recorded.current.body, formatTime),
-    "a list with no rows, and no gh": panel.describeLanding(
-      recorded.open_gh_missing.body,
-      formatTime,
-    ),
-  };
-
-  // The list's address on a first visit lands before the tab's refresh has run, so it reads
-  // the list again while there is nothing to say yet, and stops once there is.
-  page = createPage();
-  const said = [];
-  const following = panel.followLanding({
-    request: page.deps.request,
-    schedule: page.deps.schedule,
-    cancel: page.deps.cancel,
-    isVisible: page.deps.isVisible,
-    formatTime,
-    say: (line) => said.push(line),
-  });
-  await settle();
-  const firstVisit = [];
-  const look = (step) =>
-    firstVisit.push({
-      step,
-      requests: page.requests(),
-      said: said.splice(0),
-      timers: page.timerDelays(),
-    });
-  look("it mounts and reads the list");
-  await page.answer(recorded.landing_absent);
-  look("nothing cached, and the refresh not yet asked: it reads again soon");
-  await page.fire();
-  await page.answer(recorded.landing_pending);
-  look("the refresh is running: again at the fast poll");
-  await page.fire();
-  await page.answer(recorded.landing_gh_missing);
-  look("the refresh failed: it says why, and reads no more");
-  following.dispose();
-
-  // The polling landing carries the checkout's context through its eventual refusal.
-  page = createPage();
-  const checkoutSaid = [];
-  const checkoutLanding = panel.followLanding({
-    request: page.deps.request,
-    schedule: page.deps.schedule,
-    cancel: page.deps.cancel,
-    isVisible: page.deps.isVisible,
-    formatTime,
-    checkout: true,
-    say: (line) => checkoutSaid.push(line),
-  });
-  await settle();
-  await page.answer(recorded.not_github);
-  landing["a polling checkout landing preserves its origin refusal"] = {
-    said: checkoutSaid,
-    requests: page.requests(),
-    timers: page.timerDelays(),
-  };
-  checkoutLanding.dispose();
-
-  const landingRecovery = [];
-  for (const failure of ["connection", "non-envelope", "pin changed", "empty refreshing"]) {
-    page = createPage();
-    const recoverySaid = [];
-    const recovery = panel.followLanding({
-      request: page.deps.request,
-      schedule: page.deps.schedule,
-      cancel: page.deps.cancel,
-      isVisible: page.deps.isVisible,
-      formatTime,
-      say: (line) => recoverySaid.push(line),
-    });
-    await settle();
-    if (failure === "connection") {
-      await page.reject();
-    } else if (failure === "non-envelope") {
-      await page.answer({ status: 503, etag: null, body: { error: "unavailable" } });
-    } else {
-      await page.answer(
-        failure === "pin changed" ? recorded.pin_changed : recorded.landing_empty_refreshing,
-      );
-    }
-    const before = { said: recoverySaid.splice(0), timers: page.timerDelays() };
-    if (failure !== "pin changed") {
-      await page.fire();
-      await page.answer(
-        failure === "empty refreshing" ? recorded.landing_found_rows : recorded.landing_gh_missing,
-      );
-    }
-    landingRecovery.push({
-      step: failure,
-      before,
-      after: { said: recoverySaid.splice(0), timers: page.timerDelays() },
-      requests: page.requests(),
-    });
-    recovery.dispose();
-  }
-
   return {
     steps,
     provider_calls: recorded.provider_calls,
     failures,
     hostile,
     spelled,
-    landing,
-    "the list's address, on a first visit": firstVisit,
-    "the list's address recovers": landingRecovery,
     reader: await readerStory(),
     paint: await paintStory(panel),
   };
@@ -847,6 +733,7 @@ async function paintStory(panel, selection = false) {
   const globals = {
     document,
     window: {
+      addEventListener() {},
       setTimeout(callback, delayMs) {
         timers.set(nextTimer, { callback, delayMs });
         nextTimer += 1;
@@ -958,23 +845,31 @@ async function paintStory(panel, selection = false) {
       mb,
     );
     await settle();
-    const activity = container.childNodes.find((node) =>
-      node.classList?.contains("github-pulls-activity"),
+    const connection = container.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-connection"),
     );
+    const [connectionText, , reload] = connection.childNodes;
+    const [spinner, message] = connectionText.childNodes;
     assert(
-      !activity.hidden && activity.textContent === "Fetching pull requests…",
+      !connection.hidden && message.textContent === "Fetching pull requests…",
       "one fetch line",
     );
+    assert(!spinner.hidden && spinner.classList.contains("spinner"), "one shared spinner");
     assert(
-      activity.childNodes.filter((node) => node.classList?.contains("spinner")).length === 1,
-      "one shared spinner",
+      reload.textContent === "Reload" && reload.getAttribute("aria-disabled") === "true",
+      "the same reload control waits while loading",
     );
-    const live = container.childNodes.find((node) => node.getAttribute("aria-live") === "polite");
+    const live = container.childNodes.filter((node) => node.getAttribute("aria-live") === "polite");
+    assert(live.length === 1 && live[0].textContent === message.textContent, "one announcement");
+    const loading = message.textContent;
+    const pane = new FakeElement("div");
+    const beforeLanding = answers.length;
+    panel.mountPullsLanding(pane);
+    await settle();
     assert(
-      activity.getAttribute("aria-hidden") === "true" && live.textContent === activity.textContent,
-      "the fetch status is announced only once",
+      pane.textContent === "Select a pull request." && answers.length === beforeLanding,
+      "the neutral landing uses no independent status read",
     );
-    const loading = activity.textContent;
     const filters = container.childNodes.find((node) =>
       node.classList?.contains("github-pulls-filters"),
     );
@@ -991,7 +886,11 @@ async function paintStory(panel, selection = false) {
     }
     filterChips.at(-1).focus();
     await answer(first);
-    assert(activity.hidden, "a ready list hides the fetch status");
+    assert(spinner.hidden && message.textContent.startsWith("Updated "), "the same row settles");
+    assert(
+      connection.childNodes.at(-1) === reload && reload.getAttribute("aria-disabled") === "false",
+      "the stable Reload becomes available when settled",
+    );
     assert(document.activeElement === filterChips.at(-1), "tallies leave the focused chip mounted");
     const filterTallies = filterChips.map((chip) => chip.textContent);
     assert(
@@ -1262,6 +1161,8 @@ async function paintStory(panel, selection = false) {
     assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {
       "loading status": loading,
+      "ready action": reload.textContent,
+      landing: pane.textContent,
       "filter tallies": filterTallies,
       "the count and repository name are bold": total.childNodes.map((node) => ({
         node: node.nodeName,

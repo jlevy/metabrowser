@@ -9,7 +9,8 @@ env:
 The Pulls tab defaults to Open, followed by Closed and All.
 The exact repository total is separate from the selected filter’s total, cached catalog
 progress, and displayed rows.
-The lightweight catalog continues in the background after the panel hides.
+The visible panel watches the repository.
+An admitted lightweight catalog job can finish in the background after the panel hides.
 Opening the panel reads cache pages of 100 rows up to its initial display budget of 500.
 Scrolling within 240 pixels of the displayed tail requests another cache page.
 Fetch more increases the display budget by 500. Either action can prioritize matching
@@ -20,7 +21,8 @@ A changed generation stages the displayed range in bounded cache pages and accep
 only when every page has the same source, reader, and generation.
 Changing filters or hiding the panel aborts presentation reads, with late responses
 unable to replace the next request’s ownership.
-A failed refresh keeps cached rows and says what to do.
+One connection row shows progress or recovery, with a Reload action.
+A failed refresh keeps cached rows.
 
 Holding a key changes two row marks per step and reads no detail until the walk stops.
 Opening a PR can reuse the one cache-only record read made by a click, focus, or hover.
@@ -50,7 +52,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "absent",
         "listName": "Pull requests of octo/demo",
         "summary": "octo/demo",
-        "fetching": "Fetching pull requests…",
+        "connection": {
+          "state": "working",
+          "text": "Fetching pull requests…",
+          "reload": false
+        },
         "live": "Fetching pull requests…"
       }
     },
@@ -58,7 +64,7 @@ $ node tests/dom/github-pulls-panel-session.js
       "step": "opening starts the all-history catalog job",
       "requests": [
         "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-1\"",
-        "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500}"
+        "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"background\":true}"
       ],
       "timer": "slow",
       "painted": 0,
@@ -67,7 +73,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "absent",
         "listName": "Pull requests of octo/demo",
         "summary": "octo/demo",
-        "fetching": "Fetching pull requests…",
+        "connection": {
+          "state": "working",
+          "text": "Fetching pull requests…",
+          "reload": false
+        },
         "live": "Fetching pull requests…"
       }
     },
@@ -83,7 +93,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "pending",
         "listName": "Pull requests of octo/demo",
         "summary": "octo/demo",
-        "fetching": "Fetching pull requests…",
+        "connection": {
+          "state": "working",
+          "text": "Fetching pull requests…",
+          "reload": false
+        },
         "live": "Fetching pull requests…"
       }
     },
@@ -103,7 +117,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "listName": "Pull requests of octo/demo: 102 pull requests",
         "summary": "102 PRs on octo/demo",
         "window": "Showing last 100",
-        "freshness": "PRs fetched just now by octo-reader",
+        "connection": {
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": true
+        },
         "loadMore": "ready",
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 100,
@@ -126,7 +144,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "current",
         "listName": "Pull requests of octo/demo: 102 pull requests",
         "summary": "102 PRs on octo/demo",
-        "freshness": "PRs fetched just now by octo-reader",
+        "connection": {
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": true
+        },
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 102,
         "rows": [
@@ -170,7 +192,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "status": "current",
         "listName": "Pull requests of octo/demo: 100 pull requests",
         "summary": "102 PRs on octo/demo",
-        "freshness": "PRs fetched just now by octo-reader",
+        "connection": {
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": true
+        },
         "live": "Pull requests of octo/demo: 100 pull requests",
         "rowsHeld": 100,
         "rows": [
@@ -207,23 +233,26 @@ $ node tests/dom/github-pulls-panel-session.js
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5801",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5701",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5601",
-        "POST /api/plugin/github/pulls-refresh {\"state\":\"closed\",\"target\":500}"
+        "POST /api/plugin/github/pulls-refresh {\"state\":\"closed\",\"target\":500,\"background\":true}"
       ],
       "timer": "slow",
       "marks": [
         "anchor null -> 6000"
       ],
-      "painted": 6,
+      "painted": 7,
       "paint": {
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 1,000 pull requests",
         "summary": "1,000 PRs on octo/demo",
         "window": "Showing last 500",
-        "progress": "Catalog paused",
-        "freshness": "PRs fetched just now by octo-reader",
+        "connection": {
+          "state": "working",
+          "text": "Fetching pull requests…",
+          "reload": false
+        },
         "loadMore": "ready",
-        "live": "Pull requests of octo/demo: 1,000 pull requests",
+        "live": "Fetching pull requests…",
         "rowsHeld": 500,
         "rows": [
           "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
@@ -240,14 +269,18 @@ $ node tests/dom/github-pulls-panel-session.js
         "GET /api/plugin/github/pulls?state=closed&limit=100"
       ],
       "timer": "fast",
-      "painted": 2,
+      "painted": 1,
       "paint": {
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
         "summary": "6,000 PRs on octo/demo",
         "window": "Showing last 500",
-        "fetching": "Fetching pull requests…",
+        "connection": {
+          "state": "working",
+          "text": "Fetching pull requests…",
+          "reload": false
+        },
         "loadMore": "ready",
         "live": "Fetching pull requests…",
         "rowsHeld": 500,
@@ -277,7 +310,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
         "summary": "6,000 PRs on octo/demo",
         "window": "Showing last 1,000",
-        "fetching": "Fetching pull requests…",
+        "connection": {
+          "state": "working",
+          "text": "Fetching pull requests…",
+          "reload": false
+        },
         "loadMore": "ready",
         "live": "Fetching pull requests…",
         "rowsHeld": 1000,
@@ -312,7 +349,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "listName": "Pull requests of octo/demo: 6,001 pull requests",
         "summary": "6,001 PRs on octo/demo",
         "window": "Showing last 1,000",
-        "fetching": "Fetching pull requests…",
+        "connection": {
+          "state": "working",
+          "text": "Fetching pull requests…",
+          "reload": false
+        },
         "loadMore": "ready",
         "live": "Fetching pull requests…",
         "rowsHeld": 1000,
@@ -465,8 +506,8 @@ $ node tests/dom/github-pulls-panel-session.js
 ```
 
 The remaining scenarios print as a second command.
-`failures` pins the typed refresh outcomes, and `landing` records the repository message
-without confusing an empty filter with a repository that has no PRs.
+`failures` pins the typed refresh outcomes.
+The landing pane gives the neutral selection instruction while the list owns status.
 `reader` follows a selected PR through its cache-only read and explicit detail fetch.
 `paint` checks tree roles, absolute positions, numeric-only emphasis, text-only titles,
 cached append behavior, and changed-file tree retention.
@@ -494,85 +535,76 @@ $ node tests/dom/github-pulls-panel-second-session.js
   "failures": {
     "not_logged_in": {
       "status": "current",
-      "freshness": "PRs fetched just now by octo-reader",
-      "notice": {
-        "severity": "warning",
-        "text": "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry. You can still browse local files and any cached pull requests.",
-        "retry": true
+      "connection": {
+        "text": "Run gh auth login --hostname github.com to connect. Showing cached pull requests.",
+        "state": "paused",
+        "reload": true
       }
     },
     "gh_too_old": {
       "status": "current",
-      "freshness": "PRs fetched just now by octo-reader",
-      "notice": {
-        "severity": "warning",
-        "text": "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com. You can still browse local files and any cached pull requests.",
-        "retry": true,
-        "help": "update"
+      "connection": {
+        "text": "Update GitHub CLI, then run gh auth status --hostname github.com. Showing cached pull requests.",
+        "help": "update",
+        "state": "paused",
+        "reload": true
       }
     },
     "not_found_or_private": {
       "status": "current",
-      "freshness": "PRs fetched just now by octo-reader",
-      "notice": {
-        "severity": "warning",
-        "text": "The repository was not found, or the signed-in account cannot read its pull requests.",
-        "retry": true
+      "connection": {
+        "text": "GitHub could not find this repository or grant access to it. Showing cached pull requests.",
+        "state": "paused",
+        "reload": true
       }
     },
     "network_error": {
       "status": "current",
-      "freshness": "PRs fetched just now by octo-reader",
-      "notice": {
-        "severity": "warning",
-        "text": "Offline, or GitHub could not be reached. The list is as it was last fetched.",
-        "retry": true
+      "connection": {
+        "text": "GitHub could not be reached. Showing cached pull requests.",
+        "state": "paused",
+        "reload": true
       }
     },
     "gh_failed": {
       "status": "current",
-      "freshness": "PRs fetched just now by octo-reader",
-      "notice": {
-        "severity": "warning",
-        "text": "The saved catalog refresh failed.",
-        "retry": true
+      "connection": {
+        "text": "The saved catalog refresh failed. Showing cached pull requests.",
+        "state": "paused",
+        "reload": true
       }
     },
     "account_changed": {
       "status": "stale",
-      "freshness": "PRs fetched just now by octo-reader · may be out of date",
-      "notice": {
-        "severity": "warning",
-        "text": "The saved catalog refresh failed.",
-        "retry": true
+      "connection": {
+        "text": "The saved catalog refresh failed. Showing cached pull requests.",
+        "state": "paused",
+        "reload": true
       }
     },
     "gh_missing": {
       "status": "current",
-      "freshness": "PRs fetched just now by octo-reader",
-      "notice": {
-        "severity": "warning",
-        "text": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests.",
-        "retry": true,
-        "help": "install"
+      "connection": {
+        "text": "Install GitHub CLI, then run gh auth login --hostname github.com. Showing cached pull requests.",
+        "help": "install",
+        "state": "paused",
+        "reload": true
       }
     },
     "cache_unwritable": {
       "status": "current",
-      "freshness": "PRs fetched just now by octo-reader",
-      "notice": {
-        "severity": "warning",
-        "text": "The saved catalog refresh failed.",
-        "retry": true
+      "connection": {
+        "text": "The saved catalog refresh failed. Showing cached pull requests.",
+        "state": "paused",
+        "reload": true
       }
     },
     "rate_limited": {
       "status": "current",
-      "freshness": "PRs fetched just now by octo-reader",
-      "notice": {
-        "severity": "warning",
-        "text": "GitHub's rate limit lifts at 2026-09-18T00:00:00.000Z. No automatic attempt runs before then.",
-        "retry": false
+      "connection": {
+        "text": "GitHub rate limit reached. Next attempt after 2026-09-18T00:00:00.000Z. Showing cached pull requests.",
+        "state": "paused",
+        "reload": false
       }
     }
   },
@@ -592,142 +624,6 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "meta": "#7 · ghost · main ← <b>topic</b> (deleted fork)"
   },
   "spelled": "main ← topic",
-  "landing": {
-    "a server with no repository": "This server serves no GitHub repository.",
-    "a checkout whose origin cannot be listed": "This checkout's origin is not a GitHub repository Metabrowser can list.",
-    "a mirror": "Select a pull request.",
-    "a list with no rows, and no gh": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests.",
-    "a polling checkout landing preserves its origin refusal": {
-      "said": [
-        "This checkout's origin is not a GitHub repository Metabrowser can list."
-      ],
-      "requests": [
-        "GET /api/plugin/github/pulls?limit=0"
-      ],
-      "timers": []
-    }
-  },
-  "the list's address, on a first visit": [
-    {
-      "step": "it mounts and reads the list",
-      "requests": [
-        "GET /api/plugin/github/pulls?limit=0"
-      ],
-      "said": [],
-      "timers": []
-    },
-    {
-      "step": "nothing cached, and the refresh not yet asked: it reads again soon",
-      "requests": [],
-      "said": [
-        "Select a pull request."
-      ],
-      "timers": [
-        1000
-      ]
-    },
-    {
-      "step": "the refresh is running: again at the fast poll",
-      "requests": [
-        "GET /api/plugin/github/pulls?limit=0"
-      ],
-      "said": [
-        "Select a pull request."
-      ],
-      "timers": [
-        1000
-      ]
-    },
-    {
-      "step": "the refresh failed: it says why, and reads no more",
-      "requests": [
-        "GET /api/plugin/github/pulls?limit=0"
-      ],
-      "said": [
-        "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests."
-      ],
-      "timers": []
-    }
-  ],
-  "the list's address recovers": [
-    {
-      "step": "connection",
-      "before": {
-        "said": [
-          "Could not read pull requests. Trying again."
-        ],
-        "timers": [
-          30000
-        ]
-      },
-      "after": {
-        "said": [
-          "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests."
-        ],
-        "timers": []
-      },
-      "requests": [
-        "GET /api/plugin/github/pulls?limit=0",
-        "GET /api/plugin/github/pulls?limit=0"
-      ]
-    },
-    {
-      "step": "non-envelope",
-      "before": {
-        "said": [
-          "Could not read pull requests. Trying again."
-        ],
-        "timers": [
-          30000
-        ]
-      },
-      "after": {
-        "said": [
-          "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests."
-        ],
-        "timers": []
-      },
-      "requests": [
-        "GET /api/plugin/github/pulls?limit=0",
-        "GET /api/plugin/github/pulls?limit=0"
-      ]
-    },
-    {
-      "step": "pin changed",
-      "before": {
-        "said": [],
-        "timers": []
-      },
-      "after": {
-        "said": [],
-        "timers": []
-      },
-      "requests": [
-        "GET /api/plugin/github/pulls?limit=0"
-      ]
-    },
-    {
-      "step": "empty refreshing",
-      "before": {
-        "said": [
-          "No pull requests."
-        ],
-        "timers": [
-          1000
-        ]
-      },
-      "after": {
-        "said": [
-          "Select a pull request."
-        ],
-        "timers": []
-      },
-      "requests": [
-        "GET /api/plugin/github/pulls?limit=0",
-        "GET /api/plugin/github/pulls?limit=0"
-      ]
-    }
-  ],
   "reader": [
     {
       "name": "a visible cold direct link fills the cache",
@@ -849,6 +745,8 @@ $ node tests/dom/github-pulls-panel-second-session.js
   ],
   "paint": {
     "loading status": "Fetching pull requests…",
+    "ready action": "Reload",
+    "landing": "Select a pull request.",
     "filter tallies": [
       "Open 100",
       "Closed 2",
@@ -1003,8 +901,10 @@ $ node tests/dom/github-pulls-viewport-behavior.js
 ## Test: Page Near the Pulls Tail
 
 The controller adds one page on a near-tail signal and keeps selection in place.
-It stops at the actual filter tail and reads only cached rows after a provider failure.
-A late page cannot change the newly selected filter.
+It stops at the actual filter tail and reads cached rows after a provider failure.
+A late page cannot change the newly selected filter or consume its reconnect hint.
+Offline, rate limits, focus, external setup recovery, and Reload all use the same watch
+controller.
 
 ```console
 $ node tests/dom/github-pulls-catalog-behavior.js
@@ -1030,8 +930,18 @@ $ node tests/dom/github-pulls-catalog-behavior.js
   "lateFilterRejected": true,
   "failedWindowDoesNotSpin": true,
   "newerRefreshKeepsOwnership": true,
-  "emptyFilterDoesNotHideOtherPulls": true,
-  "freshPartialCatalogResumes": true
+  "freshPartialCatalogResumes": true,
+  "offlineKeepsCache": true,
+  "reconnectUsesBackgroundHint": true,
+  "interactiveFilterKeepsPriority": true,
+  "transientRetriesAutomatically": true,
+  "localReadFailureDoesNotPost": true,
+  "setupUsesQuietProbe": true,
+  "focusCoalesces": true,
+  "parkAndResume": true,
+  "rateResetWake": true,
+  "reloadCoalesces": true,
+  "abortedTailKeepsWake": true
 }
 ? 0
 ```

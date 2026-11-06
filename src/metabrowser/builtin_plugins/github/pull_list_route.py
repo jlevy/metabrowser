@@ -14,7 +14,9 @@ from dataclasses import dataclass
 from datetime import timedelta
 from functools import partial
 from pathlib import Path
+from time import monotonic
 from typing import Any, Final, Literal, TypedDict
+from weakref import WeakKeyDictionary
 
 from metabrowser.builtin_plugins.github import pull_list
 from metabrowser.builtin_plugins.github.checkout import served_checkout
@@ -58,6 +60,7 @@ _JOB_STOPPED: Final = "the refresh stopped on an unexpected error, which the ser
 type ListState = Literal["absent", "pending", "current", "stale"]
 type ListAbsence = Literal["not_github"] | RecordAbsence
 type ListRefreshStart = Literal["started", "joined", "not_due"]
+type ListRefreshWanted = bool | Literal["reconnect"]
 
 
 class ListRequestError(Exception):
@@ -108,6 +111,7 @@ class RefreshRequest:
     target: int = DEFAULT_TARGET
     retry: bool = False
     background: bool = False
+    reconnect: bool = False
 
 
 def _list_name(value: object) -> PullListName:
@@ -142,18 +146,22 @@ def search_query(value: str) -> str:
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
-    if set(body) - {"state", "target", "retry", "background"}:
+    if set(body) - {"state", "target", "retry", "background", "reconnect"}:
         raise ListRequestError(
-            'a catalog request names only "state", "target", "retry", and "background"'
+            'a catalog request names only "state", "target", "retry", "background", and "reconnect"'
         )
     retry = body.get("retry", False)
-    background = body.get("background", False)
+    background, reconnect = body.get("background", False), body.get("reconnect", False)
     target = body.get("target", DEFAULT_TARGET)
     if not isinstance(background, bool):
         raise ListRequestError('"background" is boolean')
     if not isinstance(retry, bool) or type(target) is not int or not 1 <= target <= _MAX_TARGET:
         raise ListRequestError('"retry" is boolean and "target" is a positive PR count')
-    return RefreshRequest(_list_name(body.get("state", DEFAULT_LIST)), target, retry, background)
+    if not isinstance(reconnect, bool) or (retry and reconnect):
+        raise ListRequestError('"reconnect" is boolean and cannot be combined with "retry"')
+    return RefreshRequest(
+        _list_name(body.get("state", DEFAULT_LIST)), target, retry, background, reconnect
+    )
 
 
 def listed_repository(mirror: MirrorSession | None) -> ListedRepository | None:
@@ -315,6 +323,9 @@ class _Demand:
 
 # One demand per coordinator's live job, removed on completion or cancellation.
 _DEMANDS: dict[tuple[int, str], _Demand] = {}
+# A browser going online can retry an interrupted connection once per freshness
+# window. Claim it on the coordinator loop so simultaneous tabs share the budget.
+_RECONNECTS: WeakKeyDictionary[RefreshCoordinator, dict[str, float]] = WeakKeyDictionary()
 
 
 def _demand_key(repository: ListedRepository, coordinator: RefreshCoordinator) -> tuple[int, str]:
@@ -356,35 +367,54 @@ async def _run_refresh(repository: ListedRepository, coordinator: RefreshCoordin
         _DEMANDS.pop(key, None)
 
 
-def refresh_wanted(view: ListView, ask: RefreshRequest) -> bool:
+def refresh_wanted(view: ListView, ask: RefreshRequest) -> ListRefreshWanted:
     repository = view.repository
     if repository is None:
         return True
     now = pull_list.utc_now()
     stamp = read_list_refresh(repository.home, repository.slug, "all")
-    if rate_limit_holds(stamp, now=now):
+    if rate_limit_holds(stamp, now=now) or (
+        stamp is not None
+        and stamp.outcome == "rate_limited"
+        and stamp.reset_at is None
+        and not refresh_is_due(stamp, now=now)
+    ):
         return False
     if ask.retry:
         return True
     if stamp is not None and stamp.outcome != "succeeded":
-        return refresh_is_due(stamp, now=now)
+        if refresh_is_due(stamp, now=now):
+            return True
+        return "reconnect" if ask.reconnect and stamp.outcome == "network_error" else False
     listed = read_catalog(repository.home, repository.slug)
     return listed is None or not listed.done["all"] or refresh_is_due(stamp, now=now)
 
 
-def start_refresh(view: ListView, ask: RefreshRequest, *, wanted: bool) -> ListRefreshStart:
+def start_refresh(
+    view: ListView, ask: RefreshRequest, *, wanted: ListRefreshWanted
+) -> ListRefreshStart:
     repository, coordinator = view.repository, view.coordinator
     assert repository is not None and coordinator is not None
     key = _job_key(repository)
     if coordinator.running(key):
-        if wanted and not ask.background:
+        if wanted and not (ask.background or ask.reconnect):
             demand = _DEMANDS[_demand_key(repository, coordinator)]
             demand.name, demand.target = ask.name, ask.target
             demand.retry = demand.retry or ask.retry
         return "joined"
     if not wanted:
         return "not_due"
-    _DEMANDS[_demand_key(repository, coordinator)] = _Demand(ask.name, ask.target, ask.retry)
+    reconnect = wanted == "reconnect"
+    if reconnect:
+        starts = _RECONNECTS.setdefault(coordinator, {})
+        now = monotonic()
+        previous = starts.get(repository.source)
+        if previous is not None and now - previous < FRESHNESS_WINDOW_S:
+            return "not_due"
+        starts[repository.source] = now
+    _DEMANDS[_demand_key(repository, coordinator)] = _Demand(
+        ask.name, ask.target, ask.retry or reconnect
+    )
     return coordinator.start(key, partial(_run_refresh, repository, coordinator), network=False)
 
 

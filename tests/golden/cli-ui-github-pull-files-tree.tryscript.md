@@ -342,7 +342,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "not_found_or_private",
-        "says": "The repository was not found, or the signed-in account cannot read its pull requests."
+        "says": "The pull request was not found, or the signed-in account cannot read its files."
       },
       "network_error": {
         "status": "stale",
@@ -351,7 +351,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "network_error",
-        "says": "Offline, or GitHub could not be reached. The list is as it was last fetched."
+        "says": "Offline, or GitHub could not be reached. The files are as they were last listed."
       },
       "gh_failed": {
         "status": "stale",

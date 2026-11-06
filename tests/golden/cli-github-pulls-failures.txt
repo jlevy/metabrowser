@@ -331,7 +331,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "not_found_or_private",
-    "message": "GitHub has no such pull request, or it is private and the gh account cannot read it",
+    "message": "GitHub has no readable repository here",
     "reset_at": null,
     "at": "2026-09-17T12:01:01Z"
   },
@@ -377,7 +377,7 @@ status: 202
     "refreshing": true,
     "last_refresh": {
       "outcome": "not_found_or_private",
-      "message": "GitHub has no such pull request, or it is private and the gh account cannot read it",
+      "message": "GitHub has no readable repository here",
       "reset_at": null,
       "at": "2026-09-17T12:01:01Z"
     },
@@ -1156,6 +1156,30 @@ status: 200
 --- stderr ---
 --- body ---
 {"retry": true}
+--- gh ---
+gh auth status
+gh api graphql catalog state=updated cursor=start
+## An environment token cannot resolve its login while offline.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 1
+--- stdout ---
+status: 202 started
+status: 200 network_error, 100 cached PRs
+--- stderr ---
+Error: the refresh ended with network_error
+--- body ---
+{"retry": true}
+--- gh ---
+gh auth status
+## A reconnect can refresh metadata immediately once GitHub is reachable.
+# metab https://github.com/octo/demo --api /api/plugin/github/pulls-refresh --data request.json
+exit: 0
+--- stdout ---
+status: 202 started
+status: 200 succeeded, 100 cached PRs
+--- stderr ---
+--- body ---
+{"reconnect": true}
 --- gh ---
 gh auth status
 gh api graphql catalog state=updated cursor=start

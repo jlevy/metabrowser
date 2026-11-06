@@ -31,6 +31,13 @@ record the original design.
 The current route and storage contracts are in
 [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
 
+## Repository Watch
+
+Visible Pulls and PR pages follow catalog updates and recover from temporary GitHub CLI
+or connection failures.
+The [PR watch plan](plan-2026-11-06-pr-watch-and-reconnect.md) defines when the watch
+runs, how Reload and the shared status work, and what recovery the tests cover.
+
 ## Search From the Catalog
 
 The same repository catalog supplies Quick Search on a checkout or managed mirror
