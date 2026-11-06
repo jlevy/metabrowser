@@ -515,6 +515,7 @@ function pinChanged(response) {
  *     reader: {fetchAfterMs: number, initial: unknown, walking: () => boolean},
  *   }): unknown,
  *   filterChanged(state: string): void,
+ *   recheckTail?(): void,
  * }} PullsDependencies
  */
 
@@ -813,6 +814,19 @@ export function createPullsController(deps, options = {}) {
     }
   }
 
+  function recheckTail() {
+    const list = held();
+    if (
+      live() &&
+      windowRead === null &&
+      list.error === null &&
+      !list.more &&
+      list.rows.length >= list.displayLimit
+    ) {
+      deps.recheckTail?.();
+    }
+  }
+
   function scheduleNext() {
     clearTimer();
     if (!live()) {
@@ -1082,8 +1096,11 @@ export function createPullsController(deps, options = {}) {
     if (list.nextAfter !== null && list.rows.length < list.displayLimit) {
       await loadWindow();
     }
-    scheduleNext();
-    askIfDue();
+    if (!disposed && name === filter && epoch === requestEpoch) {
+      scheduleNext();
+      askIfDue();
+      recheckTail();
+    }
   }
 
   /**
@@ -1258,6 +1275,7 @@ export function createPullsController(deps, options = {}) {
     } finally {
       if (windowRead === controller) {
         windowRead = null;
+        recheckTail();
       }
     }
     if (!disposed && epoch === requestEpoch && name === filter) {
@@ -2378,6 +2396,7 @@ export function mountPullsPanel(container, ctx, mb) {
   function paint(model) {
     // A filter's rows are their own list: nothing is kept across a change of filter.
     if (list.dataset.filter !== model.filter) {
+      atEnd?.takeRecords();
       list.dataset.filter = model.filter;
       for (const [number, entry] of painted) {
         rowSizes?.unobserve(entry.item);
@@ -2531,6 +2550,13 @@ export function mountPullsPanel(container, ctx, mb) {
         request(mb.perf, method, route, { ...options, signal: options.signal ?? signal }),
       schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
       cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
+      recheckTail() {
+        // Ask the observer for the current position after a blocker clears. Its next
+        // delivery uses the laid-out footer, even if there was no new crossing.
+        atEnd?.takeRecords();
+        atEnd?.disconnect();
+        atEnd?.observe(foot);
+      },
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
       formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
