@@ -170,6 +170,7 @@ Object.assign(globalThis, {
     }
   },
   IntersectionObserver: class {
+    takeRecords() {}
     observe() {}
     disconnect() {}
   },

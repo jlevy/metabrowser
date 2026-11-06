@@ -23,6 +23,7 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
     first: 8000,
     total: 8000,
     repositoryTotal: 9000,
+    tailNear: false,
   };
   const requests = [];
   const waiting = [];
@@ -115,6 +116,13 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
     reveal() {},
     open() {},
     filterChanged() {},
+    recheckTail() {
+      queueMicrotask(() => {
+        if (state.tailNear) {
+          void controller.reachedEnd();
+        }
+      });
+    },
   });
   return {
     state,
@@ -320,6 +328,33 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   assert.notEqual(refusedTail.model().connection.state, "unavailable");
   assert(refusedTail.requests.every((request) => request.method === "GET"));
   refusedTail.dispose();
+
+  // One observer crossing during an outage remains relevant after the poll recovers.
+  const recoveredTail = rig(panel, { cached: 645 });
+  recoveredTail.state.complete = true;
+  recoveredTail.state.refreshing = false;
+  recoveredTail.state.total = 645;
+  await recoveredTail.controller.start({ shown: true });
+  recoveredTail.state.automatic = false;
+  recoveredTail.controller.onVisibilityChange();
+  await recoveredTail.respond(0, { status: 503, etag: null, body: null });
+  recoveredTail.state.tailNear = true;
+  await recoveredTail.controller.reachedEnd();
+  assert.equal(recoveredTail.waiting.length, 0, "an errored catalog still blocks paging");
+  recoveredTail.requests.length = 0;
+  recoveredTail.controller.onVisibilityChange();
+  await recoveredTail.respond(0, { status: 304, etag: null, body: null });
+  assert.match(recoveredTail.waiting[0].route, /limit=100&after=7501$/u);
+  await recoveredTail.controller.reachedEnd();
+  assert.equal(recoveredTail.waiting.length, 1, "an outstanding tail read owns its window");
+  // If the actual footer is still close after that page, there may be no observer edge.
+  await recoveredTail.respond();
+  assert.match(recoveredTail.waiting[0].route, /limit=45&after=7401$/u);
+  await recoveredTail.respond();
+  assert.equal(recoveredTail.controller.snapshot().rows, 645);
+  assert.equal(recoveredTail.waiting.length, 0);
+  assert(recoveredTail.requests.every((request) => request.method === "GET"));
+  recoveredTail.dispose();
 
   const filterTail = rig(panel);
   await filterTail.controller.start({ shown: true });

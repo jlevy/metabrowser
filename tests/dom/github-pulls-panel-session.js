@@ -751,6 +751,7 @@ async function paintStory(panel, selection = false) {
       }
     },
     IntersectionObserver: class {
+      takeRecords() {}
       observe() {}
       disconnect() {}
     },
