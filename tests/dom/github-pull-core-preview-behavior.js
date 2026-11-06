@@ -477,7 +477,8 @@ async function run() {
   assert.doesNotMatch(container.textContent, /still loading/);
   assert.equal(container.querySelector(".spinner"), null, "full arrival clears progress");
   assert.match(container.textContent, /No checks or statuses reported/);
-  assert.equal(markdownRequests, 1, "full-record arrival enables the normal Markdown path");
+  const fullMarkdownRequests = markdownRequests;
+  assert.equal(fullMarkdownRequests, 1, "full-record arrival enables the normal Markdown path");
   assert.equal(settlementSignal?.aborted, false);
   handle.dispose();
   assert.equal(settlementSignal.aborted, true, "the mounted wait shares the page disposal signal");
@@ -668,43 +669,41 @@ async function run() {
   await retry;
   pageHost.dispose();
 
-  // A direct URL remains explicit, and its Fetch joins the same bounded core wait.
+  // A direct cold URL also joins the bounded core wait, without a Fetch press.
   const waitCorePost = posts[0];
-  current = absent;
+  current = { ...absent, last_refresh: null };
   posts.length = 0;
-  const direct = page.mountPullPage(new Element("main"), { number: 7, tab: "" }, mb);
+  const directRoot = new Element("main");
+  const direct = page.mountPullPage(directRoot, { number: 7, tab: "" }, mb);
+  let directReady = false;
+  direct.ready.then(() => {
+    directReady = true;
+  });
   await settle();
+  assert.equal(posts.length, 0, "the initial GET reads only the cache");
+  assert.equal(directReady, false, "a cold GET does not replace the loading blocks");
+  assert.ok(directRoot.querySelector(".github-pull-loading"));
+  const directAsk = [...timers].find(([, task]) => task.delay === 0);
+  assert.ok(directAsk);
+  timers.delete(directAsk[0]);
+  directAsk[1].callback();
+  await settle();
+  assert.deepEqual(posts, [waitCorePost]);
+  assert.equal(directReady, false, "a held automatic POST keeps the loading blocks");
+  current = preview;
+  releasePost(preview);
   await direct.ready;
-  assert.equal(posts.length, 0);
+  assert.equal(directRoot.dataset.corePreview, "true");
   direct.dispose();
-  const directRequests = [];
-  const directController = page.createPullController(
-    {
-      request: async (method, _route, options) => {
-        if (method === "POST") {
-          directRequests.push(options.body);
-        }
-        return {
-          status: method === "POST" ? 202 : 200,
-          etag: null,
-          body: method === "POST" ? { pull: preview } : absent,
-        };
-      },
-      schedule: () => 0,
-      cancel() {},
-      now: () => Date.now(),
-      isVisible: () => true,
-      render() {},
-      reload() {},
-      navigate() {},
-      renderMarkdown() {},
-    },
-    { number: 7, tab: "" },
-  );
-  await directController.start();
-  await directController.requestRefresh();
-  assert.deepEqual(directRequests, [{ number: 7, retry: true, wait_core: true }]);
-  directController.dispose();
+
+  // A later direct URL with a fresh record uses the cache without starting a POST.
+  posts.length = 0;
+  current = full;
+  const warm = page.mountPullPage(new Element("main"), { number: 7, tab: "" }, mb);
+  await warm.ready;
+  assert.equal(posts.length, 0);
+  assert.ok(![...timers.values()].some((task) => task.delay === 0), "warm open schedules no fetch");
+  warm.dispose();
 
   const scrollPane = new Element("aside");
   scrollPane.scrollTop = 600;
@@ -845,7 +844,7 @@ async function run() {
     pendingParts: ["discussion", "checks"],
     waitCorePost,
     previewMarkdownRequests: 0,
-    fullMarkdownRequests: markdownRequests,
+    fullMarkdownRequests,
     fullRecordWins: true,
     crossOwnerRetirement: true,
     stagedReplacement: "A retained through B cancellation until C commits",

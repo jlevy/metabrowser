@@ -23,7 +23,7 @@ for the page to offer rather than switching under a reader.
 A read never starts a fetch. Only ``POST pull-refresh`` does, and :func:`start_refresh`
 holds what it starts to the rule: a request that is not a reader's own action refreshes
 only a pull request with a record, and only when that record is stale and not tried within
-the window. So nothing a link can do adds to the cache.
+the window. A visible cold page can request the selected fetch with a separate POST.
 
 Which pull requests a server has is :func:`pull_host`'s to say, and nothing else here
 knows whether it is a mirror or a checkout. A checkout with no attached store answers a

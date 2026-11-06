@@ -12,11 +12,11 @@ review comments with their file, line, and diff hunk, checks, and notes.
 It polls that route while the page is visible, quickly while a refresh runs or the
 record is pending and slowly otherwise, with `If-None-Match` so an unchanged answer is a
 304 and repaints nothing.
-An absent record offers a fetch and a stale one a refresh, each through
-`POST /api/plugin/github/pull-refresh`. An address alone fetches nothing: only a
-reader’s press sends `"retry": true`, and past the bound on jobs it is refused and says
-why. A stale page also asks by itself, without `retry`, once a reader has stayed on it,
-once per visible period, so a page walked past asks nothing.
+A visible page with nothing cached fetches its record through
+`POST /api/plugin/github/pull-refresh`. A page with an earlier failure leaves Fetch
+available, and a refused press says why.
+A stale page offers Refresh and also asks by itself, without `retry`, once a reader has
+stayed on it, once per visible period, so a page walked past asks nothing.
 The Markdown of each text is asked for one part at a time from
 `/api/plugin/github/pull-markdown`, two at once, and a render of a record the page no
 longer shows is dropped.
@@ -72,10 +72,10 @@ $ node tests/dom/github-pull-page-session.js
       "timer": "slow",
       "paints": 2,
       "paint": {
-        "status": "absent",
+        "status": "pending",
         "tab": "conversation",
-        "message": "This pull request has not been fetched yet.",
-        "canRefresh": true,
+        "message": "Fetching the pull request…",
+        "canRefresh": false,
         "freshness": null,
         "failure": null,
         "header": null,
@@ -92,16 +92,7 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "an unchanged answer is a 304",
-      "requests": [
-        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
-      ],
-      "timer": "slow",
-      "paints": 0,
-      "markdown": []
-    },
-    {
-      "step": "fetch it",
+      "step": "a visible cold page fetches itself",
       "requests": [
         "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"wait_core\":true}"
       ],
@@ -181,6 +172,15 @@ $ node tests/dom/github-pull-page-session.js
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "conversation": "repaint",
+      "markdown": []
+    },
+    {
+      "step": "an unchanged answer is a 304",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 0,
       "markdown": []
     },
     {
@@ -836,7 +836,7 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "an address alone reads what is cached",
+      "step": "a cold page with an earlier failure leaves Fetch available",
       "requests": [
         "GET /api/plugin/github/pull?number=14"
       ],
@@ -847,7 +847,7 @@ $ node tests/dom/github-pull-page-session.js
         "message": "This pull request has not been fetched yet.",
         "canRefresh": true,
         "freshness": null,
-        "failure": null,
+        "failure": "The last refresh failed: gh could not reach api.github.com",
         "browse": null,
         "headOffer": null
       },
@@ -883,7 +883,7 @@ $ node tests/dom/github-pull-page-session.js
         "message": "The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
         "canRefresh": true,
         "freshness": null,
-        "failure": null,
+        "failure": "The last refresh failed: gh could not reach api.github.com",
         "browse": null,
         "headOffer": null
       },
@@ -897,10 +897,10 @@ $ node tests/dom/github-pull-page-session.js
       "timer": "slow",
       "paints": 2,
       "paint": {
-        "status": "absent",
+        "status": "pending",
         "tab": "conversation",
-        "message": "This pull request has not been fetched yet.",
-        "canRefresh": true,
+        "message": "Fetching the pull request…",
+        "canRefresh": false,
         "freshness": null,
         "failure": null,
         "header": null,
@@ -1303,8 +1303,8 @@ $ node tests/dom/github-pull-page-mount-behavior.js
 ? 0
 ```
 
-The selected missing-record session holds the POST until an honest description preview
-is ready. It verifies plain text, explicit unfinished sections, no premature Markdown or
+The selected and direct cold-page cases hold the POST until a description preview is
+ready. It verifies plain text, explicit unfinished sections, no premature Markdown or
 comparison actions, full-record priority, and cancellation without losing the previous
 useful surface.
 
