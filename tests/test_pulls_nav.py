@@ -177,14 +177,16 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
             for route in ("/pull/7", "/pull/7/files", "/pulls", "/pulls?state=closed"):
                 html = client.get(route).text
                 assert _tabs(html) == {"files": False, "pulls": True}, route
-                # The Files tree and its filters are behind it from the first paint, and the
-                # tab's place is held in the shape of rows until the list arrives.
+                # The Files tree and its filters are behind the Pulls tab from first paint.
                 assert 'id="tab-files" data-tab-content="files" style="display: none"' in html
                 assert 'id="nav-filter-bar" style="display: none"' in html
-                assert (
-                    '<div id="tab-pulls" data-tab-content="pulls"><div class="recent-loading'
-                    in (html)
-                )
+                sidebar = html.split('id="tab-pulls"', 1)[1].split('id="preview-pane"', 1)[0]
+                assert sidebar.count('class="spinner spinner-sm"') == 1
+                assert sidebar.count("Fetching pull requests…") == 1
+                if route.startswith("/pulls"):
+                    preview = html.split('id="preview-pane"', 1)[1].split("</main>", 1)[0]
+                    assert "Select a pull request." in preview
+                    assert 'class="spinner"' not in preview
             # The list's address adds no startup script a page elsewhere does not have.
             assert _startup_scripts(client.get("/pulls").text) == _startup_scripts(elsewhere)
     finally:

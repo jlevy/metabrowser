@@ -47,9 +47,10 @@ $ node tests/dom/github-pulls-panel-session.js
       "paint": {
         "filter": "all",
         "status": "absent",
-        "skeleton": true,
         "listName": "Pull requests of octo/demo",
-        "progress": "Catalog paused · 0 cached"
+        "summary": "octo/demo",
+        "fetching": "Fetching pull requests…",
+        "live": "Fetching pull requests…"
       }
     },
     {
@@ -63,9 +64,10 @@ $ node tests/dom/github-pulls-panel-session.js
       "paint": {
         "filter": "all",
         "status": "absent",
-        "skeleton": true,
         "listName": "Pull requests of octo/demo",
-        "progress": "Catalog paused · 0 cached"
+        "summary": "octo/demo",
+        "fetching": "Fetching pull requests…",
+        "live": "Fetching pull requests…"
       }
     },
     {
@@ -78,10 +80,10 @@ $ node tests/dom/github-pulls-panel-session.js
       "paint": {
         "filter": "all",
         "status": "pending",
-        "skeleton": true,
         "listName": "Pull requests of octo/demo",
-        "progress": "Fetching catalog… · 0 cached",
-        "live": "Waiting for the list of pull requests…"
+        "summary": "octo/demo",
+        "fetching": "Fetching pull requests…",
+        "live": "Fetching pull requests…"
       }
     },
     {
@@ -98,9 +100,9 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "current",
         "listName": "Pull requests of octo/demo: 102 pull requests",
-        "count": "102 PRs on octo/demo",
+        "summary": "102 PRs on octo/demo",
         "window": "Showing last 100",
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "PRs fetched just now by octo-reader",
         "loadMore": "ready",
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 100,
@@ -122,8 +124,8 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "all",
         "status": "current",
         "listName": "Pull requests of octo/demo: 102 pull requests",
-        "count": "102 PRs on octo/demo",
-        "freshness": "Fetched just now by octo-reader",
+        "summary": "102 PRs on octo/demo",
+        "freshness": "PRs fetched just now by octo-reader",
         "live": "Pull requests of octo/demo: 102 pull requests",
         "rowsHeld": 102,
         "rows": [
@@ -166,8 +168,8 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "open",
         "status": "current",
         "listName": "Pull requests of octo/demo: 100 pull requests",
-        "count": "102 PRs on octo/demo",
-        "freshness": "Fetched just now by octo-reader",
+        "summary": "102 PRs on octo/demo",
+        "freshness": "PRs fetched just now by octo-reader",
         "live": "Pull requests of octo/demo: 100 pull requests",
         "rowsHeld": 100,
         "rows": [
@@ -215,10 +217,10 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 1,000 pull requests",
-        "count": "1,000 PRs on octo/demo",
+        "summary": "1,000 PRs on octo/demo",
         "window": "Showing last 500",
-        "progress": "Catalog paused · 1,000 cached",
-        "freshness": "Fetched just now by octo-reader",
+        "progress": "Catalog paused",
+        "freshness": "PRs fetched just now by octo-reader",
         "loadMore": "ready",
         "live": "Pull requests of octo/demo: 1,000 pull requests",
         "rowsHeld": 500,
@@ -242,12 +244,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,000 pull requests",
-        "count": "6,000 PRs on octo/demo",
+        "summary": "6,000 PRs on octo/demo",
         "window": "Showing last 500",
-        "progress": "Fetching catalog… · 6,000 cached",
-        "freshness": "Refreshing… · fetched just now by octo-reader",
+        "fetching": "Fetching pull requests…",
         "loadMore": "ready",
-        "live": "Pull requests of octo/demo: 6,000 pull requests",
+        "live": "Fetching pull requests…",
         "rowsHeld": 500,
         "rows": [
           "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
@@ -273,9 +274,9 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 1,000 pull requests",
-        "count": "1,000 PRs on octo/demo",
-        "progress": "Catalog paused · 1,000 cached",
-        "freshness": "Fetched just now by octo-reader",
+        "summary": "1,000 PRs on octo/demo",
+        "progress": "Catalog paused",
+        "freshness": "PRs fetched just now by octo-reader",
         "live": "Pull requests of octo/demo: 1,000 pull requests",
         "rowsHeld": 1000,
         "rows": [
@@ -307,12 +308,11 @@ $ node tests/dom/github-pulls-panel-session.js
         "filter": "closed",
         "status": "current",
         "listName": "Pull requests of octo/demo: 6,001 pull requests",
-        "count": "6,001 PRs on octo/demo",
+        "summary": "6,001 PRs on octo/demo",
         "window": "Showing last 1,000",
-        "progress": "Fetching catalog… · 6,001 cached",
-        "freshness": "Refreshing… · fetched just now by octo-reader",
+        "fetching": "Fetching pull requests…",
         "loadMore": "ready",
-        "live": "Pull requests of octo/demo: 6,001 pull requests",
+        "live": "Fetching pull requests…",
         "rowsHeld": 1000,
         "rows": [
           "[Closed] Work item 6001 | #6001 · contributor · topic ← work-6001 | /pull/6001",
@@ -492,7 +492,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
   "failures": {
     "not_logged_in": {
       "status": "current",
-      "freshness": "Fetched just now by octo-reader",
+      "freshness": "PRs fetched just now by octo-reader",
       "notice": {
         "severity": "warning",
         "text": "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry. You can still browse local files and any cached pull requests.",
@@ -501,7 +501,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     },
     "gh_too_old": {
       "status": "current",
-      "freshness": "Fetched just now by octo-reader",
+      "freshness": "PRs fetched just now by octo-reader",
       "notice": {
         "severity": "warning",
         "text": "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com. You can still browse local files and any cached pull requests.",
@@ -511,7 +511,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     },
     "not_found_or_private": {
       "status": "current",
-      "freshness": "Fetched just now by octo-reader",
+      "freshness": "PRs fetched just now by octo-reader",
       "notice": {
         "severity": "warning",
         "text": "The repository was not found, or the signed-in account cannot read its pull requests.",
@@ -520,7 +520,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     },
     "network_error": {
       "status": "current",
-      "freshness": "Fetched just now by octo-reader",
+      "freshness": "PRs fetched just now by octo-reader",
       "notice": {
         "severity": "warning",
         "text": "Offline, or GitHub could not be reached. The list is as it was last fetched.",
@@ -529,7 +529,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     },
     "gh_failed": {
       "status": "current",
-      "freshness": "Fetched just now by octo-reader",
+      "freshness": "PRs fetched just now by octo-reader",
       "notice": {
         "severity": "warning",
         "text": "The saved catalog refresh failed.",
@@ -538,7 +538,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     },
     "account_changed": {
       "status": "stale",
-      "freshness": "Fetched just now by octo-reader · may be out of date",
+      "freshness": "PRs fetched just now by octo-reader · may be out of date",
       "notice": {
         "severity": "warning",
         "text": "The saved catalog refresh failed.",
@@ -547,7 +547,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     },
     "gh_missing": {
       "status": "current",
-      "freshness": "Fetched just now by octo-reader",
+      "freshness": "PRs fetched just now by octo-reader",
       "notice": {
         "severity": "warning",
         "text": "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com. You can still browse local files and any cached pull requests.",
@@ -557,7 +557,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     },
     "cache_unwritable": {
       "status": "current",
-      "freshness": "Fetched just now by octo-reader",
+      "freshness": "PRs fetched just now by octo-reader",
       "notice": {
         "severity": "warning",
         "text": "The saved catalog refresh failed.",
@@ -566,7 +566,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     },
     "rate_limited": {
       "status": "current",
-      "freshness": "Fetched just now by octo-reader",
+      "freshness": "PRs fetched just now by octo-reader",
       "notice": {
         "severity": "warning",
         "text": "GitHub's rate limit lifts at 2026-09-18T00:00:00.000Z. No automatic attempt runs before then.",
@@ -844,14 +844,19 @@ $ node tests/dom/github-pulls-panel-second-session.js
     }
   ],
   "paint": {
-    "only the exact number is bold": [
+    "loading status": "Fetching pull requests…",
+    "the count and repository name are bold": [
       {
         "node": "STRONG",
         "text": "102"
       },
       {
         "node": "#text",
-        "text": " PRs on octo/demo"
+        "text": " PRs on "
+      },
+      {
+        "node": "STRONG",
+        "text": "octo/demo"
       }
     ],
     "the list": "ul .github-pulls-list role=\"tree\" aria-label=\"Pull requests of octo/demo: 102 pull requests\"",

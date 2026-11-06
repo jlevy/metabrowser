@@ -72,11 +72,13 @@ function summarize(model) {
   return present({
     filter: model.filter,
     status: model.status,
-    skeleton: model.skeleton || null,
     listName: model.listName,
-    origin: model.origin,
-    count: model.count,
+    summary:
+      model.countNumber === null
+        ? model.repository
+        : model.countNumber + model.countSuffix + model.repository,
     window: model.window,
+    fetching: model.fetching,
     progress: model.progress,
     freshness: model.freshness,
     empty: model.empty,
@@ -421,7 +423,6 @@ async function run() {
       nowMs: Date.parse(answer.body.fetched_at) + 30_000,
       formatTime: (iso) => new Date(iso).toISOString(),
       more: false,
-      waitedMs: 0,
       error: null,
     });
     failures[name.slice("failed ".length)] = {
@@ -858,7 +859,25 @@ async function paintStory(panel, selection = false) {
       mb,
     );
     await settle();
+    const activity = container.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-activity"),
+    );
+    assert(
+      !activity.hidden && activity.textContent === "Fetching pull requests…",
+      "one fetch line",
+    );
+    assert(
+      activity.childNodes.filter((node) => node.classList?.contains("spinner")).length === 1,
+      "one shared spinner",
+    );
+    const live = container.childNodes.find((node) => node.getAttribute("aria-live") === "polite");
+    assert(
+      activity.getAttribute("aria-hidden") === "true" && live.textContent === activity.textContent,
+      "the fetch status is announced only once",
+    );
+    const loading = activity.textContent;
     await answer(first);
+    assert(activity.hidden, "a ready list hides the fetch status");
     // The row of the page shown opens its changed files, read from the cache: the tree's
     // session holds what they are, and this one where they hang.
     const filesRead = answers[0].route;
@@ -1107,15 +1126,19 @@ async function paintStory(panel, selection = false) {
     const total = status.firstElementChild;
     assert(
       total.childNodes[0].localName === "strong" && total.childNodes[0].textContent === "102",
-      "only the exact repository number is strong",
+      "the exact repository number is strong",
     );
     assert(
       total.childNodes[1].nodeName === "#text" &&
-        total.childNodes[1].textContent === " PRs on octo/demo",
-      "repository and label must remain plain text",
+        total.childNodes[1].textContent === " PRs on " &&
+        total.childNodes[2].localName === "strong" &&
+        total.childNodes[2].textContent === "octo/demo",
+      "only the repository name is bold in the label",
     );
+    assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {
-      "only the exact number is bold": total.childNodes.map((node) => ({
+      "loading status": loading,
+      "the count and repository name are bold": total.childNodes.map((node) => ({
         node: node.nodeName,
         text: node.textContent,
       })),

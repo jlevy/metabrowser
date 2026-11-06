@@ -40,7 +40,7 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
       reader: "gh:reader",
       fresh_for_s: 60,
       refreshing: state.refreshing,
-      last_refresh: null,
+      last_refresh: state.lastRefresh ?? null,
       fetched: state.cached,
       total: state.total,
       repository_total: state.repositoryTotal,
@@ -146,7 +146,8 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   assert.equal(page.controller.snapshot().rows, 500);
   assert.equal(page.requests.length, 5);
   assert.equal(page.model().countNumber, "9,000");
-  assert.equal(page.model().countSuffix, " PRs on jlevy/metabrowser");
+  assert.equal(page.model().countSuffix, " PRs on ");
+  assert.equal(page.model().repository, "jlevy/metabrowser");
   assert.equal(page.model().window, "Showing last 500");
   const version = page.model().rowsVersion;
   page.state.cached = 7000;
@@ -156,14 +157,30 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   assert.equal(page.controller.snapshot().rows, 500);
   assert.equal(page.model().rowsVersion, version);
   assert.equal(page.requests.length, 1, "older catalog growth preserves the displayed prefix");
+  page.state.refreshing = false;
+  page.state.lastRefresh = {
+    outcome: "rate_limited",
+    reset_at: null,
+    message: null,
+    at: "2026-09-17T12:00:00Z",
+  };
+  page.controller.onVisibilityChange();
+  await settle();
   page.requests.length = 0;
-  await page.controller.loadMore();
+  const expansion = page.controller.loadMore();
+  assert.equal(page.model().fetching, "Fetching pull requests…");
+  assert.equal(page.model().live, page.model().fetching);
+  assert.match(page.model().notice.text, /rate limit/);
+  await expansion;
+  assert.equal(page.model().fetching, null);
   assert.equal(page.controller.snapshot().rows, 1000);
   assert.equal(page.requests.length, 5);
   assert(
     page.requests.every((request) => request.method === "GET"),
     "cached expansion needs no provider work",
   );
+  page.state.lastRefresh = null;
+  page.state.refreshing = true;
   page.state.generation = "two";
   page.state.first += 1;
   page.requests.length = 0;
@@ -286,6 +303,7 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   const refreshRace = rig(panel);
   refreshRace.state.refreshing = false;
   await refreshRace.controller.start({ shown: true });
+  assert.match(refreshRace.model().progress, /^Catalog paused · [\d,]+ cached$/);
   const oldVersion = refreshRace.model().rowsVersion;
   refreshRace.state.automatic = false;
   refreshRace.state.generation = "two";
@@ -301,7 +319,8 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   assert.equal(refreshRace.waiting.length, 0);
   assert.equal(refreshRace.model().rowsVersion, oldVersion);
   assert.equal(refreshRace.model().rows[0].number, 8000);
-  assert.match(refreshRace.model().progress, /Fetching catalog/);
+  assert.equal(refreshRace.model().fetching, "Fetching pull requests…");
+  assert.equal(refreshRace.model().freshness, null);
   assert.equal(refreshRace.controller.snapshot().timer, "fast");
   refreshRace.controller.onVisibilityChange();
   await settle();

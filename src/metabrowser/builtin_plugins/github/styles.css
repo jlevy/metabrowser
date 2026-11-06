@@ -375,6 +375,7 @@
   background: var(--sidebar-bg);
 }
 .github-pulls-status,
+.github-pulls-activity,
 .github-pulls-empty {
   margin: 0;
   padding: 0 var(--pane-header-padding-x) 6px;
@@ -384,18 +385,20 @@
 .github-pulls-status > span {
   display: block;
 }
+.github-pulls-activity:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.github-pulls-activity .spinner {
+  flex: none;
+}
 .github-pulls-total-line {
   color: var(--text);
-}
-.github-pulls-progress {
-  display: block;
 }
 .github-pulls-total {
   color: var(--text);
   font-weight: var(--weight-bold);
-}
-.github-pulls-window {
-  display: block;
 }
 .github-pulls-empty {
   padding-block-start: 6px;
