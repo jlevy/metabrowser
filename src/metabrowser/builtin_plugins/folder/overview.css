@@ -99,11 +99,13 @@
   color: var(--muted);
 }
 
-/* Keep every panel inside the shared outer gutter. Panel text and the
-   README card use the same inner inset as the display tab labels. */
+/* Every panel shares the README card edge inside the outer pane gutter.
+   Its cap follows KPress's native responsive inset; the narrow prose has
+   its own smaller text gutter, just as it does in the document component. */
 @media screen {
   .folder-overview-host {
-    --folder-overview-column-inset: var(--pane-header-padding-x);
+    --folder-overview-column-inset: 1.5rem;
+    --folder-overview-text-inset: 0.75rem;
     --folder-overview-card-width: min(
       100%,
       calc(var(--doc-measure) + 2 * var(--folder-overview-column-inset))
@@ -121,12 +123,20 @@
 
   .folder-overview-panel-heading,
   .folder-overview-panel-surface > .folder-overview-panel-body {
-    padding-inline: var(--pane-header-padding-x);
+    padding-inline: var(--folder-overview-text-inset);
   }
 
   @container kpress-doc (min-width: 48rem) {
     .folder-overview-host {
-      --folder-overview-column-inset: calc(var(--pane-header-padding-x) - 1px);
+      --folder-overview-column-inset: 4rem;
+      --folder-overview-text-inset: 4rem;
+    }
+  }
+
+  @container kpress-doc (min-width: 75rem) {
+    .folder-overview-host {
+      --folder-overview-column-inset: 2.5rem;
+      --folder-overview-text-inset: 2.5rem;
     }
   }
 }

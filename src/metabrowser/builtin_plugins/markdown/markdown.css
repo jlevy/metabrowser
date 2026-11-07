@@ -22,30 +22,17 @@
   background: transparent;
 }
 
-/* The host supplies the shared outer pane gutter. The card uses the same
-   inner inset as tab labels and Source; KPress owns its measure and TOC. */
+/* The host supplies the shared outer pane gutter. KPress keeps its normal
+   responsive padding inside the card, reading measure, and TOC behavior. */
 @media screen {
   .metabrowser-markdown-document > .kpress-doc {
     --kpress-doc-gutter: 0px;
-    --kpress-column-inset: var(--pane-header-padding-x);
     margin-inline-start: 0;
   }
 
   .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout,
   .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout > .kpress-long-text {
     margin-inline-start: 0;
-  }
-
-  @container kpress-doc (max-width: 47.99rem) {
-    .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout > .kpress-long-text {
-      --kpress-prose-gutter: var(--pane-header-padding-x);
-    }
-  }
-
-  @container kpress-doc (min-width: 48rem) {
-    .metabrowser-markdown-document > .kpress-doc[data-kpress-card="on"] {
-      --kpress-column-inset: calc(var(--pane-header-padding-x) - 1px);
-    }
   }
 
   /* KPress's narrow drawer keeps its toggle in the trailing gutter so it
@@ -98,7 +85,7 @@
       .kpress-table-wrap[data-kpress-table-scale="wide"] {
       left: 0;
       margin-inline: 0;
-      max-width: calc(100cqw - 2 * (var(--content-padding-x) + var(--pane-header-padding-x)));
+      max-width: calc(100cqw - 2 * (var(--content-padding-x) + var(--kpress-column-inset)));
       min-width: 100%;
       transform: none;
       width: max-content;

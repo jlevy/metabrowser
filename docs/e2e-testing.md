@@ -432,8 +432,9 @@ and check the section rules and panel borders along the stack.
 In a wide pane, compare paragraph widths in Markdown and a PR conversation at both 102
 and 80 in **Max text width**. Restore the setting after the comparison.
 
-Check two separate edges: the first tab’s outer box aligns with the document card, and
-its label aligns with prose or the Source line-number gutter.
+Check the first tab’s outer box against the document card border and Source surface.
+Keep KPress’s normal left and right padding inside the card; prose does not have to
+align with the tab label.
 Both views keep the shared outer pane padding; the document card’s inner padding must
 not conceal an absent outer gutter.
 Compare the same README directly and in Overview, retaining the same text measure.

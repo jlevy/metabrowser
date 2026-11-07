@@ -499,7 +499,7 @@
      half a pixel. Both rows are border-box, so this is the whole row. */
   --pane-header-row-height: 41px;
   --file-header-padding-y: var(--pane-header-padding-y);
-  --file-tab-padding-x: var(--pane-header-padding-x);
+  --file-tab-padding-x: 12px;
   --file-tab-padding-y: 4px;
   --file-tab-align-adjust: 3px;
   --file-tab-padding-top: calc(var(--file-tab-padding-y) + var(--file-tab-align-adjust));
@@ -4069,12 +4069,6 @@ code.hljs {
   padding: var(--content-padding-y) var(--content-padding-x);
   background: var(--code-bg);
   --scrollbar-bg: var(--code-bg);
-}
-/* Full-file Source shares the document card inset inside the pane gutter. */
-@media screen {
-  .metabrowser-source-host .code-block {
-    padding-inline: var(--pane-header-padding-x);
-  }
 }
 .code-block code {
   font-family: var(--font-mono);

@@ -400,12 +400,12 @@ A card can be the right width while the text inside it is an inset-pair too narr
 
 ### Rendered Markdown Layout
 
-Document and Source keep the same outer pane gutter, `--content-padding-x`. Cards and
-source surfaces start at the first tab’s outer edge.
-Their inner inset, `--pane-header-padding-x`, aligns prose and line-number gutters with
-the first tab’s label.
-Source code follows its line-number column; that column is separate from the pane
-gutter. KPress’s card and `--doc-measure` cap the reading column.
+Document and Source keep the same outer pane gutter, `--content-padding-x`. Card borders
+and source surfaces start at the first tab’s outer edge.
+KPress keeps its normal padding inside the card: 4 rem in the single-column band and 2.5
+rem in the wide band, with its compact prose gutter on narrow panes.
+Source and Raw keep their code-block padding and line-number columns inside the shared
+outer gutter. KPress’s card and `--doc-measure` cap the reading column.
 At a preview width of 75 rem or more, a document with a table of contents puts the
 sticky KPress rail to the right, with a 3 rem gap.
 A thumbnail sits above the prose.
@@ -416,7 +416,8 @@ Below 75 rem, KPress’s icon opens the existing overlay from the trailing gutte
 the beginning of each line clear.
 The Folder Overview README shares the same prose edge and maximum measure.
 Its panel headings and bodies follow the document card’s outer edge, with text at the
-shared inner inset. It uses the surrounding folder navigation for context.
+README’s responsive inner inset.
+It uses the surrounding folder navigation for context.
 
 ### Embedded Document Themes
 
