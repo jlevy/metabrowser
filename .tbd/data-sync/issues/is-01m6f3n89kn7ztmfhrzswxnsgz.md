@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: in_progress
 priority: 1
-version: 83
+version: 84
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -81,12 +81,14 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-07T08:54:31.519Z
+updated_at: 2026-11-07T09:11:31.165Z
 started_at: 2026-11-07T05:39:51.585Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.
 
 ## Notes
+
+Current checkpoint (2026-11-07 shared-design acceptance): seven follow-ups are in progress: mb-3vvt Markdown/Source gutter; mb-eicc durable PR cores; mb-1e2y progressive idle/viewport/catalog prefetch (depends on mb-eicc); mb-82fa compact stack menu; mb-2vf2 Shift-J/K stack keys (depends on mb-82fa); mb-ba73 author/action/age baseline; mb-s9bb shared commit/PR description surface. All seven have implementation commits integrated by forward merges in the freshness checkout. Corrected gutter7c is installed as0.11.1.dev1218+7c0188f4 and8411 confirms card-border/tab-box alignment with original KPress padding. Core251, frontend2fc, menu c248, keys8065, baseline6b, surface1d passed focused and independent review. Real-browser integration caught native GitHub stacks omit titles; a source/reader-matching catalog-title projection and menu styling correction are in progress. Integrated focused gate currently102passed/1 stale trusted-icon-parser assertion to update with the menu correction. PR/commit typography and ShiftJ/K were checked in the built-in browser. Design, e2e playbook and changelog updated on local top. Existing22-layer published stack still ends at321; six follow-up layers remain local pending final combined gate, real performance evidence, publication/CI and final installation. No merge or history rewrite. Preserve owner/release/quiet-host follow-ups below.
 
 Current checkpoint (2026-11-07 acceptance follow-up): PR #321 remains the last published/installed head. All 22 existing layers passed review/CI, but new owner testing found follow-up work that must be completed before final acceptance: mb-3vvt shared visible Markdown/Source gutters; mb-eicc durable lightweight PR cores; mb-1e2y startup and scroll-adaptive progressive metadata prefetch (depends on mb-eicc, no eight-PR coverage cutoff); mb-82fa compact stack position menu; mb-2vf2 Shift-J/K stack navigation with shift glyph Help (depends on mb-82fa). Root owns gutter implementation, design/e2e docs, stacking, final integration, real-browser checks and installation. Three sub-agents own persistence, progressive prefetch, and stack menu/handle/glyphs in separate existing checkouts. Planned forward-only layers after #321: gutter, durable cores, progressive prefetch, stack menu/hotkeys. No owner merge has been performed. Existing release/acceptance/performance follow-ups remain tracked; preserve all prior checkpoints below.
 
