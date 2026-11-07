@@ -614,6 +614,9 @@
   align-items: center;
   gap: 6px;
 }
+.github-pull-files-line > .mb-delayed-loading:not([hidden]) {
+  display: inline-flex;
+}
 .github-pull-files-notice {
   display: flex;
   flex-wrap: wrap;

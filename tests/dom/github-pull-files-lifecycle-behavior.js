@@ -173,6 +173,51 @@ async function run() {
     );
     abandonedReader.controller.dispose();
     reads += 1;
+    const recent = rig(createFileTreeController);
+    const missing = {
+      ...envelope(""),
+      state: "absent",
+      reason: "not_cached",
+      listed_from: null,
+      generation: null,
+      fetched: 0,
+      rows: [],
+    };
+    recent.controller.expand();
+    recent.respond(recent.requests[0], missing);
+    await settle();
+    const abandonedPost = recent.requests[1];
+    assert.equal(abandonedPost.method, "POST");
+    recent.hide(mode);
+    recent.reopen(mode);
+    recent.respond(recent.requests[2], missing);
+    await settle();
+    const waiting = recent.model();
+    recent.respond(abandonedPost, { files: { ...missing, state: "pending", refreshing: true } });
+    await settle();
+    assert.deepEqual(recent.model(), waiting, "the old POST never owns the reopened visit");
+    assert.equal(recent.model().loading, true);
+    for (const body of [missing, envelope("ready.txt")]) {
+      const [id, due] = [...recent.timers][0];
+      assert.equal(due.delay, 1000, "a recent missing list keeps polling the local cache");
+      recent.timers.delete(id);
+      due.callback();
+      const read = recent.requests.at(-1);
+      assert.equal(read.method, "GET");
+      recent.respond(read, body);
+      await settle();
+    }
+    assert.equal(recent.requests.filter((request) => request.method === "POST").length, 1);
+    assert.equal(recent.model().loading, false);
+    assert.deepEqual(
+      recent.model().rows.map((row) => row.id),
+      ["ready.txt"],
+    );
+    assert.deepEqual(
+      [...recent.timers.values()].map((timer) => timer.delay),
+      [60000],
+    );
+    recent.controller.dispose();
     for (const failure of [false, true]) {
       const r = rig(createFileTreeController);
       r.controller.expand();

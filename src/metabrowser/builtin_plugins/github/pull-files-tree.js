@@ -732,11 +732,10 @@ function isFilesEnvelope(value) {
  * One pull request's changed files in its row: the list as it arrives, which folders are
  * open, which row takes Tab and which file the page shows, the keys, and the jump.
  *
- * Reading never fetches: a list is asked for (`POST pull-files-refresh`) only on a reader's
- * expansion or press of Fetch or Retry, or, for a list already cached that may be out of
- * date, once a window, which the server holds it to as well. While a list fills it is asked
- * again every FILES_POLL_MS, from the rows held on, and only while its row is expanded and
- * the panel shown.
+ * Expansion reads the local cache before asking for a missing, partial, or stale list.
+ * The server and the controller hold automatic provider requests to one per window.
+ * Retry can ask again. While a recent request may still be filling a missing list,
+ * FILES_POLL_MS keeps local cache reads active in the expanded, visible tree.
  *
  * A walk with the keys moves the anchor and the current file at once. When the page holds
  * this pull request, every key jumps the diff to the file (`showFile`, after `fileForPath`
@@ -905,6 +904,14 @@ export function createFileTreeController(deps, options) {
       }, FILES_POLL_MS);
       return;
     }
+    // A previous visible visit may still be awaiting its POST response. Its reply
+    // loses ownership on close, while local reads can observe the job it started.
+    const recentMissing =
+      envelope.listed_from === null &&
+      askedAt !== null &&
+      deps.now() - askedAt < envelope.fresh_for_s * 1000 &&
+      error === null &&
+      describeFileList(envelope).failure === null;
     timer = deps.schedule(
       () => {
         timer = null;
@@ -912,7 +919,7 @@ export function createFileTreeController(deps, options) {
       },
       now
         ? 0
-        : envelope.refreshing || envelope.state === "pending"
+        : envelope.refreshing || envelope.state === "pending" || recentMissing
           ? FILES_POLL_MS
           : Math.max(FILES_POLL_MS, envelope.fresh_for_s * 1000),
     );
