@@ -13,6 +13,9 @@ All notable changes to Metabrowser are documented here.
 
 PR and Git navigation:
 
+- Document and Source use the same outer gutter.
+  Markdown card borders align with display tabs while retaining KPress’s normal padding
+  inside the card.
 - Files, Commits, and Pulls appear in that order and open with `⌘1`, `⌘2`, and `⌘3`.
   Help lists plain digits for browsers that reserve the Command chords.
 - Pulls resumes incremental GitHub updates after reconnect and shows one connection

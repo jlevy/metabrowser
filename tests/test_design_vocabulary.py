@@ -867,13 +867,15 @@ def test_one_document_surface_has_one_set_of_breakpoints() -> None:
     markdown = (REPO_ROOT / "src/metabrowser/builtin_plugins/markdown/markdown.css").read_text(
         encoding="utf-8"
     )
+    assert "@container kpress-doc (min-width: 48rem)" in folder
     for css in (folder, markdown):
-        assert "@container kpress-doc (min-width: 48rem)" in css
-        assert "calc(var(--content-padding-x) - 1px)" in css
+        assert "@container kpress-doc (min-width: 75rem)" in css
         assert "@container (min-width:" not in css
+    assert "--kpress-column-inset:" not in markdown
+    assert "--kpress-prose-gutter:" not in markdown
     assert ".metabrowser-markdown-document > .kpress-doc" in markdown
     assert "var(--doc-measure)" in folder
-    assert "padding-inline: var(--content-padding-x)" in folder
+    assert "padding-inline: var(--folder-overview-text-inset)" in folder
     readme = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/readme-panel.js").read_text(
         encoding="utf-8"
     )

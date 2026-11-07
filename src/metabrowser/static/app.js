@@ -5970,11 +5970,11 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
             // [[view]].container_class; defaults to "content-body".
             var containerClass = view.container_class || "content-body";
             var hidden = view.id === initialActiveView?.id ? "" : ' style="display:none;"';
-            var noPadding = view.id === "raw" || view.id === "source" ? "padding:0;" : "";
-            if (noPadding && !hidden) {
-              hidden = ` style="${noPadding}"`;
-            } else if (noPadding && hidden) {
-              hidden = ` style="display:none;${noPadding}"`;
+            var blockPadding = view.id === "raw" || view.id === "source" ? "padding-block:0;" : "";
+            if (blockPadding && !hidden) {
+              hidden = ` style="${blockPadding}"`;
+            } else if (blockPadding && hidden) {
+              hidden = ` style="display:none;${blockPadding}"`;
             }
 
             if (pluginView) {

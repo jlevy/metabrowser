@@ -47,7 +47,8 @@ def test_folder_overview_preserves_the_responsive_markdown_card() -> None:
     assert "var(--doc-measure)" in css
     assert "calc(var(--doc-measure) + 2 * var(--folder-overview-column-inset))" in css
     assert "@container kpress-doc (min-width: 48rem)" in css
-    assert "--folder-overview-column-inset: calc(var(--content-padding-x) - 1px)" in css
+    assert "--folder-overview-column-inset: 4rem" in css
+    assert "--folder-overview-column-inset: 2.5rem" in css
     assert ".kpress-long-text" not in css
     assert "border: none" not in css
     assert "box-shadow: none" not in css
@@ -69,7 +70,7 @@ def test_the_readme_card_fills_the_same_column_as_every_other_panel() -> None:
         assert selector in width_rule
     assert "margin-inline-start: 0" in width_rule
     assert "margin-inline-end: auto" in width_rule
-    assert "padding-inline: var(--content-padding-x)" in css
+    assert "padding-inline: var(--folder-overview-text-inset)" in css
     assert ".kpress-prose" not in css
     assert ".kpress-long-text" not in css
     assert "toc-width" not in css

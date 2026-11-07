@@ -4061,9 +4061,8 @@ pre code.hljs {
 code.hljs {
   padding: 3px 5px;
 }
-/* Padding + background live on <pre class="code-block"> (block-level)
-   so source/raw views align horizontally with other content-body
-   views at var(--content-padding-x). */
+/* Code blocks own their background and inner padding. Full-file Source
+   uses the shared card inset below, inside the content-body pane gutter. */
 .code-block {
   margin: 0;
   overflow: auto;

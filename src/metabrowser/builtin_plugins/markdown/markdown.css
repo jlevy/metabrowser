@@ -22,34 +22,17 @@
   background: transparent;
 }
 
-/* Use the Source tab's pane gutter for the prose. KPress still owns the
-   measure caps, the document card and its table of contents. */
+/* The host supplies the shared outer pane gutter. KPress keeps its normal
+   responsive padding inside the card, reading measure, and TOC behavior. */
 @media screen {
-  .metabrowser-markdown-document:has(> .kpress-doc) {
-    padding-inline: 0;
-  }
-
   .metabrowser-markdown-document > .kpress-doc {
     --kpress-doc-gutter: 0px;
-    --kpress-column-inset: var(--content-padding-x);
     margin-inline-start: 0;
   }
 
   .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout,
   .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout > .kpress-long-text {
     margin-inline-start: 0;
-  }
-
-  @container kpress-doc (max-width: 47.99rem) {
-    .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout > .kpress-long-text {
-      --kpress-prose-gutter: var(--content-padding-x);
-    }
-  }
-
-  @container kpress-doc (min-width: 48rem) {
-    .metabrowser-markdown-document > .kpress-doc[data-kpress-card="on"] {
-      --kpress-column-inset: calc(var(--content-padding-x) - 1px);
-    }
   }
 
   /* KPress's narrow drawer keeps its toggle in the trailing gutter so it
@@ -72,10 +55,7 @@
     .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout:has(> .kpress-toc) {
       grid-template-areas: "prose toc";
       grid-template-columns:
-        min(
-          calc(var(--kpress-measure) + 2 * var(--kpress-column-inset)),
-          calc(100% - 18rem - var(--content-padding-x))
-        )
+        min(calc(var(--kpress-measure) + 2 * var(--kpress-column-inset)), calc(100% - 18rem))
         15rem;
     }
 
@@ -105,7 +85,7 @@
       .kpress-table-wrap[data-kpress-table-scale="wide"] {
       left: 0;
       margin-inline: 0;
-      max-width: calc(100cqw - 2 * var(--content-padding-x));
+      max-width: calc(100cqw - 2 * (var(--content-padding-x) + var(--kpress-column-inset)));
       min-width: 100%;
       transform: none;
       width: max-content;
