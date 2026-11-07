@@ -3,15 +3,19 @@ type: is
 id: is-01m6t02b08jdzpvf7sr2qyeb31
 title: Align rendered documents with source tabs and dock the TOC on the right
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/design-system.md
 labels: []
 dependencies: []
 parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 created_at: 2026-11-07T03:15:38.119Z
-updated_at: 2026-11-07T04:15:04.560Z
+updated_at: 2026-11-07T05:03:38.515Z
+closed_at: 2026-11-07T05:03:38.514Z
+close_reason: "PR #320 at ab905365 is clean, green in CI and fully reviewed. KPress rendering, right-side TOC, trailing narrow drawer control, Overview/direct README alignment and reachable wide tables pass manual sessions. Full make verify passed 4892 tests and 384 goldens; all three opt-in real-gh PR sessions passed. Default CLI and both previews run the verified wheel."
+resolution: null
+duplicate_of: null
 ---
 Align rendered Markdown, its source view, and PR reading content below their leftmost render tab. Keep the existing shared configurable prose measure for README, PR descriptions, comments, and other rendered content. Reuse KPress TOC and rendering, move the wide docked TOC to the right with the standard gap, and preserve the compact toggle and overlay in narrow panes. Verify long and short docs, source and rendered switching, responsive reflow, and the same measure on a checkout and managed repository.
 

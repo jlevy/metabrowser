@@ -3,9 +3,9 @@ type: is
 id: is-01m6sxmwx9fjjnft6mvavs5c7h
 title: Unify the left-aligned commit and PR reading headers
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 5
+version: 6
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 labels: []
 dependencies:
@@ -13,7 +13,11 @@ dependencies:
     target: is-01m6t02b08jdzpvf7sr2qyeb31
 parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 created_at: 2026-11-07T02:33:20.551Z
-updated_at: 2026-11-07T03:38:21.285Z
+updated_at: 2026-11-07T05:03:38.231Z
+closed_at: 2026-11-07T05:03:38.230Z
+close_reason: "PR #318 at f5e5dd65 is clean with green CI and all threads resolved. Commit and PR headers share the left edge and 24px scale; Markdown and PR prose share the configured measure. Parsed CSS assertions and manual wide/narrow checks pass."
+resolution: null
+duplicate_of: null
 ---
 Consolidate commit and PR page headers around the commit view’s left alignment and the PR view’s larger title scale. Use the existing wider rendered README reading measure as the reference for PR descriptions and comments, and align the title, metadata and tabs with the reading column. Preserve full-width comparisons. Check computed content edges and text measure in README, commit and PR views at narrow and wide pane widths.
 

@@ -3,9 +3,9 @@ type: is
 id: is-01m6sxjyqf3b1z01p3gzzjpwty
 title: Align the PR header state icon with the title
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 5
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10.local
 labels: []
@@ -16,8 +16,12 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-07T02:32:16.878Z
-updated_at: 2026-11-07T03:38:20.997Z
+updated_at: 2026-11-07T05:03:37.935Z
 started_at: 2026-11-07T02:33:20.380Z
+closed_at: 2026-11-07T05:03:37.934Z
+close_reason: "PR #317 at 85cfd6bc is clean and green in CI with zero unresolved threads. Shared state icon, title alignment and text-only badge were verified on real Open and Merged PRs."
+resolution: null
+duplicate_of: null
 ---
 Use the same colored PR state icon as the Pulls navigation at title scale, to the left of the PR title. Keep the Open/Draft/Closed/Merged badge below with its state color and text, omitting the duplicate icon. Preserve accessible state text, title wrapping, tab alignment, and layout across narrow and wide panes.
 
