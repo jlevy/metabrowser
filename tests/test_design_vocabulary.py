@@ -1412,6 +1412,14 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # form, where the link alone let it follow the text. Measured in Chrome on a 685 px card
     # head: before, the link's head was 45 px and the button's 63 px; after, both 63 px.
     assert github[".github-pull-file"]["display"] == "inline-block"
+    # The author, action, and relative age share one prose size and baseline.
+    assert github[".github-pull-card-head"]["font-size"] == "var(--body-font-size)"
+    age = github[".github-pull-card-head .github-pull-age"]
+    assert (age["font-size"], age["line-height"]) == ("var(--body-font-size)", "inherit")
+    assert ".github-pull-card-head .github-pull-author" not in github
+    identity = github[".github-pull-identity"]
+    assert (identity["align-items"], identity["vertical-align"]) == ("baseline", "baseline")
+    assert github[".github-pull-avatar"]["align-self"] == "center"
     # A hunk is the user's code, at the chrome-context mono size, in the app's mono face.
     assert github[".github-pull-hunk"]["font-family"] == "var(--font-mono)"
     assert github[".github-pull-hunk"]["font-size"] == "var(--mono-block-font-size)"
