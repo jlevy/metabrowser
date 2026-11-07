@@ -11,8 +11,9 @@ The exact repository total is separate from the selected filter’s total, cache
 progress, and displayed rows.
 The lightweight catalog continues in the background after the panel hides.
 Opening the panel reads cache pages of 100 rows up to its initial display budget of 500.
-Fetch more increases that budget by 500; it can prioritize the background metadata walk
-when the matching rows are not cached yet.
+Scrolling within 240 pixels of the displayed tail requests another cache page.
+Fetch more increases the display budget by 500. Either action can prioritize matching
+metadata that the background walk has yet to cache.
 
 A progress-only catalog update retains the displayed prefix and its row identity.
 A changed generation stages the displayed range in bounded cache pages and accepts it
@@ -25,7 +26,7 @@ Holding a key changes two row marks per step and reads no detail until the walk 
 Opening a PR can reuse the one cache-only record read made by a click, focus, or hover.
 The production row mount keeps current and focused rows, text-only titles, absolute
 accessibility positions, and bounded retained changed-file trees.
-A variable-height spacer window bounds mounted rows as the explicit display grows.
+A variable-height spacer window bounds mounted rows as the displayed list grows.
 
 This browserless session loads production code and replays the actual lifecycle,
 cached-window, and changed-prefix recordings in `tests/fixtures/`.
@@ -996,6 +997,42 @@ time.
 ```console
 $ node tests/dom/github-pulls-viewport-behavior.js
 {"case":"viewport-height-increase","before":43,"after":113,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000}
+? 0
+```
+
+## Test: Page Near the Pulls Tail
+
+The controller adds one page on a near-tail signal and keeps selection in place.
+It stops at the actual filter tail and reads only cached rows after a provider failure.
+A late page cannot change the newly selected filter.
+
+```console
+$ node tests/dom/github-pulls-catalog-behavior.js
+{
+  "defaultFilter": "open",
+  "initialRows": 500,
+  "explicitRows": 1000,
+  "scrollRows": 600,
+  "terminalRows": 645,
+  "repeatedScrollSharesRequest": true,
+  "keepsSelection": true,
+  "cachedGrowthKeepsEveryRow": true,
+  "failedProviderUsesCacheOnly": true,
+  "hiddenTailIsIdle": true,
+  "staleTailCannotChangeFilter": true,
+  "progressOnlyReads": 1,
+  "generationPages": 10,
+  "detailReads": 0,
+  "priorityTarget": 1000,
+  "lateWindowRejected": true,
+  "ownerTransferred": true,
+  "mixedGenerationRejected": true,
+  "lateFilterRejected": true,
+  "failedWindowDoesNotSpin": true,
+  "newerRefreshKeepsOwnership": true,
+  "emptyFilterDoesNotHideOtherPulls": true,
+  "freshPartialCatalogResumes": true
+}
 ? 0
 ```
 

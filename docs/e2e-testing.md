@@ -472,6 +472,16 @@ Try the plain digits if the browser owns the Command chords.
 In a plain folder, check that the Files shortcut still uses `1` and the other numbers
 leave the selection alone.
 
+### Pulls Paging
+
+Use a repository or a seeded catalog with more than 500 matching PRs.
+Start in Pulls and verify the initial window.
+Scroll near its end and check that the next window appears without a click.
+Repeat through the final partial window.
+Keep an eye on the selected row and switch filters during an in-flight page.
+For a partial catalog, verify the same interaction joins the metadata refresh and can
+continue when rows arrive.
+
 ### Pull Request Checks
 
 In a checkout and a managed repository, open a PR with checks.

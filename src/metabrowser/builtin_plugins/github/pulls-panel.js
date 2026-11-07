@@ -56,11 +56,12 @@ export const LISTS = Object.freeze(["open", "closed", "all"]);
 const LIST_LABELS = Object.freeze({ all: "All", open: "Open", closed: "Closed" });
 const FILTER_GROUP = "github-pulls-filter";
 
-// Catalog cache reads remain one provider page. The backend may cache every PR;
-// the controller initially materializes500 and only explicit Fetch more grows it.
-// The paint independently mounts a variable-height viewport and protected anchors.
+// The backend may cache every PR. Show the first 500 and extend by one cache page as
+// the reader nears the tail. The viewport and its protected anchors mount separately.
 export const WINDOW_ROWS = 100;
 export const DISPLAY_ROWS = 500;
+// Match Git history's near-tail distance.
+const PAGE_AHEAD_PX = 240;
 // Viewport neighbors; measured catalog-window evidence is recorded with the feature.
 export const PULL_ROWS_OVERSCAN = 40;
 // How long a walk waits for a next key before it opens the row it reached, once a key is
@@ -421,9 +422,12 @@ export function describePulls(envelope, page) {
     model.notice = { severity: "error", text: page.error, retry: false };
     model.live = page.error;
   }
+  const belowTotal = envelope.total === null || page.rows.length < envelope.total;
+  const cachedMore = page.rows.length < envelope.fetched;
+  const providerMayHaveMore = !envelope.complete && envelope.total !== null;
   if (page.more) {
     model.loadMore = "loading";
-  } else if (holding && envelope.total !== null && page.rows.length < envelope.total) {
+  } else if (holding && belowTotal && (cachedMore || providerMayHaveMore)) {
     model.loadMore = "ready";
   }
   return model;
@@ -511,6 +515,7 @@ function pinChanged(response) {
  *     reader: {fetchAfterMs: number, initial: unknown, walking: () => boolean},
  *   }): unknown,
  *   filterChanged(state: string): void,
+ *   recheckTail?(): void,
  * }} PullsDependencies
  */
 
@@ -809,6 +814,19 @@ export function createPullsController(deps, options = {}) {
     }
   }
 
+  function recheckTail() {
+    const list = held();
+    if (
+      live() &&
+      windowRead === null &&
+      list.error === null &&
+      !list.more &&
+      list.rows.length >= list.displayLimit
+    ) {
+      deps.recheckTail?.();
+    }
+  }
+
   function scheduleNext() {
     clearTimer();
     if (!live()) {
@@ -859,6 +877,27 @@ export function createPullsController(deps, options = {}) {
     list.error = null;
     shownRequest = request;
     filterTotals = envelope.filter_totals ?? null;
+  }
+
+  /**
+   * Older rows can arrive after the last cache page had no following cursor. Continue from
+   * the held tail only if it belongs to the generation whose count says more rows exist.
+   * @param {HeldList} list
+   * @param {PullsEnvelope} envelope
+   */
+  function recoverCachedCursor(list, envelope) {
+    if (
+      list.nextAfter !== null ||
+      list.rows.length >= Math.min(list.displayLimit, envelope.fetched)
+    ) {
+      return true;
+    }
+    const last = list.rows.at(-1);
+    if (last === undefined || list.content !== contentOf(envelope)) {
+      return false;
+    }
+    list.nextAfter = last.number;
+    return true;
   }
 
   /** The anchor follows the rows: the current one if it is held, and otherwise the first. */
@@ -922,9 +961,10 @@ export function createPullsController(deps, options = {}) {
     const rows = top.rows.slice(0, desired);
     let after = top.next_after;
     while (rows.length < desired && after !== null) {
+      const limit = Math.min(WINDOW_ROWS, desired - rows.length);
       const response = await deps.request(
         "GET",
-        `${PULLS_ROUTE}?state=${name}&limit=${WINDOW_ROWS}&after=${after}`,
+        `${PULLS_ROUTE}?state=${name}&limit=${limit}&after=${after}`,
         { signal: asked.signal },
       );
       if (
@@ -1015,12 +1055,7 @@ export function createPullsController(deps, options = {}) {
           ) {
             holdEnvelope(list, response.body, request);
             list.etag = response.etag;
-            if (
-              list.nextAfter === null &&
-              list.rows.length < Math.min(list.displayLimit, response.body.fetched)
-            ) {
-              list.nextAfter = list.rows.at(-1)?.number ?? null;
-            }
+            recoverCachedCursor(list, response.body);
             if (
               list.more &&
               (list.rows.length >= list.displayLimit ||
@@ -1061,8 +1096,11 @@ export function createPullsController(deps, options = {}) {
     if (list.nextAfter !== null && list.rows.length < list.displayLimit) {
       await loadWindow();
     }
-    scheduleNext();
-    askIfDue();
+    if (!disposed && name === filter && epoch === requestEpoch) {
+      scheduleNext();
+      askIfDue();
+      recheckTail();
+    }
   }
 
   /**
@@ -1177,11 +1215,12 @@ export function createPullsController(deps, options = {}) {
     const version = list.version;
     const after = list.nextAfter;
     const content = list.content;
+    const limit = Math.min(WINDOW_ROWS, list.displayLimit - list.rows.length);
     let advanced = false;
     try {
       const response = await deps.request(
         "GET",
-        `${PULLS_ROUTE}?state=${name}&limit=${WINDOW_ROWS}&after=${after}`,
+        `${PULLS_ROUTE}?state=${name}&limit=${limit}&after=${after}`,
         { signal: controller.signal },
       );
       if (
@@ -1226,14 +1265,17 @@ export function createPullsController(deps, options = {}) {
         }
       } else if (!pinChanged(response)) {
         list.error = `The list is unavailable (HTTP ${response.status}).`;
+        list.more = false;
       }
     } catch {
       if (!disposed && epoch === requestEpoch && !controller.signal.aborted) {
         list.error = "The server did not answer.";
+        list.more = false;
       }
     } finally {
       if (windowRead === controller) {
         windowRead = null;
+        recheckTail();
       }
     }
     if (!disposed && epoch === requestEpoch && name === filter) {
@@ -1261,31 +1303,48 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
-   * Read cached rows within the display budget. A button grows it by500 and can
-   * prioritize metadata that the background catalog walk has not reached yet.
-   * @param {boolean} retrying
+   * Grow the displayed prefix, reading the cache before asking the shared catalog job
+   * to prioritize more rows. One scroll approach adds one page. The button can add five.
+   * @param {"scroll" | "button"} trigger
    */
-  function next(retrying) {
+  function extendDisplay(trigger) {
     const list = held();
     const envelope = list.envelope;
-    if (disposed || envelope === null) {
+    if (disposed || envelope === null || list.more || envelope.reason === "not_github") {
       return Promise.resolve();
     }
-    if (retrying) {
-      if (envelope.total !== null && list.rows.length >= envelope.total) {
-        return Promise.resolve();
-      }
-      list.displayLimit += DISPLAY_ROWS;
-      list.more = true;
-      render();
+    const automatic = trigger === "scroll";
+    if (
+      automatic &&
+      (!live() ||
+        windowRead !== null ||
+        list.error !== null ||
+        list.rows.length < list.displayLimit)
+    ) {
+      return Promise.resolve();
+    }
+    // At a completed or failed refresh, automatic paging can still reveal cached rows.
+    const cacheOnly =
+      envelope.complete || (automatic && refreshFailure(envelope, deps.formatTime) !== null);
+    const limit = Math.min(
+      list.displayLimit + (automatic ? WINDOW_ROWS : DISPLAY_ROWS),
+      envelope.total ?? Number.POSITIVE_INFINITY,
+      cacheOnly ? envelope.fetched : Number.POSITIVE_INFINITY,
+    );
+    if (limit <= list.rows.length) {
+      return Promise.resolve();
+    }
+    list.displayLimit = limit;
+    list.more = true;
+    render();
+    if (!recoverCachedCursor(list, envelope)) {
+      list.etag = null;
+      return poll();
     }
     if (list.nextAfter !== null && list.rows.length < list.displayLimit) {
       return loadWindow();
     }
-    if (
-      retrying &&
-      (envelope.total === null || envelope.fetched < Math.min(list.displayLimit, envelope.total))
-    ) {
+    if (!cacheOnly && envelope.fetched < list.displayLimit) {
       list.priorityTarget = list.displayLimit;
       return ask({ state: filter, target: list.displayLimit });
     }
@@ -1527,7 +1586,7 @@ export function createPullsController(deps, options = {}) {
         return true;
       }
       if (target >= list.rows.length) {
-        void next(false);
+        void extendDisplay("scroll");
         return true;
       }
       const number = list.rows[target].number;
@@ -1607,10 +1666,10 @@ export function createPullsController(deps, options = {}) {
         void readRecord(number);
       }
     },
-    /** A press of Load more. */
-    loadMore: () => next(true),
-    /** The end of the list came into view. */
-    reachedEnd: () => next(false),
+    /** A press of Fetch more. */
+    loadMore: () => extendDisplay("button"),
+    /** The reader neared the end of the displayed rows. */
+    reachedEnd: () => extendDisplay("scroll"),
     /** A press of Retry. */
     retry() {
       if (disposed) {
@@ -2337,6 +2396,7 @@ export function mountPullsPanel(container, ctx, mb) {
   function paint(model) {
     // A filter's rows are their own list: nothing is kept across a change of filter.
     if (list.dataset.filter !== model.filter) {
+      atEnd?.takeRecords();
       list.dataset.filter = model.filter;
       for (const [number, entry] of painted) {
         rowSizes?.unobserve(entry.item);
@@ -2490,6 +2550,13 @@ export function mountPullsPanel(container, ctx, mb) {
         request(mb.perf, method, route, { ...options, signal: options.signal ?? signal }),
       schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
       cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
+      recheckTail() {
+        // Ask the observer for the current position after a blocker clears. Its next
+        // delivery uses the laid-out footer, even if there was no new crossing.
+        atEnd?.takeRecords();
+        atEnd?.disconnect();
+        atEnd?.observe(foot);
+      },
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
       formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
@@ -2634,17 +2701,16 @@ export function mountPullsPanel(container, ctx, mb) {
     { signal },
   );
 
-  // Rows ahead of the view arrive before they are reached, so a scroll does not stop at the end
-  // of a window, and reaching the end is a reader's action, as Load more is.
+  // Observe the tail of the full displayed prefix, including virtual spacer rows.
   const atEnd =
-    typeof IntersectionObserver === "function"
+    nav.scrollRoot !== null && typeof IntersectionObserver === "function"
       ? new IntersectionObserver(
           (entries) => {
             if (entries.some((entry) => entry.isIntersecting)) {
               void controller.reachedEnd();
             }
           },
-          { root: nav.scrollRoot, rootMargin: "100% 0px" },
+          { root: nav.scrollRoot, rootMargin: `0px 0px ${PAGE_AHEAD_PX}px 0px` },
         )
       : null;
   atEnd?.observe(foot);
