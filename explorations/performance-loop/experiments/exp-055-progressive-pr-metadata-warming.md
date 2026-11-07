@@ -11,7 +11,7 @@ experiment:
   date: '2026-11-07'
   hypotheses: [H84]
   subject:
-    corpus: Public jlevy/metabrowser checkout at 8b7eabc8, independent copies of one 308-row catalog-only seed, selecting PR 310 (twelfth Open row).
+    corpus: Public jlevy/metabrowser checkout at 8b7eabc8, independent copies of one 308-row catalog-only seed, selecting public pull request 310 (twelfth Open row).
     corpus_files: 1268
     host_system: Darwin 25.5.0, CPython 3.14.7, Node 24.19.0
     browser: Built-in Chromium via CUA; trusted locator input and driver-observed DOM visibility.
@@ -98,8 +98,9 @@ selected. Browser suspension and disposal cancel that wake.
 
 Six alternating pairs used independent copies of one frozen catalog with no detailed or
 lightweight PR records at trial start.
-Both arms browsed the same checkout and target, PR #310, the twelfth Open row.
-Files remained selected for at least ten seconds before opening Pulls.
+Both arms browsed the same checkout and target,
+[pull request #310](https://github.com/jlevy/metabrowser/pull/310), the twelfth Open
+row. Files remained selected for at least ten seconds before opening Pulls.
 A cache-only read classified the target before the trusted click; inter-tool time adds
 to that planned dwell.
 Every control had no full record or prepared core, and every candidate had a core with
@@ -162,7 +163,7 @@ and Git acquisition to the existing demand paths.
 ## Restart and Scope
 
 After the candidate server stopped, a new managed-repository CLI process read unselected
-PR #309 from the same cache.
+[pull request #309](https://github.com/jlevy/metabrowser/pull/309) from the same cache.
 Its core was 143.5 seconds old, no full record existed, and the read made zero GitHub
 CLI calls. The focused CLI golden separately covers offline restart, later batches, and
 changed source/reader identity.
