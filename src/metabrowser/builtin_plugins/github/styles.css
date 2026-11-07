@@ -609,6 +609,11 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
+.github-pull-files-line:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .github-pull-files-notice {
   display: flex;
   flex-wrap: wrap;
@@ -616,10 +621,6 @@
   gap: 6px;
   margin: 2px 12px 4px calc(10px + var(--tree-indent));
   padding: 4px 8px;
-}
-.github-pull-files-loading {
-  height: calc(var(--ui-row-height) * 3);
-  margin-inline-start: calc(10px + var(--tree-indent) + 22px);
 }
 .github-pulls-foot {
   display: flex;

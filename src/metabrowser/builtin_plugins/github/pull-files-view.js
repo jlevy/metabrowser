@@ -21,7 +21,7 @@
 // only through the route's encoder, and no value from GitHub reaches a class, a style, or
 // markup; the only markup parsed is the shell's own chevron.
 
-import { createFileTreeController, windowRange } from "./pull-files-tree.js";
+import { createFileTreeController, LISTING_FILES, windowRange } from "./pull-files-tree.js";
 import { h, isPlainClick } from "./pull-page.js";
 
 // Rows drawn past the view each way. Chrome 152, 2026-11-03, with a 700px nav pane:
@@ -73,16 +73,15 @@ export function mountFileTree(host) {
     role: "group",
     id,
   });
-  const line = h("p", { class: "github-pull-files-line" });
+  const spinner = h("span", { class: "mb-delayed-loading", "aria-hidden": "true" }, [
+    h("span", { class: "spinner spinner-sm" }),
+  ]);
+  const lineText = h("span");
+  const line = h("p", { class: "github-pull-files-line" }, [spinner, lineText]);
   const notice = h("div", { class: "github-pull-files-notice-host" });
-  const skeleton = h("div", {
-    class: "recent-loading github-pull-files-loading mb-delayed-loading",
-    role: "status",
-    "aria-label": "Listing changed files",
-  });
   const list = h("div", { class: "github-pull-files-rows" });
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
-  group.replaceChildren(line, notice, skeleton, list, live);
+  group.replaceChildren(line, notice, list, live);
 
   /** @type {HTMLAnchorElement | null} */
   let owner = null;
@@ -335,9 +334,9 @@ export function mountFileTree(host) {
       owner.classList.toggle("expanded", next.expanded);
       owner.classList.toggle("collapsed", !next.expanded);
     }
-    line.textContent = next.line ?? "";
-    line.hidden = next.line === null;
-    skeleton.hidden = !next.skeleton;
+    lineText.textContent = next.line ?? (next.loading ? LISTING_FILES : "");
+    line.hidden = next.line === null && !next.loading;
+    spinner.hidden = !next.loading;
     if (next.notice === null) {
       notice.replaceChildren();
     } else {
@@ -361,9 +360,7 @@ export function mountFileTree(host) {
         );
       }
       if (next.notice.action !== null) {
-        const press = h("button", { type: "button", class: "btn" }, [
-          next.notice.action === "retry" ? "Retry" : "List files",
-        ]);
+        const press = h("button", { type: "button", class: "btn" }, ["Retry"]);
         press.addEventListener("click", () => void controller.retry());
         box.append(press);
       }

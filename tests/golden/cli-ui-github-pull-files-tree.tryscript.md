@@ -161,7 +161,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "after.js"
       ]
     },
-    "only automatic row expansions close when the page moves": [
+    "only file-address expansions close when the page moves": [
       {
         "expand": [
           7
@@ -419,20 +419,9 @@ $ node tests/dom/github-pull-files-tree-session.js
       ]
     },
     {
-      "step": "Retry reads the cache; an address alone fetches nothing",
+      "step": "Retry reads the cache and automatically lists missing files",
       "requests": [
-        "GET /api/plugin/github/pull-files?number=106&offset=0"
-      ],
-      "held": 0,
-      "current": null,
-      "notice": "Its changed files have not been listed yet.",
-      "timers": [
-        60000
-      ]
-    },
-    {
-      "step": "a reader's expansion asks for an uncached list",
-      "requests": [
+        "GET /api/plugin/github/pull-files?number=106&offset=0",
         "POST /api/plugin/github/pull-files-refresh {\"number\":106,\"retry\":false}"
       ],
       "held": 0,

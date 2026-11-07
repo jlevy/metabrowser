@@ -117,7 +117,7 @@ async function run() {
   for (const mode of ["collapse", "panel", "document"]) {
     for (const order of ["old-first", "new-first"]) {
       const r = rig(createFileTreeController);
-      r.controller.expand({ reader: true });
+      r.controller.expand();
       const old = r.requests[0];
       r.hide(mode);
       assert.equal(old.signal.aborted, true, `${mode} cancels its GET`);
@@ -150,7 +150,7 @@ async function run() {
       reads += 1;
     }
     const abandonedReader = rig(createFileTreeController);
-    abandonedReader.controller.expand({ reader: true });
+    abandonedReader.controller.expand();
     const oldReader = abandonedReader.requests[0];
     abandonedReader.hide(mode);
     abandonedReader.reopen(mode);
@@ -167,9 +167,9 @@ async function run() {
     abandonedReader.respond(oldReader, envelope("old.txt"));
     await settle();
     assert.equal(
-      abandonedReader.requests.length,
-      2,
-      "a closed reader action cannot fetch into a later absent visit",
+      abandonedReader.requests.filter((request) => request.method === "POST").length,
+      1,
+      "only the reopened cache miss may ask for a list",
     );
     abandonedReader.controller.dispose();
     reads += 1;
