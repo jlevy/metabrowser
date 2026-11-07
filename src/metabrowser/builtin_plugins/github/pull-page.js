@@ -2053,6 +2053,271 @@ function outside(mb, href, base, children, className = "") {
   );
 }
 
+let stackMenuSerial = 0;
+
+/**
+ * The native stack's compact trigger and lazy, keyboard-navigable member menu.
+ * @param {import("./pull-stacks.js").NativeStack} initial
+ * @param {number} number
+ * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, onOpen(): void}} deps
+ */
+export function createStackMenu(initial, number, deps) {
+  let stack = initial;
+  let currentTitle = deps.currentTitle;
+  const position = stack.pulls.indexOf(number);
+  const count = h("span", { class: "github-pull-stack-position" }, [
+    `${position + 1}/${stack.pulls.length}`,
+  ]);
+  const menuId = `github-pull-stack-menu-${++stackMenuSerial}`;
+  const root = /** @type {HTMLDetailsElement} */ (
+    h("details", { class: "github-pull-stack-disclosure" })
+  );
+  const trigger = h(
+    "summary",
+    {
+      class: "btn github-pull-stack-trigger",
+      "aria-label": `Navigate Stack #${stack.number}, position ${position + 1} of ${stack.pulls.length}`,
+      "aria-haspopup": "menu",
+      "aria-controls": menuId,
+      "aria-expanded": "false",
+    },
+    [
+      deps.icon === null
+        ? null
+        : h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [deps.icon]),
+      count,
+    ],
+  );
+  const menu = h("div", {
+    class: "menu github-pull-stack-menu",
+    id: menuId,
+    role: "menu",
+    "aria-label": `Stack #${stack.number}`,
+  });
+  root.append(trigger);
+  const listening = new AbortController();
+  const signal = listening.signal;
+  /** @type {HTMLElement[]} */
+  const links = [];
+  /** @type {Map<number, {link: HTMLElement, title: HTMLElement, identity: HTMLElement}>} */
+  const rows = new Map();
+  const label = h("div", { class: "menu-section-label" }, [`Stack #${stack.number}`]);
+  let populated = false;
+
+  function updateTitles() {
+    for (let at = 0; at < stack.pulls.length; at += 1) {
+      const target = stack.pulls[at];
+      const row = rows.get(target);
+      if (row) {
+        row.title.textContent =
+          stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`);
+        row.identity.textContent = `${at + 1}/${stack.pulls.length} · #${target}`;
+      }
+    }
+  }
+
+  /** @param {boolean} [reorder] */
+  function populate(reorder = false) {
+    if (populated && !reorder) {
+      return;
+    }
+    const focused = document.activeElement;
+    const restore = focused instanceof HTMLElement && menu.contains(focused);
+    const scroll = menu.scrollTop;
+    const retained = new Set(stack.pulls);
+    for (const target of rows.keys()) {
+      if (!retained.has(target)) {
+        rows.delete(target);
+      }
+    }
+    links.length = 0;
+    for (let at = stack.pulls.length - 1; at >= 0; at -= 1) {
+      const target = stack.pulls[at];
+      let row = rows.get(target);
+      if (!row) {
+        const link = deps.link(target);
+        link.setAttribute("class", "menu-item github-pull-stack-member");
+        link.setAttribute("role", "menuitem");
+        link.setAttribute("tabindex", "-1");
+        if (target === number) {
+          link.setAttribute("aria-current", "page");
+        }
+        const title = h("span", { class: "github-pull-stack-member-title" });
+        const identity = h("span", { class: "github-pull-quiet" });
+        link.append(
+          h("span", { class: "github-pull-stack-current", "aria-hidden": "true" }, [
+            target === number ? "✓" : "",
+          ]),
+          h("span", { class: "github-pull-stack-member-copy" }, [title, identity]),
+        );
+        row = { link, title, identity };
+        rows.set(target, row);
+      }
+      links.push(row.link);
+    }
+    updateTitles();
+    menu.replaceChildren(label, ...links);
+    if (!populated) {
+      root.append(menu);
+      populated = true;
+    }
+    if (restore) {
+      const target = links.includes(focused)
+        ? focused
+        : links.find((link) => link.getAttribute("aria-current") === "page");
+      target?.focus({ preventScroll: true });
+    }
+    menu.scrollTop = scroll;
+  }
+
+  /** @param {boolean} [focus] */
+  function close(focus = false) {
+    root.open = false;
+    trigger.setAttribute("aria-expanded", "false");
+    if (focus && trigger.isConnected) {
+      trigger.focus({ preventScroll: true });
+    }
+  }
+
+  root.addEventListener(
+    "toggle",
+    () => {
+      trigger.setAttribute("aria-expanded", String(root.open));
+      if (root.open && !signal.aborted) {
+        populate();
+        deps.onOpen();
+      }
+    },
+    { signal },
+  );
+  root.addEventListener(
+    "keydown",
+    (event) => {
+      const key = event.key;
+      if (event.target === trigger && (key === "Enter" || key === " ")) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (root.open) {
+          close();
+        } else {
+          root.open = true;
+          trigger.setAttribute("aria-expanded", "true");
+          populate();
+          deps.onOpen();
+          links[0]?.focus({ preventScroll: true });
+        }
+        return;
+      }
+      if (key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        close(true);
+        return;
+      }
+      if (key === "Tab" && root.open) {
+        close(true);
+        return;
+      }
+      if (key === " " && links.includes(/** @type {HTMLElement} */ (document.activeElement))) {
+        event.preventDefault();
+        event.stopPropagation();
+        /** @type {HTMLElement} */ (document.activeElement).click();
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(key)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      root.open = true;
+      trigger.setAttribute("aria-expanded", "true");
+      populate();
+      deps.onOpen();
+      const at = links.indexOf(/** @type {HTMLElement} */ (document.activeElement));
+      const next =
+        key === "Home"
+          ? 0
+          : key === "End"
+            ? links.length - 1
+            : at < 0
+              ? key === "ArrowUp"
+                ? links.length - 1
+                : 0
+              : (at + (key === "ArrowUp" ? -1 : 1) + links.length) % links.length;
+      links[next]?.focus({ preventScroll: true });
+      links[next]?.scrollIntoView({ block: "nearest" });
+    },
+    { signal },
+  );
+  // Run before the member link navigates and can replace this page. Only move
+  // focus when it would otherwise remain inside the closed disclosure.
+  menu.addEventListener("click", () => close(menu.contains(document.activeElement)), {
+    capture: true,
+    signal,
+  });
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (root.open && event.target instanceof Node && !root.contains(event.target)) {
+        close();
+      }
+    },
+    { signal },
+  );
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (root.open && event.key === "Escape") {
+        event.preventDefault();
+        close(true);
+      }
+    },
+    { signal },
+  );
+  root.addEventListener(
+    "focusout",
+    (event) => {
+      if (event.relatedTarget instanceof Node && !root.contains(event.relatedTarget)) {
+        close();
+      }
+    },
+    { signal },
+  );
+  return Object.freeze({
+    element: root,
+    close,
+    /** A title or membership update keeps the menu open and retains surviving link focus.
+     * @param {import("./pull-stacks.js").NativeStack} next
+     * @param {string} title
+     */
+    update(next, title) {
+      if (next === stack && title === currentTitle) {
+        return;
+      }
+      const reordered =
+        stack.pulls.length !== next.pulls.length ||
+        stack.pulls.some((target, index) => target !== next.pulls[index]);
+      stack = next;
+      currentTitle = title;
+      const at = stack.pulls.indexOf(number) + 1;
+      count.textContent = `${at}/${stack.pulls.length}`;
+      trigger.setAttribute(
+        "aria-label",
+        `Navigate Stack #${stack.number}, position ${at} of ${stack.pulls.length}`,
+      );
+      if (populated && reordered) {
+        populate(true);
+      } else {
+        updateTitles();
+      }
+    },
+    dispose() {
+      listening.abort();
+      close();
+    },
+  });
+}
+
 /**
  * Mount the page into *container*. Browser only.
  *
@@ -2071,6 +2336,9 @@ export function mountPullPage(container, ctx, mb) {
   /** @type {import("./pull-stacks.js").StackIdentity | null} */
   let stackIdentity = null;
   let stackKey = "";
+  let preferredStack = 0;
+  /** @type {Map<number, ReturnType<typeof createStackMenu>>} */
+  const stackMenus = new Map();
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   // Follow the reading column at every width; Files changed keeps the full pane.
   const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Pull request" });
@@ -2455,9 +2723,13 @@ export function mountPullPage(container, ctx, mb) {
       text,
     ]);
 
-  /** The registry's disclosure chevron, parsed once: a constant, not the pull request's text. */
-  const chevronSvg = new DOMParser().parseFromString(mb.icons.toggle || "", "text/html").body
-    .firstElementChild;
+  /** Only shell-owned icon constants enter this parser, never pull-request content.
+   * @param {"toggle" | "layers"} name
+   */
+  const registryIcon = (name) =>
+    new DOMParser().parseFromString(mb.icons[name] || "", "text/html").body.firstElementChild;
+  const chevronSvg = registryIcon("toggle");
+  const stackSvg = registryIcon("layers");
   function chevron() {
     return chevronSvg === null
       ? null
@@ -2484,50 +2756,71 @@ export function mountPullPage(container, ctx, mb) {
   function paintStacks(model) {
     const memberships =
       model.pull === null ? [] : stackMembership(stackIndex, stackIdentity, number);
-    const key = JSON.stringify([stackIdentity, memberships, model.tab]);
-    if (key === stackKey) {
-      return;
+    const key = JSON.stringify([stackIdentity, model.tab]);
+    if (key !== stackKey) {
+      for (const menu of stackMenus.values()) {
+        menu.dispose();
+      }
+      stackMenus.clear();
+      stackKey = key;
     }
-    stackKey = key;
-    stackColumn.hidden = memberships.length === 0;
-    stackColumn.replaceChildren(
-      ...memberships.map((stack) => {
-        const position = stack.pulls.indexOf(number);
-        const member = (/** @type {number} */ target, /** @type {string} */ label) =>
-          pageLink(memberRoute(target, model.tab), "github-pull-stack-member", [label]);
-        const disclosure = /** @type {HTMLDetailsElement} */ (
-          h("details", { class: "github-pull-stack-disclosure" }, [
-            h("summary", {}, [`Stack #${stack.number}`]),
-          ])
-        );
-        let listed = false;
-        disclosure.addEventListener("toggle", () => {
-          if (listed || !disclosure.open || listening.signal.aborted) {
-            return;
+    const retained = new Set(memberships.map((stack) => stack.number));
+    for (const [id, menu] of stackMenus) {
+      if (!retained.has(id)) {
+        menu.dispose();
+        stackMenus.delete(id);
+      }
+    }
+    const nodes = memberships.map((stack) => {
+      let menu = stackMenus.get(stack.number);
+      if (menu) {
+        menu.update(stack, model.pull?.title ?? "");
+        return menu.element;
+      }
+      menu = createStackMenu(stack, number, {
+        link: (target) => pageLink(memberRoute(target, model.tab), "", []),
+        icon: stackSvg === null ? null : document.importNode(stackSvg, true),
+        currentTitle: model.pull?.title ?? "",
+        onOpen() {
+          preferredStack = stack.number;
+          for (const [other, view] of stackMenus) {
+            if (other !== stack.number) {
+              view.close();
+            }
           }
-          listed = true;
-          disclosure.append(
-            h(
-              "ol",
-              { class: "github-pull-stack-members" },
-              stack.pulls.map((target) => {
-                const link = member(target, `#${target}`);
-                if (target === number) {
-                  link.setAttribute("aria-current", "page");
-                }
-                return h("li", {}, [link]);
-              }),
-            ),
-          );
-        });
-        return h("nav", { class: "github-pull-stack", "aria-label": `Stack #${stack.number}` }, [
-          disclosure,
-          h("span", { class: "github-pull-quiet" }, [`${position + 1} of ${stack.pulls.length}`]),
-          position > 0 ? member(stack.pulls[position - 1], "Previous PR") : null,
-          position + 1 < stack.pulls.length ? member(stack.pulls[position + 1], "Next PR") : null,
-        ]);
-      }),
-    );
+        },
+      });
+      stackMenus.set(stack.number, menu);
+      return menu.element;
+    });
+    stackColumn.hidden = nodes.length === 0;
+    if (
+      nodes.length !== stackColumn.children.length ||
+      nodes.some((node, at) => node !== stackColumn.children[at])
+    ) {
+      const focused = document.activeElement;
+      const restore = focused instanceof HTMLElement && stackColumn.contains(focused);
+      stackColumn.replaceChildren(...nodes);
+      if (restore && focused.isConnected) {
+        focused.focus({ preventScroll: true });
+      }
+    }
+  }
+
+  /** The menu most recently used chooses a stack when a PR has several memberships. */
+  function currentStack() {
+    if (
+      !active ||
+      listening.signal.aborted ||
+      shown === null ||
+      shown.pull === null ||
+      document.visibilityState !== "visible" ||
+      !onPageRoute(window.location.pathname, number, controller.snapshot().tab)
+    ) {
+      return null;
+    }
+    const memberships = stackMembership(stackIndex, stackIdentity, number);
+    return memberships.find((stack) => stack.number === preferredStack) ?? memberships[0] ?? null;
   }
 
   /** @param {PullModel} model */
@@ -3514,6 +3807,10 @@ export function mountPullPage(container, ctx, mb) {
     controller.dispose();
     prefetch.dispose();
     stacks.dispose();
+    for (const menu of stackMenus.values()) {
+      menu.dispose();
+    }
+    stackMenus.clear();
     cancelCurrentFileBridge();
     unwatchCurrentFile?.();
     unwatchCurrentFile = null;
@@ -3524,6 +3821,23 @@ export function mountPullPage(container, ctx, mb) {
     ready,
     activate,
     cancelPending,
+    /** Whether the displayed PR has authoritative membership for stack navigation. */
+    hasStack: () => currentStack() !== null,
+    /** Move toward the base (-1) or top (+1), preserving the active PR tab.
+     * Endpoints consume the command without navigating to an unrelated row.
+     * @param {-1 | 1} delta
+     */
+    moveStack(delta) {
+      const stack = currentStack();
+      if (stack === null) {
+        return false;
+      }
+      const at = stack.pulls.indexOf(number) + delta;
+      if (at >= 0 && at < stack.pulls.length) {
+        void open(memberRoute(stack.pulls[at], controller.snapshot().tab));
+      }
+      return true;
+    },
     /**
      * Show a tab. A tab owns the address (Browser URL Grammar), so a call from beside the
      * page goes through the route, which moves the address and calls back here, and Back

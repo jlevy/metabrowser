@@ -18,8 +18,14 @@ const { pathToFileURL } = require("node:url");
     last_refresh: null,
     complete: true,
     stacks: [
-      { number: 286, base_ref: "main", open: true, pulls: [7, 8, 9] },
-      { number: 900, base_ref: "topic", open: true, pulls: [9, 10] },
+      {
+        number: 286,
+        base_ref: "main",
+        open: true,
+        pulls: [7, 8, 9],
+        titles: ["Base", "Middle", "Top"],
+      },
+      { number: 900, base_ref: "topic", open: true, pulls: [9, 10], titles: ["Top", "Next"] },
     ],
   };
   const index = createStackIndex(cached);

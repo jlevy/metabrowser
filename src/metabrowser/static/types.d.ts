@@ -530,6 +530,12 @@ type MetabrowserSourceLineAnchorState = Readonly<{
   message: string;
 }>;
 
+/** Navigation offered by the mounted GitHub PR page to its core tab host. */
+type MetabrowserPullStackNavigation = Readonly<{
+  hasStack(): boolean;
+  moveStack(delta: -1 | 1): boolean;
+}>;
+
 type MetabrowserPullRouteRuntime = Readonly<{
   createPullPageHost<
     Handle extends {
@@ -2871,6 +2877,7 @@ declare global {
   };
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
   type MetabrowserPublicPullRouteRuntime = MetabrowserPullRouteRuntime;
+  type MetabrowserPublicPullStackNavigation = MetabrowserPullStackNavigation;
   type MetabrowserPublicPullsPanelHandle = MetabrowserPullsPanelHandle;
   type MetabrowserPublicPreparedViewComposition = MetabrowserPreparedViewComposition;
   type MetabrowserPublicRenderContext = MetabrowserRenderContext;

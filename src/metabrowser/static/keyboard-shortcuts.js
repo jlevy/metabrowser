@@ -63,7 +63,7 @@
     alt: Object.freeze({ aria: "Alt", spoken: "Alt", visible: "Alt" }),
     control: Object.freeze({ aria: "Control", spoken: "Control", visible: "Ctrl" }),
     meta: Object.freeze({ aria: "Meta", spoken: "Command", visible: "⌘" }),
-    shift: Object.freeze({ aria: "Shift", spoken: "Shift", visible: "Shift" }),
+    shift: Object.freeze({ aria: "Shift", spoken: "Shift", visible: "⇧" }),
   });
 
   /** @type {Readonly<Record<string, Readonly<{aria: string, spoken: string, visible: string}>>>} */
@@ -104,6 +104,11 @@
       context: "Available while a pull-request row has focus.",
       label: "Pull requests",
       order: 25,
+    }),
+    "pull-stack": Object.freeze({
+      context: "Available while a pull request in a stack is open.",
+      label: "Pull request stack",
+      order: 27,
     }),
     "quick-file": Object.freeze({
       context: "Available while Quick Search is open.",

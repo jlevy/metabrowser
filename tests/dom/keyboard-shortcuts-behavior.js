@@ -141,6 +141,11 @@ equal("chord labels", chord.visible, [{ keys: ["Ctrl", "F"], separators: ["+"] }
 equal("chord spoken", chord.spoken, "Control plus F");
 equal("chord aria", chord.ariaKeyshortcuts, "Control+F");
 
+const stackChord = shortcuts.describeBindings([{ key: "j", modifiers: { shift: "require" } }]);
+equal("stack shift glyph", stackChord.visible, [{ keys: ["⇧", "J"], separators: ["+"] }]);
+equal("stack shift spoken", stackChord.spoken, "Shift plus J");
+equal("stack shift aria", stackChord.ariaKeyshortcuts, "Shift+J");
+
 // The tree's movement shape: an arrow with a letter alias. The arrow leads, so
 // a surface with room for one key names the arrow.
 const movement = shortcuts.describeBindings([{ key: "ArrowDown" }, { key: "j" }]);

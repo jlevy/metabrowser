@@ -37,6 +37,7 @@ from tests.github_pull_fixture import (
     install_fake_gh,
     scenario,
 )
+from tests.golden_harness import run_session
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -295,3 +296,13 @@ def test_a_rows_text_is_only_ever_text() -> None:
     style_lines = re.findall(r"^.*\.style\..*$", source, re.MULTILINE)
     assert [line.strip() for line in style_lines] == ["gap.style.height = `${part.height}px`;"]
     assert "cssText" not in source
+
+
+def test_stack_shortcuts_follow_active_pr_and_preserve_registry_guards() -> None:
+    """Public page capability owns stack direction; shared scopes retain native input."""
+
+    result = run_session("pulls-nav-session.js")["stack keys"]
+    assert result["directions"] == [-1, 1]
+    assert result["endpointConsumed"] is True
+    assert result["plainJRemainsRowNavigation"] is True
+    assert result["cleanup"] is True

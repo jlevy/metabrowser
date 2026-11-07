@@ -2,7 +2,7 @@
 // the panel and page; core PR data never waits for it and no row starts a request.
 
 /** @typedef {{source: string | null, reader: string | null}} StackIdentity */
-/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[]}} NativeStack */
+/** @typedef {{number: number, base_ref: string, open: boolean, pulls: number[], titles: (string | null)[]}} NativeStack */
 /** @typedef {{
  * state: "absent" | "current" | "stale", reason: string | null,
  * source: string | null, reader: string | null, fetched_at: string | null,
@@ -87,7 +87,12 @@ function isEnvelope(value) {
         stack.number <= 0 ||
         !Array.isArray(stack.pulls) ||
         stack.pulls.length === 0 ||
-        stack.pulls.length > 1000
+        stack.pulls.length > 1000 ||
+        !Array.isArray(stack.titles) ||
+        stack.titles.length !== stack.pulls.length ||
+        stack.titles.some(
+          (title) => title !== null && (typeof title !== "string" || title.length > 2048),
+        )
       ) {
         return false;
       }
