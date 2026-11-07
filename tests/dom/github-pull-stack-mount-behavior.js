@@ -20,6 +20,16 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   Element.prototype.contains = function (node) {
     return this === node || [...this.descendants()].includes(node);
   };
+  const captures = new WeakMap();
+  const listen = Element.prototype.addEventListener;
+  Element.prototype.addEventListener = function (name, listener, options) {
+    listen.call(this, name, listener);
+    if (options?.capture) {
+      const events = captures.get(this) ?? new Map();
+      events.set(name, listener);
+      captures.set(this, events);
+    }
+  };
   globalThis.document = {
     visibilityState: "visible",
     addEventListener(name, listener, options) {
@@ -217,12 +227,47 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
     tab: "files",
     reader: { fetchAfterMs: 0, initial: null },
   });
-  following.events.get("click")({ preventDefault() {} });
+  following.focus();
+  const captureClick = captures.get(members)?.get("click");
+  assert.equal(typeof captureClick, "function", "menu activation precedes link navigation");
+  const activate = (modifiers = {}) => {
+    const event = Object.assign(new MouseEvent(), {
+      button: 0,
+      defaultPrevented: false,
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+      ...modifiers,
+    });
+    captureClick(event);
+    assert.equal(document.activeElement, trigger, "focus leaves the hidden menu before navigation");
+    assert.equal(disclosure.open, false);
+    following.events.get("click")(event);
+    return event;
+  };
+  assert.equal(activate().defaultPrevented, true, "plain activation keeps local navigation");
   assert.deepEqual(opened.at(-1), {
     number: 8,
     tab: "files",
     reader: { fetchAfterMs: 0, initial: null },
   });
+  for (const modifiers of [{ metaKey: true }, { ctrlKey: true }, { button: 1 }]) {
+    disclosure.open = true;
+    following.focus();
+    const count = opened.length;
+    assert.equal(activate(modifiers).defaultPrevented, false, "native link behavior is preserved");
+    assert.equal(opened.length, count, "modified clicks do not open a local page");
+    assert.equal(following.getAttribute("href"), "/pull/8/files");
+  }
+  const outsideFocus = new Element("button");
+  document.activeElement = outsideFocus;
+  disclosure.open = true;
+  captureClick({});
+  assert.equal(
+    document.activeElement,
+    outsideFocus,
+    "pointer dismissal does not steal other focus",
+  );
   assert.equal(
     calls.filter(([, route]) => route === "/api/plugin/github/stacks").length,
     2,
@@ -369,6 +414,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
       cachedRefreshRetained: true,
       authoritativeStack: true,
       orderedNeighbors: true,
+      stackActivationFocus: true,
       tabPreserved: true,
       fileCleared: true,
       explicitReaderIntent: true,

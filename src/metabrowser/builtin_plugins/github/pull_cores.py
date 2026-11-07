@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 import time
 from contextlib import suppress
@@ -35,16 +34,19 @@ from metabrowser.builtin_plugins.github.pull_list import (
     rate_limit_holds,
     read_list_refresh,
 )
-from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
+from metabrowser.builtin_plugins.github.pull_record import (
+    PullRecord,
+    PullRefreshStamp,
+    read_pull_record,
+)
 from metabrowser.builtin_plugins.github.served_pull import PullCorePreview, make_core_preview
 from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.paths import (
     MAX_PULL_REQUEST_NUMBER,
     PULL_LIST_NAMES,
     PullListName,
-    source_pull_record,
 )
-from metabrowser.home import PrivateStorageError, open_private_file
+from metabrowser.home import PrivateStorageError
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S, RefreshCoordinator
 
 if TYPE_CHECKING:
@@ -58,7 +60,7 @@ _TOKEN = re.compile(r"[a-zA-Z0-9_-]{1,64}")
 _MAX_CORE_ATTEMPTS: Final = 256
 type CoreAttempt = tuple[str, str, str, str, int, CatalogMember]
 type Preparation = Literal[
-    "started", "joined", "ready", "released", "not_owner", "busy", "failed", "held"
+    "started", "joined", "ready", "released", "not_owner", "busy", "failed", "held", "partial"
 ]
 
 
@@ -207,20 +209,8 @@ def _record_missing(window: CoreWindow, number: int) -> bool:
 
 
 def _record_path_missing(home: Path, slug: str, number: int) -> bool:
-    """Admit only a missing private entry, without reading a record's contents."""
-    try:
-        fd = open_private_file(
-            home,
-            source_pull_record(slug, number),
-            os.O_RDONLY | os.O_NONBLOCK,
-            shared="refuse",
-        )
-    except FileNotFoundError:
-        return True
-    except (PrivateStorageError, OSError):
-        return False
-    os.close(fd)
-    return False
+    """Only a readable full record supplies coverage; invalid entries need a core."""
+    return not isinstance(read_pull_record(home, slug, number, shared="refuse"), PullRecord)
 
 
 def _eligible(window: CoreWindow) -> tuple[CatalogState | None, dict[int, CatalogMember]]:
@@ -386,6 +376,7 @@ async def _prepare(
         models = {
             number: pulls._graph_pull(repository[f"p{i}"], number)
             for i, number in enumerate(numbers)
+            if repository[f"p{i}"] is not None
         }
         _, still_missing = await asyncio.to_thread(window.availability)
         if not owns():
@@ -398,6 +389,10 @@ async def _prepare(
             if previous is not None:
                 _, entry = previous
                 ready[number] = entry
+                continue
+            if number not in models:
+                # A null member is an unavailable PR, not a malformed repository
+                # response. Keep siblings useful and retry this member after its lease.
                 continue
             model = models[number]
             if parse_stamp(model.updated_at) >= parse_stamp(admitted[number].updated_at):
@@ -427,7 +422,16 @@ async def _prepare(
             for number, attempt in attempts.items():
                 if number in published:
                     pulls_set.core_attempts.pop(attempt, None)
-            pulls_set.core_failure = None
+            from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
+
+            succeeded = PullRefreshStamp(
+                outcome="succeeded", at=utc_stamp(pulls.utc_now()), reader=catalog.reader
+            )
+            await run_lock_section(
+                partial(write_core_failure, publication.home, publication.slug, catalog, succeeded)
+            )
+            if owns():
+                pulls_set.core_failure = None
     except GhError as exc:
         if owns():
             from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
@@ -472,6 +476,17 @@ async def _prepare(
                 reader=catalog.reader if catalog is not None else None,
             )
             pulls_set.core_failure = window.failure
+            if catalog is not None:
+                with suppress(OSError, PrivateStorageError):
+                    await run_lock_section(
+                        partial(
+                            write_core_failure,
+                            publication.home,
+                            publication.slug,
+                            catalog,
+                            window.failure,
+                        )
+                    )
     finally:
         if owns() and not window.previews and window.failure is None:
             pulls_set.core_window = None
@@ -518,6 +533,11 @@ async def request_preparation(
             and catalog is not None
             and failure.reader in {None, catalog.reader}
             and failure.outcome != "succeeded"
+            and not (
+                persisted is not None
+                and persisted.outcome == "succeeded"
+                and parse_stamp(persisted.at) > parse_stamp(failure.at)
+            )
             and (
                 pulls_set.core_failure is None
                 or parse_stamp(failure.at) > parse_stamp(pulls_set.core_failure.at)
@@ -535,27 +555,13 @@ async def request_preparation(
         pulls_set.core_window = None
         current = None
     if current is not None and current.ask == ask:
+        # Another request may have admitted this exact window during disk checks.
         if coordinator.running(current.key):
             return "joined"
-        if current.previews:
-            generation, available = await asyncio.to_thread(current.availability)
-            if (
-                pulls_set.core_window is not current
-                or pulls_set.published is not current.publication
-                or (generation is not None and generation != ask.generation)
-            ):
-                return "not_owner"
-            current.previews = {
-                number: preview
-                for number in available
-                if not running(number) and (preview := current.prepared(number)) is not None
-            }
-            if current.previews:
-                # Coverage is checked above. A partial provider observation must
-                # never claim the whole batch is ready for a progressive caller.
-                return "not_owner"
+        # Durable coverage was checked above. A settled partial owner must not
+        # prevent uncovered members from trying again after their lease expires.
         pulls_set.core_window = None
-        return "not_owner"
+        return "partial"
     key = preparation_key(pulls_set.source)
 
     def busy() -> bool:
@@ -606,11 +612,20 @@ async def request_preparation(
                 and (entry := current.prepared(number)) is not None
             }
         remaining = {number: member for number, member in admitted.items() if number not in carried}
-        if not _attemptable(pulls_set, catalog, remaining, running):
-            return "not_owner"
+        uncovered = {number: member for number, member in remaining.items() if number not in ready}
+        if not _attemptable(pulls_set, catalog, uncovered, running):
+            return "partial"
         eligible = (catalog, remaining)
-    # With no ready owner, the single job also owns its cached eligibility lookup.
-    # It clears the temporary claim if no row can actually be attempted.
+    else:
+        catalog, admitted = await asyncio.to_thread(_eligible, window)
+        if pulls_set.core_window is not None or pulls_set.published is not publication or busy():
+            return "busy"
+        if catalog is None:
+            return "not_owner"
+        uncovered = {number: member for number, member in admitted.items() if number not in ready}
+        if not _attemptable(pulls_set, catalog, uncovered, running):
+            return "partial"
+        eligible = (catalog, admitted)
     pulls_set.core_window = window
     return coordinator.start(
         key, partial(_prepare, pulls_set, window, running, eligible, carried), network=False
