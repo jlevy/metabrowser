@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: in_progress
 priority: 1
-version: 87
+version: 88
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -82,12 +82,14 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-07T10:30:56.127Z
+updated_at: 2026-11-07T11:39:53.828Z
 started_at: 2026-11-07T05:39:51.585Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.
 
 ## Notes
+
+Current checkpoint, 2026-11-07: six follow-up PRs322–327 are published and linked above321 in native stack302 (28productlayers total). The first frozen9522 full make verify passed4907tests/9expectedskips and385goldens, audits/distribution/installedsmokes; all six layers published normally. Automated review then found real recovery defects; independently approved fixes0fd1feb5/da501f79/3097cb7b are now forward-merged through all layers into72200d198. Documentation-only successorb8c7e34a records the separate three-pair regressionguard: candidate67–78ms (median76), installed9522 75–194ms (median77), overlap/no new speedupclaim. All six targets were18thOpen with durablecore/no fullrecordbeforeclick;137focusedtests,15goldens,bothTSchecks pass. Originalexp055 six-pair improvement retains its historical1b17 sourcepin. Latestinstallation is underway before a fresh full gate/atomicpush/freshCI. All14newreviewthreads have dispositions being prepared; none merged/historyrewritten. Owneracceptance/release/quiet-host scopes remain open.
 
 Current checkpoint, 2026-11-07: frozen top is0248a32b; its product and test tree exactly matches measured1b17c680. Six forward-stacked follow-up layers above321 implement the seven current beads. The first pre-push gate stopped on public-reference wording in the experiment note; that documentation-only issue is corrected and public hygiene passes. The complete normal make verify gate is running again before atomic publication. All independent reviews and123 focused integrated tests pass. Real browser checks cover checkout and managed sources, shared15px sans message typography, neutral cards, tab/card/source gutters, native KPress padding, wide tables, narrow TOC, real stack titles, and Checks-preserving stack shortcuts. Six paired description observations improved from median1320.5ms to73ms; added metadata cost and diagnostic limits are recorded in exp055. A new managed process reused an unselected143.5-second-old core with zero gh calls. Existing22 remote PRs remain unchanged, green, correctly stacked, and without unresolved review threads. Final publication, CI, installation, and bead closure remain pending. No owner merge or history rewrite.
 
