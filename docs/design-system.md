@@ -2374,6 +2374,10 @@ Each data source decides which rows arrived.
 A live list fed by another provider can apply the same treatment when it inserts a new
 item.
 
+PR arrival classification uses a conservative timestamp cutoff.
+A machine clock ahead of GitHub can suppress the tint.
+The new catalog row still appears with its regular controls and selection behavior.
+
 ### Loading Chrome
 
 Transient loading chrome has a quiet period through the shared `.mb-delayed-loading`
