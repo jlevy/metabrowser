@@ -69,8 +69,8 @@ status: 200
         8
       ],
       "titles": [
-        "Change 7",
-        "Change 8"
+        null,
+        null
       ]
     },
     {
@@ -81,7 +81,7 @@ status: 200
         9
       ],
       "titles": [
-        "Change 9"
+        null
       ]
     }
   ]
@@ -125,8 +125,8 @@ status: 200
         8
       ],
       "titles": [
-        "Change 7",
-        "Change 8"
+        null,
+        null
       ]
     },
     {
@@ -137,7 +137,57 @@ status: 200
         9
       ],
       "titles": [
-        "Change 9"
+        null
+      ]
+    }
+  ]
+}
+--- stderr ---
+--- gh ---
+## Cached catalog titles enrich membership without a provider request.
+# metab https://github.com/octo/demo --api /api/plugin/github/stacks
+exit: 0
+--- stdout ---
+api: /api/plugin/github/stacks
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "reader": "gh:octo-reader",
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "fresh_for_s": 300.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "complete": true,
+  "stacks": [
+    {
+      "number": 70,
+      "base_ref": "main",
+      "open": true,
+      "pulls": [
+        7,
+        8
+      ],
+      "titles": [
+        "Work item 7",
+        "Work item 8"
+      ]
+    },
+    {
+      "number": 90,
+      "base_ref": "main",
+      "open": true,
+      "pulls": [
+        9
+      ],
+      "titles": [
+        null
       ]
     }
   ]
@@ -176,8 +226,8 @@ status: 200
           8
         ],
         "titles": [
-          "Change 7",
-          "Change 8"
+          "Work item 7",
+          "Work item 8"
         ]
       },
       {
@@ -188,7 +238,7 @@ status: 200
           9
         ],
         "titles": [
-          "Change 9"
+          null
         ]
       }
     ]
@@ -232,8 +282,8 @@ status: 202
           8
         ],
         "titles": [
-          "Change 7",
-          "Change 8"
+          "Work item 7",
+          "Work item 8"
         ]
       },
       {
@@ -244,7 +294,7 @@ status: 202
           9
         ],
         "titles": [
-          "Change 9"
+          null
         ]
       }
     ]
@@ -278,8 +328,8 @@ status: 200
         8
       ],
       "titles": [
-        "Change 7",
-        "Change 8"
+        "Work item 7",
+        "Work item 8"
       ]
     },
     {
@@ -290,7 +340,7 @@ status: 200
         9
       ],
       "titles": [
-        "Change 9"
+        null
       ]
     }
   ]
@@ -337,8 +387,8 @@ status: 202
           8
         ],
         "titles": [
-          "Change 7",
-          "Change 8"
+          "Work item 7",
+          "Work item 8"
         ]
       },
       {
@@ -349,7 +399,7 @@ status: 202
           9
         ],
         "titles": [
-          "Change 9"
+          null
         ]
       }
     ]
@@ -383,8 +433,8 @@ status: 200
         8
       ],
       "titles": [
-        "Change 7",
-        "Change 8"
+        "Work item 7",
+        "Work item 8"
       ]
     },
     {
@@ -395,7 +445,7 @@ status: 200
         9
       ],
       "titles": [
-        "Change 9"
+        null
       ]
     }
   ]
@@ -438,8 +488,8 @@ status: 200
           8
         ],
         "titles": [
-          "Change 7",
-          "Change 8"
+          "Work item 7",
+          "Work item 8"
         ]
       },
       {
@@ -450,7 +500,7 @@ status: 200
           9
         ],
         "titles": [
-          "Change 9"
+          null
         ]
       }
     ]
@@ -491,8 +541,8 @@ status: 200
         8
       ],
       "titles": [
-        "Change 7",
-        "Change 8"
+        "Work item 7",
+        "Work item 8"
       ]
     },
     {
@@ -503,7 +553,7 @@ status: 200
         9
       ],
       "titles": [
-        "Change 9"
+        null
       ]
     }
   ]

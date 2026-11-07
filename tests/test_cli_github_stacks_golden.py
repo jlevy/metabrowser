@@ -11,16 +11,20 @@ from typing import Any
 import pytest
 
 from metabrowser.builtin_plugins.github import pull_list
+from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.cache.urls import GitSource
+from tests.cache_home_fixture import FixtureSource
 from tests.github_pull_fixture import (
     CANONICAL,
     FETCHED_AT,
     Origin,
+    generated_item,
     install_fake_gh,
     logged_gh_calls,
     next_link,
     ok,
     scenario,
+    seed_catalog,
 )
 from tests.golden_harness import Labels, check_golden, isolate_cli, label_home, quoted, run_metab
 from tests.required_tools import needs_git
@@ -37,7 +41,7 @@ def _stack(number: int, pulls: list[int]) -> dict[str, Any]:
         "url": f"https://api.github.com/repos/octo/demo/stacks/{number}",
         "base": {"ref": "main"},
         "open": True,
-        "pull_requests": [{"number": n, "title": f"Change {n}"} for n in pulls],
+        "pull_requests": [{"number": n} for n in pulls],
     }
 
 
@@ -102,6 +106,12 @@ def test_golden_optional_stacks(
     fetched = run(body={})
     assert fetched["complete"] and [s["number"] for s in fetched["stacks"]] == [70, 90]
     assert run()["stacks"] == fetched["stacks"]
+    blocks.append("## Cached catalog titles enrich membership without a provider request.\n")
+    repository = ListedRepository(home, FixtureSource("https", CANONICAL).slug, "octo", "demo")
+    seed_catalog(repository, [generated_item(7), generated_item(8)])
+    fetched = run()
+    assert fetched["stacks"][0]["titles"] == ["Work item 7", "Work item 8"]
+    assert fetched["stacks"][1]["titles"] == [None]
     assert run(body={})["refresh"] == "not_due"
     blocks.append("## A due refresh asks conditionally; a 304 without Link retains page two.\n")
     now += timedelta(seconds=301)
