@@ -899,7 +899,8 @@ The current policy is
 In both repository modes, idle startup loads the view code and cached catalog, starts a
 due metadata refresh, and progressively prepares lightweight descriptions.
 A plain folder starts no GitHub work.
-The selected PR alone asks for full discussion, checks, files, or Git acquisition.
+Full discussion, checks, and Git acquisition remain selection-driven; changed-file
+metadata follows deliberate disclosure.
 
 The original Step 3 experiment measured the catalog warm-up on nine back-to-back pairs
 on pallets/click: first row 1.001x and the mirror’s own refresh 0.998x. Starting it with
