@@ -23,6 +23,14 @@ async function run() {
     refreshing = false,
     inventory = rows,
     resetAt = null,
+    delayedRefresh = false,
+    unownedUntil = 0,
+    failedCatalogReads = 0,
+    partialReceipts = 0,
+    failedPrepareReads = 0,
+    notGithub = false,
+    unavailableUntil = 0,
+    failedRefreshReads = 0,
   } = {}) {
     let now = 0,
       online = true,
@@ -34,6 +42,8 @@ async function run() {
       attempts = [],
       cached = new Set(),
       jobs = new Map();
+    let releaseRefresh = null;
+    const revoked = [];
     let currentFailure = failure;
     let catalogGeneration = raw.generation;
     let catalogReadyAt = cold ? Infinity : 0;
@@ -44,6 +54,10 @@ async function run() {
           const body = options.body;
           if (body.numbers.length === 0) {
             return { status: 200, body: { preparation: "released" } };
+          }
+          if (failedPrepareReads > 0) {
+            failedPrepareReads -= 1;
+            throw new Error("one transient preparation failure");
           }
           if (
             body.window.generation !== catalogGeneration ||
@@ -56,6 +70,17 @@ async function run() {
             )
           ) {
             return { status: 200, body: { preparation: "not_owner" } };
+          }
+          if (now < unownedUntil) {
+            revoked.push(now);
+            return { status: 200, body: { preparation: "not_owner" } };
+          }
+          if (partialReceipts > 0) {
+            partialReceipts -= 1;
+            return {
+              status: 200,
+              body: { preparation: "ready", ready_numbers: [], skipped_numbers: [] },
+            };
           }
           attempts.push({ at: now, numbers: body.numbers });
           if (now < busyUntil) {
@@ -77,12 +102,26 @@ async function run() {
               },
             };
           }
-          const missing = body.numbers.filter((number) => !cached.has(number));
+          const retryNumbers = body.numbers.filter(
+            (number) => number === rows[0].number && now < unavailableUntil,
+          );
+          const readyNumbers = body.numbers.filter((number) => !retryNumbers.includes(number));
+          const receipt = () =>
+            retryNumbers.length > 0
+              ? {
+                  preparation: "partial",
+                  ready_numbers: readyNumbers,
+                  skipped_numbers: [],
+                  retry_numbers: retryNumbers,
+                  retry_at: new Date(unavailableUntil).toISOString(),
+                }
+              : { preparation: "ready", ready_numbers: body.numbers, skipped_numbers: [] };
+          const missing = readyNumbers.filter((number) => !cached.has(number));
           const key = missing.join(",");
           if (missing.length === 0) {
             return {
               status: 200,
-              body: { preparation: "ready", ready_numbers: body.numbers, skipped_numbers: [] },
+              body: receipt(),
             };
           }
           if (!jobs.has(key)) {
@@ -92,15 +131,24 @@ async function run() {
           if (now < jobs.get(key)) {
             return { status: 202, body: { preparation: "joined" } };
           }
-          for (const number of body.numbers) {
+          for (const number of readyNumbers) {
             cached.add(number);
           }
           return {
             status: 200,
-            body: { preparation: "ready", ready_numbers: body.numbers, skipped_numbers: [] },
+            body: receipt(),
           };
         }
         if (route.endsWith("pulls-refresh")) {
+          if (failedRefreshReads > 0) {
+            failedRefreshReads -= 1;
+            throw new Error("one transient refresh failure");
+          }
+          if (delayedRefresh) {
+            await new Promise((resolve) => {
+              releaseRefresh = resolve;
+            });
+          }
           catalogReadyAt = now + 1000;
           return {
             status: 202,
@@ -118,6 +166,13 @@ async function run() {
           };
         }
         assert.equal(method, "GET", "warming never asks for Git, comparisons, files, or details");
+        if (notGithub) {
+          return {
+            status: 200,
+            etag: null,
+            body: { ...raw, state: "absent", reason: "not_github", rows: [], generation: null },
+          };
+        }
         if (now < catalogReadyAt) {
           return {
             status: 200,
@@ -138,6 +193,10 @@ async function run() {
           };
         }
         const q = new URL(route, "http://example").searchParams;
+        if (q.get("state") === "all" && failedCatalogReads > 0) {
+          failedCatalogReads -= 1;
+          throw new Error("one transient local read failure");
+        }
         const after = Number(q.get("after")) || Infinity;
         const limit = Number(q.get("limit"));
         const available = inventory.filter(
@@ -185,6 +244,25 @@ async function run() {
       attempts,
       cached,
       timers,
+      revoked,
+      releaseRefresh() {
+        assert.equal(typeof releaseRefresh, "function");
+        releaseRefresh();
+      },
+      deferVisible(until) {
+        unavailableUntil = until;
+        cached.delete(rows[0].number);
+        jobs.clear();
+        controller.prepareVisible([]);
+        controller.prepareVisible(rows.map((row) => row.number));
+      },
+      revise(replacement, dirty = []) {
+        inventory = replacement;
+        catalogGeneration = `${catalogGeneration.split(":")[0]}:42`;
+        for (const number of dirty) {
+          cached.delete(number);
+        }
+      },
       async start() {
         await controller.start({ shown, refreshAhead: true });
         await settle();
@@ -345,6 +423,112 @@ async function run() {
   );
   cold.controller.dispose();
 
+  const coldRace = rig({ cold: true, delayedRefresh: true });
+  await coldRace.start();
+  await coldRace.next();
+  await coldRace.next();
+  assert(coldRace.timers.size > 0, "absent catalog stays unfinished while refresh is in flight");
+  coldRace.releaseRefresh();
+  await settle();
+  await coldRace.until(() => coldRace.cached.size === rows.length);
+  await coldRace.until(() => coldRace.timers.size === 0);
+  coldRace.controller.dispose();
+
+  const coldRefreshFailure = rig({ cold: true, failedRefreshReads: 1 });
+  await coldRefreshFailure.start();
+  await coldRefreshFailure.until(() => coldRefreshFailure.cached.size === rows.length);
+  await coldRefreshFailure.until(() => coldRefreshFailure.timers.size === 0);
+  assert.equal(
+    coldRefreshFailure.requests.filter((request) => request.route.endsWith("pulls-refresh")).length,
+    2,
+    "a hidden retry recovers the failed initial refresh through normal freshness admission",
+  );
+  coldRefreshFailure.controller.dispose();
+
+  const closedRows = rows.map((row) => ({ ...row, state: "closed" }));
+  const revised = rig({ inventory: closedRows });
+  await revised.start();
+  await revised.until(() => revised.cached.size === 8);
+  const added = { ...closedRows[0], number: 200, title: "New pull" };
+  revised.revise([added, ...closedRows], [closedRows[0].number]);
+  await revised.until(() => revised.cached.size === rows.length + 1);
+  await revised.until(() => revised.timers.size === 0);
+  assert(revised.cached.has(added.number), "same-epoch leading additions are revisited");
+  assert(
+    revised.cached.has(closedRows[0].number),
+    "changed already-traversed rows are revalidated",
+  );
+  revised.controller.dispose();
+
+  for (const shown of [false, true]) {
+    const revoked = rig({ shown, unownedUntil: 65000 });
+    await revoked.start();
+    await revoked.until(() => revoked.cached.size === rows.length);
+    assert(revoked.revoked.length < 10, "unchanged not_owner demand backs off across both lanes");
+    assert(revoked.now() >= 65000);
+    assert(revoked.revoked.at(-1) - revoked.revoked.at(-2) >= 16000);
+    revoked.controller.dispose();
+  }
+
+  const partialCohort = rig({ unavailableUntil: 65000 });
+  await partialCohort.start();
+  await partialCohort.until(() => partialCohort.cached.size === rows.length - 1);
+  assert(partialCohort.now() < 65000, "one unavailable member never blocks later cohorts");
+  assert(!partialCohort.cached.has(rows[0].number));
+  await partialCohort.until(() =>
+    [...partialCohort.timers.values()].some((timer) => timer.at >= 65000),
+  );
+  await partialCohort.until(() => partialCohort.cached.size === rows.length);
+  await partialCohort.until(() => partialCohort.timers.size === 0);
+  assert(
+    partialCohort.batches.at(-1).length === 1,
+    "deferred retry asks only for the uncached member",
+  );
+  partialCohort.controller.dispose();
+
+  const laterVisible = rig();
+  await laterVisible.start();
+  await laterVisible.until(() => laterVisible.cached.size === rows.length);
+  await laterVisible.until(() => laterVisible.timers.size === 0);
+  laterVisible.controller.setShown(true);
+  await settle();
+  laterVisible.deferVisible(65000);
+  await settle();
+  assert.equal(laterVisible.cached.size, rows.length - 1);
+  await laterVisible.until(() => laterVisible.cached.size === rows.length);
+  assert(
+    laterVisible.now() >= 65000,
+    "partial visible demand survives a previously completed pass",
+  );
+  laterVisible.controller.setShown(false);
+  await laterVisible.until(() => laterVisible.timers.size === 0);
+  laterVisible.controller.dispose();
+
+  const transient = rig({ inventory: closedRows, failedCatalogReads: 1 });
+  await transient.start();
+  await transient.until(() => transient.cached.size === rows.length);
+  await transient.until(() => transient.timers.size === 0);
+  transient.controller.dispose();
+
+  const transientPrepare = rig({ failedPrepareReads: 1 });
+  await transientPrepare.start();
+  await transientPrepare.until(() => transientPrepare.cached.size === rows.length);
+  await transientPrepare.until(() => transientPrepare.timers.size === 0);
+  transientPrepare.controller.dispose();
+
+  const unavailable = rig({ notGithub: true });
+  await unavailable.start();
+  await unavailable.next();
+  assert.equal(unavailable.timers.size, 0, "an unrefreshable source never starts a retry loop");
+  assert.equal(unavailable.requests.length, 1);
+  unavailable.controller.dispose();
+
+  const partial = rig({ partialReceipts: 2 });
+  await partial.start();
+  await partial.until(() => partial.cached.size === rows.length);
+  await partial.until(() => partial.timers.size === 0);
+  partial.controller.dispose();
+
   const reconnect = rig();
   await reconnect.start();
   await reconnect.until(() => reconnect.cached.size === 8);
@@ -387,6 +571,9 @@ async function run() {
     allVisibleReadyMs: readyAt,
     recoveredAfterLongBusyMs: recoveredAt,
     cachedAfterColdStart: cold.cached.size,
+    recoveredRaceAndRevision: [coldRace.cached.size, revised.cached.size],
+    recoveredTransientAndPartial: [transient.cached.size, partial.cached.size],
+    cachedPastPartialCohort: partialCohort.cached.size,
     cachedAfterReconnect: reconnect.cached.size,
     completedBeforeDisconnect: completed,
     backgroundRequestsAfterCompletion: settledRequests,

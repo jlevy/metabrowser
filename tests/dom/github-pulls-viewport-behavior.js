@@ -463,9 +463,13 @@ async function paint() {
 
   refuseAdmission = "not_owner";
   await sampleAt(600);
-  assert.equal(retry(), undefined, "a refusal cannot re-arm the competing window");
+  const revokedRetry = retry();
+  assert.ok(revokedRetry, "revoked ownership schedules a cache read before new admission");
+  const afterRefusal = controls.length;
   refuseAdmission = "busy";
   await sampleAt(1000);
+  assert.equal(timers.has(revokedRetry[0]), false, "a new viewport retires the revoked demand");
+  assert.equal(controls.length, afterRefusal + 1, "only the replacement window asks for admission");
   assert.ok(retry());
   const oldRetry = retry();
   await sampleAt(1300);
