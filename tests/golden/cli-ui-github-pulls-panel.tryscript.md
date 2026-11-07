@@ -64,7 +64,7 @@ $ node tests/dom/github-pulls-panel-session.js
       "step": "opening starts the all-history catalog job",
       "requests": [
         "GET /api/plugin/github/pulls?state=all&limit=100 if-none-match \"pulls-1\"",
-        "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500,\"background\":true}"
+        "POST /api/plugin/github/pulls-refresh {\"state\":\"all\",\"target\":500}"
       ],
       "timer": "slow",
       "painted": 0,
@@ -800,6 +800,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "an age, before": "2h",
     "an age, two hours on": "4h",
     "rows built to tell it": 0,
+    "a passive retry keeps the announced outage beside its spinner": "GitHub could not be reached. Showing cached pull requests.",
     "closing twelve expanded trees enforces retention immediately": {
       "whileExpanded": 10,
       "afterClosingAll": 9
@@ -934,7 +935,10 @@ $ node tests/dom/github-pulls-catalog-behavior.js
   "offlineKeepsCache": true,
   "reconnectUsesBackgroundHint": true,
   "interactiveFilterKeepsPriority": true,
+  "directAndHistoryFiltersKeepPriority": true,
+  "hiddenWarmupYieldsToVisibleDemand": true,
   "transientRetriesAutomatically": true,
+  "retryKeepsPriorFailure": true,
   "localReadFailureDoesNotPost": true,
   "setupUsesQuietProbe": true,
   "focusCoalesces": true,
