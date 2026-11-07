@@ -30,6 +30,9 @@ let readyCore = false,
   holdAdmission = false,
   refuseAdmission = null,
   finishAdmission;
+const windowEvents = new Map();
+let catalogTop = 500;
+const created = new Map();
 const answer = (body, status = 200) => ({
   status,
   headers: { get: () => null },
@@ -131,7 +134,9 @@ Object.assign(globalThis, {
     importNode: (node) => new FakeElement(node.localName),
   },
   window: {
-    addEventListener() {},
+    addEventListener(name, callback) {
+      windowEvents.set(name, callback);
+    },
     setTimeout(fn, delay) {
       const id = ++serial;
       timers.set(id, { fn, delay });
@@ -203,9 +208,9 @@ Object.assign(globalThis, {
     }
     const q = url.searchParams,
       after = Number(q.get("after")),
-      start = after ? 501 - after : 0,
+      start = after ? catalogTop + 1 - after : 0,
       limit = Number(q.get("limit") ?? 100),
-      count = Math.min(limit, 500 - start);
+      count = Math.min(limit, catalogTop - start);
     return {
       status: 200,
       headers: { get: () => null },
@@ -220,27 +225,32 @@ Object.assign(globalThis, {
         fresh_for_s: 60,
         refreshing: false,
         last_refresh: null,
-        fetched: 500,
-        total: 500,
-        repository_total: 500,
-        catalog_fetched: 500,
-        generation: "one",
+        fetched: catalogTop,
+        total: catalogTop,
+        repository_total: catalogTop,
+        catalog_fetched: catalogTop,
+        generation: `epoch:${catalogTop}`,
         complete: true,
         truncated: false,
         limit,
-        next_after: start + count < 500 ? 501 - start - count : null,
-        rows: Array.from({ length: count }, (_, i) => ({
-          number: 500 - start - i,
-          title: `PR ${500 - start - i}`,
-          state: "open",
-          draft: false,
-          merged_at: null,
-          author: "reader",
-          updated_at: "2026-11-03T00:00:00Z",
-          base_ref: "main",
-          head_ref: "branch",
-          head_repository: "octo/demo",
-        })),
+        next_after: start + count < catalogTop ? catalogTop + 1 - start - count : null,
+        rows: Array.from({ length: count }, (_, i) => {
+          const number = catalogTop - start - i;
+          const edited = number === 500 && catalogTop > 500;
+          return {
+            number,
+            title: edited ? "Retitled PR 500" : `PR ${number}`,
+            state: "open",
+            draft: edited,
+            merged_at: null,
+            author: "reader",
+            created_at: created.get(number) ?? observedAt,
+            updated_at: edited ? "2026-11-03T00:01:00Z" : observedAt,
+            base_ref: "main",
+            head_ref: "branch",
+            head_repository: "octo/demo",
+          };
+        }),
       }),
     };
   },
@@ -339,16 +349,14 @@ async function paint() {
     (n) =>
       n.classList?.contains("github-pulls-spacer") && n.getBoundingClientRect().top < viewHeight,
   );
-  console.log(
-    JSON.stringify({
-      case: "viewport-height-increase",
-      before,
-      after,
-      observedRoot,
-      gapStartsAt: visibleGap?.getBoundingClientRect().top ?? null,
-      viewportHeight: viewHeight,
-    }),
-  );
+  const result = {
+    case: "viewport-height-increase",
+    before,
+    after,
+    observedRoot,
+    gapStartsAt: visibleGap?.getBoundingClientRect().top ?? null,
+    viewportHeight: viewHeight,
+  };
   assert(
     !visibleGap,
     "resizing the viewport must not leave an unmounted spacer inside the visible area",
@@ -461,6 +469,51 @@ async function paint() {
     { ...currentOwner, numbers: [] },
     "hide releases the old token",
   );
+  // A real arrival paints once at the top. A retained row is patched in place,
+  // and an offscreen arrival preserves the reader's position without flashing later.
+  handle.setShown(true);
+  await settle();
+  const scrollTo = async (top) => {
+    scroll.scrollTop = top;
+    scroll.listeners.get("scroll")();
+    await paint();
+  };
+  const rowFor = (number) =>
+    items().find((item) => item.dataset.number === String(number))?.firstElementChild;
+  const publish = async () => {
+    catalogTop += 1;
+    created.set(catalogTop, new Date(Date.now() + catalogTop).toISOString());
+    windowEvents.get("focus")();
+    await settle();
+    await paint();
+  };
+  await scrollTo(0);
+  const retained = rowFor(500);
+  retained.focus();
+  await publish();
+  assert.equal(scroll.scrollTop, 0, "a new leading PR stays visible when at the top");
+  assert.equal(rowFor(500), retained);
+  assert.equal(document.activeElement, retained);
+  assert.equal(retained.childNodes[2].textContent, "Retitled PR 500");
+  assert.equal(retained.childNodes[1].dataset.state, "draft");
+  const flash = "tree-item-flash-in";
+  assert.equal(retained.classList.contains(flash), false);
+  const arriving = rowFor(501);
+  assert.equal(arriving.classList.contains(flash), true, "uses Files' arrival flash");
+  arriving.listeners.get("animationend")({ animationName: "tree-row-flash-in" });
+  assert.equal(arriving.classList.contains(flash), false);
+  await scrollTo(10_000);
+  const reading = items().find((item) => item.getBoundingClientRect().bottom > 0);
+  const offset = reading.getBoundingClientRect().top;
+  await publish();
+  assert.equal(reading.getBoundingClientRect().top, offset, "the old reading place stays fixed");
+  assert.equal(rowFor(502), undefined, "offscreen arrivals do not mount work");
+  assert(items().length < 160, "the arrival keeps virtualized DOM bounded");
+  await scrollTo(0);
+  assert.equal(rowFor(502).classList.contains(flash), false, "scrolling back never replays it");
+  assert.equal(rowFor(501).classList.contains(flash), false);
+  assert.equal(document.activeElement, retained);
+  console.log(JSON.stringify({ ...result, oneVisibleFlash: true, retainedReadingPlace: true }));
   handle.dispose();
   assert.equal(frames.size, 0);
   assert.equal(timers.size, 0);

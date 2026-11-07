@@ -895,7 +895,7 @@ time.
 
 ```console
 $ node tests/dom/github-pulls-viewport-behavior.js
-{"case":"viewport-height-increase","before":43,"after":113,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000}
+{"case":"viewport-height-increase","before":43,"after":113,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000,"oneVisibleFlash":true,"retainedReadingPlace":true}
 ? 0
 ```
 
@@ -937,6 +937,7 @@ $ node tests/dom/github-pulls-catalog-behavior.js
   "interactiveFilterKeepsPriority": true,
   "directAndHistoryFiltersKeepPriority": true,
   "hiddenWarmupYieldsToVisibleDemand": true,
+  "acceptedTopArrivalsAreOneShot": true,
   "transientRetriesAutomatically": true,
   "retryKeepsPriorFailure": true,
   "localReadFailureDoesNotPost": true,

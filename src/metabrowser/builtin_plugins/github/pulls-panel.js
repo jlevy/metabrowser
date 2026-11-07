@@ -491,7 +491,7 @@ function pinChanged(response) {
  *   isVisible(): boolean,
  *   isOnline?(): boolean,
  *   formatTime(iso: string): string,
- *   render(model: PullsModel, identity: import("./pull-stacks.js").StackIdentity | null): void,
+ *   render(model: PullsModel, identity: import("./pull-stacks.js").StackIdentity | null, arrivals: number[]): void,
  *   markCurrent(previous: number | null, next: number | null): void,
  *   markAnchor(previous: number | null, next: number | null, focus: boolean): void,
  *   reveal(number: number): void,
@@ -512,6 +512,7 @@ function pinChanged(response) {
  *
  * @typedef {{
  *   envelope: PullsEnvelope | null,
+ *   lastTop: PullsEnvelope | null,
  *   rows: PullRow[],
  *   keys: Map<number, number>,
  *   version: number,
@@ -530,6 +531,7 @@ function pinChanged(response) {
 function emptyList() {
   return {
     envelope: null,
+    lastTop: null,
     rows: [],
     keys: new Map(),
     version: 0,
@@ -589,6 +591,8 @@ export function createPullsController(deps, options = {}) {
   let sent = 0;
   let shownRequest = 0;
   let requestEpoch = 0;
+  /** @type {{identity: string, floor: number, seen: Map<number, number>} | null} */
+  let arrivalBaseline = null;
   /** @type {AbortController | null} */
   let windowRead = null;
   /** @type {Set<AbortController>} */
@@ -796,7 +800,8 @@ export function createPullsController(deps, options = {}) {
 
   // Compared without its rows, which their version stands for: an unchanged list costs a
   // string of its envelope, and not of its thousand rows.
-  function render() {
+  /** @param {number[]} [arrivals] One paint only, never stored in a held list. */
+  function render(arrivals = []) {
     if (disposed) {
       return;
     }
@@ -805,9 +810,9 @@ export function createPullsController(deps, options = {}) {
     const identity =
       envelope === null ? null : { source: envelope.source, reader: envelope.reader };
     const key = JSON.stringify([{ ...next, rows: null }, identity, held().content]);
-    if (key !== painted) {
+    if (key !== painted || arrivals.length > 0) {
       painted = key;
-      deps.render(next, identity);
+      deps.render(next, identity, arrivals);
     }
   }
 
@@ -885,6 +890,9 @@ export function createPullsController(deps, options = {}) {
    */
   function holdEnvelope(list, envelope, request) {
     list.envelope = envelope;
+    if (envelope.last_refresh !== null && envelope.last_refresh.outcome !== "succeeded") {
+      arrivalBaseline = null;
+    }
     list.error = null;
     shownRequest = request;
     filterTotals = envelope.filter_totals ?? null;
@@ -1016,6 +1024,66 @@ export function createPullsController(deps, options = {}) {
   }
 
   /**
+   * Only an accepted top GET can identify arrivals. Its epoch stays stable across
+   * ordinary generation changes, while a replaced catalog starts a neutral baseline.
+   * @param {PullsEnvelope} top
+   * @param {Map<number, number> | null} previous
+   * @returns {number[]}
+   */
+  function arrivalsFromTop(top, previous) {
+    const epoch =
+      typeof top.generation === "string" ? /^(.*):\d+$/u.exec(top.generation)?.[1] : null;
+    const fetchedAt = Date.parse(top.fetched_at ?? "");
+    if (
+      !live() ||
+      !online() ||
+      !top.complete ||
+      top.list !== filter ||
+      !top.source ||
+      !top.reader ||
+      !epoch ||
+      !Number.isFinite(fetchedAt) ||
+      (top.last_refresh !== null && top.last_refresh.outcome !== "succeeded")
+    ) {
+      arrivalBaseline = null;
+      return [];
+    }
+    const identity = JSON.stringify([top.source, top.reader, epoch]);
+    if (arrivalBaseline?.identity !== identity) {
+      arrivalBaseline = top.refreshing
+        ? null
+        : { identity, floor: Math.max(fetchedAt, deps.now()), seen: new Map() };
+      return [];
+    }
+    const { floor, seen } = arrivalBaseline;
+    const arrivals = [];
+    if (previous !== null) {
+      for (const { number, created_at } of top.rows) {
+        const created = typeof created_at === "string" ? Date.parse(created_at) : Number.NaN;
+        if (!(created > floor) || previous.has(number) || seen.has(number)) {
+          continue;
+        }
+        if (seen.size >= DISPLAY_ROWS) {
+          // A burst that outruns the display budget starts another neutral baseline.
+          arrivalBaseline = null;
+          return [];
+        }
+        seen.set(number, created);
+        arrivals.push(number);
+      }
+    }
+    if (!top.refreshing && fetchedAt > floor) {
+      arrivalBaseline.floor = fetchedAt;
+      for (const [number, created] of seen) {
+        if (created <= fetchedAt) {
+          seen.delete(number);
+        }
+      }
+    }
+    return arrivals;
+  }
+
+  /**
    * Read the list's top window: the route's tag says whether anything changed, so a poll of
    * an unchanged list is a 304 however many rows are held. Catalog counts and older-page
    * progress keep the held prefix. A new generation stages that prefix in bounded pages.
@@ -1034,6 +1102,8 @@ export function createPullsController(deps, options = {}) {
     const epoch = requestEpoch;
     const controller = new AbortController();
     inflight = controller;
+    /** @type {number[]} */
+    let arrivals = [];
     try {
       const response = await deps.request(
         "GET",
@@ -1052,8 +1122,9 @@ export function createPullsController(deps, options = {}) {
       if (response.status === 200 && isEnvelope(response.body)) {
         if (request >= shownRequest) {
           const content = contentOf(response.body);
+          const previous = content === list.content ? null : list.keys;
           const coherent =
-            content === list.content ||
+            previous === null ||
             (await holdContent(list, response.body, content, {
               request,
               signal: controller.signal,
@@ -1065,6 +1136,8 @@ export function createPullsController(deps, options = {}) {
             !controller.signal.aborted
           ) {
             holdEnvelope(list, response.body, request);
+            list.lastTop = response.body;
+            arrivals = arrivalsFromTop(response.body, previous);
             list.etag = response.etag;
             recoverCachedCursor(list, response.body);
             if (
@@ -1079,13 +1152,21 @@ export function createPullsController(deps, options = {}) {
         }
       } else if (response.status === 304) {
         list.error = null;
-      } else if (!pinChanged(response)) {
-        list.error = `The list is unavailable (HTTP ${response.status}).`;
+        if (list.lastTop !== null) {
+          // The conditional response confirms the exact GET, even after a POST header.
+          arrivalsFromTop(list.lastTop, null);
+        }
+      } else {
+        arrivalBaseline = null;
+        if (!pinChanged(response)) {
+          list.error = `The list is unavailable (HTTP ${response.status}).`;
+        }
       }
     } catch {
       if (disposed || request < shownRequest || name !== filter || controller.signal.aborted) {
         return;
       }
+      arrivalBaseline = null;
       list.error = "The server did not answer.";
     } finally {
       // A change of filter already let this request go, and may have started another.
@@ -1098,7 +1179,7 @@ export function createPullsController(deps, options = {}) {
       return;
     }
     settleAnchor();
-    render();
+    render(arrivals);
     if (first && revealCurrent && current !== null && list.keys.has(current)) {
       deps.reveal(current);
     }
@@ -1515,6 +1596,7 @@ export function createPullsController(deps, options = {}) {
   }
 
   function cancelReads() {
+    arrivalBaseline = null;
     clearCoreWindow();
     requestEpoch += 1;
     inflight?.abort();
@@ -1737,10 +1819,12 @@ export function createPullsController(deps, options = {}) {
     },
     onFocus: wake,
     onOnline() {
+      arrivalBaseline = null;
       reconnectOnWake = true;
       wake();
     },
     onOffline() {
+      arrivalBaseline = null;
       reconnectOnWake = false;
       render();
       scheduleNext();
@@ -1910,6 +1994,10 @@ export function mountPullsPanel(container, ctx, mb) {
    *   row: HTMLAnchorElement,
    *   age: HTMLElement,
    *   stack: HTMLElement,
+   *   title: HTMLElement,
+   *   icon: HTMLElement,
+   *   meta: HTMLElement,
+   *   info: PullRow,
    *   key: string,
    *   at: number | null,
    *   label: string,
@@ -2127,6 +2215,71 @@ export function mountPullsPanel(container, ctx, mb) {
     }
   }
 
+  /** @param {PullRow} row */
+  function rowAge(row) {
+    const parsed = row.updatedAt === null ? Number.NaN : Date.parse(row.updatedAt) / 1000;
+    const at = Number.isFinite(parsed) ? parsed : null;
+    const when = at === null ? { label: "", className: "" } : mb.formatAge(at);
+    return { at, ...when };
+  }
+
+  /** @param {PullRow} row @param {HTMLElement} stack */
+  function rowMeta(row, stack) {
+    return h("span", { class: "github-pulls-meta" }, [
+      h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
+      " · ",
+      authorLabel(row.author, row.avatar, "github-pulls-author"),
+      " · ",
+      h("span", { class: "github-pulls-refs" }, [
+        mb.refChip(row.baseRef, { kind: "remote", copy: "sibling" }),
+        " ← ",
+        mb.refChip(row.headRef, { label: row.headLabel, kind: "remote", copy: "sibling" }),
+      ]),
+      stack,
+    ]);
+  }
+
+  /** Patch a mounted row without detaching its link, expanded files, or focus. */
+  /** @param {PaintedRow} entry @param {PullRow} row @param {string} key */
+  function patchRow(entry, row, key) {
+    const before = entry.info;
+    if (row.title !== before.title) {
+      entry.title.textContent = row.title;
+    }
+    if (row.state !== before.state) {
+      const icon = pullStateIcon(row.state);
+      entry.row.insertBefore(icon, entry.icon);
+      entry.icon.remove();
+      entry.icon = icon;
+    }
+    if (row.updatedAt !== before.updatedAt) {
+      const when = rowAge(row);
+      entry.at = when.at;
+      entry.label = when.label;
+      entry.age.textContent = when.label;
+      entry.age.className = `github-pulls-age ${when.className}`;
+      if (when.at === null) {
+        entry.age.removeAttribute("data-tip-text");
+      } else {
+        entry.age.dataset.tipText = mb.formatTimestamp(when.at);
+      }
+    }
+    if (
+      row.avatar !== before.avatar ||
+      row.meta !== before.meta ||
+      row.headRef !== before.headRef
+    ) {
+      entry.releaseCopies();
+      const meta = rowMeta(row, entry.stack);
+      entry.row.insertBefore(meta, entry.meta);
+      entry.meta.remove();
+      entry.meta = meta;
+      entry.releaseCopies = mb.mountRefCopies(entry.row, entry.item);
+    }
+    entry.info = row;
+    entry.key = key;
+  }
+
   /**
    * One row's elements. Its text is GitHub's users', so it is only ever text.
    *
@@ -2135,9 +2288,8 @@ export function mountPullsPanel(container, ctx, mb) {
    * @returns {PaintedRow}
    */
   function buildRow(row, key) {
-    const parsed = row.updatedAt === null ? Number.NaN : Date.parse(row.updatedAt) / 1000;
-    const at = Number.isFinite(parsed) ? parsed : null;
-    const when = at === null ? { label: "", className: "" } : mb.formatAge(at);
+    const when = rowAge(row);
+    const { at } = when;
     const title = h("span", { class: "github-pulls-title" }, [row.title]);
     const updated = h(
       "span",
@@ -2150,18 +2302,8 @@ export function mountPullsPanel(container, ctx, mb) {
     const stack = h("span", { class: "github-pulls-stack" }, [
       stackCaption(stackIndex, stackIdentity, row.number),
     ]);
-    const meta = h("span", { class: "github-pulls-meta" }, [
-      h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
-      " · ",
-      authorLabel(row.author, row.avatar, "github-pulls-author"),
-      " · ",
-      h("span", { class: "github-pulls-refs" }, [
-        mb.refChip(row.baseRef, { kind: "remote", copy: "sibling" }),
-        " ← ",
-        mb.refChip(row.headRef, { label: row.headLabel, kind: "remote", copy: "sibling" }),
-      ]),
-      stack,
-    ]);
+    const meta = rowMeta(row, stack);
+    const icon = pullStateIcon(row.state);
     // The registry's chevron in the 16px box a folder's takes, since the row is a container.
     const toggle = h("span", { class: "github-pulls-toggle", "aria-hidden": "true" }, [chevron()]);
     // A link, so a new tab and a copied address are the browser's, in the role of a tree's
@@ -2177,7 +2319,7 @@ export function mountPullsPanel(container, ctx, mb) {
           "aria-expanded": "false",
           tabindex: "-1",
         },
-        [toggle, pullStateIcon(row.state), title, updated, meta],
+        [toggle, icon, title, updated, meta],
       )
     );
     anchor.dataset.number = String(row.number);
@@ -2195,6 +2337,10 @@ export function mountPullsPanel(container, ctx, mb) {
       row: anchor,
       age: updated,
       stack,
+      title,
+      icon,
+      meta,
+      info: row,
       key,
       at,
       label: when.label,
@@ -2313,15 +2459,19 @@ export function mountPullsPanel(container, ctx, mb) {
     });
   }
 
-  function paintViewport() {
+  /** @param {number[]} [arrivals] */
+  function paintViewport(arrivals = []) {
     if (windowDisposed) {
       return;
     }
-    mb.perf.measure("githubPulls:window", paintWindow, { rows: paintedRows.length });
+    mb.perf.measure("githubPulls:window", () => paintWindow(arrivals), {
+      rows: paintedRows.length,
+    });
     queueCoreSample();
   }
 
-  function paintWindow() {
+  /** @param {number[]} arrivals */
+  function paintWindow(arrivals) {
     const view = tab.scrollRoot?.getBoundingClientRect();
     const listTop = view === undefined ? 0 : list.getBoundingClientRect().top;
     const focusBefore =
@@ -2371,16 +2521,13 @@ export function mountPullsPanel(container, ctx, mb) {
       const row = paintedRows[part.index];
       const key = JSON.stringify(row);
       let entry = painted.get(row.number);
-      if (entry === undefined || entry.key !== key) {
-        if (entry !== undefined) {
-          rowSizes?.unobserve(entry.item);
-          entry.releaseCopies();
-          entry.item.remove();
-        }
+      if (entry === undefined) {
         entry = buildRow(row, key);
         entry.item.dataset.number = String(row.number);
         painted.set(row.number, entry);
         rowSizes?.observe(entry.item);
+      } else if (entry.key !== key) {
+        patchRow(entry, row, key);
       }
       const caption = stackCaption(stackIndex, stackIdentity, row.number);
       if (entry.stack.textContent !== caption) {
@@ -2421,6 +2568,35 @@ export function mountPullsPanel(container, ctx, mb) {
           ? null
           : painted.get(focused)?.row;
       arriving?.focus({ preventScroll: true });
+    }
+    // An arrival only belongs to this paint. Overscan, protected offscreen rows,
+    // and later virtualized remounts never get an animation.
+    if (
+      arrivals.length > 0 &&
+      view !== undefined &&
+      panelShown &&
+      document.visibilityState === "visible"
+    ) {
+      const top = Math.max(view.top, filters.getBoundingClientRect().bottom);
+      for (const number of arrivals) {
+        const row = painted.get(number)?.row;
+        if (!row?.isConnected) {
+          continue;
+        }
+        const box = row.getBoundingClientRect();
+        if (box.bottom > box.top && box.bottom > top && box.top < view.bottom) {
+          row.classList.add("tree-item-flash-in");
+          row.addEventListener(
+            "animationend",
+            (event) => {
+              if (event.animationName === "tree-row-flash-in") {
+                row.classList.remove("tree-item-flash-in");
+              }
+            },
+            { once: true },
+          );
+        }
+      }
     }
     readingPlace = visiblePlace();
     for (const number of painted.keys()) {
@@ -2473,8 +2649,8 @@ export function mountPullsPanel(container, ctx, mb) {
     }
   }
 
-  /** @param {PullsModel} model */
-  function paint(model) {
+  /** @param {PullsModel} model @param {number[]} arrivals */
+  function paint(model, arrivals) {
     // A filter's rows are their own list: nothing is kept across a change of filter.
     if (list.dataset.filter !== model.filter) {
       atEnd?.takeRecords();
@@ -2495,6 +2671,9 @@ export function mountPullsPanel(container, ctx, mb) {
         chip.setAttribute("aria-checked", String(on));
         chip.tabIndex = on ? 0 : -1;
       }
+    }
+    if (arrivals.length > 0 && (tab.scrollRoot?.scrollTop ?? 0) <= 0) {
+      readingPlace = null;
     }
     if (model.rowsVersion !== paintedVersion) {
       paintedVersion = model.rowsVersion;
@@ -2600,7 +2779,7 @@ export function mountPullsPanel(container, ctx, mb) {
     if (live.textContent !== model.live) {
       live.textContent = model.live;
     }
-    paintViewport();
+    paintViewport(arrivals);
   }
 
   const listening = new AbortController();
@@ -2634,9 +2813,11 @@ export function mountPullsPanel(container, ctx, mb) {
       isVisible: () => document.visibilityState === "visible",
       isOnline: () => window.navigator?.onLine !== false,
       formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
-      render(model, identity) {
+      render(model, identity, arrivals) {
         stackIdentity = identity;
-        mb.perf.measure("githubPulls:render", () => paint(model), { rows: model.rows.length });
+        mb.perf.measure("githubPulls:render", () => paint(model, arrivals), {
+          rows: model.rows.length,
+        });
         if (windowDisposed) {
           return;
         }

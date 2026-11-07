@@ -545,6 +545,7 @@ def test_catalog_windows_and_late_request_ownership() -> None:
         "interactiveFilterKeepsPriority": True,
         "directAndHistoryFiltersKeepPriority": True,
         "hiddenWarmupYieldsToVisibleDemand": True,
+        "acceptedTopArrivalsAreOneShot": True,
         "transientRetriesAutomatically": True,
         "retryKeepsPriorFailure": True,
         "localReadFailureDoesNotPost": True,
@@ -576,6 +577,8 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
         "observedRoot": 1,
         "gapStartsAt": None,
         "viewportHeight": 3000,
+        "oneVisibleFlash": True,
+        "retainedReadingPlace": True,
     }
 
 

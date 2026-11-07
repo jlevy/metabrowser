@@ -28,6 +28,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   const requests = [];
   const waiting = [];
   const timers = new Map();
+  const flashes = [];
   let model;
   function envelope(route) {
     const params = new URL(route, "http://localhost").searchParams;
@@ -109,8 +110,11 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
       isVisible: () => state.visible,
       isOnline: () => state.online,
       formatTime: (at) => at,
-      render: (next) => {
+      render: (next, _identity, arrivals) => {
         model = next;
+        if (arrivals.length > 0) {
+          flashes.push(arrivals);
+        }
       },
       markCurrent() {},
       markAnchor() {},
@@ -132,6 +136,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
     requests,
     waiting,
     timers,
+    flashes,
     controller,
     envelope,
     model: () => model,
@@ -580,6 +585,71 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   ]);
   restored.dispose();
 
+  // Only coherent top GETs can announce newly created PRs in a continuously visible list.
+  const arrivals = rig(panel, { cached: 3, automatic: false });
+  const baseTime = arrivals.state.now;
+  const envelope = arrivals.envelope("?state=open");
+  const row = (number, when, title = `PR ${number}`) => ({
+    ...envelope.rows[0],
+    number,
+    title,
+    created_at: at(baseTime + when),
+  });
+  const old = row(8000, -60_000);
+  const reopened = row(7999, -70_000);
+  const newer = row(8001, 1_000);
+  const top = (generation, rows, changes = {}) => ({
+    ...envelope,
+    generation,
+    complete: true,
+    refreshing: false,
+    fetched: rows.length,
+    total: rows.length,
+    rows,
+    ...changes,
+  });
+  const receive = (body, status = 200) => arrivals.respond(0, { status, etag: '"top"', body });
+  const update = async (body) => {
+    arrivals.controller.onFocus();
+    await receive(body);
+  };
+  const starting = arrivals.controller.start({ shown: true });
+  await receive(top("epoch:1", [old]));
+  await starting;
+  assert.deepEqual(arrivals.flashes, [], "initial population is neutral");
+  void arrivals.controller.reload();
+  await receive({ pulls: top("epoch:2", [newer, old], { refreshing: true }) }, 202);
+  assert.deepEqual(arrivals.flashes, [], "a POST cannot create arrivals");
+  arrivals.state.now += 2_000;
+  await update(
+    top("epoch:2", [newer, { ...old, title: "Retitled" }, reopened], { refreshing: true }),
+  );
+  assert.deepEqual(arrivals.flashes, [[8001]], "only the newly created top row arrives");
+  await update(top("epoch:3", [old, reopened], { refreshing: true }));
+  await update(top("epoch:4", [newer, old, reopened], { refreshing: true }));
+  assert.deepEqual(arrivals.flashes, [[8001]], "a live arrival cannot flash again on reopening");
+
+  const settled = top("epoch:4", [newer, old, reopened]);
+  await update(settled);
+  arrivals.controller.setShown(false);
+  arrivals.state.now += 4_000;
+  arrivals.controller.setShown(true);
+  await receive(null, 304);
+  const hidden = row(8002, 4_000);
+  await update(top("epoch:5", [hidden, ...settled.rows]));
+  assert.deepEqual(arrivals.flashes, [[8001]], "a revalidated reopen excludes hidden arrivals");
+  const visible = row(8003, 7_000);
+  arrivals.state.now += 2_000;
+  await update(top("epoch:6", [visible, hidden, ...settled.rows]));
+  assert.deepEqual(arrivals.flashes, [[8001], [8003]], "the 304 can seed later visible arrivals");
+
+  arrivals.controller.onOffline();
+  arrivals.controller.onOnline();
+  await receive(top("epoch:7", [row(8004, 9_000), visible, hidden]));
+  await update(top("replacement:1", [row(8005, 10_000), visible, hidden]));
+  assert.deepEqual(arrivals.flashes, [[8001], [8003]], "reconnect and catalog reset are neutral");
+  arrivals.dispose();
+
   const watch = await watchRig("network_error");
   assert.equal(watch.model().connection.state, "paused");
   assert.equal(watch.model().rows.length, 500);
@@ -759,6 +829,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
         interactiveFilterKeepsPriority: true,
         directAndHistoryFiltersKeepPriority: true,
         hiddenWarmupYieldsToVisibleDemand: true,
+        acceptedTopArrivalsAreOneShot: true,
         transientRetriesAutomatically: true,
         retryKeepsPriorFailure: true,
         localReadFailureDoesNotPost: true,
