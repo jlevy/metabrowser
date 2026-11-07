@@ -6,46 +6,93 @@ env:
 ---
 # Golden Test: Going to a File of a Large Diff
 
-A large comparison’s files past its first page are bars until a reader reaches them.
-`scrollToFile(path)` is the diff view’s way to one, for a list of the comparison’s
-files: it takes a path, because a list from GitHub knows a path and not a file id, and
-it answers at once with what it did.
+A large comparison shows every available file path and loads the remaining patches on
+approach. `scrollToFile(path)` is the diff view’s way to one, for a list of the
+comparison’s files: it takes a path, because a list from GitHub knows a path and not a
+file id, and it answers at once with what it did.
 It puts the file at the top of the pane, asks for that file’s lines first, cancels
 whatever else was being asked for, and keeps the file there as anything else fills in.
 [Rendering Large Content](../../docs/large-content-rendering.md#going-to-a-file) holds
 the contract and `tests/dom/diff-file-jump-session.js` says how this session lays itself
 out.
 
-It also shows ordinary hydration: the file on screen nearest the top is asked for, one
-at a time, the file at the top of the pane stays where it is as others fill in, and a
-diff with files still to load says how many.
+The diff asks for one file at a time, from the top of the pane through a short lookahead
+below it. A jump takes that slot immediately after a quiet moment.
+The file at the top stays where it is as others fill in.
+Routine loading has no count notice.
+A failed request reports the failure.
 
-And it shows a first page of ready files, which the mount does not draw whole: rows for
-the files within the pane and one screen more, and every later ready file held as a bar
-that reserves its own rows, drawn one a frame from the answer in hand when it is reached
-or gone to, never asked for, and counted as loaded.
-A diff that fits is drawn whole at mount, as before, and so is one with nothing laid out
-to measure.
+The first batch draws rows for files in the pane and one screen below it.
+Later ready files reserve their rows.
+The view draws them one per frame as they come near or when a reader jumps to them,
+using the patch it already received.
+A diff that fits is drawn whole at mount, as is one with no layout to measure.
 
-The session asserts, and so prints nothing for, that no step of a held key has two
-requests in flight or a bar off the top, that a neighbour filling in does not move a
-jump’s file, that a wheel hands the place back to the reader, and that disposing cancels
-the request, lets go of its listeners, and answers `disposed`. For held files it asserts
-that none is drawn before it is reached, two are never drawn in one frame, the file at
-the top does not move as they fill in, a held key draws nothing it passed, and a view
-replaced while one waits for its frame draws nothing more and stops observing.
+The session checks that the inner pane owns the lookahead and a jump retains its
+spinner.
+A held key keeps one request in flight at most and pins the selected file at the
+top. A wheel hands the place back to the reader.
+Disposal cancels requests and releases listeners.
+Held patches draw one per frame, skip intermediate jumps, and leave the top file in
+place. A replaced view stops drawing and observing.
 
 ```console
 $ node tests/dom/diff-file-jump-session.js
 {
   "steps": [
     {
-      "step": "mounted: the first file's lines, no request past what is on screen",
+      "step": "the nested scroll pane prepares one file below the fold",
+      "atTop": "r1.py",
+      "asked": [
+        "d1.py (waiting)"
+      ],
+      "pixelsBelowFold": 110
+    },
+    {
+      "step": "a file jump takes the one request slot from lookahead",
+      "answer": {
+        "kind": "jumped",
+        "fileId": "d5",
+        "path": "d5.py",
+        "availability": "deferred"
+      },
+      "atTop": "d5.py",
+      "asked": [
+        "d1.py (cancelled)",
+        "d5.py (waiting)"
+      ]
+    },
+    {
+      "step": "a lookahead failure keeps the heading in place",
+      "atTop": "r1.py",
+      "asked": [
+        "d1.py",
+        "d2.py (waiting)"
+      ],
+      "failure": "Could not load changes for 1 file."
+    },
+    {
+      "step": "a lookahead failure keeps the current file in place",
+      "atTop": "r1.py",
+      "asked": [
+        "d1.py",
+        "d2.py (waiting)"
+      ],
+      "failure": "Could not load changes for 1 file."
+    },
+    {
+      "step": "a growing patch removes a distant file before the next request",
+      "atTop": "first.py",
+      "asked": [
+        "src/a.py"
+      ]
+    },
+    {
+      "step": "mounted: the first file's lines, with the nearest deferred file requested",
       "atTop": "first.py",
       "asked": [
         "src/a.py (waiting)"
-      ],
-      "partial": "2 of 10 files loaded; the rest load as you reach them"
+      ]
     },
     {
       "step": "fileForPath: a rename's new path, its old path, a deleted file's, and one it lacks",
@@ -89,7 +136,6 @@ $ node tests/dom/diff-file-jump-session.js
       "asked": [
         "src/a.py (waiting)"
       ],
-      "partial": "2 of 10 files loaded; the rest load as you reach them",
       "moved": false
     },
     {
@@ -101,7 +147,7 @@ $ node tests/dom/diff-file-jump-session.js
       },
       "atTop": "first.py",
       "asked": [],
-      "partial": "2 of 10 files loaded; the rest load as you reach them"
+      "warning": "The change list was truncated at its bounds."
     },
     {
       "step": "a jump after a quiet moment: at the top at once, and asked for at once",
@@ -116,7 +162,6 @@ $ node tests/dom/diff-file-jump-session.js
         "src/a.py (cancelled)",
         "src/h.py (waiting)"
       ],
-      "partial": "2 of 10 files loaded; the rest load as you reach them",
       "targetTop": 0
     },
     {
@@ -126,7 +171,6 @@ $ node tests/dom/diff-file-jump-session.js
         "src/a.py (cancelled)",
         "src/h.py"
       ],
-      "partial": "3 of 10 files loaded; the rest load as you reach them",
       "lines": "painted",
       "targetTop": 0,
       "lineRows": 3
@@ -139,7 +183,6 @@ $ node tests/dom/diff-file-jump-session.js
         "src/h.py",
         "src/i.py (waiting)"
       ],
-      "partial": "3 of 10 files loaded; the rest load as you reach them",
       "targetTop": 0
     },
     {
@@ -148,10 +191,8 @@ $ node tests/dom/diff-file-jump-session.js
       "asked": [
         "src/a.py (cancelled)",
         "src/h.py",
-        "src/i.py",
-        "src/last.py (cancelled)"
+        "src/i.py"
       ],
-      "partial": "4 of 10 files loaded; the rest load as you reach them",
       "targetTop": 0
     },
     {
@@ -167,7 +208,6 @@ $ node tests/dom/diff-file-jump-session.js
         "src/a.py (cancelled)",
         "src/last.py (waiting)"
       ],
-      "partial": "2 of 10 files loaded; the rest load as you reach them",
       "targetTop": 0,
       "roomPastTheEnd": "190px"
     },
@@ -178,7 +218,6 @@ $ node tests/dom/diff-file-jump-session.js
         "src/a.py (cancelled)",
         "src/last.py"
       ],
-      "partial": "3 of 10 files loaded; the rest load as you reach them",
       "targetTop": 0,
       "roomPastTheEnd": "330px"
     },
@@ -188,7 +227,6 @@ $ node tests/dom/diff-file-jump-session.js
       "asked": [
         "src/a.py (cancelled)"
       ],
-      "partial": "2 of 10 files loaded; the rest load as you reach them",
       "outcomes": [
         "superseded",
         "superseded",
@@ -204,8 +242,7 @@ $ node tests/dom/diff-file-jump-session.js
       "asked": [
         "src/a.py (cancelled)",
         "src/i.py (waiting)"
-      ],
-      "partial": "2 of 10 files loaded; the rest load as you reach them"
+      ]
     },
     {
       "step": "a file the server refuses: an answer, and it says so where the lines would be",
@@ -214,7 +251,7 @@ $ node tests/dom/diff-file-jump-session.js
         "src/a.py (cancelled)",
         "src/f.py"
       ],
-      "partial": "2 of 10 files loaded; 1 could not be loaded; the rest load as you reach them",
+      "failure": "Could not load changes for 1 file.",
       "lines": "failed",
       "body": "Could not load this file's changes."
     },
@@ -231,7 +268,7 @@ $ node tests/dom/diff-file-jump-session.js
         "src/a.py (cancelled)",
         "src/f.py"
       ],
-      "partial": "2 of 10 files loaded; 1 could not be loaded; the rest load as you reach them",
+      "failure": "Could not load changes for 1 file.",
       "lines": "none"
     },
     {
@@ -247,8 +284,12 @@ $ node tests/dom/diff-file-jump-session.js
         "src/a.py (cancelled)",
         "src/f.py"
       ],
-      "partial": "2 of 10 files loaded; 1 could not be loaded; the rest load as you reach them",
+      "failure": "Could not load changes for 1 file.",
       "lines": "painted"
+    },
+    {
+      "step": "a scroll batch drops departed files before choosing the first current candidate",
+      "scheduler": []
     },
     {
       "step": "an abandoned request's late rejection is not its file's answer",
@@ -263,7 +304,7 @@ $ node tests/dom/diff-file-jump-session.js
         "src/a.py (cancelled)",
         "src/h.py"
       ],
-      "partial": "2 of 10 files loaded; 1 could not be loaded; the rest load as you reach them",
+      "failure": "Could not load changes for 1 file.",
       "lines": "failed",
       "body": "Could not load this file's changes."
     },
@@ -272,37 +313,29 @@ $ node tests/dom/diff-file-jump-session.js
       "atTop": "src/f.py",
       "asked": [
         "src/a.py (cancelled)",
-        "src/moved.py (cancelled)",
         "src/f.py (waiting)"
-      ],
-      "partial": "2 of 10 files loaded; the rest load as you reach them"
+      ]
     },
     {
       "step": "as they fill in, the file at the top stays",
       "atTop": "src/f.py",
       "asked": [
         "src/a.py (cancelled)",
-        "src/moved.py (cancelled)",
-        "src/f.py",
-        "src/g.py (cancelled)"
+        "src/f.py"
       ],
-      "partial": "3 of 10 files loaded; the rest load as you reach them",
       "top": 0
     },
     {
       "step": "a first file that is too large does not strand the next visible file",
       "atTop": "first.py",
       "asked": [
-        "src/a.py",
-        "src/moved.py (waiting)"
-      ],
-      "partial": "3 of 10 files loaded; the rest load as you reach them"
+        "src/a.py"
+      ]
     },
     {
       "step": "a first page of ready files: rows for the first screen and one more, the rest held",
       "atTop": "r1.py",
       "asked": [],
-      "partial": "12 of 14 files loaded; the rest load as you reach them",
       "drawn": [
         "r1.py",
         "r2.py",
@@ -339,16 +372,13 @@ $ node tests/dom/diff-file-jump-session.js
       "step": "the reader scrolls to them: one a frame, topmost first, nothing asked for",
       "atTop": "r6.py",
       "asked": [],
-      "partial": "12 of 14 files loaded; the rest load as you reach them",
       "drawnPerFrame": [
         [
           "r6.py"
         ],
+        [],
         [
           "r7.py"
-        ],
-        [
-          "r8.py"
         ],
         []
       ],
@@ -365,7 +395,6 @@ $ node tests/dom/diff-file-jump-session.js
       },
       "atTop": "r11.py",
       "asked": [],
-      "partial": "12 of 14 files loaded; the rest load as you reach them",
       "targetTop": 0,
       "rowsInTheBarsFrame": 0,
       "lines": "painted",
@@ -375,7 +404,6 @@ $ node tests/dom/diff-file-jump-session.js
       "step": "held and deferred reservations collapse and return on reopen",
       "atTop": "r1.py",
       "asked": [],
-      "partial": "12 of 14 files loaded; the rest load as you reach them",
       "heights": [
         {
           "file": "r5.py",
@@ -395,7 +423,6 @@ $ node tests/dom/diff-file-jump-session.js
       "step": "a layout choice updates held and deferred reservations before their rows are drawn",
       "atTop": "r1.py",
       "asked": [],
-      "partial": "12 of 14 files loaded; the rest load as you reach them",
       "split": [
         180,
         180
@@ -409,7 +436,6 @@ $ node tests/dom/diff-file-jump-session.js
       "step": "a width-triggered layout change updates held and deferred reservations too",
       "atTop": "r1.py",
       "asked": [],
-      "partial": "12 of 14 files loaded; the rest load as you reach them",
       "split": [
         180,
         180
@@ -431,7 +457,6 @@ $ node tests/dom/diff-file-jump-session.js
       "step": "a key held over held files: nothing drawn it passed, then the file it rests on",
       "atTop": "r9.py",
       "asked": [],
-      "partial": null,
       "outcomes": [
         "superseded",
         "superseded",
@@ -448,10 +473,9 @@ $ node tests/dom/diff-file-jump-session.js
       ]
     },
     {
-      "step": "held files are loaded: the count is of the files still to come",
+      "step": "mixed ready and deferred files have no routine loading notice",
       "atTop": "r1.py",
       "asked": [],
-      "partial": "6 of 9 files loaded; the rest load as you reach them",
       "drawn": [
         "r1.py",
         "r2.py",
@@ -463,7 +487,6 @@ $ node tests/dom/diff-file-jump-session.js
       "step": "a diff that fits is drawn whole at mount, as before",
       "atTop": "r1.py",
       "asked": [],
-      "partial": null,
       "drawn": [
         "r1.py",
         "r2.py",
@@ -476,7 +499,6 @@ $ node tests/dom/diff-file-jump-session.js
       "step": "nothing laid out to measure: every ready file is drawn at mount, as before",
       "atTop": null,
       "asked": [],
-      "partial": null,
       "drawn": 12
     }
   ],

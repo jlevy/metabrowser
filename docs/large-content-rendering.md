@@ -260,20 +260,26 @@ manifest in the GitHub plugin’s bounded bank beside its repository store.
 A fresh server adopts a validated matching entry after resolving its commits, then uses
 the same in-memory comparison cache for the page and deferred files.
 Its first answer hydrates eight ready files, enough for the visible viewport measured on
-the large public PR cases; later files load on approach.
-The generic comparison route hydrates up to fifty, and its retained body and entity tag
-include that policy so the two answers cannot be confused.
+the large public PR cases.
+The generic comparison route hydrates up to fifty and includes that policy in the
+retained body and entity tag.
+Both answers include the available file paths.
+These patch budgets keep the first response small.
 Missing, stale, or corrupt entries are recomputed and healed; a cache admission bound
 never truncates the answer served.
 [Pull-request records](project/architecture/arch-repository-sources-and-provider-mirrors.md#pull-request-records)
 holds the storage and identity contract.
 
-**A large comparison hydrates what the reader is on.** A file past a comparison’s first
-page is a bar until it is reached.
-`createHydrationScheduler` in `builtin_plugins/diff/diff-view.js` asks for one file at a
-time and renders at most one per frame, the file on screen nearest the top first, so a
-viewport of bars is not a fan-out and input never waits behind rendering it caused.
-A request for a file that left the viewport is cancelled.
+**A large comparison prepares nearby files.** Each file has a bar as soon as its
+comparison opens. `createHydrationScheduler` in `builtin_plugins/diff/diff-view.js` asks
+for one file at a time and renders at most one per frame.
+It works from the top of the viewport through a short lookahead below it, so it can
+start loading a file before it scrolls into view.
+After a patch draws, passive loading waits a frame for the pane’s layout to update.
+A file jump takes priority.
+Scrolling cancels a request that leaves the lookahead or gives its slot to an earlier
+file that enters. The diff uses the delayed spinner in the file being fetched.
+It shows a notice for an actual failure or truncated result.
 While it waits, a file reserves an estimate of its height from the manifest’s line
 counts, which keeps a page’s scroll height and a reader’s place close to the truth, and
 the first file at the top of the pane stays where it is as files above or inside it fill
@@ -287,19 +293,17 @@ nodes, and drawing them in the mount was one task of style, layout and commit of
 top from the rows it will draw, and draws rows only for the ready files whose top is
 within the pane and one screen more (`firstScreenBudget`). Every later ready file is a
 bar that reserves its own rows, counted from its patch by `patchRows`, and goes through
-the scheduler above with its answer in hand: it is drawn when it is reached or gone to,
-one file a frame, nearest the top first, and nothing is asked for.
-It counts as loaded in “N of M files loaded”, and what it draws is what the mount would
-have drawn. A diff that fits is drawn whole, as before, and so is one mounted where
-nothing is laid out to measure.
+the scheduler with its patch in hand.
+The view draws it on approach or on a jump, one file per frame, nearest the top first.
+What it draws is what the mount would have drawn.
+A diff that fits is drawn whole, as is one mounted where nothing is laid out to measure.
 Measured 2026-11-03 in Chrome 152 on astral-sh/ruff #29817, in adjacent pairs with the
 build before at load 9 to 15: 23,451 nodes against 114,609, a longest task of 136 to 330
 ms against 653 to 1,182, and the first line 1.4x to 2.0x sooner; every drawn file’s
 markup was byte-identical to the build before, and the file at the top did not move.
 
-**Find in page searches what is drawn.** A file’s lines are not in the page until the
-file is reached, so the browser’s find does not see a line in a file nobody has scrolled
-to, whether the file came with the first page or after it.
+**Find in page searches what is drawn.** A file’s lines become findable when the diff
+draws the file, as it comes near the viewport or when a reader jumps to it.
 GitHub’s Files changed has the same limit, since it loads files as they are scrolled to.
 Every file’s bar is always in the page, so find in page does find a file by its path:
 going to that bar brings the file into the pane, and its lines are drawn as it arrives.

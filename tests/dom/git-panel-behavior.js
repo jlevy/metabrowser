@@ -2182,8 +2182,10 @@ async function run() {
     const history = internals.stateForTests().pageCache;
     hydration.add("old-active", 0);
     hydration.add("old-queued", 1);
-    hydration.setVisible("old-active", true);
-    hydration.setVisible("old-queued", true);
+    hydration.setNearby([
+      ["old-active", true],
+      ["old-queued", true],
+    ]);
     assertEqual("cross-owner: one active hydration and one queued", requests.length, 1);
     sandbox.MetabrowserShell.claimPreview("pull-request");
     assertEqual("cross-owner: Pulls claim cancels mounted Git work", cancelCalls, 1);
