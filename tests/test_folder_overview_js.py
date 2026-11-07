@@ -44,87 +44,42 @@ def _overview_rules() -> str:
 def test_folder_overview_preserves_the_responsive_markdown_card() -> None:
     css = _overview_rules()
 
-    assert ".folder-overview-panel-heading" in css
     assert "var(--doc-measure)" in css
-    assert "@container kpress-doc (max-width: 47.99rem)" in css
-    assert "@container kpress-doc (min-width: 75rem)" in css
-    assert "--folder-overview-narrow-document-gutter: 0.5rem" in css
-    assert "--folder-overview-regular-card-width" in css
-    assert "calc(100% - 4rem)" in css
-    # The card is the column box: the measure plus KPress's inset on each side,
-    # so the text inside lands at the measure. Pinned as the derivation, not as
-    # a literal offset — `measure - 2rem` was right only while KPress capped the
-    # column at the measure itself, and silently lost an inset-pair when 0.3.4
-    # made the cap measure + inset.
-    assert "calc(var(--doc-measure) + 2 * var(--folder-overview-regular-inset))" in css
-    assert "width: var(--folder-overview-regular-card-width);" in css
-    assert "--folder-overview-wide-card-width" in css
+    assert "calc(var(--doc-measure) + 2 * var(--folder-overview-column-inset))" in css
+    assert "@container kpress-doc (min-width: 48rem)" in css
+    assert "--folder-overview-column-inset: calc(var(--content-padding-x) - 1px)" in css
     assert ".kpress-long-text" not in css
     assert "border: none" not in css
     assert "box-shadow: none" not in css
 
 
 def test_the_readme_card_fills_the_same_column_as_every_other_panel() -> None:
-    """The README's visible card is main content, not a card floating in one.
-
-    Two things had to line up. The document body was the one body no width rule
-    named, so it ran the full width of the pane. And KPress's article frame
-    reserves 2rem per side for a floating table-of-contents control that the
-    Overview turns off.
-
-    A third was fixed the wrong way round and is now corrected. The wide column
-    was the prose measure plus an inset per side, which left the card sitting
-    inside the column the other panels filled; sizing it to the measure alone
-    aligned the card and narrowed the text, because KPress goes on padding the
-    prose by 2.5rem for a track it is no longer in. The column is that track —
-    measure plus insets — and every panel shares its edge, so the card lines up
-    *and* the text reads at the measure. See
-    ``test_one_document_surface_has_one_set_of_breakpoints``.
-
-    What is deliberately *not* here: any rule touching the padding between the
-    card's border and its text. That padding is KPress's, it varies with width,
-    and recomputing it here is what once flattened the text against the box.
-    """
+    """Every panel shares the README card edge and the normal pane text gutter."""
 
     css = _overview_rules()
-    # Every rule that sizes a surface body must also name the document body, or
-    # the README drifts out of the column at that breakpoint alone.
-    sized = 0
-    for block in css.split("}"):
-        if ".folder-overview-panel-surface > .folder-overview-panel-body" in block:
-            assert ".folder-overview-panel-document > .folder-overview-panel-body" in block, block
-            sized += 1
-    # Base, narrow container, and wide container.
-    assert sized == 3
-
-    # The wide column is KPress's content track: the card fills it, and the
-    # text inside reads at the measure rather than at the measure minus the
-    # insets KPress still applies.
-    wide = css[css.index("--folder-overview-wide-card-width:") :][:200]
-    assert "var(--doc-measure)" in wide
-    assert "--folder-overview-wide-toc-inset" in wide
-    assert "--folder-overview-wide-prose-inset" not in css
-
-    # Overview reaches into KPress in exactly two ways, both of them things
-    # KPress itself does in this band: it drops the 2rem reservation for a
-    # table-of-contents control it does not render, and it lifts the two
-    # reading-measure caps so the column can be the content track. Anything
-    # touching the prose — its padding above all — is out of bounds, because
-    # that is KPress's and it varies with width.
-    kpress_rules = sorted(
-        line.strip()
-        for line in css.splitlines()
-        if line.strip().startswith(".") and "kpress" in line.strip()
+    width_rule = next(
+        block for block in css.split("}") if "width: var(--folder-overview-card-width)" in block
     )
-    assert kpress_rules == sorted(
-        [
-            ".folder-overview-panel-document > .folder-overview-panel-body > .kpress {",
-            ".folder-overview-panel-document > .folder-overview-panel-body > .kpress,",
-            ".folder-overview-panel-document .kpress-doc-layout {",
-        ]
-    ), kpress_rules
+    for selector in (
+        ".folder-overview-panel-surface > .folder-overview-panel-heading",
+        ".folder-overview-panel-surface > .folder-overview-panel-body",
+        ".folder-overview-panel-document > .folder-overview-panel-heading",
+        ".folder-overview-panel-document > .folder-overview-panel-body",
+    ):
+        assert selector in width_rule
+    assert "margin-inline-start: 0" in width_rule
+    assert "margin-inline-end: auto" in width_rule
+    assert "padding-inline: var(--content-padding-x)" in css
     assert ".kpress-prose" not in css
     assert ".kpress-long-text" not in css
+    assert "toc-width" not in css
+    rendered = (REPO_ROOT / "src/metabrowser/builtin_plugins/markdown/rendered.js").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        'container.classList.add("metabrowser-kpress-host", "metabrowser-markdown-document")'
+        in rendered
+    )
 
 
 def test_folder_overview_uses_the_shared_section_disclosure() -> None:

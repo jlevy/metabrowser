@@ -353,7 +353,9 @@ Prose reads at a width the reader sets, in **characters**, through “Max text w
 the Metabrowser menu.
 Characters rather than a length because that is the decision a reader has: 45–75 is the
 classic range for a single column, and a browser pane is wide enough to sit above it.
-The default is 102.
+The default is 102. Choose 80 for a narrower reading target in the same control.
+That adjustable target follows
+[WCAG 2.2 SC 1.4.8, Visual Presentation (Level AAA)](https://www.w3.org/WAI/WCAG22/Understanding/visual-presentation.html).
 
 Document tokens live on `:root`.
 
@@ -395,6 +397,23 @@ conversion. Size and character-count changes are CSS inputs.
 Verify a width change by measuring the *text* box with padding excluded, in both the
 single-column and wide bands, and against the same file opened on its own.
 A card can be the right width while the text inside it is an inset-pair too narrow.
+
+### Rendered Markdown Layout
+
+The Document tab starts its prose at the first tab’s edge, using the same pane gutter as
+Source and the PR header.
+KPress’s card and `--doc-measure` cap the reading column.
+At a preview width of 75 rem or more, a document with a table of contents puts the
+sticky KPress rail to the right, with a 3 rem gap.
+A thumbnail sits above the prose.
+A wide table scrolls inside the column beside a rail.
+In a single column it can use available space to the right of the text.
+
+Below 75 rem, KPress’s icon opens the existing overlay from the trailing gutter to keep
+the beginning of each line clear.
+The Folder Overview README shares the same prose edge and maximum measure.
+Its panel headings and bodies follow the document card’s outer edge, with text at the
+shared pane gutter. It uses the surrounding folder navigation for context.
 
 ### Embedded Document Themes
 
@@ -1752,17 +1771,10 @@ Changing the metric therefore reveals the relevant skew without making equal row
 unpredictably.
 
 Overview renders the README at the same measure a reader gets opening that file on its
-own, at every breakpoint.
-Both surfaces run the same renderer over the same file, so the reader compares them
-directly and any difference reads as a defect rather than as a choice.
-Three things have to agree, and each one broke it alone: the band boundaries must query
-one container — KPress’s `kpress-doc` on the preview pane, not Overview’s own host,
-which is that pane minus its padding and so crosses 75rem about 25px later; the wide
-column must be KPress’s content track, the measure plus its 2.5rem insets, because
-sizing it to the measure leaves the prose padded for a track it is no longer in; and the
-narrow inset must equal the article padding Overview drops, or the text runs short by
-twice the difference.
-`test_one_document_surface_has_one_set_of_breakpoints` holds all three.
+own. Both use the same Markdown mount and pane gutter.
+The panel’s width includes the document inset so the card border, section rules, and
+surface panels share an edge.
+`test_one_document_surface_has_one_set_of_breakpoints` holds this contract.
 
 The **File Overview** section begins expanded.
 It opens with one control row carrying the shared Files / Bytes measure and the **Show
@@ -2021,7 +2033,8 @@ Panel bodies use one of two presentations:
   File Overview uses this presentation without surrounding cards.
 - A **document panel** supplies its normal rendered-document surface.
   README therefore looks exactly like an ordinarily rendered Markdown file, including
-  its metadata, diagnostics, TOC, breakpoints, and print behavior.
+  its metadata, diagnostics, breakpoints, and print behavior.
+  The Overview suppresses a nested table of contents.
   Overview adds the shared section heading but does not override the document card.
   The card keeps its standard border and shadow at regular and wide document bands, then
   becomes borderless through KPress’s own narrow breakpoint.
@@ -2031,22 +2044,11 @@ around unlike content.
 Surface content, section headings, and document content use one responsive alignment
 contract and shared stack gap.
 At regular and wide Markdown breakpoints, flat surface panels and section headings align
-to the README card’s outer edges; the TOC keeps its own rail in the wide band.
-In the regular band, the target is the visible `.kpress-long-text` card rather than the
-wider `.kpress-doc` frame.
-The shared width is
-`min(100% - 4rem, var(--doc-measure) + 2 * var(--folder-overview-regular-inset))` — the
-column box, meaning the reading measure plus KPress’s inset on each side — which puts
-the README’s text at exactly the measure and aligns section rules, labels, tallies, and
-bars with the card border.
-It reads `--doc-measure`, the app’s own reading width, and never `--kpress-measure`:
-KPress declares that token on `:root` from a stylesheet loaded after the app’s, so host
-CSS outside a `.kpress` scope resolves KPress’s default instead of the reader’s setting.
-See [Reading Width](#reading-width).
-Below the card breakpoint, KPress removes the card boundary and the alignment follows
-the README prose edge.
-The Overview composer mirrors those pinned KPress breakpoints so the rule remains exact
-rather than approximating the document geometry.
+to the README card’s outer edges.
+The shared column is bounded by `--doc-measure` plus its document insets.
+The same `kpress-doc` container selects the card breakpoint for the README and a
+standalone file. The Markdown mount supplies KPress’s rendering and the pane gutter for
+both. See [Reading Width](#reading-width).
 
 Panel availability is independent.
 A missing README removes only that region, and one failed optional panel gets a local
