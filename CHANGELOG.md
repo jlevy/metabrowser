@@ -21,7 +21,7 @@ PR and Git navigation:
 - Pull request check runs and status contexts have their own **Checks** tab with a
   direct link.
 - **Quick Search** finds files and cached GitHub pull requests.
-  Search PRs by number or title and open their Conversation from the completion list.
+  Type `#` for recent PRs, then add digits or title words to narrow the PR completions.
 - A visible direct PR link fetches and caches its record on the first visit.
 - The PR page shows when GitHub CLI fetched the description or complete record.
 - Treemap and its file totals load for folders in Git-backed repositories.

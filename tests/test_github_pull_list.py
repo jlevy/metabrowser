@@ -59,7 +59,7 @@ from metabrowser.builtin_plugins.github.pull_list_route import (
     search_query,
 )
 from metabrowser.cache.locks import run_lock_section, source_alias_lock
-from metabrowser.cache.paths import PullListName
+from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, PullListName
 from metabrowser.home import ensure_private_directory, write_private_file_atomic
 from metabrowser.mirror_refresh import RefreshCoordinator
 from tests.cache_home_fixture import (  # pyright: ignore[reportPrivateUsage]
@@ -168,7 +168,9 @@ def test_pull_search_respects_title_budget_and_indexes_exact_numbers(
     _seed(repository, items, complete=False)
     before = _fingerprint(repository.home)
 
-    assert catalog_search(repository, "STRASSE _READY 100%") == {
+    title = catalog_search(repository, "STRASSE _READY 100%")
+    assert catalog_search(repository, "#  STRASSE _READY 100%") == title
+    assert title == {
         "rows": [{"number": 1, "title": "Straße: 100% _ready", "state": "draft"}],
         "complete": False,
         "limited": False,
@@ -186,7 +188,7 @@ def test_pull_search_respects_title_budget_and_indexes_exact_numbers(
         "limited": True,
         "truncated": False,
     }
-    exact = catalog_search(repository, "#1")
+    exact = catalog_search(repository, "1")
     assert exact["rows"][0]["number"] == 1 and not exact["limited"] and not exact["truncated"]
     assert not catalog_search(repository, "#0")["rows"]
     assert not catalog_search(repository, "#999999999999")["rows"]
@@ -196,6 +198,57 @@ def test_pull_search_respects_title_budget_and_indexes_exact_numbers(
         "limited": False,
         "truncated": False,
     }
+    assert _fingerprint(repository.home) == before
+
+
+def test_pull_search_recent_and_numeric_prefixes_use_cached_numbers(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert catalog_search(repository, "#") == {
+        "rows": [],
+        "complete": False,
+        "limited": False,
+        "truncated": False,
+    }
+    newest = MAX_PULL_REQUEST_NUMBER
+    merged = dict(generated_item(12), state="closed", merged_at=STAMP)
+    closed = dict(generated_item(1290), state="closed")
+    draft = dict(generated_item(1280), draft=True)
+    _seed(
+        repository,
+        [
+            dict(generated_item(99), number=newest),
+            generated_item(1300),
+            closed,
+            draft,
+            *(generated_item(number) for number in range(120, 130)),
+            merged,
+        ],
+        complete=False,
+    )
+    # Both indexed modes stay independent of the title-scan budget and filter.
+    monkeypatch.setattr(pull_catalog, "_SEARCH_TITLE_ROWS", 3)
+    before = _fingerprint(repository.home)
+    recent = catalog_search(repository, "#")
+    assert [row["number"] for row in recent["rows"]] == [
+        newest,
+        1300,
+        1290,
+        1280,
+        *range(129, 121, -1),
+    ]
+    assert recent["truncated"] and not recent["limited"] and not recent["complete"]
+
+    prefix = catalog_search(repository, "#12")
+    assert [row["number"] for row in prefix["rows"]] == [12, 1290, 1280, *range(129, 120, -1)]
+    assert [row["state"] for row in prefix["rows"][:4]] == ["merged", "closed", "draft", "open"]
+    assert prefix["truncated"] and not prefix["limited"] and not prefix["complete"]
+    assert [row["number"] for row in catalog_search(repository, "#13")["rows"]] == [1300]
+    for query in ("12", "0012", "#0012"):
+        assert [row["number"] for row in catalog_search(repository, query)["rows"]] == [12]
+    for query in ("#9", f"#{newest}", str(newest)):
+        assert [row["number"] for row in catalog_search(repository, query)["rows"]] == [newest]
+    assert not catalog_search(repository, f"#{newest + 1}")["rows"]
     assert _fingerprint(repository.home) == before
 
 

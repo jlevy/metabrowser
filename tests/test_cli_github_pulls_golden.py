@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
@@ -99,14 +100,16 @@ class _Session:
         self.now += timedelta(seconds=seconds)
         self.say(f"The clock moves on {seconds:g} s, to {self.now:%Y-%m-%dT%H:%M:%SZ}.")
 
-    def _run(self, *args: str, summarize: bool = False, **sections: list[str]) -> Invocation:
+    def _run(
+        self, *args: str, project: Callable[[Invocation], str] | None = None, **sections: list[str]
+    ) -> Invocation:
         result = run_metab(args)
         catalog = read_catalog(self.home, origin_identity(CANONICAL).slug)
         if catalog is not None and catalog.epoch not in self.epochs:
             self.epochs.add(catalog.epoch)
             self.labels.add(catalog.epoch, f"<CATALOG_EPOCH_{len(self.epochs)}>")
         shown = [arg.removeprefix(f"{self.tmp_path}/") for arg in args]
-        shown_result = replace(result, stdout=_watch_summary(result)) if summarize else result
+        shown_result = replace(result, stdout=project(result)) if project is not None else result
         self.blocks.append(
             shown_result.block(
                 " ".join(quoted(arg) for arg in shown),
@@ -116,8 +119,10 @@ class _Session:
         )
         return result
 
-    def get(self, query: str = "") -> Invocation:
-        return self._run(CANONICAL, "--api", f"{PULLS}{query}")
+    def get(
+        self, query: str = "", *, project: Callable[[Invocation], str] | None = None
+    ) -> Invocation:
+        return self._run(CANONICAL, "--api", f"{PULLS}{query}", project=project)
 
     def post(
         self, body: dict[str, Any], *, route: str = REFRESH, summarize: bool = False
@@ -126,7 +131,13 @@ class _Session:
         text = json.dumps(body)
         path.write_text(text + "\n", encoding="utf-8")
         return self._run(
-            CANONICAL, "--api", route, "--data", str(path), summarize=summarize, body=[text]
+            CANONICAL,
+            "--api",
+            route,
+            "--data",
+            str(path),
+            project=_watch_summary if summarize else None,
+            body=[text],
         )
 
     def local(self, route: str) -> Invocation:
@@ -156,6 +167,15 @@ def _watch_summary(result: Invocation) -> str:
         f"status: 200 {envelope['last_refresh']['outcome']}, "
         f"{envelope['fetched']} cached PRs\n"
     )
+
+
+def _search_summary(result: Invocation) -> str:
+    """Keep the ordered result numbers, states, and catalog flags in the transcript."""
+    envelope = result.payload()
+    envelope["rows"] = [[row["number"], row["state"]] for row in envelope["rows"]]
+    header = result.stdout[: result.stdout.index("{")]
+    assert header.endswith("status: 200\n")
+    return header + json.dumps(envelope) + "\n"
 
 
 def _with(answers: dict[str, Any], **changes: Any) -> dict[str, Any]:
@@ -227,8 +247,8 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
 
     # Search reaches the cached PRs beyond the first list window, without calling gh.
     for query, row in (
-        ("%239", {"number": 9, "title": "spam", "state": "closed"}),
-        ("GUIDE+say", {"number": 8, "title": "Say more in the guide", "state": "merged"}),
+        ("9", {"number": 9, "title": "spam", "state": "closed"}),
+        ("%23++GUIDE+say", {"number": 8, "title": "Say more in the guide", "state": "merged"}),
     ):
         assert session.get(f"?q={query}").payload() == {
             "rows": [row],
@@ -238,6 +258,17 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
             "refreshing": False,
         }
         assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
+
+    recent = session.get("?q=%23", project=_search_summary)
+    assert _numbers(recent) == list(range(606, 594, -1))
+    assert recent.payload()["truncated"] and not recent.payload()["limited"]
+    assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
+
+    prefix = session.get("?state=open&q=%239", project=_search_summary)
+    assert _numbers(prefix) == [9, *range(99, 89, -1)]
+    assert prefix.payload()["rows"][0]["state"] == "closed"
+    assert prefix.payload()["complete"] and not prefix.payload()["truncated"]
+    assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
 
     broad = session.get("?q=work+item+5").payload()
     assert len(broad["rows"]) == 12 and broad["truncated"] and not broad["limited"]

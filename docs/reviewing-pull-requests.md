@@ -296,13 +296,16 @@ names.
 
 ## Find a Pull Request With Quick Search
 
-Press `/` or `T` and type a title fragment or a number such as `#307`. Results include
-open, closed, merged, and draft PRs in the local catalog.
+Press `/` or `T` to open Quick Search.
+Type `#` to see recent PRs across all states.
+Keep typing digits, such as `#30`, to complete PR numbers, with the exact number first.
+Type `#` followed by words to match PR titles.
+Ordinary text continues to match files and PR titles.
 A result shows its title, number, and state.
 Press Enter to open its Conversation tab.
 
 The catalog grows in the background, and cached results are available offline.
-An exact number searches every cached entry.
+Number completions cover the whole cached catalog.
 Title searches check up to the 50,000 newest entries.
 
 ## Large Repositories

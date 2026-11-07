@@ -893,6 +893,19 @@ async function main() {
     status.textContent,
     "No matches.",
   );
+  availableResults = [searchResult("#notes.md", 5, [])];
+  input.value = "#notes";
+  input.dispatchEvent(fakeEvent("input", { target: input }));
+  await settle();
+  equal("the plain-folder palette sends a hash query to files", requests.at(-1), {
+    match: "fuzzy",
+    query: "#notes",
+    target: "file",
+  });
+  check(
+    "the plain-folder palette renders the hash filename",
+    listbox.children[0].textContent.includes("#notes.md"),
+  );
   availableResults = heldResults;
 
   availableResults = [searchResult("src/metabrowser/app.js", 5, [{ start: 4, end: 8 }])];
@@ -1086,10 +1099,13 @@ async function pullSearchSession() {
   const growthStarted = Promise.withResolvers();
   const exactRecheck = Promise.withResolvers();
   const exactRecheckStarted = Promise.withResolvers();
-  const obsolete = Promise.withResolvers();
-  const obsoleteStarted = Promise.withResolvers();
+  const recentsRecheck = Promise.withResolvers();
+  const recentsRecheckStarted = Promise.withResolvers();
+  const prefixRecheck = Promise.withResolvers();
+  const prefixRecheckStarted = Promise.withResolvers();
   let renderReads = 0;
-  let obsoleteReads = 0;
+  let recentsReads = 0;
+  let prefixReads = 0;
   let now = 1_000;
   sandbox.Date = class extends Date {
     static now() {
@@ -1126,21 +1142,27 @@ async function pullSearchSession() {
           }
           return Promise.resolve(reply([newerPull, readyPull], { truncated: true }));
         }
-        if (url.endsWith("?q=obsolete")) {
-          obsoleteReads += 1;
-          if (obsoleteReads === 1) {
+        if (url.endsWith("?q=%23")) {
+          if (++recentsReads === 1) {
             return Promise.resolve(
-              reply([{ number: 998, title: "Obsolete cached match", state: "open" }], {
-                complete: false,
-                refreshing: true,
-              }),
+              reply([newerPull, readyPull], { complete: false, refreshing: true }),
             );
           }
-          obsoleteStarted.resolve(init.signal);
-          return obsolete.promise;
+          recentsRecheckStarted.resolve(init.signal);
+          return recentsRecheck.promise;
         }
-        if (url.endsWith("?q=%23123")) {
-          return Promise.resolve(reply([readyPull], { complete: false, refreshing: true }));
+        if (url.endsWith("?q=%2312")) {
+          if (++prefixReads === 1) {
+            return Promise.resolve(reply([readyPull], { complete: false, refreshing: true }));
+          }
+          prefixRecheckStarted.resolve(init.signal);
+          return prefixRecheck.promise;
+        }
+        if (url.endsWith("?q=%23render")) {
+          return Promise.resolve(reply([newerPull, readyPull]));
+        }
+        if (url.endsWith("?q=%23123") || url.endsWith("?q=123")) {
+          return Promise.resolve(reply([readyPull]));
         }
         if (url.endsWith("?q=older")) {
           return Promise.resolve(reply([], { limited: true }));
@@ -1309,24 +1331,60 @@ async function pullSearchSession() {
       !limitedStatus.includes("Showing the top matches."),
   );
 
-  type("obsolete");
-  const obsoleteSignal = await obsoleteStarted.promise;
-  check(
-    "an active refresh paints its cached matches before the next response",
-    choices()[0]?.includes("Obsolete cached match"),
+  catalog.observeRecent([{ path: "notes/#render.md", type: "file" }]);
+  type("#");
+  const recentsSignal = await recentsRecheckStarted.promise;
+  const recents = choices();
+  equal("a lone hash immediately shows the recent cached PRs", recents, [grown[1], mixed[1]]);
+  check("the lone hash does not highlight the title", listbox.querySelector("mark") === null);
+
+  const prefixComplete = searchCompletes();
+  type("#12");
+  key("Enter");
+  equal("an obsolete row cannot open while the query changes", opened, []);
+  const prefixSignal = await prefixRecheckStarted.promise;
+  equal("the numeric prefix shows cached matches while refreshing", choices(), [mixed[1]]);
+  const staleRequestAborted = recentsSignal.aborted;
+  check("typing a prefix aborts the recent PR read", staleRequestAborted);
+  recentsRecheck.resolve(reply([{ number: 999, title: "Obsolete result", state: "open" }]));
+  await settle();
+  equal("a superseded result cannot repaint the palette", choices(), [mixed[1]]);
+  prefixRecheck.resolve(
+    reply([{ number: 12, title: "Exact number", state: "draft" }, newerPull, readyPull]),
   );
+  await prefixComplete;
+  const prefix = choices();
+  const selectedAfterPrefixGrowth = currentChoice();
+  equal("the exact PR precedes the other numeric prefix matches", prefix, [
+    "Pull request #12, Exact number, Draft",
+    grown[1],
+    mixed[1],
+  ]);
+  equal("prefix growth keeps the same selected PR", selectedAfterPrefixGrowth, mixed[1]);
+  check("number queries do not highlight titles", listbox.querySelector("mark") === null);
+  check("the active prefix was not aborted", !prefixSignal.aborted);
+
+  const explicitTitleComplete = searchCompletes();
+  type("#render");
+  await explicitTitleComplete;
+  const explicitTitle = choices();
+  const explicitTitleHighlight = listbox.querySelector("mark").textContent;
+  equal("a hash title searches only PRs even when a file matches", explicitTitle, recents);
+  equal("the title term is highlighted without the hash", explicitTitleHighlight, "Render");
+  const beforeTitleFileGrowth = requests.length;
+  catalog.observeRecent([{ path: "new/#render.md", type: "file" }]);
+  await waitMs(180);
+  equal(
+    "file changes do not rerun an explicit title query",
+    requests.length,
+    beforeTitleFileGrowth,
+  );
+
   const numberComplete = searchCompletes();
   type("#123");
-  key("Enter");
-  equal("an obsolete file cannot open while the query changes", opened, []);
   await numberComplete;
   const exact = choices();
   equal("a hash number limits the search to PRs", exact, [mixed[1]]);
-  const staleRequestAborted = obsoleteSignal.aborted;
-  check("typing a new query aborts the pending catalog read", staleRequestAborted);
-  obsolete.resolve(reply([{ number: 999, title: "Obsolete result", state: "open" }]));
-  await settle();
-  equal("a superseded result cannot repaint the palette", choices(), exact);
   key("Enter");
   await settle();
   check(
@@ -1376,6 +1434,13 @@ async function pullSearchSession() {
   await afterCooldown;
   equal("a later miss can ask for a new refresh", warmRequests, 2);
   delete sandbox.Date;
+  // Plain folders send the file target, so the hash remains part of the file name.
+  const plain = await controller.search({ match: "fuzzy", query: "#render", target: "file" });
+  const hashFiles = plain.results.map((result) => result.path);
+  equal("a file-only search keeps the hash in the filename", hashFiles, [
+    "new/#render.md",
+    "notes/#render.md",
+  ]);
   const result = {
     heading,
     placeholder,
@@ -1391,6 +1456,12 @@ async function pullSearchSession() {
     afterFileGrowth,
     selectedAfterFileGrowth,
     limitedStatus,
+    recents,
+    prefix,
+    selectedAfterPrefixGrowth,
+    explicitTitle,
+    explicitTitleHighlight,
+    hashFiles,
     exact,
     staleRequestAborted,
     bare,

@@ -38,7 +38,7 @@ MAX_CATALOG_MEMBERS = 8
 _SEARCH_RESULT_LIMIT = 12
 # Production cache reads on a Mac took 3–4 ms for a sparse title match at 1,375 rows
 # and 62–69 ms at the 50k candidate limit, including the cutoff for a 100k catalog.
-# Exact numbers use the primary key and remain searchable at any size.
+# Recent pulls and numeric queries use the primary key at any catalog size.
 _SEARCH_TITLE_ROWS = 50_000
 _SEARCH_READ_OPCODES = 500_000
 
@@ -244,13 +244,48 @@ class PullSearchEnvelope(TypedDict):
     truncated: bool
 
 
+def _search_numbers(
+    db: sqlite3.Connection, digits: str, *, include_prefix: bool
+) -> list[tuple[str]]:
+    canonical = digits.lstrip("0")
+    max_width = len(str(MAX_PULL_REQUEST_NUMBER))
+    if not canonical or len(canonical) > max_width:
+        return []
+    number = int(canonical)
+    if number > MAX_PULL_REQUEST_NUMBER:
+        return []
+    rows: list[tuple[str]] = db.execute(
+        "SELECT body FROM pulls WHERE number = ?", (number,)
+    ).fetchall()
+    if include_prefix and digits == canonical:
+        # A decimal prefix gives one disjoint primary-key range per additional
+        # digit. Longer numbers sort first and the exact number stays at the top.
+        for width in range(max_width - len(canonical), 0, -1):
+            scale = 10**width
+            remaining = _SEARCH_RESULT_LIMIT + 1 - len(rows)
+            rows.extend(
+                db.execute(
+                    "SELECT body FROM pulls WHERE number BETWEEN ? AND ? "
+                    "ORDER BY number DESC LIMIT ?",
+                    (
+                        number * scale,
+                        min((number + 1) * scale - 1, MAX_PULL_REQUEST_NUMBER),
+                        remaining,
+                    ),
+                )
+            )
+            if len(rows) > _SEARCH_RESULT_LIMIT:
+                break
+    return rows
+
+
 def catalog_search(repository: ListedRepository | None, query: str) -> PullSearchEnvelope:
-    """Search the current source's local metadata across open and closed PRs."""
+    """Read recent pulls or search local metadata across open and closed PRs."""
     empty = PullSearchEnvelope(rows=[], complete=False, limited=False, truncated=False)
     if repository is None:
         return empty
-    digits = query[1:] if query.startswith("#") else ""
-    number = int(digits) if digits.isascii() and digits.isdecimal() else None
+    explicit = query.startswith("#")
+    text = query[1:].strip() if explicit else query
     try:
         with _database(repository.home, repository.slug, read_opcodes=_SEARCH_READ_OPCODES) as db:
             db.execute("BEGIN")
@@ -258,13 +293,17 @@ def catalog_search(repository: ListedRepository | None, query: str) -> PullSearc
             if state is None or state.source != repository.source:
                 return empty
             complete = state.done["all"]
-            if query == "#" or (number is not None and not 1 <= number <= MAX_PULL_REQUEST_NUMBER):
-                return {**empty, "complete": complete}
-            if number is not None:
-                cursor = db.execute("SELECT body FROM pulls WHERE number = ?", (number,))
-                limited = False
+            limited = False
+            matches: list[tuple[str]] | sqlite3.Cursor
+            if text.isascii() and text.isdecimal():
+                matches = _search_numbers(db, text, include_prefix=explicit)
+            elif not text:
+                matches = db.execute(
+                    "SELECT body FROM pulls ORDER BY number DESC LIMIT ?",
+                    (_SEARCH_RESULT_LIMIT + 1,),
+                )
             else:
-                terms = tuple(dict.fromkeys(query.casefold().split()))
+                terms = tuple(dict.fromkeys(text.casefold().split()))
 
                 def title_matches(title: object) -> bool:
                     if not isinstance(title, str):
@@ -282,14 +321,14 @@ def catalog_search(repository: ListedRepository | None, query: str) -> PullSearc
                     ).fetchone()
                     if cutoff is not None:
                         oldest = cutoff[0]
-                cursor = db.execute(
+                matches = db.execute(
                     "SELECT body FROM pulls WHERE number >= ? "
                     "AND title_matches(json_extract(body, '$.title')) "
                     "ORDER BY number DESC LIMIT ?",
                     (oldest, _SEARCH_RESULT_LIMIT + 1),
                 )
             rows: list[PullSearchRow] = []
-            for (body,) in cursor:
+            for (body,) in matches:
                 row = PullListRow.model_validate_json(body)
                 rows.append(
                     {

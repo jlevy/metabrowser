@@ -134,7 +134,7 @@
     input.setAttribute("spellcheck", "false");
     input.setAttribute(
       "placeholder",
-      includesPulls ? "Type a file name, path, PR title, or #number" : "Type a file name or path",
+      includesPulls ? "Search files or PRs. Type # for recent PRs." : "Type a file name or path",
     );
 
     const listbox = hostDocument.createElement("div");
@@ -252,7 +252,7 @@
         disposed ||
         overlay.hidden ||
         opening ||
-        (includesPulls && window.MetabrowserSearch.isPullNumberQuery(input.value))
+        (includesPulls && window.MetabrowserSearch.isExplicitPullQuery(input.value))
       ) {
         return;
       }

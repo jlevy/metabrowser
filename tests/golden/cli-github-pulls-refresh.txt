@@ -519,10 +519,10 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?q=%239'
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?q=9'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pulls?q=%239
+api: /api/plugin/github/pulls?q=9
 status: 200
 {
   "rows": [
@@ -539,10 +539,10 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?q=GUIDE+say'
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?q=%23++GUIDE+say'
 exit: 0
 --- stdout ---
-api: /api/plugin/github/pulls?q=GUIDE+say
+api: /api/plugin/github/pulls?q=%23++GUIDE+say
 status: 200
 {
   "rows": [
@@ -557,6 +557,22 @@ status: 200
   "truncated": false,
   "refreshing": false
 }
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?q=%23'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?q=%23
+status: 200
+{"rows": [[606, "open"], [605, "open"], [604, "open"], [603, "open"], [602, "open"], [601, "open"], [600, "open"], [599, "open"], [598, "open"], [597, "open"], [596, "open"], [595, "open"]], "complete": true, "limited": false, "truncated": true, "refreshing": false}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api '/api/plugin/github/pulls?state=open&q=%239'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pulls?state=open&q=%239
+status: 200
+{"rows": [[9, "closed"], [99, "open"], [98, "open"], [97, "open"], [96, "open"], [95, "open"], [94, "open"], [93, "open"], [92, "open"], [91, "open"], [90, "open"]], "complete": true, "limited": false, "truncated": false, "refreshing": false}
 --- stderr ---
 --- gh ---
 # metab https://github.com/octo/demo --api '/api/plugin/github/pulls?q=work+item+5'

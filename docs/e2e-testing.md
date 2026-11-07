@@ -457,8 +457,11 @@ framework:
 ### Quick Search and Main Tabs
 
 Open the same public GitHub repository in a checkout and a managed mirror.
-From Files or a selected commit, press `T` and try a PR number with `#` and a title
-fragment. Check the title, number, state, and accessible option name.
+From Files or a selected commit, press `T` and type `#`. Check that the list shows
+recent PRs across states.
+Add title text, then replace it with a number prefix.
+Check that both queries show only PR options and that an exact number appears first.
+Check the title, number, state, and accessible option name.
 Press Enter and verify that Conversation opens in one history step.
 Back returns to the previous view.
 
