@@ -2877,6 +2877,7 @@ declare global {
   };
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
   type MetabrowserPublicPullRouteRuntime = MetabrowserPullRouteRuntime;
+  type MetabrowserPublicPullStackNavigation = MetabrowserPullStackNavigation;
   type MetabrowserPublicPullsPanelHandle = MetabrowserPullsPanelHandle;
   type MetabrowserPublicPreparedViewComposition = MetabrowserPreparedViewComposition;
   type MetabrowserPublicRenderContext = MetabrowserRenderContext;

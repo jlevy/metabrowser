@@ -26,6 +26,9 @@ Files was chosen by hand; a load that fails, which says so only to a reader look
 tries again on the next show; and a page that goes while the view loads, whose late
 mount is disposed. `keys` is each key through the real registry and what it told the
 view, and `help` is what Help reads for the group.
+`stack keys` drives Shift-J and Shift-K through the real global registry and the active
+PR’s public stack capability, including endpoints, membership changes, editor and modal
+guards, and disposal.
 `the page’s host` is the module’s own `init` and `dispose` on a page it is played: the
 listeners it adds, that only a walking key’s release ends a walk, and that an `init`
 after a `dispose` listens again.
@@ -154,6 +157,38 @@ $ node tests/dom/pulls-nav-session.js
       ]
     },
     "the overlay closes over a Files row: the Files tree's row is handed back": "file:setup.py"
+  },
+  "stack keys": {
+    "directions": [
+      -1,
+      1
+    ],
+    "endpointConsumed": true,
+    "plainJRemainsRowNavigation": true,
+    "guards": [
+      "repeat",
+      "input",
+      "contenteditable",
+      "Help",
+      "modal",
+      "unknown membership",
+      "custom renderer",
+      "hidden tab",
+      "list",
+      "other preview",
+      "disposed"
+    ],
+    "help": [
+      {
+        "keys": "Shift plus J",
+        "action": "Toward stack base"
+      },
+      {
+        "keys": "Shift plus K",
+        "action": "Toward stack top"
+      }
+    ],
+    "cleanup": true
   },
   "addresses": {
     "/pulls": {

@@ -255,6 +255,26 @@
       }
     }
 
+    /** The active PR renderer may offer stack navigation; custom renderers need not.
+     * @returns {MetabrowserPublicPullStackNavigation | null}
+     */
+    function stackPage() {
+      if (disposed || !shown || deps.activeTab() !== PANEL_ID) {
+        return null;
+      }
+      const number = address()?.page;
+      if (number === null || number === undefined) {
+        return null;
+      }
+      const page = /** @type {Partial<MetabrowserPublicPullStackNavigation> | null | undefined} */ (
+        deps.pageFor(number)
+      );
+      if (typeof page?.hasStack !== "function" || typeof page.moveStack !== "function") {
+        return null;
+      }
+      return page.hasStack() ? /** @type {MetabrowserPublicPullStackNavigation} */ (page) : null;
+    }
+
     return Object.freeze({
       /** Register the tab, show it where the address asks, and read ahead where it does not. */
       start() {
@@ -285,6 +305,9 @@
         handle?.released();
       },
       activateAnchor: () => handle?.activateAnchor() ?? false,
+      hasStack: () => stackPage() !== null,
+      /** @param {-1 | 1} delta */
+      moveStack: (delta) => stackPage()?.moveStack(delta) ?? false,
       expand: () => handle?.expand() ?? false,
       collapse: () => handle?.collapse() ?? false,
       /** @param {-1 | 1} delta @param {{repeat?: boolean}} [how] */
@@ -315,6 +338,38 @@
     /** @param {Record<string, unknown>} context */
     const repeating = (context) => /** @type {{event?: KeyboardEvent}} */ (context).event?.repeat;
     return [
+      shortcuts.register({
+        bindings: [{ key: "j", modifiers: { shift: "require" } }],
+        available: () => nav.hasStack(),
+        copy: {
+          action: "Toward stack base",
+          description: "Open the adjacent pull request toward the stack base.",
+          hint: "Stack",
+        },
+        group: "pull-stack",
+        handler: () => nav.moveStack(-1),
+        id: "pulls.stack.base",
+        order: 10,
+        repeat: false,
+        scope: "global",
+        surfaces: { help: "always" },
+      }),
+      shortcuts.register({
+        bindings: [{ key: "k", modifiers: { shift: "require" } }],
+        available: () => nav.hasStack(),
+        copy: {
+          action: "Toward stack top",
+          description: "Open the adjacent pull request toward the stack top.",
+          hint: "Stack",
+        },
+        group: "pull-stack",
+        handler: () => nav.moveStack(1),
+        id: "pulls.stack.top",
+        order: 20,
+        repeat: false,
+        scope: "global",
+        surfaces: { help: "always" },
+      }),
       shortcuts.register({
         bindings: [{ key: "ArrowUp" }, { key: "k" }],
         copy: {
