@@ -2187,7 +2187,7 @@ export function mountPullsPanel(container, ctx, mb) {
    * @param {string | null} file
    */
   function showFileOwner(number, file) {
-    const changes = expansion.shown(number, file !== null);
+    const changes = expansion.shown(number, file);
     for (const closed of changes.collapse) {
       setExpanded(closed, false);
     }

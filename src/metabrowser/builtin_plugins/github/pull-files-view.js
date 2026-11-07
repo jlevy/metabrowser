@@ -94,6 +94,8 @@ export function mountFileTree(host) {
   // Anchor settlement can remove an offscreen focused row before replacement paint.
   /** @type {HTMLElement | null} */
   let removedFocus = null;
+  /** @type {HTMLElement | null} */
+  let retryButton = null;
   let rowHeight = 0;
   let disposed = false;
 
@@ -317,8 +319,10 @@ export function mountFileTree(host) {
 
   /** @param {FileTreeModel} next */
   function paint(next) {
+    const focusedRetry = retryButton !== null && retryButton === document.activeElement;
     const focused =
       removedFocus ??
+      (focusedRetry ? retryButton : null) ??
       [...drawn.values()].find((entry) => entry.element === document.activeElement)?.element ??
       null;
     removedFocus = null;
@@ -337,6 +341,7 @@ export function mountFileTree(host) {
     lineText.textContent = next.line ?? (next.loading ? LISTING_FILES : "");
     line.hidden = next.line === null && !next.loading;
     spinner.hidden = !next.loading;
+    retryButton = null;
     if (next.notice === null) {
       notice.replaceChildren();
     } else {
@@ -361,6 +366,7 @@ export function mountFileTree(host) {
       }
       if (next.notice.action !== null) {
         const press = h("button", { type: "button", class: "btn" }, ["Retry"]);
+        retryButton = press;
         press.addEventListener("click", () => void controller.retry());
         box.append(press);
       }
@@ -374,7 +380,8 @@ export function mountFileTree(host) {
     // The settled anchor is drawn even when it was outside the previous row window.
     if (focused !== null && !focused.isConnected && document.activeElement === document.body) {
       const anchor = controller.anchor();
-      const arriving = anchor === null ? null : drawnElement(anchor);
+      const arriving =
+        (focusedRetry ? retryButton : null) ?? (anchor === null ? null : drawnElement(anchor));
       if (arriving === null) {
         host.leave();
       } else {

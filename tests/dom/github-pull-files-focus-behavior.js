@@ -13,6 +13,7 @@ class Element {
     this.style = { setProperty() {} };
     this.textContent = "";
     this.classList = { toggle() {} };
+    this.listeners = new Map();
   }
   get firstElementChild() {
     return this.children[0] ?? null;
@@ -62,7 +63,11 @@ class Element {
     );
   }
   remove() {
-    if (document.activeElement === this) {
+    let active = document.activeElement;
+    while (active !== null && active !== this) {
+      active = active.parentNode;
+    }
+    if (active === this) {
       document.activeElement = document.body;
     }
     if (this.parentNode !== null) {
@@ -70,7 +75,9 @@ class Element {
       this.parentNode = null;
     }
   }
-  addEventListener() {}
+  addEventListener(name, callback) {
+    this.listeners.set(name, callback);
+  }
   getBoundingClientRect() {
     return { top: 0, bottom: 700 };
   }
@@ -98,6 +105,8 @@ async function run() {
     "other focus",
     "windowed survivor",
     "windowed other focus",
+    "retry",
+    "retry other focus",
   ]) {
     const timers = new Map();
     globalThis.window = {
@@ -120,6 +129,8 @@ async function run() {
     document.body.append(parent, elsewhere);
     parent.append(owner);
     let generation = 0;
+    let reads = 0;
+    let releaseRetry = null;
     const view = mountFileTree({
       decorateExternalLink:
         require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
@@ -131,6 +142,14 @@ async function run() {
       chevron: () => null,
       href: (file) => `/${file}`,
       request: async (_method, route) => {
+        if (scenario.startsWith("retry")) {
+          if (reads++ === 0) {
+            throw Error("initial read failed");
+          }
+          await new Promise((resolve) => {
+            releaseRetry = resolve;
+          });
+        }
         const windowed = scenario.startsWith("windowed");
         const files =
           generation === 0
@@ -189,6 +208,26 @@ async function run() {
     view.attach(parent, owner);
     view.controller.expand();
     await settle();
+    if (scenario.startsWith("retry")) {
+      const notice = view.group.children.find(
+        (element) => element.getAttribute("class") === "github-pull-files-notice-host",
+      );
+      const button = notice.children[0].children.find((element) => element.tagName === "BUTTON");
+      (scenario.endsWith("other focus") ? elsewhere : button).focus();
+      button.listeners.get("click")();
+      await settle();
+      const expected = scenario.endsWith("other focus") ? elsewhere : owner;
+      assert.equal(document.activeElement, expected, "Retry removal has a stable focus fallback");
+      releaseRetry();
+      await settle();
+      assert.equal(
+        document.activeElement,
+        expected,
+        "arriving files never steal the fallback focus",
+      );
+      view.dispose();
+      continue;
+    }
     const list = view.group.children.find(
       (element) => element.getAttribute("class") === "github-pull-files-rows",
     );

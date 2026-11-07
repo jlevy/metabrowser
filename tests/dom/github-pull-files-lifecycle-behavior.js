@@ -55,7 +55,14 @@ function rig(create) {
     {
       request(method, route, options) {
         return new Promise((resolve, reject) =>
-          requests.push({ method, route, signal: options.signal, resolve, reject }),
+          requests.push({
+            method,
+            route,
+            signal: options.signal,
+            body: options.body,
+            resolve,
+            reject,
+          }),
         );
       },
       schedule(callback, delay) {
@@ -252,6 +259,45 @@ async function run() {
       refreshes += 1;
     }
   }
+
+  // An automatic request that started nothing cannot claim indefinite progress.
+  const idle = rig(createFileTreeController);
+  const absent = {
+    ...envelope(""),
+    state: "absent",
+    reason: "unreadable",
+    listed_from: null,
+    generation: null,
+    fetched: 0,
+    rows: [],
+    last_refresh: {
+      outcome: "succeeded",
+      message: null,
+      reset_at: null,
+      at: "2026-09-17T12:00:00Z",
+    },
+  };
+  idle.controller.expand();
+  idle.respond(idle.requests[0], absent);
+  await settle();
+  assert.equal(idle.requests[1].body.retry, false);
+  idle.respond(idle.requests[1], { refresh: "not_due", files: absent });
+  await settle();
+  assert.equal(idle.model().loading, false, "a settled absent list is not active work");
+  assert.equal(idle.model().notice.action, "retry", "cache damage retains explicit recovery");
+  assert.deepEqual(
+    [...idle.timers.values()].map((timer) => timer.delay),
+    [60000],
+  );
+  const repair = idle.controller.retry();
+  assert.equal(idle.model().loading, true, "a deliberate retry has real progress");
+  assert.equal(idle.requests.at(-1).body.retry, true);
+  idle.respond(idle.requests.at(-1), {
+    refresh: "started",
+    files: { ...absent, state: "pending", refreshing: true },
+  });
+  await repair;
+  idle.controller.dispose();
   return { ownedReads: reads, ownedRefreshReplies: refreshes };
 }
 run()

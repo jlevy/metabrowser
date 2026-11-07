@@ -457,7 +457,8 @@ def files_refresh_wanted(
     it. Otherwise, while that limit holds nothing may start, a reader's **Retry** included,
     as for the list of pull requests. A **Retry** may start one otherwise. Any other request,
     a row expanded, starts one for a list that is not cached, not complete, or stale, and
-    not tried within the window, so a list that cannot be read is asked for once a window.
+    not tried within the window. A successful stamp without readable rows allows repair
+    immediately; failed attempts still wait for their window.
     """
 
     repository = view.repository
@@ -478,6 +479,10 @@ def files_refresh_wanted(
         and _state(listed, stamp, facts) == ("current")
     ):
         return False, local
+    # A previous success cannot stand in for rows that were removed or became unreadable.
+    # Repeated failure still backs off, and provider rate holds were checked above.
+    if not isinstance(listed, PullFileList) and stamp is not None and stamp.outcome == "succeeded":
+        return True, local
     if local is not None:
         due = stamp is None or now - pull_list.parse_stamp(stamp.at) > timedelta(
             seconds=FRESHNESS_WINDOW_S

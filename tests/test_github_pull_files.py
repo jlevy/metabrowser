@@ -1022,3 +1022,36 @@ def test_expired_equal_time_file_hold_keeps_the_memory_outcome(
     relative = source_pull_files_refresh(repository.slug, TREE_PULL)
     pull_record.write_refresh_stamp(home, repository.slug, relative, held)
     assert read_files_refresh(home, repository.slug, TREE_PULL) == refused
+
+
+@pytest.mark.parametrize("absence", ["not_cached", "unreadable", "schema_mismatch"])
+@pytest.mark.parametrize("outcome", ["succeeded", "network_error", "rate_limited"])
+def test_absent_file_cache_repairs_a_recent_success_but_preserves_failure_holds(
+    home: Path,
+    repository: ListedRepository,
+    absence: str,
+    outcome: str,
+) -> None:
+    """A success stamp is not a substitute for readable rows; failures still back off."""
+
+    if absence != "not_cached":
+        path = home / source_pull_files(SOURCE.slug, TREE_PULL)
+        path.parent.mkdir(mode=0o700, exist_ok=True)
+        path.write_text("{" if absence == "unreadable" else '{"schema_version": 0}')
+        path.chmod(0o600)
+    assert read_pull_files(home, SOURCE.slug, TREE_PULL) == absence
+    write_files_refresh(
+        home,
+        SOURCE.slug,
+        TREE_PULL,
+        PullRefreshStamp(
+            outcome=outcome,
+            at="2026-09-17T12:00:00Z",
+            reset_at="2026-09-17T12:05:00Z" if outcome == "rate_limited" else None,
+        ),
+    )
+    view = FilesView(TREE_PULL, repository, None, False, None)
+    assert files_refresh_wanted(view, FilesRefreshRequest(TREE_PULL, False)) == (
+        outcome == "succeeded",
+        None,
+    )
