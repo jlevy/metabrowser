@@ -37,7 +37,7 @@ def _stack(number: int, pulls: list[int]) -> dict[str, Any]:
         "url": f"https://api.github.com/repos/octo/demo/stacks/{number}",
         "base": {"ref": "main"},
         "open": True,
-        "pull_requests": [{"number": n} for n in pulls],
+        "pull_requests": [{"number": n, "title": f"Change {n}"} for n in pulls],
     }
 
 

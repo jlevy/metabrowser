@@ -75,7 +75,7 @@ def native(number: int, *pulls: int) -> dict[str, Any]:
         "url": f"https://api.github.com/repos/octo/demo/stacks/{number}",
         "base": {"ref": "main"},
         "open": True,
-        "pull_requests": [{"number": n} for n in pulls or (number,)],
+        "pull_requests": [{"number": n, "title": f"Change {n}"} for n in pulls or (number,)],
     }
 
 
@@ -134,6 +134,7 @@ def test_pages_preserve_order_and_conditional_continuation_without_link(
     first = envelope(repository)
     assert first["complete"] and first["stacks"][0]["pulls"] == [7, 9]
     assert [row["number"] for row in first["stacks"]] == [30, 50]
+    assert first["stacks"][0]["titles"] == ["Change 7", "Change 9"]
     assert first["reader"] == "gh:" + READER
     assert len(calls) == 5
     calls = provider(monkeypatch, [GhResponse(304, {}, b""), GhResponse(304, {}, b"")])
