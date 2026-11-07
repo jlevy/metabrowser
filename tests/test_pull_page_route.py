@@ -142,10 +142,10 @@ def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:
     assert ".body_html" not in source and '["body_html"]' not in source
 
 
-def _style_rules() -> dict[str, str]:
-    """Each selector of the page's stylesheet and its declarations, comments stripped."""
+def _style_rules(path: Path = STYLES_CSS) -> dict[str, str]:
+    """Each selector and its declarations, comments stripped."""
 
-    css = re.sub(r"/\*.*?\*/", "", STYLES_CSS.read_text(encoding="utf-8"), flags=re.DOTALL)
+    css = re.sub(r"/\*.*?\*/", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
     rules: dict[str, str] = {}
     for selectors, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
         # A comma inside `:is(a, b)` is no separator.
@@ -322,8 +322,8 @@ def test_a_wide_table_and_a_long_word_stay_reachable_in_a_card() -> None:
     break at the text's edge. The card's own ``scrollWidth`` stays its 685 px width.
     """
 
-    rules = _style_rules()
-    assert "overflow: hidden" in rules[".github-pull-card"]
+    rules = _style_rules(PAGE_JS.parents[2] / "static" / "styles.css")
+    assert "overflow: hidden" in rules[".page-card"]
     inert_js = (PAGE_JS.parents[2] / "static" / "inert-html.js").read_text(encoding="utf-8")
     assert 'pre.className = "kpress-code"' in inert_js
     assert 'table.className = "kpress-table"' in inert_js

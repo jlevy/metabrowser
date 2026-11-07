@@ -800,7 +800,7 @@ def test_git_commit_summary_is_one_component() -> None:
         'class="git-commit-file-statuses"',
         'class="git-commit-change-stats"',
         'class="git-commit-refs"',
-        'class="git-commit-body"',
+        'class="git-commit-body page-card"',
     ):
         assert panel.count(component_part) == 1, f"summary part drifted: {component_part}"
     change_stats = _rule(styles, ".git-commit-change-stats")
@@ -819,8 +819,8 @@ def test_git_commit_summary_is_one_component() -> None:
     assert "display: grid" in change_stats
     assert "white-space: nowrap" in change_stats
     assert "display: inline-flex" in stats_rows
-    assert "font-family: var(--font-sans)" in summary_body
-    assert "font-size: var(--body-font-size)" in summary_body
+    assert "font-family: var(--prose-sans-font)" in summary_body
+    assert "font-size: var(--document-body-font-size)" in summary_body
     assert "white-space: pre-wrap" in summary_body
     for rule in (
         meta,
