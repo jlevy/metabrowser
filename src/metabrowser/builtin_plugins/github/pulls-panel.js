@@ -94,16 +94,15 @@ export const MAX_HELD_TREES = 8;
 // is the plan's table ("The lazy gh check"), and a cached list shows under any of them.
 /** @type {Readonly<Record<string, string>>} */
 const FAILURES = Object.freeze({
-  gh_missing:
-    "Metabrowser could not find GitHub CLI (gh). Install it from https://cli.github.com/, then run gh auth login --hostname github.com.",
-  gh_too_old:
-    "This GitHub CLI cannot report the active account. Update gh from https://cli.github.com/, then run gh auth status --hostname github.com.",
-  not_logged_in:
-    "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
-  network_error: "Offline, or GitHub could not be reached. The list is as it was last fetched.",
-  not_found_or_private:
-    "The repository was not found, or the signed-in account cannot read its pull requests.",
+  gh_missing: "Install GitHub CLI, then run gh auth login --hostname github.com.",
+  gh_too_old: "Update GitHub CLI, then run gh auth status --hostname github.com.",
+  not_logged_in: "Run gh auth login --hostname github.com to connect.",
+  network_error: "GitHub could not be reached.",
+  github_unavailable: "GitHub is temporarily unavailable.",
+  not_found_or_private: "GitHub could not find this repository or grant access to it.",
 });
+const WATCH_PAUSED = new Set(["gh_missing", "gh_too_old", "not_logged_in", "not_found_or_private"]);
+const WATCH_SETUP_RETRY_MS = 120_000;
 
 const NO_GITHUB = "This server serves no GitHub repository.";
 // A checkout's tab is drawn for an `origin` on github.com that the plugin's grammar may still
@@ -173,11 +172,9 @@ const CHECKOUT_NOT_LISTED =
  *   countSuffix: string | null,
  *   catalogReady: boolean,
  *   window: string | null,
- *   fetching: string | null,
- *   progress: string | null,
- *   freshness: string | null,
+ *   connection: {state: "working" | "connected" | "paused" | "unavailable", text: string,
+ *     reload: boolean, retrying?: true, help?: "install" | "update"} | null,
  *   empty: string | null,
- *   notice: {severity: "warning" | "error", text: string, retry: boolean, help?: "install" | "update"} | null,
  *   loadMore: "ready" | "loading" | null,
  *   github: string | null,
  *   live: string,
@@ -259,33 +256,31 @@ function pullsCount(count) {
 }
 
 /**
- * What a list's last refresh says to a reader, or null when it says nothing to them: one
- * that succeeded, or one still running.
- *
+ * What a list's last refresh failure says to a reader. Paging checks the settled
+ * state, while the connection row can keep showing it during a recovery attempt.
  * @param {PullsEnvelope} envelope
  * @param {(iso: string) => string} formatTime
- * @returns {{text: string, retry: boolean, help?: "install" | "update"} | null}
+ * @param {{includeWhileRefreshing?: boolean}} [options]
+ * @returns {{text: string, help?: "install" | "update"} | null}
  */
-export function refreshFailure(envelope, formatTime) {
+export function refreshFailure(envelope, formatTime, { includeWhileRefreshing = false } = {}) {
   const last = envelope.last_refresh;
-  if (last === null || last.outcome === "succeeded" || envelope.refreshing) {
+  if (
+    last === null ||
+    last.outcome === "succeeded" ||
+    (envelope.refreshing && !includeWhileRefreshing)
+  ) {
     return null;
   }
   if (last.outcome === "rate_limited") {
-    // A reader's Retry is held too: each request GitHub refuses moves the time on.
     return {
       text:
         last.reset_at === null
-          ? "GitHub's rate limit was reached. No automatic attempt runs until it lifts."
-          : `GitHub's rate limit lifts at ${formatTime(last.reset_at)}. No automatic attempt runs before then.`,
-      retry: false,
+          ? "GitHub rate limit reached."
+          : `GitHub rate limit reached. Next attempt after ${formatTime(last.reset_at)}.`,
     };
   }
-  // What the job recorded is a clause; here it stands as a status sentence of its own.
-  const setup = ["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome);
-  const said = setup
-    ? (last.message ?? FAILURES[last.outcome])
-    : (FAILURES[last.outcome] ?? last.message ?? last.outcome.replaceAll("_", " "));
+  const said = FAILURES[last.outcome] ?? last.message ?? last.outcome.replaceAll("_", " ");
   const sentence = `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
   const help =
     last.outcome === "gh_missing"
@@ -293,13 +288,26 @@ export function refreshFailure(envelope, formatTime) {
       : last.outcome === "gh_too_old"
         ? "update"
         : undefined;
-  const message = sentence.endsWith(".") ? sentence : `${sentence}.`;
-  return {
-    text:
-      message + (setup ? " You can still browse local files and any cached pull requests." : ""),
-    retry: true,
-    ...(help === undefined ? {} : { help }),
-  };
+  const text = sentence.endsWith(".") ? sentence : `${sentence}.`;
+  return { text, ...(help === undefined ? {} : { help }) };
+}
+
+/** @param {PullsEnvelope | null} envelope @param {number} nowMs */
+function rateHoldMs(envelope, nowMs) {
+  const last = envelope?.last_refresh;
+  if (last == null || (last.reset_at === null && last.outcome !== "rate_limited")) {
+    return 0;
+  }
+  const deadline =
+    last.reset_at === null
+      ? Date.parse(last.at) + (envelope?.fresh_for_s ?? 0) * 1000
+      : Date.parse(last.reset_at);
+  return Number.isFinite(deadline) ? Math.max(0, deadline - nowMs) : 0;
+}
+
+/** @param {PullsEnvelope | null} envelope */
+function watchPaused(envelope) {
+  return WATCH_PAUSED.has(envelope?.last_refresh?.outcome ?? "");
 }
 
 /**
@@ -319,6 +327,8 @@ export function refreshFailure(envelope, formatTime) {
  *   more: boolean,
  *   error: string | null,
  *   checkout?: boolean,
+ *   online?: boolean,
+ *   requesting?: boolean,
  * }} page
  * @returns {PullsModel}
  */
@@ -340,26 +350,27 @@ export function describePulls(envelope, page) {
     countSuffix: null,
     catalogReady: envelope?.complete === true && !envelope.refreshing,
     window: null,
-    fetching: null,
-    progress: null,
-    freshness: null,
+    connection: null,
     empty: null,
-    notice: null,
     loadMore: null,
     github: null,
     live: "",
   };
+  const online = page.online !== false;
   if (envelope === null) {
     model.status = page.error === null ? "loading" : "unavailable";
-    model.fetching = page.error === null ? FETCHING : null;
-    model.notice =
-      page.error === null ? null : { severity: "error", text: page.error, retry: false };
-    model.live = page.error ?? FETCHING;
+    const working = online && (page.error === null || page.requesting === true);
+    model.connection = {
+      state: online ? (working ? "working" : "unavailable") : "paused",
+      text: online ? (working ? FETCHING : (page.error ?? "")) : "Offline.",
+      reload: online && !working,
+    };
+    model.live = model.connection.text;
     return model;
   }
   model.status = envelope.state;
   const repository = repositoryName(envelope.source);
-  const failure = refreshFailure(envelope, page.formatTime);
+  const failure = refreshFailure(envelope, page.formatTime, { includeWhileRefreshing: true });
   const holding = envelope.fetched > 0 || page.rows.length > 0;
   if (envelope.state === "absent" && envelope.reason === "not_github") {
     model.empty = page.checkout === true ? CHECKOUT_NOT_LISTED : NO_GITHUB;
@@ -375,86 +386,61 @@ export function describePulls(envelope, page) {
   if (envelope.total !== null && page.rows.length > 0 && page.rows.length < envelope.total) {
     model.window = `Showing last ${new Intl.NumberFormat("en-US").format(page.rows.length)}`;
   }
-  const catalogPending =
-    envelope.refreshing || envelope.state === "pending" || envelope.state === "absent";
-  // Fetch more can still page through the cache after a provider failure.
-  if (page.error === null && (page.more || (catalogPending && failure === null))) {
-    model.fetching = FETCHING;
-  }
-  if (model.fetching === null && !envelope.complete && envelope.catalog_fetched > 0) {
-    model.progress =
-      envelope.catalog_fetched === envelope.repository_total
-        ? "Catalog paused"
-        : `Catalog paused · ${new Intl.NumberFormat("en-US").format(envelope.catalog_fetched)} cached`;
-  }
   const name = repository === null ? "Pull requests" : `Pull requests of ${repository}`;
-  if (envelope.state === "current" || envelope.state === "stale") {
-    model.listName = `${name}: ${pullsCount(envelope.total ?? envelope.fetched)}`;
-    if (model.fetching === null) {
-      const reader = text(envelope.reader).replace(/^gh:/, "");
-      const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
-      const stale = envelope.state === "stale" ? " · may be out of date" : "";
-      model.freshness = `PRs fetched ${age}${reader === "" ? "" : ` by ${reader}`}${stale}`;
-    }
-    if (envelope.total === 0 || (envelope.fetched === 0 && envelope.complete)) {
-      model.empty =
-        page.filter === "all" ? "No pull requests." : `No ${page.filter} pull requests.`;
-    }
-    model.live = model.listName;
-  } else {
-    model.listName = name;
+  const known = envelope.state === "current" || envelope.state === "stale";
+  model.listName = known ? `${name}: ${pullsCount(envelope.total ?? envelope.fetched)}` : name;
+  if (known && (envelope.total === 0 || (envelope.fetched === 0 && envelope.complete))) {
+    model.empty = page.filter === "all" ? "No pull requests." : `No ${page.filter} pull requests.`;
   }
-  if (model.fetching !== null) {
-    // Polls update the display without announcing each step of the same fetch.
-    model.live = model.fetching;
-  }
-  if (failure !== null) {
-    model.notice = { severity: "warning", ...failure };
-    model.live = model.fetching ?? failure.text;
-  } else if (envelope.truncated) {
-    model.notice = {
-      severity: "warning",
-      text: "Some rows were cut to fit, or could not be read.",
-      retry: false,
+  const cached = holding ? " Showing cached pull requests." : "";
+  const heldByRate = rateHoldMs(envelope, page.nowMs) > 0;
+  const asking = page.requesting === true || envelope.refreshing;
+  const working = asking || envelope.state === "pending" || envelope.state === "absent";
+  if (!online) {
+    model.connection = { state: "paused", text: `Offline.${cached}`, reload: false };
+  } else if (page.error !== null) {
+    model.connection = {
+      state: "unavailable",
+      text: page.error + cached,
+      reload: !heldByRate && !asking,
     };
+  } else if (failure !== null) {
+    model.connection = {
+      ...failure,
+      state: "paused",
+      text: failure.text + cached,
+      reload: !heldByRate && !asking,
+      ...(asking ? { retrying: true } : {}),
+    };
+  } else if (working || page.more) {
+    model.connection = { state: "working", text: FETCHING, reload: false };
+  } else if (!envelope.complete && envelope.catalog_fetched > 0) {
+    const count = new Intl.NumberFormat("en-US").format(envelope.catalog_fetched);
+    model.connection = { state: "paused", text: `Catalog paused · ${count} cached`, reload: true };
+  } else {
+    const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
+    const note = envelope.truncated
+      ? " · some pull requests could not be cached"
+      : envelope.state === "stale"
+        ? " · may be out of date"
+        : "";
+    model.connection = { state: "connected", text: `Updated ${age}${note}`, reload: true };
   }
-  if (page.error !== null) {
-    model.notice = { severity: "error", text: page.error, retry: false };
-    model.live = page.error;
-  }
+  model.live = model.connection.state === "connected" ? model.listName : model.connection.text;
   const belowTotal = envelope.total === null || page.rows.length < envelope.total;
   const cachedMore = page.rows.length < envelope.fetched;
-  const providerMayHaveMore = !envelope.complete && envelope.total !== null;
+  const providerMayHaveMore =
+    !envelope.complete &&
+    envelope.total !== null &&
+    online &&
+    !heldByRate &&
+    !watchPaused(envelope);
   if (page.more) {
     model.loadMore = "loading";
   } else if (holding && belowTotal && (cachedMore || providerMayHaveMore)) {
     model.loadMore = "ready";
   }
   return model;
-}
-
-/**
- * What the pane says at the list's own address, `/pulls`: nothing is selected, as on GitHub,
- * or there is nothing to list. A list with no rows has nothing to select, so the pane says
- * what the tab's notice says: why, when a refresh failed. Pure.
- *
- * @param {PullsEnvelope | null} envelope
- * @param {(iso: string) => string} formatTime
- * @param {boolean} [checkout] A checkout served as a folder.
- * @returns {string}
- */
-export function describeLanding(envelope, formatTime, checkout = false) {
-  if (envelope?.reason === "not_github") {
-    return checkout ? CHECKOUT_NOT_LISTED : NO_GITHUB;
-  }
-  const failure = envelope === null ? null : refreshFailure(envelope, formatTime);
-  if (envelope !== null && envelope.fetched === 0 && failure !== null) {
-    return failure.text;
-  }
-  if (envelope?.repository_total === 0 && envelope.complete) {
-    return "No pull requests.";
-  }
-  return "Select a pull request.";
 }
 
 /**
@@ -503,6 +489,7 @@ function pinChanged(response) {
  *   cancel(handle: unknown): void,
  *   now(): number,
  *   isVisible(): boolean,
+ *   isOnline?(): boolean,
  *   formatTime(iso: string): string,
  *   render(model: PullsModel, identity: import("./pull-stacks.js").StackIdentity | null): void,
  *   markCurrent(previous: number | null, next: number | null): void,
@@ -589,6 +576,10 @@ export function createPullsController(deps, options = {}) {
   let polling = false;
   // The panel's first read may start the refresh though it is not shown: see `start`.
   let readAhead = false;
+  let parked = false;
+  let probeOnWake = false;
+  let reconnectOnWake = false;
+  let prioritizeFilter = false;
   /** @type {unknown} */
   let timer = null;
   /** @type {AbortController | null} */
@@ -634,8 +625,19 @@ export function createPullsController(deps, options = {}) {
     return /** @type {HeldList} */ (lists.get(filter));
   }
 
+  const visible = () => !parked && deps.isVisible();
+  const online = () => deps.isOnline?.() !== false;
+
   function live() {
-    return shown && !disposed && deps.isVisible();
+    return shown && !disposed && visible();
+  }
+
+  function wake() {
+    if (live()) {
+      probeOnWake = true;
+      render();
+      void poll();
+    }
   }
 
   /** @param {CoreWindowRequest} body */
@@ -787,6 +789,8 @@ export function createPullsController(deps, options = {}) {
       more: list.more,
       error: list.error,
       checkout,
+      online: online(),
+      requesting: refreshReads.size > 0,
     });
   }
 
@@ -814,6 +818,18 @@ export function createPullsController(deps, options = {}) {
     }
   }
 
+  function pollDelay() {
+    const list = held();
+    const envelope = list.envelope;
+    const fast =
+      online() &&
+      list.error === null &&
+      (envelope === null || envelope.refreshing || envelope.state === "pending");
+    const delay = fast ? FAST_POLL_MS : SLOW_POLL_MS;
+    const rate = rateHoldMs(envelope, deps.now());
+    return rate > 0 ? Math.min(delay, Math.max(FAST_POLL_MS, rate)) : delay;
+  }
+
   function recheckTail() {
     const list = held();
     if (
@@ -832,15 +848,10 @@ export function createPullsController(deps, options = {}) {
     if (!live()) {
       return;
     }
-    const envelope = held().envelope;
-    const fast = envelope === null || envelope.refreshing || envelope.state === "pending";
-    timer = deps.schedule(
-      () => {
-        timer = null;
-        void poll();
-      },
-      fast ? FAST_POLL_MS : SLOW_POLL_MS,
-    );
+    timer = deps.schedule(() => {
+      timer = null;
+      void poll();
+    }, pollDelay());
   }
 
   /**
@@ -1096,11 +1107,12 @@ export function createPullsController(deps, options = {}) {
     if (list.nextAfter !== null && list.rows.length < list.displayLimit) {
       await loadWindow();
     }
-    if (!disposed && name === filter && epoch === requestEpoch) {
-      scheduleNext();
-      askIfDue();
-      recheckTail();
+    if (disposed || name !== filter || epoch !== requestEpoch) {
+      return;
     }
+    scheduleNext();
+    askIfDue();
+    recheckTail();
   }
 
   /**
@@ -1115,35 +1127,67 @@ export function createPullsController(deps, options = {}) {
     if (
       !wanted ||
       disposed ||
-      !deps.isVisible() ||
+      !visible() ||
+      !online() ||
       envelope === null ||
-      envelope.reason === "not_github"
+      envelope.reason === "not_github" ||
+      list.error !== null ||
+      refreshReads.size > 0
+    ) {
+      return;
+    }
+    const priority = shown && prioritizeFilter;
+    prioritizeFilter = false;
+    if (rateHoldMs(envelope, deps.now()) > 0) {
+      return;
+    }
+    const last = envelope.last_refresh;
+    const probe = probeOnWake;
+    const reconnect = reconnectOnWake && last?.outcome === "network_error";
+    probeOnWake = false;
+    reconnectOnWake = false;
+    const now = deps.now();
+    const windowMs = envelope.fresh_for_s * 1000;
+    const failureDue =
+      last !== null && last.outcome !== "succeeded" && now - Date.parse(last.at) > windowMs;
+    if (
+      watchPaused(envelope) &&
+      last !== null &&
+      now - Date.parse(last.at) <= (probe ? windowMs : Math.max(windowMs, WATCH_SETUP_RETRY_MS))
     ) {
       return;
     }
     const target = Math.min(list.displayLimit, envelope.total ?? list.displayLimit);
-    const needsRows = envelope.fetched < target && list.priorityTarget < target;
+    const missingRows = envelope.fetched < target;
+    const foreground = priority && missingRows && !reconnect;
+    const needsRows = missingRows && (foreground || list.priorityTarget < target);
     const needsCatalog = !envelope.complete && !envelope.refreshing;
     if (
+      !reconnect &&
       !needsRows &&
       !needsCatalog &&
-      (envelope.refreshing || (envelope.state !== "absent" && envelope.state !== "stale"))
+      (envelope.refreshing ||
+        (!failureDue && envelope.state !== "absent" && envelope.state !== "stale"))
     ) {
       return;
     }
-    const windowMs = envelope.fresh_for_s * 1000;
-    if (!needsRows && list.askedAt !== null && deps.now() - list.askedAt < windowMs) {
+    if (!reconnect && !needsRows && list.askedAt !== null && now - list.askedAt < windowMs) {
       return;
     }
-    list.askedAt = deps.now();
+    list.askedAt = now;
     list.priorityTarget = target;
-    void ask({ state: filter, target: list.displayLimit });
+    void ask({
+      state: filter,
+      target: list.displayLimit,
+      ...(foreground ? {} : { background: true }),
+      ...(reconnect ? { reconnect: true } : {}),
+    });
   }
 
   /**
    * Send a refresh and take the envelope it answers with. The answer has no rows.
    *
-   * @param {{state: string, target: number, retry?: boolean}} body
+   * @param {{state: string, target: number, retry?: boolean, background?: boolean, reconnect?: boolean}} body
    */
   async function ask(body) {
     const name = body.state;
@@ -1153,6 +1197,7 @@ export function createPullsController(deps, options = {}) {
     const epoch = requestEpoch;
     const controller = new AbortController();
     refreshReads.add(controller);
+    render();
     try {
       const response = await deps.request("POST", REFRESH_ROUTE, {
         body,
@@ -1291,10 +1336,15 @@ export function createPullsController(deps, options = {}) {
         await loadWindow();
       } else if (
         advanced &&
+        list.more &&
+        live() &&
         list.nextAfter === null &&
         list.envelope !== null &&
         list.rows.length < Math.min(list.displayLimit, list.envelope.total ?? list.displayLimit) &&
-        list.priorityTarget < list.displayLimit
+        list.priorityTarget < list.displayLimit &&
+        online() &&
+        rateHoldMs(list.envelope, deps.now()) === 0 &&
+        !watchPaused(list.envelope)
       ) {
         list.priorityTarget = list.displayLimit;
         await ask({ state: name, target: list.displayLimit });
@@ -1325,7 +1375,11 @@ export function createPullsController(deps, options = {}) {
     }
     // At a completed or failed refresh, automatic paging can still reveal cached rows.
     const cacheOnly =
-      envelope.complete || (automatic && refreshFailure(envelope, deps.formatTime) !== null);
+      envelope.complete ||
+      !online() ||
+      watchPaused(envelope) ||
+      rateHoldMs(envelope, deps.now()) > 0 ||
+      (automatic && refreshFailure(envelope, deps.formatTime) !== null);
     const limit = Math.min(
       list.displayLimit + (automatic ? WINDOW_ROWS : DISPLAY_ROWS),
       envelope.total ?? Number.POSITIVE_INFINITY,
@@ -1490,6 +1544,7 @@ export function createPullsController(deps, options = {}) {
     }
     cancelReads();
     filter = name;
+    prioritizeFilter = shown;
     settleAnchor();
     painted = null;
     render();
@@ -1508,6 +1563,7 @@ export function createPullsController(deps, options = {}) {
      */
     start(how = {}) {
       shown = how.shown === true;
+      prioritizeFilter = shown;
       readAhead = how.refreshAhead === true;
       render();
       return poll(true);
@@ -1518,6 +1574,7 @@ export function createPullsController(deps, options = {}) {
         return;
       }
       shown = visible;
+      prioritizeFilter = visible;
       if (!visible) {
         clearTimer();
         cancelReads();
@@ -1526,7 +1583,7 @@ export function createPullsController(deps, options = {}) {
       if (revealCurrent && current !== null && held().keys.has(current)) {
         deps.reveal(current);
       }
-      void poll();
+      wake();
     },
     setFilter,
     prepareVisible,
@@ -1670,24 +1727,43 @@ export function createPullsController(deps, options = {}) {
     loadMore: () => extendDisplay("button"),
     /** The reader neared the end of the displayed rows. */
     reachedEnd: () => extendDisplay("scroll"),
-    /** A press of Retry. */
-    retry() {
-      if (disposed) {
+    /** A press of Reload asks the repository's existing catalog job. */
+    reload() {
+      if (!live() || model().connection?.reload !== true || refreshReads.size > 0) {
         return Promise.resolve();
       }
       held().error = null;
       return ask({ state: filter, target: held().displayLimit, retry: true });
     },
+    onFocus: wake,
+    onOnline() {
+      reconnectOnWake = true;
+      wake();
+    },
+    onOffline() {
+      reconnectOnWake = false;
+      render();
+      scheduleNext();
+    },
     onVisibilityChange() {
       if (disposed) {
         return;
       }
-      if (!deps.isVisible()) {
+      if (!visible()) {
         clearTimer();
         cancelReads();
         return;
       }
-      void poll();
+      wake();
+    },
+    pause() {
+      parked = true;
+      clearTimer();
+      cancelReads();
+    },
+    resume() {
+      parked = false;
+      wake();
     },
     dispose() {
       disposed = true;
@@ -1707,14 +1783,7 @@ export function createPullsController(deps, options = {}) {
       etag: held().etag,
       peeked: [...peeked.keys()],
       walkingTo,
-      timer:
-        timer === null
-          ? null
-          : held().envelope === null ||
-              held().envelope?.refreshing ||
-              held().envelope?.state === "pending"
-            ? "fast"
-            : "slow",
+      timer: timer === null ? null : pollDelay() === FAST_POLL_MS ? "fast" : "slow",
     }),
   });
 }
@@ -1798,19 +1867,31 @@ export function mountPullsPanel(container, ctx, mb) {
     return [{ chip, value, tally }];
   });
   const status = h("p", { class: "github-pulls-status" });
-  const notice = h("div", { class: "github-pulls-notice-host" });
   // A tree: a row's changed files hang off it as a group. Its keys are this view's, bound by
   // the tab's host; the Files tree's keyboard handler is scoped to the Files tab and never
   // sees these rows.
   const list = h("ul", { class: "github-pulls-list", role: "tree" });
   const empty = h("p", { class: "github-pulls-empty" });
-  const fetchLabel = h("span");
-  // The live region announces the same activity once, including across polling updates.
-  const activity = h(
-    "p",
-    { class: "github-pulls-activity mb-delayed-loading", "aria-hidden": "true", hidden: "" },
-    [h("span", { class: "spinner spinner-sm" }), fetchLabel],
+  const connectionMessage = h("span");
+  const spinner = h("span", { class: "github-pulls-connection-spinner", hidden: "" }, [
+    h("span", { class: "spinner spinner-sm", "aria-hidden": "true" }),
+  ]);
+  const connectionText = h("span", { class: "github-pulls-connection-text" }, [
+    spinner,
+    connectionMessage,
+  ]);
+  const connectionHelp = h("span", { hidden: "" });
+  const reloadButton = h(
+    "button",
+    { type: "button", class: "btn github-pulls-reload", "aria-disabled": "true" },
+    ["Reload"],
   );
+  reloadButton.addEventListener("click", () => void controller.reload());
+  const connection = h("div", { class: "github-pulls-connection", hidden: "" }, [
+    connectionText,
+    connectionHelp,
+    reloadButton,
+  ]);
   const foot = h("div", { class: "github-pulls-foot" });
   const moreButton = /** @type {HTMLButtonElement} */ (
     h("button", { type: "button", class: "btn github-pulls-more" }, ["Fetch more"])
@@ -1818,7 +1899,7 @@ export function mountPullsPanel(container, ctx, mb) {
   moreButton.addEventListener("click", () => void controller.loadMore());
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   container.classList.add("github-pulls");
-  container.replaceChildren(filters, status, activity, notice, list, empty, foot, live);
+  container.replaceChildren(filters, status, connection, list, empty, foot, live);
 
   /**
    * What is painted of each row held, by number: its elements, the key of what it shows, and
@@ -2424,7 +2505,7 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     for (const { chip, value, tally } of tallies) {
       const count = model.filterTotals?.[value] ?? null;
-      const pending = count === null && model.fetching !== null;
+      const pending = count === null && model.connection?.state === "working";
       tally.classList.toggle("tally-pending", pending);
       tally.classList.toggle("tally-pending-narrow", pending);
       const text = count === null ? (pending ? "" : "—") : count.toLocaleString("en-US");
@@ -2461,48 +2542,40 @@ export function mountPullsPanel(container, ctx, mb) {
     if (model.window !== null) {
       lines.push(h("span", { class: "github-pulls-window" }, [model.window]));
     }
-    for (const line of [model.progress, model.freshness]) {
-      if (line !== null) {
-        lines.push(h("span", { class: "github-pulls-progress" }, [line]));
-      }
-    }
     status.replaceChildren(...lines);
     status.hidden = lines.length === 0;
-    if (fetchLabel.textContent !== (model.fetching ?? "")) {
-      fetchLabel.textContent = model.fetching ?? "";
+    const connected = model.connection;
+    const working = connected?.state === "working";
+    const retrying = connected?.retrying === true;
+    connection.hidden = connected === null;
+    connectionText.classList.toggle("mb-delayed-loading", working);
+    spinner.classList.toggle("mb-delayed-loading", retrying);
+    spinner.hidden = !working && !retrying;
+    const message = connected?.text ?? "";
+    if (connectionMessage.textContent !== message) {
+      connectionMessage.textContent = message;
     }
-    activity.hidden = model.fetching === null;
+    reloadButton.setAttribute("aria-disabled", String(connected?.reload !== true));
+    const help = connected?.help ?? "";
+    if (connectionHelp.dataset.help !== help) {
+      connectionHelp.dataset.help = help;
+      connectionHelp.hidden = help === "";
+      connectionHelp.replaceChildren(
+        ...(help === ""
+          ? []
+          : [
+              mb.decorateExternalLink(
+                h(
+                  "a",
+                  { href: "https://cli.github.com/", target: "_blank", rel: "noopener noreferrer" },
+                  [help === "install" ? "Install GitHub CLI" : "Update GitHub CLI"],
+                ),
+              ),
+            ]),
+      );
+    }
     empty.textContent = model.empty ?? "";
     empty.hidden = model.empty === null;
-    if (model.notice === null) {
-      notice.replaceChildren();
-    } else {
-      const box = h(
-        "div",
-        {
-          class: "notice github-pulls-notice",
-          "data-severity": model.notice.severity,
-        },
-        [h("span", {}, [model.notice.text])],
-      );
-      if (model.notice.help !== undefined) {
-        box.append(
-          mb.decorateExternalLink(
-            h(
-              "a",
-              { href: "https://cli.github.com/", target: "_blank", rel: "noopener noreferrer" },
-              [model.notice.help === "install" ? "Install GitHub CLI" : "Update GitHub CLI"],
-            ),
-          ),
-        );
-      }
-      if (model.notice.retry) {
-        const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
-        retry.addEventListener("click", () => void controller.retry());
-        box.append(retry);
-      }
-      notice.replaceChildren(box);
-    }
     const footChildren = [];
     if (model.loadMore !== null) {
       moreButton.disabled = model.loadMore === "loading";
@@ -2559,6 +2632,7 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
+      isOnline: () => window.navigator?.onLine !== false,
       formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
       render(model, identity) {
         stackIdentity = identity;
@@ -2700,6 +2774,12 @@ export function mountPullsPanel(container, ctx, mb) {
     },
     { signal },
   );
+
+  window.addEventListener("focus", controller.onFocus, { signal });
+  window.addEventListener("online", controller.onOnline, { signal });
+  window.addEventListener("offline", controller.onOffline, { signal });
+  window.addEventListener("pagehide", controller.pause, { signal });
+  window.addEventListener("pageshow", controller.resume, { signal });
 
   // Observe the tail of the full displayed prefix, including virtual spacer rows.
   const atEnd =
@@ -2863,146 +2943,8 @@ export function mountPullsPanel(container, ctx, mb) {
   });
 }
 
-/**
- * Whether the list a landing reads has nothing to say yet: no rows, no end, and no failure,
- * with its refresh not run or still running.
- *
- * @param {PullsEnvelope | null} envelope
- */
-function landingWaits(envelope) {
-  if (envelope === null) {
-    return true;
-  }
-  return (
-    envelope.reason !== "not_github" &&
-    envelope.fetched === 0 &&
-    (envelope.refreshing ||
-      (!envelope.complete &&
-        (envelope.state === "absent" || envelope.state === "pending") &&
-        envelope.last_refresh === null))
-  );
-}
-
-/**
- * What the pane says at the list's own address, `/pulls`, as the list comes in. A first visit
- * lands before the tab's refresh has run, so a list with nothing to say yet is read again while
- * the page is shown, until it has rows, an end, or a failure to tell. The first read again is
- * at the fast poll, as the tab's ask follows the landing by a moment; then the fast poll while
- * a refresh runs, and the slow one while none does.
- *
- * @param {{
- *   request: PullsDependencies["request"],
- *   schedule(callback: () => void, delayMs: number): unknown,
- *   cancel(handle: unknown): void,
- *   isVisible(): boolean,
- *   formatTime(iso: string): string,
- *   checkout?: boolean,
- *   say(text: string): void,
- * }} deps
- */
-export function followLanding(deps) {
-  const listening = new AbortController();
-  /** @type {unknown} */
-  let timer = null;
-  let reads = 0;
-  let reading = false;
-  let settled = false;
-
-  async function read() {
-    if (settled || reading || listening.signal.aborted) {
-      return;
-    }
-    reading = true;
-    reads += 1;
-    /** @type {PullsEnvelope | null} */
-    let envelope = null;
-    try {
-      const response = await deps.request("GET", `${PULLS_ROUTE}?limit=0`, {
-        signal: listening.signal,
-      });
-      // The pin guard owns this refusal and will reload the page. Say nothing over it.
-      if (pinChanged(response)) {
-        settled = true;
-        return;
-      }
-      envelope = response.status === 200 && isEnvelope(response.body) ? response.body : null;
-    } catch {
-      envelope = null;
-    } finally {
-      reading = false;
-    }
-    if (listening.signal.aborted) {
-      return;
-    }
-    deps.say(
-      envelope === null
-        ? "Could not read pull requests. Trying again."
-        : describeLanding(envelope, deps.formatTime, deps.checkout),
-    );
-    settled = !landingWaits(envelope);
-    if (!settled && deps.isVisible()) {
-      const running = envelope?.refreshing === true || envelope?.state === "pending";
-      timer = deps.schedule(
-        () => {
-          timer = null;
-          void read();
-        },
-        envelope !== null && (reads === 1 || running) ? FAST_POLL_MS : SLOW_POLL_MS,
-      );
-    }
-  }
-
-  void read();
-  return Object.freeze({
-    onVisibilityChange() {
-      if (!deps.isVisible()) {
-        deps.cancel(timer);
-        timer = null;
-      } else if (timer === null) {
-        void read();
-      }
-    },
-    dispose() {
-      listening.abort();
-      deps.cancel(timer);
-      timer = null;
-    },
-  });
-}
-
-/**
- * Mount what the pane says at the list's own address. Browser only.
- *
- * @param {HTMLElement} container
- * @param {MetabrowserPublicRenderContext} _ctx
- * @param {MetabrowserPublicSdk} mb
- */
-export function mountPullsLanding(container, _ctx, mb) {
-  // The wrapper contains a neutral instruction, not content to retain on selection.
+/** @param {HTMLElement} container */
+export function mountPullsLanding(container) {
   container.setAttribute("data-preview-empty", "");
-  const said = h("div", { class: "preview-empty" });
-  container.replaceChildren(said);
-  const landing = followLanding({
-    request: (method, route, options) => request(mb.perf, method, route, options),
-    schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
-    cancel: (handle) => window.clearTimeout(/** @type {number | undefined} */ (handle)),
-    isVisible: () => document.visibilityState === "visible",
-    formatTime: (iso) => mb.formatTimestamp(Date.parse(iso) / 1000),
-    checkout: mb.sourceKind() === "filesystem",
-    say(text) {
-      if (said.textContent !== text) {
-        said.textContent = text;
-      }
-    },
-  });
-  const listening = new AbortController();
-  document.addEventListener("visibilitychange", landing.onVisibilityChange, {
-    signal: listening.signal,
-  });
-  return Object.freeze({
-    dispose() {
-      listening.abort();
-      landing.dispose();
-    },
-  });
+  container.replaceChildren(h("div", { class: "preview-empty" }, ["Select a pull request."]));
 }

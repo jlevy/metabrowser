@@ -131,6 +131,7 @@ Object.assign(globalThis, {
     importNode: (node) => new FakeElement(node.localName),
   },
   window: {
+    addEventListener() {},
     setTimeout(fn, delay) {
       const id = ++serial;
       timers.set(id, { fn, delay });

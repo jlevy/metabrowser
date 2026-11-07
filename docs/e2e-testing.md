@@ -472,6 +472,13 @@ Try the plain digits if the browser owns the Command chords.
 In a plain folder, check that the Files shortcut still uses `1` and the other numbers
 leave the selection alone.
 
+### Pulls Watch and Reconnect
+
+The
+[watch verification plan](project/specs/active/plan-2026-11-06-pr-watch-and-reconnect.md)
+covers incremental provider updates, cached use during an outage, connection recovery,
+and the Reload action in both repository modes.
+
 ### Pulls Paging
 
 Use a repository or a seeded catalog with more than 500 matching PRs.

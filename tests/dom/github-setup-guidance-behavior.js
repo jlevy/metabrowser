@@ -53,19 +53,24 @@ globalThis.window = {
           nowMs: Date.parse("2026-09-17T12:00:30Z"),
         },
       );
-      for (const failure of [catalogFailure, fileFailure]) {
-        assert.equal(failure.retry, true);
-        assert.equal(failure.help, help);
-        assert(failure.text.includes(command));
-        assert(
-          failure.text.includes("You can still browse local files and any cached pull requests."),
-        );
-        if (help) {
-          assert(failure.text.includes("https://cli.github.com/"));
-        }
-        if (last.message !== null) {
-          assert(failure.text.startsWith(last.message), "safe backend text remains intact");
-        }
+      assert.equal(catalogFailure.help, help);
+      assert(catalogFailure.text.includes(command));
+      assert(
+        !catalogFailure.text.includes("You can still browse local files"),
+        "the connection row supplies its own cache context",
+      );
+      assert.equal(fileFailure.retry, true);
+      assert.equal(fileFailure.help, help);
+      assert(fileFailure.text.includes(command));
+      assert(
+        fileFailure.text.includes("You can still browse local files and any cached pull requests."),
+      );
+      if (help) {
+        assert(fileFailure.text.includes("https://cli.github.com/"));
+      }
+      if (last.message !== null) {
+        assert(fileFailure.text.startsWith(last.message), "file setup retains safe backend text");
+        assert(detail.failure.includes(last.message), "PR setup retains safe backend text");
       }
       assert.equal(detail.failureHelp, help);
       assert(detail.failure.includes(command));
@@ -82,10 +87,7 @@ globalThis.window = {
     },
     (at) => at,
   );
-  assert(
-    rejected.text.startsWith(refused[0].toUpperCase() + refused.slice(1)),
-    "explicit HTTP401 refusal remains explicit",
-  );
+  assert.equal(rejected.text, "Run gh auth login --hostname github.com to connect.");
   for (const state of ["network_error", "not_found_or_private", "rate_limited"]) {
     const supplied = files[`failed ${state}`];
     const notice = catalog.refreshFailure(supplied, (at) => at);
@@ -103,7 +105,7 @@ globalThis.window = {
       nullMessageFallbacks: true,
       backendTextPreserved: true,
       cachedRecordPreserved: true,
-      explicit401Preserved: true,
+      authUsesNormalizedGuidance: true,
       otherFailureKindsPreserved: true,
     }),
   );

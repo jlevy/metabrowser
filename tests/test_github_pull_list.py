@@ -530,6 +530,8 @@ def test_late_demand_joins_and_cancel_cleans_coordinator_state(
             pull_list_route.start_refresh(view, refresh_request({"background": True}), wanted=True)
             == "joined"
         )
+        reconnect = refresh_request({"reconnect": True, "target": 900})
+        assert pull_list_route.start_refresh(view, reconnect, wanted="reconnect") == "joined"
         release.set()
         await coordinator.drain(timeout_s=2)
         assert observed == [("closed", 1500), True, False]
@@ -556,6 +558,8 @@ def test_invalid_window_is_refused(params: dict[str, str]) -> None:
         {"target": 0},
         {"retry": 1},
         {"background": 1},
+        {"reconnect": 1},
+        {"reconnect": True, "retry": True},
         {"state": "merged"},
     ],
 )
@@ -692,12 +696,128 @@ def test_an_automatic_refresh_waits_a_window_and_for_a_reset(
     assert refresh_is_due(kept, now=FETCHED_AT + timedelta(seconds=seconds)) is due
 
 
+def test_catalog_reconnect_retries_an_early_network_failure_only_once(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_list_refresh(
+        repository.home, repository.slug, "all", PullRefreshStamp(outcome="network_error", at=STAMP)
+    )
+    now = 100.0
+    attempts: list[bool] = []
+    monkeypatch.setattr(pull_list_route, "monotonic", lambda: now)
+
+    async def refresh(*args: Any, **kwargs: Any) -> None:
+        attempts.append(kwargs["take_retry"]())
+
+    monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", refresh)
+
+    async def exercise() -> None:
+        nonlocal now
+        coordinator = RefreshCoordinator()
+        view = ListView(repository, coordinator, False)
+        ask = refresh_request({"reconnect": True})
+        assert not refresh_wanted(view, RefreshRequest("open"))
+        wanted = refresh_wanted(view, ask)
+        assert wanted == "reconnect"
+        assert pull_list_route.start_refresh(view, ask, wanted=wanted) == "started"
+        await coordinator.drain(timeout_s=2)
+        assert pull_list_route.start_refresh(view, ask, wanted=wanted) == "not_due"
+        now += 60
+        assert pull_list_route.start_refresh(view, ask, wanted=wanted) == "started"
+        await coordinator.drain(timeout_s=2)
+        await coordinator.aclose()
+
+    asyncio.run(exercise())
+    assert attempts == [True, True]
+
+
+@pytest.mark.parametrize(
+    "outcome", ["gh_missing", "not_logged_in", "not_found_or_private", "rate_limited"]
+)
+def test_catalog_reconnect_cannot_bypass_a_non_network_failure(
+    repository: ListedRepository, outcome: str
+) -> None:
+    write_list_refresh(
+        repository.home, repository.slug, "all", PullRefreshStamp(outcome=outcome, at=STAMP)
+    )
+    view = ListView(repository, None, False)
+    assert refresh_wanted(view, refresh_request({"reconnect": True})) is False
+    if outcome == "rate_limited":
+        assert refresh_wanted(view, refresh_request({"retry": True})) is False
+
+
+@pytest.mark.parametrize("status", [502, 503])
+def test_catalog_server_outage_keeps_cached_rows_without_an_early_reconnect(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    items = [generated_item(1)]
+    seeded = _seed(repository, items)
+    _provider(monkeypatch, items)
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", gh.gh_graphql)
+
+    async def run(args: Any, **kwargs: Any) -> Any:
+        return subprocess.CompletedProcess(
+            args,
+            1,
+            f"HTTP/2.0 {status}\r\n\r\n".encode() + b'{"message":"private upstream detail"}',
+            b"",
+        )
+
+    monkeypatch.setattr(gh, "_run", run)
+    with pytest.raises(PullDataError) as failure:
+        asyncio.run(refresh_pull_list(repository, "open", retry=True))
+    assert failure.value.state == "github_unavailable"
+    stamp = read_list_refresh(repository.home, repository.slug, "all")
+    assert stamp is not None and stamp.outcome == "github_unavailable"
+    assert stamp.message == f"GitHub answered HTTP {status}"
+    assert read_catalog(repository.home, repository.slug) == seeded
+    view = ListView(repository, None, False)
+    assert not refresh_wanted(view, refresh_request({"reconnect": True}))
+
+
+def test_catalog_retries_back_off_when_github_omits_a_rate_reset(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = FETCHED_AT
+    items = [generated_item(1)]
+    _seed(repository, items)
+    _provider(monkeypatch, items)
+    monkeypatch.setattr(pull_list, "utc_now", lambda: now)
+
+    async def limited(*args: Any, **kwargs: Any) -> Any:
+        raise GhError("GitHub's API rate limit is exhausted", state="rate_limited")
+
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", limited)
+    view = ListView(repository, None, False)
+    for seconds in (60, 120):
+        with pytest.raises(PullDataError) as failure:
+            asyncio.run(refresh_pull_list(repository, "open", retry=True))
+        assert failure.value.state == "rate_limited"
+        until = now + timedelta(seconds=seconds)
+        stamp = read_list_refresh(repository.home, repository.slug, "all")
+        assert stamp is not None and stamp.reset_at == utc_stamp(until)
+        assert not refresh_wanted(view, refresh_request({"retry": True}))
+        assert not refresh_wanted(view, refresh_request({"reconnect": True}))
+        now = until
+
+    _provider(monkeypatch, items)
+    assert refresh_wanted(view, refresh_request({"retry": True})) is True
+    asyncio.run(refresh_pull_list(repository, "open", retry=True))
+    stamp = read_list_refresh(repository.home, repository.slug, "all")
+    assert stamp is not None and stamp.outcome == "succeeded"
+
+
 @pytest.mark.parametrize(
     ("errors", "state", "error_type"),
     [
         ([{"type": "RATE_LIMITED", "message": "rate limit exhausted"}], "rate_limited", GhError),
         (
             [{"type": "NOT_FOUND", "message": "secret repository name"}],
+            "not_found_or_private",
+            GhError,
+        ),
+        (
+            [{"type": "FORBIDDEN", "message": "arbitrary private upstream detail"}],
             "not_found_or_private",
             GhError,
         ),

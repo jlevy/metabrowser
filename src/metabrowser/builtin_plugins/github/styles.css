@@ -415,7 +415,7 @@
   white-space: normal;
 }
 .github-pulls-status,
-.github-pulls-activity,
+.github-pulls-connection,
 .github-pulls-empty {
   margin: 0;
   padding: 0 var(--pane-header-padding-x) 6px;
@@ -425,13 +425,26 @@
 .github-pulls-status > span {
   display: block;
 }
-.github-pulls-activity:not([hidden]) {
+.github-pulls-connection:not([hidden]),
+.github-pulls-connection-text {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.github-pulls-activity .spinner {
+.github-pulls-connection:not([hidden]) {
+  flex-wrap: wrap;
+}
+.github-pulls-connection-spinner:not([hidden]) {
+  display: inline-flex;
   flex: none;
+}
+.github-pulls-connection-spinner.mb-delayed-loading {
+  order: 1;
+}
+.github-pulls-reload[aria-disabled="true"] {
+  color: var(--muted);
+  border-color: var(--border);
+  cursor: default;
 }
 .github-pulls-total-line {
   color: var(--text);
@@ -442,14 +455,6 @@
 }
 .github-pulls-empty {
   padding-block-start: 6px;
-}
-.github-pulls-notice {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin: 0 var(--pane-header-padding-x) 6px;
-  padding: 4px 8px;
 }
 .github-pulls-list {
   margin: 0;

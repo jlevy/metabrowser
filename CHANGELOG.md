@@ -15,6 +15,8 @@ PR and Git navigation:
 
 - Files, Git, and Pulls appear in that order and open with `⌘1`, `⌘2`, and `⌘3`. Help
   lists plain digits for browsers that reserve the Command chords.
+- Pulls resumes incremental GitHub updates after reconnect and shows one connection
+  status with a **Reload** action.
 - Pulls loads older rows automatically as you approach the end of the list.
 - Pull request check runs and status contexts have their own **Checks** tab with a
   direct link.

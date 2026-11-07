@@ -80,6 +80,19 @@ the checkout. If the checkout cannot lend, the action reports why instead of sil
 cloning a full repository.
 See [Beside a Checkout](#beside-a-checkout) for the URL-based borrowing workflow.
 
+## Keep Pulls Up to Date
+
+Metabrowser watches the repository while Pulls or a PR page is visible.
+New PRs, state changes, and edits to titles or other list metadata arrive in the
+background. The list catches up when you return to it.
+
+The connection status is below the Pulls tally.
+Cached PRs remain readable during a disconnection, and Metabrowser retries when the
+network returns. Use **Reload** to request a new check.
+If the status asks you to install GitHub CLI, sign in, or check repository access,
+follow its instructions and choose **Reload**. See
+[Git and GitHub Setup](installation.md#git-and-github-setup).
+
 ## Native Stack Navigation
 
 With the optional [gh-stack extension](installation.md#git-and-github-setup), a list row

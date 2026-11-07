@@ -98,8 +98,11 @@ _NETWORK_TEXT: Final[tuple[str, ...]] = (
     "tls handshake timeout",
     "network is unreachable",
     "timeout awaiting response headers",
+    "context deadline exceeded",
 )
-_LOGIN_TEXT: Final[tuple[str, ...]] = ("gh auth login", "not logged in", "bad credentials")
+_LOGIN_TEXT: Final = ("gh auth login", "not logged in", "bad credentials", "http 401:")
+_SERVER_ERROR_TEXT = re.compile(r"\bhttp (5[0-9]{2}):")
+_SIGN_IN_MESSAGE: Final = "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry."
 
 
 class GhError(Exception):
@@ -124,6 +127,13 @@ class GhUnavailableError(GhError):
         ),
     ) -> None:
         super().__init__(message, state="gh_missing")
+
+
+class GhServerError(GhError):
+    """GitHub responded with a server error, so the host connection worked."""
+
+    def __init__(self, status: int) -> None:
+        super().__init__(f"GitHub answered HTTP {status}", state="network_error")
 
 
 class GhCursorError(GhError):
@@ -294,18 +304,28 @@ async def run_gh(
     return completed.stdout
 
 
+def _diagnosed_failure(diagnostic: str) -> GhError | None:
+    """Classify recognizable diagnostics without returning gh's text."""
+
+    text = diagnostic.lower()
+    if match := _SERVER_ERROR_TEXT.search(text):
+        return GhServerError(int(match[1]))
+    if any(needle in text for needle in _NETWORK_TEXT):
+        return GhError("gh could not reach api.github.com", state="network_error")
+    if any(needle in text for needle in _LOGIN_TEXT):
+        return GhError(_SIGN_IN_MESSAGE, state="not_logged_in")
+    return None
+
+
 def _failure_without_response(completed: _Completed) -> GhError:
     """The typed state of a ``gh`` run that printed no HTTP response."""
 
-    text = completed.stderr.decode("utf-8", errors="replace").lower()
-    if completed.returncode == _GH_EXIT_AUTH or any(needle in text for needle in _LOGIN_TEXT):
-        return GhError(
-            "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
-            state="not_logged_in",
-        )
-    if any(needle in text for needle in _NETWORK_TEXT):
-        return GhError("gh could not reach api.github.com", state="network_error")
-    return GhError(f"gh exited {completed.returncode} without an HTTP response")
+    if completed.returncode == _GH_EXIT_AUTH:
+        return GhError(_SIGN_IN_MESSAGE, state="not_logged_in")
+    diagnostic = completed.stderr.decode("utf-8", errors="replace")
+    return _diagnosed_failure(diagnostic) or GhError(
+        f"gh exited {completed.returncode} without an HTTP response"
+    )
 
 
 def parse_included_response(stdout: bytes) -> GhResponse | None:
@@ -398,7 +418,7 @@ def _refusal(response: GhResponse, *, now: datetime) -> GhError | None:
             state="not_found_or_private",
         )
     if response.status >= 500:
-        return GhError(f"GitHub answered HTTP {response.status}", state="network_error")
+        return GhServerError(response.status)
     return GhError(f"GitHub answered HTTP {response.status}")
 
 
@@ -507,7 +527,10 @@ async def gh_graphql(
             for error in failures
         ):
             raise GhCursorError("GitHub could not resume the metadata cursor")
-        if any(isinstance(error, dict) and error.get("type") == "NOT_FOUND" for error in failures):
+        if any(
+            isinstance(error, dict) and error.get("type") in ("NOT_FOUND", "FORBIDDEN")
+            for error in failures
+        ):
             raise GhError("GitHub has no readable repository here", state="not_found_or_private")
         raise GhError("GitHub could not complete the metadata query")
     data = payload.get("data")
@@ -537,6 +560,19 @@ def parse_account(stdout: bytes) -> str | None:
         login = entry.get("login")
         if isinstance(login, str) and _LOGIN.match(login):
             return login
+        # An environment token needs GitHub to resolve its login. A saved
+        # account with a valid login remains available through a network failure.
+        if login == "":
+            state = entry.get("state")
+            if state == "timeout":
+                raise GhError("gh could not reach api.github.com", state="network_error")
+            diagnostic = entry.get("error")
+            if (
+                state == "error"
+                and isinstance(diagnostic, str)
+                and (failure := _diagnosed_failure(diagnostic))
+            ):
+                raise failure
         raise GhError("gh auth status named an account that is not a GitHub login")
     return None
 
@@ -552,10 +588,7 @@ async def gh_account() -> str:
     if completed.stdout.strip().startswith(b"{"):
         login = parse_account(completed.stdout)
         if login is None:
-            raise GhError(
-                "GitHub CLI is not signed in to github.com. Run gh auth login --hostname github.com, then retry.",
-                state="not_logged_in",
-            )
+            raise GhError(_SIGN_IN_MESSAGE, state="not_logged_in")
         return login
     if b"unknown flag" in completed.stderr:
         raise GhError(
@@ -575,6 +608,7 @@ __all__ = [
     "GhError",
     "GhFailureState",
     "GhResponse",
+    "GhServerError",
     "GhUnavailableError",
     "gh_account",
     "gh_api",

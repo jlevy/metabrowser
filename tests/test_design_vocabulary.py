@@ -1363,11 +1363,12 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # A row and its page match: one state's icon, from one module.
     assert "pullStateIcon(" in panel and "pullStateIcon(" in page
     assert 'aria-label", PULL_STATES[state].label' in state
-    # Ages, filters, notices, and the spinner are the shell's.
+    # Ages, filters, buttons, and the spinner are the shell's.
     assert "mb.formatAge(" in panel
     assert "controls.groupHtml(" in panel
-    assert 'class: "notice github-pulls-notice"' in panel
-    assert '"github-pulls-activity mb-delayed-loading"' in panel
+    assert 'class: "github-pulls-connection"' in panel
+    assert 'class: "btn github-pulls-reload"' in panel
+    assert '"mb-delayed-loading"' in panel
     assert 'class: "spinner spinner-sm"' in panel
     assert 'class: "btn github-pulls-more"' in panel
 
