@@ -364,6 +364,28 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
         "gh api graphql visible-cores numbers=7"
     ]
 
+    session.advance(61)
+    session.say("A new command reopens the prepared description from disk without GitHub.")
+    reopened = session._run(CANONICAL, "--api", "/api/plugin/github/pull?number=7")
+    assert reopened.exit_code == 0, reopened.stderr
+    assert reopened.payload()["core_preview"] == preview
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
+    replayed = session.post(
+        {
+            "state": replaced["list"],
+            "window": {"id": "reopened-7", "generation": replaced["generation"]},
+            "numbers": [7],
+        },
+        route=PREPARE,
+    )
+    assert replayed.exit_code == 0
+    assert replayed.payload() == {
+        "preparation": "ready",
+        "ready_numbers": [7],
+        "skipped_numbers": [],
+    }
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
+
     cached = session.local(f"/api/cache/source/{origin_identity(CANONICAL).slug}")
     assert cached.exit_code == 0, cached.stderr
     rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)

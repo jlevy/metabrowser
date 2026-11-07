@@ -1140,6 +1140,88 @@ status: 200
 {"state": "open", "window": {"id": "visible-7", "generation": "<CATALOG_EPOCH_2>:0"}, "numbers": [7]}
 --- gh ---
 gh api graphql visible-cores numbers=7
+## The clock moves on 61 s, to 2026-09-17T12:02:02Z.
+## A new command reopens the prepared description from disk without GitHub.
+# metab https://github.com/octo/demo --api '/api/plugin/github/pull?number=7'
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull?number=7
+status: 200
+{
+  "state": "absent",
+  "reason": "not_cached",
+  "source": "https://github.com/octo/demo",
+  "number": 7,
+  "pin": "c691256511d05858850bc7684ae062fea0d41132",
+  "pin_ref": "refs/remotes/origin/topic",
+  "fetched_at": null,
+  "record_revision": null,
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": null,
+  "comparison_route": null,
+  "record": null,
+  "core_preview": {
+    "source": "https://github.com/octo/demo",
+    "number": 7,
+    "reader": "gh:someone-else",
+    "pull": {
+      "number": 7,
+      "title": "Count to two in the app",
+      "body": "The app counts to one.\r\n\r\nThis teaches it **two**.",
+      "body_truncated": false,
+      "state": "open",
+      "draft": false,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 2,
+      "merge_commit_sha": null,
+      "mergeable": "mergeable",
+      "labels": [
+        "enhancement"
+      ],
+      "author": "forker",
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": null,
+      "base": {
+        "ref": "topic",
+        "sha": "07b55f07793d9ed4e9f3e130c4414d979137bc53",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "count-to-two",
+        "sha": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
+        "repository": "forker/demo"
+      },
+      "html_url": "https://github.com/octo/demo/pull/7"
+    },
+    "comparison_state": "not_started",
+    "observed_at": "2026-09-17T12:01:01Z",
+    "revision": "f4dc7b10faf8db5b62e7a2a1e97c24a6bbb0c8758c6b2558130bdedef54f1c1b"
+  }
+}
+--- stderr ---
+--- gh ---
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-cores-prepare --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-cores-prepare
+status: 200
+{
+  "preparation": "ready",
+  "ready_numbers": [
+    7
+  ],
+  "skipped_numbers": []
+}
+--- stderr ---
+--- body ---
+{"state": "open", "window": {"id": "reopened-7", "generation": "<CATALOG_EPOCH_2>:0"}, "numbers": [7]}
+--- gh ---
 # metab root --api /api/cache/source/github-com--octo--demo--46386669dc01
 exit: 0
 --- stdout ---

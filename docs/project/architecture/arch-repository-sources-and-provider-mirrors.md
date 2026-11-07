@@ -775,6 +775,52 @@ never touches, so `/api/plugin/diff/comparison?revision=` answers the typed
 `parent_unavailable` for it and `/api/git/commit/<id>` reports its `stats` as unknown,
 on a store and a served shallow checkout alike; a real root commit is unchanged.
 
+### Lightweight pull-request cores
+
+Preparation stores each validated header and description in
+`sources/<slug>/pulls/<n>.core.json`, separately from the full record.
+`pull_core_cache.py` uses the existing private-file helpers, record read budget, and
+source-alias lock. The entry names the source, repository ID, reader, catalog epoch,
+summary fingerprint, observed time, and validated core.
+Publication rechecks identity and the exact catalog member under the source lock after
+the provider read.
+
+The fingerprint determines whether background preparation needs to fetch again.
+An ordinary catalog refresh retains its epoch, so unchanged entries remain reusable.
+A changed summary permits immediate display of its older validated core while another
+preparation fetches the update.
+Replacing the account, repository identity, or catalog epoch refuses the old entry.
+An observed account change also revokes old-reader lookahead in the current server.
+A newly authenticated catalog advances the server’s remembered reader and hold scope; an
+ordinary revision in the same catalog identity does not.
+
+The freshness window bounds retry frequency, not the lifetime of useful metadata.
+A core remains readable after a minute, releasing its preparation window, scrolling
+away, or restarting the server.
+A complete cached record takes precedence.
+GET reads local state only; it starts no provider, discussion, diff, or Git work.
+
+A preparation request names at most one transport batch.
+A ready receipt lists `ready_numbers` backed by validated cores and `skipped_numbers`
+with existing record entries.
+The two lists cover a completed batch; they let callers advance through the catalog
+without one status request per PR. A failed owner batch returns `failed`; subsequent
+batches return `held` with the same outcome, message, and reset time until another
+attempt is eligible.
+`cores.refresh.json` persists that hold under the same catalog identity.
+Known rate resets take precedence; a missing reset uses the existing minimum hold and
+backoff. Source failures leave useful cores intact and cannot start one failed provider
+process for every queued row.
+
+Successful durable publications release transient cooldown capacity.
+Neither transport batch size nor that bounded in-memory bookkeeping limits total
+coverage. Foreground selection still cancels and drains an active preparation job before
+starting its selected read.
+The focused core sessions in `tests/test_github_pulls.py` cover multiple batches, stale
+display, changed identity, offline restart, and failure holds;
+`cli-github-pulls-refresh.txt` demonstrates the same persisted read and cache-only
+receipt through the CLI.
+
 ### Lists of pull requests
 
 The GitHub plugin owns one disposable SQLite metadata catalog at

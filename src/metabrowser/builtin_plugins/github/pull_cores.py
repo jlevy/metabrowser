@@ -1,4 +1,4 @@
-"""One ephemeral, catalog-admitted core window on the served pull source."""
+"""Catalog-admitted core batches, backed by durable lightweight private entries."""
 
 from __future__ import annotations
 
@@ -6,8 +6,11 @@ import asyncio
 import os
 import re
 import time
+from contextlib import suppress
 from dataclasses import dataclass
+from datetime import timedelta
 from functools import partial
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, Literal
 
 from metabrowser.builtin_plugins.github import pulls
@@ -18,6 +21,13 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
     CatalogMember,
     CatalogState,
     catalog_members,
+    read_catalog,
+)
+from metabrowser.builtin_plugins.github.pull_core_cache import (
+    read_cached_core,
+    read_core_failure,
+    write_cached_cores,
+    write_core_failure,
 )
 from metabrowser.builtin_plugins.github.pull_list import (
     ListedRepository,
@@ -25,7 +35,9 @@ from metabrowser.builtin_plugins.github.pull_list import (
     rate_limit_holds,
     read_list_refresh,
 )
+from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp
 from metabrowser.builtin_plugins.github.served_pull import PullCorePreview, make_core_preview
+from metabrowser.cache.locks import run_lock_section
 from metabrowser.cache.paths import (
     MAX_PULL_REQUEST_NUMBER,
     PULL_LIST_NAMES,
@@ -45,7 +57,9 @@ _TOKEN = re.compile(r"[a-zA-Z0-9_-]{1,64}")
 # Do not evict a live entry: token churn across many rows could then spend it again.
 _MAX_CORE_ATTEMPTS: Final = 256
 type CoreAttempt = tuple[str, str, str, str, int, CatalogMember]
-type Preparation = Literal["started", "joined", "ready", "released", "not_owner", "busy"]
+type Preparation = Literal[
+    "started", "joined", "ready", "released", "not_owner", "busy", "failed", "held"
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,7 +164,6 @@ class CoreAdmission:
 @dataclass(frozen=True, slots=True)
 class PreparedCore:
     preview: PullCorePreview
-    expires_at: float
 
 
 @dataclass(eq=False, slots=True)
@@ -163,10 +176,10 @@ class CoreWindow:
     admission: CoreAdmission | None = None
     previews: dict[int, PreparedCore] | None = None
     checking_replacement: bool = False
+    failure: PullRefreshStamp | None = None
 
     def prepared(self, number: int) -> PreparedCore | None:
-        entry = self.previews.get(number) if self.previews is not None else None
-        return entry if entry is not None and time.monotonic() < entry.expires_at else None
+        return self.previews.get(number) if self.previews is not None else None
 
     def preview(self, number: int) -> PullCorePreview | None:
         entry = self.prepared(number)
@@ -190,11 +203,15 @@ class CoreWindow:
 
 
 def _record_missing(window: CoreWindow, number: int) -> bool:
+    return _record_path_missing(window.publication.home, window.publication.slug, number)
+
+
+def _record_path_missing(home: Path, slug: str, number: int) -> bool:
     """Admit only a missing private entry, without reading a record's contents."""
     try:
         fd = open_private_file(
-            window.publication.home,
-            source_pull_record(window.publication.slug, number),
+            home,
+            source_pull_record(slug, number),
             os.O_RDONLY | os.O_NONBLOCK,
             shared="refuse",
         )
@@ -210,15 +227,69 @@ def _eligible(window: CoreWindow) -> tuple[CatalogState | None, dict[int, Catalo
     home, slug, source = window.publication.home, window.publication.slug, window.source
     ask = window.ask
     catalog, members = catalog_members(home, slug, ask.state, ask.numbers)
+    stamp = read_list_refresh(home, slug, "all")
     if (
         catalog is None
         or catalog.source != source
         or catalog.generation(ask.state) != ask.generation
         or members.keys() != set(ask.numbers)
-        or rate_limit_holds(read_list_refresh(home, slug, "all"), now=pulls.utc_now())
+        or (
+            stamp is not None
+            and stamp.reader in {None, catalog.reader}
+            and rate_limit_holds(stamp, now=pulls.utc_now())
+        )
     ):
         return None, {}
     return catalog, {n: members[n] for n in ask.numbers if _record_missing(window, n)}
+
+
+def cached_batch(
+    pulls_set: ServedPulls, ask: CoreRequest
+) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+    """Classify an exact catalog batch using local files only, before provider admission."""
+
+    catalog, members = catalog_members(pulls_set.home, pulls_set.slug, ask.state, ask.numbers)
+    if (
+        catalog is None
+        or catalog.source != pulls_set.source
+        or catalog.generation(ask.state) != ask.generation
+        or (pulls_set.observed_reader is not None and catalog.reader != pulls_set.observed_reader)
+        or members.keys() != set(ask.numbers)
+    ):
+        return None
+    ready: list[int] = []
+    skipped: list[int] = []
+    for number in ask.numbers:
+        if not _record_path_missing(pulls_set.home, pulls_set.slug, number):
+            skipped.append(number)
+        elif read_cached_core(pulls_set.home, pulls_set.slug, number, fresh_only=True) is not None:
+            ready.append(number)
+    return tuple(ready), tuple(skipped)
+
+
+def _cached_previews(
+    window: CoreWindow, members: dict[int, CatalogMember]
+) -> dict[int, PreparedCore]:
+    return {
+        number: PreparedCore(preview)
+        for number in members
+        if (
+            preview := read_cached_core(
+                window.publication.home, window.publication.slug, number, fresh_only=True
+            )
+        )
+        is not None
+    }
+
+
+def _failure_held(pulls_set: ServedPulls) -> bool:
+    failure = pulls_set.core_failure
+    if failure is None:
+        return False
+    now = pulls.utc_now()
+    if failure.outcome == "rate_limited" and failure.reset_at is not None:
+        return now < parse_stamp(failure.reset_at)
+    return now < parse_stamp(failure.at) + timedelta(seconds=FRESHNESS_WINDOW_S)
 
 
 def _attemptable(
@@ -260,6 +331,7 @@ async def _prepare(
     def owns() -> bool:
         return pulls_set.core_window is window and pulls_set.published is publication
 
+    catalog: CatalogState | None = None
     try:
         catalog, admitted = (
             await asyncio.to_thread(_eligible, window) if eligible is None else eligible
@@ -267,8 +339,14 @@ async def _prepare(
         slot = window.coordinator.slot()
         if not owns() or catalog is None or pulls_set.foreground_pending(running) or slot.locked():
             return
-        attempts = _attemptable(pulls_set, catalog, admitted, running)
+        disk = await asyncio.to_thread(_cached_previews, window, admitted)
+        if not owns():
+            return
+        carried = {**carried, **{n: (admitted[n], entry) for n, entry in disk.items()}}
+        remaining = {number: member for number, member in admitted.items() if number not in carried}
+        attempts = _attemptable(pulls_set, catalog, remaining, running)
         if not attempts:
+            window.previews = {number: entry for number, (_member, entry) in carried.items()}
             return
         numbers = tuple(attempts)
         window.admission = CoreAdmission(
@@ -289,11 +367,14 @@ async def _prepare(
             retry_at = time.monotonic() + FRESHNESS_WINDOW_S
             pulls_set.core_attempts.update(dict.fromkeys(attempts.values(), retry_at))
             data = await gh_graphql(_batch_query(len(numbers)), variables, now=pulls.utc_now())
+        if not owns():
+            return
         observed_at = pulls.utc_now()
-        expires_at = time.monotonic() + FRESHNESS_WINDOW_S
         repository = as_dict(data["repository"])
         login = as_dict(data["viewer"])["login"]
         name = repository["nameWithOwner"]
+        if isinstance(login, str):
+            pulls_set.observe_reader(publication, f"gh:{login}")
         if (
             not isinstance(login, str)
             or catalog.reader != f"gh:{login}"
@@ -310,15 +391,13 @@ async def _prepare(
         if not owns():
             return
         ready: dict[int, PreparedCore] = {}
-        now = time.monotonic()
         for number in still_missing:
             if running(number):
                 continue
             previous = carried.get(number)
             if previous is not None:
                 _, entry = previous
-                if now < entry.expires_at:
-                    ready[number] = entry
+                ready[number] = entry
                 continue
             model = models[number]
             if parse_stamp(model.updated_at) >= parse_stamp(admitted[number].updated_at):
@@ -326,16 +405,75 @@ async def _prepare(
                     make_core_preview(
                         window.source, catalog.reader, model, observed_at, "not_started"
                     ),
-                    expires_at,
                 )
-        window.previews = ready
+        published = await run_lock_section(
+            partial(
+                write_cached_cores,
+                publication.home,
+                publication.slug,
+                catalog,
+                admitted,
+                {number: models[number] for number in ready if number in models},
+                observed_at,
+            )
+        )
+        if owns():
+            window.previews = {
+                **{number: entry for number, entry in ready.items() if number not in models},
+                **{number: PreparedCore(preview) for number, preview in published.items()},
+            }
+            # A durable cache entry now supplies the duplicate-admission proof. Free
+            # transient attempt slots so a successful pass has no coverage ceiling.
+            for number, attempt in attempts.items():
+                if number in published:
+                    pulls_set.core_attempts.pop(attempt, None)
+            pulls_set.core_failure = None
     except GhError as exc:
-        if owns() and exc.state == "rate_limited" and exc.reset_at is not None:
-            pulls_set.core_hold_until = parse_stamp(exc.reset_at)
-    except (*READ_FAILURES, ValueError):
-        return
+        if owns():
+            from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
+            from metabrowser.builtin_plugins.github.pull_list_refresh import _rate_limit_retry_at
+
+            reset_at = exc.reset_at
+            if exc.state == "rate_limited" and reset_at is None:
+                reset_at = _rate_limit_retry_at(pulls.utc_now(), pulls_set.core_failure)
+            window.failure = PullRefreshStamp(
+                outcome=exc.state,
+                message=str(exc)[:1000],
+                at=utc_stamp(pulls.utc_now()),
+                reset_at=reset_at,
+                reader=catalog.reader if catalog is not None else None,
+            )
+            pulls_set.core_failure = window.failure
+            if reset_at is not None:
+                pulls_set.core_hold_until = parse_stamp(reset_at)
+            if catalog is not None:
+                with suppress(OSError, PrivateStorageError):
+                    await run_lock_section(
+                        partial(
+                            write_core_failure,
+                            publication.home,
+                            publication.slug,
+                            catalog,
+                            window.failure,
+                        )
+                    )
+    except (OSError, PrivateStorageError, *READ_FAILURES, ValueError) as exc:
+        if owns():
+            from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
+
+            window.failure = PullRefreshStamp(
+                outcome="cache_unwritable"
+                if isinstance(exc, (OSError, PrivateStorageError))
+                else "gh_failed",
+                message="The local pull-request cache could not be written"
+                if isinstance(exc, (OSError, PrivateStorageError))
+                else "GitHub returned unreadable pull-request metadata",
+                at=utc_stamp(pulls.utc_now()),
+                reader=catalog.reader if catalog is not None else None,
+            )
+            pulls_set.core_failure = window.failure
     finally:
-        if owns() and not window.previews:
+        if owns() and not window.previews and window.failure is None:
             pulls_set.core_window = None
 
 
@@ -356,6 +494,46 @@ async def request_preparation(
         pulls_set.core_window = None
         current.cancel()
         return "released"
+    if current is not None and current.ask == ask and coordinator.running(current.key):
+        return "joined"
+    publication = pulls_set.published
+    catalog = await asyncio.to_thread(read_catalog, pulls_set.home, pulls_set.slug)
+    if pulls_set.published is not publication:
+        return "not_owner"
+    pulls_set.observe_catalog(catalog)
+    cached = await asyncio.to_thread(cached_batch, pulls_set, ask)
+    if cached is None or pulls_set.published is not publication:
+        return "not_owner"
+    current = pulls_set.core_window
+    ready, skipped = cached
+    if len(ready) + len(skipped) == len(ask.numbers):
+        return "ready"
+    persisted, listed = await asyncio.gather(
+        asyncio.to_thread(read_core_failure, pulls_set.home, pulls_set.slug),
+        asyncio.to_thread(read_list_refresh, pulls_set.home, pulls_set.slug, "all"),
+    )
+    for failure in (persisted, listed):
+        if (
+            failure is not None
+            and catalog is not None
+            and failure.reader in {None, catalog.reader}
+            and failure.outcome != "succeeded"
+            and (
+                pulls_set.core_failure is None
+                or parse_stamp(failure.at) > parse_stamp(pulls_set.core_failure.at)
+            )
+        ):
+            pulls_set.core_failure = failure
+    if _failure_held(pulls_set):
+        return (
+            "failed"
+            if current is not None and current.ask == ask and current.failure is not None
+            else "held"
+        )
+    current = pulls_set.core_window
+    if current is not None and current.failure is not None:
+        pulls_set.core_window = None
+        current = None
     if current is not None and current.ask == ask:
         if coordinator.running(current.key):
             return "joined"
@@ -373,7 +551,9 @@ async def request_preparation(
                 if not running(number) and (preview := current.prepared(number)) is not None
             }
             if current.previews:
-                return "ready"
+                # Coverage is checked above. A partial provider observation must
+                # never claim the whole batch is ready for a progressive caller.
+                return "not_owner"
         pulls_set.core_window = None
         return "not_owner"
     key = preparation_key(pulls_set.source)

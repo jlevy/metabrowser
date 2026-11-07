@@ -258,6 +258,14 @@ reads cache and memory only, captures the preview on the event loop, and rejects
 revoked snapshot after the bounded worker read.
 The entity tag carries preview identity and removal as well as full-record identity.
 Existing full records take precedence.
+Batch preparation also persists lightweight cores separately from full records.
+The existing GET can serve an identity-validated core after the preparation window ends
+or the server restarts, while the full discussion remains absent.
+A ready `github/pull-cores-prepare` receipt includes `ready_numbers` and
+`skipped_numbers`; failed batches and source holds include a failure outcome and reset
+time. See
+[lightweight cores](arch-repository-sources-and-provider-mirrors.md#lightweight-pull-request-cores)
+for cache identity, stale display, publication, and retry rules.
 A page that started a selected refresh may give the displayed preview’s revision in
 `GET github/pull?number=<n>&wait_full_after=<revision>`. If that exact preview is still
 pending and the full record is absent, one request can wait up to 900 ms for completion
@@ -385,20 +393,24 @@ return `invalid_request` (400); no GitHub repository returns `not_github` (409).
 [Lists of pull requests](arch-repository-sources-and-provider-mirrors.md#lists-of-pull-requests).
 
 `POST github/pull-cores-prepare` takes `state`, `window` with its `id` and catalog
-`generation`, and up to eight visible `numbers`. A started or joined preparation returns
-`202` with a cache-only `status_route`. Other outcomes return `200` with `ready`,
-`busy`, `not_owner`, or `released`. An empty `numbers` list releases only the window
-matching its state, ID, and generation.
-The panel retries a busy request once after one second while the same viewport is
-active; it does not retry `not_owner`. A 256-entry per-source attempt limit holds an
-unchanged indexed row for one minute after its provider attempt, regardless of the
-window token or filter.
-When a new batch settles, it can carry exact overlapping descriptions until their
-original expiry. Admission still checks the exact cohort and generation.
-Each result then rechecks its own indexed fingerprint under the same source, reader,
+`generation`, and at most eight `numbers` per transport batch.
+A started or joined preparation returns `202` with a cache-only `status_route`. Other
+outcomes return `200`: `ready`, `busy`, `not_owner`, `released`, `failed`, or `held`. A
+ready response lists `ready_numbers` and `skipped_numbers`, covering the batch with
+validated cores or existing record entries.
+A failed owner batch and later source holds carry `failure` with `outcome`, `message`,
+and optional `reset_at`. An empty `numbers` list releases only the window matching its
+state, ID, and generation; it retains useful persisted metadata.
+
+Admission checks the exact cohort and generation.
+Each publication rechecks its indexed fingerprint under the same source, reader,
 repository, and catalog epoch, so a change to another row does not discard a stable
-description. A ready description appears in the pull envelope as a reader-labelled
-`core_preview` with its original observation time and `comparison_state: "not_started"`.
+description. The 256-entry transient attempt budget governs outstanding cooldowns, and
+successful durable writes release their entries.
+It does not limit total prepared coverage.
+A prepared description appears in the pull envelope as a reader-labelled `core_preview`
+with its original observation time and `comparison_state: "not_started"`. It remains
+readable after the freshness window or a process restart.
 Selecting a pull with no complete record starts its own acquisition.
 
 `GET github/stacks` reads one optional repository stack snapshot with no query

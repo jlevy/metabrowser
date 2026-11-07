@@ -54,6 +54,7 @@ from metabrowser.builtin_plugins.github.checkout import (
     served_checkout,
     start_pull_refresh,
 )
+from metabrowser.builtin_plugins.github.pull_core_cache import read_cached_core
 from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreWindow, preparation_key
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
@@ -357,6 +358,17 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         if isinstance(record, PullRecord) and served.git_dir is not None
         else None
     )
+    preview = view.core_preview
+    if view.core_admission is not None and not view.core_admission.catalog_matches(view.number):
+        preview = None
+    if preview is None and record == "not_cached":
+        preview = read_cached_core(
+            served.home,
+            served.slug,
+            view.number,
+            reader=served.observed_reader,
+            reader_identity=served.core_catalog_identity,
+        )
     return PullEnvelope(
         state=state,
         reason=absence,
@@ -371,13 +383,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         last_refresh=view.kept.last if view.kept is not None else served.last_refresh(view.number),
         comparison_route=route,
         record=dumped if isinstance(record, PullRecord) else None,
-        core_preview=view.core_preview
-        if not isinstance(record, PullRecord)
-        and (
-            view.core_admission is None
-            or (record == "not_cached" and view.core_admission.catalog_matches(view.number))
-        )
-        else None,
+        core_preview=preview if record == "not_cached" else None,
     )
 
 
@@ -398,6 +404,15 @@ def core_preview_current(view: PullView, preview: PullCorePreview | None) -> boo
         return True
     if view.host is None:
         return False
+    if preview is not view.core_preview:
+        cached = read_cached_core(
+            view.host.pulls.home,
+            view.host.pulls.slug,
+            view.number,
+            reader=view.host.pulls.observed_reader,
+            reader_identity=view.host.pulls.core_catalog_identity,
+        )
+        return cached is not None and cached == preview
     if view.core_window is not None:
         return (
             view.host.pulls.core_window is view.core_window
