@@ -5,7 +5,7 @@ title: Persist lightweight PR cores for instant cached descriptions
 kind: bug
 status: in_progress
 priority: 1
-version: 4
+version: 5
 delegate: codex@spud10
 labels: []
 dependencies:
@@ -15,11 +15,13 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-07T08:18:38.065Z
-updated_at: 2026-11-07T09:39:54.601Z
+updated_at: 2026-11-07T09:43:50.254Z
 started_at: 2026-11-07T08:19:49.388Z
 ---
 Prepared PR descriptions currently live only in an eight-row CoreWindow and expire after 60 seconds, so viewport changes and later clicks lose useful metadata. Persist the validated lightweight core projection using the existing catalog or private-cache primitives; preserve repository/reader identity and version/fingerprint boundaries, serve validated cached descriptions immediately while refresh proceeds, and keep full discussion/checks/Git acquisition separate. Provide a batch-completion receipt that permits progressive startup warmup without N per-row reads. Measure cache reuse past 60 seconds and across cohorts/server restarts, and test stale/update/auth/offline/rate-limit cases with focused sessions.
 
 ## Notes
+
+Backend251 is independently reviewed and integrated. A new managed CLI process reused unselected pull request309 from the same cache143.534seconds after core publication, with no full record and zero gh calls. Later batches retained durable cores; complete records took precedence. Identity, stale display, cooldown, receipt, and offline-restart cases pass. Final full gate, publication, and CI are pending.
 
 Final backend251 independentlyreviewed and integrated. Real newmanagedCLIprocess readunselected#309 fromsamecache143.534saftercoreobservation, nofullrecord and0ghcalls. Sixpairedcandidates retained49-264durablecores acrosslaterbatches; cacheposttrialmetadataobservationtimesnot equalwindowthroughput. Fullrecordsupersedescore; selectedfull310existsall12trials. Fullgate/PR/CI pending.
