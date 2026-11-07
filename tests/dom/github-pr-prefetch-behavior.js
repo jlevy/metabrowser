@@ -21,6 +21,7 @@ async function run() {
     failure = null,
     cold = false,
     refreshing = false,
+    inventory = rows,
   } = {}) {
     let now = 0,
       online = true,
@@ -56,15 +57,16 @@ async function run() {
               },
             };
           }
-          const key = body.numbers.join(",");
-          if (body.numbers.every((n) => cached.has(n))) {
+          const missing = body.numbers.filter((number) => !cached.has(number));
+          const key = missing.join(",");
+          if (missing.length === 0) {
             return {
               status: 200,
               body: { preparation: "ready", ready_numbers: body.numbers, skipped_numbers: [] },
             };
           }
           if (!jobs.has(key)) {
-            batches.push(body.numbers);
+            batches.push(missing);
             jobs.set(key, now + 1000);
           }
           if (now < jobs.get(key)) {
@@ -118,7 +120,9 @@ async function run() {
         const q = new URL(route, "http://example").searchParams;
         const after = Number(q.get("after")) || Infinity;
         const limit = Number(q.get("limit"));
-        const available = rows.filter((row) => row.number < after);
+        const available = inventory.filter(
+          (row) => row.number < after && (q.get("state") === "all" || row.state === q.get("state")),
+        );
         const window = available.slice(0, limit);
         return {
           status: 200,
@@ -130,8 +134,8 @@ async function run() {
             complete: !refreshing,
             generation: catalogGeneration,
             list: q.get("state"),
-            total: rows.length,
-            fetched: rows.length,
+            total: inventory.length,
+            fetched: inventory.length,
             next_after: available.length > limit ? window.at(-1).number : null,
             rows: window,
           },
@@ -212,7 +216,7 @@ async function run() {
   await startup.start();
   assert.equal(startup.attempts.length, 0, "startup catalog paint precedes speculative work");
   await startup.until(() => startup.cached.size === rows.length);
-  await startup.next();
+  await startup.until(() => startup.timers.size === 0);
   assert.deepEqual(
     startup.batches.map((batch) => batch.length),
     [8, 8, 8],
@@ -228,6 +232,25 @@ async function run() {
   await startup.until(() => startup.cached.size === rows.length);
   assert.equal(startup.batches.length, 6, "catalog epoch replacement restarts the completed pass");
   startup.controller.dispose();
+
+  const recentClosed = rows.slice(0, 12).map((row, at) => ({
+    ...row,
+    number: 200 - at,
+    state: "closed",
+  }));
+  const ordered = rig({ inventory: [...recentClosed, ...rows] });
+  await ordered.start();
+  await ordered.until(() => ordered.cached.size === recentClosed.length + rows.length);
+  assert.deepEqual(
+    ordered.batches.slice(0, 3).flat(),
+    rows.map((row) => row.number),
+    "the default Open page is primed before newer Closed rows in All",
+  );
+  assert.deepEqual(
+    ordered.batches.slice(3).flat(),
+    recentClosed.map((row) => row.number),
+  );
+  ordered.controller.dispose();
 
   const viewport = rig({ shown: true, busyUntil: 5000 });
   await viewport.start();

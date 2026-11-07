@@ -755,5 +755,5 @@ def test_background_core_warming_covers_viewport_and_catalog_without_stranding_r
         "cachedAfterColdStart": 24,
         "cachedAfterReconnect": 24,
         "completedBeforeDisconnect": 8,
-        "backgroundRequestsAfterCompletion": 11,
+        "backgroundRequestsAfterCompletion": 14,
     }

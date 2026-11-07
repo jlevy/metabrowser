@@ -626,6 +626,8 @@ export function createPullsController(deps, options = {}) {
   let visibleCores = [];
   let visibleCoreAt = 0;
   let visibleCoreKey = "";
+  // Prime the already held default/filter page until a measured viewport replaces it.
+  let primeHeldCores = false;
   let warming = false;
   let warmPaused = false;
   /** Last settled catalog row, retained across browser suspension. @type {number | null} */
@@ -712,7 +714,7 @@ export function createPullsController(deps, options = {}) {
     }
     const list = held();
     if (
-      shown &&
+      (shown || primeHeldCores) &&
       visibleCoreAt < visibleCores.length &&
       typeof list.envelope?.generation === "string" &&
       list.content !== null
@@ -727,6 +729,13 @@ export function createPullsController(deps, options = {}) {
       return;
     }
     if (!warming) {
+      return;
+    }
+    if (primeHeldCores && visibleCores.length === 0 && list.envelope?.refreshing) {
+      // A cold startup's first catalog page may arrive after the refresh POST.
+      // Read that selected/default filter before walking the rest of All.
+      await poll(true);
+      queueCores();
       return;
     }
     const controller = new AbortController();
@@ -972,8 +981,13 @@ export function createPullsController(deps, options = {}) {
     });
     const key = JSON.stringify([list.content, rows.map((row) => [row.number, row.updatedAt])]);
     if (key === visibleCoreKey) {
+      primeHeldCores = false;
+      if (coreWanted === null || coreWanted.done) {
+        void pumpCores();
+      }
       return;
     }
+    primeHeldCores = false;
     visibleCoreKey = key;
     visibleCores = rows;
     visibleCoreAt = 0;
@@ -1104,6 +1118,7 @@ export function createPullsController(deps, options = {}) {
       visibleCoreKey = "";
       visibleCores = [];
       visibleCoreAt = 0;
+      primeHeldCores = true;
       clearCoreWindow();
     }
     if (envelope.last_refresh !== null && envelope.last_refresh.outcome !== "succeeded") {
@@ -1396,6 +1411,16 @@ export function createPullsController(deps, options = {}) {
     }
     settleAnchor();
     render(arrivals);
+    if (warming && primeHeldCores && visibleCores.length === 0 && list.rows.length > 0) {
+      // Reuse the page already held for the default/current filter, without inventing
+      // a row-count cutoff. The real viewport supersedes this startup hint.
+      visibleCores = list.rows.slice();
+      visibleCoreAt = 0;
+      visibleCoreKey = JSON.stringify([
+        list.content,
+        visibleCores.map((row) => [row.number, row.updatedAt]),
+      ]);
+    }
     if (first && shown && revealCurrent && current !== null && list.keys.has(current)) {
       deps.reveal(current);
     }
@@ -1879,6 +1904,7 @@ export function createPullsController(deps, options = {}) {
       prioritizeFilter = shown;
       readAhead = how.refreshAhead === true;
       warming = readAhead;
+      primeHeldCores = warming;
       warmPaused = false;
       render();
       return poll(true);
