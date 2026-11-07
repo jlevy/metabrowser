@@ -1185,10 +1185,21 @@ def test_every_prose_surface_reads_the_measure() -> None:
     overview = (REPO_ROOT / BUILTIN_PLUGINS / "folder/overview.css").read_text(encoding="utf-8")
     assert "var(--doc-measure)" in overview
     # Commit and PR pages start at the pane gutter and share the README's measure.
-    column = _rule(styles, ".page-reading-column,\n.pull-request-placeholder")
-    assert "var(--doc-measure)" in column
-    assert "margin-inline-end: auto" in column
-    assert "font-size: var(--page-title-font-size)" in _rule(styles, ".page-heading")
+    rules = _rules_of(STATIC / "styles.css")
+    columns = [
+        declarations for selector, declarations in rules if selector == ".page-reading-column"
+    ]
+    assert len(columns) == 1
+    column = columns[0]
+    assert "var(--doc-measure)" in column["max-width"]
+    assert column["margin-inline-end"] == "auto"
+    placeholder_columns = [
+        declarations
+        for selector, declarations in rules
+        if selector == ".pull-request-placeholder" and "max-width" in declarations
+    ]
+    assert placeholder_columns == [column]
+    assert dict(rules)[".page-heading"]["font-size"] == "var(--page-title-font-size)"
     github_css = REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"
     page = dict(_rules_of(github_css))[".github-pull"]
     assert "--doc-measure" not in page
