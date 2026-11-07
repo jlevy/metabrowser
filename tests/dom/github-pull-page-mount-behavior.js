@@ -490,7 +490,7 @@ async function run() {
   };
   globalThis.DOMParser = class {
     parseFromString() {
-      return { body: { firstElementChild: null } };
+      return { body: { firstElementChild: new Element("svg") } };
     }
   };
   globalThis.fetch = async () => ({ status: 304, headers: { get: () => null } });
@@ -566,6 +566,24 @@ async function run() {
     );
     await settle();
     await handle.whenFilesReady();
+    const title = container.querySelector(".github-pull-title-with-state");
+    assert.equal(title.tag, "h1");
+    const [icon, titleText] = title.children;
+    assert.equal(icon.className, "github-pull-state-icon");
+    assert.equal(icon.dataset.state, "open");
+    assert.equal(icon.children[0].tag, "svg");
+    assert.equal(icon.getAttribute("aria-hidden"), "true");
+    assert.equal(icon.getAttribute("aria-label"), null);
+    assert.equal(titleText.textContent, "Count to two in the app #7");
+    const meta = container.querySelector(".github-pull-meta");
+    assert.equal(
+      title.parentNode.children.indexOf(meta),
+      title.parentNode.children.indexOf(title) + 1,
+    );
+    const [stateBadge] = meta.children;
+    assert.equal(stateBadge.getAttribute("data-state"), "open");
+    assert.deepEqual(stateBadge.children, ["Open"]);
+    assert.equal(stateBadge.getAttribute("aria-hidden"), null);
     assert.deepEqual(
       container
         .querySelectorAll(".tab-btn")
@@ -936,6 +954,7 @@ async function run() {
     assert(perfEntries.includes(label), `the existing profiler receives ${label}`);
   }
   return {
+    titleStateAndTextBadge: true,
     failedAssetsRecover: true,
     failedRenderRecovers: true,
     staleRetryIsInert: true,

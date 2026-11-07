@@ -544,6 +544,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
 
     result = run_session("github-pull-page-mount-behavior.js")
     assert result == {
+        "titleStateAndTextBadge": True,
         "failedAssetsRecover": True,
         "failedRenderRecovers": True,
         "staleRetryIsInert": True,

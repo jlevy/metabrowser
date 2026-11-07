@@ -1294,6 +1294,8 @@ $ node tests/dom/github-pull-page-second-session.js
 }
 ? 0
 ```
+The mounted PR heading starts with a decorative state glyph and keeps the state as a
+text badge below the heading.
 The production mount keeps the displayed comparison through waiting and failed repairs,
 and remounts it once after success even if metadata has advanced to another head.
 Pending and disposed controls cannot issue duplicate requests.
@@ -1302,7 +1304,7 @@ retains its explicit Fetch changes.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsExplicit":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsExplicit":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true}
 ? 0
 ```
 

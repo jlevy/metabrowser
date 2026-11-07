@@ -1044,10 +1044,13 @@ The page is a header, optional native stack navigation, a [tab bar](#the-tab-bar
 body, in that order.
 The header, Conversation, and Checks share a **reading column**: `--doc-measure` plus
 two card insets, centered in a wider pane as a Markdown file’s card and Overview’s stack
-are. So a card’s text box is the one a file’s text has, and the title lines up with the
+are. A card’s text box is the one a file’s text has, and the title row lines up with the
 cards under it. The tab bar follows that same column, so the first tab aligns with the
 content on both narrow and wide screens.
-The Changes body keeps the full pane so a diff has room for Split.
+The title begins with the Pulls state icon at the title’s font size.
+The text wraps under its first line while the icon stays beside the first line.
+The colored badge below the title gives the state in text and the title icon is
+decorative. The Changes body keeps the full pane so a diff has room for Split.
 A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
 reading column even when Changes is selected.
 Its reveal wrapper and skeleton are separate nodes, so the shared loading delay does not
@@ -1174,10 +1177,9 @@ Four states, each with the shape GitHub gives it and a color token in GitHub’s
 
 The tokens are the plugin’s, in its stylesheet, as a domain’s tokens are, and each is
 one color seen against two backgrounds: the hue is GitHub’s and the same in both themes.
-Color is never the only signal: the shapes differ, the icon’s accessible name and
-tooltip say the state in the page header’s words, and the page’s state badge is the same
-icon beside its word.
-Everything goes through `pullStateIcon` and `displayState` in
+The shapes differ. In the list, the icon’s accessible name and tooltip give the state.
+On the page, the same glyph sits beside the title and the text badge below names the
+state. Everything goes through `pullStateIcon` and `displayState` in
 `builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree.
 `test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` holds the hue and a
 4.5:1 contrast on both grounds, because a badge sets its word in that color.
@@ -1203,6 +1205,8 @@ icon and the title with the age beside it, sharing a baseline, then the metadata
 under them. It is one link, so a new tab and a copied address are the browser’s own, and
 all of its text is text: GitHub’s users write it, and none of it reaches markup or a
 style.
+
+New pull requests use the [shared arrival highlight](#live-row-arrivals).
 
 ### Keys
 
