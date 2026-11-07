@@ -2357,6 +2357,25 @@ Avoid looping animation except for active progress indicators.
 Respect `prefers-reduced-motion`. Content and status must remain understandable when
 transitions are disabled.
 
+### Live Row Arrivals
+
+The Files tree and Pulls apply `.tree-item-flash-in` to a newly arrived row.
+The shared `--row-flash-bg` tint fades to transparent in 900 ms and uses the
+near-instant reduced-motion treatment.
+The highlight leaves the row’s size and controls in place.
+
+Initial snapshots, older rows revealed by paging, and edits to existing rows use their
+regular presentation.
+Each data source decides which rows arrived.
+A live list fed by another provider can apply the same treatment when it inserts a new
+item.
+
+PR arrival classification uses a conservative timestamp cutoff.
+A machine clock ahead of GitHub can suppress the tint.
+The new catalog row still appears with its regular controls and selection behavior.
+
+### Loading Chrome
+
 Transient loading chrome has a quiet period through the shared `.mb-delayed-loading`
 utility, whose length is `--loading-state-delay` in `styles.css`. The placeholder
 reserves its final layout immediately but stays invisible long enough for synchronous
