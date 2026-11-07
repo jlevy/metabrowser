@@ -209,8 +209,8 @@
   }
 
   /** @param {string} query */
-  function isPullNumberQuery(query) {
-    return /^#[0-9]+$/u.test(query.trim());
+  function isExplicitPullQuery(query) {
+    return query.trimStart().startsWith("#");
   }
 
   /** @param {number | undefined} value @param {number} fallback */
@@ -262,7 +262,7 @@
       return (
         request.match === "fuzzy" &&
         (request.target === "file" ||
-          (request.target === "all" && !isPullNumberQuery(request.query)))
+          (request.target === "all" && !isExplicitPullQuery(request.query)))
       );
     }
 
@@ -368,10 +368,11 @@
    * @param {string} query
    */
   function pullTitlePattern(query) {
-    if (isPullNumberQuery(query)) {
+    const title = isExplicitPullQuery(query) ? query.slice(1).trim() : query;
+    if (title === "" || /^[0-9]+$/u.test(title)) {
       return null;
     }
-    const terms = query
+    const terms = title
       .split(/\s+/u)
       .sort((left, right) => right.length - left.length)
       .map((term) => term.replace(/[.*+?^$(){}|[\]\\]/gu, "\\$&"));
@@ -442,9 +443,7 @@
       // reach the server if they change again before this short pause.
       await defaultYieldControl(signal, PULL_QUERY_DELAY_MS);
       throwIfAborted(signal);
-      const typedQuery = request.query.trim();
-      const bareNumber = typedQuery.length < MAX_PULL_QUERY_LENGTH && /^[0-9]+$/u.test(typedQuery);
-      const query = bareNumber ? `#${typedQuery}` : typedQuery;
+      const query = request.query.trim();
       const params = new URLSearchParams({ q: query });
 
       /** @returns {Promise<{
@@ -462,7 +461,7 @@
         return response.json();
       }
 
-      const exactNumber = isPullNumberQuery(query);
+      const exactNumber = /^[0-9]+$/u.test(query);
       const titlePattern = pullTitlePattern(query);
 
       /** @param {Awaited<ReturnType<typeof lookup>>} body @returns {MetabrowserSearchBatch} */
@@ -908,6 +907,6 @@
     createController,
     createLocalFileProvider,
     createPullProvider,
-    isPullNumberQuery,
+    isExplicitPullQuery,
   });
 })();

@@ -1363,6 +1363,8 @@ Quick Search uses one option list for files and pull requests.
 File rows show the filename and path.
 Pull request rows show the title first, with the PR number and state below it.
 The accessible option name includes that context.
+In a GitHub repository, a leading `#` scopes results to PRs.
+The empty prefix lists recent PRs, digits match number prefixes, and words match titles.
 
 Use the same arrow, Enter, and Escape behavior for every result type.
 Keep the active option selected by identity as providers return, and open the result

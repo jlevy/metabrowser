@@ -13,8 +13,9 @@ and further indexing are planned.
 Press `T` or `/` to open the keyboard-first search palette.
 It fuzzy-matches non-gitignored files under the served root in the browser and opens the
 selected file through the existing navigation path.
-On a GitHub repository, Quick Search also finds cached pull requests by exact number or
-title. The same palette searches files in a plain folder.
+On a GitHub repository, Quick Search also finds cached pull requests by number or title.
+Start with `#` to show PR results alone.
+The same palette searches files in a plain folder.
 
 The browser intentionally knows less than the server inventory.
 The initial event stream contains only the served root through depth two, lazy subtree
@@ -360,10 +361,12 @@ content modes continuously, while the palette stays specialized for navigation.
 ### Pull-Request Completions
 
 A GitHub checkout or managed repository offers the PR provider in Quick Search.
-An explicit number such as `#123` looks up that exact PR across open, closed, merged,
-and draft states. A bare number checks the same PR and also matches files.
-Other queries look for title terms alongside file matches.
-Title terms match case-insensitively as literal substrings.
+Type `#` to see recent cached PRs across open, closed, merged, and draft states.
+Continue with digits to match PR number prefixes, with the exact PR first when cached.
+Continue with words to match only PR titles.
+A bare number checks the exact PR alongside file matches.
+Other unprefixed queries look for title terms alongside file matches.
+See `mb-jbfs`. Title terms match case-insensitively as literal substrings.
 Multiple terms must all match the title.
 
 The provider sends an abortable, debounced GET to the Pulls endpoint’s `q` mode.
@@ -372,11 +375,10 @@ number, title, and state.
 Typing reads only cached summary data.
 Catalog warming uses the shared Pulls refresh job and its existing rate and retry
 controls. Cached matches appear as soon as they are available.
-While the catalog is refreshing, the active title query checks for new results within a
-bounded window.
-The response separates catalog completeness, the title scan’s work limit,
-and the result limit.
-The palette labels a list that has more matching results.
+While the catalog is refreshing, an active recent, prefix, or title query checks for new
+results within a bounded window.
+The response separates catalog completeness, the title scan’s work limit, and the result
+limit. The palette labels a list that has more matching results.
 See
 [Search From the Catalog](plan-2026-10-01-github-pulls-tab.md#search-from-the-catalog).
 

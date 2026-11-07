@@ -77,7 +77,8 @@ Metadata loads incrementally and stays current while Pulls or a PR page is visib
 During a disconnection, the Pulls connection status keeps cached rows available and
 offers **Reload**. The catalog resumes updates automatically when GitHub is reachable.
 Scrolling near the end or choosing **Fetch more** extends the displayed window.
-Press `T` or `/` to find cached PRs in **Quick Search** by number or title.
+Press `T` or `/` to open **Quick Search**. Type `#` for recent PRs, then add a number
+prefix or title words to narrow the list.
 
 A folder server keeps its filesystem root and does not fetch Git objects merely because
 a pull request is opened.

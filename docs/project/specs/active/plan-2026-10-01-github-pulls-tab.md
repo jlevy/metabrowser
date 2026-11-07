@@ -45,8 +45,11 @@ The same repository catalog supplies Quick Search on a checkout or managed mirro
 across all cached PR states and returns each matching number, title, and state.
 `complete` reports whether the catalog has finished backfilling.
 `limited` reports whether the title scan hit its work limit.
-A `#123` lookup uses the number index across the entire cache.
-Title searches use a bounded scan with newest numbers first.
+A bare number uses the number index for an exact match.
+A `#123` lookup returns the exact PR first and uses bounded number ranges for prefix
+matches across the entire cache.
+A lone `#` returns the newest PR numbers, and `#` followed by words uses the same
+bounded title scan as unprefixed text.
 The query window is independent of the Pulls display window and its Open, Closed, or All
 filter.
 
