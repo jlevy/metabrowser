@@ -2505,7 +2505,11 @@ export function mountPullPage(container, ctx, mb) {
       return h("span", {}, [iso]);
     }
     const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
-    return h("span", { class: className, "data-tip-text": mb.formatTimestamp(at / 1000) }, [label]);
+    return h(
+      "span",
+      { class: `github-pull-age ${className}`, "data-tip-text": mb.formatTimestamp(at / 1000) },
+      [label],
+    );
   };
 
   /**
