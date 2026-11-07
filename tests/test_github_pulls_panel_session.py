@@ -684,7 +684,9 @@ def test_recording_optional_stack_metadata_answers_real_routes(
                     "url": "https://api.github.com/repos/octo/demo/stacks/286",
                     "base": {"ref": "main"},
                     "open": True,
-                    "pull_requests": [{"number": n} for n in (6, 7, 8)],
+                    "pull_requests": [
+                        {"number": n, "title": f"Stack change {n}"} for n in (6, 7, 8)
+                    ],
                 }
             ],
         )

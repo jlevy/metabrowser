@@ -74,11 +74,16 @@ class NativeStack(_Model):
     base_ref: Annotated[str, StringConstraints(max_length=1024)]
     open: StrictBool
     pulls: tuple[Number, ...] = Field(min_length=1, max_length=MAX_STACK_MEMBERS)
+    titles: tuple[
+        Annotated[str, StringConstraints(max_length=pull_list.MAX_ROW_TITLE_BYTES)] | None, ...
+    ] = Field(max_length=MAX_STACK_MEMBERS)
 
     @model_validator(mode="after")
     def _distinct_members(self) -> Self:
         if not self.pulls or len(set(self.pulls)) != len(self.pulls):
             raise ValueError("stack members must be nonempty and distinct")
+        if len(self.titles) != len(self.pulls):
+            raise ValueError("stack titles must follow the member order")
         return self
 
 
@@ -116,7 +121,7 @@ class StackSnapshot(_Model):
 
 
 class StackCache(_Model):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     source: str
     revision: Revision = Field(default_factory=lambda: uuid.uuid4().hex)
     snapshot: StackSnapshot | None
@@ -278,6 +283,7 @@ def _page(repository: ListedRepository, response: GhResponse, old: StackPage | N
                 base_ref=as_dict(item["base"])["ref"],
                 open=item["open"],
                 pulls=tuple(as_dict(member)["number"] for member in members),
+                titles=tuple(as_dict(member).get("title") for member in members),
             )
         )
     return StackPage(etag=response.etag, has_next=response.has_next_page, stacks=tuple(stacks))
