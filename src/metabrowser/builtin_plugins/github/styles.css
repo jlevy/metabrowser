@@ -691,7 +691,9 @@
 }
 .github-pull-stack-member {
   align-items: start;
+  color: var(--text);
   white-space: normal;
+  text-decoration: none;
 }
 .github-pull-stack-current {
   flex: none;
@@ -711,10 +713,6 @@
 }
 .github-pull-stack-member[aria-current="page"] .github-pull-stack-member-title {
   font-weight: var(--weight-bold);
-}
-.github-pull-stack a {
-  color: var(--text);
-  text-decoration: none;
 }
 .github-pull-loading {
   margin: 0;

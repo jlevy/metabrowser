@@ -133,9 +133,13 @@ def test_the_page_parses_no_html_but_through_the_inert_allowlist() -> None:
     assert "mb.loadKpressAssets(rendered.assets)" in source
     # A failure to load them leaves the text readable under the shell's rules, and is said.
     assert 'console.warn("metabrowser github: the text styles did not load", error);' in source
-    # The chevron is the shell's constant, so it is parsed once and each fold takes a copy.
+    # Only shell-owned icon constants are parsed; every use takes an inert copy.
     assert source.count("new DOMParser()") == 1
+    assert source.count("registryIcon(") == 2
+    assert 'registryIcon("toggle")' in source and 'registryIcon("layers")' in source
+    assert 'parseFromString(mb.icons[name] || "", "text/html")' in source
     assert "document.importNode(chevronSvg, true)" in source
+    assert "document.importNode(stackSvg, true)" in source
     assert "insertAdjacentHTML" not in source and "outerHTML" not in source
     assert source.count('rel: "noopener noreferrer"') == 1
     # GitHub's own rendering of the text is never read.
