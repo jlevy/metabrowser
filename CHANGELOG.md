@@ -1495,9 +1495,9 @@ Fixes:
   0.11.0 did. They now answer `truncated`, as `/api/index/progress` and `--walk` already
   did.
 
-- Switching between the Files and Commits tabs no longer carries one list’s scroll
-  offset into the other: the two share one scroller, and each now keeps its own place in
-  it, where 0.11.0 carried the offset of the list last shown into the other.
+- Switching between the Files and Git tabs no longer carries one list’s scroll offset
+  into the other: the two share one scroller, and each now keeps its own place in it,
+  where 0.11.0 carried the offset of the list last shown into the other.
 
 ## 0.11.0
 
