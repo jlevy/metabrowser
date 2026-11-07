@@ -3353,19 +3353,11 @@ def _visible_core_fixture(
     owner = {"id": "visible-8", "generation": catalog.generation("all")}
     ask = {"state": "all", "window": owner, "numbers": list(visible or numbers)}
     started = client.post(_PREPARE_CORES, json=ask)
-    if untrustworthy:
-        assert started.status_code == 200
-        assert started.json() == {
-            "preparation": "ready",
-            "ready_numbers": [],
-            "skipped_numbers": [8, 7],
-        }
-    else:
-        assert started.status_code == 202
-        assert started.json() == {
-            "preparation": "started",
-            "status_route": "/api/plugin/github/pull?number=8",
-        }
+    assert started.status_code == 202
+    assert started.json() == {
+        "preparation": "started",
+        "status_route": "/api/plugin/github/pull?number=8",
+    }
     if hold_batch is None:
         _drain_visible_cores(client)
     return ask, rest, calls
@@ -3667,12 +3659,14 @@ def test_visible_core_requires_provider_at_least_as_new_as_admitted_row(
         assert preview["pull"]["updated_at"] == stamp
 
 
-def test_visible_core_skips_untrustworthy_record_entry(
+def test_visible_core_does_not_follow_an_untrustworthy_record_entry(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _stand, client = pinned_pull
+    stand, client = pinned_pull
     _ask, _rest, calls = _visible_core_fixture(pinned_pull, monkeypatch, untrustworthy=True)
-    assert calls == [] and _read(client, 8).json()["core_preview"] is None
+    assert calls == [(8,)] and _read(client, 8).json()["core_preview"]["number"] == 8
+    assert (stand.published.home / source_pull_record(stand.published.slug, 8)).is_symlink()
+    assert not (stand.published.home / "missing-untrusted-target").exists()
 
 
 @pytest.mark.parametrize(
@@ -4623,17 +4617,292 @@ def test_core_transient_capacity_does_not_claim_unattempted_rows(
     }
     assert client.post(_PREPARE_CORES, json=ask).status_code == 202
     _drain_visible_cores(client)
-    assert client.post(_PREPARE_CORES, json=ask).json() == {"preparation": "not_owner"}
     assert _read(client, 9).json()["core_preview"] is not None
     assert _read(client, 10).json()["core_preview"] is None
-    # The successful publication frees its slot; the unattempted row must not
-    # become a fake provider failure or an enduring coverage cutoff.
-    next_ask = {**ask, "window": {**ask["window"], "id": "remaining"}}
-    assert client.post(_PREPARE_CORES, json=next_ask).status_code == 202
+    # A settled partial batch accounts for every member without pretending complete
+    # coverage, and retires its owner so the same token can make further progress.
+    partial = client.post(_PREPARE_CORES, json=ask).json()
+    assert partial["preparation"] == "partial"
+    assert partial["ready_numbers"] == [9] and partial["retry_numbers"] == [10]
+    assert partial["skipped_numbers"] == []
+    assert client.post(_PREPARE_CORES, json=ask).status_code == 202
     _drain_visible_cores(client)
-    assert client.post(_PREPARE_CORES, json=next_ask).json() == {
+    assert client.post(_PREPARE_CORES, json=ask).json() == {
         "preparation": "ready",
         "ready_numbers": [9, 10],
         "skipped_numbers": [],
     }
     assert calls == [(8,), (9,), (10,)]
+
+
+@pytest.mark.parametrize("content", [b"{broken", b'{"schema_version":999}'])
+def test_unreadable_full_records_are_not_prepared_core_coverage(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch, content: bytes
+) -> None:
+    stand, client = pinned_pull
+    path = stand.published.home / source_pull_record(stand.published.slug, 8)
+    path.write_bytes(content)
+    ask, _rest, calls = _visible_core_fixture(pinned_pull, monkeypatch)
+    assert client.post(_PREPARE_CORES, json=ask).json() == {
+        "preparation": "ready",
+        "ready_numbers": [8],
+        "skipped_numbers": [7],
+    }
+    shown = _read(client, 8).json()
+    assert shown["record"] is None and shown["core_preview"]["number"] == 8
+    assert calls == [(8,)] and path.read_bytes() == content
+
+
+def test_malformed_core_failure_holds_across_restart(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_cores
+
+    stand, client = pinned_pull
+    first, _rest, _calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8, 7)
+    )
+    attempts = 0
+
+    async def malformed(*_args: Any, **_kwargs: Any) -> Any:
+        nonlocal attempts
+        attempts += 1
+        return {"unexpected": "shape"}
+
+    monkeypatch.setattr(pull_cores, "gh_graphql", malformed)
+    ask = {**first, "window": {**first["window"], "id": "malformed"}, "numbers": [9]}
+    assert client.post(_PREPARE_CORES, json=ask).status_code == 202
+    _drain_visible_cores(client)
+    failure = client.post(_PREPARE_CORES, json=ask).json()
+    assert failure["preparation"] == "failed" and failure["failure"]["outcome"] == "gh_failed"
+
+    def restart() -> None:
+        session = mirror_session(app)
+        assert session is not None
+        session.pull_requests = ServedPulls(stand.published)
+
+    assert client.portal is not None
+    client.portal.call(restart)
+    assert client.post(_PREPARE_CORES, json=ask).json() == {**failure, "preparation": "held"}
+    assert attempts == 1
+
+
+def test_success_replaces_an_expired_durable_core_failure(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
+    from metabrowser.builtin_plugins.github.pull_core_cache import (
+        read_core_failure,
+        write_core_failure,
+    )
+    from metabrowser.cache.paths import source_pull_cores_refresh
+
+    stand, client = pinned_pull
+    first, _rest, _calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8, 7)
+    )
+    catalog = read_catalog(stand.published.home, stand.published.slug)
+    assert catalog is not None
+    path = stand.published.home / source_pull_cores_refresh(stand.published.slug)
+    path.unlink()
+    expired = PullRefreshStamp(
+        outcome="rate_limited",
+        at=gh_lists.utc_stamp(pulls.utc_now() - timedelta(seconds=120)),
+        reset_at=gh_lists.utc_stamp(pulls.utc_now() - timedelta(seconds=60)),
+        reader=catalog.reader,
+    )
+    write_core_failure(stand.published.home, stand.published.slug, catalog, expired)
+    ask = {**first, "window": {**first["window"], "id": "recovered"}, "numbers": [9]}
+    assert client.post(_PREPARE_CORES, json=ask).status_code == 202
+    _drain_visible_cores(client)
+    assert client.post(_PREPARE_CORES, json=ask).json()["preparation"] == "ready"
+    saved = read_core_failure(stand.published.home, stand.published.slug)
+    assert saved is not None and saved.outcome == "succeeded"
+    # A delayed writer cannot reinstate the older refusal after the successful batch.
+    write_core_failure(stand.published.home, stand.published.slug, catalog, expired)
+    assert read_core_failure(stand.published.home, stand.published.slug) == saved
+
+
+@pytest.mark.parametrize("route", ["read", "refresh"])
+def test_disk_core_revocation_after_worker_check_is_rejected_on_loop(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_route, sidekick
+
+    stand, client = pinned_pull
+    _ask, _rest, _calls = _visible_core_fixture(pinned_pull, monkeypatch)
+    assert client.portal is not None
+
+    def disk_only() -> None:
+        session = mirror_session(app)
+        assert session is not None and isinstance(session.pull_requests, ServedPulls)
+        session.pull_requests.core_window = None
+
+    client.portal.call(disk_only)
+    original = asyncio.to_thread
+    revoked = False
+
+    async def revoke_after_read(function: Any, *args: Any, **kwargs: Any) -> Any:
+        nonlocal revoked
+        result = await original(function, *args, **kwargs)
+        if function is pull_route.cached_core_preview_current and result:
+            view = args[0]
+            view.host.pulls.observe_reader(view.host.pulls.published, "gh:different-reader")
+            revoked = True
+        return result
+
+    monkeypatch.setattr(sidekick.asyncio, "to_thread", revoke_after_read)
+    if route == "read":
+        body = _read(client, 8).json()
+    else:
+        # A recent full-record refresh stamp refuses provider work, leaving the
+        # durable core as the candidate carried by the POST response.
+        write_pull_refresh(
+            stand.published.home,
+            stand.published.slug,
+            8,
+            PullRefreshStamp(
+                outcome="succeeded", at=gh_lists.utc_stamp(pulls.utc_now()), reader=f"gh:{READER}"
+            ),
+        )
+        body = client.post("/api/plugin/github/pull-refresh", json={"number": 8}).json()["pull"]
+    assert revoked and body["core_preview"] is None
+
+
+def test_unavailable_member_does_not_block_later_cohorts_or_lose_ready_siblings(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from metabrowser.builtin_plugins.github import pull_cores
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from tests.github_pull_fixture import seed_catalog
+
+    stand, client = pinned_pull
+    first, rest, _calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8, 7)
+    )
+    rest[10] = scenario(stand.origin)["api"]["repos/octo/demo/pulls/10"]["body"]
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    catalog = seed_catalog(repository, list(rest.values()), reader=READER)
+    absent = True
+    calls: list[tuple[int, ...]] = []
+
+    async def graph(_query: str, variables: dict[str, str | int], **_kwargs: Any) -> dict[str, Any]:
+        numbers = tuple(int(v) for k, v in variables.items() if k.startswith("n") and k != "name")
+        calls.append(numbers)
+        result = graph_core_data(rest[8])
+        repo = result["repository"]
+        repo.pop("pull")
+        for i, number in enumerate(numbers):
+            repo[f"p{i}"] = (
+                None
+                if absent and number == 9
+                else graph_core_data(rest[number])["repository"]["pull"]
+            )
+        return result
+
+    monkeypatch.setattr(pull_cores, "gh_graphql", graph)
+    ask = {
+        **first,
+        "window": {"id": "partial", "generation": catalog.generation("all")},
+        "numbers": [9, 8],
+    }
+    assert client.post(_PREPARE_CORES, json=ask).status_code == 202
+    _drain_visible_cores(client)
+    partial = client.post(_PREPARE_CORES, json=ask).json()
+    assert partial["preparation"] == "partial" and partial["ready_numbers"] == [8]
+    assert partial["retry_numbers"] == [9] and partial["skipped_numbers"] == []
+    assert datetime.fromisoformat(partial["retry_at"].replace("Z", "+00:00")) > pulls.utc_now()
+    assert client.post(_PREPARE_CORES, json=ask).json()["preparation"] == "partial"
+    assert calls == [(9,)], "lease-held retries must not repeat the provider batch"
+
+    later = {**ask, "window": {**ask["window"], "id": "later"}, "numbers": [10]}
+    assert client.post(_PREPARE_CORES, json=later).status_code == 202
+    _drain_visible_cores(client)
+    assert client.post(_PREPARE_CORES, json=later).json()["ready_numbers"] == [10]
+    assert _read(client, 8).json()["core_preview"] is not None
+    now = pull_cores.time.monotonic()
+    monkeypatch.setattr(
+        pull_cores, "time", SimpleNamespace(monotonic=lambda: now + FRESHNESS_WINDOW_S + 1)
+    )
+    absent = False
+    assert client.post(_PREPARE_CORES, json=ask).status_code == 202
+    _drain_visible_cores(client)
+    assert client.post(_PREPARE_CORES, json=ask).json() == {
+        "preparation": "ready",
+        "ready_numbers": [9, 8],
+        "skipped_numbers": [],
+    }
+    assert calls == [(9,), (10,), (9,)], "only the missing member needs provider recovery"
+
+
+def test_partial_receipt_becomes_ready_when_its_last_member_appears_during_recheck(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_cores
+
+    _stand, client = pinned_pull
+    ask, _rest, calls = _visible_core_fixture(pinned_pull, monkeypatch)
+
+    async def settled_partial(*_args: Any, **_kwargs: Any) -> str:
+        return "partial"
+
+    monkeypatch.setattr(pull_cores, "request_preparation", settled_partial)
+    assert client.post(_PREPARE_CORES, json=ask).json() == {
+        "preparation": "ready",
+        "ready_numbers": [8],
+        "skipped_numbers": [7],
+    }
+    assert calls == [(8,)]
+
+
+def test_same_window_admitted_during_preflight_is_joined_without_revocation(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_cores
+
+    _stand, client = pinned_pull
+    first, rest, _calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8, 7)
+    )
+    ask = {**first, "window": {**first["window"], "id": "concurrent"}, "numbers": [9]}
+    blocked, release_check = threading.Event(), threading.Event()
+    provider, release_provider = threading.Event(), threading.Event()
+    cached = pull_cores.cached_batch
+    checks = 0
+
+    def preflight(served: ServedPulls, request: pull_cores.CoreRequest) -> Any:
+        nonlocal checks
+        checks += 1
+        if checks == 1:
+            blocked.set()
+            assert release_check.wait(5)
+        return cached(served, request)
+
+    async def graph(_query: str, _variables: Any, **_kwargs: Any) -> Any:
+        provider.set()
+        assert await asyncio.to_thread(release_provider.wait, 5)
+        data = graph_core_data(rest[9])
+        data["repository"]["p0"] = data["repository"].pop("pull")
+        return data
+
+    monkeypatch.setattr(pull_cores, "cached_batch", preflight)
+    monkeypatch.setattr(pull_cores, "gh_graphql", graph)
+    replies: list[Any] = []
+    waiting = threading.Thread(target=lambda: replies.append(client.post(_PREPARE_CORES, json=ask)))
+    waiting.start()
+    try:
+        assert blocked.wait(5)
+        assert client.post(_PREPARE_CORES, json=ask).json()["preparation"] == "started"
+        assert provider.wait(5)
+        release_check.set()
+        waiting.join(5)
+        assert not waiting.is_alive()
+        assert replies[0].json()["preparation"] == "joined"
+    finally:
+        release_check.set()
+        release_provider.set()
+        waiting.join(5)
+    _drain_visible_cores(client)
+    assert client.post(_PREPARE_CORES, json=ask).json()["preparation"] == "ready"
