@@ -66,15 +66,44 @@ Exercise an actual provider failure and recovery.
 Repeat cached and cold expansion in a checkout and a managed repository in the built-in
 browser.
 
-## Commit and PR Header Layout
+## Shared Content Layout
 
 `mb-7if6` tracks the shared reading column and heading style.
-Commit and PR headers start at the pane’s content gutter and use the PR title scale.
-PR descriptions, comments, and reviews inherit the rendered README’s document measure.
+Commit and PR headers start at the pane’s content gutter and use the same title scale.
+Markdown card borders and source surfaces align with the first display tab’s outer edge;
+the document retains KPress’s normal inner inset.
+A wide document puts its contents rail on the right, and a narrow pane keeps the
+standard contents icon and drawer.
+PR descriptions, comments, reviews, and commit descriptions share the rendered README’s
+configurable document measure.
+Messages use sans prose with one neutral bordered `.page-card` surface; source and diffs
+retain their own code typography.
+PR author, action, and age share a metadata size and baseline.
 Conversation and Checks share the header and tab alignment.
 Changes uses the full pane.
 Check wrapping, metadata, and the first tab’s alignment in narrow and wide panes, and
 measure a PR description and comment against the rendered README with the same settings.
+
+## Progressive Metadata Preparation
+
+Idle startup mounts the lightweight Pulls controller in both managed repositories and
+existing checkouts after initial Files work.
+It primes the current Open page, prioritizes the measured viewport as it changes, and
+continues through the cached All catalog.
+Transport batches do not cap total coverage.
+Visible demand retries after shared-provider contention, while hidden or disconnected
+browsers pause their work and resume the unfinished cursor.
+Selected actions keep priority.
+
+Lightweight description records persist in the private file cache, scoped to source,
+repository, authenticated reader, and catalog epoch.
+Later batches, ordinary freshness expiry, and server restart retain useful metadata; a
+changed summary revokes exact readiness while stale text remains explicitly stale.
+Full records supersede lightweight cores.
+Discussion, checks, files, and Git acquisition remain separate demand-driven work.
+The
+[progressive preparation experiment](../../../../explorations/performance-loop/experiments/exp-055-progressive-pr-metadata-warming.md)
+records controller evidence and the separate browser performance acceptance status.
 
 ## Search From the Catalog
 
@@ -118,8 +147,13 @@ Separate private snapshots, conditional pages, account/source checks and bounded
 background jobs keep ordinary PR reading independent of optional tooling or API
 failures.
 
-A known member shows its stack number and ordered member navigation, preserving the
-selected tab while clearing a preceding file selection.
+A known member opens a Layers icon and position/total menu.
+Member rows show their ordinal, title from the matching local catalog, and PR number,
+with the current member marked.
+Native membership is authoritative; a missing title falls back to the PR number.
+Selection and ⇧J/⇧K navigation preserve the selected tab while clearing a preceding file
+selection. ⇧J moves toward the base and ⇧K toward the top.
+The shared shortcut registry owns editor, dialog, endpoint, and disposal behavior.
 Unknown membership in a partial or unavailable snapshot is not an assertion that the PR
 has no stack. Cold PR pages use the existing gray pulse in their reading column; cached
 refreshes keep content visible.
@@ -860,21 +894,20 @@ windowing module.
 
 **What is prefetched.**
 
-- On a mirror, after the first tree settles: the view’s code and the cached list
-  envelope. Both are local.
-- On a checkout: nothing until the tab is opened.
-  Even the cached read would load the cache into a folder’s server.
-- A cached record is read when its row takes focus or the pointer, which is a local
-  `GET` that runs no `gh`.
-- The network refresh starts when the tab is first opened on a checkout.
-  On a mirror it starts with that read ahead, once the first tree has settled, which is
-  what “prefetch by default” asks for.
-  Step 3 measured it by [Performance](#performance)’s rule, nine back-to-back pairs on
-  pallets/click: first row 1.001x and the mirror’s own refresh 0.998x. Started as the
-  page starts it was 1.09x to 1.14x on the first row, past the rule, so it does not
-  start there.
-- No spinner appears before the `--loading-state-delay` token, through the existing
-  `mb-delayed-loading` class.
+The current policy is
+[Progressive Metadata Preparation](#progressive-metadata-preparation).
+In both repository modes, idle startup loads the view code and cached catalog, starts a
+due metadata refresh, and progressively prepares lightweight descriptions.
+A plain folder starts no GitHub work.
+Full discussion, checks, and Git acquisition remain selection-driven; changed-file
+metadata follows deliberate disclosure.
+
+The original Step 3 experiment measured the catalog warm-up on nine back-to-back pairs
+on pallets/click: first row 1.001x and the mirror’s own refresh 0.998x. Starting it with
+the initial page work cost 1.09x to 1.14x on the first row.
+These historical results explain the idle boundary; they do not establish the cost of
+the current progressive description pass.
+No spinner appears before the shared loading-state delay.
 
 ### Changed Files in a Row
 
@@ -1165,13 +1198,13 @@ profile by default, and a pull request’s text is written by anyone.
   the written files.
 - **What leaves the machine, and when.**
   - On a plain folder: nothing.
-  - On a checkout: nothing until the Pulls tab is opened.
-    Then `gh` asks api.github.com for the list of the repository named by `origin`, and
-    for each pull request the reader opens.
-  - On a mirror: `gh` asks api.github.com for the list of the mirrored repository as the
-    page opens, once the first tree has settled, whether or not the Pulls tab is opened,
-    and at most once per freshness window ([What is prefetched](#the-tab)); then for
-    each pull request the reader opens, with the Git fetch of `refs/pull/<n>/head`.
+  - On a checkout or mirror: after the first tree work settles, `gh` can ask
+    api.github.com for the repository’s catalog and lightweight PR descriptions even
+    while Files remains selected, as defined by
+    [Progressive Metadata Preparation](#progressive-metadata-preparation).
+    The browser pauses unfinished background work while hidden or offline.
+    Full discussion, checks, changed files, and Git objects are requested when needed;
+    selected comparison preparation fetches `refs/pull/<n>/head`.
   - The requests name the repository and the pull request, and carry `gh`’s own
     authentication. Nothing about local files, paths, or branches is sent.
 - **Route safety.** Every route that starts network work is a `POST` with a JSON body

@@ -79,6 +79,9 @@ offers **Reload**. The catalog resumes updates automatically when GitHub is reac
 Scrolling near the end or choosing **Fetch more** extends the displayed window.
 Press `T` or `/` to open **Quick Search**. Type `#` for recent PRs, then add a number
 prefix or title words to narrow the list.
+After initial Files work is idle, both repository modes prepare catalog metadata and
+lightweight descriptions in the background; the local cache keeps them across restarts.
+Full discussion and checks remain selection-driven.
 
 A folder server keeps its filesystem root and does not fetch Git objects merely because
 a pull request is opened.
@@ -116,8 +119,8 @@ Open another pull request at `/pull/<n>`, its **Changes** at `/pull/<n>/files`, 
 **Checks** at `/pull/<n>/checks`. **Refresh** retries metadata or an unavailable
 comparison; **Show the newer changes** selects a newly reported head.
 A refresh keeps the displayed immutable comparison until the reader chooses to move.
-Optional `gh-stack` support adds authoritative stack membership and navigation; its
-absence does not block ordinary PR reading.
+Optional `gh-stack` support adds an authoritative stack-position menu.
+Use ⇧J toward its base and ⇧K toward its top; missing tooling does not block PR reading.
 Metabrowser only reads: to comment, approve, or merge, use GitHub.
 It opens github.com only.
 The

@@ -22,7 +22,7 @@ route = "pull-refresh"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_refresh_handler"
 methods = ["POST"]
 
-# One ephemeral visible core window; selected full refresh remains a separate action.
+# Background lightweight metadata batches; selected full refresh remains a separate action.
 [[data_hook]]
 route = "pull-cores-prepare"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_cores_prepare_handler"

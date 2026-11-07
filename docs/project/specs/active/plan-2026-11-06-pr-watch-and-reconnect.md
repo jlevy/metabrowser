@@ -18,9 +18,12 @@ Showing the panel, restoring a visible browser page, focusing it, or coming back
 wakes a local cache read immediately.
 A due provider check can follow.
 Hiding Pulls, hiding the document, or closing the page suspends the recurring watch.
-A GitHub checkout opened on Files keeps its lazy Pulls start.
-A managed repository keeps its existing idle initial catalog warm-up, after the first
-tree work. Eligibility uses the same served-repository discovery as the Pulls tab.
+Both a GitHub checkout and a managed repository start a bounded-in-flight catalog and
+lightweight-description pass after the first tree work is idle.
+This one-pass preparation is separate from the recurring foreground watch.
+Eligibility uses the same served-repository discovery as the Pulls tab.
+See
+[Progressive Metadata Preparation](plan-2026-10-01-github-pulls-tab.md#progressive-metadata-preparation).
 
 The watch covers the repository’s PR catalog.
 The selected PR’s description, conversation, checks, and comparison continue through
@@ -146,8 +149,9 @@ inherited the earlier path.
   tried again.
 - In the built-in browser, repeat the cached-first and recovery flow for both an
   existing checkout and a managed GitHub repository.
-  Confirm cached Files, Commits, and PR details remain usable and opening a checkout’s
-  Files view stays lazy.
+  Confirm cached Files, Commits, and PR details remain usable.
+  Check that initial Files readiness precedes idle metadata preparation and that hiding
+  Pulls suspends recurring watch work while the visible browser may finish its one pass.
   Record the run in the [end-to-end playbook](../../../e2e-testing.md).
 
 <!-- This document follows common-doc-guidelines.md.

@@ -866,9 +866,13 @@ use `--body-font-size`. The revision is the one deliberate exception: it is mono
 and mono at body size renders optically larger than the sans text beside it, so it uses
 `--nav-font-size` — one step down the ramp — to sit level with its row.
 The compact tooltip is bounded by width and subject line count, not made denser with
-smaller type. The optional full-summary description is prose: it uses `--font-sans` at
-`--body-font-size`, wraps naturally, and preserves the newlines authored in the commit
-message.
+smaller type. The optional full-summary description uses the same sans prose as a PR
+description: `--prose-sans-font`, `--document-body-font-size`, and
+`--kpress-line-height-normal`. It preserves authored newlines and wraps long text.
+Commit descriptions and PR discussion cards share `.page-card`: the normal page
+background, text ink, border, and chrome radius.
+Each content type owns its inner padding; code blocks and diffs keep their source
+typography and spacing.
 
 Pointer hover on a Git history row uses `.git-commit-summary-compact` as the tooltip
 projection of this component.
@@ -953,7 +957,7 @@ They do not change addition/deletion counts or patch-line backgrounds.
 
 ## Diffs
 
-Diff surfaces serve a commit, a comparison, and a pull request’s Files changed, and they
+Diff surfaces serve a commit, a comparison, and a pull request’s Changes tab, and they
 share these rules wherever they appear.
 
 ### Inline Change Stats
@@ -1078,8 +1082,15 @@ after the page has rendered.
 Idle and failed sections use static notices.
 
 Native stack navigation uses the repository snapshot’s verified membership and order.
-The quiet Stack #N disclosure, position, and Previous PR / Next PR links share the
-reading column. The disclosure creates its ordered member links when opened.
+A Layers icon and position/total, such as 5/23, open a menu in the reading column.
+The menu shows titles, ordinals, and PR numbers, ordered from stack top to base, with
+the current member marked.
+Its links are created only when opened.
+Arrow keys, Home, End, Escape, outside click, and focus return follow the menu pattern.
+On a selected PR, ⇧J moves toward the stack base and ⇧K toward the top; Help uses the
+shared Shift key glyph.
+Editors, dialogs, unknown membership, and inactive pages keep their normal keyboard
+behavior. Stack endpoints consume the shortcut without moving.
 A member selection preserves the current PR tab and clears the previous file selection.
 Unknown membership and unavailable optional tooling add no placeholder or setup notice;
 known cached membership remains visible during refresh or failure.
@@ -1121,11 +1132,16 @@ Until its render arrives a text shows as plain text in the same face and size.
 | Link | `--link`, underline on hover, the focus ring | As the freshness row’s link is |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
-| Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Files changed cannot be drawn; no severity for the offer of newer changes, which carries its own control |
+| Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Changes cannot be drawn; no severity for the offer of newer changes, which carries its own control |
 | A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |
 | A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
 | Empty state | `--muted`, sentence with a period |  |
 | Refresh, Fetch, Switch to the head | `.btn` |  |
+
+Author, action, and relative age share one metadata size and baseline in a header or
+discussion card. The bold username uses the same muted ink wherever it names an actor.
+The avatar centers independently beside that text baseline.
+Compact navigation ages and branch chips retain their smaller chrome sizes.
 
 Author avatars are decorative circles beside the visible username, with fixed dimensions
 so image arrival or failure does not move the text.
@@ -1281,8 +1297,8 @@ it passed. The collections differ in the rest:
 
 - **A pointer click** pushes an entry in the file tree, and in the Pulls tab for a row
   that is not the one open.
-  In Git it replaces the entry, as every selection there does that does not come from
-  the address: a commit is a selection that holds the address while it is shown
+  In Commits it replaces the entry, as every selection there does that does not come
+  from the address: a commit is a selection that holds the address while it is shown
   (`static/git-panel.js`, `selectCommit`).
 - **Enter and Space** open only in the Pulls tab, and push an entry only for a row that
   is not the one open.
