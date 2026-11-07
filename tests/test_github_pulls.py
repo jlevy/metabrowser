@@ -4803,7 +4803,7 @@ def test_unavailable_member_does_not_block_later_cohorts_or_lose_ready_siblings(
         return result
 
     monkeypatch.setattr(pull_cores, "gh_graphql", graph)
-    ask = {
+    ask: dict[str, Any] = {
         **first,
         "window": {"id": "partial", "generation": catalog.generation("all")},
         "numbers": [9, 8],
