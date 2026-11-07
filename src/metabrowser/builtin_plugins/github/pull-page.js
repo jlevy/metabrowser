@@ -2433,22 +2433,6 @@ export function mountPullPage(container, ctx, mb) {
     );
 
   /**
-   * The pull request's state: the same icon as its row, beside the word it is named by.
-   *
-   * @param {string} state
-   * @param {string} label
-   */
-  const stateBadge = (state, label) => {
-    const shown = badge(state, label);
-    shown.prepend(
-      pullStateIcon(/** @type {import("./pull-state.js").PullState} */ (state), {
-        named: false,
-      }),
-    );
-    return shown;
-  };
-
-  /**
    * A box about the content, on the shell's primitive; its severity is its border.
    *
    * @param {"warning" | "error" | null} severity
@@ -2552,13 +2536,16 @@ export function mountPullPage(container, ctx, mb) {
     const pull = model.pull;
     if (pull !== null) {
       children.push(
-        h("h1", { class: "github-pull-title" }, [
-          pull.title,
-          " ",
-          h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
+        h("h1", { class: "github-pull-title github-pull-title-with-state" }, [
+          pullStateIcon(pull.state, { named: false }),
+          h("span", {}, [
+            pull.title,
+            " ",
+            h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
+          ]),
         ]),
         h("div", { class: "github-pull-meta" }, [
-          stateBadge(pull.state, pull.stateLabel),
+          badge(pull.state, pull.stateLabel),
           h("span", {}, [
             pull.actor === null ? null : authorLabel(pull.actor, pull.actorAvatar),
             `${pull.actor === null ? "" : " "}${pull.action} `,

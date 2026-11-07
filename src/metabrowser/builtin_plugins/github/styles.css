@@ -49,6 +49,11 @@
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
+.github-pull-title-with-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 0.35em;
+}
 .github-pull-number {
   color: var(--text);
   font-weight: var(--weight-normal);
@@ -395,6 +400,15 @@
 .github-pull-state-icon svg {
   width: var(--icon-glyph);
   height: var(--icon-glyph);
+}
+/* Center the title-size glyph in the first line even when the title wraps. */
+.github-pull-title > .github-pull-state-icon {
+  width: 1em;
+  height: 1lh;
+}
+.github-pull-title > .github-pull-state-icon svg {
+  width: 1em;
+  height: 1em;
 }
 
 /* ── The Pulls tab ───────────────────────────────────────────────

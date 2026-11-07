@@ -38,6 +38,42 @@ or connection failures.
 The [PR watch plan](plan-2026-11-06-pr-watch-and-reconnect.md) defines when the watch
 runs, how Reload and the shared status work, and what recovery the tests cover.
 
+## Planned Changed-File Disclosure Correction
+
+`mb-6lnm` separates PR selection from changed-file disclosure.
+Up, Down, J, and K move the selection.
+The PR preview follows while each tree keeps its expansion state.
+Clicking the PR row opens the PR and toggles its tree.
+Right expands or enters the tree, and Left collapses it.
+Opening a PR with Enter or Space leaves disclosure to those controls.
+
+`mb-neq0` makes intentional expansion cache-first.
+Render cached changed files as soon as the local list read answers.
+A missing or stale list starts the existing bounded changed-file job automatically.
+Its published pages fill the expanded tree in place.
+Use the shared delayed gray spinner while the read or refresh is active.
+Show the count and any actual truncation alongside the rows.
+Reserve recovery copy and Retry for failures or setup requirements.
+
+Extend the browserless Pulls and changed-files sessions to walk PRs with the keyboard
+without opening trees or requesting their file lists.
+Then exercise click and Right against both warm and cold caches.
+Check that a current cached tree paints on the first read.
+A cold expansion starts one bounded list job and paints its published pages.
+Check the shared spinner during work.
+Exercise an actual provider failure and recovery.
+Repeat cached and cold expansion in a checkout and a managed repository in the built-in
+browser.
+
+## Planned Commit and PR Header Layout
+
+`mb-7if6` follows the PR state presentation in `mb-y5l3`. Use the commit view’s left
+alignment for both headers and the PR title scale for both titles.
+Use the rendered README’s document measure as the shared maximum reading width.
+PR descriptions and comments use that wider text measure.
+Check title wrapping, metadata, and the start of the PR tab bar against the content edge
+in narrow and wide panes.
+
 ## Search From the Catalog
 
 The same repository catalog supplies Quick Search on a checkout or managed mirror
@@ -596,7 +632,8 @@ bounded set, plus a direct start of any number’s refresh by the plugin’s `PO
 
 - A visible PR page fills a cold record cache once after its initial cache read.
   A selected row or changed file can start the same fetch.
-  Expanding a row fetches that PR’s file list.
+  Intentional expansion reads that PR’s file list through the
+  [changed-file disclosure flow](#planned-changed-file-disclosure-correction).
   After a failed fetch, **Fetch** offers a retry.
   A checkout can acquire a comparison store through **Fetch changes**.
 - A pull request with a record refreshes in the background when its page is visible and
@@ -716,8 +753,9 @@ pull-request page.
 
 **Which tab shows.** The Files tab stays for code at the pin.
 At a pull request’s address the navigation pane shows the Pulls tab, with that pull
-request’s row current and expanded, including on the page `metab <pull-request-url>`
-opens with. Today that page leaves the Files tree showing, which is what this corrects.
+request’s row current, including on the page `metab <pull-request-url>` opens with.
+The [planned disclosure correction](#planned-changed-file-disclosure-correction)
+separates the current row from its expansion state.
 
 **The list’s address.** `/pulls`, with `?state=` for a filter, is the list with no pull
 request selected, as on GitHub.
@@ -900,8 +938,10 @@ request and toggles its files.
 The keyboard splits them: Enter opens, Right expands, and Left collapses, as
 `static/tree-keyboard-navigation.js` does for the Files tree, and the host hands the
 view that module, so the plugin reaches no private global.
-The row of the pull request the page shows is expanded automatically, and the file it
-shows is marked current.
+The initial implementation expanded the shown PR’s row automatically.
+The [planned disclosure correction](#planned-changed-file-disclosure-correction) gives
+expansion its own gesture.
+A file shown in the page is marked current in its tree.
 
 **Walking files with the keyboard.** The user: “It may require rapid scrolling up the
 diff view to the relevant file when we navigate between particular files in a diff.”
@@ -989,10 +1029,10 @@ Reading a cached list starts no Git or network.
 The refresh coordinator holds repeated attempts to its freshness window; conditional
 GitHub page reads reuse unchanged rows.
 
-**What starts a fetch.** Expanding a row is a reader’s action in the shell’s chrome,
-behind the same `POST` rule.
-The pointer or focus on a row reads the cached list only, so a cached tree opens with no
-wait.
+**What starts a fetch.** Intentional expansion uses the
+[planned cache-first disclosure flow](#planned-changed-file-disclosure-correction) and
+the existing `POST` rule.
+Pointer or focus prefetch reads the cached list only.
 
 **Opening a file.** A file row is a link to `/pull/<n>/files/<path>`, extending the
 container’s address the way `/commit/<rev>/<path>` does

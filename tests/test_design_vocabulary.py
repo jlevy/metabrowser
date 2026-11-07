@@ -1389,6 +1389,13 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert "`file-header-badge github-pull-badge github-pull-${kind}`" in page
     assert 'class: "notice github-pull-notice"' in page
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
+    # The heading scales the shared glyph to its own type and wraps text in its own track.
+    assert github[".github-pull-title"]["font-size"] == "var(--page-title-font-size)"
+    assert github[".github-pull-title-with-state"]["grid-template-columns"] == "auto minmax(0, 1fr)"
+    title_icon = github[".github-pull-title > .github-pull-state-icon"]
+    assert (title_icon["width"], title_icon["height"]) == ("1em", "1lh")
+    title_glyph = github[".github-pull-title > .github-pull-state-icon svg"]
+    assert (title_glyph["width"], title_glyph["height"]) == ("1em", "1em")
     # Links take the link token rather than the browser's blue.
     assert github[".github-pull-header a"]["color"] == "var(--link)"
     # A button that moves the pin looks as a link does: no primitive's border or fill.
