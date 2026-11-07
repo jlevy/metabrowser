@@ -586,6 +586,7 @@ export function fileListFailure(envelope, formatTime) {
  *   rows: TreeRow[],
  *   rowsVersion: number,
  *   asking: boolean,
+ *   recentMissing?: boolean,
  *   error: string | null,
  *   formatTime: (iso: string) => string,
  * }} held
@@ -631,8 +632,19 @@ export function describeFileTree(envelope, held) {
         text: "This server serves no GitHub repository.",
         action: null,
       };
-    } else {
+    } else if (
+      held.asking ||
+      envelope.refreshing ||
+      said.status === "pending" ||
+      held.recentMissing === true
+    ) {
       model.loading = true;
+    } else {
+      model.notice = {
+        severity: "warning",
+        text: "The list of changed files is unavailable.",
+        action: "retry",
+      };
     }
     model.live = model.notice?.text ?? LISTING_FILES;
   } else {
@@ -779,6 +791,8 @@ export function createFileTreeController(deps, options) {
   /** @type {number | null} */
   let askedAt = null;
   let asking = false;
+  // An owned POST that started nothing ends the recent-attempt grace period.
+  let missingSettled = false;
   /** @type {string | null} */
   let error = null;
   /** @type {string | null} */
@@ -802,6 +816,7 @@ export function createFileTreeController(deps, options) {
       rows,
       rowsVersion: version,
       asking,
+      recentMissing: recentMissing(),
       error,
       formatTime: deps.formatTime,
     });
@@ -891,6 +906,20 @@ export function createFileTreeController(deps, options) {
     asking = false;
   }
 
+  // A previous visible visit may still be awaiting its POST response. Its reply
+  // loses ownership on close, while local reads can observe the job it started.
+  function recentMissing() {
+    return (
+      envelope !== null &&
+      envelope.listed_from === null &&
+      !missingSettled &&
+      askedAt !== null &&
+      deps.now() - askedAt < envelope.fresh_for_s * 1000 &&
+      error === null &&
+      describeFileList(envelope).failure === null
+    );
+  }
+
   /** @param {boolean} [now] */
   function scheduleNext(now = false) {
     clearTimer();
@@ -904,14 +933,6 @@ export function createFileTreeController(deps, options) {
       }, FILES_POLL_MS);
       return;
     }
-    // A previous visible visit may still be awaiting its POST response. Its reply
-    // loses ownership on close, while local reads can observe the job it started.
-    const recentMissing =
-      envelope.listed_from === null &&
-      askedAt !== null &&
-      deps.now() - askedAt < envelope.fresh_for_s * 1000 &&
-      error === null &&
-      describeFileList(envelope).failure === null;
     timer = deps.schedule(
       () => {
         timer = null;
@@ -919,7 +940,7 @@ export function createFileTreeController(deps, options) {
       },
       now
         ? 0
-        : envelope.refreshing || envelope.state === "pending" || recentMissing
+        : envelope.refreshing || envelope.state === "pending" || recentMissing()
           ? FILES_POLL_MS
           : Math.max(FILES_POLL_MS, envelope.fresh_for_s * 1000),
     );
@@ -983,6 +1004,7 @@ export function createFileTreeController(deps, options) {
     }
     const mine = generation;
     asking = true;
+    missingSettled = false;
     askedAt = deps.now();
     render();
     try {
@@ -1000,6 +1022,8 @@ export function createFileTreeController(deps, options) {
       ) {
         // Its envelope has no rows: it says how the list stands, and the rows held stay.
         envelope = { ...answer.files, rows: [] };
+        missingSettled =
+          envelope.listed_from === null && !envelope.refreshing && envelope.state !== "pending";
         error = null;
       } else {
         const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
@@ -1415,7 +1439,8 @@ export function createRowExpansion() {
   const by = new Map();
   /** @type {number | null} */
   let shownNumber = null;
-  let showingFile = false;
+  /** @type {string | null} */
+  let shownFile = null;
   return Object.freeze({
     /** @param {number} number */
     isExpanded: (number) => by.has(number),
@@ -1453,20 +1478,20 @@ export function createRowExpansion() {
      * file's row closes again if the address was what opened it.
      *
      * @param {number | null} number
-     * @param {boolean} file Whether the address names a file.
+     * @param {string | null} file The file path the address names, or null for a PR preview.
      * @returns {{expand: number[], collapse: number[]}}
      */
     shown(number, file) {
       /** @type {{expand: number[], collapse: number[]}} */
       const changes = { expand: [], collapse: [] };
       const moved = number !== shownNumber;
-      const opens = file && (moved || !showingFile);
+      const opens = file !== null && (moved || file !== shownFile);
       if (moved && shownNumber !== null && by.get(shownNumber) === "shown") {
         by.delete(shownNumber);
         changes.collapse.push(shownNumber);
       }
       shownNumber = number;
-      showingFile = file;
+      shownFile = file;
       if (opens && number !== null && !by.has(number)) {
         by.set(number, "shown");
         changes.expand.push(number);

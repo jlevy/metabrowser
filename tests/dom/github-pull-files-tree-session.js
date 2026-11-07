@@ -149,13 +149,33 @@ async function main() {
     throw Error("timestamps must not split the same progressive generation");
   }
   const rowExpansion = tree.createRowExpansion();
-  const expandedRows = [rowExpansion.shown(7, true), rowExpansion.shown(8, true)];
+  const expandedRows = [rowExpansion.shown(7, "a.py"), rowExpansion.shown(8, "b.py")];
   rowExpansion.expand(8);
-  expandedRows.push(rowExpansion.shown(9, true));
+  expandedRows.push(rowExpansion.shown(9, "c.py"));
   if (!rowExpansion.isExpanded(8)) {
     throw Error("a reader's expansion must survive page replacement");
   }
   stories["only file-address expansions close when the page moves"] = expandedRows;
+  const routes = tree.createRowExpansion();
+  routes.shown(7, "a.py");
+  routes.shown(7, null);
+  if (!routes.isExpanded(7)) {
+    throw Error("returning to the same PR preview preserves disclosure");
+  }
+  routes.collapse(7);
+  routes.shown(7, "a.py");
+  routes.collapse(7);
+  if (routes.shown(7, "a.py").expand.length !== 0) {
+    throw Error("a repeated file notification must respect manual collapse");
+  }
+  if (routes.shown(7, "b.py").expand[0] !== 7) {
+    throw Error("a different file address must reveal its collapsed owner");
+  }
+  routes.expand(7);
+  if (routes.shown(8, "c.py").collapse.length !== 0 || !routes.isExpanded(7)) {
+    throw Error("reader-owned expansion survives navigation to another PR");
+  }
+
   stories["a long tree draws only its viewport and overscan"] = [0, 12000, 200000].map((top) =>
     tree.windowRange({
       count: 4539,
