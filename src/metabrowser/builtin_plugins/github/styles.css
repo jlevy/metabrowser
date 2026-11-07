@@ -654,35 +654,66 @@
 .github-pull-stacks[hidden] {
   display: none;
 }
-.github-pull-stack {
+.github-pull-stacks:not([hidden]) {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
+  gap: var(--chip-cluster-gap);
   padding-block-end: 6px;
 }
-.github-pull-stack-disclosure > summary {
-  cursor: pointer;
-  color: var(--muted);
+.github-pull-stack-disclosure {
+  position: relative;
 }
-.github-pull-stack-members {
-  margin-block: 6px;
-  padding-inline-start: 24px;
+.github-pull-stack-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  font-variant-numeric: var(--tabular-numerals);
+}
+.github-pull-stack-trigger::-webkit-details-marker {
+  display: none;
+}
+.github-pull-stack-icon,
+.github-pull-stack-icon svg {
+  display: block;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+}
+.github-pull-stack-menu {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-start: 0;
+  width: 32rem;
+  max-width: calc(100cqw - 2 * var(--content-padding-x));
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+}
+.github-pull-stack-member {
+  align-items: start;
+  white-space: normal;
+}
+.github-pull-stack-current {
+  flex: none;
+  width: var(--icon-glyph);
+}
+.github-pull-stack-member-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+.github-pull-stack-member-title {
+  overflow-wrap: anywhere;
+}
+.github-pull-stack-member[aria-current="page"] {
+  background: var(--hover-bg);
+}
+.github-pull-stack-member[aria-current="page"] .github-pull-stack-member-title {
+  font-weight: var(--weight-bold);
 }
 .github-pull-stack a {
-  color: var(--link);
+  color: var(--text);
   text-decoration: none;
-}
-.github-pull-stack a:hover {
-  text-decoration: underline;
-}
-.github-pull-stack a:focus-visible,
-.github-pull-stack-disclosure > summary:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
-}
-.github-pull-stack-members [aria-current="page"] {
-  font-weight: var(--weight-bold);
 }
 .github-pull-loading {
   margin: 0;
