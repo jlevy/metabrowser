@@ -2064,9 +2064,9 @@ export function mountPullPage(container, ctx, mb) {
   const number = typeof ctx.number === "number" ? ctx.number : 0;
   const open = typeof ctx.open === "function" ? ctx.open : () => {};
   container.classList.add("github-pull");
-  const header = h("div", { class: "github-pull-header github-pull-column" });
+  const header = h("div", { class: "github-pull-header page-reading-column" });
   const body = h("div", { class: "github-pull-body" });
-  const stackColumn = h("div", { class: "github-pull-column github-pull-stacks", hidden: "" });
+  const stackColumn = h("div", { class: "page-reading-column github-pull-stacks", hidden: "" });
   let stackIndex = createStackIndex(null);
   /** @type {import("./pull-stacks.js").StackIdentity | null} */
   let stackIdentity = null;
@@ -2074,7 +2074,7 @@ export function mountPullPage(container, ctx, mb) {
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   // Follow the reading column at every width; Files changed keeps the full pane.
   const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Pull request" });
-  const tabColumn = h("div", { class: "github-pull-column" }, [tabBar]);
+  const tabColumn = h("div", { class: "page-reading-column" }, [tabBar]);
   container.replaceChildren(header, stackColumn, body, live);
 
   /** @type {PullModel | null} */
@@ -2536,7 +2536,7 @@ export function mountPullPage(container, ctx, mb) {
     const pull = model.pull;
     if (pull !== null) {
       children.push(
-        h("h1", { class: "github-pull-title github-pull-title-with-state" }, [
+        h("h1", { class: "page-heading github-pull-title github-pull-title-with-state" }, [
           pullStateIcon(pull.state, { named: false }),
           h("span", {}, [
             pull.title,
@@ -2576,7 +2576,9 @@ export function mountPullPage(container, ctx, mb) {
         );
       }
     } else {
-      children.push(h("h1", { class: "github-pull-title" }, [`Pull request #${model.number}`]));
+      children.push(
+        h("h1", { class: "page-heading github-pull-title" }, [`Pull request #${model.number}`]),
+      );
     }
     const freshness = model.freshness;
     const status = h("div", { class: "github-pull-status", "data-status": model.status }, [
@@ -3153,7 +3155,7 @@ export function mountPullPage(container, ctx, mb) {
     paintHeader(model);
     paintStacks(model);
     // Conversation and Checks use the reading column. Changes uses the full pane.
-    body.classList.toggle("github-pull-column", model.pull === null || model.tab !== "files");
+    body.classList.toggle("page-reading-column", model.pull === null || model.tab !== "files");
     if (model.pull === null) {
       disposeDiff();
       discussion = null;

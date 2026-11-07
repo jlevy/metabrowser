@@ -288,11 +288,12 @@
     const compact = options.compact === true;
     const summaryClass = compact
       ? "git-commit-summary git-commit-summary-compact"
-      : "git-commit-summary";
+      : "git-commit-summary page-reading-column";
     const subjectTag = compact ? "div" : "h1";
+    const subjectClass = compact ? "git-commit-subject" : "git-commit-subject page-heading";
     let html = `<section class="${summaryClass}" aria-label="Commit summary">`;
     html += '<div class="git-commit-header">';
-    html += `<${subjectTag} class="git-commit-subject">${escapeHtml(commit.subject)}</${subjectTag}>`;
+    html += `<${subjectTag} class="${subjectClass}">${escapeHtml(commit.subject)}</${subjectTag}>`;
     html += '<div class="git-commit-meta">';
     html += '<span class="git-commit-identity">';
     html += '<span class="git-commit-revision">';

@@ -4,50 +4,21 @@
    tokens. Colors are design tokens. */
 
 .github-pull {
-  /* How far a card's text sits inside its border. A card's border box is the measure plus
-     two of these, as `.kpress-long-text`'s is, so its text box is a Markdown file's. */
   --github-pull-text-inset: var(--pane-header-padding-x);
   --github-pull-gap: 12px;
-  /* A pull request's texts are messages, not committed documents, so they read in the
-     interface sans whatever the reading font, at that face's width for the same "Max text
-     width" (docs/design-system.md, "Serif Is for Documents"). */
+  /* The column includes the pane gutter on each side. */
+  --page-reading-gutter: var(--content-padding-x);
   --kpress-host-font-prose: var(--prose-sans-font);
-  --message-measure: calc(
-    var(--document-body-font-size) *
-    var(--doc-max-chars) *
-    var(--message-char-advance, var(--sans-char-advance))
-  );
-  --doc-measure: var(--message-measure);
   display: flex;
   flex-direction: column;
   padding: 0;
   color: var(--text);
-}
-/* The header, tabs, and conversation share the reading column at every width. A wider
-   pane centers it, as a Markdown file's card and Overview's stack are. Files changed keeps
-   the full pane for its diff. */
-.github-pull-column {
-  width: 100%;
-  max-width: calc(
-    var(--doc-measure) +
-    2 *
-    var(--github-pull-text-inset) +
-    2 *
-    var(--content-padding-x)
-  );
-  margin-inline: auto;
 }
 .github-pull-header {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: var(--content-padding-y) var(--content-padding-x);
-}
-.github-pull-title {
-  font-size: var(--page-title-font-size);
-  font-weight: var(--weight-bold);
-  line-height: 1.25;
-  overflow-wrap: anywhere;
 }
 .github-pull-title-with-state {
   display: grid;

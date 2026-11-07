@@ -65,14 +65,15 @@ Exercise an actual provider failure and recovery.
 Repeat cached and cold expansion in a checkout and a managed repository in the built-in
 browser.
 
-## Planned Commit and PR Header Layout
+## Commit and PR Header Layout
 
-`mb-7if6` follows the PR state presentation in `mb-y5l3`. Use the commit view’s left
-alignment for both headers and the PR title scale for both titles.
-Use the rendered README’s document measure as the shared maximum reading width.
-PR descriptions and comments use that wider text measure.
-Check title wrapping, metadata, and the start of the PR tab bar against the content edge
-in narrow and wide panes.
+`mb-7if6` tracks the shared reading column and heading style.
+Commit and PR headers start at the pane’s content gutter and use the PR title scale.
+PR descriptions, comments, and reviews inherit the rendered README’s document measure.
+Conversation and Checks share the header and tab alignment.
+Changes uses the full pane.
+Check wrapping, metadata, and the first tab’s alignment in narrow and wide panes, and
+measure a PR description and comment against the rendered README with the same settings.
 
 ## Search From the Catalog
 

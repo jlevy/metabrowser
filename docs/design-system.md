@@ -170,18 +170,15 @@ A document is what the repository holds, and the reading font exists for reading
 length. A message is conversation about the content, and setting it in the document’s
 face makes the two read as one thing.
 
-A message reads at the document’s size in `--prose-sans-font`, the face a document takes
-under the sans reading font, so the face is the only difference, and a pull request’s
-text looks the same as its Markdown would in sans.
-Its width is `--message-measure`, the reader’s same “Max text width” in characters (see
-[Reading Width](#reading-width)).
+A message reads at the document’s size in `--prose-sans-font`. PR descriptions,
+comments, and reviews share the rendered README’s resolved reading width, including when
+the reading font is serif.
+See [Reading Width](#reading-width).
 
 The serif face reaches a page only through KPress’s `--kpress-host-font-prose` hook,
 which `static/styles.css` points at the reading font.
-A surface of messages that renders through KPress points that hook at
-`--prose-sans-font` and `--doc-measure` at `--message-measure` on its own root, as the
-pull request page does on `.github-pull`, so its KPress prose and its column follow
-together. No other rule names a serif.
+The pull request page points that hook at `--prose-sans-font` on `.github-pull`. Its
+KPress prose and reading column both inherit `--doc-measure`.
 `test_serif_is_only_for_documents` holds this.
 
 ### Keyboard Keys
@@ -358,7 +355,7 @@ Characters rather than a length because that is the decision a reader has: 45–
 classic range for a single column, and a browser pane is wide enough to sit above it.
 The default is 102.
 
-Document tokens live on `:root`; the PR page owns its message measure:
+Document tokens live on `:root`.
 
 | Token | Meaning |
 | --- | --- |
@@ -366,17 +363,12 @@ Document tokens live on `:root`; the PR page owns its message measure:
 | `--doc-char-advance` | average glyph advance per em for the current reading face |
 | `--sans-char-advance` | the calibrated advance of the clean sans |
 | `--doc-measure` | the resolved length: base × chars × advance |
-| `--message-measure` | on `.github-pull`, the same characters at the active sans advance |
 
-`--doc-measure` is the single source of truth for how wide prose reads anywhere in the
-app, and it and `--message-measure` beside it are the only places the character count is
-converted. Every prose surface reads it: the KPress bridge, the folder Overview’s card
-widths, the pull request page’s column, and the fallback `md-body` path a plugin gets
-when it renders Markdown without KPress.
-A surface of messages, the pull request page, points `--doc-measure` at
-`--message-measure` on its own root, so the bridge and its column read the message width
-with no second spelling ([Serif Is for Documents](#serif-is-for-documents)). A new
-surface that lays out prose reads `--doc-measure`, never a literal.
+`--doc-measure` converts the character setting to a length once.
+The KPress bridge, Overview cards, the commit and PR reading column, and the fallback
+`md-body` path use that length.
+The reading column adds the card inset and any pane gutter inside its box so the text
+can reach the same measure.
 Markdown rebuilt from an untrusted source goes through
 `MetabrowserInertHtml.kpressProse`, which sets it in KPress’s prose element with the
 classes the allowlist removed, so it reaches the same rules.
@@ -398,11 +390,7 @@ reading mode swaps the ratio and the same character count still holds.
 This is the average advance, not the CSS `ch` unit — `ch` is the advance of “0” and
 overstates a proportional face by roughly 23%. KPress ships no per-face constants
 because a host may swap the face; Metabrowser pins its own faces, so it owns the
-conversion. For PR messages in the system font set, `github/message-measure.js` measures
-the active system sans with Canvas and sets a page-local advance.
-It observes font-setting changes and disposes with the view; clean fonts keep their
-calibration. Size and character-count changes remain CSS inputs.
-Folder startup and document widths do not run this measurement.
+conversion. Size and character-count changes are CSS inputs.
 
 Verify a width change by measuring the *text* box with padding excluded, in both the
 single-column and wide bands, and against the same file opened on its own.
@@ -847,11 +835,13 @@ The server computes all counts before bounding the returned file list, so a larg
 remains exact. Line totals use the shared semantic colors and weight and render a true
 minus sign. Missing totals remain visibly unknown.
 
-The subject, ref badges, author, age, file-status counts, units, and line counts use
-`--body-font-size` in both projections.
-The revision is the one deliberate exception: it is monospace, and mono at body size
-renders optically larger than the sans text beside it, so it uses `--nav-font-size` —
-one step down the ramp — to sit level with its row.
+The full subject uses `.page-heading` at `--page-title-font-size`, the PR title’s scale.
+Its summary starts at the pane’s content edge and uses `.page-reading-column` for the
+maximum reading width.
+The compact subject, ref badges, author, age, file-status counts, units, and line counts
+use `--body-font-size`. The revision is the one deliberate exception: it is monospace,
+and mono at body size renders optically larger than the sans text beside it, so it uses
+`--nav-font-size` — one step down the ramp — to sit level with its row.
 The compact tooltip is bounded by width and subject line count, not made denser with
 smaller type. The optional full-summary description is prose: it uses `--font-sans` at
 `--body-font-size`, wraps naturally, and preserves the newlines authored in the commit
@@ -1042,12 +1032,12 @@ tests named beside each primitive.
 
 The page is a header, optional native stack navigation, a [tab bar](#the-tab-bar), and a
 body, in that order.
-The header, Conversation, and Checks share a **reading column**: `--doc-measure` plus
-two card insets, centered in a wider pane as a Markdown file’s card and Overview’s stack
-are. A card’s text box is the one a file’s text has, and the title row lines up with the
-cards under it. The tab bar follows that same column, so the first tab aligns with the
-content on both narrow and wide screens.
-The title begins with the Pulls state icon at the title’s font size.
+The header, tabs, Conversation, and Checks use `.page-reading-column` and start at the
+same pane gutter as the commit summary.
+The first tab aligns with the content in narrow and wide panes.
+The column includes the card’s insets so its text can reach the same measure as the
+rendered README. Both headers use `.page-heading`. The title begins with the Pulls state
+icon at the title’s font size.
 The text wraps under its first line while the icon stays beside the first line.
 The colored badge below the title gives the state in text and the title icon is
 decorative. The Changes body keeps the full pane so a diff has room for Split.
