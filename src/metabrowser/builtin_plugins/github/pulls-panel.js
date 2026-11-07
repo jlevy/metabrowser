@@ -685,13 +685,12 @@ export function createPullsController(deps, options = {}) {
   }
 
   function queueCores() {
-    if (
-      !coreLive() ||
-      warmPaused ||
-      walkingTo !== null ||
-      (!warming && visibleCoreAt >= visibleCores.length)
-    ) {
+    if (!coreLive() || walkingTo !== null || (!warming && visibleCoreAt >= visibleCores.length)) {
       cancelWarmTimer();
+      return;
+    }
+    // A known reset owns the same one-shot queue timer while the source is held.
+    if (warmPaused) {
       return;
     }
     // Coalesce rather than debounce: a fast catalog watch must not postpone warming forever.
@@ -702,6 +701,23 @@ export function createPullsController(deps, options = {}) {
       warmTimer = null;
       void pumpCores();
     }, CORE_BUSY_RETRY_MS);
+  }
+
+  /** @param {{outcome?: string, reset_at?: string | null} | null | undefined} failure */
+  function pauseCoreQueue(failure) {
+    warmPaused = true;
+    cancelWarmTimer();
+    const reset = typeof failure?.reset_at === "string" ? Date.parse(failure.reset_at) : NaN;
+    if (failure?.outcome === "rate_limited" && Number.isFinite(reset) && coreLive()) {
+      warmTimer = deps.schedule(
+        () => {
+          warmTimer = null;
+          warmPaused = false;
+          void pumpCores();
+        },
+        Math.max(CORE_BUSY_RETRY_MS, reset - deps.now()),
+      );
+    }
   }
 
   /** Read only the next batch of locally cataloged metadata; never extend the provider scan. */
@@ -768,7 +784,7 @@ export function createPullsController(deps, options = {}) {
         refreshFailure(envelope, deps.formatTime) !== null ||
         rateHoldMs(envelope, deps.now()) > 0
       ) {
-        warmPaused = true;
+        pauseCoreQueue(envelope.last_refresh);
         return;
       }
       if (envelope.rows.length === 0) {
@@ -848,7 +864,7 @@ export function createPullsController(deps, options = {}) {
         }
         const response = await controlCoreWindow(demand.body);
         const receipt =
-          /** @type {{preparation?: string, ready_numbers?: number[], skipped_numbers?: number[], failure?: unknown} | null | undefined} */ (
+          /** @type {{preparation?: string, ready_numbers?: number[], skipped_numbers?: number[], failure?: {outcome?: string, reset_at?: string | null} | null} | null | undefined} */ (
             response?.body
           );
         const admitted =
@@ -923,7 +939,7 @@ export function createPullsController(deps, options = {}) {
             queueCores();
           } else {
             demand.done = true;
-            warmPaused = true;
+            pauseCoreQueue(receipt?.failure);
           }
         }
       }

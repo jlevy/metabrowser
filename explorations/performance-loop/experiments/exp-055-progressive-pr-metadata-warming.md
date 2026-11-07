@@ -72,6 +72,12 @@ A completed hidden pass retains no polling timer.
 These are deterministic ownership and scheduling assertions.
 Their virtual-clock durations are not browser click measurements.
 
+The default/current filter’s already-held page is primed before the All cursor.
+A fixture with twelve more-recent Closed rows verifies that older Open rows warm first,
+followed by All without duplicate provider work.
+A known rate hold keeps one reset wake for its unfinished pass, even when Files stays
+selected. Browser suspension and disposal cancel that wake.
+
 ## Remaining Acceptance Evidence
 
 The persistence layer must independently verify row and catalog identity, atomic

@@ -22,6 +22,7 @@ async function run() {
     cold = false,
     refreshing = false,
     inventory = rows,
+    resetAt = null,
   } = {}) {
     let now = 0,
       online = true,
@@ -48,12 +49,19 @@ async function run() {
           if (now < busyUntil) {
             return { status: 200, body: { preparation: "busy" } };
           }
+          if (resetAt !== null && now >= resetAt) {
+            currentFailure = null;
+          }
           if (currentFailure) {
             return {
               status: 200,
               body: {
                 preparation: "failed",
-                failure: { outcome: currentFailure, message: null, reset_at: null },
+                failure: {
+                  outcome: currentFailure,
+                  message: null,
+                  reset_at: resetAt === null ? null : new Date(resetAt).toISOString(),
+                },
               },
             };
           }
@@ -322,6 +330,18 @@ async function run() {
   reconnect.hide();
   assert.equal(reconnect.timers.size, 0);
   reconnect.controller.dispose();
+
+  const rateHeld = rig({ failure: "rate_limited", resetAt: 10000 });
+  await rateHeld.start();
+  await rateHeld.until(() => rateHeld.attempts.length === 1);
+  assert.deepEqual(
+    [...rateHeld.timers.values()].map((timer) => timer.at),
+    [10000],
+    "an unfinished hidden pass wakes once at the known rate reset",
+  );
+  await rateHeld.until(() => rateHeld.cached.size === rows.length);
+  assert(rateHeld.attempts[1].at >= 10000, "no provider admission occurs before reset");
+  rateHeld.controller.dispose();
 
   const failed = rig({ failure: "not_logged_in" });
   await failed.start();
