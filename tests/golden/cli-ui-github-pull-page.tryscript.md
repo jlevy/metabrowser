@@ -139,7 +139,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -245,7 +245,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": "Could not switch to the head (selection_not_found).",
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -304,7 +304,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -356,7 +356,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "files",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -400,7 +400,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -448,7 +448,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 5 min ago by octo-reader · may be out of date",
+        "freshness": "Fetched 5 min ago via GitHub CLI · may be out of date",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -495,7 +495,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 5 min ago by octo-reader",
+        "freshness": "Refreshing… · fetched 5 min ago via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -551,7 +551,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -607,7 +607,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -688,7 +688,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 5 min ago by octo-reader · may be out of date",
+        "freshness": "Fetched 5 min ago via GitHub CLI · may be out of date",
         "failure": null,
         "browse": "link to the root",
         "headOffer": null
@@ -716,7 +716,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 5 min ago by octo-reader",
+        "freshness": "Refreshing… · fetched 5 min ago via GitHub CLI",
         "failure": null,
         "browse": "link to the root",
         "headOffer": null
@@ -735,7 +735,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 5 min ago by octo-reader · may be out of date",
+        "freshness": "Fetched 5 min ago via GitHub CLI · may be out of date",
         "failure": null,
         "browse": "link to the root",
         "headOffer": null
@@ -798,7 +798,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 24 min ago by octo-reader",
+        "freshness": "Refreshing… · fetched 24 min ago via GitHub CLI",
         "failure": null,
         "browse": "switches to refs/pull/8/head",
         "headOffer": null
@@ -817,7 +817,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "current",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "browse": "link to the root",
         "headOffer": "refs/pull/7/head"

@@ -520,11 +520,12 @@ existing `RefreshCoordinator`, under a key of its own per source and state.
 
 **Another reader.** The file names its reader, `gh:<login>`.
 
-- A list fetched by another account is shown as it is, labelled with that reader, and
-  treated as stale, as is a list whose last refresh ended `account_changed`, whichever
-  account that stamp names.
-  This matches the thin-mirror rule that cached private content stays viewable after a
-  logout or an account switch; the cache is owner-only.
+- The browser keeps a list fetched by another account visible.
+  The cache retains the reader for account checks and diagnostics.
+  The catalog treats a different reader or an `account_changed` refresh outcome as
+  stale. This matches the thin-mirror rule that cached private content stays viewable
+  after a logout or an account switch.
+  The cache is owner-only.
 - The next successful refresh replaces the whole file.
   Pages from two readers are never joined, and ETags are reused only for the same
   reader, so **Load more** under a new account starts again from the first page.
@@ -631,6 +632,9 @@ bounded set, plus a direct start of any number’s refresh by the plugin’s `PO
 - `/api/source/status`: `pull_request` is the attended number; `stale` and `refreshing`
   cover the mirror and that pull request, as now.
 - The freshness row links the attended pull request, as now.
+- The PR header reports the age of a cached description or full record and names GitHub
+  CLI as the fetch mechanism (mb-bv9o). An active load or refresh includes the shared
+  spinner. The cache and diagnostic CLI retain the reader.
 - The ref selector shows “Pull request #n” while the pin is that head, as now.
   It still lists only branches and tags; the Pulls tab is how a pull request’s code is
   reached.

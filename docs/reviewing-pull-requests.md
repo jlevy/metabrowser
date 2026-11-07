@@ -355,10 +355,13 @@ repository above and about 7 s on `pallets/click`, and one already cached about 
 
 ## Staying Current
 
-The page shows how old the record is and which account read it
-(`Fetched 3 min ago by your-login`). A record is current for a minute and then stale,
-when the page adds `may be out of date`. A managed PR URL refreshes a stale record when
-the server starts; a visible stale PR page also requests a refresh.
+The page shows when GitHub CLI fetched the record, for example
+`Fetched 3 min ago via GitHub CLI`. A description preview reports when GitHub CLI
+fetched the description while discussion and checks load.
+A record is current for a minute.
+When it goes stale, the page adds `may be out of date`. A managed PR URL refreshes a
+stale record when the server starts.
+A visible stale PR page also requests a refresh.
 **Refresh** is also available after a failed refresh or an unavailable comparison, and
 on **Changes** even while the record is current.
 A managed source’s row at the foot of the navigation pane separately reports when its
