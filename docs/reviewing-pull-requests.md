@@ -85,10 +85,10 @@ With the optional [gh-stack extension](installation.md#git-and-github-setup), a 
 shows **Stack #N** when native GitHub metadata names its membership.
 The PR page shows its position, **Previous PR** and **Next PR**, and a disclosure of
 member PR links in bottom-to-top order.
-Moving between members keeps Conversation or Changes selected and clears the previous
-PR’s file selection.
-Expanded trees retain their keyboard position; the current-file highlight belongs to the
-PR being viewed.
+Moving between members keeps the current PR tab selected and clears the previous PR’s
+file selection.
+Expanded trees retain their keyboard position; the current-file highlight
+belongs to the PR being viewed.
 
 Stack metadata refreshes as one shared repository snapshot, independently of PR details.
 Missing tooling, unavailable APIs, or a partial snapshot do not prevent normal PR
@@ -118,9 +118,11 @@ Serving https://github.com/pallets/click at http://127.0.0.1:8411/pull/3866
 Later runs reuse that clone and say so
 (`using the clone of … cached in ~/.cache/metabrowser, fetched 3 hours ago`).
 
-A `/pull/123/files` URL copied from GitHub opens on **Changes**, and the `Serving` line
-prints that address, `http://127.0.0.1:8411/pull/123/files`. A `/pull/123/commits` URL
-opens on Conversation, because the page has no Commits tab.
+GitHub URLs ending in `/pull/123/files` or `/pull/123/checks` open **Changes** or
+**Checks** at the matching local address.
+The `Serving` line prints the address.
+A GitHub `/pull/123/commits` URL opens **Conversation**, where commit summaries appear
+with the discussion.
 
 ## What the Page Shows
 
@@ -141,16 +143,17 @@ A cached full page renders from disk and keeps its content visible while it refr
 **View on GitHub** opens the pull request on github.com with its state icon.
 External GitHub links in conversation text carry a destination icon; an unknown issue or
 PR state uses a neutral entity icon.
-Below the header are two tabs:
+The page has three tabs.
 
-- **Conversation:** the description, followed by comments, reviews, and commit
-  summaries. Commit rows follow GitHub’s conversation order.
-  The short commit ID opens the exact commit on GitHub.
+- **Conversation** shows the description, followed by comments, reviews, and commit
+  summaries. Commit rows follow GitHub’s conversation order, and a short commit ID opens
+  the exact commit on GitHub.
   Cached timelines are readable offline.
-  **Review comments** lists each inline review comment with its file and diff hunk, and
-  **Checks** summarizes check runs and statuses, with links to their details.
-- **Changes:** the comparison from the merge base to the head, split or unified.
+  **Review comments** lists inline review comments with their files and diff hunks.
+- **Changes** shows the comparison from the merge base to the head, split or unified.
   The changed-files tree in Pulls navigates this comparison.
+- **Checks** summarizes check runs and status contexts, with links to their details.
+  Open or share it directly at `/pull/<n>/checks`.
 
 The code controls depend on how the repository was opened:
 

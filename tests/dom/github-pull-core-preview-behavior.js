@@ -428,14 +428,31 @@ async function run() {
   assert.equal(container.dataset.corePreview, "true");
   assert.equal(container.querySelector(".github-pull-plain").textContent, full.record.pull.body);
   assert.match(container.textContent, /Comments and reviews are still loading/);
-  assert.match(container.textContent, /Checks and statuses are still loading/);
-  assert.doesNotMatch(container.textContent, /No checks or statuses reported/);
+  const body = container.querySelector(".github-pull-body");
+  assert.doesNotMatch(body.textContent, /Checks and statuses|No checks or statuses reported/);
   const progress = container.querySelectorAll(".github-pull-progress");
-  assert.equal(progress.length, 3, "the header, Discussion, and Checks each show active progress");
+  assert.equal(progress.length, 2, "the header and Discussion show active progress");
   for (const status of progress) {
     assert.equal(status.getAttribute("role"), "status");
     assert.equal(status.querySelector(".spinner").getAttribute("aria-hidden"), "true");
   }
+  function land(tab) {
+    window.location.pathname = tab ? `/pull/7/${tab}` : "/pull/7";
+    handle.land({ tab });
+  }
+  land("checks");
+  const checksRoute = window.location.pathname;
+  assert.equal(
+    container
+      .querySelectorAll(".tab-btn")
+      .find((tab) => tab.getAttribute("aria-selected") === "true")?.textContent,
+    "Checks",
+  );
+  assert.match(body.textContent, /Checks and statuses are still loading/);
+  assert.doesNotMatch(body.textContent, /Comments and reviews|No checks or statuses reported/);
+  assert.ok(body.querySelector(".spinner"), "Checks has the shared progress spinner");
+  assert.ok(body.classes.has("github-pull-column"), "Checks uses the reading column");
+  land("");
   assert.equal(markdownRequests, 0, "preview stays plain and never asks for full-record Markdown");
   const model = page.describePull(preview, { number: 7, tab: "", nowMs: Date.now() });
   assert.equal(model.browse, null);
@@ -476,19 +493,77 @@ async function run() {
   assert.equal(container.dataset.corePreview, "false");
   assert.doesNotMatch(container.textContent, /still loading/);
   assert.equal(container.querySelector(".spinner"), null, "full arrival clears progress");
-  assert.match(container.textContent, /No checks or statuses reported/);
+  assert.doesNotMatch(body.textContent, /No checks or statuses reported/);
   const fullMarkdownRequests = markdownRequests;
   assert.equal(fullMarkdownRequests, 1, "full-record arrival enables the normal Markdown path");
+  land("checks");
+  assert.match(body.textContent, /No checks or statuses reported/);
+  assert.equal(body.querySelector(".spinner"), null, "an empty complete Checks pane is settled");
+  assert.equal(markdownRequests, fullMarkdownRequests, "Checks asks for no Markdown");
+  land("");
   assert.equal(settlementSignal?.aborted, false);
   handle.dispose();
   assert.equal(settlementSignal.aborted, true, "the mounted wait shares the page disposal signal");
+  current = absent;
+  window.location.pathname = checksRoute;
+  const coldChecks = new Element("main");
   const cancelled = page.mountPullPage(
-    new Element("main"),
-    { number: 7, tab: "", reader: { initial: null, fetchAfterMs: 0 } },
+    coldChecks,
+    { number: 7, tab: "checks", reader: { initial: null, fetchAfterMs: 0 } },
     mb,
   );
+  await settle();
+  assert.ok(coldChecks.querySelector(".github-pull-loading"), "a cold Checks link shows blocks");
+  assert.equal(coldChecks.querySelector(".spinner"), null);
   cancelled.dispose();
   await cancelled.ready;
+
+  current = structuredClone(recorded.current.body);
+  current.record.truncated = {
+    ...current.record.truncated,
+    check_runs: true,
+    issue_comments: true,
+  };
+  current.record.status = null;
+  current.record.unavailable = { status: "fetch_failed" };
+  window.location.pathname = checksRoute;
+  const directChecks = new Element("main");
+  const checksView = page.mountPullPage(directChecks, { number: 7, tab: "checks" }, mb);
+  await checksView.ready;
+  const checksBody = directChecks.querySelector(".github-pull-body");
+  const selectedChecks = directChecks
+    .querySelectorAll(".tab-btn")
+    .find((tab) => tab.getAttribute("aria-selected") === "true");
+  assert.equal(selectedChecks?.textContent, "Checks");
+  assert.equal(selectedChecks?.getAttribute("href"), checksRoute);
+  assert.match(checksBody.textContent, /1 success · 1 pending/);
+  assert.match(checksBody.textContent, /tests \(3\.13\)/);
+  assert.match(checksBody.textContent, /Only some check runs are shown/);
+  assert.match(checksBody.textContent, /Commit statuses could not be read/);
+  assert.match(checksBody.textContent, /No conflicts with the base branch/);
+  assert.doesNotMatch(checksBody.textContent, /Only some comments are shown|It no longer does/);
+  const checkLinks = checksBody.querySelectorAll("a[href]");
+  assert.equal(checkLinks.length, 2);
+  for (const link of checkLinks) {
+    assert.equal(link.getAttribute("target"), "_blank");
+    assert.equal(link.getAttribute("rel"), "noopener noreferrer");
+  }
+  assert.equal(
+    page.conversationKey(page.describePull(current, { number: 7, tab: "", nowMs: Date.now() })),
+    page.conversationKey(
+      page.describePull(
+        {
+          ...current,
+          record: { ...current.record, check_runs: [], status: null, unavailable: {} },
+        },
+        { number: 7, tab: "", nowMs: Date.now() },
+      ),
+    ),
+    "only check data changed, so Conversation can keep its rendered discussion",
+  );
+  const checkResults = { route: checksRoute, links: checkLinks.length, empty: true, pending: true };
+  checksView.dispose();
+  window.location.pathname = "/pull/7";
   for (const refreshing of [true, false]) {
     current = {
       ...preview,
@@ -842,6 +917,7 @@ async function run() {
   return {
     description: "plain preview before full conversation",
     pendingParts: ["discussion", "checks"],
+    checkResults,
     waitCorePost,
     previewMarkdownRequests: 0,
     fullMarkdownRequests,

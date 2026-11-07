@@ -42,6 +42,11 @@ const { pathToFileURL } = require("node:url");
     tab: "files",
     reader: { fetchAfterMs: 0, initial: null },
   });
+  assert.deepEqual(memberRoute(9, "checks"), {
+    number: 9,
+    tab: "checks",
+    reader: { fetchAfterMs: 0, initial: null },
+  });
   let clock = Date.parse("2026-09-17T12:00:00Z");
   const timers = new Map();
   let nextTimer = 0;

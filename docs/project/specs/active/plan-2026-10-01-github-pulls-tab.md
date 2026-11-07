@@ -24,7 +24,7 @@ The displayed list starts at 500 matching PRs and grows through **Fetch more**; 
 display window does not cap the catalog.
 Filters are **Open**, **Closed**, and **All**, with Open selected initially.
 Heavy PR records and Git comparisons remain separate from catalog metadata.
-The Conversation and Changes tabs align with the reading column.
+The PR tab bar aligns with the reading column.
 
 The earlier page caps, All default, whole-list files, and `more` request fields below
 record the original design.
@@ -81,6 +81,16 @@ The
 [focused QA session](../../../qa-v012-repository-library.md#57b-optional-stacks-and-pr-presentation)
 records the final artifact and cache conditions without a new testing framework.
 
+## Pull Request Checks
+
+Bead `mb-xnuc` gives checks their own tab beside Conversation and Changes.
+Checks uses the existing PR record and refresh, showing check runs, status contexts,
+merge status, and check-specific notices in the reading column.
+Its address is `/pull/<n>/checks`. Direct links, browser history, and stack navigation
+restore the selected tab.
+A complete cached record with no checks shows an empty state.
+A pending checks section uses the small spinner after the PR header is visible.
+
 ## Conversation Commit Timeline
 
 **Tracked in `mb-c3vw`.** Conversation keeps the description first.
@@ -89,7 +99,7 @@ timeline order when it reports the events together.
 Each row has a plain-text subject and a link labelled with the short commit ID. The full
 ID identifies the destination.
 Show a commit age only when there is a timestamp for it, and distinguish the commit date
-from a push date. Keep inline review threads and checks in their existing sections.
+from a push date. Keep inline review threads in Conversation.
 
 Use GitHub’s
 [pull request timeline connection](https://docs.github.com/en/graphql/reference/pulls#pullrequest)

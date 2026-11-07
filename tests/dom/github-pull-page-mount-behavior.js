@@ -574,6 +574,7 @@ async function run() {
       [
         ["Conversation", "/pull/7"],
         ["Changes", "/pull/7/files"],
+        ["Checks", "/pull/7/checks"],
       ],
     );
     assert.match(container.textContent, /Changes could not load/);

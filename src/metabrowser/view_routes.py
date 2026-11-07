@@ -20,9 +20,8 @@ COMMIT_ROUTE_PREFIX = "/commit/"
 PULL_ROUTE_PREFIX = "/pull/"
 # The list of a repository's pull requests, with `?state=` for a filter, as on GitHub.
 PULLS_ROUTE = "/pulls"
-# The tabs of a pull-request page after its number: the conversation is the page
-# itself, and `files` is its Files changed, spelled as github.com spells it.
-PULL_ROUTE_TABS = ("", "files")
+# Conversation is the PR page itself. Changes and Checks have their own addresses.
+PULL_ROUTE_TABS = ("", "files", "checks")
 # A pull-request number as the GitHub URL reducer admits one.
 _PULL_NUMBER = re.compile(r"^[1-9][0-9]{0,9}$")
 _VIEW_ROUTE_PREFIX_BYTES = VIEW_ROUTE_PREFIX.encode()
@@ -191,7 +190,7 @@ def parse_pull_number(text: str) -> int | None:
 
 
 class PullRoute(NamedTuple):
-    """What ``/pull/<n>[/files[/<path>]]`` names: a page, its tab, and one changed file."""
+    """A PR page, its selected tab, and an optional path within its changes."""
 
     number: int
     tab: str
@@ -215,8 +214,11 @@ def _pull_file_segments(file: str) -> list[str]:
 
 
 def format_pull_href(number: int, tab: str = "", file: str = "") -> str:
-    """Return a pull request's page, ``/pull/<n>`` or ``/pull/<n>/files``, or one file of
-    its Files changed, ``/pull/<n>/files/<path>``, each segment percent-encoded."""
+    """Return the address of a PR's Conversation, Changes or Checks tab.
+
+    A changed file has an address under ``/pull/<n>/files/`` with each segment
+    percent-encoded.
+    """
 
     if _PULL_NUMBER.fullmatch(str(number)) is None or tab not in PULL_ROUTE_TABS:
         raise ValueError("pull route requires a pull-request number and a known tab")
@@ -236,7 +238,7 @@ def format_pull_href(number: int, tab: str = "", file: str = "") -> str:
 
 
 def decode_safe_pull_route(raw_path: bytes) -> PullRoute | None:
-    """Decode ``/pull/<n>[/files[/<path>]]`` into a :class:`PullRoute`, or ``None``.
+    """Decode a pull-request page address into a :class:`PullRoute`, or ``None``.
 
     Whether the pull request is cached, or the server has any, is the pull route's
     answer, not this gate's, and whether its files include *path* is the file list's: a

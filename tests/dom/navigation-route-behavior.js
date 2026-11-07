@@ -114,11 +114,18 @@ observe("pull-request page href", pullRoute.pullHref(7));
 observe("pull-request Files changed href", pullRoute.pullHref(7, "files"));
 observe("pull-request page parses", pullRoute.parsePull("/pull/7"));
 observe("pull-request tab parses with a trailing slash", pullRoute.parsePull("/pull/7/files/"));
+observe("Checks has its own PR address", [
+  pullRoute.pullHref(7, "checks"),
+  pullRoute.parsePull("/pull/7/checks/"),
+  pullRoute.pullHistoryAction("/pull/7/checks", null, false),
+]);
 for (const pathname of [
   "/pull/0",
   "/pull/07",
   "/pull/7/commits",
   "/pull/7/commits/x",
+  "/pull/7/checks/src/app.py",
+  "/pull/7/%63hecks",
   "/pull/x",
   "/pull/7/files/src/",
   "/pull/7/files//x",
@@ -153,6 +160,7 @@ observe("a changed file's route parses back", [
 ]);
 observe("a changed file's href refuses what is not a normalized path", [
   refusal(() => pullRoute.pullHref(7, "", "src/app.py")),
+  refusal(() => pullRoute.pullHref(7, "checks", "src/app.py")),
   refusal(() => pullRoute.pullHref(7, "files", "src/")),
   refusal(() => pullRoute.pullHref(7, "files", "a/../b")),
   refusal(() => pullRoute.pullHref(7, "files", "a\\b")),
@@ -494,6 +502,11 @@ function makePullShell(pathname) {
       "the shown page's route opens without a push",
       await shell.host.open({ number: 7, tab: "files" }),
     );
+    await shell.mounts[0].open({ number: 7, tab: "checks" });
+    shell.location.pathname = "/pull/7/files";
+    shell.host.onHistory("/pull/7/files", false);
+    shell.location.pathname = "/pull/7/checks";
+    shell.host.onHistory("/pull/7/checks", false);
     shell.location.pathname = "/pull/7";
     shell.host.onHistory("/pull/7", false);
     observe(

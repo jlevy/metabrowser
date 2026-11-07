@@ -6,8 +6,8 @@
 // URL; the shell supplies the pane, this loads that plugin, and the view gets the host's `open`.
 // The view owns everything else: fetching the record, polling, refreshing, and Files changed.
 //
-// `/pull/<n>[/files[/<path>]]` and `/pulls` are the pull requests' address space (Browser
-// URL Grammar). Only such an address, or the Pulls tab, reaches this code, so it is no startup
+// `/pull/<n>` and its subroutes, and `/pulls`, are the pull requests' address space
+// (Browser URL Grammar). Only such an address, or the Pulls tab, reaches this code, so it is no startup
 // script of any other page. The server writes it into the shell of a pull-request address,
 // where the page needs it before it can show anything; anything else takes it as the
 // `pull-route` on-demand bundle.
@@ -20,7 +20,7 @@
   const PULL_PREFIX = "/pull/";
   // Keep aligned with view_routes._PULL_NUMBER and PULL_ROUTE_TABS.
   const PULL_NUMBER_PATTERN = /^[1-9][0-9]{0,9}$/;
-  const PULL_TABS = Object.freeze(["", "files"]);
+  const PULL_TABS = Object.freeze(["", "files", "checks"]);
   // Keep aligned with view_routes.PULLS_ROUTE and cache.paths.PULL_LIST_NAMES.
   const PULLS_PATH = "/pulls";
   const PULL_LISTS = Object.freeze(["open", "closed", "all"]);
@@ -43,10 +43,9 @@
   }
 
   /**
-   * Encode a pull request's page: `/pull/<n>` for its conversation,
-   * `/pull/<n>/files` for its Files changed, and `/pull/<n>/files/<path>` for one file
-   * of it, each segment of the path percent-encoded. This is the one way a path written
-   * by whoever opened the pull request reaches an address.
+   * Encode a pull request's page: `/pull/<n>` for Conversation, `/pull/<n>/files`
+   * for Changes, and `/pull/<n>/checks` for Checks. Only Changes can name a file,
+   * with each segment of the path percent-encoded.
    *
    * @param {number} number
    * @param {string} [tab]
@@ -179,7 +178,7 @@
 
   /**
    * The shell's host for a pull request's page. It decides what a
-   * `/pull/<n>[/files]` route does to the pane -- switch the shown page's tab, or claim
+   * pull-request route does to the pane -- switch the shown page's tab, or claim
    * the pane and mount a page -- keeps the page's tab in the URL, and disposes a render
    * a later claim superseded. The list's address holds the pane the same way. The shell
    * supplies the pane and the history; nothing here touches the DOM.

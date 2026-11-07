@@ -588,6 +588,7 @@ def test_selected_core_preview_waits_for_description_and_keeps_parts_pending() -
     assert run_session("github-pull-core-preview-behavior.js") == {
         "description": "plain preview before full conversation",
         "pendingParts": ["discussion", "checks"],
+        "checkResults": {"route": "/pull/7/checks", "links": 2, "empty": True, "pending": True},
         "waitCorePost": {"number": 7, "retry": True, "wait_core": True},
         "previewMarkdownRequests": 0,
         "fullMarkdownRequests": 1,

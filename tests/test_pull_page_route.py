@@ -35,6 +35,8 @@ STYLES_CSS = PAGE_JS.parent / "styles.css"
         (b"/pull/7/", (7, "", "")),
         (b"/pull/7/files", (7, "files", "")),
         (b"/pull/7/files/", (7, "files", "")),
+        (b"/pull/7/checks", (7, "checks", "")),
+        (b"/pull/7/checks/", (7, "checks", "")),
         (b"/pull/9999999999", (9999999999, "", "")),
         # One changed file: a path in the comparison, decoded one segment at a time.
         (b"/pull/7/files/x", (7, "files", "x")),
@@ -46,6 +48,8 @@ STYLES_CSS = PAGE_JS.parent / "styles.css"
         (b"/pull/07", None),
         (b"/pull/7/commits", None),
         (b"/pull/7/commits/x", None),
+        (b"/pull/7/checks/x", None),
+        (b"/pull/7/%63hecks", None),
         (b"/pull/7/x", None),
         (b"/pull/7//", None),
         (b"/pull/%37", None),
@@ -77,6 +81,7 @@ def test_format_pull_href_refuses_what_the_route_does_not_parse() -> None:
         (7, "commits", ""),
         (10**10, "", ""),
         (7, "", "src/app.py"),
+        (7, "checks", "src/app.py"),
         (7, "files", "src/"),
         (7, "files", "../x"),
         (7, "files", "a\\b"),
@@ -102,6 +107,7 @@ def test_the_pull_route_serves_the_shell_and_the_plugin_for_its_kind() -> None:
         # The shell loads a plugin's assets by the kinds its views consume.
         config = re.search(r"configureAssets\((\{.*?\})\);", shell.text)
         assert config is not None and '"pull-request": [{"name": "github"' in config.group(1)
+        assert client.get("/pull/7/checks").status_code == 200
         # One changed file's address is the same page, and its path is never looked up.
         assert client.get("/pull/7/files/no/such/file.py").status_code == 200
         for refused in ("/pull/0", "/pull/7/commits", "/pull/7/files/src/", "/pull/7/files/%2E%2E"):

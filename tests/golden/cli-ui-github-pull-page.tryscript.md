@@ -1284,6 +1284,9 @@ $ node tests/dom/github-pull-page-second-session.js
     "/pull/7/files is #7's files: true",
     "/pull/7/files/src/app.py is #7's files: true",
     "/pull/7/files/src/app.py is #7's conversation: false",
+    "/pull/7/checks is #7's checks: true",
+    "/pull/7/checks is #7's conversation: false",
+    "/pull/7/checks/src/app.py is #7's checks: false",
     "/pull/70/files is #7's files: false",
     "/pull/7/filesx is #7's files: false",
     "/pull/8/files/src/app.py is #7's files: false"
@@ -1306,11 +1309,12 @@ $ node tests/dom/github-pull-page-mount-behavior.js
 The selected and direct cold-page cases hold the POST until a description preview is
 ready. It verifies plain text, explicit unfinished sections, no premature Markdown or
 comparison actions, full-record priority, and cancellation without losing the previous
-useful surface.
+useful surface. Checks has its own route and loading state, and it retains the existing
+check links and notices once the record is ready.
 
 ```console
 $ node tests/dom/github-pull-core-preview-behavior.js
-{"description":"plain preview before full conversation","pendingParts":["discussion","checks"],"waitCorePost":{"number":7,"retry":true,"wait_core":true},"previewMarkdownRequests":0,"fullMarkdownRequests":1,"fullRecordWins":true,"crossOwnerRetirement":true,"stagedReplacement":"A retained through B cancellation until C commits"}
+{"description":"plain preview before full conversation","pendingParts":["discussion","checks"],"checkResults":{"route":"/pull/7/checks","links":2,"empty":true,"pending":true},"waitCorePost":{"number":7,"retry":true,"wait_core":true},"previewMarkdownRequests":0,"fullMarkdownRequests":1,"fullRecordWins":true,"crossOwnerRetirement":true,"stagedReplacement":"A retained through B cancellation until C commits"}
 ? 0
 ```
 

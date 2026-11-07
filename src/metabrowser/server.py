@@ -1955,7 +1955,7 @@ async def commit_shell(request: Request) -> Response:
 
 
 async def pull_shell(request: Request) -> Response:
-    """Serve the SPA shell for ``/pull/<n>[/files[/<path>]]``, a pull request's page.
+    """Serve the SPA shell for a pull request page and its subroutes.
 
     A pull request is its own address space, like a commit: the page is not a path in
     the served tree, and a changed file's path is one in its comparison, never on disk.

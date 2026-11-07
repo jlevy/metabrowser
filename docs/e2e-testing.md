@@ -472,6 +472,15 @@ Try the plain digits if the browser owns the Command chords.
 In a plain folder, check that the Files shortcut still uses `1` and the other numbers
 leave the selection alone.
 
+### Pull Request Checks
+
+In a checkout and a managed repository, open a PR with checks.
+Select **Checks** and verify the status summary and detail links.
+Navigate to Conversation and Changes, then use Back and Forward to restore the selected
+tab. Reload `/pull/<n>/checks` directly.
+Repeat with an empty check list and a pending PR record to verify each loading or empty
+state. On a cached PR, all three tabs use the same record.
+
 ### Headless Screenshots
 
 There is no automated visual-regression layer.

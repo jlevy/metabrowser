@@ -117,7 +117,7 @@ const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
 // Give a transient queue or provider failure one chance to clear while the reader stays.
 export const TIMELINE_RETRY_MS = 1000;
 const PIN_ROUTE = "/api/source/pin";
-export const TABS = Object.freeze(["", "files"]);
+export const TABS = Object.freeze(["", "files", "checks"]);
 
 /** @type {Readonly<Record<string, string>>} */
 const ABSENCE = Object.freeze({
@@ -269,6 +269,7 @@ const TRUNCATED = Object.freeze({
  *   timeline: TimelineItem[],
  *   reviewComments: ReviewCommentItem[],
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
+ *   checkNotes: string[],
  *   notes: string[],
  *   comparison: {left: string, right: string, route?: string, headMoved: boolean} | null,
  *   browse: BrowseCode | null,
@@ -684,21 +685,28 @@ function checks(record) {
   return { counts, items };
 }
 
-/** @param {Record<string, any>} record */
-function notes(record) {
+/** @param {Record<string, any>} record @param {boolean} forChecks */
+function notes(record, forChecks) {
   /** @type {string[]} */
   const said = [];
   const truncated = record.truncated ?? {};
-  const cut = Object.keys(TRUNCATED).filter((name) => truncated[name] === true);
+  const checkPart = (/** @type {string} */ name) =>
+    name === "check_runs" || name === "status" || name === "statuses";
+  const cut = Object.keys(TRUNCATED).filter(
+    (name) => checkPart(name) === forChecks && truncated[name] === true,
+  );
   if (cut.length > 0) {
     said.push(
       `Only some ${cut.map((name) => TRUNCATED[name]).join(", ")} are shown: the list was longer than what is kept.`,
     );
   }
-  if (truncated.text === true) {
+  if (!forChecks && truncated.text === true) {
     said.push("Some text was cut to keep this pull request's data within its size limit.");
   }
   for (const [part, why] of Object.entries(record.unavailable ?? {})) {
+    if (checkPart(part) !== forChecks) {
+      continue;
+    }
     said.push(
       `${UNAVAILABLE[part] ?? part} could not be read (${String(why).replaceAll("_", " ")}).`,
     );
@@ -808,6 +816,7 @@ export function describePull(envelope, page) {
     timeline: [],
     reviewComments: [],
     checks: null,
+    checkNotes: [],
     notes: [],
     comparison: null,
     browse: null,
@@ -897,7 +906,8 @@ export function describePull(envelope, page) {
   model.timeline = timeline(record);
   model.reviewComments = reviewComments(record);
   model.checks = checks(record);
-  model.notes = notes(record);
+  model.checkNotes = notes(record, true);
+  model.notes = notes(record, false);
   const head = text(pull.head?.sha);
   const headRef = `refs/pull/${pull.number}/head`;
   if (envelope.pin !== null && head !== "") {
@@ -1818,9 +1828,8 @@ export function safeLink(href, base) {
 }
 
 /**
- * Whether *pathname* is this page's entry on *tab*: `/pull/<n>` or `/pull/<n>/files`, and
- * for Files changed one changed file's address, `/pull/<n>/files/<path>`, too, since that
- * is the same tab at a file. Pure.
+ * Whether *pathname* is this page's entry on *tab*. A selected file beneath
+ * `/pull/<n>/files/<path>` also belongs to Changes. Pure.
  *
  * @param {string} pathname
  * @param {number} number
@@ -1863,12 +1872,11 @@ export function filesAction(mounted, comparison) {
  */
 export function conversationKey(model) {
   return JSON.stringify([
-    model.pull,
+    model.pull === null ? null : { ...model.pull, merge: null },
     model.corePreview,
     ...(model.corePreview ? [model.refreshing] : []),
     model.timeline,
     model.reviewComments,
-    model.checks,
     model.notes,
     // A review comment's file is a link or a button by this.
     model.browse?.kind ?? null,
@@ -2477,6 +2485,7 @@ export function mountPullPage(container, ctx, mb) {
   const tabLinks = [
     { id: "", label: "Conversation" },
     { id: "files", label: "Changes" },
+    { id: "checks", label: "Checks" },
   ].map(({ id, label }) => {
     const link = pageLink({ number, tab: id }, "tab-btn", [label]);
     link.setAttribute("role", "tab");
@@ -2756,29 +2765,16 @@ export function mountPullPage(container, ctx, mb) {
       ? null
       : { description, cards: new Map(), inserts: new Map(), projection: null };
     if (model.corePreview) {
-      for (const [heading, message] of [
-        [
-          "Discussion",
-          model.refreshing
-            ? "Comments and reviews are still loading."
-            : "Comments and reviews have not been fetched.",
-        ],
-        [
-          "Checks",
-          model.refreshing
-            ? "Checks and statuses are still loading."
-            : "Checks and statuses have not been fetched.",
-        ],
-      ]) {
-        sections.push(
-          h("section", { class: "github-pull-section" }, [
-            h("h2", { class: "section-heading" }, [heading]),
-            h("p", { class: "github-pull-quiet" }, [
-              model.refreshing ? progress(message) : message,
-            ]),
+      sections.push(
+        h("section", { class: "github-pull-section" }, [
+          h("h2", { class: "section-heading" }, ["Discussion"]),
+          h("p", { class: "github-pull-quiet" }, [
+            model.refreshing
+              ? progress("Comments and reviews are still loading.")
+              : "Comments and reviews have not been fetched.",
           ]),
-        );
-      }
+        ]),
+      );
       body.replaceChildren(...sections);
       return;
     }
@@ -2853,15 +2849,27 @@ export function mountPullPage(container, ctx, mb) {
       }
       sections.push(threads);
     }
+    for (const note of model.notes) {
+      sections.push(notice("warning", [note]));
+    }
+    body.replaceChildren(...sections);
+  }
+
+  /** @param {PullModel} model @param {NonNullable<PullModel["pull"]>} pull */
+  function paintChecks(model, pull) {
     const summary = model.checks;
     const checksSection = h("section", { class: "github-pull-section" }, [
       h("h2", { class: "section-heading" }, ["Checks"]),
     ]);
-    if (summary === null) {
+    if (model.corePreview) {
       checksSection.append(
-        h("p", { class: "github-pull-quiet" }, ["No checks or statuses reported."]),
+        h("p", { class: "github-pull-quiet" }, [
+          model.refreshing
+            ? progress("Checks and statuses are still loading.")
+            : "Checks and statuses have not been fetched.",
+        ]),
       );
-    } else {
+    } else if (summary !== null) {
       checksSection.append(
         h("p", { class: "github-pull-quiet" }, [
           Object.entries(summary.counts)
@@ -2881,17 +2889,20 @@ export function mountPullPage(container, ctx, mb) {
         );
       }
       checksSection.append(rows);
+    } else if (model.checkNotes.length === 0) {
+      checksSection.append(
+        h("p", { class: "github-pull-quiet" }, ["No checks or statuses reported."]),
+      );
     }
-    if (pull.merge !== null) {
+    if (!model.corePreview && pull.merge !== null) {
       checksSection.append(
         h("p", { class: "github-pull-merge", "data-state": pull.merge.state }, [pull.merge.label]),
       );
     }
-    sections.push(checksSection);
-    for (const note of model.notes) {
-      sections.push(notice("warning", [note]));
-    }
-    body.replaceChildren(...sections);
+    body.replaceChildren(
+      checksSection,
+      ...model.checkNotes.map((note) => notice("warning", [note])),
+    );
   }
 
   /** Settles when the diff last asked for has mounted, or was replaced. */
@@ -3153,7 +3164,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     paintHeader(model);
     paintStacks(model);
-    // The conversation reads in the column; a diff takes the pane.
+    // Conversation and Checks use the reading column. Changes uses the full pane.
     body.classList.toggle("github-pull-column", model.pull === null || model.tab !== "files");
     if (model.pull === null) {
       disposeDiff();
@@ -3187,6 +3198,25 @@ export function mountPullPage(container, ctx, mb) {
       return;
     }
     disposeDiff();
+    if (model.tab === "checks") {
+      const key = JSON.stringify([
+        "checks",
+        model.corePreview,
+        model.corePreview && model.refreshing,
+        model.checks,
+        model.checkNotes,
+        model.pull.merge,
+        model.pull.htmlUrl,
+      ]);
+      if (key !== bodyKey) {
+        bodyKey = key;
+        discussion = null;
+        texts.clear();
+        observer?.disconnect();
+        paintChecks(model, model.pull);
+      }
+      return;
+    }
     if (model.comparison !== null) {
       prefetch.want(model.comparison);
     }
@@ -3221,7 +3251,7 @@ export function mountPullPage(container, ctx, mb) {
     }
   }
 
-  /** Timeline work follows an active, painted Conversation, never a preview or Changes. */
+  /** Timeline work follows an active Conversation with a full record. */
   function followTimeline() {
     const revision = shown?.recordRevision ?? null;
     const source = stackIdentity?.source ?? null;
@@ -3418,7 +3448,7 @@ export function mountPullPage(container, ctx, mb) {
           !listening.signal.aborted &&
           shown === model &&
           model.pull !== null &&
-          model.tab !== "files"
+          model.tab === ""
         ) {
           // DOM readiness is not a painted milestone; the browser probe observes that boundary.
           mb.perf.measure("githubPull:descriptionReady", () => {}, {
@@ -3450,7 +3480,7 @@ export function mountPullPage(container, ctx, mb) {
       followTimeline();
       // A page opened behind another tab is not prefetched until it is looked at: the
       // wish is not recorded while hidden, so it is asked again when shown.
-      if (document.visibilityState === "visible" && shown?.tab !== "files") {
+      if (document.visibilityState === "visible" && shown?.tab === "") {
         const comparison = shown?.comparison ?? null;
         if (comparison !== null) {
           prefetch.want(comparison);

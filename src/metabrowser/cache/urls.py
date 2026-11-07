@@ -84,8 +84,8 @@ class RepositorySelection:
     ``ref_and_path`` stays unsplit, as percent-decoded byte segments, because only the
     mirror knows where a ref name that contains ``/`` ends; ``cache/resolve.py`` splits
     it. ``commit`` is a validated lowercase hexadecimal object ID, possibly abbreviated.
-    ``pull_tab`` is the tab of the pull request's page the URL names: ``files``, or empty
-    for its conversation. The generic grammar never invents a selection.
+    ``pull_tab`` is the tab of the pull request's page the URL names, with an empty value
+    for Conversation. The generic grammar never invents a selection.
     """
 
     kind: SelectionKind = "repository"
