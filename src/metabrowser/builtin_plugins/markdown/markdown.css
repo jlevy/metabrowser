@@ -114,6 +114,10 @@
     .metabrowser-markdown-document
       > .kpress-doc
       > .kpress-doc-layout:has(> .kpress-toc)
+      .kpress-table-wrap[data-kpress-table-scale="wide"],
+    .folder-overview-panel-document
+      > .metabrowser-markdown-document
+      > .kpress-doc
       .kpress-table-wrap[data-kpress-table-scale="wide"] {
       max-width: 100%;
     }

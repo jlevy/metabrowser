@@ -13,6 +13,7 @@ from kpress.runtime import KPressRenderRequest, get_static_asset
 from pytest import MonkeyPatch
 
 from metabrowser.kpress_adapter import render_kpress_view
+from tests.test_design_vocabulary import _rules_of
 
 PROJECT_FILE = Path(__file__).resolve().parent.parent / "pyproject.toml"
 SOURCE_DIR = PROJECT_FILE.parent / "src" / "metabrowser"
@@ -98,21 +99,51 @@ def test_markdown_uses_the_kpress_toc_only_when_the_document_has_one(
             'class="kpress-prose kpress-long-text"'
         )
 
-    styles = (SOURCE_DIR / "builtin_plugins" / "markdown" / "markdown.css").read_text(
-        encoding="utf-8"
+    rules = {
+        " ".join(selector.split()): declarations
+        for selector, declarations in _rules_of(
+            SOURCE_DIR / "builtin_plugins" / "markdown" / "markdown.css"
+        )
+    }
+    document = ".metabrowser-markdown-document > .kpress-doc"
+    layout = f"{document} > .kpress-doc-layout"
+    gutter = rules[f"{document}:has(> .kpress-doc-layout > .kpress-toc)"]
+    assert gutter["--kpress-doc-gutter"] == "var(--kpress-toc-toggle-clearance)"
+    assert gutter["padding-inline-start"] == "0"
+    toggle = rules[f"{layout} > .kpress-toc-toggle"]
+    assert toggle["left"] == "auto"
+    assert toggle["right"] == "0.75rem"
+    toc_layout = f"{layout}:has(> .kpress-toc)"
+    assert rules[toc_layout]["grid-template-areas"] == '"prose toc"'
+    assert " ".join(rules[f"{toc_layout}:has(> .thumbnail)"]["grid-template-areas"].split()) == (
+        '"thumbnail toc" "prose toc"'
     )
-    narrow = styles.split("@container kpress-doc (max-width: 74.99rem)", 1)[1].split(
-        "@container kpress-doc (min-width: 75rem)", 1
-    )[0]
-    assert "--kpress-doc-gutter: var(--kpress-toc-toggle-clearance);" in narrow
-    assert "padding-inline-start: 0;" in narrow
-    assert "left: auto;" in narrow and "right: 0.75rem;" in narrow
-    wide = styles.split("@container kpress-doc (min-width: 75rem)", 1)[1]
-    assert 'grid-template-areas: "prose toc";' in wide
-    assert re.search(r'grid-template-areas:\s*"thumbnail toc"\s*"prose toc";', wide)
-    assert "grid-area: thumbnail;" in wide
-    assert "width: max-content;" in wide
-    assert "min-width: 100%;" in wide
+    assert rules[f"{layout} > .thumbnail"]["grid-area"] == "thumbnail"
+    table = rules[f'{document} .kpress-table-wrap[data-kpress-table-scale="wide"]']
+    assert table["width"] == "max-content"
+    assert table["min-width"] == "100%"
+    assert " ".join(table["max-width"].split()) == "calc(100cqw - 2 * var(--content-padding-x))"
+
+
+def test_embedded_readme_keeps_wide_tables_inside_the_panel() -> None:
+    """A clipping Overview card must leave the table's own scroll area reachable."""
+
+    rules = {
+        " ".join(selector.split()): declarations
+        for selector, declarations in _rules_of(
+            SOURCE_DIR / "builtin_plugins" / "markdown" / "markdown.css"
+        )
+    }
+    embedded = (
+        ".folder-overview-panel-document > .metabrowser-markdown-document > .kpress-doc "
+        '.kpress-table-wrap[data-kpress-table-scale="wide"]'
+    )
+    assert rules[embedded]["max-width"] == "100%"
+    with_toc = (
+        ".metabrowser-markdown-document > .kpress-doc "
+        '> .kpress-doc-layout:has(> .kpress-toc) .kpress-table-wrap[data-kpress-table-scale="wide"]'
+    )
+    assert rules[with_toc]["max-width"] == "100%"
 
 
 def test_runtime_has_no_optional_kpress_branch() -> None:
