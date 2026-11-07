@@ -957,7 +957,7 @@ They do not change addition/deletion counts or patch-line backgrounds.
 
 ## Diffs
 
-Diff surfaces serve a commit, a comparison, and a pull request’s Files changed, and they
+Diff surfaces serve a commit, a comparison, and a pull request’s Changes tab, and they
 share these rules wherever they appear.
 
 ### Inline Change Stats
@@ -1132,7 +1132,7 @@ Until its render arrives a text shows as plain text in the same face and size.
 | Link | `--link`, underline on hover, the focus ring | As the freshness row’s link is |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
-| Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Files changed cannot be drawn; no severity for the offer of newer changes, which carries its own control |
+| Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Changes cannot be drawn; no severity for the offer of newer changes, which carries its own control |
 | A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |
 | A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
 | Empty state | `--muted`, sentence with a period |  |
@@ -1297,8 +1297,8 @@ it passed. The collections differ in the rest:
 
 - **A pointer click** pushes an entry in the file tree, and in the Pulls tab for a row
   that is not the one open.
-  In Git it replaces the entry, as every selection there does that does not come from
-  the address: a commit is a selection that holds the address while it is shown
+  In Commits it replaces the entry, as every selection there does that does not come
+  from the address: a commit is a selection that holds the address while it is shown
   (`static/git-panel.js`, `selectCommit`).
 - **Enter and Space** open only in the Pulls tab, and push an entry only for a row that
   is not the one open.

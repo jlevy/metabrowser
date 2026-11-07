@@ -416,7 +416,7 @@ Do not make the manual check the only coverage for a deterministic contract.
 ### Markdown Reading Layout
 
 Open a long Markdown file with a table of contents in the built-in browser.
-Compare the Document tab’s first heading with the leftmost tab’s edge.
+Compare the document card border with the leftmost tab’s outer edge.
 Switch to Source and check the pane gutter and line-number column.
 At a preview width of 75 rem or more, check the TOC to the right of the prose and follow
 a heading link.
@@ -480,8 +480,8 @@ framework:
    confirm an unchanged sibling is still readable.
    Replace the repository or authenticated reader and confirm that old admission or
    cached metadata cannot cross that boundary.
-4. In Git, compare natural and prepared selection, re-enter the displayed row, and leave
-   for a file while deferred requests are active.
+4. In Commits, compare natural and prepared selection, re-enter the displayed row, and
+   leave for a file while deferred requests are active.
    Check exact route and subject, cancellation, queued work, single active ownership and
    final content.
 5. Keep matching request counts and bytes beside painted readiness, Long Tasks, Event
