@@ -2718,9 +2718,13 @@ export function mountPullPage(container, ctx, mb) {
       text,
     ]);
 
-  /** The registry's disclosure chevron, parsed once: a constant, not the pull request's text. */
-  const chevronSvg = new DOMParser().parseFromString(mb.icons.toggle || "", "text/html").body
-    .firstElementChild;
+  /** Only shell-owned icon constants enter this parser, never pull-request content.
+   * @param {"toggle" | "layers"} name
+   */
+  const registryIcon = (name) =>
+    new DOMParser().parseFromString(mb.icons[name] || "", "text/html").body.firstElementChild;
+  const chevronSvg = registryIcon("toggle");
+  const stackSvg = registryIcon("layers");
   function chevron() {
     return chevronSvg === null
       ? null
@@ -2768,11 +2772,9 @@ export function mountPullPage(container, ctx, mb) {
         menu.update(stack, model.pull?.title ?? "");
         return menu.element;
       }
-      const icon = new DOMParser().parseFromString(mb.icons.layers || "", "text/html").body
-        .firstElementChild;
       menu = createStackMenu(stack, number, {
         link: (target) => pageLink(memberRoute(target, model.tab), "", []),
-        icon: icon === null ? null : document.importNode(icon, true),
+        icon: stackSvg === null ? null : document.importNode(stackSvg, true),
         currentTitle: model.pull?.title ?? "",
         onOpen() {
           preferredStack = stack.number;

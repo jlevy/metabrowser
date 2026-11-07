@@ -384,6 +384,33 @@ def catalog_members(
         return None, {}
 
 
+def catalog_titles(
+    repository: ListedRepository, reader: str, numbers: tuple[int, ...]
+) -> dict[int, str]:
+    """Read one indexed title batch, using the catalog's existing window bound."""
+    if not numbers or len(numbers) > MAX_WINDOW:
+        raise ValueError("invalid catalog title request")
+    try:
+        with _database(repository.home, repository.slug) as db:
+            db.execute("BEGIN")
+            state = _state(db)
+            if state is None or (state.source, state.reader) != (repository.source, reader):
+                return {}
+            placeholders = ",".join("?" for _ in numbers)
+            rows = db.execute(
+                f"SELECT number,body FROM pulls WHERE number IN ({placeholders})", numbers
+            )
+            titles: dict[int, str] = {}
+            for number, body in rows:
+                row = PullListRow.model_validate_json(body)
+                if row.number != number:
+                    return {}
+                titles[number] = row.title
+            return titles
+    except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
+        return {}
+
+
 def catalog_row(home: Path, slug: str, number: int) -> PullListRow | None:
     try:
         with _database(home, slug) as db:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 import threading
 from collections.abc import Sequence
 from datetime import timedelta
@@ -30,8 +31,10 @@ from tests.github_pull_fixture import (
     FETCHED_AT,
     READER,
     account,
+    generated_item,
     install_fake_gh,
     logged_gh_calls,
+    seed_catalog,
 )
 
 
@@ -75,7 +78,7 @@ def native(number: int, *pulls: int) -> dict[str, Any]:
         "url": f"https://api.github.com/repos/octo/demo/stacks/{number}",
         "base": {"ref": "main"},
         "open": True,
-        "pull_requests": [{"number": n, "title": f"Change {n}"} for n in pulls or (number,)],
+        "pull_requests": [{"number": n} for n in pulls or (number,)],
     }
 
 
@@ -123,6 +126,58 @@ def envelope(repository: ListedRepository) -> dict[str, Any]:
     return dict(stack_envelope(StackView(repository, None, False)))
 
 
+def test_titles_follow_the_matching_catalog_without_refetching_native_membership(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github.pull_stacks_route import envelope_etag
+
+    calls = provider(monkeypatch, [response([native(30, 7, 9)])])
+    asyncio.run(refresh_stacks(repository))
+    before = stack_envelope(StackView(repository, None, False))
+    assert before["stacks"][0]["titles"] == [None, None]
+    stored = read_stacks(repository)
+    seed_catalog(repository, [generated_item(7) | {"title": "A useful title"}])
+    first = stack_envelope(StackView(repository, None, False))
+    assert first["stacks"][0]["titles"] == ["A useful title", None]
+    assert envelope_etag(first) != envelope_etag(before)
+    seed_catalog(
+        repository,
+        [generated_item(7) | {"title": "Updated title", "updated_at": "2026-10-02T12:00:00Z"}],
+    )
+    assert envelope(repository)["stacks"][0]["titles"] == ["Updated title", None]
+    assert read_stacks(repository) == stored
+    assert len(calls) == 4, "projecting cached titles never invokes the provider"
+    data = (repository.home / f"sources/{repository.slug}/pulls/stacks.json").read_text()
+    assert '"titles"' not in data, "native membership does not duplicate catalog metadata"
+
+
+@pytest.mark.parametrize("changed", ["reader", "source"])
+def test_stack_titles_never_cross_catalog_identity(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, changed: str
+) -> None:
+    provider(monkeypatch, [response([native(30, 7)])])
+    asyncio.run(refresh_stacks(repository))
+    state = seed_catalog(repository, [generated_item(7)])
+    value = "gh:someone-else" if changed == "reader" else "https://github.com/other/repo"
+    altered = state.model_copy(update={changed: value})
+    path = repository.home / f"sources/{repository.slug}/pulls/catalog.sqlite3"
+    with sqlite3.connect(path) as db:
+        db.execute("UPDATE checkpoint SET value=? WHERE id=1", (altered.model_dump_json(),))
+    assert envelope(repository)["stacks"][0]["titles"] == [None]
+
+
+def test_stack_titles_span_indexed_catalog_batches(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = provider(monkeypatch, [response([native(30, *range(1, 1001)), native(31, 1001)])])
+    asyncio.run(refresh_stacks(repository))
+    seed_catalog(repository, [generated_item(number) for number in range(1, 1002)])
+    stacks = envelope(repository)["stacks"]
+    assert stacks[0]["titles"] == [f"Work item {number}" for number in range(1, 1001)]
+    assert stacks[1]["titles"] == ["Work item 1001"]
+    assert len(calls) == 4
+
+
 def test_pages_preserve_order_and_conditional_continuation_without_link(
     repository: ListedRepository,
     monkeypatch: pytest.MonkeyPatch,
@@ -134,7 +189,7 @@ def test_pages_preserve_order_and_conditional_continuation_without_link(
     first = envelope(repository)
     assert first["complete"] and first["stacks"][0]["pulls"] == [7, 9]
     assert [row["number"] for row in first["stacks"]] == [30, 50]
-    assert first["stacks"][0]["titles"] == ["Change 7", "Change 9"]
+    assert first["stacks"][0]["titles"] == [None, None]
     assert first["reader"] == "gh:" + READER
     assert len(calls) == 5
     calls = provider(monkeypatch, [GhResponse(304, {}, b""), GhResponse(304, {}, b"")])
