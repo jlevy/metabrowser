@@ -192,7 +192,10 @@ Object.assign(globalThis, {
       if (refuseAdmission !== null) {
         const preparation = refuseAdmission;
         refuseAdmission = null;
-        return answer({ preparation });
+        return answer({
+          preparation,
+          ...(preparation === "ready" ? { ready_numbers: body.numbers, skipped_numbers: [] } : {}),
+        });
       }
       if (holdAdmission) {
         holdAdmission = false;
@@ -424,7 +427,8 @@ async function paint() {
   const retry = () =>
     [...timers].find(
       ([id, timer]) =>
-        !existingTimers.has(id) && timer.delay === (panel.CORE_BUSY_RETRY_MS ?? 1000),
+        !existingTimers.has(id) &&
+        [panel.CORE_BUSY_RETRY_MS, panel.CORE_BUSY_RETRY_MS * 2].includes(timer.delay),
     );
   const sampleAt = async (top) => {
     scroll.scrollTop = top;
@@ -446,16 +450,30 @@ async function paint() {
   await settle();
   assert.equal(controls.length, beforeBusy + 2);
   assert.deepEqual(controls.at(-1), demand, "retry uses the exact original window");
-  assert.equal(retry(), undefined, "a second busy answer never retries again");
+  const afterSecondBusy = retry();
+  assert.ok(afterSecondBusy, "a stable demand survives more than one busy response");
+  assert.equal(afterSecondBusy[1].delay, panel.CORE_BUSY_RETRY_MS * 2);
+  refuseAdmission = "ready";
+  timers.delete(afterSecondBusy[0]);
+  afterSecondBusy[1].fn();
+  await settle();
+  assert.equal(controls.length, beforeBusy + 3);
+  assert.deepEqual(controls.at(-1), demand, "the eventual ready retry retains exact ownership");
+  assert.equal(retry(), undefined, "an admitted window stops retrying");
 
   refuseAdmission = "not_owner";
   await sampleAt(600);
-  assert.equal(retry(), undefined, "a refusal cannot re-arm the competing window");
+  const revokedRetry = retry();
+  assert.ok(revokedRetry, "revoked ownership schedules a cache read before new admission");
+  const afterRefusal = controls.length;
   refuseAdmission = "busy";
   await sampleAt(1000);
+  assert.equal(timers.has(revokedRetry[0]), false, "a new viewport retires the revoked demand");
+  assert.equal(controls.length, afterRefusal + 1, "only the replacement window asks for admission");
   assert.ok(retry());
+  const oldRetry = retry();
   await sampleAt(1300);
-  assert.equal(retry(), undefined, "a changed viewport cancels the previous retry");
+  assert.equal(timers.has(oldRetry[0]), false, "a changed viewport cancels the previous retry");
   const currentOwner = controls.at(-1);
 
   holdAdmission = true;

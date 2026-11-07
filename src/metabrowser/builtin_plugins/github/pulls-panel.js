@@ -3,7 +3,7 @@
 //
 // Every decision lives here without a DOM. `describePulls` turns one list's envelope and
 // rows into what the panel shows; `createPullsController` owns the filters, the windows of
-// rows, bounded cached windows, polling only while shown and prioritizing metadata fetches,
+// rows, bounded cached windows, foreground watch and progressive metadata preparation,
 // which row is current and which takes Tab, and opening a row. `mountPullsPanel` is the
 // browser glue: real fetch, timers, and paint. tests/dom/github-pulls-panel-session.js runs
 // the same functions from the command line.
@@ -16,11 +16,12 @@
 // `rows`, not by the DOM, so it reads the same however a row is drawn.
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
-// `GET` never does. A list's refresh is asked for while the panel is shown, which the server
-// holds to one attempt a window; an accepted catalog job continues while hidden. A row's
-// record is read when the reader stops on it: that
-// read is local and runs no gh, and only a page opened by a reader's selection asks to fetch
-// a record the cache lacks. A key held down selects rows and opens only the one it stops on,
+// `GET` never does. Idle startup may warm the catalog and lightweight PR metadata in both
+// repository modes; the visible panel also drives the foreground catalog watch. The server
+// holds refreshes to its window. Background preparation follows the local catalog cursor
+// and gives the entire visible viewport priority, without acquiring Git or diffs. A row's
+// selected record read remains local, and only selection asks for its complete record.
+// A key held down selects rows and opens only the one it stops on,
 // so a walk costs no request per row.
 //
 // All text is GitHub's users', and untrusted. Paint writes it with textContent, and no value
@@ -48,7 +49,8 @@ const PULLS_ROUTE = "/api/plugin/github/pulls";
 const REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
 const PULL_ROUTE = "/api/plugin/github/pull";
 const CORE_PREPARE_ROUTE = "/api/plugin/github/pull-cores-prepare";
-const VISIBLE_CORE_LIMIT = 8;
+// Existing measured GraphQL transport bound (exp-048); queues cover the whole viewport/catalog.
+const CORE_BATCH_SIZE = 8;
 const CORE_CONTROL_TIMEOUT_MS = 2000;
 export const CORE_BUSY_RETRY_MS = 1000;
 
@@ -477,7 +479,7 @@ function pinChanged(response) {
 
 /**
  * @typedef {{state: string, window: {id: string, generation: string}, numbers: number[]}} CoreWindowRequest
- * @typedef {{key: string, epoch: number, body: CoreWindowRequest, canRetry: boolean}} CoreDemand
+ * @typedef {{epoch: number, body: CoreWindowRequest, canRetry: boolean, retryDelay: number, lane: "visible" | "background", queueKey: string, done: boolean}} CoreDemand
  * @typedef {{status: number, etag: string | null, body: unknown}} PullsResponse
  * @typedef {{
  *   request(
@@ -576,7 +578,7 @@ export function createPullsController(deps, options = {}) {
   let shown = false;
   let disposed = false;
   let polling = false;
-  // The panel's first read may start the refresh though it is not shown: see `start`.
+  // Idle startup can ask for metadata before this repository's Pulls tab is shown.
   let readAhead = false;
   let parked = false;
   let probeOnWake = false;
@@ -620,6 +622,27 @@ export function createPullsController(deps, options = {}) {
   let sendingCore = false;
   /** @type {unknown} */
   let coreRetryTimer = null;
+  /** The actual viewport may span several transport batches. @type {PullRow[]} */
+  let visibleCores = [];
+  let visibleCoreAt = 0;
+  let visibleCoreKey = "";
+  // Prime the already held default/filter page until a measured viewport replaces it.
+  let primeHeldCores = false;
+  let warming = false;
+  let warmPaused = false;
+  /** Last settled catalog row, retained across browser suspension. @type {number | null} */
+  let warmAfter = null;
+  /** @type {string | null} */
+  let warmIdentity = null;
+  /** The All prefix revision; tail-only appends leave it unchanged. @type {string | null} */
+  let warmGeneration = null;
+  /** Earliest retry among settled partial cohorts. @type {number | null} */
+  let warmDeferredAt = null;
+  let warmRetryDelay = CORE_BUSY_RETRY_MS;
+  /** @type {unknown} */
+  let warmTimer = null;
+  /** @type {AbortController | null} */
+  let warmRead = null;
   // Counts describe the repository, so switching filters keeps the last accepted tallies.
   /** @type {PullFilterTotals | null} */
   let filterTotals = null;
@@ -637,10 +660,216 @@ export function createPullsController(deps, options = {}) {
   }
 
   function wake() {
-    if (live()) {
+    if (live() || ((warming || warmIdentity !== null) && visible() && !disposed)) {
+      readAhead = readAhead || (!shown && warming);
+      warmPaused = false;
       probeOnWake = true;
       render();
-      void poll();
+      void poll(!shown);
+    }
+  }
+
+  /** @param {PullsEnvelope} envelope */
+  function coreCatalogIdentity(envelope) {
+    if (typeof envelope.generation !== "string") {
+      return null;
+    }
+    // CatalogState.generation is the stable epoch followed by its paging revision.
+    return JSON.stringify([envelope.source, envelope.reader, envelope.generation.split(":")[0]]);
+  }
+
+  function coreLive() {
+    return !disposed && visible() && online() && (shown || warming);
+  }
+
+  function cancelWarmTimer() {
+    if (warmTimer !== null) {
+      deps.cancel(warmTimer);
+      warmTimer = null;
+    }
+  }
+
+  function queueCores() {
+    if (!coreLive() || walkingTo !== null || (!warming && visibleCoreAt >= visibleCores.length)) {
+      cancelWarmTimer();
+      return;
+    }
+    // A known reset owns the same one-shot queue timer while the source is held.
+    if (warmPaused) {
+      return;
+    }
+    // Coalesce rather than debounce: a fast catalog watch must not postpone warming forever.
+    if (warmTimer !== null) {
+      return;
+    }
+    warmTimer = deps.schedule(() => {
+      warmTimer = null;
+      void pumpCores();
+    }, CORE_BUSY_RETRY_MS);
+  }
+
+  /** @param {{outcome?: string, reset_at?: string | null} | null | undefined} failure */
+  function pauseCoreQueue(failure) {
+    warmPaused = true;
+    cancelWarmTimer();
+    if (!coreLive() || WATCH_PAUSED.has(failure?.outcome ?? "")) {
+      return;
+    }
+    const reset = typeof failure?.reset_at === "string" ? Date.parse(failure.reset_at) : NaN;
+    const delay = Number.isFinite(reset)
+      ? Math.max(CORE_BUSY_RETRY_MS, reset - deps.now())
+      : warmRetryDelay;
+    warmRetryDelay = Math.min(warmRetryDelay * 2, SLOW_POLL_MS);
+    warmTimer = deps.schedule(() => {
+      warmTimer = null;
+      warmPaused = false;
+      // Refresh the held generation before retrying revoked or failed demand.
+      // This reads local metadata; askIfDue retains provider freshness admission.
+      readAhead = readAhead || (!shown && warming);
+      void poll(true).finally(() => pumpCores());
+    }, delay);
+  }
+
+  function restartCorePass() {
+    warmAfter = null;
+    warmGeneration = null;
+    warmDeferredAt = null;
+    warming = true;
+    warmPaused = false;
+    visibleCoreKey = "";
+    visibleCores = [];
+    visibleCoreAt = 0;
+    primeHeldCores = true;
+    clearCoreWindow();
+  }
+
+  /** Read only the next batch of locally cataloged metadata; never extend the provider scan. */
+  async function pumpCores() {
+    if (!coreLive() || warmPaused || warmRead !== null || walkingTo !== null) {
+      return;
+    }
+    if (coreWanted !== null && !coreWanted.done && coreWanted.canRetry) {
+      return;
+    }
+    const list = held();
+    if (list.envelope?.reason === "not_github") {
+      warming = false;
+      return;
+    }
+    if (
+      (shown || primeHeldCores) &&
+      visibleCoreAt < visibleCores.length &&
+      typeof list.envelope?.generation === "string" &&
+      list.content !== null
+    ) {
+      prepareBatch(
+        visibleCores.slice(visibleCoreAt, visibleCoreAt + CORE_BATCH_SIZE),
+        filter,
+        list.envelope.generation,
+        visibleCoreKey,
+        "visible",
+      );
+      return;
+    }
+    if (!warming) {
+      return;
+    }
+    if (
+      primeHeldCores &&
+      visibleCores.length === 0 &&
+      (list.envelope?.refreshing ||
+        list.envelope?.state === "absent" ||
+        list.envelope?.state === "pending")
+    ) {
+      // A cold startup's first catalog page may arrive after the refresh POST.
+      // Read that selected/default filter before walking the rest of All.
+      await poll(true);
+      pauseCoreQueue(list.envelope?.last_refresh);
+      return;
+    }
+    const controller = new AbortController();
+    warmRead = controller;
+    try {
+      const after = warmAfter === null ? "" : `&after=${warmAfter}`;
+      const response = await deps.request(
+        "GET",
+        `${PULLS_ROUTE}?state=all&limit=${CORE_BATCH_SIZE}${after}`,
+        { signal: controller.signal },
+      );
+      if (controller.signal.aborted || warmRead !== controller || !coreLive()) {
+        return;
+      }
+      if (response.status !== 200 || !isEnvelope(response.body)) {
+        pauseCoreQueue(null);
+        return;
+      }
+      const envelope = response.body;
+      const identity = coreCatalogIdentity(envelope);
+      if (identity !== null && warmIdentity !== null && identity !== warmIdentity) {
+        warmIdentity = identity;
+        restartCorePass();
+        queueCores();
+        return;
+      }
+      warmIdentity = identity;
+      if (
+        warmGeneration !== null &&
+        envelope.generation !== null &&
+        envelope.generation !== warmGeneration
+      ) {
+        // A new or changed leading row can sit above the settled cursor.
+        // Revisit that prefix; durable cache hits do not repeat provider work.
+        warmAfter = null;
+        warmGeneration = envelope.generation;
+        queueCores();
+        return;
+      }
+      warmGeneration = envelope.generation;
+      if (
+        envelope.reason === "not_github" ||
+        refreshFailure(envelope, deps.formatTime) !== null ||
+        rateHoldMs(envelope, deps.now()) > 0
+      ) {
+        pauseCoreQueue(envelope.last_refresh);
+        return;
+      }
+      if (envelope.rows.length === 0) {
+        if (envelope.complete && !envelope.refreshing && envelope.state !== "absent") {
+          if (warmDeferredAt !== null) {
+            const retryAt = warmDeferredAt;
+            warmDeferredAt = null;
+            warmAfter = null;
+            // Later rows have had their turn. Revisit only after the partial
+            // cohort's existing attempt lease; successful siblings stay cached.
+            pauseCoreQueue({ reset_at: new Date(retryAt).toISOString() });
+          } else {
+            warming = false;
+            warmRetryDelay = CORE_BUSY_RETRY_MS;
+          }
+        } else {
+          pauseCoreQueue(envelope.last_refresh);
+        }
+        return;
+      }
+      if (typeof envelope.generation !== "string") {
+        pauseCoreQueue(null);
+        return;
+      }
+      // A visible demand may have arrived during this cache read.
+      if (shown && visibleCoreAt < visibleCores.length) {
+        queueCores();
+        return;
+      }
+      const rows = envelope.rows.map((row) => describeRow(row, repositoryName(envelope.source)));
+      prepareBatch(rows, "all", envelope.generation, contentOf(envelope), "background");
+    } catch {
+      if (!controller.signal.aborted) {
+        pauseCoreQueue(null);
+      }
+    } finally {
+      if (warmRead === controller) {
+        warmRead = null;
+      }
     }
   }
 
@@ -690,11 +919,15 @@ export function createPullsController(deps, options = {}) {
           continue;
         }
         const response = await controlCoreWindow(demand.body);
-        const receipt = /** @type {{preparation?: string} | null | undefined} */ (response?.body);
+        const receipt =
+          /** @type {{preparation?: string, ready_numbers?: number[], skipped_numbers?: number[], retry_numbers?: number[], retry_at?: string, failure?: {outcome?: string, reset_at?: string | null} | null} | null | undefined} */ (
+            response?.body
+          );
         const admitted =
           (response?.status === 202 &&
             (receipt?.preparation === "started" || receipt?.preparation === "joined")) ||
-          (response?.status === 200 && receipt?.preparation === "ready");
+          (response?.status === 200 &&
+            (receipt?.preparation === "ready" || receipt?.preparation === "partial"));
         const busy = response?.status === 200 && receipt?.preparation === "busy";
         const preserved =
           busy || (response?.status === 200 && receipt?.preparation === "not_owner");
@@ -715,18 +948,72 @@ export function createPullsController(deps, options = {}) {
           busy &&
           demand.canRetry &&
           demand === coreWanted &&
-          live() &&
+          coreLive() &&
           walkingTo === null
         ) {
-          // Keep both the requested token and its predecessor while the server is busy.
-          demand.canRetry = false;
-          coreRetryTimer = deps.schedule(() => {
-            coreRetryTimer = null;
-            if (coreWanted === demand && live() && walkingTo === null) {
-              coreSent = null;
-              void sendCoreWindow();
+          // Back off admission while preserving current work until its permit is available.
+          const delay = demand.retryDelay;
+          if (delay > 0) {
+            demand.retryDelay = Math.min(demand.retryDelay * 2, SLOW_POLL_MS);
+            coreRetryTimer = deps.schedule(() => {
+              coreRetryTimer = null;
+              if (coreWanted === demand && demand.canRetry && coreLive() && walkingTo === null) {
+                coreSent = null;
+                void sendCoreWindow();
+              }
+            }, delay);
+          }
+        } else if (demand === coreWanted && demand.canRetry && coreLive()) {
+          if (receipt?.preparation === "started" || receipt?.preparation === "joined") {
+            coreRetryTimer = deps.schedule(() => {
+              coreRetryTimer = null;
+              if (coreWanted === demand && demand.canRetry && coreLive()) {
+                coreSent = null;
+                void sendCoreWindow();
+              }
+            }, CORE_BUSY_RETRY_MS);
+          } else if (receipt?.preparation === "ready" || receipt?.preparation === "partial") {
+            const accounted = [
+              ...(receipt.ready_numbers ?? []),
+              ...(receipt.skipped_numbers ?? []),
+              ...(receipt.preparation === "partial" ? (receipt.retry_numbers ?? []) : []),
+            ];
+            const settled = new Set(accounted);
+            const retryAt =
+              receipt.preparation === "partial" ? Date.parse(receipt.retry_at ?? "") : null;
+            if (
+              accounted.length !== demand.body.numbers.length ||
+              settled.size !== demand.body.numbers.length ||
+              !demand.body.numbers.every((number) => settled.has(number)) ||
+              (retryAt !== null &&
+                (!Number.isFinite(retryAt) || (receipt.retry_numbers?.length ?? 0) === 0))
+            ) {
+              demand.done = true;
+              pauseCoreQueue(null);
+              continue;
             }
-          }, CORE_BUSY_RETRY_MS);
+            demand.done = true;
+            warmRetryDelay = CORE_BUSY_RETRY_MS;
+            if (retryAt !== null) {
+              warming = true;
+              warmDeferredAt =
+                warmDeferredAt === null ? retryAt : Math.min(warmDeferredAt, retryAt);
+            }
+            if (demand.lane === "visible" && demand.queueKey === visibleCoreKey) {
+              visibleCoreAt += demand.body.numbers.length;
+            } else if (demand.lane === "background") {
+              warmAfter = demand.body.numbers.at(-1) ?? warmAfter;
+            }
+            queueCores();
+          } else if (receipt?.preparation === "not_owner") {
+            // Re-read the catalog before retrying either lane. Repeated revocations
+            // back off rather than reissuing a fresh token every second.
+            demand.done = true;
+            pauseCoreQueue(null);
+          } else {
+            demand.done = true;
+            pauseCoreQueue(receipt?.failure);
+          }
         }
       }
     } finally {
@@ -741,44 +1028,65 @@ export function createPullsController(deps, options = {}) {
     void sendCoreWindow();
   }
 
-  /** @param {number[]} numbers */
-  function prepareVisible(numbers) {
-    if (!live() || walkingTo !== null) {
-      return;
-    }
-    const list = held();
-    const generation = list.envelope?.generation;
-    if (typeof generation !== "string" || list.content === null) {
-      return;
-    }
-    const rows = numbers.slice(0, VISIBLE_CORE_LIMIT).flatMap((number) => {
-      const index = list.keys.get(number);
-      return index === undefined ? [] : [list.rows[index]];
-    });
-    if (rows.length === 0) {
-      clearCoreWindow();
-      return;
-    }
-    const key = JSON.stringify([list.content, rows.map((row) => [row.number, row.updatedAt])]);
-    if (coreWanted?.key === key) {
-      return;
-    }
+  /**
+   * @param {PullRow[]} rows
+   * @param {string} state
+   * @param {string} generation
+   * @param {string} queueKey
+   * @param {"visible" | "background"} lane
+   */
+  function prepareBatch(rows, state, generation, queueKey, lane) {
+    cancelWarmTimer();
     cancelCoreRetry();
-    // getRandomValues also works when serving trusted-network plain HTTP.
     const id = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
       byte.toString(16).padStart(2, "0"),
     ).join("");
     coreWanted = {
-      key,
+      queueKey,
+      lane,
+      done: false,
       epoch: coreEpoch,
       canRetry: true,
-      body: {
-        state: filter,
-        window: { id, generation },
-        numbers: rows.map((row) => row.number),
-      },
+      retryDelay: CORE_BUSY_RETRY_MS,
+      body: { state, window: { id, generation }, numbers: rows.map((row) => row.number) },
     };
     void sendCoreWindow();
+  }
+
+  /** Queue the whole measured viewport; eight is only the server's transport batch size.
+   * @param {number[]} numbers
+   */
+  function prepareVisible(numbers) {
+    if (!live() || !online() || walkingTo !== null) {
+      return;
+    }
+    const list = held();
+    if (typeof list.envelope?.generation !== "string" || list.content === null) {
+      return;
+    }
+    const rows = numbers.flatMap((number) => {
+      const index = list.keys.get(number);
+      return index === undefined ? [] : [list.rows[index]];
+    });
+    const key = JSON.stringify([list.content, rows.map((row) => [row.number, row.updatedAt])]);
+    if (key === visibleCoreKey) {
+      primeHeldCores = false;
+      if (coreWanted === null || coreWanted.done) {
+        void pumpCores();
+      }
+      return;
+    }
+    primeHeldCores = false;
+    visibleCoreKey = key;
+    visibleCores = rows;
+    visibleCoreAt = 0;
+    warmPaused = false;
+    if (rows.length === 0) {
+      clearCoreWindow();
+      queueCores();
+      return;
+    }
+    prepareBatch(rows.slice(0, CORE_BATCH_SIZE), filter, list.envelope.generation, key, "visible");
   }
 
   function model() {
@@ -889,7 +1197,22 @@ export function createPullsController(deps, options = {}) {
    * @param {number} request
    */
   function holdEnvelope(list, envelope, request) {
+    const previous = list.envelope;
     list.envelope = envelope;
+    const identity = coreCatalogIdentity(envelope);
+    if (warmIdentity === null) {
+      // Bind the startup hint before its first batch, not only when All is read.
+      warmIdentity = identity;
+    }
+    if (
+      identity !== null &&
+      warmIdentity !== null &&
+      (identity !== warmIdentity ||
+        (typeof previous?.generation === "string" && envelope.generation !== previous.generation))
+    ) {
+      warmIdentity = identity;
+      restartCorePass();
+    }
     if (envelope.last_refresh !== null && envelope.last_refresh.outcome !== "succeeded") {
       arrivalBaseline = null;
     }
@@ -1092,7 +1415,7 @@ export function createPullsController(deps, options = {}) {
    *   still takes, so it opens with its rows.
    */
   async function poll(first = false) {
-    if (disposed || polling || (!first && !live())) {
+    if (disposed || polling || (!first && !live() && !(warming && visible() && online()))) {
       return;
     }
     const name = filter;
@@ -1180,7 +1503,17 @@ export function createPullsController(deps, options = {}) {
     }
     settleAnchor();
     render(arrivals);
-    if (first && revealCurrent && current !== null && list.keys.has(current)) {
+    if (warming && primeHeldCores && visibleCores.length === 0 && list.rows.length > 0) {
+      // Reuse the page already held for the default/current filter, without inventing
+      // a row-count cutoff. The real viewport supersedes this startup hint.
+      visibleCores = list.rows.slice();
+      visibleCoreAt = 0;
+      visibleCoreKey = JSON.stringify([
+        list.content,
+        visibleCores.map((row) => [row.number, row.updatedAt]),
+      ]);
+    }
+    if (first && shown && revealCurrent && current !== null && list.keys.has(current)) {
       deps.reveal(current);
     }
     chaseCurrent();
@@ -1193,6 +1526,15 @@ export function createPullsController(deps, options = {}) {
     }
     scheduleNext();
     askIfDue();
+    if (
+      warmPaused &&
+      list.envelope !== null &&
+      refreshFailure(list.envelope, deps.formatTime) === null &&
+      rateHoldMs(list.envelope, deps.now()) === 0
+    ) {
+      warmPaused = false;
+    }
+    queueCores();
     recheckTail();
   }
 
@@ -1320,6 +1662,9 @@ export function createPullsController(deps, options = {}) {
     if (!disposed && name === filter && epoch === requestEpoch) {
       render();
       scheduleNext();
+      if (warming) {
+        queueCores();
+      }
     }
   }
 
@@ -1598,6 +1943,12 @@ export function createPullsController(deps, options = {}) {
   function cancelReads() {
     arrivalBaseline = null;
     clearCoreWindow();
+    visibleCores = [];
+    visibleCoreAt = 0;
+    visibleCoreKey = "";
+    cancelWarmTimer();
+    warmRead?.abort();
+    warmRead = null;
     requestEpoch += 1;
     inflight?.abort();
     inflight = null;
@@ -1638,8 +1989,8 @@ export function createPullsController(deps, options = {}) {
 
   return Object.freeze({
     /**
-     * The panel's first read, shown or not: a mirror reads it ahead of the tab, once the first
-     * tree has settled, and starts its refresh then too (*refreshAhead*).
+     * Read metadata after the first tree settles, in both repository modes. The one-pass
+     * detail queue can continue in Files while the browser remains visible (*refreshAhead*).
      *
      * @param {{shown?: boolean, refreshAhead?: boolean}} [how]
      */
@@ -1647,6 +1998,9 @@ export function createPullsController(deps, options = {}) {
       shown = how.shown === true;
       prioritizeFilter = shown;
       readAhead = how.refreshAhead === true;
+      warming = readAhead;
+      primeHeldCores = warming;
+      warmPaused = false;
       render();
       return poll(true);
     },
@@ -1660,6 +2014,7 @@ export function createPullsController(deps, options = {}) {
       if (!visible) {
         clearTimer();
         cancelReads();
+        queueCores();
         return;
       }
       if (revealCurrent && current !== null && held().keys.has(current)) {
@@ -1819,11 +2174,17 @@ export function createPullsController(deps, options = {}) {
     },
     onFocus: wake,
     onOnline() {
+      warmPaused = false;
+      queueCores();
       arrivalBaseline = null;
       reconnectOnWake = true;
       wake();
     },
     onOffline() {
+      cancelWarmTimer();
+      cancelCoreRetry();
+      warmRead?.abort();
+      warmRead = null;
       arrivalBaseline = null;
       reconnectOnWake = false;
       render();
@@ -1838,6 +2199,8 @@ export function createPullsController(deps, options = {}) {
         cancelReads();
         return;
       }
+      warmPaused = false;
+      queueCores();
       wake();
     },
     pause() {
@@ -2447,9 +2810,6 @@ export function mountPullsPanel(container, ctx, mb) {
           const row = entry.row.getBoundingClientRect();
           if (row.bottom > row.top && row.bottom > view.top && row.top < view.bottom) {
             numbers.push(number);
-            if (numbers.length === VISIBLE_CORE_LIMIT) {
-              break;
-            }
           }
         }
         controller.prepareVisible(numbers);
