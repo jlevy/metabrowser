@@ -634,6 +634,11 @@ export function createPullsController(deps, options = {}) {
   let warmAfter = null;
   /** @type {string | null} */
   let warmIdentity = null;
+  /** The All prefix revision; tail-only appends leave it unchanged. @type {string | null} */
+  let warmGeneration = null;
+  /** Earliest retry among settled partial cohorts. @type {number | null} */
+  let warmDeferredAt = null;
+  let warmRetryDelay = CORE_BUSY_RETRY_MS;
   /** @type {unknown} */
   let warmTimer = null;
   /** @type {AbortController | null} */
@@ -707,17 +712,35 @@ export function createPullsController(deps, options = {}) {
   function pauseCoreQueue(failure) {
     warmPaused = true;
     cancelWarmTimer();
-    const reset = typeof failure?.reset_at === "string" ? Date.parse(failure.reset_at) : NaN;
-    if (failure?.outcome === "rate_limited" && Number.isFinite(reset) && coreLive()) {
-      warmTimer = deps.schedule(
-        () => {
-          warmTimer = null;
-          warmPaused = false;
-          void pumpCores();
-        },
-        Math.max(CORE_BUSY_RETRY_MS, reset - deps.now()),
-      );
+    if (!coreLive() || WATCH_PAUSED.has(failure?.outcome ?? "")) {
+      return;
     }
+    const reset = typeof failure?.reset_at === "string" ? Date.parse(failure.reset_at) : NaN;
+    const delay = Number.isFinite(reset)
+      ? Math.max(CORE_BUSY_RETRY_MS, reset - deps.now())
+      : warmRetryDelay;
+    warmRetryDelay = Math.min(warmRetryDelay * 2, SLOW_POLL_MS);
+    warmTimer = deps.schedule(() => {
+      warmTimer = null;
+      warmPaused = false;
+      // Refresh the held generation before retrying revoked or failed demand.
+      // This reads local metadata; askIfDue retains provider freshness admission.
+      readAhead = readAhead || (!shown && warming);
+      void poll(true).finally(() => pumpCores());
+    }, delay);
+  }
+
+  function restartCorePass() {
+    warmAfter = null;
+    warmGeneration = null;
+    warmDeferredAt = null;
+    warming = true;
+    warmPaused = false;
+    visibleCoreKey = "";
+    visibleCores = [];
+    visibleCoreAt = 0;
+    primeHeldCores = true;
+    clearCoreWindow();
   }
 
   /** Read only the next batch of locally cataloged metadata; never extend the provider scan. */
@@ -729,6 +752,10 @@ export function createPullsController(deps, options = {}) {
       return;
     }
     const list = held();
+    if (list.envelope?.reason === "not_github") {
+      warming = false;
+      return;
+    }
     if (
       (shown || primeHeldCores) &&
       visibleCoreAt < visibleCores.length &&
@@ -747,11 +774,17 @@ export function createPullsController(deps, options = {}) {
     if (!warming) {
       return;
     }
-    if (primeHeldCores && visibleCores.length === 0 && list.envelope?.refreshing) {
+    if (
+      primeHeldCores &&
+      visibleCores.length === 0 &&
+      (list.envelope?.refreshing ||
+        list.envelope?.state === "absent" ||
+        list.envelope?.state === "pending")
+    ) {
       // A cold startup's first catalog page may arrive after the refresh POST.
       // Read that selected/default filter before walking the rest of All.
       await poll(true);
-      queueCores();
+      pauseCoreQueue(list.envelope?.last_refresh);
       return;
     }
     const controller = new AbortController();
@@ -767,18 +800,31 @@ export function createPullsController(deps, options = {}) {
         return;
       }
       if (response.status !== 200 || !isEnvelope(response.body)) {
-        warmPaused = true;
+        pauseCoreQueue(null);
         return;
       }
       const envelope = response.body;
       const identity = coreCatalogIdentity(envelope);
       if (identity !== null && warmIdentity !== null && identity !== warmIdentity) {
         warmIdentity = identity;
-        warmAfter = null;
+        restartCorePass();
         queueCores();
         return;
       }
       warmIdentity = identity;
+      if (
+        warmGeneration !== null &&
+        envelope.generation !== null &&
+        envelope.generation !== warmGeneration
+      ) {
+        // A new or changed leading row can sit above the settled cursor.
+        // Revisit that prefix; durable cache hits do not repeat provider work.
+        warmAfter = null;
+        warmGeneration = envelope.generation;
+        queueCores();
+        return;
+      }
+      warmGeneration = envelope.generation;
       if (
         envelope.reason === "not_github" ||
         refreshFailure(envelope, deps.formatTime) !== null ||
@@ -788,15 +834,25 @@ export function createPullsController(deps, options = {}) {
         return;
       }
       if (envelope.rows.length === 0) {
-        if (!envelope.refreshing && envelope.state !== "pending") {
-          warming = false;
+        if (envelope.complete && !envelope.refreshing && envelope.state !== "absent") {
+          if (warmDeferredAt !== null) {
+            const retryAt = warmDeferredAt;
+            warmDeferredAt = null;
+            warmAfter = null;
+            // Later rows have had their turn. Revisit only after the partial
+            // cohort's existing attempt lease; successful siblings stay cached.
+            pauseCoreQueue({ reset_at: new Date(retryAt).toISOString() });
+          } else {
+            warming = false;
+            warmRetryDelay = CORE_BUSY_RETRY_MS;
+          }
         } else {
-          queueCores();
+          pauseCoreQueue(envelope.last_refresh);
         }
         return;
       }
       if (typeof envelope.generation !== "string") {
-        warmPaused = true;
+        pauseCoreQueue(null);
         return;
       }
       // A visible demand may have arrived during this cache read.
@@ -808,7 +864,7 @@ export function createPullsController(deps, options = {}) {
       prepareBatch(rows, "all", envelope.generation, contentOf(envelope), "background");
     } catch {
       if (!controller.signal.aborted) {
-        warmPaused = true;
+        pauseCoreQueue(null);
       }
     } finally {
       if (warmRead === controller) {
@@ -864,13 +920,14 @@ export function createPullsController(deps, options = {}) {
         }
         const response = await controlCoreWindow(demand.body);
         const receipt =
-          /** @type {{preparation?: string, ready_numbers?: number[], skipped_numbers?: number[], failure?: {outcome?: string, reset_at?: string | null} | null} | null | undefined} */ (
+          /** @type {{preparation?: string, ready_numbers?: number[], skipped_numbers?: number[], retry_numbers?: number[], retry_at?: string, failure?: {outcome?: string, reset_at?: string | null} | null} | null | undefined} */ (
             response?.body
           );
         const admitted =
           (response?.status === 202 &&
             (receipt?.preparation === "started" || receipt?.preparation === "joined")) ||
-          (response?.status === 200 && receipt?.preparation === "ready");
+          (response?.status === 200 &&
+            (receipt?.preparation === "ready" || receipt?.preparation === "partial"));
         const busy = response?.status === 200 && receipt?.preparation === "busy";
         const preserved =
           busy || (response?.status === 200 && receipt?.preparation === "not_owner");
@@ -915,28 +972,44 @@ export function createPullsController(deps, options = {}) {
                 void sendCoreWindow();
               }
             }, CORE_BUSY_RETRY_MS);
-          } else if (receipt?.preparation === "ready") {
-            const settled = new Set([
+          } else if (receipt?.preparation === "ready" || receipt?.preparation === "partial") {
+            const accounted = [
               ...(receipt.ready_numbers ?? []),
               ...(receipt.skipped_numbers ?? []),
-            ]);
-            if (!demand.body.numbers.every((number) => settled.has(number))) {
+              ...(receipt.preparation === "partial" ? (receipt.retry_numbers ?? []) : []),
+            ];
+            const settled = new Set(accounted);
+            const retryAt =
+              receipt.preparation === "partial" ? Date.parse(receipt.retry_at ?? "") : null;
+            if (
+              accounted.length !== demand.body.numbers.length ||
+              settled.size !== demand.body.numbers.length ||
+              !demand.body.numbers.every((number) => settled.has(number)) ||
+              (retryAt !== null &&
+                (!Number.isFinite(retryAt) || (receipt.retry_numbers?.length ?? 0) === 0))
+            ) {
               demand.done = true;
-              warmPaused = true;
+              pauseCoreQueue(null);
               continue;
             }
             demand.done = true;
+            warmRetryDelay = CORE_BUSY_RETRY_MS;
+            if (retryAt !== null) {
+              warming = true;
+              warmDeferredAt =
+                warmDeferredAt === null ? retryAt : Math.min(warmDeferredAt, retryAt);
+            }
             if (demand.lane === "visible" && demand.queueKey === visibleCoreKey) {
               visibleCoreAt += demand.body.numbers.length;
             } else if (demand.lane === "background") {
               warmAfter = demand.body.numbers.at(-1) ?? warmAfter;
             }
             queueCores();
-          } else if (receipt?.preparation === "not_owner" && demand.lane === "background") {
-            // Catalog paging may advance its generation before admission. Re-read this
-            // same cursor with the current generation; no settled row is skipped.
+          } else if (receipt?.preparation === "not_owner") {
+            // Re-read the catalog before retrying either lane. Repeated revocations
+            // back off rather than reissuing a fresh token every second.
             demand.done = true;
-            queueCores();
+            pauseCoreQueue(null);
           } else {
             demand.done = true;
             pauseCoreQueue(receipt?.failure);
@@ -1124,22 +1197,21 @@ export function createPullsController(deps, options = {}) {
    * @param {number} request
    */
   function holdEnvelope(list, envelope, request) {
+    const previous = list.envelope;
     list.envelope = envelope;
     const identity = coreCatalogIdentity(envelope);
     if (warmIdentity === null) {
       // Bind the startup hint before its first batch, not only when All is read.
       warmIdentity = identity;
     }
-    if (identity !== null && warmIdentity !== null && identity !== warmIdentity) {
+    if (
+      identity !== null &&
+      warmIdentity !== null &&
+      (identity !== warmIdentity ||
+        (typeof previous?.generation === "string" && envelope.generation !== previous.generation))
+    ) {
       warmIdentity = identity;
-      warmAfter = null;
-      warming = true;
-      warmPaused = false;
-      visibleCoreKey = "";
-      visibleCores = [];
-      visibleCoreAt = 0;
-      primeHeldCores = true;
-      clearCoreWindow();
+      restartCorePass();
     }
     if (envelope.last_refresh !== null && envelope.last_refresh.outcome !== "succeeded") {
       arrivalBaseline = null;
@@ -1590,6 +1662,9 @@ export function createPullsController(deps, options = {}) {
     if (!disposed && name === filter && epoch === requestEpoch) {
       render();
       scheduleNext();
+      if (warming) {
+        queueCores();
+      }
     }
   }
 

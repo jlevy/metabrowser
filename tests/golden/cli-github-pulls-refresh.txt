@@ -1222,6 +1222,27 @@ status: 200
 --- body ---
 {"state": "open", "window": {"id": "reopened-7", "generation": "<CATALOG_EPOCH_2>:0"}, "numbers": [7]}
 --- gh ---
+## A leased member remains unfinished while cached siblings retain coverage.
+# metab https://github.com/octo/demo --api /api/plugin/github/pull-cores-prepare --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-cores-prepare
+status: 200
+{
+  "preparation": "partial",
+  "ready_numbers": [
+    7
+  ],
+  "skipped_numbers": [],
+  "retry_numbers": [
+    8
+  ],
+  "retry_at": "2026-09-17T12:03:02Z"
+}
+--- stderr ---
+--- body ---
+{"state": "all", "window": {"id": "leased-8", "generation": "<CATALOG_EPOCH_2>:1"}, "numbers": [7, 8]}
+--- gh ---
 # metab root --api /api/cache/source/github-com--octo--demo--46386669dc01
 exit: 0
 --- stdout ---
