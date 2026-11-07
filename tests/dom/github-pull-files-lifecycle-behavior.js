@@ -55,7 +55,14 @@ function rig(create) {
     {
       request(method, route, options) {
         return new Promise((resolve, reject) =>
-          requests.push({ method, route, signal: options.signal, resolve, reject }),
+          requests.push({
+            method,
+            route,
+            signal: options.signal,
+            body: options.body,
+            resolve,
+            reject,
+          }),
         );
       },
       schedule(callback, delay) {
@@ -117,7 +124,7 @@ async function run() {
   for (const mode of ["collapse", "panel", "document"]) {
     for (const order of ["old-first", "new-first"]) {
       const r = rig(createFileTreeController);
-      r.controller.expand({ reader: true });
+      r.controller.expand();
       const old = r.requests[0];
       r.hide(mode);
       assert.equal(old.signal.aborted, true, `${mode} cancels its GET`);
@@ -150,7 +157,7 @@ async function run() {
       reads += 1;
     }
     const abandonedReader = rig(createFileTreeController);
-    abandonedReader.controller.expand({ reader: true });
+    abandonedReader.controller.expand();
     const oldReader = abandonedReader.requests[0];
     abandonedReader.hide(mode);
     abandonedReader.reopen(mode);
@@ -167,12 +174,57 @@ async function run() {
     abandonedReader.respond(oldReader, envelope("old.txt"));
     await settle();
     assert.equal(
-      abandonedReader.requests.length,
-      2,
-      "a closed reader action cannot fetch into a later absent visit",
+      abandonedReader.requests.filter((request) => request.method === "POST").length,
+      1,
+      "only the reopened cache miss may ask for a list",
     );
     abandonedReader.controller.dispose();
     reads += 1;
+    const recent = rig(createFileTreeController);
+    const missing = {
+      ...envelope(""),
+      state: "absent",
+      reason: "not_cached",
+      listed_from: null,
+      generation: null,
+      fetched: 0,
+      rows: [],
+    };
+    recent.controller.expand();
+    recent.respond(recent.requests[0], missing);
+    await settle();
+    const abandonedPost = recent.requests[1];
+    assert.equal(abandonedPost.method, "POST");
+    recent.hide(mode);
+    recent.reopen(mode);
+    recent.respond(recent.requests[2], missing);
+    await settle();
+    const waiting = recent.model();
+    recent.respond(abandonedPost, { files: { ...missing, state: "pending", refreshing: true } });
+    await settle();
+    assert.deepEqual(recent.model(), waiting, "the old POST never owns the reopened visit");
+    assert.equal(recent.model().loading, true);
+    for (const body of [missing, envelope("ready.txt")]) {
+      const [id, due] = [...recent.timers][0];
+      assert.equal(due.delay, 1000, "a recent missing list keeps polling the local cache");
+      recent.timers.delete(id);
+      due.callback();
+      const read = recent.requests.at(-1);
+      assert.equal(read.method, "GET");
+      recent.respond(read, body);
+      await settle();
+    }
+    assert.equal(recent.requests.filter((request) => request.method === "POST").length, 1);
+    assert.equal(recent.model().loading, false);
+    assert.deepEqual(
+      recent.model().rows.map((row) => row.id),
+      ["ready.txt"],
+    );
+    assert.deepEqual(
+      [...recent.timers.values()].map((timer) => timer.delay),
+      [60000],
+    );
+    recent.controller.dispose();
     for (const failure of [false, true]) {
       const r = rig(createFileTreeController);
       r.controller.expand();
@@ -207,6 +259,45 @@ async function run() {
       refreshes += 1;
     }
   }
+
+  // An automatic request that started nothing cannot claim indefinite progress.
+  const idle = rig(createFileTreeController);
+  const absent = {
+    ...envelope(""),
+    state: "absent",
+    reason: "unreadable",
+    listed_from: null,
+    generation: null,
+    fetched: 0,
+    rows: [],
+    last_refresh: {
+      outcome: "succeeded",
+      message: null,
+      reset_at: null,
+      at: "2026-09-17T12:00:00Z",
+    },
+  };
+  idle.controller.expand();
+  idle.respond(idle.requests[0], absent);
+  await settle();
+  assert.equal(idle.requests[1].body.retry, false);
+  idle.respond(idle.requests[1], { refresh: "not_due", files: absent });
+  await settle();
+  assert.equal(idle.model().loading, false, "a settled absent list is not active work");
+  assert.equal(idle.model().notice.action, "retry", "cache damage retains explicit recovery");
+  assert.deepEqual(
+    [...idle.timers.values()].map((timer) => timer.delay),
+    [60000],
+  );
+  const repair = idle.controller.retry();
+  assert.equal(idle.model().loading, true, "a deliberate retry has real progress");
+  assert.equal(idle.requests.at(-1).body.retry, true);
+  idle.respond(idle.requests.at(-1), {
+    refresh: "started",
+    files: { ...absent, state: "pending", refreshing: true },
+  });
+  await repair;
+  idle.controller.dispose();
   return { ownedReads: reads, ownedRefreshReplies: refreshes };
 }
 run()

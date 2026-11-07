@@ -772,8 +772,8 @@ async function paintStory(panel, selection = false) {
   }
   const realNow = Date.now;
   Date.now = () => now;
-  async function answer(recording) {
-    const { resolve } = answers.shift();
+  async function answer(recording, index = 0) {
+    const [{ resolve }] = answers.splice(index, 1);
     resolve({
       status: recording.status,
       headers: { get: () => recording.etag },
@@ -833,7 +833,7 @@ async function paintStory(panel, selection = false) {
           refreshAhead: false,
           scrollRoot: selection ? container : null,
           open: (route) => opened.push(route.number),
-          file: null,
+          file: selection ? "src/app.txt" : null,
           fileHref: (number, path) => `/pull/${number}/files/${path}`,
           pageFor: (number) => pageHost?.pageFor(number) ?? null,
           onPageChange: (listener) => {
@@ -908,13 +908,25 @@ async function paintStory(panel, selection = false) {
       filterChips[1].getAttribute("aria-label") === "Closed, 2 pull requests",
       "tally is named",
     );
-    // The row of the page shown opens its changed files, read from the cache: the tree's
-    // session holds what they are, and this one where they hang.
-    const filesRead = answers[0].route;
-    await answer({ status: 200, etag: null, body: filesRecorded.comparison });
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
     const row = (item) => item.firstElementChild;
+    const fileWindow = () => answers.findIndex((request) => request.route.includes("/pull-files?"));
+    const previewDisclosure = row(shown).getAttribute("aria-expanded");
+    if (!selection) {
+      assert(previewDisclosure === "false", "a PR preview stays collapsed");
+      assert(fileWindow() === -1, "a PR preview reads no changed-file metadata");
+      mounted.expand();
+      await settle();
+      const group = shown.childNodes.find((node) => node.classList?.contains("github-pull-files"));
+      const [progress] = group.firstElementChild.childNodes;
+      assert(!progress.hidden && progress.firstElementChild.classList.contains("spinner"));
+    }
+    const fileRead = fileWindow();
+    assert(fileRead >= 0, "expansion reads the file list");
+    const filesRead = answers[fileRead].route;
+    await answer({ status: 200, etag: null, body: filesRecorded.comparison }, fileRead);
+    assert(!answers.some((request) => request.route.includes("/pull-files-refresh")));
     if (selection) {
       if (answers[0]?.route.includes("/pulls?")) {
         await answer(recorded.more_window);
@@ -1037,6 +1049,7 @@ async function paintStory(panel, selection = false) {
       const opening = pageHost.open({
         number: other,
         tab: "files",
+        file: "src/app.txt",
         reader: { fetchAfterMs: 0, initial: null },
       });
       await settle();
@@ -1179,7 +1192,8 @@ async function paintStory(panel, selection = false) {
       "a row": [described(hostile), described(row(hostile))],
       "the row whose page is shown": described(row(shown)),
       "its parts": row(shown).childNodes.map(described),
-      "its changed files, read from the cache": filesRead,
+      "a PR preview leaves its files expanded": previewDisclosure === "true",
+      "Right opens its cached changed files": filesRead,
       "they hang under it as a group it owns": shown.childNodes.map(described),
       "a title written as markup is one text node": row(hostile).childNodes[2].childNodes.map(
         (node) => ({ node: node.nodeName, data: node.data }),

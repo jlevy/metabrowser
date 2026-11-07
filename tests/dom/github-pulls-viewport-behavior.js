@@ -25,6 +25,7 @@ const prepared = {
   },
 };
 const controls = [],
+  fileReads = [],
   detailReads = [],
   opened = [];
 let readyCore = false,
@@ -206,6 +207,10 @@ Object.assign(globalThis, {
       const number = Number(url.searchParams.get("number"));
       detailReads.push(number);
       return answer(readyCore && number === 500 ? prepared : { ...absent, number });
+    }
+    if (url.pathname.startsWith("/api/plugin/github/pull-files")) {
+      fileReads.push(url.pathname);
+      return answer({}, 500);
     }
     const q = url.searchParams,
       after = Number(q.get("after")),
@@ -527,6 +532,16 @@ async function paint() {
   await paint();
   assert.equal(rowFor(503), interrupted);
   assert.equal(interrupted.classList.contains(flash), false, "reopening cannot restart the flash");
+  const beforeArrows = opened.length;
+  assert(handle.move(1));
+  await settle();
+  const preview = opened.at(-1);
+  assert.equal(opened.length, beforeArrows + 1, "an arrow opens the normal PR preview");
+  assert.equal(preview.tab, "");
+  handle.setCurrent(preview.number);
+  await settle();
+  assert.equal(rowFor(preview.number).getAttribute("aria-expanded"), "false");
+  assert.deepEqual(fileReads, [], "arrow and route selection read no changed-file metadata");
   console.log(JSON.stringify({ ...result, oneVisibleFlash: true, retainedReadingPlace: true }));
   handle.dispose();
   assert.equal(frames.size, 0);

@@ -2130,7 +2130,6 @@ export function mountPullsPanel(container, ctx, mb) {
         page: () =>
           /** @type {import("./pull-files-tree.js").FilePage | null} */ (tab.pageFor(number)),
         open: ({ file, replace, jumped }) => {
-          showPage(number);
           void tab.open({ number, tab: "files", file, replace, jumped });
         },
         leave: () => {
@@ -2162,11 +2161,10 @@ export function mountPullsPanel(container, ctx, mb) {
    *
    * @param {number} number
    * @param {boolean} open
-   * @param {boolean} reader A reader's own click or key, which may ask GitHub for the list.
    */
-  function setExpanded(number, open, reader) {
+  function setExpanded(number, open) {
     if (open) {
-      treeFor(number).controller.expand({ reader });
+      treeFor(number).controller.expand();
     } else {
       const tree = trees.get(number);
       if (tree !== undefined) {
@@ -2183,18 +2181,18 @@ export function mountPullsPanel(container, ctx, mb) {
   }
 
   /**
-   * The page of *number* holds the pane, or none does: its row opens, and the one before it
-   * closes again if only its page had opened it.
+   * A file address temporarily opens its owner. A PR preview leaves disclosure to the reader.
    *
    * @param {number | null} number
+   * @param {string | null} file
    */
-  function showPage(number) {
-    const changes = expansion.shown(number);
+  function showFileOwner(number, file) {
+    const changes = expansion.shown(number, file);
     for (const closed of changes.collapse) {
-      setExpanded(closed, false, false);
+      setExpanded(closed, false);
     }
     for (const opened of changes.expand) {
-      setExpanded(opened, true, false);
+      setExpanded(opened, true);
     }
   }
 
@@ -2863,10 +2861,7 @@ export function mountPullsPanel(container, ctx, mb) {
         paintViewport();
         painted.get(number)?.row.scrollIntoView({ block: "nearest" });
       },
-      open: (route) => {
-        showPage(route.number);
-        return nav.open(route);
-      },
+      open: (route) => nav.open(route),
       filterChanged: (state) => nav.filterChanged(state),
     },
     { filter: nav.filter, current: nav.current, checkout: nav.checkout === true },
@@ -2896,7 +2891,7 @@ export function mountPullsPanel(container, ctx, mb) {
         const number = Number(row.dataset.number);
         // One gesture, as a folder's in the Files tab: it opens the pull request and toggles
         // its files.
-        setExpanded(number, expansion.toggle(number), true);
+        setExpanded(number, expansion.toggle(number));
         controller.activate(number);
       }
     },
@@ -3027,7 +3022,7 @@ export function mountPullsPanel(container, ctx, mb) {
     }
   }, nav.shown);
   void controller.start({ shown: nav.shown, refreshAhead: nav.refreshAhead });
-  showPage(nav.current);
+  showFileOwner(nav.current, nav.file ?? null);
   const unwatchPage = tab.onPageChange(followCurrentFile);
   followCurrentFile();
 
@@ -3068,7 +3063,7 @@ export function mountPullsPanel(container, ctx, mb) {
       if (row !== undefined) {
         markShown(row, true);
       }
-      showPage(number);
+      showFileOwner(number, file);
       if (number !== null) {
         trees.get(number)?.controller.setCurrent(file);
       }
@@ -3090,9 +3085,9 @@ export function mountPullsPanel(container, ctx, mb) {
         return false;
       }
       if (expansion.expand(number)) {
-        setExpanded(number, true, true);
+        setExpanded(number, true);
       } else if (!treeFor(number).controller.enter()) {
-        setExpanded(number, true, true);
+        setExpanded(number, true);
       }
       return true;
     },
@@ -3100,7 +3095,7 @@ export function mountPullsPanel(container, ctx, mb) {
     collapse() {
       const number = controller.snapshot().anchor;
       if (number !== null && expansion.collapse(number)) {
-        setExpanded(number, false, true);
+        setExpanded(number, false);
       }
       return number !== null;
     },

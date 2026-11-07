@@ -63,11 +63,14 @@ available. A detail record whose metadata projection changed revalidates its
 representations once on an accepted refresh; later refreshes reuse conditional responses
 as usual. A failed refresh retains the displayed record.
 
-Expand a row to see its changed files, grouped into folders with change counts.
-Selecting a file opens **Changes** at that file.
-Use J, K, or the up and down arrows to walk rows; the page opens the row where the walk
-stops. Keyboard walks keep focus in the tree and replace one browser history entry, so
-Back leaves the walk in one step.
+Click a PR row to open the PR and toggle its changed files.
+Right expands the tree, and Left collapses it.
+The tree shows cached files immediately when available and automatically lists them when
+needed. Selecting a file opens **Changes** at that file.
+Use J, K, or the up and down arrows to walk rows without changing which trees are
+expanded.
+Enter or Space opens the selected PR. Keyboard walks keep focus in the tree and
+replace one browser history entry, so Back leaves the walk in one step.
 The selected file follows the diff as you scroll; Back and Forward restore the selected
 file and reading position.
 

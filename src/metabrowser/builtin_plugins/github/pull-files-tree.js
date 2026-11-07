@@ -511,13 +511,7 @@ const FILE_FAILURES = Object.freeze({
     "The pull request was not found, or the signed-in account cannot read its files.",
 });
 
-/** @type {Readonly<Record<string, string>>} */
-const FILE_ABSENCE = Object.freeze({
-  not_github: "This server serves no GitHub repository.",
-  not_cached: "Its changed files have not been listed yet.",
-  schema_mismatch: "The saved list of files is from another version.",
-  unreadable: "The saved list of files could not be read.",
-});
+export const LISTING_FILES = "Listing changed files…";
 
 /**
  * What a list's last refresh says to a reader, or null when it says nothing: one that
@@ -569,8 +563,7 @@ export function fileListFailure(envelope, formatTime) {
  * `line` is the honest count where it says more than the rows do: while the list fills, for
  * a list that stopped part-way, at GitHub's cap, or for a list that may be out of date;
  * `label` names the group for a screen reader, with the count. `notice` is a failure, a
- * list that is not there, or one cut short, with the action a reader can take: `retry`, or
- * `fetch` for a list nothing has asked for.
+ * list that is not there, or one cut short, with Retry when another attempt is possible.
  *
  * @typedef {{
  *   number: number,
@@ -579,8 +572,8 @@ export function fileListFailure(envelope, formatTime) {
  *   rowsVersion: number,
  *   label: string,
  *   line: string | null,
- *   notice: {severity: "warning" | "error" | null, text: string, action: "retry" | "fetch" | null, help?: "install" | "update"} | null,
- *   skeleton: boolean,
+ *   notice: {severity: "warning" | "error" | null, text: string, action: "retry" | null, help?: "install" | "update"} | null,
+ *   loading: boolean,
  *   live: string,
  * }} FileTreeModel
  */
@@ -592,7 +585,8 @@ export function fileListFailure(envelope, formatTime) {
  *   expanded: boolean,
  *   rows: TreeRow[],
  *   rowsVersion: number,
- *   asked: boolean,
+ *   asking: boolean,
+ *   recentMissing?: boolean,
  *   error: string | null,
  *   formatTime: (iso: string) => string,
  * }} held
@@ -608,14 +602,15 @@ export function describeFileTree(envelope, held) {
     label: `Changed files of #${held.number}`,
     line: null,
     notice: null,
-    skeleton: false,
+    loading: false,
     live: "",
   };
   if (envelope === null) {
-    model.skeleton = held.error === null;
+    model.loading = held.error === null;
     if (held.error !== null) {
       model.notice = { severity: "error", text: held.error, action: "retry" };
     }
+    model.live = model.notice?.text ?? LISTING_FILES;
     return model;
   }
   const said = describeFileList(envelope);
@@ -624,9 +619,6 @@ export function describeFileTree(envelope, held) {
     model.label = `${model.label}: ${said.count}`;
   }
   if (said.status === "absent" || said.status === "pending") {
-    const waiting = said.status === "pending" || (held.asked && envelope.refreshing);
-    model.skeleton = waiting && failure === null;
-    const reason = said.reason === null ? undefined : FILE_ABSENCE[said.reason];
     if (failure !== null) {
       model.notice = {
         severity: "warning",
@@ -634,14 +626,27 @@ export function describeFileTree(envelope, held) {
         action: failure.retry ? "retry" : null,
         ...(failure.help === undefined ? {} : { help: failure.help }),
       };
-    } else if (!waiting && reason !== undefined) {
+    } else if (said.reason === "not_github") {
       model.notice = {
         severity: null,
-        text: reason,
-        action: said.reason === "not_github" ? null : "fetch",
+        text: "This server serves no GitHub repository.",
+        action: null,
+      };
+    } else if (
+      held.asking ||
+      envelope.refreshing ||
+      said.status === "pending" ||
+      held.recentMissing === true
+    ) {
+      model.loading = true;
+    } else {
+      model.notice = {
+        severity: "warning",
+        text: "The list of changed files is unavailable.",
+        action: "retry",
       };
     }
-    model.live = waiting ? "Listing the changed files…" : (model.notice?.text ?? "");
+    model.live = model.notice?.text ?? LISTING_FILES;
   } else {
     if (said.status === "filling") {
       model.line = said.count;
@@ -677,8 +682,11 @@ export function describeFileTree(envelope, held) {
     model.live = model.notice?.text ?? model.label;
   }
   if (held.error !== null) {
-    model.notice = { severity: "error", text: held.error, action: null };
+    model.loading = false;
+    model.notice = { severity: "error", text: held.error, action: "retry" };
     model.live = held.error;
+  } else if (held.asking || envelope.refreshing) {
+    model.loading = true;
   }
   return model;
 }
@@ -736,11 +744,10 @@ function isFilesEnvelope(value) {
  * One pull request's changed files in its row: the list as it arrives, which folders are
  * open, which row takes Tab and which file the page shows, the keys, and the jump.
  *
- * Reading never fetches: a list is asked for (`POST pull-files-refresh`) only on a reader's
- * expansion or press of Fetch or Retry, or, for a list already cached that may be out of
- * date, once a window, which the server holds it to as well. While a list fills it is asked
- * again every FILES_POLL_MS, from the rows held on, and only while its row is expanded and
- * the panel shown.
+ * Expansion reads the local cache before asking for a missing, partial, or stale list.
+ * The server and the controller hold automatic provider requests to one per window.
+ * Retry can ask again. While a recent request may still be filling a missing list,
+ * FILES_POLL_MS keeps local cache reads active in the expanded, visible tree.
  *
  * A walk with the keys moves the anchor and the current file at once. When the page holds
  * this pull request, every key jumps the diff to the file (`showFile`, after `fileForPath`
@@ -783,7 +790,9 @@ export function createFileTreeController(deps, options) {
   /** When this asked for a refresh of its own, a reader's or one a window. */
   /** @type {number | null} */
   let askedAt = null;
-  let asked = false;
+  let asking = false;
+  // An owned POST that started nothing ends the recent-attempt grace period.
+  let missingSettled = false;
   /** @type {string | null} */
   let error = null;
   /** @type {string | null} */
@@ -806,7 +815,8 @@ export function createFileTreeController(deps, options) {
       expanded,
       rows,
       rowsVersion: version,
-      asked,
+      asking,
+      recentMissing: recentMissing(),
       error,
       formatTime: deps.formatTime,
     });
@@ -893,6 +903,21 @@ export function createFileTreeController(deps, options) {
     inflight?.abort();
     inflight = null;
     polling = false;
+    asking = false;
+  }
+
+  // A previous visible visit may still be awaiting its POST response. Its reply
+  // loses ownership on close, while local reads can observe the job it started.
+  function recentMissing() {
+    return (
+      envelope !== null &&
+      envelope.listed_from === null &&
+      !missingSettled &&
+      askedAt !== null &&
+      deps.now() - askedAt < envelope.fresh_for_s * 1000 &&
+      error === null &&
+      describeFileList(envelope).failure === null
+    );
   }
 
   /** @param {boolean} [now] */
@@ -915,14 +940,14 @@ export function createFileTreeController(deps, options) {
       },
       now
         ? 0
-        : envelope.refreshing || envelope.state === "pending"
+        : envelope.refreshing || envelope.state === "pending" || recentMissing()
           ? FILES_POLL_MS
           : Math.max(FILES_POLL_MS, envelope.fresh_for_s * 1000),
     );
   }
 
-  /** Read the rows past those held. @param {boolean} [reader] */
-  async function poll(reader = false) {
+  /** Read the rows past those held. */
+  async function poll() {
     if (!live() || polling) {
       return;
     }
@@ -963,7 +988,7 @@ export function createFileTreeController(deps, options) {
     }
     render();
     if (!again) {
-      askIfDue(reader);
+      askIfDue();
     }
     scheduleNext(again);
   }
@@ -971,15 +996,17 @@ export function createFileTreeController(deps, options) {
   /**
    * Ask for the list's refresh: a reader's action, or a cached list that may be out of date.
    *
-   * @param {boolean} retry A press of Retry or Fetch, which the server's window does not hold.
+   * @param {boolean} retry A press of Retry, which the server's window does not hold.
    */
   async function ask(retry) {
-    if (!live()) {
+    if (!live() || asking) {
       return;
     }
     const mine = generation;
-    asked = true;
+    asking = true;
+    missingSettled = false;
     askedAt = deps.now();
+    render();
     try {
       const response = await deps.request("POST", FILES_REFRESH_ROUTE, {
         body: { number, retry },
@@ -995,6 +1022,8 @@ export function createFileTreeController(deps, options) {
       ) {
         // Its envelope has no rows: it says how the list stands, and the rows held stay.
         envelope = { ...answer.files, rows: [] };
+        missingSettled =
+          envelope.listed_from === null && !envelope.refreshing && envelope.state !== "pending";
         error = null;
       } else {
         const said = answer !== null && typeof answer.error === "string" ? answer.error : null;
@@ -1005,29 +1034,26 @@ export function createFileTreeController(deps, options) {
         return;
       }
       error = "The request to list the files failed.";
+    } finally {
+      if (mine === generation) {
+        asking = false;
+      }
     }
     render();
     scheduleNext();
   }
 
   /**
-   * Ask when a reader expanded the row and the list is not whole and current, or once a
-   * window for a cached list that may be out of date. An absent list is asked for only by a
-   * reader: an address alone adds nothing to the cache.
-   *
-   * @param {boolean} reader
+   * Expansion reads the cache first, then asks once a window for a missing or stale list.
    */
-  function askIfDue(reader) {
-    if (disposed || !expanded || (!reader && !live()) || envelope === null || envelope.refreshing) {
+  function askIfDue() {
+    if (!live() || error !== null || envelope === null || envelope.refreshing) {
       return;
     }
     if (envelope.reason === "not_github") {
       return;
     }
     if (envelope.state === "current" && envelope.complete) {
-      return;
-    }
-    if (!reader && envelope.listed_from === null) {
       return;
     }
     const windowMs = envelope.fresh_for_s * 1000;
@@ -1178,25 +1204,20 @@ export function createFileTreeController(deps, options) {
   }
 
   return Object.freeze({
-    /**
-     * The row was expanded. *reader* is a reader's own: a click, a key, or opening a file of it.
-     *
-     * @param {{reader?: boolean}} [how]
-     */
-    expand(how = {}) {
+    /** Open the tree, then read its cached files before asking for a missing list. */
+    expand() {
       if (disposed) {
         return;
       }
-      const reader = how.reader === true;
       const opening = !expanded;
       if (opening) {
         expanded = true;
         render();
       }
       if (opening || envelope === null) {
-        void poll(reader);
+        void poll();
       } else {
-        askIfDue(reader);
+        askIfDue();
         scheduleNext();
       }
     },
@@ -1374,13 +1395,17 @@ export function createFileTreeController(deps, options) {
       deps.markAnchor(anchor, anchor, true);
       return true;
     },
-    /** A press of Retry, or of Fetch for a list nothing has asked for. */
+    /** Retry an unsuccessful list read or refresh. */
     retry() {
       if (disposed) {
         return Promise.resolve();
       }
       error = null;
-      return envelope === null ? poll() : ask(true);
+      if (envelope === null) {
+        render();
+        return poll();
+      }
+      return ask(true);
     },
     /** Whether a row is one the comparison lacks. @param {string} id */
     isMuted: (id) => muted.has(id),
@@ -1401,21 +1426,21 @@ export function createFileTreeController(deps, options) {
       walking: walkTimer !== null ? walkPath : null,
       timer: timer === null ? null : "poll",
       muted: [...muted],
-      asked,
     }),
   });
 }
 
 /**
  * Which pull requests' rows are expanded, and why: a reader's own click or key, or the row of
- * the page the pane shows, which is expanded for the reader and closed again when the pane
- * moves on, unless a reader opened it. Pure.
+ * the file address the pane shows. An address opens its owner temporarily. Pure.
  */
 export function createRowExpansion() {
   /** @type {Map<number, "reader" | "shown">} */
   const by = new Map();
   /** @type {number | null} */
   let shownNumber = null;
+  /** @type {string | null} */
+  let shownFile = null;
   return Object.freeze({
     /** @param {number} number */
     isExpanded: (number) => by.has(number),
@@ -1449,24 +1474,25 @@ export function createRowExpansion() {
       return by.delete(number);
     },
     /**
-     * The page of *number* holds the pane, or none does. Its row opens; the row of the page
-     * before it closes again if only the page had opened it.
+     * A file of *number* holds the pane, or none does. Its row opens. A previously shown
+     * file's row closes again if the address was what opened it.
      *
      * @param {number | null} number
+     * @param {string | null} file The file path the address names, or null for a PR preview.
      * @returns {{expand: number[], collapse: number[]}}
      */
-    shown(number) {
+    shown(number, file) {
       /** @type {{expand: number[], collapse: number[]}} */
       const changes = { expand: [], collapse: [] };
-      if (number === shownNumber) {
-        return changes;
-      }
-      if (shownNumber !== null && by.get(shownNumber) === "shown") {
+      const moved = number !== shownNumber;
+      const opens = file !== null && (moved || file !== shownFile);
+      if (moved && shownNumber !== null && by.get(shownNumber) === "shown") {
         by.delete(shownNumber);
         changes.collapse.push(shownNumber);
       }
       shownNumber = number;
-      if (number !== null && !by.has(number)) {
+      shownFile = file;
+      if (opens && number !== null && !by.has(number)) {
         by.set(number, "shown");
         changes.expand.push(number);
       }
