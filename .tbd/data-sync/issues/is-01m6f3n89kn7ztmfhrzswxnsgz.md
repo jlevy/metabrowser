@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: in_progress
 priority: 1
-version: 80
+version: 81
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -79,14 +79,16 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-07T08:22:52.251Z
+updated_at: 2026-11-07T08:28:46.070Z
 started_at: 2026-11-07T05:39:51.585Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.
 
 ## Notes
 
-Current checkpoint (2026-11-07): Native stack #302 now has 22 reviewed layers, ending at PR #321 / a7d3c0139a12204fc556da463dbc2c8e40f3bc1a. All actual bases match the preceding heads and all 22 exact-base ancestry checks pass. Every layer has green CI and CLEAN/MERGEABLE status; 24 review threads have zero unresolved items. The new layer renames Git to Commits in navigation, shortcut Help, and current docs. The inherited #320 Markdown/README layout is verified left-aligned under the first view tab, with the desktop TOC to the right and the narrow-pane icon/drawer preserved. Full make verify passed 4892 tests with nine expected default-tier skips, 384 golden scenarios, both audits, and distribution/installed-package checks. Both CLI names and previews now run 0.11.1.dev1216+a7d3c013 with default user cache/settings and wheel-matching assets. Ready for owner merge; nothing merged in this follow-up. Owner acceptance mb-i9ll, post-landing/release reconciliation mb-5k2w, quiet-host/tagged-release comparisons, and clock-provenance follow-up mb-irrw remain tracked in their existing scopes.
+Current checkpoint (2026-11-07 acceptance follow-up): PR #321 remains the last published/installed head. All 22 existing layers passed review/CI, but new owner testing found follow-up work that must be completed before final acceptance: mb-3vvt shared visible Markdown/Source gutters; mb-eicc durable lightweight PR cores; mb-1e2y startup and scroll-adaptive progressive metadata prefetch (depends on mb-eicc, no eight-PR coverage cutoff); mb-82fa compact stack position menu; mb-2vf2 Shift-J/K stack navigation with shift glyph Help (depends on mb-82fa). Root owns gutter implementation, design/e2e docs, stacking, final integration, real-browser checks and installation. Three sub-agents own persistence, progressive prefetch, and stack menu/handle/glyphs in separate existing checkouts. Planned forward-only layers after #321: gutter, durable cores, progressive prefetch, stack menu/hotkeys. No owner merge has been performed. Existing release/acceptance/performance follow-ups remain tracked; preserve all prior checkpoints below.
+
+Prior checkpoint (2026-11-07): Native stack #302 now has 22 reviewed layers, ending at PR #321 / a7d3c0139a12204fc556da463dbc2c8e40f3bc1a. All actual bases match the preceding heads and all 22 exact-base ancestry checks pass. Every layer has green CI and CLEAN/MERGEABLE status; 24 review threads have zero unresolved items. The new layer renames Git to Commits in navigation, shortcut Help, and current docs. The inherited #320 Markdown/README layout is verified left-aligned under the first view tab, with the desktop TOC to the right and the narrow-pane icon/drawer preserved. Full make verify passed 4892 tests with nine expected default-tier skips, 384 golden scenarios, both audits, and distribution/installed-package checks. Both CLI names and previews now run 0.11.1.dev1216+a7d3c013 with default user cache/settings and wheel-matching assets. Ready for owner merge; nothing merged in this follow-up. Owner acceptance mb-i9ll, post-landing/release reconciliation mb-5k2w, quiet-host/tagged-release comparisons, and clock-provenance follow-up mb-irrw remain tracked in their existing scopes.
 
 Prior checkpoint: first9featurePRs are actually merged to main8aae81d0. Remaining12forwardcascade to f9e8c524 has exact whole-tree equality to reviewed a4; normalatomicpublication succeeded, freshheadCI/nativegroup/artifactchecks still pending. GlobalinstalledCLI/previews remain verifieda4 (samecode) pending finalmain replacement. Mandatorypostlanding integratedreview/docs/skills/plans/beads remains mb-ao35. Preserve draft247/WIPs and audit .tbd/config.yml; clean independent landingcheckout is /Users/levy/wrk/github/metabrowser-landing-01a1a051.
 
