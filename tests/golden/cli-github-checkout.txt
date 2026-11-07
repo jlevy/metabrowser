@@ -637,7 +637,7 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "not_found_or_private",
-    "message": "GitHub has no such pull request, or it is private and the gh account cannot read it",
+    "message": "GitHub has no readable repository here",
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
