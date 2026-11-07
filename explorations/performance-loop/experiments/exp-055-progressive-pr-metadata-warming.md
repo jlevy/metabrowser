@@ -174,6 +174,34 @@ It does not establish universal instant navigation, a quiet-host performance res
 painted readiness. Larger repositories and release-wide performance gates retain their
 separate evidence and follow-ups.
 
+## Review-Fix Guard
+
+A separate three-pair guard compared installed `9522acd0` with the integrated review
+fixes at `72200d198`. Both builds used independent copies of the original catalog-only
+seed and the same public checkout at `3097cb7b` (1,272 tracked files).
+The order was control/candidate, candidate/control, control/candidate.
+The live catalog held 314 PRs; the unchanged target was now eighteenth among 29 Open
+rows.
+
+All six targets had a durable core and no full record immediately before selection.
+Files stayed selected for a measured 10,053–10,066 ms before opening Pulls; the
+cache-classification tool call added time before the click.
+The same trusted-click, exact-heading, and description-visibility metric observed
+control times of 194, 75, and 77 ms, and candidate times of 78, 67, and 76 ms.
+Medians were 77 and 76 ms, with overlapping ranges.
+This guards the prepared-description path through the recovery fixes; it does not
+establish another speedup.
+No trials failed or were discarded.
+The [six guard samples](exp-055-review-guard-samples.jsonl) retain all timings.
+
+The combined production sessions cover delayed cold startup, changed catalog
+generations, partial batches that defer missing rows without starving later cohorts,
+persisted failure recovery, and revocation before a response is published.
+The focused combined check passed 137 tests, 15 browserless golden scenarios, and both
+TypeScript checks. These deterministic recovery checks complement the browser guard; the
+browser guard does not simulate provider failures or measure full-Conversation
+completion.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
