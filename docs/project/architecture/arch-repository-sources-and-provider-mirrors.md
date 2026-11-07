@@ -799,15 +799,25 @@ A core remains readable after a minute, releasing its preparation window, scroll
 away, or restarting the server.
 A complete cached record takes precedence.
 GET reads local state only; it starts no provider, discussion, diff, or Git work.
+Disk validation runs off the event loop, followed by a memory-only ownership and reader
+check on the loop immediately before the response is constructed.
 
 A preparation request names at most one transport batch.
 A ready receipt lists `ready_numbers` backed by validated cores and `skipped_numbers`
-with existing record entries.
-The two lists cover a completed batch; they let callers advance through the catalog
-without one status request per PR. A failed owner batch returns `failed`; subsequent
-batches return `held` with the same outcome, message, and reset time until another
-attempt is eligible.
-`cores.refresh.json` persists that hold under the same catalog identity.
+with readable full records.
+An unreadable or schema-mismatched record supplies no coverage; its separate validated
+core can still serve the description.
+The two lists cover a completed batch without one status request per PR. A settled
+partial batch instead returns `partial`, these two lists, `retry_numbers`, and
+`retry_at`. The three disjoint lists account for every requested member.
+An unavailable PR retains its attempt lease while valid siblings and later cohorts
+proceed; callers revisit unfinished members after that deadline.
+Settled partial owners retire, so a later retry can prepare their missing members.
+A failed owner batch returns `failed`; subsequent batches return `held` with the same
+outcome, message, and reset time until another attempt is eligible.
+`cores.refresh.json` persists provider and malformed-response holds under the same
+catalog identity. A successful batch records success so an expired refusal cannot return
+after restart; an older writer cannot erase a newer outcome.
 Known rate resets take precedence; a missing reset uses the existing minimum hold and
 backoff. Source failures leave useful cores intact and cannot start one failed provider
 process for every queued row.
