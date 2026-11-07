@@ -741,3 +741,19 @@ def test_real_page_history_owns_file_selection_separately_from_retained_cursor()
         "rovingAnchorRetained": True,
         "disposed": 0,
     }
+
+
+def test_background_core_warming_covers_viewport_and_catalog_without_stranding_reconnect() -> None:
+    """Transport batches never cap coverage, and recovery keeps the settled cursor."""
+
+    assert run_session("github-pr-prefetch-behavior.js") == {
+        "catalogRows": 24,
+        "hiddenBatches": [8, 8, 8],
+        "busyAttemptsMs": [0, 1000, 3000, 7000],
+        "allVisibleReadyMs": 12000,
+        "recoveredAfterLongBusyMs": 91000,
+        "cachedAfterColdStart": 24,
+        "cachedAfterReconnect": 24,
+        "completedBeforeDisconnect": 8,
+        "backgroundRequestsAfterCompletion": 14,
+    }
