@@ -6,6 +6,7 @@ const { FakeNode, FakeElement } = require(`${root}/tests/dom/pulls-test-dom.js`)
 const details = require("../fixtures/github-pull-page-responses.json");
 const source = "https://github.com/octo/demo";
 const observedAt = "2026-11-03T00:00:00Z";
+const retitled = "Follow up on octo/demo#7";
 const absent = { ...details.absent.body, number: 500, source };
 const prepared = {
   ...absent,
@@ -239,7 +240,7 @@ Object.assign(globalThis, {
           const edited = number === 500 && catalogTop > 500;
           return {
             number,
-            title: edited ? "Retitled PR 500" : `PR ${number}`,
+            title: edited ? retitled : `PR ${number}`,
             state: "open",
             draft: edited,
             merged_at: null,
@@ -494,13 +495,16 @@ async function paint() {
   assert.equal(scroll.scrollTop, 0, "a new leading PR stays visible when at the top");
   assert.equal(rowFor(500), retained);
   assert.equal(document.activeElement, retained);
-  assert.equal(retained.childNodes[2].textContent, "Retitled PR 500");
+  assert.equal(retained.childNodes[2].textContent, retitled);
   assert.equal(retained.childNodes[1].dataset.state, "draft");
   const flash = "tree-item-flash-in";
   assert.equal(retained.classList.contains(flash), false);
   const arriving = rowFor(501);
   assert.equal(arriving.classList.contains(flash), true, "uses Files' arrival flash");
-  arriving.listeners.get("animationend")({ animationName: "tree-row-flash-in" });
+  list.listeners.get("animationend")({
+    animationName: "tree-row-flash-in",
+    target: arriving,
+  });
   assert.equal(arriving.classList.contains(flash), false);
   await scrollTo(10_000);
   const reading = items().find((item) => item.getBoundingClientRect().bottom > 0);
@@ -513,6 +517,16 @@ async function paint() {
   assert.equal(rowFor(502).classList.contains(flash), false, "scrolling back never replays it");
   assert.equal(rowFor(501).classList.contains(flash), false);
   assert.equal(document.activeElement, retained);
+  await publish();
+  const interrupted = rowFor(503);
+  assert.equal(interrupted.classList.contains(flash), true);
+  handle.setShown(false);
+  assert.equal(interrupted.classList.contains(flash), false, "hiding ends an in-flight flash");
+  handle.setShown(true);
+  await settle();
+  await paint();
+  assert.equal(rowFor(503), interrupted);
+  assert.equal(interrupted.classList.contains(flash), false, "reopening cannot restart the flash");
   console.log(JSON.stringify({ ...result, oneVisibleFlash: true, retainedReadingPlace: true }));
   handle.dispose();
   assert.equal(frames.size, 0);
