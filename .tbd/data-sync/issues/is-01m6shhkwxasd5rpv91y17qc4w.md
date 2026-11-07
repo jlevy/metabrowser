@@ -5,13 +5,15 @@ title: Watch GitHub pull request activity and recover connection failures
 kind: feature
 status: in_progress
 priority: 2
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-11-06-pr-watch-and-reconnect.md
 delegate: codex@spud10.local
 labels: []
 dependencies:
   - type: blocks
     target: is-01m6sppcghnnagtzr2gs9ev631
+  - type: blocks
+    target: is-01m6sx3tjqbthwcgkd91tt9tkt
 parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 child_order_hints:
   - is-01m6shhmmxtvf9wz92kd75eyz0
@@ -21,7 +23,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-06T23:01:50.098Z
-updated_at: 2026-11-07T02:19:05.946Z
+updated_at: 2026-11-07T02:24:01.110Z
 started_at: 2026-11-06T23:03:25.346Z
 ---
 Keep a visible Pulls list or PR page current with the shared incremental GitHub catalog. Preserve cached access during failures, resume after reconnect, and present one helpful connection status with a Reload action.
