@@ -2459,6 +2459,12 @@ export function mountPullsPanel(container, ctx, mb) {
     });
   }
 
+  function clearArrivalFlashes() {
+    for (const { row } of painted.values()) {
+      row.classList.remove("tree-item-flash-in");
+    }
+  }
+
   /** @param {number[]} [arrivals] */
   function paintViewport(arrivals = []) {
     if (windowDisposed) {
@@ -2586,15 +2592,6 @@ export function mountPullsPanel(container, ctx, mb) {
         const box = row.getBoundingClientRect();
         if (box.bottom > box.top && box.bottom > top && box.top < view.bottom) {
           row.classList.add("tree-item-flash-in");
-          row.addEventListener(
-            "animationend",
-            (event) => {
-              if (event.animationName === "tree-row-flash-in") {
-                row.classList.remove("tree-item-flash-in");
-              }
-            },
-            { once: true },
-          );
         }
       }
     }
@@ -2943,6 +2940,15 @@ export function mountPullsPanel(container, ctx, mb) {
     { signal },
   );
   list.addEventListener("pointerout", () => window.clearTimeout(peekTimer), { signal });
+  list.addEventListener(
+    "animationend",
+    (event) => {
+      if (event.animationName === "tree-row-flash-in" && event.target instanceof HTMLElement) {
+        event.target.classList.remove("tree-item-flash-in");
+      }
+    },
+    { signal },
+  );
   document.addEventListener(
     "visibilitychange",
     () => {
@@ -2951,6 +2957,7 @@ export function mountPullsPanel(container, ctx, mb) {
         queueWindow();
       } else {
         cancelCoreSample();
+        clearArrivalFlashes();
       }
     },
     { signal },
@@ -2959,7 +2966,14 @@ export function mountPullsPanel(container, ctx, mb) {
   window.addEventListener("focus", controller.onFocus, { signal });
   window.addEventListener("online", controller.onOnline, { signal });
   window.addEventListener("offline", controller.onOffline, { signal });
-  window.addEventListener("pagehide", controller.pause, { signal });
+  window.addEventListener(
+    "pagehide",
+    () => {
+      controller.pause();
+      clearArrivalFlashes();
+    },
+    { signal },
+  );
   window.addEventListener("pageshow", controller.resume, { signal });
 
   // Observe the tail of the full displayed prefix, including virtual spacer rows.
@@ -3027,6 +3041,8 @@ export function mountPullsPanel(container, ctx, mb) {
         queueWindow();
       } else {
         cancelCoreSample();
+        // Hiding the tab cancels its animations without an animationend event.
+        clearArrivalFlashes();
       }
       for (const [number, tree] of trees) {
         tree.controller.setShown(visible && painted.has(number));
