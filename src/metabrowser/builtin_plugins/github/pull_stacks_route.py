@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import Any, Literal, TypedDict
 
+from metabrowser.builtin_plugins.github.pull_catalog import MAX_WINDOW, catalog_titles
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_list_route import served_repository
 from metabrowser.builtin_plugins.github.pull_stacks import (
@@ -87,6 +88,17 @@ def stack_envelope(view: StackView) -> StackEnvelope:
     snapshot = cache.snapshot if cache else None
     if snapshot is None:
         return result
+    stacks = [stack.model_dump(mode="json") for page in snapshot.pages for stack in page.stacks]
+    # Native stack members contain no titles. Project the repository's existing
+    # metadata cache instead, without provider calls or duplicate title storage.
+    numbers = tuple(dict.fromkeys(number for stack in stacks for number in stack["pulls"]))
+    titles: dict[int, str] = {}
+    for offset in range(0, len(numbers), MAX_WINDOW):
+        titles.update(
+            catalog_titles(repository, snapshot.reader, numbers[offset : offset + MAX_WINDOW])
+        )
+    for stack in stacks:
+        stack["titles"] = [titles.get(number) for number in stack["pulls"]]
     fresh = result["fresh_for_s"] > 0 and stamp is not None and stamp.outcome == "succeeded"
     result.update(
         state="current" if fresh else "stale",
@@ -94,7 +106,7 @@ def stack_envelope(view: StackView) -> StackEnvelope:
         reader=snapshot.reader,
         fetched_at=snapshot.fetched_at,
         complete=snapshot.complete,
-        stacks=[stack.model_dump(mode="json") for page in snapshot.pages for stack in page.stacks],
+        stacks=stacks,
     )
     return result
 
