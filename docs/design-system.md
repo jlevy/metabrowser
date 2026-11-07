@@ -239,8 +239,8 @@ ARIA policy together with formatter tests.
 
 #### Main Tab Shortcuts
 
-The sidebar orders Files, Git, and Pulls in that order.
-Help shows the fixed shortcuts: `⌘1` for Files, `⌘2` for Git, and `⌘3` for Pulls.
+The sidebar orders Files, Commits, and Pulls in that order.
+Help shows the fixed shortcuts: `⌘1` for Files, `⌘2` for Commits, and `⌘3` for Pulls.
 A missing tab keeps its number reserved.
 Use the number alone outside text fields and dialogs when the browser uses the Command
 chord for its own tab bar.
@@ -1137,8 +1137,8 @@ Document image sanitization remains independent; see [Content Trust](../SECURITY
 
 ## The Pulls Tab
 
-The list beside Files and Git, on a GitHub repository, shows every pull request newest
-first. Like the page it opens, it has almost no vocabulary of its own.
+The list beside Files and Commits, on a GitHub repository, shows every pull request
+newest first. Like the page it opens, it has almost no vocabulary of its own.
 `test_the_pulls_tab_carries_the_shells_primitives` holds what follows.
 
 A pull request’s row is a container: its chevron opens a changed-files tree under the
@@ -1952,8 +1952,8 @@ itself requires independent horizontal or virtual scrolling.
 ### The Tab Bar
 
 A tab is `.tab-btn` in a `.tab-bar`, everywhere: OVERVIEW and TREEMAP, DOCUMENT and
-SOURCE, FILES and GIT, and CONVERSATION and CHANGES. Markup keeps the label’s natural
-case, and the caps are presentational.
+SOURCE, FILES and COMMITS, and CONVERSATION and CHANGES. Markup keeps the label’s
+natural case, and the caps are presentational.
 `.active` paints the selected tab; under `role="tab"`, `aria-selected` says the same to
 assistive technology, and both are set together.
 
@@ -1962,7 +1962,7 @@ new tab keep working.
 `a.tab-btn` states what a `<button>` gets from the browser, so the two render as one
 tab.
 
-Files, Pulls, and Git each keep their last selection and navigation scroll position.
+Files, Commits, and Pulls each keep their last selection and navigation scroll position.
 A reader who switches tabs returns to that tab’s destination, or to its default on the
 first visit. A direct URL or a browser history step selects the tab that owns the
 destination.

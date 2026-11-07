@@ -736,7 +736,7 @@ function createShell(pathname, network, options = {}) {
     if (!options.withoutGit) {
       sandbox.attachMainTabs().register({
         id: "git",
-        label: "Git",
+        label: "Commits",
         onFirstShow: () => panelShows.push("git first show"),
         onShow: () => panelShows.push("git show"),
         onHide: options.onGitHide,
@@ -887,7 +887,7 @@ async function mainTabShortcuts() {
   assert.equal(sandbox.mainTabs.active(), "pulls");
   await settle();
 
-  sandbox.mainTabs.register({ id: "git", label: "Git", onFirstShow: null });
+  sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
   assert.deepEqual(
     tabButtons.map((button) => button.dataset.tab),
     ["files", "git", "pulls"],
@@ -1125,7 +1125,7 @@ async function independentMainTabs() {
   pendingGit.pop("/view/", { gitLanding: true });
   await settle();
   assert.equal(pendingGit.sandbox.history.state.gitLanding, true, "Back waits for Git discovery");
-  pendingGit.sandbox.mainTabs.register({ id: "git", label: "Git", onFirstShow: null });
+  pendingGit.sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
   await pendingGit.sandbox.mainTabs.finishGitDiscovery();
   assert.equal(pendingGit.sandbox.mainTabs.active(), "git");
   assert.match(pendingGit.pane().shows, /Select a commit to preview/);

@@ -881,7 +881,7 @@ line. Open that address with the browser’s developer tools open.
    tree, header, tabs, or buttons.
    Cancel it.
 
-10. **The Git panel after a commit.** Select the **Git** tab beside **Files**: the
+10. **The Git panel after a commit.** Select the **Commits** tab beside **Files**: the
     history is one commit, `QA first commit`. From a second terminal:
 
     ```shell
@@ -890,9 +890,9 @@ line. Open that address with the browser’s developer tools open.
     ```
 
     The list does not change by itself.
-    Select **Files** and then **Git** again: `QA second commit` is first, carrying the
-    `main` label. Click it: the address becomes `/commit/<id>`, and the pane shows the
-    subject, the short commit ID, `1 M file`, `+2 −0 lines`, and the diff of
+    Select **Files** and then **Commits** again: `QA second commit` is first, carrying
+    the `main` label. Click it: the address becomes `/commit/<id>`, and the pane shows
+    the subject, the short commit ID, `1 M file`, `+2 −0 lines`, and the diff of
     `overview.md` in **Split**, with a **Unified** switch.
     The file bar has no View file control, because a folder has no file at a commit to
     open. Reload: the same commit opens.
@@ -1405,7 +1405,7 @@ Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
 5. A Markdown file’s Source tab, `package.json` (Tree), an image, and a binary file each
    open in their usual view.
 6. An HTML file offers only its Source tab.
-7. The Git tab lists history starting at the pinned commit.
+7. The Commits tab lists history starting at the pinned commit.
    Selecting a commit shows its detail and a split or unified diff.
    Reloading that `/commit/…` address reopens the same commit.
 8. Reload a `/view/g1-…` address, use back and forward, and open a copied link in a
@@ -1512,7 +1512,7 @@ Open `http://127.0.0.1:8474/view/` and keep it open.
 
 3. Before switching, open the same address in a second tab.
    Click **Switch** in the first.
-   The page reloads, the heading shows the new short commit, and the Git tab lists
+   The page reloads, the heading shows the new short commit, and the Commits tab lists
    `QA newer commit` first.
    In the second tab, open another file: the request is refused as `pin_changed` and the
    row offers **Reload** at once, instead of showing the new commit’s file under the old
@@ -1941,7 +1941,8 @@ uv --config-file uv.toml run --frozen metab "file://${QA_VF}/origin.git" --no-op
 ```
 
 `trunk` is `first` (`a5232ab93056`) then `second` (`6ac4c8b5eb94`), which the server
-pins. Open `http://127.0.0.1:8476/view/`, select the **Git** tab, and click `second`.
+pins.
+Open `http://127.0.0.1:8476/view/`, select the **Commits** tab, and click `second`.
 
 1. The diff shows seven files, and each file bar ends with the sides the change has:
    `README.md` and `latin1-�.txt` (a name that is not UTF-8) have **View at parent** and
@@ -1972,7 +1973,7 @@ pins. Open `http://127.0.0.1:8476/view/`, select the **Git** tab, and click `sec
    reloads on `6ac4c8b5eb94`, the file reads `a Latin-1 name, edited`, and the button
    under the heading reads `Branch: trunk` again, not `Commit: …`.
 
-5. Click `first` in the **Git** tab instead: a commit with no parent has only **View
+5. Click `first` in the **Commits** tab instead: a commit with no parent has only **View
    file** on each bar. Open `changes.patch` from the **Files** tab: a patch file’s bars
    have no View file control, because its two sides are not commits.
 

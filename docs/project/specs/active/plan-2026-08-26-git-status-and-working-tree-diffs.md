@@ -8,8 +8,8 @@
 
 ## Vision
 
-The Git tab should explain both recorded history and the repository state that has not
-become history yet.
+The Commits tab should explain both recorded history and the repository state that has
+not become history yet.
 
 For an ordinary local repository, Metabrowser will show unresolved conflicts, staged
 changes, unstaged changes, and untracked files above the existing commit graph.
@@ -46,7 +46,7 @@ and may change together as internal contracts.
 
 ## Goals
 
-- Show Git working state in the existing Git tab without displacing history.
+- Show Git working state in the existing Commits tab without displacing history.
 - Preserve Git’s index/worktree distinction, including a file that appears in both
   staged and unstaged groups.
 - List conflicts, staged changes, unstaged changes, and untracked files in a stable,
@@ -103,7 +103,7 @@ The Git feature already has the infrastructure this work should extend:
   working-tree root and supports linked worktrees through Git’s own discovery.
 - `/api/git/repo`, `/api/git/refs`, `/api/git/log`, and `/api/git/commit/{revision}`
   provide a typed, read-only collection API.
-- `static/git-panel.js` owns the lazy Git tab, history paging, selection, hover, and
+- `static/git-panel.js` owns the lazy Commits tab, history paging, selection, hover, and
   commit detail.
 - `metabrowser/diff/adapters/git.py` turns immutable revision comparisons into File Diff
   Format.
@@ -169,8 +169,8 @@ Once repository discovery succeeds, the Git panel has two top-level sections:
 1. **Changes**; and
 2. **History**.
 
-Status and the first history page load concurrently the first time the Git tab is shown.
-A failure in one section does not erase the other.
+Status and the first history page load concurrently the first time the Commits tab is
+shown. A failure in one section does not erase the other.
 
 There is a third request to place in that order.
 `/api/git/summary` backs the history tally and runs one graph traversal, so the panel
@@ -325,7 +325,7 @@ unaffected by the Changes block’s height.
 ### Selection and canonical route
 
 Selecting a status row replaces the main content with that row’s one-file diff and
-selects the Git tab.
+selects the Commits tab.
 The canonical browser address is:
 
 ```text
@@ -853,8 +853,8 @@ A small strict `git-status-model.js` module owns pure grouping, row identity che
 route-to-selection matching, and render-model helpers so they can be tested without a
 browser.
 
-The new module is **on demand**: it loads after repository discovery when the Git tab is
-first shown or a status route must be restored.
+The new module is **on demand**: it loads after repository discovery when the Commits
+tab is first shown or a status route must be restored.
 It does not enter the shell’s eager path.
 Status and diff-plugin assets prepare concurrently after a status row is selected.
 
@@ -981,8 +981,8 @@ and failed states.
 
 ### Browser route
 
-`/status/<scope>/<entry-id>` restores the Git tab, current status, row selection, and
-main-pane one-file diff.
+`/status/<scope>/<entry-id>` restores the Commits tab, current status, row selection,
+and main-pane one-file diff.
 It is a live address: reload resolves the current entry and reports stale if the working
 state moved. It never implies immutable content the way `/commit/<revision>` does.
 
@@ -1093,7 +1093,7 @@ operation changes `git status --porcelain` or index metadata.
 - [ ] Run `make verify`, review the full branch diff, and complete the manual visual and
   interaction matrix before landing.
 
-**Acceptance boundary:** Opening the Git tab in a dirty repository presents correct
+**Acceptance boundary:** Opening the Commits tab in a dirty repository presents correct
 groups above intact history; every navigable row opens the right single-file diff and
 survives reload; external edits and Git operations refresh without races or request
 storms; a clean cached checkout stays clean; and the automated plus manual gates pass.
@@ -1179,8 +1179,8 @@ readiness, DOM size, heap, and request counts.
 
 The committed performance gate uses the measured corpus and budgets selected in Phase
 1. It must detect an O(files × subprocesses) one-file click, unbounded DOM growth,
-   automatic refresh storms, eager status work before the Git tab is used, and retained
-   listeners after disposal.
+   automatic refresh storms, eager status work before the Commits tab is used, and
+   retained listeners after disposal.
 
 `make verify` is required at the end of each phase.
 

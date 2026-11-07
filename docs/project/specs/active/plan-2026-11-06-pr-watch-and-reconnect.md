@@ -146,8 +146,9 @@ inherited the earlier path.
   tried again.
 - In the built-in browser, repeat the cached-first and recovery flow for both an
   existing checkout and a managed GitHub repository.
-  Confirm cached Files, Git, and PR details remain usable and opening a checkout’s Files
-  view stays lazy. Record the run in the [end-to-end playbook](../../../e2e-testing.md).
+  Confirm cached Files, Commits, and PR details remain usable and opening a checkout’s
+  Files view stays lazy.
+  Record the run in the [end-to-end playbook](../../../e2e-testing.md).
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

@@ -545,7 +545,7 @@ Those commands pass neither `--no-ext-diff` nor `--no-textconv`, so they honor t
 drivers of the repository’s own configuration.
 A store’s configuration has none, and a borrowed checkout’s is not read, which is one
 reason a checkout’s objects are read only through a store.
-A served checkout’s Git tab does honor its own, as `git diff` there would.
+A served checkout’s Commits tab does honor its own, as `git diff` there would.
 Diff, history, commit detail, and tree reads receive a trusted Git command target that
 may name either a worktree plus Git directory or the shared worktree-free store.
 
@@ -895,8 +895,8 @@ timestamp write.
 
 An explicit Files changed Fetch may acquire a store with the checkout as its lender.
 The pull record then uses the same store API and comparison service as a managed URL.
-The served folder root and Git tab stay unchanged; no Git process runs in the checkout,
-and the checkout is never written.
+The served folder root and Commits tab stay unchanged; no Git process runs in the
+checkout, and the checkout is never written.
 A served subdirectory resolves to its enclosing checkout before acquisition.
 Lender paths stay inside private cache metadata.
 

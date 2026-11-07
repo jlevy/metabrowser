@@ -243,11 +243,11 @@ local navigation issues no acquisition or refresh requests.
 
 ## Main Tab Destinations and Progress
 
-A deliberate switch between Files, Pulls, and Git restores the destination that tab last
-showed in this browser page.
-On first visit, Files opens the served root, Pulls opens the Open list, and Git shows
-history with a prompt to select a commit.
-Opening Git without a selection does not read a commit or its diff.
+A deliberate switch between Files, Commits, and Pulls restores the destination that tab
+last showed in this browser page.
+On first visit, Files opens the served root, Pulls opens the Open list, and Commits
+shows history with a prompt to select a commit.
+Opening Commits without a selection does not read a commit or its diff.
 Store each tab’s route, including any selected file, PR tab, PR file, commit, or
 fragment. Keep each tab’s filter and scroll position with its own panel.
 A direct address or Back and Forward selects the tab that owns the address.
@@ -271,7 +271,7 @@ See `mb-ykyl` and `mb-rofh`.
 ## Goal
 
 Open a GitHub repository and find its pull requests in a **Pulls** tab beside Files and
-Git. The tab lists every pull request, newest first, each with a state icon like
+Commits. The tab lists every pull request, newest first, each with a state icon like
 GitHub’s. Expand a pull request in place to see its changed files as a tree, the way a
 folder expands in the Files tab.
 Select one and read it in the same page: description, conversation, reviews, checks, and
@@ -367,7 +367,7 @@ in `static/app.js` are the tab registry.
 They are published on `window.MetabrowserShell`, which that file describes as an
 internal boundary for core modules and not the plugin SDK. `static/git-panel.js` is its
 one user outside `app.js`: it arrives in the `shell-tools` on-demand bundle after the
-first tree settles, asks `/api/git/repo`, and registers the Git tab if the root is a
+first tree settles, asks `/api/git/repo`, and registers the Commits tab if the root is a
 repository.
 
 Three facts shape the design:
@@ -733,8 +733,8 @@ github.com and whose `HEAD` names a commit.
   `gh`.
 - A plain folder has no context and gets no tab.
 - On a checkout served from a subdirectory the tab still appears, because pull requests
-  belong to the repository; the Git tab’s rule, that the served root must be the working
-  tree’s root, does not apply.
+  belong to the repository; the Commits tab’s rule, that the served root must be the
+  working tree’s root, does not apply.
 - `discover_repository_context` admits owner and repository spellings the GitHub
   plugin’s URL grammar refuses.
   The list route validates with the plugin’s grammar, and the tab then says the remote
@@ -762,8 +762,8 @@ its expansion state.
 **The list’s address.** `/pulls`, with `?state=` for a filter, is the list with no pull
 request selected, as on GitHub.
 
-- The shell shows the Pulls tab at `/pulls` and at `/pull/<n>`, as it shows the Git tab
-  at a commit’s address.
+- The shell shows the Pulls tab at `/pulls` and at `/pull/<n>`, as it shows the Commits
+  tab at a commit’s address.
   Selecting the tab by hand does not change the address, as with the other tabs.
 - `--show /pulls` prints `kind: pull-request-list` and a summary of the list envelope,
   which is the kind’s evidence for the parity gate.
@@ -845,8 +845,8 @@ The state icons get a line in that document.
 **Loading tier and the startup budget.**
 
 - Nothing is added to the startup scripts.
-  The host is in `shell-tools`, which loads after the first tree settles; the Git tab
-  appears at the same moment.
+  The host is in `shell-tools`, which loads after the first tree settles; the Commits
+  tab appears at the same moment.
 - The view’s code is on demand, fetched on first show.
 - `devtools/check_startup_scripts.py` proves it on every `make lint-check`: it fails on
   any script requested before `DOMContentLoaded`, and it reports the current totals
@@ -855,8 +855,8 @@ The state icons get a line in that document.
 **Large lists.** The tab appends plain rows a page at a time, as the ref selector does.
 Step 3 measures in a real browser what the row cap costs to render and to keep, by the
 method in [rendering large content](../../../large-content-rendering.md).
-If the cap’s worth of rows is past the budget, the panel uses the Git tab’s windowing
-module.
+If the cap’s worth of rows is past the budget, the panel uses the Commits tab’s
+windowing module.
 
 **What is prefetched.**
 
@@ -1090,8 +1090,8 @@ Jobs run on the server’s `RefreshCoordinator`, keyed by the slug.
 
 - Identity is read from files.
 - Conversation, reviews, and checks need no Git objects.
-- Every Git command run in the checkout is a read under `READ_POLICY`, as the Git tab’s
-  are.
+- Every Git command run in the checkout is a read under `READ_POLICY`, as the Commits
+  tab’s are.
 - No fetch, no ref, no configuration write.
 
 **The page on a checkout.** The page works from the record alone.
@@ -1294,7 +1294,7 @@ acquisition. Each updates
 | --- | --- | --- | --- |
 | 1. List data | The model, file, bounds with measurements, the job, both list routes, and the fake `gh` pages | `--api /api/plugin/github/pulls-refresh --data …` then `--api '/api/plugin/github/pulls?state=all'` lists pull requests, and the second works offline, since a read never fetches | Yes |
 | 2. On-demand open | Numbered routes, the provider’s set, the attended pull request, the job bound, the Browse code cases, and View file under any head ref | On a server opened from a repository URL, `/pull/<n>` for any number offers **Fetch** and then shows the page | Yes |
-| 3. The tab on a mirror | The panel host, which tab an address shows, the view and its `/pulls` address, state icons, filters, states, keyboard, prefetch, and the sessions | Paste a repository URL, see Pulls beside Files and Git with every pull request and its icon, select one, and read it | Needs 1 and 2 |
+| 3. The tab on a mirror | The panel host, which tab an address shows, the view and its `/pulls` address, state icons, filters, states, keyboard, prefetch, and the sessions | Paste a repository URL, see Pulls beside Files and Commits with every pull request and its icon, select one, and read it | Needs 1 and 2 |
 | 4. Changed files in a row | The file-list job, model, and routes, the tree, the gesture, `/pull/<n>/files/<path>`, and its session | Expand a pull request in the list, expand a folder, and open a file | Needs 3 |
 | 5. The tab and pages on a checkout | Identity, the source without a store, records without a comparison, network on use, and both profiles | Open a checkout, open Pulls, expand a pull request, and read a conversation, with nothing written to the repository | Needs 4 |
 | 6. Files changed on a checkout | An overlay of the served checkout, acquired from a running folder server when Files changed opens, the comparison from its store, and the typed states on the page | Open a checkout, open a pull request whose commits are not local, and read Files changed from the overlay | Needs 5 |
