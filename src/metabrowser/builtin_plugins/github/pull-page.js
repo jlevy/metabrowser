@@ -2249,7 +2249,12 @@ export function createStackMenu(initial, number, deps) {
     },
     { signal },
   );
-  menu.addEventListener("click", () => close(), { signal });
+  // Run before the member link navigates and can replace this page. Only move
+  // focus when it would otherwise remain inside the closed disclosure.
+  menu.addEventListener("click", () => close(menu.contains(document.activeElement)), {
+    capture: true,
+    signal,
+  });
   document.addEventListener(
     "pointerdown",
     (event) => {

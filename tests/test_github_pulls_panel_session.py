@@ -616,6 +616,7 @@ def test_native_stack_navigation_and_cold_page_skeleton_preserve_cached_content(
         "cachedRefreshRetained": True,
         "authoritativeStack": True,
         "orderedNeighbors": True,
+        "stackActivationFocus": True,
         "tabPreserved": True,
         "fileCleared": True,
         "explicitReaderIntent": True,
