@@ -66,15 +66,44 @@ Exercise an actual provider failure and recovery.
 Repeat cached and cold expansion in a checkout and a managed repository in the built-in
 browser.
 
-## Commit and PR Header Layout
+## Shared Content Layout
 
 `mb-7if6` tracks the shared reading column and heading style.
-Commit and PR headers start at the pane’s content gutter and use the PR title scale.
-PR descriptions, comments, and reviews inherit the rendered README’s document measure.
+Commit and PR headers start at the pane’s content gutter and use the same title scale.
+Markdown card borders and source surfaces align with the first display tab’s outer edge;
+the document retains KPress’s normal inner inset.
+A wide document puts its contents rail on the right, and a narrow pane keeps the
+standard contents icon and drawer.
+PR descriptions, comments, reviews, and commit descriptions share the rendered README’s
+configurable document measure.
+Messages use sans prose with one neutral bordered `.page-card` surface; source and diffs
+retain their own code typography.
+PR author, action, and age share a metadata size and baseline.
 Conversation and Checks share the header and tab alignment.
 Changes uses the full pane.
 Check wrapping, metadata, and the first tab’s alignment in narrow and wide panes, and
 measure a PR description and comment against the rendered README with the same settings.
+
+## Progressive Metadata Preparation
+
+Idle startup mounts the lightweight Pulls controller in both managed repositories and
+existing checkouts after initial Files work.
+It primes the current Open page, prioritizes the measured viewport as it changes, and
+continues through the cached All catalog.
+Transport batches do not cap total coverage.
+Visible demand retries after shared-provider contention, while hidden or disconnected
+browsers pause their work and resume the unfinished cursor.
+Selected actions keep priority.
+
+Lightweight description records persist in the private file cache, scoped to source,
+repository, authenticated reader, and catalog epoch.
+Later batches, ordinary freshness expiry, and server restart retain useful metadata; a
+changed summary revokes exact readiness while stale text remains explicitly stale.
+Full records supersede lightweight cores.
+Discussion, checks, files, and Git acquisition remain separate demand-driven work.
+The
+[progressive preparation experiment](../../../../explorations/performance-loop/experiments/exp-055-progressive-pr-metadata-warming.md)
+records controller evidence and the separate browser performance acceptance status.
 
 ## Search From the Catalog
 
@@ -118,8 +147,13 @@ Separate private snapshots, conditional pages, account/source checks and bounded
 background jobs keep ordinary PR reading independent of optional tooling or API
 failures.
 
-A known member shows its stack number and ordered member navigation, preserving the
-selected tab while clearing a preceding file selection.
+A known member opens a Layers icon and position/total menu.
+Member rows show their ordinal, title from the matching local catalog, and PR number,
+with the current member marked.
+Native membership is authoritative; a missing title falls back to the PR number.
+Selection and ⇧J/⇧K navigation preserve the selected tab while clearing a preceding file
+selection. ⇧J moves toward the base and ⇧K toward the top.
+The shared shortcut registry owns editor, dialog, endpoint, and disposal behavior.
 Unknown membership in a partial or unavailable snapshot is not an assertion that the PR
 has no stack. Cold PR pages use the existing gray pulse in their reading column; cached
 refreshes keep content visible.
