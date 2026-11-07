@@ -626,9 +626,9 @@
      ``fs.change`` op arrives on /api/events. */
   --tally-skeleton-bg: oklch(90.8% 0 89.9);
 
-  /* Live-update row flash. Applied by app.js when the SPA inserts
-     a freshly-created row (`.tree-item-flash-in`) or starts the
-     animated removal of a deleted row (`.tree-item-flash-out`).
+  /* Live-update row flash. Files and Pulls use `.tree-item-flash-in` for
+     a newly created visible row. Files use `.tree-item-flash-out` for
+     the animated removal of a deleted row.
      Pale yellow that fades to transparent — visible enough to
      draw the eye, calm enough not to flicker on a burst of
      changes. */
@@ -5227,11 +5227,8 @@ pre.code-block.metabrowser-source-lines > code {
   }
 }
 
-/* Live-update row flash. Both the .tree-item AND its sibling
-   .tree-children (for folders) get the class so the whole insert
-   reads as a coherent visual event. The animations are scoped to
-   the .tree-item itself for the bg flash; the .tree-children
-   variant handles smooth height collapse on remove. */
+/* Files and Pulls flash the arriving row itself. Files also animate
+   the row and its child container together during removal. */
 .tree-item-flash-in {
   animation: tree-row-flash-in 900ms ease-out;
 }

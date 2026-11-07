@@ -2,7 +2,7 @@
 
 **Status.** Implementation and verification tracked in `mb-bzhx`. The design is
 `mb-lz7e`, catalog refresh and recovery are `mb-ad70`, the Pulls UI is `mb-81f2`, and
-session verification is `mb-khc4`.
+session verification is `mb-khc4`. Shared row arrivals are tracked in `mb-x9v7`.
 
 ## Reader Behavior
 
@@ -67,6 +67,29 @@ page. Previous cached data remains readable under the local cache’s access pol
 GitHub access is unavailable.
 See [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
 
+## Live Arrivals
+
+A newly created pull request uses the Files watcher’s arrival highlight when it enters
+the visible list. See [Live Row Arrivals](../../../design-system.md#live-row-arrivals).
+The first coherent top window from a complete, settled catalog establishes a neutral
+baseline for its source, reader, catalog epoch, and filter.
+A filter or account change, a hidden view, and a connection failure start a new baseline
+on the next settled read.
+
+The active top-window read qualifies new rows using their creation time after the
+visible baseline. A qualifying row flashes once if it is in the viewport when it is
+painted. Paging, historical backfill, title edits, and state changes of existing PRs use
+normal row updates. Connection and refresh state own the list’s live region.
+
+The existing cache read and shared catalog refresh deliver the rows.
+The Pulls controller owns their interpretation, and another provider can reuse the
+visual primitive with its own arrival signal.
+
+When the reader is at the top, keep the pane there so prepended rows can be seen.
+Farther down, retain the existing row and offset as the scroll anchor.
+Keep the active page and keyboard selection with their PR number when the row remains in
+the filter.
+
 ## Status and Recovery
 
 Keep one status row in Pulls chrome beside the persistent **Reload** action.
@@ -112,6 +135,12 @@ inherited the earlier path.
   observe a successful update in the same page.
   Verify a reconnect gets one early provider probe and subsequent wakes respect the
   cooldown.
+- In the browserless Pulls session, compare an initial baseline, a newly created PR, a
+  title edit, an older PR changing filters, and cached paging.
+  Verify that a refresh highlights a new visible row once, retains edited rows in place,
+  and starts a neutral baseline after filter changes, account changes, or reconnects.
+  Check the scroll and selection at the top and farther down.
+  In the browser, check the shared highlight under both motion preferences.
 - Check one status row and one accessible Reload action.
   Check that a held reset refuses early provider work and that a settled request can be
   tried again.
