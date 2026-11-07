@@ -262,8 +262,9 @@ Batch preparation also persists lightweight cores separately from full records.
 The existing GET can serve an identity-validated core after the preparation window ends
 or the server restarts, while the full discussion remains absent.
 A ready `github/pull-cores-prepare` receipt includes `ready_numbers` and
-`skipped_numbers`; failed batches and source holds include a failure outcome and reset
-time. See
+`skipped_numbers`; a partial receipt also names `retry_numbers` and `retry_at`. Failed
+batches and source holds include a failure outcome and reset time.
+See
 [lightweight cores](arch-repository-sources-and-provider-mirrors.md#lightweight-pull-request-cores)
 for cache identity, stale display, publication, and retry rules.
 A page that started a selected refresh may give the displayed preview’s revision in
@@ -395,9 +396,11 @@ return `invalid_request` (400); no GitHub repository returns `not_github` (409).
 `POST github/pull-cores-prepare` takes `state`, `window` with its `id` and catalog
 `generation`, and at most eight `numbers` per transport batch.
 A started or joined preparation returns `202` with a cache-only `status_route`. Other
-outcomes return `200`: `ready`, `busy`, `not_owner`, `released`, `failed`, or `held`. A
-ready response lists `ready_numbers` and `skipped_numbers`, covering the batch with
-validated cores or existing record entries.
+outcomes return `200`: `ready`, `partial`, `busy`, `not_owner`, `released`, `failed`, or
+`held`. A ready response lists `ready_numbers` and `skipped_numbers`, covering the batch
+with validated cores or readable full records.
+A partial response adds `retry_numbers` and `retry_at`; its three disjoint member lists
+cover the batch while callers continue later cohorts and defer unfinished members.
 A failed owner batch and later source holds carry `failure` with `outcome`, `message`,
 and optional `reset_at`. An empty `numbers` list releases only the window matching its
 state, ID, and generation; it retains useful persisted metadata.

@@ -172,12 +172,22 @@ def read_core_failure(home: Path, slug: str) -> PullRefreshStamp | None:
 def write_core_failure(
     home: Path, slug: str, catalog: CatalogState, failure: PullRefreshStamp
 ) -> None:
-    """Keep a failed batch's source cooldown across restarts, without replacing useful cores."""
+    """Persist the latest preparation outcome without replacing useful cores."""
     from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
 
     with source_alias_lock(home, slug):
         current = read_catalog(home, slug)
         if current is None or _identity(current) != _identity(catalog):
+            return
+        previous = read_core_failure(home, slug)
+        if previous is not None and (
+            parse_stamp(previous.at) > parse_stamp(failure.at)
+            or (
+                previous.at == failure.at
+                and previous.outcome != "succeeded"
+                and failure.outcome == "succeeded"
+            )
+        ):
             return
         ensure_pulls_directory(home, slug)
         data = (
