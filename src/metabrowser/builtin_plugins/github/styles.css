@@ -154,7 +154,11 @@
   padding: 3px var(--github-pull-text-inset);
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--body-font-size);
+}
+.github-pull-card-head .github-pull-age {
+  font-size: var(--body-font-size);
+  line-height: inherit;
 }
 .github-pull-card-head:last-child {
   border-bottom: 0;
@@ -510,9 +514,6 @@
   color: var(--muted);
   font-weight: var(--weight-bold);
 }
-.github-pull-card-head .github-pull-author {
-  font-size: var(--body-font-size);
-}
 .github-pulls-refs {
   color: var(--git-ref-remote);
 }
@@ -721,13 +722,14 @@
 
 .github-pull-identity {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 4px;
-  vertical-align: middle;
+  vertical-align: baseline;
 }
 .github-pull-avatar {
   display: inline-block;
   flex: none;
+  align-self: center;
   width: 18px;
   height: 18px;
   border-radius: 50%;
