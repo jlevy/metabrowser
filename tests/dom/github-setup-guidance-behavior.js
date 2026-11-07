@@ -87,10 +87,7 @@ globalThis.window = {
     },
     (at) => at,
   );
-  assert(
-    rejected.text.startsWith(refused[0].toUpperCase() + refused.slice(1)),
-    "explicit HTTP401 refusal remains explicit",
-  );
+  assert.equal(rejected.text, "Run gh auth login --hostname github.com to connect.");
   for (const state of ["network_error", "not_found_or_private", "rate_limited"]) {
     const supplied = files[`failed ${state}`];
     const notice = catalog.refreshFailure(supplied, (at) => at);
@@ -108,7 +105,7 @@ globalThis.window = {
       nullMessageFallbacks: true,
       backendTextPreserved: true,
       cachedRecordPreserved: true,
-      explicit401Preserved: true,
+      authUsesNormalizedGuidance: true,
       otherFailureKindsPreserved: true,
     }),
   );

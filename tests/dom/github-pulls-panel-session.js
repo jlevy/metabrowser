@@ -855,7 +855,13 @@ async function paintStory(panel, selection = false) {
       !connection.hidden && message.textContent === "Fetching pull requests…",
       "one fetch line",
     );
-    assert(!spinner.hidden && spinner.classList.contains("spinner"), "one shared spinner");
+    assert(
+      !spinner.hidden &&
+        spinner.firstElementChild.classList.contains("spinner") &&
+        connectionText.classList.contains("mb-delayed-loading") &&
+        !spinner.classList.contains("mb-delayed-loading"),
+      "one shared spinner and delay for the first loading message",
+    );
     assert(
       reload.textContent === "Reload" && reload.getAttribute("aria-disabled") === "true",
       "the same reload control waits while loading",
@@ -1218,6 +1224,38 @@ async function paintStory(panel, selection = false) {
     await settle();
     story["an age, two hours on"] = age();
     story["rows built to tell it"] = built;
+    const due = [...timers.entries()].find(([, timer]) => timer.delayMs === SLOW_POLL_MS);
+    timers.delete(due[0]);
+    due[1].callback();
+    await settle();
+    const outage = {
+      ...first.body,
+      last_refresh: {
+        ...recorded["failed network_error"].body.last_refresh,
+        at: new Date(now - 61_000).toISOString(),
+      },
+    };
+    await answer({ status: 200, etag: null, body: outage });
+    assert(answers[0].init.method === "POST", "watch starts a passive retry");
+    const retryMessage = "GitHub could not be reached. Showing cached pull requests.";
+    const assertRetry = () => {
+      assert(message.textContent === retryMessage, "the outage text stays visible");
+      assert(live[0].textContent === retryMessage, "the polite announcement stays steady");
+      assert(!connectionText.classList.contains("mb-delayed-loading"), "only the spinner waits");
+      assert(
+        !spinner.hidden && spinner.classList.contains("mb-delayed-loading"),
+        "delayed spinner",
+      );
+      assert(reload.getAttribute("aria-disabled") === "true", "Reload waits for the retry");
+    };
+    assertRetry();
+    await answer({
+      status: 202,
+      etag: null,
+      body: { pulls: { ...outage, refreshing: true, rows: [] } },
+    });
+    assertRetry();
+    story["a passive retry keeps the announced outage beside its spinner"] = retryMessage;
     // Reader-opened trees can all be expanded together. Closing them must apply the bound
     // immediately, without waiting for another tree to be created.
     const many = list.childNodes

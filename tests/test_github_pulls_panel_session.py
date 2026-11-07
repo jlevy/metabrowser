@@ -543,7 +543,10 @@ def test_catalog_windows_and_late_request_ownership() -> None:
         "offlineKeepsCache": True,
         "reconnectUsesBackgroundHint": True,
         "interactiveFilterKeepsPriority": True,
+        "directAndHistoryFiltersKeepPriority": True,
+        "hiddenWarmupYieldsToVisibleDemand": True,
         "transientRetriesAutomatically": True,
+        "retryKeepsPriorFailure": True,
         "localReadFailureDoesNotPost": True,
         "setupUsesQuietProbe": True,
         "focusCoalesces": True,
@@ -583,7 +586,7 @@ def test_setup_guidance_retains_cached_content_and_failure_distinctions() -> Non
         "nullMessageFallbacks": True,
         "backendTextPreserved": True,
         "cachedRecordPreserved": True,
-        "explicit401Preserved": True,
+        "authUsesNormalizedGuidance": True,
         "otherFailureKindsPreserved": True,
     }
 

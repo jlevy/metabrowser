@@ -10,7 +10,7 @@ const settle = async () => {
 
 // Controlled contract fixtures complement the production route recording: delayed requests
 // deliberately ignore abort, so ownership guards must also reject their late responses.
-function rig(panel, { cached = 6000, automatic = true } = {}) {
+function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   const state = {
     cached,
     automatic,
@@ -79,51 +79,54 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
           : envelope(request.route),
     };
   }
-  const controller = panel.createPullsController({
-    request(method, route, options) {
-      const request = { method, route, body: options.body, signal: options.signal };
-      requests.push(request);
-      if (method === "GET") {
-        assert(
-          route.startsWith("/api/plugin/github/pulls?"),
-          "metadata loading must not read PR details",
-        );
-        assert(
-          Number(new URL(route, "http://localhost").searchParams.get("limit")) <= 100,
-          "large display revalidation must use bounded cache pages",
-        );
-      }
-      if (state.automatic) {
-        return Promise.resolve(answer(request));
-      }
-      return new Promise((resolve) => waiting.push({ ...request, resolve }));
-    },
-    schedule(callback, delay) {
-      const id = Symbol();
-      timers.set(id, { callback, delay });
-      return id;
-    },
-    cancel: (id) => timers.delete(id),
-    now: () => state.now,
-    isVisible: () => state.visible,
-    isOnline: () => state.online,
-    formatTime: (at) => at,
-    render: (next) => {
-      model = next;
-    },
-    markCurrent() {},
-    markAnchor() {},
-    reveal() {},
-    open() {},
-    filterChanged() {},
-    recheckTail() {
-      queueMicrotask(() => {
-        if (state.tailNear) {
-          void controller.reachedEnd();
+  const controller = panel.createPullsController(
+    {
+      request(method, route, options) {
+        const request = { method, route, body: options.body, signal: options.signal };
+        requests.push(request);
+        if (method === "GET") {
+          assert(
+            route.startsWith("/api/plugin/github/pulls?"),
+            "metadata loading must not read PR details",
+          );
+          assert(
+            Number(new URL(route, "http://localhost").searchParams.get("limit")) <= 100,
+            "large display revalidation must use bounded cache pages",
+          );
         }
-      });
+        if (state.automatic) {
+          return Promise.resolve(answer(request));
+        }
+        return new Promise((resolve) => waiting.push({ ...request, resolve }));
+      },
+      schedule(callback, delay) {
+        const id = Symbol();
+        timers.set(id, { callback, delay });
+        return id;
+      },
+      cancel: (id) => timers.delete(id),
+      now: () => state.now,
+      isVisible: () => state.visible,
+      isOnline: () => state.online,
+      formatTime: (at) => at,
+      render: (next) => {
+        model = next;
+      },
+      markCurrent() {},
+      markAnchor() {},
+      reveal() {},
+      open() {},
+      filterChanged() {},
+      recheckTail() {
+        queueMicrotask(() => {
+          if (state.tailNear) {
+            void controller.reachedEnd();
+          }
+        });
+      },
     },
-  });
+    { filter },
+  );
   return {
     state,
     requests,
@@ -399,7 +402,7 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   await settle();
   assert.deepEqual(
     partial.requests.filter((request) => request.method === "POST").map((request) => request.body),
-    [{ state: "open", target: 500, background: true }],
+    [{ state: "open", target: 500 }],
   );
   await partial.controller.loadMore();
   assert.equal(partial.controller.snapshot().displayLimit, 1000);
@@ -548,6 +551,35 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
     return test;
   }
 
+  // A visible direct or restored filter may move a running Open warm-up to its
+  // own missing rows. The next unchanged wake is a cache read only.
+  const direct = rig(panel, { filter: "closed", cached: 150 });
+  await direct.controller.start({ shown: true });
+  await settle();
+  direct.controller.setFilter("all", { fromAddress: true });
+  await settle();
+  direct.controller.onFocus();
+  await settle();
+  assert.deepEqual(providerAsks(direct), [
+    { state: "closed", target: 500 },
+    { state: "all", target: 500 },
+  ]);
+  direct.dispose();
+
+  const restored = rig(panel, { cached: 150 });
+  await restored.controller.start({ shown: false, refreshAhead: true });
+  await settle();
+  assert.deepEqual(providerAsks(restored), [{ state: "open", target: 500, background: true }]);
+  restored.controller.setShown(true);
+  await settle();
+  restored.controller.onFocus();
+  await settle();
+  assert.deepEqual(providerAsks(restored), [
+    { state: "open", target: 500, background: true },
+    { state: "open", target: 500 },
+  ]);
+  restored.dispose();
+
   const watch = await watchRig("network_error");
   assert.equal(watch.model().connection.state, "paused");
   assert.equal(watch.model().rows.length, 500);
@@ -580,8 +612,34 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   const transient = await watchRig("network_error");
   assert.deepEqual(providerAsks(transient), []);
   transient.state.now += 60_001;
+  transient.state.automatic = false;
+  const outage = transient.model().connection.text;
+  const steadyRetry = () => {
+    assert.deepEqual(transient.model().connection, {
+      state: "paused",
+      text: outage,
+      reload: false,
+      retrying: true,
+    });
+    assert.equal(transient.model().live, outage);
+    assert.equal(transient.model().rows.length, 500);
+  };
   await tick(transient);
+  await transient.respond();
   assert.deepEqual(providerAsks(transient), [{ state: "open", target: 500, background: true }]);
+  steadyRetry();
+  transient.state.refreshing = true;
+  await transient.respond();
+  steadyRetry();
+  assert.equal(panel.refreshFailure(transient.envelope("?state=open"), at), null);
+  transient.state.refreshing = false;
+  transient.state.lastRefresh = makeFailure("succeeded", transient.state.now);
+  transient.state.automatic = true;
+  await tick(transient);
+  assert.equal(transient.model().connection.state, "connected");
+  assert.equal(transient.model().connection.reload, true);
+  assert.equal(transient.model().connection.retrying, undefined);
+  assert.notEqual(transient.model().live, outage);
   transient.dispose();
 
   const localFailure = await watchRig("network_error");
@@ -616,7 +674,8 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
   reload.state.automatic = false;
   const reloading = reload.controller.reload();
   await reload.controller.reload();
-  assert.equal(reload.model().connection.state, "working");
+  assert.equal(reload.model().connection.state, "paused");
+  assert.equal(reload.model().connection.retrying, true);
   assert.equal(reload.model().connection.reload, false);
   assert.deepEqual(providerAsks(reload), [{ state: "open", target: 500, retry: true }]);
   await reload.respond();
@@ -698,7 +757,10 @@ function rig(panel, { cached = 6000, automatic = true } = {}) {
         offlineKeepsCache: true,
         reconnectUsesBackgroundHint: true,
         interactiveFilterKeepsPriority: true,
+        directAndHistoryFiltersKeepPriority: true,
+        hiddenWarmupYieldsToVisibleDemand: true,
         transientRetriesAutomatically: true,
+        retryKeepsPriorFailure: true,
         localReadFailureDoesNotPost: true,
         setupUsesQuietProbe: true,
         focusCoalesces: true,
