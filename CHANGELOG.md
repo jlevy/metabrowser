@@ -13,6 +13,8 @@ All notable changes to Metabrowser are documented here.
 
 PR and Git navigation:
 
+- Document and Source use the same outer gutter and inner inset, with card edges aligned
+  to display tabs and prose aligned to their labels.
 - Files, Commits, and Pulls appear in that order and open with `⌘1`, `⌘2`, and `⌘3`.
   Help lists plain digits for browsers that reserve the Command chords.
 - Pulls resumes incremental GitHub updates after reconnect and shows one connection

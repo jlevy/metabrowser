@@ -99,16 +99,15 @@
   color: var(--muted);
 }
 
-/* Keep every panel on the document card's edge. The Markdown view supplies
-   the README's own card and uses the same pane gutter for its prose. */
+/* Keep every panel inside the shared outer gutter. Panel text and the
+   README card use the same inner inset as the display tab labels. */
 @media screen {
   .folder-overview-host {
-    --folder-overview-column-inset: var(--content-padding-x);
+    --folder-overview-column-inset: var(--pane-header-padding-x);
     --folder-overview-card-width: min(
       100%,
       calc(var(--doc-measure) + 2 * var(--folder-overview-column-inset))
     );
-    padding-inline: 0;
   }
 
   .folder-overview-panel-surface > .folder-overview-panel-heading,
@@ -122,12 +121,12 @@
 
   .folder-overview-panel-heading,
   .folder-overview-panel-surface > .folder-overview-panel-body {
-    padding-inline: var(--content-padding-x);
+    padding-inline: var(--pane-header-padding-x);
   }
 
   @container kpress-doc (min-width: 48rem) {
     .folder-overview-host {
-      --folder-overview-column-inset: calc(var(--content-padding-x) - 1px);
+      --folder-overview-column-inset: calc(var(--pane-header-padding-x) - 1px);
     }
   }
 }

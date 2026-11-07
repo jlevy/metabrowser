@@ -869,11 +869,11 @@ def test_one_document_surface_has_one_set_of_breakpoints() -> None:
     )
     for css in (folder, markdown):
         assert "@container kpress-doc (min-width: 48rem)" in css
-        assert "calc(var(--content-padding-x) - 1px)" in css
+        assert "calc(var(--pane-header-padding-x) - 1px)" in css
         assert "@container (min-width:" not in css
     assert ".metabrowser-markdown-document > .kpress-doc" in markdown
     assert "var(--doc-measure)" in folder
-    assert "padding-inline: var(--content-padding-x)" in folder
+    assert "padding-inline: var(--pane-header-padding-x)" in folder
     readme = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/readme-panel.js").read_text(
         encoding="utf-8"
     )

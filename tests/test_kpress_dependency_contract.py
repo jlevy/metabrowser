@@ -122,7 +122,10 @@ def test_markdown_uses_the_kpress_toc_only_when_the_document_has_one(
     table = rules[f'{document} .kpress-table-wrap[data-kpress-table-scale="wide"]']
     assert table["width"] == "max-content"
     assert table["min-width"] == "100%"
-    assert " ".join(table["max-width"].split()) == "calc(100cqw - 2 * var(--content-padding-x))"
+    assert (
+        " ".join(table["max-width"].split())
+        == "calc(100cqw - 2 * (var(--content-padding-x) + var(--pane-header-padding-x)))"
+    )
 
 
 def test_embedded_readme_keeps_wide_tables_inside_the_panel() -> None:
