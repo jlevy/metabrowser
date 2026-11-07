@@ -1126,6 +1126,10 @@ export function createPullsController(deps, options = {}) {
   function holdEnvelope(list, envelope, request) {
     list.envelope = envelope;
     const identity = coreCatalogIdentity(envelope);
+    if (warmIdentity === null) {
+      // Bind the startup hint before its first batch, not only when All is read.
+      warmIdentity = identity;
+    }
     if (identity !== null && warmIdentity !== null && identity !== warmIdentity) {
       warmIdentity = identity;
       warmAfter = null;

@@ -45,6 +45,18 @@ async function run() {
           if (body.numbers.length === 0) {
             return { status: 200, body: { preparation: "released" } };
           }
+          if (
+            body.window.generation !== catalogGeneration ||
+            body.numbers.some(
+              (number) =>
+                !inventory.some(
+                  (row) =>
+                    row.number === number && (body.state === "all" || row.state === body.state),
+                ),
+            )
+          ) {
+            return { status: 200, body: { preparation: "not_owner" } };
+          }
           attempts.push({ at: now, numbers: body.numbers });
           if (now < busyUntil) {
             return { status: 200, body: { preparation: "busy" } };
@@ -211,7 +223,8 @@ async function run() {
         visible = true;
         controller.onVisibilityChange();
       },
-      changeEpoch() {
+      changeEpoch(replacement = inventory) {
+        inventory = replacement;
         catalogGeneration = "replacement-epoch:0";
         cached.clear();
         jobs.clear();
@@ -240,6 +253,22 @@ async function run() {
   await startup.until(() => startup.cached.size === rows.length);
   assert.equal(startup.batches.length, 6, "catalog epoch replacement restarts the completed pass");
   startup.controller.dispose();
+
+  const earlyEpoch = rig();
+  await earlyEpoch.start();
+  await earlyEpoch.next();
+  assert.equal(earlyEpoch.batches.length, 1, "the first default-filter cohort is still priming");
+  assert.equal(earlyEpoch.cached.size, 0);
+  const replacementRows = rows.map((row, at) => ({ ...row, number: 60 - at }));
+  earlyEpoch.changeEpoch(replacementRows);
+  await settle();
+  await earlyEpoch.until(() => earlyEpoch.cached.size === rows.length);
+  assert.deepEqual(
+    [...earlyEpoch.cached],
+    replacementRows.map((row) => row.number),
+  );
+  assert.equal(earlyEpoch.batches.length, 4, "new identity replaces the unfinished prime cohort");
+  earlyEpoch.controller.dispose();
 
   const recentClosed = rows.slice(0, 12).map((row, at) => ({
     ...row,
