@@ -44,11 +44,16 @@ It initially displays up to 500 matching pull requests.
 When more exist, **Showing last 500** appears below the total.
 Scrolling toward the end loads the next window for the current filter.
 **Fetch more** advances the list explicitly.
-After the list has painted, Metabrowser can prepare descriptions for up to eight visible
-pull requests that lack a cached full record.
-An eligible window can issue one GitHub batch; a selected refresh takes priority.
-If a window is busy, the panel can retry once while the same rows are visible.
-Scrolling to a nearby window can reuse still-current descriptions for overlapping rows.
+After initial Files work is idle, Metabrowser prepares lightweight PR headers and
+descriptions in both managed repositories and existing checkouts.
+The current filter warms first, visible rows take priority as you scroll, and
+preparation continues through the cached catalog.
+Small transport batches limit in-flight work without capping total coverage.
+Busy preparation retries while demand remains; hiding the browser or losing the network
+pauses the unfinished pass, and returning resumes it.
+Validated descriptions persist locally across later batches and server restarts.
+A changed summary can show its older description while new metadata is prepared.
+A selected refresh takes priority.
 Selecting a row shows its prepared description when available.
 For a missing full record, the selected refresh still verifies a fresh description and
 completes the record.
@@ -100,8 +105,11 @@ follow its instructions and choose **Reload**. See
 
 With the optional [gh-stack extension](installation.md#git-and-github-setup), a list row
 shows **Stack #N** when native GitHub metadata names its membership.
-The PR page shows its position, **Previous PR** and **Next PR**, and a disclosure of
-member PR links in bottom-to-top order.
+The PR page shows a Layers icon and position, such as **5/23**. Open it for a menu
+ordered from stack top to base, with each member’s title, ordinal, and PR number.
+Titles come from the matching local catalog; a missing title falls back to the PR
+number. Use **⇧J** toward the stack base and **⇧K** toward its top.
+Help lists both shortcuts, and editors or open dialogs keep their normal keys.
 Moving between members keeps the current PR tab selected and clears the previous PR’s
 file selection.
 Expanded trees retain their keyboard position; the current-file highlight
