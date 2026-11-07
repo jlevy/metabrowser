@@ -3,9 +3,9 @@ type: is
 id: is-01m6shhnvfvppa319j426d9cbg
 title: Show one PR watch status and resume from reconnect
 kind: task
-status: in_progress
+status: closed
 priority: 2
-version: 6
+version: 7
 spec_path: docs/project/specs/active/plan-2026-11-06-pr-watch-and-reconnect.md
 delegate: codex@spud10.local
 labels: []
@@ -16,8 +16,12 @@ parent_id: is-01m6shhkwxasd5rpv91y17qc4w
 hold: null
 hold_until: null
 created_at: 2026-11-06T23:01:52.110Z
-updated_at: 2026-11-07T02:21:18.649Z
+updated_at: 2026-11-07T04:26:48.944Z
 started_at: 2026-11-06T23:03:25.387Z
+closed_at: 2026-11-07T04:26:48.943Z
+close_reason: "PR #312 at reviewed 67c27fdb has green exact-head CI and no unresolved threads. Steady retry status, disabled Reload, visible-filter priority and normalized auth help passed focused and browser sessions."
+resolution: null
+duplicate_of: null
 ---
 Use one status in Pulls chrome with cached data preserved, a standard progress cue, an actionable Reload control, and automatic retry and recovery on visibility or online changes.
 
