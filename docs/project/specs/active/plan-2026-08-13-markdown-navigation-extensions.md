@@ -35,6 +35,20 @@ project configuration.
 Missing and ambiguous destinations remain visible rather than falling back to inventory
 order, fuzzy matching, case folding, or traversal outside the active root.
 
+## Document Layout
+
+`mb-t0rp` aligns rendered prose with the Document tab’s start edge and the shared pane
+gutter used by Source and PR headers.
+The preview uses the same maximum reading width as the rendered README and PR
+conversation. KPress supplies the table of contents, scroll-spy, and narrow overlay.
+The Markdown host places the wide rail after the prose and keeps any thumbnail above the
+text.
+Overview aligns its panel stack with the same prose gutter and keeps its nested TOC
+suppressed.
+
+Verify with the
+[reading layout playbook](../../../e2e-testing.md#markdown-reading-layout).
+
 ## Public Contracts
 
 The mounted-root and source-line extensions below are proposed contracts, not fields

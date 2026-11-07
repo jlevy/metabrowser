@@ -413,6 +413,31 @@ Open the printed URL and verify:
 
 Do not make the manual check the only coverage for a deterministic contract.
 
+### Markdown Reading Layout
+
+Open a long Markdown file with a table of contents in the built-in browser.
+Compare the Document tab’s first heading with the leftmost tab’s edge.
+Switch to Source and check the pane gutter and line-number column.
+At a preview width of 75 rem or more, check the TOC to the right of the prose and follow
+a heading link.
+Use a document with a thumbnail and a wide table to check their positions
+beside the rail.
+
+Narrow the preview through tablet and phone widths.
+Scroll past the first section, open the TOC with its icon, and follow a heading.
+Reopen the overlay and dismiss it with Escape.
+Open a short file, then reopen it after a warm read to check the same start edge.
+In Folder Overview, compare the README’s prose edge with the same file opened directly,
+and check the section rules and panel borders along the stack.
+In a wide pane, compare paragraph widths in Markdown and a PR conversation at both 102
+and 80 in **Max text width**. Restore the setting after the comparison.
+
+The 2026-11-06 built-in browser check aligned the first tab, direct README prose, and
+Overview README prose at the pane gutter.
+Both README text boxes measured 662 px with the default settings.
+The narrow-pane check opened the TOC without overlapping prose, followed a heading, and
+closed the drawer at the destination.
+
 ### PR and Git Navigation Performance
 
 Use the

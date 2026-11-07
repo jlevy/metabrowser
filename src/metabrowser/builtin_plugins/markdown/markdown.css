@@ -21,3 +21,101 @@
 .metabrowser-wiki-transclusion > .kpress {
   background: transparent;
 }
+
+/* Use the Source tab's pane gutter for the prose. KPress still owns the
+   measure caps, the document card and its table of contents. */
+@media screen {
+  .metabrowser-markdown-document:has(> .kpress-doc) {
+    padding-inline: 0;
+  }
+
+  .metabrowser-markdown-document > .kpress-doc {
+    --kpress-doc-gutter: 0px;
+    --kpress-column-inset: var(--content-padding-x);
+    margin-inline-start: 0;
+  }
+
+  .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout,
+  .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout > .kpress-long-text {
+    margin-inline-start: 0;
+  }
+
+  @container kpress-doc (max-width: 47.99rem) {
+    .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout > .kpress-long-text {
+      --kpress-prose-gutter: var(--content-padding-x);
+    }
+  }
+
+  @container kpress-doc (min-width: 48rem) {
+    .metabrowser-markdown-document > .kpress-doc[data-kpress-card="on"] {
+      --kpress-column-inset: calc(var(--content-padding-x) - 1px);
+    }
+  }
+
+  /* KPress's narrow drawer keeps its toggle in the trailing gutter so it
+     leaves the first words clear at the shared reading edge. */
+  @container kpress-doc (max-width: 74.99rem) {
+    .metabrowser-markdown-document > .kpress-doc:has(> .kpress-doc-layout > .kpress-toc) {
+      --kpress-doc-gutter: var(--kpress-toc-toggle-clearance);
+      padding-inline-start: 0;
+    }
+
+    .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout > .kpress-toc-toggle {
+      left: auto;
+      right: 0.75rem;
+    }
+  }
+
+  /* KPress's desktop TOC uses a 15rem rail and a 3rem gap. Swap the
+     grid tracks and keep its sticky navigation and narrow drawer. */
+  @container kpress-doc (min-width: 75rem) {
+    .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout:has(> .kpress-toc) {
+      grid-template-areas: "prose toc";
+      grid-template-columns:
+        min(
+          calc(var(--kpress-measure) + 2 * var(--kpress-column-inset)),
+          calc(100% - 18rem - var(--content-padding-x))
+        )
+        15rem;
+    }
+
+    .metabrowser-markdown-document
+      > .kpress-doc
+      > .kpress-doc-layout:has(> .kpress-toc):has(> .thumbnail) {
+      grid-template-areas:
+        "thumbnail toc"
+        "prose toc";
+    }
+
+    .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout > .kpress-long-text {
+      grid-area: prose;
+    }
+
+    .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout > .kpress-toc {
+      grid-area: toc;
+    }
+
+    .metabrowser-markdown-document > .kpress-doc > .kpress-doc-layout > .thumbnail {
+      grid-area: thumbnail;
+    }
+
+    /* A wide table can use the trailing space in a single-column document.
+       With a TOC it scrolls inside the card to leave the rail available. */
+    .metabrowser-markdown-document > .kpress-doc
+      .kpress-table-wrap[data-kpress-table-scale="wide"] {
+      left: 0;
+      margin-inline: 0;
+      max-width: calc(100cqw - 2 * var(--content-padding-x));
+      min-width: 100%;
+      transform: none;
+      width: max-content;
+    }
+
+    .metabrowser-markdown-document
+      > .kpress-doc
+      > .kpress-doc-layout:has(> .kpress-toc)
+      .kpress-table-wrap[data-kpress-table-scale="wide"] {
+      max-width: 100%;
+    }
+  }
+}

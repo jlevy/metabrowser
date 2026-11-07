@@ -135,7 +135,7 @@ export function mountRenderedMarkdown(container, ctx, mb, options = {}) {
     disposeToc = null;
   };
 
-  container.classList.add("metabrowser-kpress-host");
+  container.classList.add("metabrowser-kpress-host", "metabrowser-markdown-document");
   container.innerHTML =
     '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
     '<span class="sr-only">Loading document…</span></div>';
