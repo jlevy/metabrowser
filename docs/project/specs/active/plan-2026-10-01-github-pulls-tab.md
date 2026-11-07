@@ -894,21 +894,19 @@ windowing module.
 
 **What is prefetched.**
 
-- On a mirror, after the first tree settles: the view’s code and the cached list
-  envelope. Both are local.
-- On a checkout: nothing until the tab is opened.
-  Even the cached read would load the cache into a folder’s server.
-- A cached record is read when its row takes focus or the pointer, which is a local
-  `GET` that runs no `gh`.
-- The network refresh starts when the tab is first opened on a checkout.
-  On a mirror it starts with that read ahead, once the first tree has settled, which is
-  what “prefetch by default” asks for.
-  Step 3 measured it by [Performance](#performance)’s rule, nine back-to-back pairs on
-  pallets/click: first row 1.001x and the mirror’s own refresh 0.998x. Started as the
-  page starts it was 1.09x to 1.14x on the first row, past the rule, so it does not
-  start there.
-- No spinner appears before the `--loading-state-delay` token, through the existing
-  `mb-delayed-loading` class.
+The current policy is
+[Progressive Metadata Preparation](#progressive-metadata-preparation).
+In both repository modes, idle startup loads the view code and cached catalog, starts a
+due metadata refresh, and progressively prepares lightweight descriptions.
+A plain folder starts no GitHub work.
+The selected PR alone asks for full discussion, checks, files, or Git acquisition.
+
+The original Step 3 experiment measured the catalog warm-up on nine back-to-back pairs
+on pallets/click: first row 1.001x and the mirror’s own refresh 0.998x. Starting it with
+the initial page work cost 1.09x to 1.14x on the first row.
+These historical results explain the idle boundary; they do not establish the cost of
+the current progressive description pass.
+No spinner appears before the shared loading-state delay.
 
 ### Changed Files in a Row
 
@@ -1199,13 +1197,13 @@ profile by default, and a pull request’s text is written by anyone.
   the written files.
 - **What leaves the machine, and when.**
   - On a plain folder: nothing.
-  - On a checkout: nothing until the Pulls tab is opened.
-    Then `gh` asks api.github.com for the list of the repository named by `origin`, and
-    for each pull request the reader opens.
-  - On a mirror: `gh` asks api.github.com for the list of the mirrored repository as the
-    page opens, once the first tree has settled, whether or not the Pulls tab is opened,
-    and at most once per freshness window ([What is prefetched](#the-tab)); then for
-    each pull request the reader opens, with the Git fetch of `refs/pull/<n>/head`.
+  - On a checkout or mirror: after the first tree work settles, `gh` can ask
+    api.github.com for the repository’s catalog and lightweight PR descriptions even
+    while Files remains selected, as defined by
+    [Progressive Metadata Preparation](#progressive-metadata-preparation).
+    The browser pauses unfinished background work while hidden or offline.
+    Full discussion, checks, changed files, and Git objects are requested when needed;
+    selected comparison preparation fetches `refs/pull/<n>/head`.
   - The requests name the repository and the pull request, and carry `gh`’s own
     authentication. Nothing about local files, paths, or branches is sent.
 - **Route safety.** Every route that starts network work is a `POST` with a JSON body

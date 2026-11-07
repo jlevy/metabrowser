@@ -471,6 +471,8 @@ framework:
    continues through the cached catalog beyond the first transport batch.
    Keep the provider busy for longer than a minute, then confirm retry resumes without
    another scroll. Hide or disconnect the browser, then resume the unfinished cursor.
+   Check that default Open rows warm before newer Closed rows and that a known rate
+   reset resumes the pass while Files remains selected.
    Repeated ready reads must not refetch unchanged rows.
    Reopen an early prepared description after later batches, a minute, and server
    restart; confirm that the durable lightweight record is served without a provider
