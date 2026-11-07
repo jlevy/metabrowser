@@ -851,7 +851,10 @@ export function describePull(envelope, page) {
     model.corePreview = true;
     model.contentReady = true;
     model.message = page.error ?? null;
-    model.freshness = `Description fetched ${relativeAge(preview.observed_at, page.nowMs)} by ${preview.reader.replace(/^gh:/, "")}${model.refreshing ? " · discussion and checks loading" : ""}`;
+    const age = relativeAge(preview.observed_at, page.nowMs);
+    model.freshness = model.refreshing
+      ? `Loading details… · description fetched ${age} via GitHub CLI`
+      : `Description fetched ${age} via GitHub CLI`;
     model.canRefresh =
       envelope.state === "absent" &&
       envelope.reason !== "not_github" &&
@@ -896,11 +899,9 @@ export function describePull(envelope, page) {
       (typeof record.unavailable?.comparison === "string" &&
         record.unavailable.comparison !== "no_store"));
   const age = relativeAge(record.fetched_at ?? null, page.nowMs);
-  // The account the record was read as, without the tool that read it.
-  const reader = text(record.reader).replace(/^gh:/, "");
   model.freshness = model.refreshing
-    ? `Refreshing… · fetched ${age} by ${reader}`
-    : `Fetched ${age} by ${reader}${envelope.state === "stale" ? " · may be out of date" : ""}`;
+    ? `Refreshing… · fetched ${age} via GitHub CLI`
+    : `Fetched ${age} via GitHub CLI${envelope.state === "stale" ? " · may be out of date" : ""}`;
   const pull = record.pull ?? {};
   model.pull = describeCore(pull);
   model.timeline = timeline(record);

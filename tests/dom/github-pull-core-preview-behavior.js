@@ -119,7 +119,7 @@ async function heldPostCadence(page, full) {
     const requested = controller.requestRefresh();
     await settle();
     if (!waitCore) {
-      assert.match(shown.freshness, /^Refreshing… · fetched .+ by /);
+      assert.match(shown.freshness, /^Refreshing… · fetched .+ via GitHub CLI$/);
     }
     await advance(heldMs);
     assert.deepEqual(
@@ -432,6 +432,10 @@ async function run() {
   assert.doesNotMatch(body.textContent, /Checks and statuses|No checks or statuses reported/);
   const progress = container.querySelectorAll(".github-pull-progress");
   assert.equal(progress.length, 2, "the header and Discussion show active progress");
+  assert.match(
+    progress[0].textContent,
+    /^Loading details… · description fetched .+ via GitHub CLI$/,
+  );
   for (const status of progress) {
     assert.equal(status.getAttribute("role"), "status");
     assert.equal(status.querySelector(".spinner").getAttribute("aria-hidden"), "true");

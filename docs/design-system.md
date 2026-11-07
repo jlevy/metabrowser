@@ -129,8 +129,8 @@ headers, comments, reviews, full commit summaries and folder headers use relativ
 Call sites choose the presentation style and positioning, never their own suffix,
 abbreviation, color, or weight.
 A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
-in `data-tip-text`. Freshness sentences such as “Fetched 2 min ago by a reader” retain
-their sentence formatter.
+in `data-tip-text`. Freshness sentences such as “Fetched 2 min ago via GitHub CLI”
+retain their sentence formatter.
 
 ## Typography
 
@@ -1053,6 +1053,9 @@ reading column even when Changes is selected.
 Its reveal wrapper and skeleton are separate nodes, so the shared loading delay does not
 replace the pulse or reduced-motion rule.
 A cached page stays readable during refresh.
+The header pairs the shared spinner with `Refreshing…` on a cached page or
+`Loading details…` on a description preview.
+Its freshness copy names GitHub CLI and the fetch age.
 The Checks tab uses the same heading, status badges, and detail links for check runs and
 status contexts. Use a shared small gray spinner beside each active section’s status
 after the page has rendered.

@@ -159,7 +159,7 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   );
   assert(warm.textContent.includes(current.body.record.pull.title));
   const refreshing = warm.querySelector(".github-pull-status");
-  assert.match(refreshing.textContent, /^Refreshing… · fetched .+ by /);
+  assert.match(refreshing.textContent, /^Refreshing… · fetched .+ via GitHub CLI$/);
   assert(refreshing.querySelector(".spinner"), "cached refreshing status includes a spinner");
   resolveStacks({
     status: optionalStacks.current.status,
