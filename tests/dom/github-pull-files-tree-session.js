@@ -149,13 +149,13 @@ async function main() {
     throw Error("timestamps must not split the same progressive generation");
   }
   const rowExpansion = tree.createRowExpansion();
-  const expandedRows = [rowExpansion.shown(7), rowExpansion.shown(8)];
+  const expandedRows = [rowExpansion.shown(7, true), rowExpansion.shown(8, true)];
   rowExpansion.expand(8);
-  expandedRows.push(rowExpansion.shown(9));
+  expandedRows.push(rowExpansion.shown(9, true));
   if (!rowExpansion.isExpanded(8)) {
     throw Error("a reader's expansion must survive page replacement");
   }
-  stories["only automatic row expansions close when the page moves"] = expandedRows;
+  stories["only file-address expansions close when the page moves"] = expandedRows;
   stories["a long tree draws only its viewport and overscan"] = [0, 12000, 200000].map((top) =>
     tree.windowRange({
       count: 4539,
@@ -375,13 +375,13 @@ async function controllerStory(tree) {
   look("a failed first read offers Retry and keeps reading");
   reads.push("absent");
   await controller.retry();
-  if (requests.some((line) => line.startsWith("POST"))) {
-    throw Error("an address alone fetched");
+  if (requests.filter((line) => line.startsWith("POST")).length !== 1) {
+    throw Error("an expanded tree with a missing cache must ask exactly once");
   }
-  look("Retry reads the cache; an address alone fetches nothing");
-  controller.expand({ reader: true });
-  await settle();
-  look("a reader's expansion asks for an uncached list");
+  if (!model.loading || model.notice !== null) {
+    throw Error("an expanded tree lists automatically while showing progress");
+  }
+  look("Retry reads the cache and automatically lists missing files");
   for (const name of ["filling 1", "filling 2", "filled"]) {
     reads.push(name);
     await fire(tree.FILES_POLL_MS);

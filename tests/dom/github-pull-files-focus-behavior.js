@@ -189,7 +189,9 @@ async function run() {
     view.attach(parent, owner);
     view.controller.expand();
     await settle();
-    const list = view.group.children[3];
+    const list = view.group.children.find(
+      (element) => element.getAttribute("class") === "github-pull-files-rows",
+    );
     const survivorId = scenario.startsWith("windowed") ? "a000.py" : "a.py";
     const survivor = list.children.find((element) => element.dataset.id === survivorId);
     assert.equal(survivor.children[0].attributes.get("data-file-status"), "unchanged");

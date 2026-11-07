@@ -38,14 +38,15 @@ or connection failures.
 The [PR watch plan](plan-2026-11-06-pr-watch-and-reconnect.md) defines when the watch
 runs, how Reload and the shared status work, and what recovery the tests cover.
 
-## Planned Changed-File Disclosure Correction
+## Changed-File Disclosure
 
 `mb-6lnm` separates PR selection from changed-file disclosure.
 Up, Down, J, and K move the selection.
 The PR preview follows while each tree keeps its expansion state.
 Clicking the PR row opens the PR and toggles its tree.
 Right expands or enters the tree, and Left collapses it.
-Opening a PR with Enter or Space leaves disclosure to those controls.
+Enter and Space open the PR without changing disclosure.
+An explicit changed-file link opens its tree so the selected file is visible.
 
 `mb-neq0` makes intentional expansion cache-first.
 Render cached changed files as soon as the local list read answers.
@@ -55,9 +56,9 @@ Use the shared delayed gray spinner while the read or refresh is active.
 Show the count and any actual truncation alongside the rows.
 Reserve recovery copy and Retry for failures or setup requirements.
 
-Extend the browserless Pulls and changed-files sessions to walk PRs with the keyboard
-without opening trees or requesting their file lists.
-Then exercise click and Right against both warm and cold caches.
+The browserless Pulls and changed-files sessions check keyboard walks without opening
+trees or reading their file lists.
+They also exercise click and Right against warm and cold caches.
 Check that a current cached tree paints on the first read.
 A cold expansion starts one bounded list job and paints its published pages.
 Check the shared spinner during work.
@@ -634,7 +635,7 @@ bounded set, plus a direct start of any number’s refresh by the plugin’s `PO
 - A visible PR page fills a cold record cache once after its initial cache read.
   A selected row or changed file can start the same fetch.
   Intentional expansion reads that PR’s file list through the
-  [changed-file disclosure flow](#planned-changed-file-disclosure-correction).
+  [changed-file disclosure flow](#changed-file-disclosure).
   After a failed fetch, **Fetch** offers a retry.
   A checkout can acquire a comparison store through **Fetch changes**.
 - A pull request with a record refreshes in the background when its page is visible and
@@ -755,8 +756,8 @@ pull-request page.
 **Which tab shows.** The Files tab stays for code at the pin.
 At a pull request’s address the navigation pane shows the Pulls tab, with that pull
 request’s row current, including on the page `metab <pull-request-url>` opens with.
-The [planned disclosure correction](#planned-changed-file-disclosure-correction)
-separates the current row from its expansion state.
+The [changed-file disclosure](#changed-file-disclosure) separates the current row from
+its expansion state.
 
 **The list’s address.** `/pulls`, with `?state=` for a filter, is the list with no pull
 request selected, as on GitHub.
@@ -940,8 +941,7 @@ The keyboard splits them: Enter opens, Right expands, and Left collapses, as
 `static/tree-keyboard-navigation.js` does for the Files tree, and the host hands the
 view that module, so the plugin reaches no private global.
 The initial implementation expanded the shown PR’s row automatically.
-The [planned disclosure correction](#planned-changed-file-disclosure-correction) gives
-expansion its own gesture.
+The [changed-file disclosure](#changed-file-disclosure) gives expansion its own gesture.
 A file shown in the page is marked current in its tree.
 
 **Walking files with the keyboard.** The user: “It may require rapid scrolling up the
@@ -1031,8 +1031,7 @@ The refresh coordinator holds repeated attempts to its freshness window; conditi
 GitHub page reads reuse unchanged rows.
 
 **What starts a fetch.** Intentional expansion uses the
-[planned cache-first disclosure flow](#planned-changed-file-disclosure-correction) and
-the existing `POST` rule.
+[cache-first disclosure flow](#changed-file-disclosure) and the existing `POST` rule.
 Pointer or focus prefetch reads the cached list only.
 
 **Opening a file.** A file row is a link to `/pull/<n>/files/<path>`, extending the
