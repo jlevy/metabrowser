@@ -467,10 +467,17 @@ framework:
    after it finishes. Record the actual batch state with each planned dwell.
    With two tabs, confirm a refused preparation leaves the first tab’s window available.
    Hold a batch while scrolling to a second window.
-   Check that the busy window retries once, repeated tokens cannot refetch unchanged
-   rows, and overlapping prepared descriptions retain their original expiry.
-   While a batch runs or after it becomes ready, change one admitted summary and confirm
-   an unchanged sibling is still readable.
+   Check that viewport demand covers all visible rows and that the background cursor
+   continues through the cached catalog beyond the first transport batch.
+   Keep the provider busy for longer than a minute, then confirm retry resumes without
+   another scroll. Hide or disconnect the browser, then resume the unfinished cursor.
+   Repeated ready reads must not refetch unchanged rows.
+   Reopen an early prepared description after later batches, a minute, and server
+   restart; confirm that the durable lightweight record is served without a provider
+   call. While a batch runs or after it becomes ready, change one admitted summary and
+   confirm an unchanged sibling is still readable.
+   Replace the repository or authenticated reader and confirm that old admission or
+   cached metadata cannot cross that boundary.
 4. In Git, compare natural and prepared selection, re-enter the displayed row, and leave
    for a file while deferred requests are active.
    Check exact route and subject, cancellation, queued work, single active ownership and
@@ -479,6 +486,25 @@ framework:
    Timing, retained heap and sampled backend RSS. Follow the loop’s repetition and
    acceptance rules; retain failures and distinguish an isolated mechanism probe from a
    complete navigation result.
+
+### Shared Content Layout and Stack Navigation
+
+Compare a Markdown document, its Source and Raw views, a folder README, a commit with a
+description, and a PR with comments.
+At wide and narrow pane widths, check that card borders and source surfaces begin at the
+first display tab’s outer edge.
+Retain the document card’s roomy KPress inset, with the desktop contents rail on the
+right and the existing narrow contents icon and drawer.
+A wide table must remain reachable by horizontal scrolling without expanding the pane.
+Commit descriptions and PR prose use the same sans size, ink, and neutral bordered
+surface. Author, action, and age must share a baseline while branch chips stay smaller.
+
+On a PR in a known stack, open the position menu.
+Check titles, ordinal and PR number, current-member indication, focus, Escape, outside
+click, and keyboard selection.
+Use ⇧J toward the base and ⇧K toward the top; preserve the selected PR tab and clear the
+old file selection. Confirm endpoint handling and that an editor or open dialog retains
+its keys.
 
 ### Quick Search and Main Tabs
 

@@ -38,9 +38,15 @@ PR and Git navigation:
   The Open, Closed, and All filters show their exact totals from the Pulls catalog.
 - The Pulls tab names the repository once in bold and uses a single spinner line for
   loading and refresh.
-- The Pulls tab prepares descriptions for up to eight visible PRs after summaries paint.
-  Selection takes priority, and only the selected PR fetches discussion, checks, and Git
-  objects.
+- Pull request metadata warms after idle startup in both checkouts and managed
+  repositories. Visible rows take priority as the reader scrolls, and background
+  preparation continues through the cached catalog.
+  Lightweight descriptions persist locally across batches and server restarts.
+  Selection takes priority; discussion, checks, and Git objects load when needed.
+- PR stacks open from a compact position menu with titles, ordinals, and PR numbers.
+  Use ⇧J toward the stack base and ⇧K toward its top.
+- PR author, action, and age share one metadata size and baseline.
+  Commit descriptions share PR cards’ neutral surface and sans prose typography.
 - A selected PR can show its verified header and description before discussion, checks
   and comparison preparation finish.
   Pending sections stay explicit, cached full records take precedence, and a superseded
