@@ -144,11 +144,6 @@
   gap: var(--github-pull-gap);
   padding: var(--content-padding-y) var(--content-padding-x);
 }
-.github-pull-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
-  overflow: hidden;
-}
 .github-pull-card-head {
   min-height: var(--ui-row-height);
   padding: 3px var(--github-pull-text-inset);

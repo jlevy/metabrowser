@@ -3979,6 +3979,15 @@ a.tab-btn {
    the toggle, and the drawer. The doc <h1> header is suppressed at the source
    via show_doc_header=False (the path shows in metabrowser's file header), so
    no host CSS override is needed. */
+/* Shared content frame; consumers own their padding and prose or code type. */
+.page-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
 /* ── Notices ─────────────────────────────────────────────────
    One box for anything the app says *about* the content it is showing: a
    partial load, a render failure. See docs/design-system.md, "Notices";
@@ -5853,13 +5862,14 @@ pre.code-block.metabrowser-source-lines > code {
 
 .git-commit-body {
   margin: 16px 0;
-  padding: 12px var(--pane-header-padding-x);
-  border-radius: var(--radius-document);
-  background: var(--code-bg);
+  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
   white-space: pre-wrap;
+  overflow-wrap: break-word;
   overflow-x: auto;
-  font-family: var(--font-sans);
-  font-size: var(--body-font-size);
+  font-family: var(--prose-sans-font);
+  font-size: var(--document-body-font-size);
+  font-weight: var(--weight-normal);
+  line-height: var(--kpress-line-height-normal);
 }
 
 .git-commit-files {

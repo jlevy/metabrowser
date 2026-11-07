@@ -3032,7 +3032,7 @@ export function mountPullPage(container, ctx, mb) {
     const pull = /** @type {NonNullable<PullModel["pull"]>} */ (model.pull);
     texts.clear();
     observer?.disconnect();
-    const description = h("section", { class: "github-pull-card" }, [
+    const description = h("section", { class: "page-card github-pull-card" }, [
       h("div", { class: "github-pull-card-head" }, [
         authorLabel(pull.author, pull.avatar),
         " opened ",
@@ -3068,7 +3068,9 @@ export function mountPullPage(container, ctx, mb) {
         head.append(" commented");
       }
       head.append(" ", item.at === null ? "(pending)" : age(item.at));
-      const card = h("section", { class: `github-pull-card github-pull-${item.kind}` }, [head]);
+      const card = h("section", { class: `page-card github-pull-card github-pull-${item.kind}` }, [
+        head,
+      ]);
       if (item.text.trim() !== "" || item.kind === "comment") {
         card.append(textBlock(item.part, item.text, item.truncated));
       }
@@ -3094,7 +3096,7 @@ export function mountPullPage(container, ctx, mb) {
         ]);
         const card = h(
           "div",
-          { class: `github-pull-card${comment.reply ? " github-pull-reply" : ""}` },
+          { class: `page-card github-pull-card${comment.reply ? " github-pull-reply" : ""}` },
           [head],
         );
         if (!comment.reply && comment.hunk !== null) {
