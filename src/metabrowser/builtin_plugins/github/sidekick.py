@@ -36,6 +36,9 @@ from metabrowser.source_routes import PIN_HEADER, pin_changed_response
 if TYPE_CHECKING:
     from starlette.requests import Request
 
+    from metabrowser.builtin_plugins.github.pull_route import PullView
+    from metabrowser.builtin_plugins.github.served_pull import PullCorePreview
+
 # The answer changes as the record ages and as a refresh replaces it.
 _NO_STORE: Final = {"cache-control": "no-store"}
 # A refresh request carries a few short parameters; a JSON object of any size worth reading fits.
@@ -81,6 +84,33 @@ def _without_store(envelope: Any) -> bool:
     return isinstance(unavailable, dict) and unavailable.get("comparison") == "no_store"
 
 
+async def _preview_current(view: PullView, preview: PullCorePreview | None) -> bool:
+    """Finish revocation checks on the loop after bounded disk validation."""
+    from metabrowser.builtin_plugins.github.pull_route import (
+        cached_core_preview_current,
+        core_preview_current,
+    )
+
+    if preview is None:
+        return True
+    host = view.host
+    if host is None:
+        return False
+    reader = host.pulls.observed_reader
+    identity = host.pulls.core_catalog_identity
+    if preview is not view.core_preview and not await asyncio.to_thread(
+        cached_core_preview_current, view, preview
+    ):
+        return False
+    # Nothing can revoke the accepted mutable observation between this check and
+    # the caller's response construction: no await occurs in this final section.
+    return (
+        host.pulls.observed_reader == reader
+        and host.pulls.core_catalog_identity == identity
+        and core_preview_current(view, preview)
+    )
+
+
 async def pull_handler(request: Request) -> Response:
     """``GET /api/plugin/github/pull?number=<n>`` — see :mod:`.pull_route`.
 
@@ -94,8 +124,6 @@ async def pull_handler(request: Request) -> Response:
     from metabrowser.builtin_plugins.github.pull_route import (
         PullEnvelope,
         PullRequestError,
-        PullView,
-        core_preview_current,
         envelope_etag,
         note_full_record,
         pull_envelope,
@@ -145,7 +173,7 @@ async def pull_handler(request: Request) -> Response:
         waited = await kept.wait_for_full(preview)
         if waited or kept.core_preview is not preview:
             view, stamp, envelope = await snapshot()
-    if not core_preview_current(view, envelope["core_preview"]):
+    if not await _preview_current(view, envelope["core_preview"]):
         envelope["core_preview"] = None
     if envelope["record"] is not None:
         note_full_record(view)
@@ -321,7 +349,6 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
 
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
-        core_preview_current,
         note_full_record,
         pull_envelope,
         pull_host,
@@ -356,7 +383,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     # Read after the start, on the loop: a job is running, whatever it does next.
     view = pull_view(host, get_source_session().subject, ask.number)
     envelope = await asyncio.to_thread(pull_envelope, view)
-    if not core_preview_current(view, envelope["core_preview"]):
+    if not await _preview_current(view, envelope["core_preview"]):
         envelope["core_preview"] = None
     if envelope["record"] is not None:
         note_full_record(view)
@@ -424,7 +451,11 @@ async def pull_timeline_handler(request: Request) -> JSONResponse:
 
 async def pull_cores_prepare_handler(request: Request) -> JSONResponse:
     """Schedule or release a source-owned visible core window."""
-    from metabrowser.builtin_plugins.github.pull_cores import core_request, request_preparation
+    from metabrowser.builtin_plugins.github.pull_cores import (
+        cached_batch,
+        core_request,
+        request_preparation,
+    )
     from metabrowser.builtin_plugins.github.pull_route import pull_host, status_route
 
     body = await _json_body(request)
@@ -443,7 +474,47 @@ async def pull_cores_prepare_handler(request: Request) -> JSONResponse:
             headers=_NO_STORE,
         )
     preparation = await request_preparation(host.pulls, host.coordinator, ask, host.running)
-    answer: dict[str, str] = {"preparation": preparation}
+    answer: dict[str, Any] = {"preparation": preparation}
+    if preparation in {"ready", "partial"}:
+        coverage = await asyncio.to_thread(cached_batch, host.pulls, ask)
+        if coverage is None or (
+            preparation == "ready"
+            and (
+                len(coverage[0]) + len(coverage[1]) != len(ask.numbers)
+                or {*coverage[0], *coverage[1]} != set(ask.numbers)
+            )
+        ):
+            answer["preparation"] = "not_owner"
+        else:
+            answer["ready_numbers"], answer["skipped_numbers"] = map(list, coverage)
+            if preparation == "partial":
+                from datetime import timedelta
+
+                from metabrowser.builtin_plugins.github import pulls
+                from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
+                from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
+
+                covered = {*coverage[0], *coverage[1]}
+                retry = [number for number in ask.numbers if number not in covered]
+                if not retry:
+                    # A selected read or another worker can settle the last member
+                    # during this cache recheck.
+                    answer["preparation"] = "ready"
+                else:
+                    answer["retry_numbers"] = retry
+                # This is the existing per-member attempt lease, not a coverage
+                # cutoff: later cohorts proceed and this subset remains unfinished.
+                if retry:
+                    answer["retry_at"] = utc_stamp(
+                        pulls.utc_now() + timedelta(seconds=FRESHNESS_WINDOW_S)
+                    )
+    elif preparation in {"failed", "held"}:
+        failure = host.pulls.core_failure
+        answer["failure"] = (
+            {"outcome": failure.outcome, "message": failure.message, "reset_at": failure.reset_at}
+            if failure is not None
+            else None
+        )
     if preparation in {"started", "joined"}:
         answer["status_route"] = status_route(ask.numbers[0])
     return JSONResponse(

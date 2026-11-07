@@ -63,6 +63,18 @@ def source_pull_record(slug: str, number: int) -> str:
     return f"{source_pulls_directory(slug)}/{number}.json"
 
 
+def source_pull_core(slug: str, number: int) -> str:
+    """Return the lightweight PR metadata cache beside its full record."""
+
+    return source_pull_record(slug, number).removesuffix(".json") + ".core.json"
+
+
+def source_pull_cores_refresh(slug: str) -> str:
+    """Return the repository's lightweight-core preparation failure stamp."""
+
+    return f"{source_pulls_directory(slug)}/cores.refresh.json"
+
+
 def source_pull_refresh(slug: str, number: int) -> str:
     """Return ``sources/<slug>/pulls/<n>.refresh.json``: how its last refresh ended."""
 
@@ -129,6 +141,8 @@ __all__ = [
     "STAGING",
     "STAGING_LOCKS",
     "source_directory",
+    "source_pull_core",
+    "source_pull_cores_refresh",
     "source_pull_files",
     "source_pull_files_refresh",
     "source_pull_list_refresh",

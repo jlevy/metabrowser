@@ -364,6 +364,53 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
         "gh api graphql visible-cores numbers=7"
     ]
 
+    session.advance(61)
+    session.say("A new command reopens the prepared description from disk without GitHub.")
+    reopened = session._run(CANONICAL, "--api", "/api/plugin/github/pull?number=7")
+    assert reopened.exit_code == 0, reopened.stderr
+    assert reopened.payload()["core_preview"] == preview
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
+    replayed = session.post(
+        {
+            "state": replaced["list"],
+            "window": {"id": "reopened-7", "generation": replaced["generation"]},
+            "numbers": [7],
+        },
+        route=PREPARE,
+    )
+    assert replayed.exit_code == 0
+    assert replayed.payload() == {
+        "preparation": "ready",
+        "ready_numbers": [7],
+        "skipped_numbers": [],
+    }
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
+
+    session.say("A leased member remains unfinished while cached siblings retain coverage.")
+    from metabrowser.builtin_plugins.github import pull_cores
+
+    current_catalog = read_catalog(session.home, origin_identity(CANONICAL).slug)
+    assert current_catalog is not None
+    with monkeypatch.context() as lease:
+        lease.setattr(pull_cores, "_attemptable", lambda *_args: {})
+        partial = session.post(
+            {
+                "state": "all",
+                "window": {"id": "leased-8", "generation": current_catalog.generation("all")},
+                "numbers": [7, 8],
+            },
+            route=PREPARE,
+        )
+    assert partial.exit_code == 0
+    assert partial.payload() == {
+        "preparation": "partial",
+        "ready_numbers": [7],
+        "skipped_numbers": [],
+        "retry_numbers": [8],
+        "retry_at": (session.now + timedelta(seconds=60)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
+
     cached = session.local(f"/api/cache/source/{origin_identity(CANONICAL).slug}")
     assert cached.exit_code == 0, cached.stderr
     rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
