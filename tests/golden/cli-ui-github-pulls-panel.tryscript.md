@@ -952,6 +952,21 @@ $ node tests/dom/github-pulls-catalog-behavior.js
 ? 0
 ```
 
+## Background PR Metadata Preparation
+
+The production controller warms catalog metadata after startup, including while Files is
+selected. The whole measured viewport has priority over the remaining catalog.
+Eight is a transport batch size.
+A completed pass stops, ordinary busy work backs off without abandoning demand, and
+reconnect keeps its settled cursor.
+These virtual-clock values describe scheduler behavior, not browser paint latency.
+
+```console
+$ node tests/dom/github-pr-prefetch-behavior.js
+{"catalogRows":24,"hiddenBatches":[8,8,8],"busyAttemptsMs":[0,1000,3000,7000],"allVisibleReadyMs":12000,"recoveredAfterLongBusyMs":91000,"cachedAfterColdStart":24,"cachedAfterReconnect":24,"completedBeforeDisconnect":8,"backgroundRequestsAfterCompletion":11}
+? 0
+```
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

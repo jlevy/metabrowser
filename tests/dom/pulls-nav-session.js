@@ -214,19 +214,22 @@ async function run() {
   host.dispose();
   log.push({ "the page goes: it is disposed": page.take(), snapshot: host.snapshot() });
 
-  // Elsewhere on a checkout: nothing is read ahead, so the cache and gh wait for the reader.
+  // A checkout uses the same post-startup metadata warmup as a managed repository.
   page = createShell("/view/README.md", { checkout: true });
   host = nav.createPullsNav(page.deps);
   log = story("a checkout's page at a file");
   host.start();
-  log.push({ "the shell starts it: no read ahead": page.take(), snapshot: host.snapshot() });
+  log.push({
+    "the shell starts it: idle warmup scheduled": page.take(),
+    snapshot: host.snapshot(),
+  });
   page.runPrefetch();
   await settle();
-  log.push({ "so nothing mounts while the tab is not shown": page.take() });
+  log.push({ "the idle read mounts it, hidden": page.take() });
   page.deps.activate("pulls");
   await settle();
   log.push({
-    "the tab opens: the view mounts, shown": page.take(),
+    "the tab opens: the warmed view is shown": page.take(),
     "what it is handed": {
       refreshAhead: page.shell.host.refreshAhead,
       checkout: page.shell.host.checkout,

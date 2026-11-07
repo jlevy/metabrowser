@@ -135,14 +135,9 @@
                 current: here?.page ?? null,
                 file: here?.file ?? null,
                 shown,
-                // A checkout reads and refreshes nothing until the tab is shown, by the plan's
-                // rule for a checkout: the network only once the reader opens the tab. On a
-                // mirror, starting the list's refresh once the first tree has settled was
-                // measured against leaving it for the tab's first show, nine back-to-back pairs
-                // on pallets/click at a load average of 4 to 6: first row 1.001x and the mirror's
-                // own refresh 0.998x. Started as the page starts, it was 1.09x to 1.14x on the
-                // first row, past the plan's 1.1x, so it starts here and not there.
-                refreshAhead: !checkout,
+                // Warm PR metadata after the shell's first tree has settled in both
+                // repository modes. Details use the shared bounded background scheduler.
+                refreshAhead: true,
                 checkout,
                 scrollRoot: deps.scrollRoot(),
                 open: (
@@ -275,9 +270,8 @@
             deps.activate(tab);
           }
         }
-        // A checkout's tab mounts on its first show: even the cached read would load the
-        // cache into a folder's server, and its refresh asks GitHub.
-        if (handle === null && mounting === null && !checkout) {
+        // Read metadata in idle time without making Files startup wait for GitHub.
+        if (handle === null && mounting === null) {
           prefetch = deps.schedulePrefetch(() => {
             prefetch = null;
             void ensureMounted();
