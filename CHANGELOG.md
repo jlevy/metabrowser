@@ -13,8 +13,8 @@ All notable changes to Metabrowser are documented here.
 
 PR and Git navigation:
 
-- Files, Git, and Pulls appear in that order and open with `⌘1`, `⌘2`, and `⌘3`. Help
-  lists plain digits for browsers that reserve the Command chords.
+- Files, Commits, and Pulls appear in that order and open with `⌘1`, `⌘2`, and `⌘3`.
+  Help lists plain digits for browsers that reserve the Command chords.
 - Pulls resumes incremental GitHub updates after reconnect and shows one connection
   status with a **Reload** action.
 - Pulls loads older rows automatically as you approach the end of the list.
@@ -31,7 +31,7 @@ PR and Git navigation:
   GitHub’s order. Cached timelines are available offline.
 - The PR diff tab is called **Changes**. A PR that already shows content uses the shared
   gray spinner for active refreshes and pending sections.
-- Files, Pulls, and Git each restore their own selection when switching tabs.
+- Files, Commits, and Pulls each restore their own selection when switching tabs.
   The Open, Closed, and All filters show their exact totals from the Pulls catalog.
 - The Pulls tab names the repository once in bold and uses a single spinner line for
   loading and refresh.
@@ -153,7 +153,7 @@ Reviewing beside a checkout:
 - A folder served from a GitHub checkout can show a pull request’s Files changed.
   Its explicit **Fetch changes** attaches a cached store, borrowing the checkout’s
   objects when one is needed.
-  The folder and its Git tab stay on the checkout; Git and writes run only in the
+  The folder and its Commits tab stay on the checkout; Git and writes run only in the
   managed store. Reading a cached comparison starts no network work.
   `POST /api/plugin/github/pull-refresh` accepts
   `{"number": n, "retry": true, "comparison": true}` for the same action, and the pull
@@ -1495,9 +1495,9 @@ Fixes:
   0.11.0 did. They now answer `truncated`, as `/api/index/progress` and `--walk` already
   did.
 
-- Switching between the Files and Git tabs no longer carries one list’s scroll offset
-  into the other: the two share one scroller, and each now keeps its own place in it,
-  where 0.11.0 carried the offset of the list last shown into the other.
+- Switching between the Files and Commits tabs no longer carries one list’s scroll
+  offset into the other: the two share one scroller, and each now keeps its own place in
+  it, where 0.11.0 carried the offset of the list last shown into the other.
 
 ## 0.11.0
 

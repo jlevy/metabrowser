@@ -287,7 +287,7 @@ Specialized binary stores and their value schemas belong in separately installed
 plugins.
 
 The nav-panel tab list is a registry in `app.js` rather than fixed markup, which is what
-lets the Git tab appear only inside a repository.
+lets the Commits tab appear only inside a repository.
 No plugin-facing registration API is exposed for it yet: the registry is reachable
 through `window.MetabrowserShell`, an internal seam for core modules, and is not part of
 the `window.metabrowser` SDK contract.

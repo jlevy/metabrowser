@@ -327,7 +327,7 @@ container adoptions rather than new surfaces:
    tabs. This is deliberately generic groundwork, not a PR feature; the PR mirror is the
    same affordance over an acquired comparison.
 2. **The Git history view opens comparisons, not its own diff surface.** Selecting a
-   commit in the Git tab resolves that commit’s first-parent comparison — exactly
+   commit in the Commits tab resolves that commit’s first-parent comparison — exactly
    `metab --diff REV` — and presents it through the same container: changed files as
    children, summary as the outer view, one renderer.
    Presets (HEAD vs worktree, staged, unstaged) and branch pickers are the same wiring

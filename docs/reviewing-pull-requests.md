@@ -30,11 +30,11 @@ Metabrowser recognizes a github.com `origin` and can read the checkout’s `HEAD
 fork, the list belongs to `origin`, usually the fork; the tab names the repository.
 A folder without a recognized GitHub repository has no Pulls tab.
 
-Choose **Pulls** beside Files and Git.
+Choose **Pulls** beside Files and Commits.
 It starts on **Open**; the filters are **Open**, **Closed**, and **All**. Closed
 includes merged pull requests.
 Small tallies show each filter’s total when the catalog knows it.
-Switching among Files, Pulls, and Git restores each tab’s last selection.
+Switching among Files, Commits, and Pulls restores each tab’s last selection.
 The list shows the newest pull requests first, with their open, draft, merged, or closed
 state. The status gives the repository’s total and name, with the number in bold.
 
@@ -78,8 +78,8 @@ For a served folder, reading the list and conversation does not require a second
 copy. If **Changes** has no cached store yet, it offers **Fetch changes**. That action
 uses a healthy existing store or creates one borrowing the named checkout’s objects,
 fetching what it lacks into the cache.
-It leaves the served folder and Git tab on your checkout and runs no Git or writes in
-the checkout. If the checkout cannot lend, the action reports why instead of silently
+It leaves the served folder and Commits tab on your checkout and runs no Git or writes
+in the checkout. If the checkout cannot lend, the action reports why instead of silently
 cloning a full repository.
 See [Beside a Checkout](#beside-a-checkout) for the URL-based borrowing workflow.
 
@@ -177,7 +177,7 @@ The code controls depend on how the repository was opened:
 | Opened with | Code controls |
 | --- | --- |
 | A repository or pull-request URL, with or without `--checkout` | **Browse code** opens the pinned code; if another branch or PR is pinned, it first switches to the selected PR’s head. A newer head is selected separately with **Switch to the head** when offered. A changed file offers **View file** at the head and **View at base** at the merge base where that side exists. |
-| A checkout or subdirectory path | Files and Git continue to show the local checkout. The PR page has no **Browse code**, **View file**, or **View at base** controls: the working files may differ from the PR commits. |
+| A checkout or subdirectory path | Files and Commits continue to show the local checkout. The PR page has no **Browse code**, **View file**, or **View at base** controls: the working files may differ from the PR commits. |
 
 On a managed source, **View at base** moves the server’s pin to the merge-base commit.
 **Browse code** returns to the PR head, or **Switch to the head** does so when the page

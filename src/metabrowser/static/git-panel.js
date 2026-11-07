@@ -1383,7 +1383,7 @@
     }
 
     if (state.rowCount === 0 && (state.loading || viewHelpersPending !== null)) {
-      // The first paint of the Git tab: the row geometry is known before
+      // The first paint of the Commits tab: the row geometry is known before
       // the data, so it is drawn as skeleton rows rather than announced.
       const skeleton = document.createElement("div");
       skeleton.className = "git-history-skeleton git-history-skeleton-first mb-delayed-loading";
@@ -1431,7 +1431,7 @@
   }
 
   /**
-   * The header tally above the graph — the Git tab's counterpart of the
+   * The header tally above the graph — the Commits tab's counterpart of the
    * file tree's summary row, deliberately under its own class names:
    * app.js live-patches the document's first `.tree-summary`, so this
    * row must not present itself as one. Pending until the summary
@@ -2604,7 +2604,7 @@
   }
 
   /**
-   * Register the Git tab if the served root is a repository.
+   * Register the Commits tab if the served root is a repository.
    *
    * The deferred shell awaits registration. The required view helpers load when
    * Git is shown (including a commit landing), with an in-panel retry on failure.
@@ -2636,7 +2636,7 @@
 
     bridge.registerNavPanel({
       id: "git",
-      label: "Git",
+      label: "Commits",
       onFirstShow: null,
       onShow: () => {
         void ensureHistory();

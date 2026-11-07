@@ -526,7 +526,7 @@ The same rules in both scenarios, and one boundary the review sharpened.
   with no error, and only `fsck` noticed.
   So “content addressing makes borrowing safe” is false on read: the checkout’s bytes
   are trusted, and whoever can write the checkout can decide what a pull request’s files
-  look like. That is already true of `metab <checkout>`, whose Git tab reads the same
+  look like. That is already true of `metab <checkout>`, whose Commits tab reads the same
   objects, and it is why a store borrows only from a checkout the reader named or is
   serving, never from one found by walking up from the working directory, which the
   reviewer showed is attacker-choosable.
@@ -857,7 +857,7 @@ weighed.
    - *Rejected:* the cache routes only.
 6. **Blob verification comes in step 2**, once the hash per streamed blob is measured
    against the batch reader’s budget.
-   - *Rejected:* trust the named checkout as the Git tab does.
+   - *Rejected:* trust the named checkout as the Commits tab does.
 
 ## References
 

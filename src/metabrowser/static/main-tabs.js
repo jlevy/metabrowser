@@ -1,8 +1,8 @@
-// Deferred shell controller for the Files, Git, and Pulls tabs.
+// Deferred shell controller for the Files, Commits, and Pulls tabs.
 (() => {
   const MAIN_TABS = [
     { id: "files", label: "Files", key: "1" },
-    { id: "git", label: "Git", key: "2" },
+    { id: "git", label: "Commits", key: "2" },
     { id: "pulls", label: "Pulls", key: "3" },
   ];
 

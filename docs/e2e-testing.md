@@ -495,8 +495,8 @@ A catalog refresh should start once, and subsequent queries should read the loca
 catalog. Reopen a cached result with `gh` unavailable.
 In a plain folder, the dialog should still say Quick Search and search only files.
 
-After Git discovery, check Files, Git, and Pulls order and the fixed numbers in Help.
-Try the plain digits if the browser owns the Command chords.
+After Git discovery, check Files, Commits, and Pulls order and the fixed numbers in
+Help. Try the plain digits if the browser owns the Command chords.
 In a plain folder, check that the Files shortcut still uses `1` and the other numbers
 leave the selection alone.
 
