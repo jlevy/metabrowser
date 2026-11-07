@@ -455,7 +455,7 @@ async function run() {
   assert.match(body.textContent, /Checks and statuses are still loading/);
   assert.doesNotMatch(body.textContent, /Comments and reviews|No checks or statuses reported/);
   assert.ok(body.querySelector(".spinner"), "Checks has the shared progress spinner");
-  assert.ok(body.classes.has("github-pull-column"), "Checks uses the reading column");
+  assert.ok(body.classes.has("page-reading-column"), "Checks uses the reading column");
   land("");
   assert.equal(markdownRequests, 0, "preview stays plain and never asks for full-record Markdown");
   const model = page.describePull(preview, { number: 7, tab: "", nowMs: Date.now() });

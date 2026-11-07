@@ -949,7 +949,7 @@ async function run() {
   assertContains(
     "detail: summary has one component root",
     previewHtml,
-    '<section class="git-commit-summary"',
+    '<section class="git-commit-summary page-reading-column"',
   );
   assertContains(
     "detail: summary gives change stats their own child",
@@ -961,7 +961,14 @@ async function run() {
   assertFileStatus("detail: summary omits zero deleted files", previewHtml, "deleted", 0);
   assertContains("detail: summary counts additions", previewHtml, "+5");
   assertContains("detail: summary counts deletions", previewHtml, "−1");
-  const summaryStart = previewHtml.indexOf('<section class="git-commit-summary"');
+  assertContains(
+    "detail: uses the shared page heading",
+    previewHtml,
+    '<h1 class="git-commit-subject page-heading"',
+  );
+  const summaryStart = previewHtml.indexOf(
+    '<section class="git-commit-summary page-reading-column"',
+  );
   const summaryEnd = previewHtml.indexOf("</section>", summaryStart);
   assertTrue(
     "detail: component owns subject, metadata, refs, and description",

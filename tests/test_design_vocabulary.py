@@ -794,7 +794,7 @@ def test_git_commit_summary_is_one_component() -> None:
     assert "html += renderCommitSummary(detail);" in panel
     assert "renderCommitSummary(detail, { compact: true })" in panel
     for component_part in (
-        'class="git-commit-subject"',
+        'const subjectClass = compact ? "git-commit-subject"',
         'class="git-commit-meta"',
         'class="git-commit-identity"',
         'class="git-commit-file-statuses"',
@@ -1184,10 +1184,31 @@ def test_every_prose_surface_reads_the_measure() -> None:
     assert fallback == ["var(--doc-measure)"]
     overview = (REPO_ROOT / BUILTIN_PLUGINS / "folder/overview.css").read_text(encoding="utf-8")
     assert "var(--doc-measure)" in overview
-    # The pull request page: its column, and no length of its own.
-    github_css = REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"
-    column = dict(_rules_of(github_css))[".github-pull-column"]
+    # Commit and PR pages start at the pane gutter and share the README's measure.
+    rules = _rules_of(STATIC / "styles.css")
+    columns = [
+        declarations for selector, declarations in rules if selector == ".page-reading-column"
+    ]
+    assert len(columns) == 1
+    column = columns[0]
     assert "var(--doc-measure)" in column["max-width"]
+    assert column["margin-inline-end"] == "auto"
+    placeholder_columns = [
+        declarations
+        for selector, declarations in rules
+        if selector == ".pull-request-placeholder" and "max-width" in declarations
+    ]
+    assert placeholder_columns == [column]
+    assert dict(rules)[".page-heading"]["font-size"] == "var(--page-title-font-size)"
+    github_css = REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"
+    page = dict(_rules_of(github_css))[".github-pull"]
+    assert "--doc-measure" not in page
+    assert (
+        page["--page-reading-gutter"]
+        == dict(_rules_of(STATIC / "styles.css"))[".pull-request-placeholder"][
+            "--page-reading-gutter"
+        ]
+    )
     for selector, declarations in _rules_of(github_css):
         width = declarations.get("max-width", "")
         assert re.search(r"\d(?:px|rem|em|ch)", width) is None, (
@@ -1390,7 +1411,7 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert 'class: "notice github-pull-notice"' in page
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
     # The heading scales the shared glyph to its own type and wraps text in its own track.
-    assert github[".github-pull-title"]["font-size"] == "var(--page-title-font-size)"
+    assert 'class: "page-heading github-pull-title' in page
     assert github[".github-pull-title-with-state"]["grid-template-columns"] == "auto minmax(0, 1fr)"
     title_icon = github[".github-pull-title > .github-pull-state-icon"]
     assert (title_icon["width"], title_icon["height"]) == ("1em", "1lh")
@@ -1444,11 +1465,9 @@ def test_serif_is_only_for_documents() -> None:
     assert dict(_rules_of(styles))['html[data-prose-font="sans"]']["--doc-char-advance"] == (
         "var(--sans-char-advance)"
     )
-    # The pull request page is a surface of messages: its prose face and its width.
+    # The pull request page uses the sans prose face.
     page = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))[".github-pull"]
     assert page["--kpress-host-font-prose"] == "var(--prose-sans-font)"
-    assert page["--doc-measure"] == "var(--message-measure)"
-    assert "var(--message-char-advance, var(--sans-char-advance))" in page["--message-measure"]
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "### Serif Is for Documents" in doc
     assert "test_serif_is_only_for_documents" in doc

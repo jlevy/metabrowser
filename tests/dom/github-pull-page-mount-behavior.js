@@ -568,6 +568,10 @@ async function run() {
     await handle.whenFilesReady();
     const title = container.querySelector(".github-pull-title-with-state");
     assert.equal(title.tag, "h1");
+    assert.ok(title.classes.has("page-heading"));
+    assert.ok(title.parentNode.classes.has("page-reading-column"));
+    assert.ok(container.querySelector(".tab-bar").parentNode.classes.has("page-reading-column"));
+    assert.ok(!container.querySelector(".github-pull-body").classes.has("page-reading-column"));
     const [icon, titleText] = title.children;
     assert.equal(icon.className, "github-pull-state-icon");
     assert.equal(icon.dataset.state, "open");

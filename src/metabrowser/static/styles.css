@@ -309,9 +309,7 @@
   /* The interface sans's advance, which a message reads in under either reading
      font (docs/design-system.md, "Serif Is for Documents"). */
   --sans-char-advance: 0.4039;
-  /* The resolved reading width, as a length. THE single source of truth for
-     how wide documents read. PR messages own their face-specific measure on
-     .github-pull, so ordinary document widths stay independent.
+  /* The resolved reading width, as a length, for documents and messages.
 
      A Metabrowser-owned name on purpose. The obvious move is to set
      --kpress-measure here and let everything read that, but KPress declares
@@ -3770,6 +3768,25 @@ a.tab-btn {
   --kpress-code-radius: var(--radius-document);
 }
 
+/* A preview's reading column starts at the pane gutter. The cap includes the
+   card's text inset and any outer gutter the caller keeps inside the column. */
+.page-reading-column,
+.pull-request-placeholder {
+  width: 100%;
+  max-width: calc(
+    var(--doc-measure) +
+    2 *
+    (var(--pane-header-padding-x) + var(--page-reading-gutter, 0px))
+  );
+  margin-inline-end: auto;
+}
+.page-heading {
+  font-size: var(--page-title-font-size);
+  font-weight: var(--weight-bold);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 /* Reading width: the one bridge from --doc-measure (the app's resolved reading
    width, converted from characters at :root) onto KPress's token.
 
@@ -4854,20 +4871,9 @@ pre.code-block.metabrowser-source-lines > code {
   animation: tally-pending-pulse 1.6s ease-in-out infinite;
 }
 
-/* A cold pull-request route has a known text layout before plugin styles load. Match
-   the plugin's sans reading column using the same measure and host inset tokens. */
+/* A cold pull-request route uses the same reading column before plugin styles load. */
 .pull-request-placeholder {
-  width: 100%;
-  max-width: calc(
-    var(--document-body-font-size) *
-    var(--doc-max-chars) *
-    var(--sans-char-advance) +
-    2 *
-    var(--pane-header-padding-x) +
-    2 *
-    var(--content-padding-x)
-  );
-  margin-inline: auto;
+  --page-reading-gutter: var(--content-padding-x);
   padding: var(--content-padding-y) var(--content-padding-x);
 }
 .pull-request-placeholder > .recent-loading {
@@ -5715,9 +5721,6 @@ pre.code-block.metabrowser-source-lines > code {
 
 .git-commit-subject {
   margin: 0 0 8px;
-  font-size: var(--body-font-size);
-  font-weight: var(--weight-bold);
-  line-height: 1.35;
 }
 
 .git-commit-meta {
@@ -5821,6 +5824,8 @@ pre.code-block.metabrowser-source-lines > code {
   margin: 0 0 6px;
   overflow: hidden;
   font-size: var(--body-font-size);
+  font-weight: var(--weight-bold);
+  line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -5849,7 +5854,7 @@ pre.code-block.metabrowser-source-lines > code {
 
 .git-commit-body {
   margin: 16px 0;
-  padding: 12px;
+  padding: 12px var(--pane-header-padding-x);
   border-radius: var(--radius-document);
   background: var(--code-bg);
   white-space: pre-wrap;

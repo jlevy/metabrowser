@@ -6,7 +6,6 @@
 // Pulls tab, with its host, and in the pane at /pulls; pulls-panel.js holds it.
 // The URL reducer, the gh credential helper, and the records are Python.
 
-import { watchMessageMeasure } from "./message-measure.js";
 import { mountPullPage } from "./pull-page.js";
 import { mountPullsLanding, mountPullsPanel } from "./pulls-panel.js";
 
@@ -16,17 +15,7 @@ if (!mb) {
 }
 
 mb.registerView("pull-request", "pull-request", {
-  render(container, ctx) {
-    const page = mountPullPage(container, ctx, mb);
-    const stopMeasuring = watchMessageMeasure(container);
-    return {
-      ...page,
-      dispose() {
-        stopMeasuring();
-        page.dispose();
-      },
-    };
-  },
+  render: (container, ctx) => mountPullPage(container, ctx, mb),
 });
 
 mb.registerView("pull-request-list", "pull-request-list", {
