@@ -173,7 +173,7 @@ const CHECKOUT_NOT_LISTED =
  *   catalogReady: boolean,
  *   window: string | null,
  *   connection: {state: "working" | "connected" | "paused" | "unavailable", text: string,
- *     reload: boolean, help?: "install" | "update"} | null,
+ *     reload: boolean, retrying?: true, help?: "install" | "update"} | null,
  *   empty: string | null,
  *   loadMore: "ready" | "loading" | null,
  *   github: string | null,
@@ -256,14 +256,20 @@ function pullsCount(count) {
 }
 
 /**
- * What a list's settled refresh failure says to a reader.
+ * What a list's last refresh failure says to a reader. Paging checks the settled
+ * state, while the connection row can keep showing it during a recovery attempt.
  * @param {PullsEnvelope} envelope
  * @param {(iso: string) => string} formatTime
+ * @param {{includeWhileRefreshing?: boolean}} [options]
  * @returns {{text: string, help?: "install" | "update"} | null}
  */
-export function refreshFailure(envelope, formatTime) {
+export function refreshFailure(envelope, formatTime, { includeWhileRefreshing = false } = {}) {
   const last = envelope.last_refresh;
-  if (last === null || last.outcome === "succeeded" || envelope.refreshing) {
+  if (
+    last === null ||
+    last.outcome === "succeeded" ||
+    (envelope.refreshing && !includeWhileRefreshing)
+  ) {
     return null;
   }
   if (last.outcome === "rate_limited") {
@@ -274,12 +280,7 @@ export function refreshFailure(envelope, formatTime) {
           : `GitHub rate limit reached. Next attempt after ${formatTime(last.reset_at)}.`,
     };
   }
-  const refused =
-    last.outcome === "not_logged_in" && last.message?.includes("credentials were refused");
-  const said =
-    (refused ? last.message : FAILURES[last.outcome]) ??
-    last.message ??
-    last.outcome.replaceAll("_", " ");
+  const said = FAILURES[last.outcome] ?? last.message ?? last.outcome.replaceAll("_", " ");
   const sentence = `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
   const help =
     last.outcome === "gh_missing"
@@ -369,7 +370,7 @@ export function describePulls(envelope, page) {
   }
   model.status = envelope.state;
   const repository = repositoryName(envelope.source);
-  const failure = refreshFailure(envelope, page.formatTime);
+  const failure = refreshFailure(envelope, page.formatTime, { includeWhileRefreshing: true });
   const holding = envelope.fetched > 0 || page.rows.length > 0;
   if (envelope.state === "absent" && envelope.reason === "not_github") {
     model.empty = page.checkout === true ? CHECKOUT_NOT_LISTED : NO_GITHUB;
@@ -394,8 +395,7 @@ export function describePulls(envelope, page) {
   const cached = holding ? " Showing cached pull requests." : "";
   const heldByRate = rateHoldMs(envelope, page.nowMs) > 0;
   const asking = page.requesting === true || envelope.refreshing;
-  const working =
-    asking || (failure === null && (envelope.state === "pending" || envelope.state === "absent"));
+  const working = asking || envelope.state === "pending" || envelope.state === "absent";
   if (!online) {
     model.connection = { state: "paused", text: `Offline.${cached}`, reload: false };
   } else if (page.error !== null) {
@@ -404,15 +404,16 @@ export function describePulls(envelope, page) {
       text: page.error + cached,
       reload: !heldByRate && !asking,
     };
-  } else if (working || (page.more && failure === null)) {
-    model.connection = { state: "working", text: FETCHING, reload: false };
   } else if (failure !== null) {
     model.connection = {
       ...failure,
       state: "paused",
       text: failure.text + cached,
-      reload: !heldByRate,
+      reload: !heldByRate && !asking,
+      ...(asking ? { retrying: true } : {}),
     };
+  } else if (working || page.more) {
+    model.connection = { state: "working", text: FETCHING, reload: false };
   } else if (!envelope.complete && envelope.catalog_fetched > 0) {
     const count = new Intl.NumberFormat("en-US").format(envelope.catalog_fetched);
     model.connection = { state: "paused", text: `Catalog paused · ${count} cached`, reload: true };
@@ -1131,9 +1132,13 @@ export function createPullsController(deps, options = {}) {
       envelope === null ||
       envelope.reason === "not_github" ||
       list.error !== null ||
-      refreshReads.size > 0 ||
-      rateHoldMs(envelope, deps.now()) > 0
+      refreshReads.size > 0
     ) {
+      return;
+    }
+    const priority = shown && prioritizeFilter;
+    prioritizeFilter = false;
+    if (rateHoldMs(envelope, deps.now()) > 0) {
       return;
     }
     const last = envelope.last_refresh;
@@ -1154,8 +1159,7 @@ export function createPullsController(deps, options = {}) {
     }
     const target = Math.min(list.displayLimit, envelope.total ?? list.displayLimit);
     const missingRows = envelope.fetched < target;
-    const foreground = prioritizeFilter && missingRows && !reconnect;
-    prioritizeFilter = false;
+    const foreground = priority && missingRows && !reconnect;
     const needsRows = missingRows && (foreground || list.priorityTarget < target);
     const needsCatalog = !envelope.complete && !envelope.refreshing;
     if (
@@ -1332,6 +1336,8 @@ export function createPullsController(deps, options = {}) {
         await loadWindow();
       } else if (
         advanced &&
+        list.more &&
+        live() &&
         list.nextAfter === null &&
         list.envelope !== null &&
         list.rows.length < Math.min(list.displayLimit, list.envelope.total ?? list.displayLimit) &&
@@ -1509,7 +1515,6 @@ export function createPullsController(deps, options = {}) {
   }
 
   function cancelReads() {
-    prioritizeFilter = false;
     clearCoreWindow();
     requestEpoch += 1;
     inflight?.abort();
@@ -1539,7 +1544,7 @@ export function createPullsController(deps, options = {}) {
     }
     cancelReads();
     filter = name;
-    prioritizeFilter = how.fromAddress !== true;
+    prioritizeFilter = shown;
     settleAnchor();
     painted = null;
     render();
@@ -1558,6 +1563,7 @@ export function createPullsController(deps, options = {}) {
      */
     start(how = {}) {
       shown = how.shown === true;
+      prioritizeFilter = shown;
       readAhead = how.refreshAhead === true;
       render();
       return poll(true);
@@ -1568,6 +1574,7 @@ export function createPullsController(deps, options = {}) {
         return;
       }
       shown = visible;
+      prioritizeFilter = visible;
       if (!visible) {
         clearTimer();
         cancelReads();
@@ -1866,7 +1873,9 @@ export function mountPullsPanel(container, ctx, mb) {
   const list = h("ul", { class: "github-pulls-list", role: "tree" });
   const empty = h("p", { class: "github-pulls-empty" });
   const connectionMessage = h("span");
-  const spinner = h("span", { class: "spinner spinner-sm", "aria-hidden": "true", hidden: "" });
+  const spinner = h("span", { class: "github-pulls-connection-spinner", hidden: "" }, [
+    h("span", { class: "spinner spinner-sm", "aria-hidden": "true" }),
+  ]);
   const connectionText = h("span", { class: "github-pulls-connection-text" }, [
     spinner,
     connectionMessage,
@@ -2536,10 +2545,12 @@ export function mountPullsPanel(container, ctx, mb) {
     status.replaceChildren(...lines);
     status.hidden = lines.length === 0;
     const connected = model.connection;
-    const busy = connected?.state === "working";
+    const working = connected?.state === "working";
+    const retrying = connected?.retrying === true;
     connection.hidden = connected === null;
-    connectionText.classList.toggle("mb-delayed-loading", busy);
-    spinner.hidden = !busy;
+    connectionText.classList.toggle("mb-delayed-loading", working);
+    spinner.classList.toggle("mb-delayed-loading", retrying);
+    spinner.hidden = !working && !retrying;
     const message = connected?.text ?? "";
     if (connectionMessage.textContent !== message) {
       connectionMessage.textContent = message;

@@ -45,8 +45,10 @@ displayed rows. Older cache pages keep their cursor and scroll behavior.
 The Quick Search projection sees the same committed summaries.
 
 The server admits one catalog refresh job per served repository and app coordinator.
-A passive refresh joins existing work without changing an explicit filter or paging
-priority. Automatic checks follow the persisted freshness and failure cadence.
+A passive refresh joins existing work without changing a filter or paging priority.
+A newly visible filter with missing rows can set the active demand, including when its
+selection comes from a direct address or browser history.
+Automatic checks follow the persisted freshness and failure cadence.
 Setup, sign-in, and access failures get a quiet probe after two minutes while the list
 is visible, or after the usual freshness window on a foreground wake.
 A reconnect can request one early probe per source per 60-second window after a GitHub
@@ -70,7 +72,8 @@ See [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
 Keep one status row in Pulls chrome beside the persistent **Reload** action.
 The repository total and current display window keep their own labels.
 Show the last successful update age when idle and the shared spinner while work is
-active. Announce meaningful status changes through the existing live region.
+active. A retry keeps the last failure visible and keeps its announcement steady until
+the result changes. Announce meaningful status changes through the existing live region.
 The empty PR landing keeps its selection prompt.
 The Pulls status row owns repository catalog errors and recovery instructions.
 

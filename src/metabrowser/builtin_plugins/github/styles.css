@@ -434,8 +434,12 @@
 .github-pulls-connection:not([hidden]) {
   flex-wrap: wrap;
 }
-.github-pulls-connection-text > .spinner {
+.github-pulls-connection-spinner:not([hidden]) {
+  display: inline-flex;
   flex: none;
+}
+.github-pulls-connection-spinner.mb-delayed-loading {
+  order: 1;
 }
 .github-pulls-reload[aria-disabled="true"] {
   color: var(--muted);
