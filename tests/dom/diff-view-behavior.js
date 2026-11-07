@@ -240,7 +240,6 @@ async function main() {
   const {
     composeTextRuns,
     mountDiffView: mountDiffViewImpl,
-    partialNote,
     setChangeLoader,
   } = await import(pathToFileURL(viewPath).href);
   const defaultTestApi = {
@@ -1105,13 +1104,7 @@ async function main() {
   mountDiffView(unwarned, byName.get("modified-with-heading"));
   check("no warning, no notice", unwarned.find("diff-warning").length === 0);
 
-  // A partial view says so, and what it says follows the files as they arrive.
-  check("nothing deferred says nothing", partialNote(0, 1183) === null);
-  check(
-    "a partial count reads as a count",
-    partialNote(1133, 1183) === "50 of 1,183 files loaded; the rest load as you reach them",
-    partialNote(1133, 1183),
-  );
+  // Routine hydration is quiet, including when a file has a documented size limit.
   const partialDoc = JSON.parse(JSON.stringify(byName.get("deferred-manifest-only")));
   partialDoc.__revision = "revision-1";
   partialDoc.manifest.files.push({
@@ -1129,29 +1122,21 @@ async function main() {
       }),
   );
   mountDiffView(partialHost, partialDoc);
-  const partialLine = () => partialHost.find("diff-partial-note")[0];
-  check(
-    "a partial view counts its deferred files",
-    partialLine().textContent.startsWith("0 of 2 files loaded"),
-    partialLine().textContent,
-  );
+  const failureNote = partialHost.find("diff-hydration-failure")[0];
+  check("a partial view stays quiet", failureNote.hidden === true);
   const partialBodies = partialHost.find("diff-file-body");
   hydrationObserver.intersect(partialBodies[0].parentNode);
   await nextTask();
   answer(JSON.parse(JSON.stringify(byName.get("modified-with-heading"))));
   await nextTask();
   await nextTask();
-  check(
-    "the count follows a file as it arrives",
-    partialLine().textContent.startsWith("1 of 2 files loaded"),
-    partialLine().textContent,
-  );
+  check("a successful file adds no notice", failureNote.hidden === true);
   hydrationObserver.intersect(partialBodies[1].parentNode);
   await nextTask();
   answer(tooLargeAnswer(byName));
   await nextTask();
   await nextTask();
-  check("a complete view says nothing more", partialLine().hidden === true);
+  check("a file past its limit needs only its inline reason", failureNote.hidden === true);
   check(
     "a file too large to hydrate says so, as a reason",
     partialBodies[1].text().includes("too large to show inline"),
