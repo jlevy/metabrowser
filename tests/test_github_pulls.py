@@ -33,6 +33,7 @@ from typer.testing import CliRunner
 from metabrowser.builtin_plugins.github import gh_lists, pulls
 from metabrowser.builtin_plugins.github.gh import (
     GhError,
+    GhFailureState,
     GhResponse,
     gh_account,
     gh_api,
@@ -3352,11 +3353,19 @@ def _visible_core_fixture(
     owner = {"id": "visible-8", "generation": catalog.generation("all")}
     ask = {"state": "all", "window": owner, "numbers": list(visible or numbers)}
     started = client.post(_PREPARE_CORES, json=ask)
-    assert started.status_code == 202
-    assert started.json() == {
-        "preparation": "started",
-        "status_route": "/api/plugin/github/pull?number=8",
-    }
+    if untrustworthy:
+        assert started.status_code == 200
+        assert started.json() == {
+            "preparation": "ready",
+            "ready_numbers": [],
+            "skipped_numbers": [8, 7],
+        }
+    else:
+        assert started.status_code == 202
+        assert started.json() == {
+            "preparation": "started",
+            "status_route": "/api/plugin/github/pull?number=8",
+        }
     if hold_batch is None:
         _drain_visible_cores(client)
     return ask, rest, calls
@@ -3373,22 +3382,31 @@ def test_visible_core_exact_owner_release_and_first_full_precedence(
     assert first["core_preview"]["comparison_state"] == "not_started"
     assert first["core_preview"]["reader"] == f"gh:{READER}"
     assert _read(client, 7).json()["core_preview"] is None
-    assert client.post(_PREPARE_CORES, json=ask).json() == {"preparation": "ready"}
+    assert client.post(_PREPARE_CORES, json=ask).json() == {
+        "preparation": "ready",
+        "ready_numbers": [8],
+        "skipped_numbers": [7],
+    }
     assert client.post(
         _PREPARE_CORES, json={**ask, "window": {**ask["window"], "id": "obsolete"}, "numbers": []}
     ).json() == {"preparation": "not_owner"}
     assert _read(client, 8).json()["core_preview"] == first["core_preview"]
     if first_full:
         stand.refresh(8)
-        # Repeat before GET observes the full file. A stale in-memory map cannot say ready.
-        assert client.post(_PREPARE_CORES, json=ask).json() == {"preparation": "not_owner"}
+        # A full record is classified separately from a still-useful lightweight core.
+        assert client.post(_PREPARE_CORES, json=ask).json() == {
+            "preparation": "ready",
+            "ready_numbers": [],
+            "skipped_numbers": [8, 7],
+        }
         current = _read(client, 8).json()
         assert current["record"] is not None and current["core_preview"] is None
     else:
         assert client.post(_PREPARE_CORES, json={**ask, "numbers": []}).json() == {
             "preparation": "released"
         }
-    assert _read(client, 8).json()["core_preview"] is None and calls == [(8,)]
+    assert (_read(client, 8).json()["core_preview"] is None) is first_full
+    assert calls == [(8,)]
 
 
 def test_visible_core_running_window_survives_second_tab(
@@ -3437,7 +3455,11 @@ def test_visible_core_attempt_cooldown_ignores_owner_and_filter(
         }
         response = client.post(_PREPARE_CORES, json=rotated)
         assert response.status_code == 200
-        assert response.json() == {"preparation": "not_owner"}
+        assert response.json() == (
+            {"preparation": "ready", "ready_numbers": [8], "skipped_numbers": []}
+            if state == "all"
+            else {"preparation": "not_owner"}
+        )
         assert _read(client, 8).json()["core_preview"] == preview
     assert client.post(_PREPARE_CORES, json={**ask, "numbers": []}).json() == {
         "preparation": "released"
@@ -3467,7 +3489,7 @@ def test_visible_core_attempt_cooldown_ignores_owner_and_filter(
     assert calls == [(8,), (9,), (8,)]
 
 
-def test_visible_core_mixed_viewport_keeps_overlap_until_its_original_expiry(
+def test_visible_core_mixed_viewport_keeps_durable_overlap_after_freshness_window(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from types import SimpleNamespace
@@ -3494,10 +3516,14 @@ def test_visible_core_mixed_viewport_keeps_overlap_until_its_original_expiry(
         "preparation": "not_owner"
     }
 
-    now = 1000 + pull_cores.FRESHNESS_WINDOW_S
-    assert _read(client, 8).json()["core_preview"] is None
+    now = 1000 + pull_cores.FRESHNESS_WINDOW_S + 1
+    assert _read(client, 8).json()["core_preview"] == original
     assert _read(client, 9).json()["core_preview"]["number"] == 9
-    assert client.post(_PREPARE_CORES, json=successor).json() == {"preparation": "ready"}
+    assert client.post(_PREPARE_CORES, json=successor).json() == {
+        "preparation": "ready",
+        "ready_numbers": [8, 9],
+        "skipped_numbers": [],
+    }
 
 
 def test_visible_core_stale_competitor_preserves_ready_window(
@@ -3528,7 +3554,7 @@ def test_visible_core_stale_competitor_preserves_ready_window(
     assert client.post(_PREPARE_CORES, json={**first, "numbers": []}).json() == {
         "preparation": "not_owner"
     }
-    assert _read(client, 8).json()["core_preview"] is None
+    assert _read(client, 8).json()["core_preview"] == preview
     assert _read(client, 9).json()["core_preview"]["number"] == 9 and calls == [(8,), (9,)]
 
 
@@ -3569,14 +3595,18 @@ def test_visible_core_release_during_last_worker_prevents_adoption(
     try:
         assert catalog_entered.wait(5)
         replacement = {**ask, "window": {**ask["window"], "id": "new-window"}}
-        assert client.post(_PREPARE_CORES, json=replacement).json() == {"preparation": "busy"}
+        assert client.post(_PREPARE_CORES, json=replacement).json() == {
+            "preparation": "ready",
+            "ready_numbers": [8],
+            "skipped_numbers": [7],
+        }
         assert client.post(_PREPARE_CORES, json={**ask, "numbers": []}).json() == {
             "preparation": "released"
         }
         catalog_release.set()
         assert fresh_entered.wait(5)
         pending = _read(client, 8).json()
-        assert pending["refreshing"] and pending["core_preview"] is None
+        assert pending["refreshing"] and pending["core_preview"]["number"] == 8
     finally:
         catalog_release.set()
         fresh_release.set()
@@ -3650,7 +3680,7 @@ def test_visible_core_skips_untrustworthy_record_entry(
     [("updated_at", "2090-01-01T00:00:00Z"), ("title", "Corrected summary title")],
     ids=["changed-timestamp", "same-timestamp-summary"],
 )
-def test_visible_core_ready_survives_head_prepend_but_not_changed_row(
+def test_visible_core_keeps_stale_display_but_changed_row_requires_revalidation(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch, field: str, value: str
 ) -> None:
     from metabrowser.builtin_plugins.github.pull_catalog import catalog_row
@@ -3663,7 +3693,11 @@ def test_visible_core_ready_survives_head_prepend_but_not_changed_row(
     appended = [*rest.values(), {**rest[7], "number": 6}]
     catalog = seed_catalog(repository, appended, reader=READER)
     assert catalog.generation("all") == ask["window"]["generation"]
-    assert client.post(_PREPARE_CORES, json=ask).json() == {"preparation": "ready"}
+    assert client.post(_PREPARE_CORES, json=ask).json() == {
+        "preparation": "ready",
+        "ready_numbers": [8],
+        "skipped_numbers": [7],
+    }
     before = _read(client, 8)
     assert before.json()["core_preview"] is not None
 
@@ -3692,8 +3726,9 @@ def test_visible_core_ready_survives_head_prepend_but_not_changed_row(
     assert stored is not None
     assert (stored.updated_at, stored.title) == (corrected["updated_at"], corrected["title"])
     assert client.post(_PREPARE_CORES, json=ask).json() == {"preparation": "not_owner"}
-    revoked = _read(client, 8, etag=before.headers["etag"])
-    assert revoked.status_code == 200 and revoked.json()["core_preview"] is None
+    # The old description remains readable, but its fingerprint cannot claim this
+    # newly changed catalog row as prepared.
+    assert _read(client, 8).json()["core_preview"] == before.json()["core_preview"]
     assert calls == [(8,)]
 
 
@@ -3789,7 +3824,7 @@ def test_visible_core_batch_keeps_unchanged_member_after_sibling_update(
     assert calls == [(8, 9)]
 
 
-def test_visible_core_adopted_display_rechecks_catalog_without_releasing_selected_refresh(
+def test_visible_core_adopted_display_keeps_stale_cache_until_selected_refresh(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from metabrowser.builtin_plugins.github.pull_list import ListedRepository
@@ -3806,7 +3841,7 @@ def test_visible_core_adopted_display_rechecks_catalog_without_releasing_selecte
     members = [rest[7], rest[8], corrected]
     corrected_catalog = seed_catalog(repository, members, reader=READER)
     assert corrected_catalog.generation("all") != ask["window"]["generation"]
-    assert _read(client, 9).json()["core_preview"] is None
+    assert _read(client, 9).json()["core_preview"]["pull"]["title"] == rest[9]["title"]
     assert _read(client, 8, etag=held.headers["etag"]).status_code == 304
     opted = f"/api/plugin/github/pull?number=8&wait_full_after={prepared['revision']}"
 
@@ -3858,10 +3893,10 @@ def test_visible_core_adopted_display_rechecks_catalog_without_releasing_selecte
         changed = [new_body if item["number"] == 8 else item for item in prepended]
         catalog = seed_catalog(repository, changed, reader=READER)
         assert catalog.generation("all") != shifted.generation("all")
-        revoked = _read(client, 8, etag=unchanged.headers["etag"])
-        assert revoked.status_code == 200
-        assert revoked.headers["etag"] != unchanged.headers["etag"]
-        assert revoked.json()["refreshing"] and revoked.json()["core_preview"] is None
+        # The stale durable description remains useful until the selected read
+        # publishes its new core. An unrelated catalog write cannot blank it.
+        assert _read(client, 8, etag=unchanged.headers["etag"]).status_code == 304
+        assert _read(client, 8).json()["core_preview"] == prepared
     finally:
         fresh_release.set()
         selecting.join(10)
@@ -3920,26 +3955,29 @@ def test_visible_core_competitor_waits_for_selected_acquisition_to_settle(
         assert client.portal.call(selected_state) == (True, False, 0)
         assert _read(client, 8).json()["record"] is None
         refused = client.post(_PREPARE_CORES, json=competitor)
-        assert refused.status_code == 200 and refused.json() == {"preparation": "busy"}
+        assert refused.status_code == 200 and refused.json() == {
+            "preparation": "ready",
+            "ready_numbers": [9],
+            "skipped_numbers": [],
+        }
         assert _read(client, 9).json()["core_preview"] == ready and calls == [(8, 9)]
         assert client.post(_PREPARE_CORES, json={**ask, "numbers": []}).json() == {
             "preparation": "released"
         }
-        assert _read(client, 9).json()["core_preview"] is None
+        assert _read(client, 9).json()["core_preview"] == ready
     finally:
         final_release.set()
         _drain_visible_cores(client)
     assert _read(client, 8).json()["record"]["number"] == 8
     client.post(_PREPARE_CORES, json=competitor)
     _drain_visible_cores(client)
-    assert _read(client, 9).json()["core_preview"] is None and calls == [(8, 9)]
+    assert _read(client, 9).json()["core_preview"] == ready and calls == [(8, 9)]
 
     now += pull_cores.FRESHNESS_WINDOW_S
     admitted = client.post(_PREPARE_CORES, json=competitor)
-    assert admitted.status_code == 202 and admitted.json()["preparation"] == "started"
-    _drain_visible_cores(client)
-    assert _read(client, 9).json()["core_preview"]["number"] == 9
-    assert calls == [(8, 9), (9,)]
+    assert admitted.status_code == 200 and admitted.json()["preparation"] == "ready"
+    assert _read(client, 9).json()["core_preview"] == ready
+    assert calls == [(8, 9)]
 
 
 @pytest.mark.parametrize("number", [8, 9], ids=["matching", "unrelated"])
@@ -4362,3 +4400,240 @@ def test_timeline_keeps_only_verified_transient_results_in_the_current_view(
         "events": [first, {"kind": "comment", "id": "8"}],
     }
     assert cache.is_file()
+
+
+def test_durable_core_batches_cross_viewports_and_restart_offline(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_cores
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from tests.github_pull_fixture import seed_catalog
+
+    stand, client = pinned_pull
+    first, rest, calls = _visible_core_fixture(pinned_pull, monkeypatch, visible=(8, 7))
+    # Deliberately more total candidates than both the transport batch and this
+    # reduced transient attempt capacity. Successful batches must free that budget.
+    monkeypatch.setattr(pull_cores, "_MAX_CORE_ATTEMPTS", 8)
+    for number in range(20, 36):
+        rest[number] = {
+            **rest[8],
+            "number": number,
+            "title": f"Work {number}",
+            "body": f"Description {number}",
+        }
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    catalog = seed_catalog(repository, list(rest.values()), reader=READER)
+    for offset in (20, 28):
+        numbers = list(range(offset, offset + 8))
+        ask = {
+            "state": "all",
+            "window": {"id": f"batch-{offset}", "generation": catalog.generation("all")},
+            "numbers": numbers,
+        }
+        assert client.post(_PREPARE_CORES, json=ask).status_code == 202
+        _drain_visible_cores(client)
+        assert client.post(_PREPARE_CORES, json=ask).json() == {
+            "preparation": "ready",
+            "ready_numbers": numbers,
+            "skipped_numbers": [],
+        }
+        assert client.post(_PREPARE_CORES, json={**ask, "numbers": []}).json() == {
+            "preparation": "released"
+        }
+    assert calls == [(8,), tuple(range(20, 28)), tuple(range(28, 36))]
+    original = _read(client, 8).json()["core_preview"]
+    assert original is not None
+
+    def restart() -> None:
+        session = mirror_session(app)
+        assert session is not None
+        session.pull_requests = ServedPulls(stand.published)
+
+    assert client.portal is not None
+    client.portal.call(restart)
+    monkeypatch.setattr(pulls, "utc_now", lambda: datetime(2090, 1, 1, tzinfo=UTC))
+
+    async def offline(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("cached core replay must not invoke GitHub")
+
+    monkeypatch.setattr(pull_cores, "gh_graphql", offline)
+    for number in (8, *range(20, 36)):
+        body = _read(client, number).json()
+        assert body["record"] is None and body["core_preview"]["number"] == number
+    assert _read(client, 8).json()["core_preview"] == original
+    replay = {**first, "window": {"id": "new-process", "generation": catalog.generation("all")}}
+    assert client.post(_PREPARE_CORES, json=replay).json() == {
+        "preparation": "ready",
+        "ready_numbers": [8],
+        "skipped_numbers": [7],
+    }
+    # A changed reader replaces the catalog epoch; old private cores cannot answer.
+    seed_catalog(repository, list(rest.values()), reader="different-reader")
+    assert _read(client, 8).json()["core_preview"] is None
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    ["gh_missing", "not_logged_in", "network_error", "not_found_or_private", "rate_limited"],
+)
+def test_core_failure_holds_later_batches_and_survives_restart(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch, outcome: GhFailureState
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_cores
+    from metabrowser.builtin_plugins.github.gh import GhError
+
+    stand, client = pinned_pull
+    first, _rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8, 7)
+    )
+    failures = 0
+
+    async def fail(*_args: Any, **_kwargs: Any) -> Any:
+        nonlocal failures
+        failures += 1
+        raise GhError("GitHub is temporarily unavailable", state=outcome)
+
+    monkeypatch.setattr(pull_cores, "gh_graphql", fail)
+    missing: dict[str, Any] = {
+        **first,
+        "window": {**first["window"], "id": "next-batch"},
+        "numbers": [9],
+    }
+    assert client.post(_PREPARE_CORES, json=missing).status_code == 202
+    _drain_visible_cores(client)
+    held = client.post(_PREPARE_CORES, json=missing).json()
+    assert held["preparation"] == "failed" and held["failure"]["outcome"] == outcome
+    if outcome == "rate_limited":
+        assert held["failure"]["reset_at"] is not None
+    assert _read(client, 8).json()["core_preview"] is not None
+
+    def restart() -> None:
+        session = mirror_session(app)
+        assert session is not None
+        session.pull_requests = ServedPulls(stand.published)
+
+    assert client.portal is not None
+    client.portal.call(restart)
+    later = {**missing, "window": {**missing["window"], "id": "restart-next-batch"}}
+    assert client.post(_PREPARE_CORES, json=later).json() == {**held, "preparation": "held"}
+    assert failures == 1 and calls == [(8,)]
+    # A held provider does not hold already-cached initial rendering hostage.
+    assert client.post(_PREPARE_CORES, json=first).json()["preparation"] == "ready"
+
+
+def test_new_authenticated_catalog_resumes_core_warming_after_reader_switch(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_cores
+    from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
+    from metabrowser.builtin_plugins.github.pull_core_cache import write_core_failure
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from tests.github_pull_fixture import seed_catalog
+
+    stand, client = pinned_pull
+    _ask, rest, calls = _visible_core_fixture(pinned_pull, monkeypatch)
+    old = read_catalog(stand.published.home, stand.published.slug)
+    assert old is not None
+    failure = PullRefreshStamp(
+        outcome="rate_limited",
+        at="2026-10-01T12:00:00Z",
+        reset_at="2099-01-01T00:00:00Z",
+        reader=f"gh:{READER}",
+    )
+    write_core_failure(stand.published.home, stand.published.slug, old, failure)
+
+    def remember_hold() -> None:
+        session = mirror_session(app)
+        assert session is not None and isinstance(session.pull_requests, ServedPulls)
+        session.pull_requests.core_failure = failure
+        session.pull_requests.core_hold_until = datetime(2099, 1, 1, tzinfo=UTC)
+
+    assert client.portal is not None
+    client.portal.call(remember_hold)
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    new = seed_catalog(repository, list(rest.values()), reader="new-reader")
+    assert new.epoch != old.epoch
+    assert _read(client, 8).json()["core_preview"] is None
+
+    async def graph(_query: str, variables: dict[str, str | int], **_kwargs: Any) -> dict[str, Any]:
+        assert variables["n0"] == 8
+        data = graph_core_data(rest[8], reader="new-reader")
+        data["repository"]["p0"] = data["repository"].pop("pull")
+        return data
+
+    monkeypatch.setattr(pull_cores, "gh_graphql", graph)
+    ask = {
+        "state": "all",
+        "window": {"id": "new-reader", "generation": new.generation("all")},
+        "numbers": [8],
+    }
+    assert client.post(_PREPARE_CORES, json=ask).status_code == 202
+    _drain_visible_cores(client)
+    assert client.post(_PREPARE_CORES, json=ask).json() == {
+        "preparation": "ready",
+        "ready_numbers": [8],
+        "skipped_numbers": [],
+    }
+    assert _read(client, 8).json()["core_preview"]["reader"] == "gh:new-reader"
+    assert calls == [(8,)]
+
+
+def test_core_ready_receipt_rechecks_complete_cache_coverage(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_cores
+    from metabrowser.cache.paths import source_pull_core
+
+    stand, client = pinned_pull
+    ask, _rest, calls = _visible_core_fixture(pinned_pull, monkeypatch)
+    read = pull_cores.cached_batch
+    checks = 0
+
+    def lose_entry(pulls_set: ServedPulls, request: pull_cores.CoreRequest) -> Any:
+        nonlocal checks
+        checks += 1
+        if checks == 2:
+            (stand.published.home / source_pull_core(stand.published.slug, 8)).unlink()
+        return read(pulls_set, request)
+
+    monkeypatch.setattr(pull_cores, "cached_batch", lose_entry)
+    assert client.post(_PREPARE_CORES, json=ask).json() == {"preparation": "not_owner"}
+    assert checks == 2 and calls == [(8,)]
+
+
+def test_core_transient_capacity_does_not_claim_unattempted_rows(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_cores
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from tests.github_pull_fixture import seed_catalog
+
+    stand, client = pinned_pull
+    first, rest, calls = _visible_core_fixture(
+        pinned_pull, monkeypatch, sibling=True, visible=(8, 7)
+    )
+    rest[10] = scenario(stand.origin)["api"]["repos/octo/demo/pulls/10"]["body"]
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    catalog = seed_catalog(repository, list(rest.values()), reader=READER)
+    monkeypatch.setattr(pull_cores, "_MAX_CORE_ATTEMPTS", 1)
+    ask: dict[str, Any] = {
+        **first,
+        "window": {"id": "constrained", "generation": catalog.generation("all")},
+        "numbers": [9, 10],
+    }
+    assert client.post(_PREPARE_CORES, json=ask).status_code == 202
+    _drain_visible_cores(client)
+    assert client.post(_PREPARE_CORES, json=ask).json() == {"preparation": "not_owner"}
+    assert _read(client, 9).json()["core_preview"] is not None
+    assert _read(client, 10).json()["core_preview"] is None
+    # The successful publication frees its slot; the unattempted row must not
+    # become a fake provider failure or an enduring coverage cutoff.
+    next_ask = {**ask, "window": {**ask["window"], "id": "remaining"}}
+    assert client.post(_PREPARE_CORES, json=next_ask).status_code == 202
+    _drain_visible_cores(client)
+    assert client.post(_PREPARE_CORES, json=next_ask).json() == {
+        "preparation": "ready",
+        "ready_numbers": [9, 10],
+        "skipped_numbers": [],
+    }
+    assert calls == [(8,), (9,), (10,)]

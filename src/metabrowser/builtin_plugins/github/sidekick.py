@@ -145,7 +145,9 @@ async def pull_handler(request: Request) -> Response:
         waited = await kept.wait_for_full(preview)
         if waited or kept.core_preview is not preview:
             view, stamp, envelope = await snapshot()
-    if not core_preview_current(view, envelope["core_preview"]):
+    if envelope["core_preview"] is not None and not await asyncio.to_thread(
+        core_preview_current, view, envelope["core_preview"]
+    ):
         envelope["core_preview"] = None
     if envelope["record"] is not None:
         note_full_record(view)
@@ -356,7 +358,9 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     # Read after the start, on the loop: a job is running, whatever it does next.
     view = pull_view(host, get_source_session().subject, ask.number)
     envelope = await asyncio.to_thread(pull_envelope, view)
-    if not core_preview_current(view, envelope["core_preview"]):
+    if envelope["core_preview"] is not None and not await asyncio.to_thread(
+        core_preview_current, view, envelope["core_preview"]
+    ):
         envelope["core_preview"] = None
     if envelope["record"] is not None:
         note_full_record(view)
@@ -424,7 +428,11 @@ async def pull_timeline_handler(request: Request) -> JSONResponse:
 
 async def pull_cores_prepare_handler(request: Request) -> JSONResponse:
     """Schedule or release a source-owned visible core window."""
-    from metabrowser.builtin_plugins.github.pull_cores import core_request, request_preparation
+    from metabrowser.builtin_plugins.github.pull_cores import (
+        cached_batch,
+        core_request,
+        request_preparation,
+    )
     from metabrowser.builtin_plugins.github.pull_route import pull_host, status_route
 
     body = await _json_body(request)
@@ -443,7 +451,24 @@ async def pull_cores_prepare_handler(request: Request) -> JSONResponse:
             headers=_NO_STORE,
         )
     preparation = await request_preparation(host.pulls, host.coordinator, ask, host.running)
-    answer: dict[str, str] = {"preparation": preparation}
+    answer: dict[str, Any] = {"preparation": preparation}
+    if preparation == "ready":
+        coverage = await asyncio.to_thread(cached_batch, host.pulls, ask)
+        if (
+            coverage is None
+            or len(coverage[0]) + len(coverage[1]) != len(ask.numbers)
+            or {*coverage[0], *coverage[1]} != set(ask.numbers)
+        ):
+            answer["preparation"] = "not_owner"
+        else:
+            answer["ready_numbers"], answer["skipped_numbers"] = map(list, coverage)
+    elif preparation in {"failed", "held"}:
+        failure = host.pulls.core_failure
+        answer["failure"] = (
+            {"outcome": failure.outcome, "message": failure.message, "reset_at": failure.reset_at}
+            if failure is not None
+            else None
+        )
     if preparation in {"started", "joined"}:
         answer["status_route"] = status_route(ask.numbers[0])
     return JSONResponse(

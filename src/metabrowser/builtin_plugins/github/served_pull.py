@@ -39,11 +39,17 @@ from typing import TYPE_CHECKING, Any, Final, Literal, TypedDict
 
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
-from metabrowser.builtin_plugins.github.pull_record import PullRecord, PullRequest, read_pull_record
+from metabrowser.builtin_plugins.github.pull_record import (
+    PullRecord,
+    PullRefreshStamp,
+    PullRequest,
+    read_pull_record,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from metabrowser.builtin_plugins.github.pull_catalog import CatalogState
     from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreAttempt, CoreWindow
     from metabrowser.cache.acquire import PublishedSource
 
@@ -459,8 +465,11 @@ class ServedPulls:
     active: ServedPull | None = field(default=None, repr=False)
     core_window: CoreWindow | None = field(default=None, repr=False)
     core_hold_until: datetime | None = field(default=None, repr=False)
+    core_failure: PullRefreshStamp | None = field(default=None, repr=False)
     core_attempts: dict[CoreAttempt, float] = field(default_factory=dict, repr=False)
     foreground_intents: int = field(default=0, repr=False)
+    observed_reader: str | None = field(default=None, repr=False)
+    core_catalog_identity: tuple[str, str, str, str] | None = field(default=None, repr=False)
 
     @property
     def home(self) -> Path:
@@ -492,16 +501,42 @@ class ServedPulls:
             if window is not None:
                 window.cancel()
             self.core_hold_until = None
+            self.core_failure = None
+            self.observed_reader = None
+            self.core_catalog_identity = None
         self.published = published
         for held in self._kept.values():
             held.bind(published)
         if self.active is not None:
             self.active.bind(published)
 
+    def observe_catalog(self, catalog: CatalogState | None) -> None:
+        """Adopt a newly authenticated catalog without reviving a refused old reader."""
+        if catalog is None or catalog.source != self.source:
+            return
+        identity = catalog.source, catalog.repository_id, catalog.reader, catalog.epoch
+        previous = self.core_catalog_identity
+        if previous == identity:
+            return
+        self.core_catalog_identity = identity
+        if previous is not None or self.observed_reader is None:
+            self.observed_reader = catalog.reader
+        self.core_hold_until = None
+        self.core_failure = None
+        self.core_attempts.clear()
+        window = self.core_window
+        if window is not None and (
+            (window.admission is not None and not window.admission.matches_identity(catalog))
+            or window.ask.generation.split(":", 1)[0] != catalog.epoch
+        ):
+            self.core_window = None
+            window.cancel()
+
     def observe_reader(self, publication: PublishedSource | ListedRepository, reader: str) -> None:
         """Revoke lookahead owned by a different reader in this exact source binding."""
         if self.published is not publication:
             return
+        self.observed_reader = reader
         window = self.core_window
         if (
             window is not None
@@ -537,6 +572,10 @@ class ServedPulls:
         return pull
 
     async def companion(self, number: int) -> ServedPull:
+        from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
+
+        catalog = await asyncio.to_thread(read_catalog, self.home, self.slug)
+        self.observe_catalog(catalog)
         held = self.held(number)
         if held is not None:
             return held
