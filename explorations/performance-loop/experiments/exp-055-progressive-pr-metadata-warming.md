@@ -219,6 +219,8 @@ The initial control classification found a core, while the candidate classificat
 not. The candidate later completed all 314 cores without loading a full record; its
 prepared-description observation was 77 ms.
 The control observation was 828 ms.
+The [raw smoke observations](exp-055-ownership-smoke.jsonl) retain both runs and the
+interrupted diagnostic.
 The extra tool time and different initial coverage make these diagnostics, not a matched
 latency comparison or another speedup result.
 The initial candidate miss is retained for a separate startup/retry investigation.
