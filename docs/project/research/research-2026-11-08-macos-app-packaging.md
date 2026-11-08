@@ -812,8 +812,12 @@ Two layers apply under every model:
 - **Client authentication:** a token per server start, an owner-only Unix socket for the
   CLI, agents, and the app (checked with `getpeereid`), and a one-time URL that gives
   browsers a cookie, with `/raw` behind a secret path prefix.
-  It also stops the server from relaying its starter’s privacy grants to other
-  processes. Browsers cannot use a Unix socket, so loopback TCP stays for them.
+  Socket ownership and `getpeereid` authenticate a user, not an individual application.
+  Another process running as that user can obtain the token if it can connect to the
+  socket; this alone does not prevent relaying the starter’s privacy grants to it.
+  A sandboxed client is excluded only if its sandbox denies socket access or a separate
+  authorization step refuses it.
+  Browsers cannot use a Unix socket, so loopback TCP stays for them.
 - **Plugin and view isolation:** at minimum declarative agent-registered views and a
   content security policy that keeps data on the machine (`connect-src 'self'`); later,
   plugin views in opaque-origin iframes with a message-passing SDK (a
@@ -856,7 +860,8 @@ boundary. The fairest case for the TCC-only model is that it matches Finder, cos
 least code, and adds little against an unsandboxed agent that can already read
 everything. Its weakness is that a server exploit by hostile content would expose every
 secret in the home folder; client authentication, which applies under every model,
-covers web pages and sandboxed agents, but not a compromised server.
+blocks unauthenticated web pages, but not a compromised server or a same-user client
+that can obtain the token.
 
 If a long-lived, multi-client server goes ahead, these would come first:
 
@@ -1175,8 +1180,10 @@ parity with the measurement harness turns out to matter more than about 300 MB.
    plugin CLI mode for both install kinds, and the runtime builder.
 4. **Gate the engine before writing a shell.** Re-measure each bound in
    [rendering large content](../../large-content-rendering.md) at its representative
-   case in WKWebView, in back-to-back pairs against Chrome, and close `mb-etqi`. WebKit
-   passes if every pair is within 1.3x. If a bound fails, either make that bound
+   case in WKWebView, in back-to-back pairs against Chrome.
+   Record this result separately from `mb-etqi`’s broader owner acceptance: its
+   cross-browser behavior, private-auth and external-plugin checks remain required.
+   WebKit passes if every pair is within 1.3x. If a bound fails, either make that bound
    engine-specific, a core change that also helps Safari users of the CLI today, or ship
    Option F.
 5. **Ship Option D in two steps,** each usable on its own:
@@ -1213,7 +1220,8 @@ parity with the measurement harness turns out to matter more than about 300 MB.
 - [ ] Write the shared host and runtime architecture document, generalizing the VS Code
   draft’s server supervisor and uv resolver.
 - [ ] Track Layering items 1–7 and the reference host as beads.
-- [ ] Run the WebKit measurement gate and close `mb-etqi`.
+- [ ] Run and record the WebKit measurement gate; retain `mb-etqi` until its complete
+  owner-acceptance scope passes.
 - [ ] Spike step 1 of Option D against a CLI install, reusing paraverse’s lifecycle
   state machine; verify `window.print()` and drag-and-drop in WKWebView.
 - [ ] Spike step 2 on a clean macOS 15 virtual machine without the Command Line Tools,
