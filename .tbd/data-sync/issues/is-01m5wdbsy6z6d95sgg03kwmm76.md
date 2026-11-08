@@ -5,7 +5,7 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: in_progress
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -18,7 +18,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-08T04:26:35.547Z
+updated_at: 2026-11-08T04:34:50.030Z
 started_at: 2026-11-08T01:58:21.485Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
@@ -59,6 +59,8 @@ The full list with how each was checked is docs/project/reviews/review-2026-10-0
 PRACTICAL CONSTRAINT: on 2026-10-26 the data volume was 94 percent full, 403 GiB used of 460 GiB with 26 GiB free (read /System/Volumes/Data, not /, which is the sealed system volume and reports misleadingly). Worktrees are NOT the cause: 40 of the 49 worktree records are stale pointers to directories that no longer exist, so `git worktree prune` cleans records and reclaims nothing, and every metabrowser checkout together is under 2 GiB. The differentials need rebuilt corpora plus two installed builds, which 26 GiB should carry; the 300,000-file flat-stress pass from exp-036 is what disk blocked before, so check free space before attempting that one specifically.
 
 ## Notes
+
+November7 stabilization checkpoint: all28 productPRs in native stack302 are merged at68534af933f0fcb38a5d81d62691bb42732d58ab; that exact main passed complete verify, CI9/9 and installed-wheel checks and is installed. New additive follow-ups are c67371c2e (linked corpus roots and release docs),24f3721c9 (shared identity typography, positional stack controls, leading GitHub brand and Reload layout),519c33239 (retained exp056 and refreshed acceptance). All three have independent senior review; UI also has dedicated security/performance reviews. A Reload keyboard finding was reproduced and fixed. Normal pre-push full makeverify is running before publication; no newPR numbers yet. Release is not cleared: exp056 retains valid444ms>350ms hardbudget failure and incomplete comparison; exp057 on final candidate, final differentials, QA matrix and owner signoff remain. Final55file baseline comparison now has identical full CLI payloads and clean apply oracles, both browser layouts reach finalfile; finalartifact signoff pending. Future branch/worktree chooser is mb-itzy, explicitly tracked-only/deferred by latest user instruction. One unreproduced PR->Commits sourcepreview stall is mb-4mfc for finalwheel QA. Current release coordinator remains authoritative; never tag/publish before explicit user approval.
 
 November 7, 2026: the user explicitly authorized merging the reviewed, green PR stack, followed by complete release preparation; cutting or publishing the release still requires the user's approval. The existing coordinator remains authoritative and the version decision remains 0.12.0, as decided on October 26. The current published baseline is independently confirmed as 0.11.0 on GitHub and live PyPI. Native stack302 has28 product layers; final ownership-fix verification is running at6cf001cdf before its last four forward updates. Sub-agents hit their usage limit; the root agent is continuing directly. New preparation task mb-gew9 coordinates the existing release tasks rather than replacing their acceptance bars: mb-2g6f/mb-8pyc release-head differentials, mb-cf6y installed-wheel performance rehearsal, mb-m20f full QA, mb-etqi human acceptance, and the final behavior-change/release sign-off. No tag, GitHub release or PyPI publication has occurred.
 
