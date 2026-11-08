@@ -5,7 +5,7 @@ title: Prepare the next Metabrowser release candidate without publishing
 kind: task
 status: in_progress
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -17,12 +17,18 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-08T01:50:20.508Z
-updated_at: 2026-11-08T10:41:17.313Z
+updated_at: 2026-11-08T11:44:54.620Z
 started_at: 2026-11-08T01:55:06.900Z
 ---
-Coordinate the user's release-preparation request under mb-4bd2. Version0.12.0 is decided; no0.11.1 patch is planned. Product stacks and post-landing loading fix through PR333 are merged, reviewed, CI-green and installed. Current navigation stabilization mb-b0aq/mb-ygiq is independently reviewed at1ede1e220, with the normal exact-head full gate in progress; finish its PR/CI, merge and install. Correct independent release-doc findings in mb-y489 as a separate reviewed layer. Reuse final data/audit/browser differentials mb-2g6f, large comparison mb-8pyc, quiet performance rehearsal mb-cf6y, navigation/large-PR qualification mb-4ifm, full installed QA mb-m20f and owner acceptance mb-etqi. Keep plans, docs, skill identity, changelog and behavior-change record current; prepare concise complete0.11.0-to0.12.0 notes and concrete artifact/checklist packet. Preserve historical failed/interrupted/invalidated results at their original identities and name remaining acceptance honestly. No tag, GitHub release, PyPI publication or post-publication success claim before explicit owner approval of exact final commit and notes. Deferred Files source/branch workflow mb-itzy stays paused and outside this scope.
+Prepare Metabrowser 0.12.0 under release coordinator mb-4bd2. Product layers through PR #334 are merged, reviewed, CI-green and installed. Finish the separate release-documentation correction mb-y489 and its full gate, independent reviews, PR/CI and merge. Then freeze the exact candidate for final data/audit/browser differentials mb-2g6f, the above-50-file comparison mb-8pyc, quiet previous-release rehearsal mb-cf6y, navigation and large-PR qualification mb-4ifm, the complete installed-wheel runbook mb-m20f and owner matrix mb-etqi. Keep docs, plans, skill identity, changelog and the behavior-change record current; prepare complete 0.11.0-to-0.12.0 release notes and a concrete artifact/checklist packet. Preserve historical failed, interrupted and invalidated observations at their original source identities. No tag, GitHub release, PyPI publication or post-publication claim before the owner's approval of the exact final commit and notes. Future Files source/branch workflow mb-itzy remains paused and outside this scope.
 
 ## Notes
+
+November 8: PR334 complete; release docs gating
+
+PR #334 merged at fe04a4b1c with the reviewed 1ede1e220 tree, full verification and all nine PR/main CI jobs green. Exact wheel is installed and both repository-mode functional sessions pass. The scoped correctness beads mb-b0aq/mb-ygiq are closed. A retained 2-second managed refresh warning remains a performance qualification under mb-4ifm, not an accepted timing result.
+
+The separate mb-y489 layer changes only README.md and docs/publishing.md. Independent senior and security/process reviews approve it; a forward merge of main preserved its exact reviewed content. Complete normal pre-push make verify is active at426ce7b62. No installer was executed by documentation validation. After its PR/CI and merge, freeze the release candidate for the remaining differentials, quiet performance, full installed QA and owner acceptance. No release/tag/publication; mb-itzy remains paused.
 
 November8 current release-preparation checkpoint
 

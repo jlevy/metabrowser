@@ -5,7 +5,7 @@ title: Make PR and Git navigation feel immediate with measured prefetching
 kind: feature
 status: in_progress
 priority: 1
-version: 29
+version: 30
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex-prefetch
 labels: []
@@ -32,12 +32,18 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-05T01:47:46.617Z
-updated_at: 2026-11-08T10:17:33.296Z
+updated_at: 2026-11-08T11:44:51.303Z
 started_at: 2026-11-05T01:47:47.197Z
 ---
 Improve perceived navigation latency for pull-request selection and Git history on a new branch from verified main. Follow the existing performance-loop framework: register a few falsifiable hypotheses before implementation; test their mechanisms on the unchanged build; use frozen subjects and explicit cold, warm, prepared and unprepared cache states; measure trusted input to exact useful painted content, including server, decode, asset and mount phases. Confirm accepted changes with interleaved repeated controls and candidate runs, preserve correctness/cancellation/account/source ownership and bounded background work, and record rejected hypotheses as well. Reuse existing harnesses and concise session/golden tests rather than adding a parallel framework. Preserve the default installed verified build and the two user preview servers while experimenting; install a successor only after verification. Track actual timings, ranges, bytes, request counts/concurrency, long tasks, CPU/RSS and cache provenance. Branch: codex/perf-prefetch-20261104. No speculative product changes before diagnostic evidence.
 
 ## Notes
+
+November 8: scoped prefetch fixes delivered
+
+PR #334 merged at fe04a4b1cfb25cc16e1e8399252f4b664633a6c6, whose tree exactly equals gated 1ede1e220. Independent A–D reviews, full verification, all nine PR and all nine main CI jobs passed. Both aliases and all three previews now run 0.11.1.dev1283+1ede1e220. Functional sessions pass for checkout/managed PR334 Conversation, six-file Changes and nine Checks, independent Commit/PR restoration, #/title/number Quick Search and Markdown gutter/padding. Scoped correctness beads mb-b0aq and mb-ygiq are closed and synced.
+
+Retain a real current-build observation for the measurement round: managed8863 emitted a slow-fetch warning at 11:24:45Z for POST /api/plugin/github/pull-refresh, 2014 ms total / 2010 ms server / 4 ms transit, response1598 bytes. Concurrent functional make verify was running. No cache classification, first-useful-paint measurement, causal attribution or regression conclusion is established. This is recorded in b0aq-mechanism-20261108/installed-browser-verification.json; do not hide it as clean console output or treat it as a quiet comparison. H74 cold assets, H75 natural intent/request joining, quiet large-PR comparisons and the 100 ms prepared-paint target remain open.
 
 November 8: navigation stabilization on new branch
 
