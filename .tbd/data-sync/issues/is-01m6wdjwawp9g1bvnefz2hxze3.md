@@ -5,7 +5,7 @@ title: Prepare the next Metabrowser release candidate without publishing
 kind: task
 status: in_progress
 priority: 1
-version: 13
+version: 15
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -15,10 +15,12 @@ child_order_hints:
   - is-01m6wtacta0gcph1j42jw3vq26
   - is-01m6xby4qhb8m9fk5zd9x3tg5p
   - is-01m6y0kgztsmtjbrtah41yasva
+  - is-01m6y741059kycgwascp802y3g
+  - is-01m6y87w6v0ep9pca8m5awpj48
 hold: null
 hold_until: null
 created_at: 2026-11-08T01:50:20.508Z
-updated_at: 2026-11-08T17:33:49.681Z
+updated_at: 2026-11-08T18:55:25.914Z
 started_at: 2026-11-08T01:55:06.900Z
 ---
 Prepare Metabrowser 0.12.0 under release coordinator mb-4bd2. All product and release-command layers through PR #335 are merged, independently reviewed and CI-green; exact gated 426 is installed. Complete final data/audit/browser differentials mb-2g6f, the above-50-file comparison mb-8pyc, quiet previous-release rehearsal mb-cf6y, navigation and large-PR qualification mb-4ifm, the installed-wheel runbook mb-m20f and owner matrix mb-etqi. Keep docs, plans, skill identity, changelog and the behavior-change record current, and prepare complete 0.11.0-to-0.12.0 notes and a concrete artifact/checklist packet. Preserve failed, interrupted and nonfinal evidence at its original identity. No tag, GitHub release, PyPI publication or post-publication claim before the owner approves the exact final commit and notes. Future Files live-worktree/branch browsing mb-itzy remains paused and outside scope.
