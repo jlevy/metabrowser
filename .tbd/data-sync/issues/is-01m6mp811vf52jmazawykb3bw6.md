@@ -5,7 +5,7 @@ title: Make PR and Git navigation feel immediate with measured prefetching
 kind: feature
 status: in_progress
 priority: 1
-version: 28
+version: 29
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex-prefetch
 labels: []
@@ -32,12 +32,18 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-05T01:47:46.617Z
-updated_at: 2026-11-08T08:25:37.818Z
+updated_at: 2026-11-08T10:17:33.296Z
 started_at: 2026-11-05T01:47:47.197Z
 ---
 Improve perceived navigation latency for pull-request selection and Git history on a new branch from verified main. Follow the existing performance-loop framework: register a few falsifiable hypotheses before implementation; test their mechanisms on the unchanged build; use frozen subjects and explicit cold, warm, prepared and unprepared cache states; measure trusted input to exact useful painted content, including server, decode, asset and mount phases. Confirm accepted changes with interleaved repeated controls and candidate runs, preserve correctness/cancellation/account/source ownership and bounded background work, and record rejected hypotheses as well. Reuse existing harnesses and concise session/golden tests rather than adding a parallel framework. Preserve the default installed verified build and the two user preview servers while experimenting; install a successor only after verification. Track actual timings, ranges, bytes, request counts/concurrency, long tasks, CPU/RSS and cache provenance. Branch: codex/perf-prefetch-20261104. No speculative product changes before diagnostic evidence.
 
 ## Notes
+
+November 8: navigation stabilization on new branch
+
+Verified main through PR #333 is merged and installed as a2bb0d29a. Same-identity catalog replacement was confirmed to cancel unfinished PR core preparation; mb-b0aq owns the focused correction on codex/v012-navigation-performance-20261108. Initial commit ea1c5ace passed focused checks and received independent senior, correctness and resource-lifetime passes. Review B1 found a real late-receipt cursor race at 600 rows (599 current cores, then no timers); mb-ygiq is claimed for correction before full verification. No paint/latency speedup is claimed. Backend attempt leases remain intact. The future branch/worktree chooser mb-itzy remains paused.
+
+Cold-asset attribution mb-5rm1, natural intent/request joining mb-97ex, quiet large-PR comparisons mb-jwfx and render-window qualification mb-mwuz remain open. Regular-folder exp-057 collected zero pairs after quiet preflight deferred for unrelated host activity. Final source-frozen measurements follow the reviewed/gated correction; they are not replaced by virtual scheduler tests.
 
 November8 current scope reconciliation: deliveredprefetch/UIstacks302and331 plusdocumentation332 mergedthroughmain240da85cbb45b72defed0084aadc99ee0be234ed anddefaultinstallede204. Do not treat oldawaitingmerge notes below ascurrent. ThisP1navigationperformanceparent remainsopen for H74coldassetattribution(mb-5rm1), H75naturalintent/requestjoining(mb-97ex), andinitialcorecohortfairness(mb-b0aq). Private3hypothesisprotocolprepared in navigation-performance-preparation/protocol.json usingexistingexp055playbook/recorder; currentprepared/cachedpainttarget100ms, historicalexp052150ms isdifferentcriterion. Existinggit-revisionsscenario warmsassets andcannotmeasurefirst-tabdelay; genericcomparecorrectlyrefusessamebuild. No newmeasurementsorproductionprefetchchanges made. Finishreviewedloadingownershipfix mb-4mfc, merge/installverifiedsuccessor, thenmeasureonnewbranchfromverifiedmain withfrozen cache/build/subjects, >=3admissiblerunspercondition and>=5interleavedpairsforeffects<2x perexistingrules. Regularfolderexp057 isseparatemb-cf6y anddoesnotclearPRnavigation. QuietlargePRqualifications mb-jwfx/mb-mwuz remainexplicit. FutureFileslive/cachedbranchworkflow mb-itzy stayspaused, noimplementation. No release/tag/publicationapproval.
 
