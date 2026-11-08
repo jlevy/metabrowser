@@ -5,7 +5,7 @@ title: Make PR and Git navigation feel immediate with measured prefetching
 kind: feature
 status: in_progress
 priority: 1
-version: 30
+version: 31
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex-prefetch
 labels: []
@@ -32,7 +32,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-05T01:47:46.617Z
-updated_at: 2026-11-08T11:44:51.303Z
+updated_at: 2026-11-08T20:46:05.230Z
 started_at: 2026-11-05T01:47:47.197Z
 ---
 Improve perceived navigation latency for pull-request selection and Git history on a new branch from verified main. Follow the existing performance-loop framework: register a few falsifiable hypotheses before implementation; test their mechanisms on the unchanged build; use frozen subjects and explicit cold, warm, prepared and unprepared cache states; measure trusted input to exact useful painted content, including server, decode, asset and mount phases. Confirm accepted changes with interleaved repeated controls and candidate runs, preserve correctness/cancellation/account/source ownership and bounded background work, and record rejected hypotheses as well. Reuse existing harnesses and concise session/golden tests rather than adding a parallel framework. Preserve the default installed verified build and the two user preview servers while experimenting; install a successor only after verification. Track actual timings, ranges, bytes, request counts/concurrency, long tasks, CPU/RSS and cache provenance. Branch: codex/perf-prefetch-20261104. No speculative product changes before diagnostic evidence.
@@ -68,3 +68,5 @@ Installation and review follow-up: both default CLI entry points now run the ver
 Pulls UI status follow-up mb-bn0z is complete in PR #303, the fourth layer of native stack #302 above #301. Exact head 5c8cb75b passed all nine GitHub CI jobs. Both installed CLI entry points now run verified 0.11.1.dev1165+5c8cb75b.
 
 2026-11-07 stack readiness update. Native #302 now has 21 clean, green and reviewed PR layers through #320 ab905365. The accepted prefetch experiments and later UI/caching work are integrated forward with current main included. Final full gate, three opt-in real-gh sessions and checkout/managed browser checks pass. Both default commands run 0.11.1.dev1214+ab905365. Owner merge is the next landing step. Existing quiet-host and tagged-head performance qualifications continue in the separately scoped beads.
+
+November 8, installed c3 observation retained: managed preview emitted a real slow POST /api/plugin/github/pull-refresh at 20:19:33Z, 2022 ms total, 2017 ms server, five ms transit, response 1302 bytes. Runtime is exact installed 0.11.1.dev1290+c3d093d2d after normal full verification and nine green PR #337 CI jobs. This was a functional session, not an admitted quiet timing comparison: no cache classification, useful-paint clock, attribution or regression conclusion is established. The older 19:21 stacks entry at 2491 ms predates this installation. Retain the earlier 2014 ms managed refresh observation and all H74/H75/large-PR requirements. No performance acceptance or parent closure follows from the installed functional passes.
