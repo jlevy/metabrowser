@@ -1223,14 +1223,14 @@ uv --config-file uv.toml run --frozen metab \
   https://github.com/pallets/markupsafe/pull/507 --api '/api/plugin/github/pull?number=507'
 ```
 
-**Pass:** The smoke test’s Files changed matches GitHub’s file list for merged fork pull
+**Pass:** The smoke test’s Changes view matches GitHub’s file list for merged fork pull
 request 507 and for an open pull request.
 The command prints `pin: <head> (pull request 507 head)` and
 `pull_request: 507 (merged; fetched … by gh:<login>)` on stderr, then a `current` record
 whose `comparison.base_from` is `base_sha`. Run again, it answers from the cache.
 
 **Fail:** A `gh` call on a cached read; a token, scope, or `gh` output in a message; a
-record whose Files changed differs from GitHub’s; a failure without its typed state; a
+record whose comparison differs from GitHub’s; a failure without its typed state; a
 traceback.
 
 ### 4.11 A pull request beside a checkout
@@ -1286,8 +1286,8 @@ URL.
 
 **Pass:** `metab` prints `history is shallow, as the checkout’s is`, `shallow` is
 `true`, and the scratch clone’s `shallow` file is unchanged.
-Files changed matches `gh pr view`, or the record says `base_uncertain` and the page
-shows no diff; it never shows a different diff.
+Changes matches `gh pr view`, or the record says `base_uncertain` and the page shows no
+diff; it never shows a different diff.
 
 For a **moved checkout**, rename that scratch clone and run the status command.
 
@@ -1296,8 +1296,8 @@ no traceback and nothing served; `--api /api/cache/stores` answers `lender_missi
 the printed repair, with the new path, makes the status command work again.
 
 **Fail:** Any write under the checkout’s `.git`, a `.git/shallow.lock` left there, a
-planted branch or tag served, a diff that differs from GitHub’s shown as Files changed,
-or a traceback.
+planted branch or tag served, a diff that differs from GitHub’s shown as Changes, or a
+traceback.
 
 ## Phase 5: Serve the Pin (T1 Browser Subset, No Network)
 
@@ -1622,7 +1622,7 @@ address.
 8. Stop the server and serve pull request 9 (`--serve 9 8475`): **spam** is **Closed**,
    and the header reads
    `ghost wants to merge 1 commit into octo:topic from spam (deleted fork)`, as
-   github.com words a closed pull request; there is no conversation, and Files changed
+   github.com words a closed pull request; there is no conversation, and Changes
    compares from the recorded `base.sha`. Serve pull request 8 (`--serve 8 8475`): **Say
    more in the guide** is **Merged**, the header reads
    `octo merged 1 commit into topic from guide-more`, naming who merged it rather than
@@ -1659,7 +1659,7 @@ uv --config-file uv.toml run --frozen metab https://github.com/pallets/markupsaf
 ```
 
 **Pass:** the page matches the pull request on github.com: title, **Merged** badge,
-description, conversation, review comments, checks, and the Files changed file list.
+description, conversation, review comments, checks, and the Changes file list.
 Nothing is written to GitHub.
 
 ### 5.7a Pull-request performance and cache session
@@ -1744,10 +1744,9 @@ order, conditional pages without `Link`, cache-only reads and missing-tool backo
    Menu rows read **1/6** · title · #123, with only the position bold; the menu fits the
    pane and retains focus through refresh.
    View on GitHub uses the GitHub brand icon before the label.
-   Cold Conversation and Files changed show aligned gray pulsing blocks; cached refresh
-   keeps content and focus.
-   Check reduced motion, late stack arrival, expanded trees and scroll after the actual
-   row height changes.
+   Cold Conversation and Changes show aligned gray pulsing blocks; cached refresh keeps
+   content and focus. Check reduced motion, late stack arrival, expanded trees and scroll
+   after the actual row height changes.
 
 4. Check author and merger avatars against the named username, including missing,
    unsupported and failed images.
@@ -2009,10 +2008,10 @@ Serve the stand-in of 5.7 (`--serve 7 8475`) and open
    **View at base**, whose tooltip names `f92fd713acd5`, the merge base rather than the
    base branch’s tip, and **View file**, a link.
 8. Click **View file** on `src/app.txt`: the file opens from the served head and reads
-   `one` and `two`. Back returns to Files changed.
+   `one` and `two`. Back returns to Changes.
 9. Click **View at base** on `src/app.txt`: the page reloads on `f92fd713acd5` and the
    file reads `one` only.
-   Back returns to Files changed on the base’s page: the status line says
+   Back returns to Changes on the base’s page: the status line says
    `This page's code is f92fd713acd5, not the pull request's head 85fcb2fa9e77` with
    **Switch to the head**, **View at base** is now the link, and **View file** the
    switch. Click **View file** on `src/app.txt`: the file opens from the head, and the

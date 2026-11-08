@@ -434,12 +434,12 @@ opens at the top of the repository.
 A `/pull/<n>/files` URL selects the same pull request as `/pull/<n>` and adds
 `tab: files` to the selection lines, and a server opens at `/pull/<n>/files`, as its
 `Serving` line prints.
+A `/pull/<n>/checks` URL selects **Checks** at `/pull/<n>/checks` in the same way.
 The tab says only where a server opens: `--show` and `--api` answer the path or route
 they are given, so `--show /pull/<n>/files` is the way to inspect **Changes** without a
 browser. A `/pull/<n>/commits` URL is the same as `/pull/<n>`, because the page has no
-Commits tab. Other pull-request pages, such as `/pull/<n>/checks`, and a repository’s
-`/pulls` list are refused.
-A URL selects one pull request, and `--show` and `--api` answer for any number:
+Commits tab. Other unsupported pull-request pages and a repository’s `/pulls` list are
+refused. A URL selects one pull request, and `--show` and `--api` answer for any number:
 `--show /pull/<other>` reports what the cache holds of it and fetches nothing, `absent`
 with the reason `not_cached` when that is nothing, and a folder with no GitHub
 repository answers the reason `not_github`.

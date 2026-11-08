@@ -2,11 +2,10 @@
 
 **Status:** Overlay acquisition, bounded explicit recovery, and checkout-backed PR
 comparisons are implemented in [#283](https://github.com/jlevy/metabrowser/pull/283) and
-[#288](https://github.com/jlevy/metabrowser/pull/288) and are present on
-[`main` at 68534af93](https://github.com/jlevy/metabrowser/commit/68534af933f0fcb38a5d81d62691bb42732d58ab),
-recorded on 2026-11-07. [Delivery](#delivery) maps the implemented scope; the
-[alpha plan’s landing status](plan-2026-09-22-v012-alpha-testing.md#landing-status)
-records current integration and release evidence.
+[#288](https://github.com/jlevy/metabrowser/pull/288) and are present on `main`.
+[Delivery](#delivery) maps the implemented scope; the
+[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
+the current integrated candidate, installed artifact and remaining release gates.
 Conversions and broader deepening remain future work.
 
 The design was proven by experiments on 2026-11-02 against a 1.2 GB private repository

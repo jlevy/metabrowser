@@ -329,6 +329,61 @@ Approving this list accepts, for the 0.12.0 release:
 It does not accept the two regressions still being fixed, and it says nothing of the
 browser differential.
 
+## Integrated Product Addendum, November 7, 2026
+
+The earlier observations retain their original source and artifact pins.
+The current product candidate is
+[`main` `d33550455`](https://github.com/jlevy/metabrowser/commit/d33550455d1a44bb275d5e71492f9bdbc682f0c5),
+whose tree equals reviewed tip `519c33239`. The
+[release-preparation record](../qa/qa-2026-11-07-v012-release-preparation.md) separates
+current installed-build evidence from historical runs and lists the unfinished release
+gates.
+
+The release sign-off must also cover these intended changes to existing folder
+workflows:
+
+- Explicit `--api <route> --format json` and `--format yaml` output contains only the
+  envelope, so stdout parses as the selected format.
+  Without an explicit format, the existing human-readable output is retained.
+  Dotenv loading skips non-regular or over-64-KB files with a warning and no longer
+  expands `${VAR}` values, as the changelog records.
+
+- Files, Commits and Pulls retain independent selection state and fixed shortcut numbers
+  1, 2 and 3. Command plus the number works on macOS when the browser delivers it; the
+  plain number is also supported when the browser reserves Command shortcuts.
+  Missing tabs do not shift those numbers.
+  Quick Search includes cached PRs by number or title in recognized GitHub repositories.
+
+- Rendered Markdown and commit prose align with the pane’s first tab, using the shared
+  content measure and gutter.
+  Document cards retain inner padding; wide contents rails sit to the right, while
+  narrow panes keep the contents button and drawer.
+
+- Commit descriptions use a neutral sans-serif surface.
+  Usernames use bold normal text ink at the surrounding size, branches use the shared
+  ref chips, and file-change letters share semantic colors.
+
+- A folder comparison keeps its complete CLI patch document while the browser hydrates
+  nearby deferred files progressively.
+  It shows delayed progress for active work and actionable failure or truncation
+  notices, without the routine partial-file counter.
+  The installed `519c33239` build and the published 0.11.0 control produce identical
+  55-file CLI payloads and clean apply targets; both browser layouts reach the last
+  file. This focused result does not replace the broader release differentials.
+
+- A recognized GitHub checkout prepares PR catalog metadata and lightweight descriptions
+  after the first Files work is idle, using the signed-in GitHub CLI and a private local
+  cache. Full discussion and checks remain selection-driven, and opening a PR does not
+  itself fetch Git objects into the checkout.
+  The shared watch follows PR updates while Pulls or a PR page is visible and keeps
+  cached content available during provider failures.
+  These optional features do not require GitHub tools for plain-folder browsing.
+
+The live working-tree and cached branch-snapshot chooser is deferred workflow `mb-itzy`,
+not part of this candidate.
+This addendum records behavior for review; it does not record owner approval or
+completion of the remaining release acceptance.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

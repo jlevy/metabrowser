@@ -515,9 +515,9 @@ GitHub URLs and HTTPS:
   prevent premature network retries.
 
 - Pulls tab: a GitHub repository opened from its URL has a **Pulls** tab beside Files
-  and Git, listing every pull request newest first, with GitHub’s icon for open, draft,
-  merged, and closed, Open, Closed, and All filters (defaulting to Open), and what to do
-  when `gh` cannot read them.
+  and Commits, listing every pull request newest first, with GitHub’s icon for open,
+  draft, merged, and closed, Open, Closed, and All filters (defaulting to Open), and
+  what to do when `gh` cannot read them.
   It is in front whenever a pull request’s page is, and at the list’s own address,
   `/pulls`. Selecting a row reads the pull request in the same page, fetching it if it
   has no record; holding K, J, or an arrow walks the rows and opens the one it stops on,
@@ -526,15 +526,15 @@ GitHub URLs and HTTPS:
   Initially up to 500 matching PRs are displayed; **Fetch more** expands that window
   while catalog metadata continues filling independently.
   Rows expand into a windowed changed-files tree with folder navigation and inline
-  change counts. Selecting a file opens `/pull/<n>/files/<path>` and jumps Files changed
-  in place; keyboard walks keep focus in the tree and replace one history entry when
-  they stop. The selected file follows a reader’s diff scroll.
+  change counts. Selecting a file opens `/pull/<n>/files/<path>` and shows Changes in
+  place; keyboard walks keep focus in the tree and replace one history entry when they
+  stop. The selected file follows a reader’s diff scroll.
   Opening a GitHub repository now runs `gh` for its list of pull requests once the first
   file tree has painted, at most once a minute, whether or not the tab is opened; the
   request names the repository and carries `gh`’s own sign-in.
 
-- The Conversation and Files changed tabs align with the PR reading column on narrow and
-  wide screens; the diff itself retains the full pane width.
+- The Conversation and Changes tabs align with the PR reading column on narrow and wide
+  screens; the diff itself retains the full pane width.
 
 - GitHub CLI setup messages provide installation and sign-in steps, with official
   download links when `gh` is missing or needs updating.
@@ -547,8 +547,9 @@ GitHub URLs and HTTPS:
   Catalog jobs check the account once and validate the viewer returned with every page,
   avoiding repeated account-status requests during backfill.
 
-- When the optional `gh stack` extension is installed, pull-request rows and pages show
-  native GitHub stack numbers and ordered member links.
+- When the optional `gh stack` extension is installed, pull-request rows show their
+  stack position. PR pages offer a matching position menu with the stack number and
+  ordered member links.
   Stack metadata refreshes separately from PR content; unavailable tooling leaves the
   normal PR views usable.
 
@@ -558,8 +559,8 @@ GitHub URLs and HTTPS:
 
 - An uncached pull-request page shows pulsing gray loading blocks in the reading column.
   Cached content stays visible while it refreshes.
-  PR numbers use dark text, usernames use bold gray text, and branch names use a smaller
-  consistent treatment across the list and PR pages.
+  PR numbers use dark text, usernames use bold normal text ink, and branch names use a
+  smaller consistent treatment across the list and PR pages.
 
 - External GitHub links show a shared destination icon in rendered text and application
   controls. Issue and PR links use neutral entity icons when state is unknown; matching
@@ -1224,26 +1225,28 @@ Large pull requests:
   `.git/info/attributes`, and the reader’s own attributes files and configuration, as
   `git diff` in that folder does.
 
-- A pull request’s Conversation fetches Files changed when the browser is idle, so the
-  tab opens with no request.
-  A pull request’s page no longer fetches the repository’s file catalog until its search
-  palette opens or the reader leaves for a file.
+- A pull request’s Conversation prepares the initial Changes comparison when the browser
+  is idle. Opening Changes reuses that payload when ready; nearby deferred patches still
+  load as needed. A pull request’s page no longer fetches the repository’s file catalog
+  until its search palette opens or the reader leaves for a file.
 
 - A comparison’s 8 MiB bound applies per file, and only to the files a request asked
   for. One file past it says it is too large to show, a file that would take a request
   past it loads when the reader reaches it, and neither costs the rest of the
   comparison. A file past 8 MiB of the whole patch could not be loaded at all before.
 
-- A diff with files still to load says how many, such as “50 of 1,183 files loaded; the
-  rest load as you reach them”, in a commit’s diff in a served folder as well.
+- Deferred diff files use the shared delayed spinner while loading.
+  Failed loads and truncated results have notices, in pull-request and commit
+  comparisons alike.
 
 - A pull request’s record refreshes with its five parts in flight together instead of
   one after another, and serving one with no record says “reading pull request N” after
   half a second, on the cadence of a clone’s progress, instead of saying nothing.
 
-- A deferred file reserves an estimate of its height, the diff asks for one file at a
-  time, the one on screen nearest the top, and renders at most one per frame, and what
-  is at the top of the pane stays there as files fill in.
+- A deferred file reserves an estimate of its height.
+  The diff asks for one file at a time, prioritizing an explicit jump before visible and
+  nearby files, and renders at most one per frame.
+  What is at the top of the pane stays there as files fill in.
   This holds in a commit’s diff in a served folder as well.
 
 Fixes:

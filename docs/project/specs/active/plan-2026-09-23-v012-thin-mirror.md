@@ -1,9 +1,8 @@
 # Plan: v0.12 Thin Mirror for Git and GitHub Browsing
 
-**Status:** Landed on
-[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b).
-The [alpha plan’s landing status](plan-2026-09-22-v012-alpha-testing.md#landing-status)
-records the current integration and release state.
+**Status:** Implemented on `main`. The
+[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
+the current integrated candidate, installed artifact and remaining release gates.
 The design was decided on 2026-09-23 and revised the same day after an independent
 design review. [Delivery](#delivery) maps each step and follow-up to its pull request,
 all of them merged. The

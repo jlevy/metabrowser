@@ -104,9 +104,10 @@ follow its instructions and choose **Reload**. See
 ## Native Stack Navigation
 
 With the optional [gh-stack extension](installation.md#git-and-github-setup), a list row
-shows **Stack #N** when native GitHub metadata names its membership.
-The PR page shows a Layers icon and position, such as **5/23**. Open it for a menu
-ordered from stack top to base, with each member’s title, ordinal, and PR number.
+shows a Layers icon and position, such as **5/23**, when native GitHub metadata names
+its membership. The PR page uses the same position as a menu trigger.
+Open it for the stack number and members ordered from stack top to base, with each
+member’s title, ordinal, and PR number.
 Titles come from the matching local catalog; a missing title falls back to the PR
 number. Use **⇧J** toward the stack base and **⇧K** toward its top.
 Help lists both shortcuts, and editors or open dialogs keep their normal keys.
@@ -152,10 +153,10 @@ with the discussion.
 ## What the Page Shows
 
 The header has the title, state, branches, labels, and dates.
-PR numbers use dark text, usernames use bold gray text at the surface’s normal size, and
-branch names use smaller ref chips, consistently with the Pulls list and Git history.
-Hover or focus a copyable branch chip to reveal its copy control; it copies the full
-branch name. The author’s small circular avatar appears beside the username when
+PR numbers use dark text, usernames use bold normal text ink at the surface’s normal
+size, and branch names use smaller ref chips, consistently with the Pulls list and Git
+history. Hover or focus a copyable branch chip to reveal its copy control; it copies the
+full branch name. The author’s small circular avatar appears beside the username when
 available. Full metadata uses relative ages such as “2h ago”, “just now”, or “in 2h”;
 condensed navigation keeps short ages.
 An initially empty page shows gray pulsing loading blocks.
@@ -165,9 +166,9 @@ The description can appear while comments, reviews, checks, and changes are stil
 loading. Active sections show the shared gray spinner.
 A visible PR opened from a row or a direct link fetches its record on the first visit.
 A cached full page renders from disk and keeps its content visible while it refreshes.
-**View on GitHub** opens the pull request on github.com with its state icon.
-External GitHub links in conversation text carry a destination icon; an unknown issue or
-PR state uses a neutral entity icon.
+**View on GitHub** opens the pull request on github.com with a leading GitHub brand
+icon. External GitHub links in conversation text carry a destination icon; an unknown
+issue or PR state uses a neutral entity icon.
 The page has three tabs.
 
 - **Conversation** shows the description, followed by comments, reviews, and commit

@@ -12,10 +12,20 @@ release, watches the publish workflow, and runs the post-release verification.
 The human maintainer’s role is review and the platform entitlements, not manual release
 mechanics.
 
-The agent creates the release with the GitHub CLI:
+Record the reviewed, gated full commit SHA as `RELEASE_COMMIT` before requesting
+approval. Obtain approval for that exact commit and the complete release notes.
+A branch name can advance after approval, so use the recorded SHA when creating the
+release.
+
+Before publication, confirm the version tag is absent or resolves to that approved
+commit. Stop if an existing tag resolves elsewhere; `--target` chooses the commit only
+when GitHub creates a new tag.
+If any preflight check cannot be completed, do not publish.
+
+The agent creates the approved release with the GitHub CLI:
 
 ```shell
-gh release create vX.Y.Z --target main --title vX.Y.Z --notes-file <notes>
+gh release create vX.Y.Z --target "$RELEASE_COMMIT" --title vX.Y.Z --notes-file <notes>
 ```
 
 `.claude/scripts/ensure-gh-cli.sh` installs a checksum-pinned `gh` and authenticates
@@ -75,11 +85,14 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
    differing tallies confined to what the changelog describes is the explicit acceptance
    this step allows.
 
-4. Confirm CI is green for the exact commit to be tagged.
+4. Confirm CI is green for the exact commit to be tagged and record its full SHA as
+   `RELEASE_COMMIT`.
 
 5. Review changes since the previous release and choose a semantic version.
 
-6. Create a GitHub release with a `vX.Y.Z` tag.
+6. After approval of the exact commit and notes, check the version tag as described
+   above and create a GitHub release with a `vX.Y.Z` tag targeting `RELEASE_COMMIT`.
+   Verify that the resulting tag resolves to the approved commit.
    The workflow checks out that exact tag, rejects non-semantic tags, and verifies that
    the derived package version matches before publishing.
 
