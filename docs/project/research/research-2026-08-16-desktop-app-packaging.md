@@ -4,7 +4,8 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Complete
+**Status:** Complete; superseded for macOS by the
+[2026-11-08 addendum](#2026-11-08-addendum-macos-first-revision)
 
 ## Overview
 
@@ -314,6 +315,18 @@ verified guarantee, and is flagged for verification above.
   candidate for a native wheel)
 - Prior research: `research-2026-08-06-file-rollup-engine.md` (native engine decision),
   `docs/architecture.md`, `docs/plugins.md` (plugin model)
+
+## 2026-11-08 Addendum: macOS-First Revision
+
+[Native macOS App for Metabrowser](research-2026-11-08-macos-app-packaging.md)
+supersedes this brief for macOS and recommends a hand-written Swift shell over a `metab`
+host protocol, with Electron as the fallback if WebKit fails a measurement gate.
+Two findings above no longer hold:
+
+- **Electron’s size:** 85–120 MB was the compressed download; a minimal arm64 app is
+  about 300 MB installed.
+- **`disable-library-validation`:** only a hardened-runtime Python signed inside the
+  bundle needs it. A Python the shell spawns from app data, as uv installs it, does not.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
