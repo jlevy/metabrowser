@@ -4,6 +4,11 @@ All notable changes to Metabrowser are documented here.
 
 ## 0.12.0 (unreleased)
 
+- Configuration and repository-cache contract names use `metabrowser.config` and
+  `metabrowser.cache`, independent of their hosting location.
+  An unreadable config names its location and explains how to recreate it without
+  discarding cached repositories.
+
 - Plugin template rendering waits for its shared library before plugin code runs, so a
   directly opened custom view works before idle asset prefetch finishes.
 

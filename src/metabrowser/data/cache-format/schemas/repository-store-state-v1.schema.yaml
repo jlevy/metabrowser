@@ -82,5 +82,5 @@ required:
 title: RepositoryStoreState
 type: object
 x-softschema:
-  contract: com.github.jlevy.metabrowser.cache:RepositoryStoreState/v1
-  schema_sha256: bacde28f73bfa36443d19db597cbc88a863e1903de1a50a787999101f9868d00
+  contract: metabrowser.cache:RepositoryStoreState/v1
+  schema_sha256: 400063f5068063c14c19778d880a3a8f5f7dc2d44111eb1078fc8eeec120de36

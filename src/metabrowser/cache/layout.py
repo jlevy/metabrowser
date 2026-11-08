@@ -14,6 +14,7 @@ settings and comments are preserved. Unreadable configuration is refused, never 
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -124,6 +125,19 @@ class LayoutError(Exception):
         self.path: Path = path
 
 
+class ConfigurationError(LayoutError):
+    """Configuration cannot be read; the CLI can name its path and recovery step."""
+
+
+class ConfigurationIOError(LayoutError):
+    """Reading or creating configuration failed at the filesystem boundary."""
+
+    def __init__(self, error: OSError, path: Path, *, operation: Literal["read", "create"]) -> None:
+        reason = os.strerror(error.errno) if error.errno is not None else "filesystem error"
+        super().__init__(reason, path)
+        self.operation: Literal["read", "create"] = operation
+
+
 @dataclass(frozen=True, slots=True)
 class LayoutOutcome:
     """What :func:`migrate_layout` found and published."""
@@ -217,8 +231,9 @@ def read_config(
 ) -> ApplicationConfig | None:
     """Read ``config.yml``; ``None`` when there is none.
 
-    Known fields validate, unknown settings are kept, and a future format raises
-    :class:`FutureLayoutFormatError`. *shared* follows :func:`read_layout`.
+    Keep validation and I/O failures distinct so a CLI can suggest a reset only for
+    malformed data. A future format keeps its upgrade guidance. *shared* follows
+    :func:`read_layout`.
     """
 
     path = home / CONFIG_RECORD
@@ -229,27 +244,35 @@ def read_config(
     except FileNotFoundError:
         return None
     except RecordError as error:
-        raise LayoutError(str(error), path) from error
-    document = _parse_yaml(payload, path, "config.yml")
+        raise ConfigurationError(str(error), path) from error
+    except OSError as error:
+        raise ConfigurationIOError(error, path, operation="read") from error
+    try:
+        document = _parse_yaml(payload, path, "config.yml")
+    except LayoutError as error:
+        raise ConfigurationError(str(error), path) from error
+    values = document.get("config")
+    if isinstance(values, dict):
+        _refuse_future(
+            cast(dict[str, object], values).get("format"), history, storage="configuration"
+        )
     if set(document) != {"softschema", "config"}:
-        raise LayoutError(
+        raise ConfigurationError(
             "config.yml must contain only its softschema header and a config mapping",
             path,
         )
     if document["softschema"] != _CONFIG_METADATA:
-        raise LayoutError(
+        raise ConfigurationError(
             f"config.yml must declare contract {CONFIG_CONTRACT_ID}, envelope config, and "
             "status permissive, and must not name a schema",
             path,
         )
-    values = document["config"]
     if not isinstance(values, dict):
-        raise LayoutError("config.yml config must be a mapping", path)
-    _refuse_future(cast(dict[str, object], values).get("format"), history, storage="configuration")
+        raise ConfigurationError("config.yml config must be a mapping", path)
     try:
         return parse_application_config(values)
     except ValueError as error:
-        raise LayoutError(str(error), path) from error
+        raise ConfigurationError(str(error), path) from error
 
 
 def serialize_config(config: ApplicationConfig) -> bytes:
@@ -278,10 +301,15 @@ def ensure_configuration(*, version: str) -> ApplicationConfig:
     config = read_config(directory)
     if config is not None:
         return config
-    ensure_storage_root(directory)
-    config = ApplicationConfig(format=CONFIG_FORMAT, written_by=version, upgrades=[])
+    path = directory / CONFIG_RECORD
     try:
-        write_private_file_atomic(directory, CONFIG_RECORD, serialize_config(config), replace=False)
+        ensure_storage_root(directory)
+    except OSError as error:
+        raise ConfigurationIOError(error, path, operation="create") from error
+    config = ApplicationConfig(format=CONFIG_FORMAT, written_by=version, upgrades=[])
+    payload = serialize_config(config)
+    try:
+        write_private_file_atomic(directory, CONFIG_RECORD, payload, replace=False)
     except FileExistsError as error:
         existing = read_config(directory)
         if existing is None:
@@ -289,6 +317,8 @@ def ensure_configuration(*, version: str) -> ApplicationConfig:
                 "configuration disappeared during initialization", directory / CONFIG_RECORD
             ) from error
         return existing
+    except OSError as error:
+        raise ConfigurationIOError(error, path, operation="create") from error
     return config
 
 
@@ -431,6 +461,8 @@ __all__ = [
     "LAYOUT_FORMAT_PATTERN",
     "MIGRATIONS",
     "CacheHome",
+    "ConfigurationError",
+    "ConfigurationIOError",
     "FutureLayoutFormatError",
     "LayoutError",
     "LayoutOutcome",

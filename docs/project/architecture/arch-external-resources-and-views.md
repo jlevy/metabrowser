@@ -194,7 +194,7 @@ registration, and rejects duplicate `(kind, view)` claims deterministically.
 ## Provider Storage Is Content-Neutral
 
 Provider-resource foundations and the shared minimal `HostedRepository/v1` summary use
-the `com.github.jlevy.metabrowser.provider` contract namespace.
+the `metabrowser.provider` contract namespace.
 Other domain records keep their own namespaces, such as `review` for change requests and
 the future release namespace for releases.
 

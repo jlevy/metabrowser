@@ -47,5 +47,5 @@ required:
 title: RepositorySource
 type: object
 x-softschema:
-  contract: com.github.jlevy.metabrowser.cache:RepositorySource/v1
-  schema_sha256: 5366659422e29e2cacf9ebda52f650708ddcc380f73292436339010bd96c175f
+  contract: metabrowser.cache:RepositorySource/v1
+  schema_sha256: e2d87a6ac675cae47eaca40ec13cbd283af95c9ef232e22d7ad6700039b6304f

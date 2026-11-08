@@ -106,6 +106,7 @@ def _artifact(contract_id: str, record: dict[str, Any], **softschema: str) -> by
 
 
 def test_contract_inventory_is_exact() -> None:
+    assert all(contract.contract_id.startswith("metabrowser.") for contract in CACHE_CONTRACTS)
     assert {
         contract.contract_id: (contract.schema_name, contract.envelope, contract.status)
         for contract in CACHE_CONTRACTS

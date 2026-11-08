@@ -492,8 +492,8 @@ Cache clearing and cache-layout changes preserve configuration.
 The `f01` marker and SoftSchema contract versions solve different problems:
 
 - `f01` names application-home directory semantics and migration order.
-- A contract such as `com.github.jlevy.metabrowser.cache:RepositorySource/v1` names one
-  YAML payload shape.
+- A contract such as `metabrowser.cache:RepositorySource/v1` names one YAML payload
+  shape.
 - A provider-record change does not force an application-home migration when the old
   provider cache can be retained, converted under a released-data obligation, or
   refreshed.
@@ -510,7 +510,7 @@ An older client that sees a future layout fails before writing.
 
 ```yaml
 softschema:
-  contract: com.github.jlevy.metabrowser.config:ApplicationConfig/v1
+  contract: metabrowser.config:ApplicationConfig/v1
   envelope: config
   status: permissive
 config:
@@ -538,7 +538,7 @@ rather than replaced.
 
 ```yaml
 softschema:
-  contract: com.github.jlevy.metabrowser.cache:CacheLayout/v1
+  contract: metabrowser.cache:CacheLayout/v1
   envelope: layout
   status: enforced
 layout:
@@ -705,7 +705,7 @@ open or refresh:
 
 ```yaml
 softschema:
-  contract: com.github.jlevy.metabrowser.cache:RepositorySource/v1
+  contract: metabrowser.cache:RepositorySource/v1
   envelope: source
   status: enforced
 source:
@@ -728,7 +728,7 @@ database:
 
 ```yaml
 softschema:
-  contract: com.github.jlevy.metabrowser.cache:RepositoryStore/v1
+  contract: metabrowser.cache:RepositoryStore/v1
   envelope: store
   status: enforced
 store:
@@ -744,7 +744,7 @@ The store’s `state.yml` contains mutable Git state and is atomically replaced:
 
 ```yaml
 softschema:
-  contract: com.github.jlevy.metabrowser.cache:RepositoryStoreState/v1
+  contract: metabrowser.cache:RepositoryStoreState/v1
   envelope: state
   status: enforced
 state:

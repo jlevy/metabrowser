@@ -48,5 +48,5 @@ required:
 title: ApplicationConfig
 type: object
 x-softschema:
-  contract: com.github.jlevy.metabrowser.config:ApplicationConfig/v1
-  schema_sha256: 5dc24b5d072d4e5360c492e7640948804f7f59c0b903f760694ffc1f39e41757
+  contract: metabrowser.config:ApplicationConfig/v1
+  schema_sha256: 2a950fe7fd3f3e50ea6aa6703f03b6af7584fe4ab47825f381e5530b396a3d9c

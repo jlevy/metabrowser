@@ -465,7 +465,7 @@ status: 200
         {
           "record": "source.yml",
           "code": "invalid",
-          "message": "the record does not satisfy com.github.jlevy.metabrowser.cache:RepositorySource/v1: record: Value error, source id does not match its transport and clone URL"
+          "message": "the record does not satisfy metabrowser.cache:RepositorySource/v1: record: Value error, source id does not match its transport and clone URL"
         }
       ]
     },
@@ -485,7 +485,7 @@ status: 200
         {
           "record": "store-alias.yml",
           "code": "invalid",
-          "message": "the record does not satisfy com.github.jlevy.metabrowser.cache:RepositoryStoreAlias/v1: softschema metadata must contain contract, envelope, and status"
+          "message": "the record does not satisfy metabrowser.cache:RepositoryStoreAlias/v1: softschema metadata must contain contract, envelope, and status"
         }
       ]
     },
@@ -509,7 +509,7 @@ status: 200
         {
           "record": "state.yml",
           "code": "invalid",
-          "message": "the record does not satisfy com.github.jlevy.metabrowser.cache:RepositorySourceState/v1: softschema metadata must contain contract, envelope, and status"
+          "message": "the record does not satisfy metabrowser.cache:RepositorySourceState/v1: softschema metadata must contain contract, envelope, and status"
         }
       ]
     },
@@ -714,7 +714,7 @@ status: 200
       {
         "record": "state.yml",
         "code": "invalid",
-        "message": "the record does not satisfy com.github.jlevy.metabrowser.cache:RepositorySourceState/v1: softschema metadata must contain contract, envelope, and status"
+        "message": "the record does not satisfy metabrowser.cache:RepositorySourceState/v1: softschema metadata must contain contract, envelope, and status"
       }
     ],
     "store": null

@@ -322,13 +322,13 @@ def test_metab_browsing_a_local_directory_never_creates_or_imports_the_home(
 
 _LAYOUT_HEADER = (
     "softschema:\n"
-    "  contract: com.github.jlevy.metabrowser.cache:CacheLayout/{version}\n"
+    "  contract: metabrowser.cache:CacheLayout/{version}\n"
     "  envelope: layout\n"
     "  status: enforced\n"
 )
 _CONFIG_HEADER = (
     "softschema:\n"
-    "  contract: com.github.jlevy.metabrowser.config:ApplicationConfig/v1\n"
+    "  contract: metabrowser.config:ApplicationConfig/v1\n"
     "  envelope: config\n"
     "  status: permissive\n"
 )
