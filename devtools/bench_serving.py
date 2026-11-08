@@ -751,7 +751,7 @@ def build_project_corpus(
     dependency tree cost almost no additional disk.
     """
     marker = root / ".bench-corpus.json"
-    shape_version = 1
+    shape_version = 2
     if marker.is_file():
         try:
             existing: dict[str, Any] = json.loads(marker.read_text())
@@ -777,8 +777,10 @@ def build_project_corpus(
         # -c asks for an APFS clone: the copies share blocks, so the corpus
         # costs about one dependency tree on disk rather than `projects` of
         # them, while every file still stats and reads normally.
+        # Materialize a linked install root; copying the link leaves its contents
+        # outside the containing corpus that the inventory walker visits.
         result = subprocess.run(
-            ["cp", "-c", "-R", str(src), str(dst)], check=False, capture_output=True
+            ["cp", "-c", "-R", str(src.resolve()), str(dst)], check=False, capture_output=True
         )
         if result.returncode != 0:
             shutil.copytree(src, dst, symlinks=True)

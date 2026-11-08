@@ -69,7 +69,8 @@ generated.
 which builds the same tree on its way to running a benchmark when a release comparison
 only wants the tree.
 It needs `make install` to have run first: the installs it copies are this repository’s
-own.
+own. Linked install roots are materialized as directories, preserving the installed
+contents within the corpus instead of leaving dependency-root links outside it.
 
 The build is deterministic and idempotent.
 `.bench-corpus.json` records the project count and the shape version, so a rerun reuses

@@ -2,8 +2,8 @@
 
 **Status:** The catalog, Pulls tab, numbered PR pages, changed-file navigation, and
 checkout-backed comparisons are on
-[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b),
-recorded on 2026-11-04. [Delivery](#delivery) records the owning layers; the
+[`main` at 68534af93](https://github.com/jlevy/metabrowser/commit/68534af933f0fcb38a5d81d62691bb42732d58ab),
+recorded on 2026-11-07. [Delivery](#delivery) records the owning layers; the
 [alpha plan’s landing status](plan-2026-09-22-v012-alpha-testing.md#landing-status)
 records current integration and release evidence.
 The original design prose remains background where a revision supersedes it.

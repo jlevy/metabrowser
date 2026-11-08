@@ -37,6 +37,11 @@ links to the document that covers each in depth.
 - [Editor plugin editing contract](architecture/arch-editor-plugin-editing-contract.md)
 - [VS Code extension host](architecture/arch-vscode-extension-host.md)
 
+## Release Acceptance
+
+- [0.12.0 release preparation](qa/qa-2026-11-07-v012-release-preparation.md) — current
+  integration, verified installation and remaining release gates
+
 ## Active Feature Plans
 
 - [v0.12 thin mirror for Git and GitHub browsing](specs/active/plan-2026-09-23-v012-thin-mirror.md)

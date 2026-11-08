@@ -36,9 +36,10 @@ Each part names the numbered steps that hold its commands and full pass and fail
 conditions; the lines here are the summary to tick off.
 Parts 1 and 2 need no network.
 Part 3 reads GitHub, and nothing in it writes there.
-Part 4 is what no agent run has covered: the
-[acceptance record](project/qa/qa-2026-09-24-v012-alpha-acceptance.md) was made in one
-Chromium pane, hidden for most rows, with no private repository.
+Part 4 adds browser-specific rendering, private access and external-plugin checks.
+The historical [acceptance record](project/qa/qa-2026-09-24-v012-alpha-acceptance.md)
+and the current release-preparation record name the build and browser each run covered;
+a pass on an older build is not relabeled as a new run.
 
 ### Part 1: Set Up and Pick the Tip (About 5 Minutes)
 
@@ -140,9 +141,9 @@ A pull request beside a checkout has its own step:
    **Fail:** a button that silently does nothing, which is what a control without the
    owner mark does; the `CHANGELOG.md` entry for the break gives the migration.
 
-Steps 2 and 3 are row M10 of the alpha plan’s manual matrix, which the acceptance record
-marks blocked for want of a private repository.
-Keep its name and contents out of anything you record.
+Steps 2 and 3 are row M10 of the alpha plan’s manual matrix.
+Record each outcome for the selected build.
+Keep private repository names and contents out of public evidence.
 
 ## Pins
 
