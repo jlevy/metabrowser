@@ -924,14 +924,23 @@ export function createPullsController(deps, options = {}) {
             response?.body
           );
         const admitted =
-          (response?.status === 202 &&
-            (receipt?.preparation === "started" || receipt?.preparation === "joined")) ||
-          (response?.status === 200 &&
-            (receipt?.preparation === "ready" || receipt?.preparation === "partial"));
+          response?.status === 202 &&
+          (receipt?.preparation === "started" || receipt?.preparation === "joined");
+        const settled =
+          response?.status === 200 &&
+          (receipt?.preparation === "ready" || receipt?.preparation === "partial");
         const busy = response?.status === 200 && receipt?.preparation === "busy";
         const preserved =
           busy || (response?.status === 200 && receipt?.preparation === "not_owner");
-        if (!preserved) {
+        if (settled) {
+          // Coverage does not claim this token: a cache-only answer may have
+          // retained the previous server window. Release its exact owner before
+          // advancing the queue, including when this same token just settled.
+          coreHeld = null;
+          if (previous !== null) {
+            await releaseCoreWindow(previous);
+          }
+        } else if (!preserved) {
           coreHeld = demand;
           if (!admitted && previous !== null) {
             // An uncertain replacement may have left its predecessor owned.
