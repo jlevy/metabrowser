@@ -4,6 +4,23 @@
 /** @typedef {{value: number, segments: ReadonlyArray<FolderTotalsSegment>}} FolderTotalsPopulation */
 /** @typedef {{metric: "files" | "size", all: FolderTotalsPopulation, files: FolderTotalsPopulation, ignored: FolderTotalsPopulation}} FolderTotalsComposition */
 
+/** Why a folder the inventory leaves out has no totals, by the envelope's `dir.not_indexed`. */
+const NOT_INDEXED_STATEMENTS = Object.freeze({
+  hidden: "Metabrowser does not index hidden folders, so this one has no file totals.",
+  symlink:
+    "Metabrowser does not follow symbolic links when it indexes, so this folder has no file totals here.",
+});
+
+/**
+ * @param {unknown} raw The folder envelope.
+ * @returns {string | null}
+ */
+export function notIndexedStatement(raw) {
+  const dir = /** @type {{dir?: {not_indexed?: "hidden" | "symlink"}} | null | undefined} */ (raw)
+    ?.dir;
+  return dir?.not_indexed ? NOT_INDEXED_STATEMENTS[dir.not_indexed] : null;
+}
+
 /** @param {unknown} value */
 const integer = (value) =>
   Number.isInteger(value) && /** @type {number} */ (value) >= 0

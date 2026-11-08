@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 from starlette.datastructures import Headers
+from starlette.responses import Response
 
 from metabrowser import http_caching
 from metabrowser.http_caching import (
@@ -53,18 +54,43 @@ class _FakeRequest:
 
 def test_tag_is_quoted_once_and_carries_the_build() -> None:
     tag = build_scoped_etag("abc123")
-    assert tag == f'"{BUILD_TAG}-abc123"'
-    # Quoted per RFC 7232, and exactly once — a version string with a quote in
-    # it must not be able to break the header.
+    assert re.fullmatch(rf'"{BUILD_TAG}-[0-9a-f]{{64}}"', tag)
+    # The content identity cannot introduce a delimiter inside the quoted validator.
     assert tag.count('"') == 2
 
 
-def test_the_same_content_under_a_different_build_is_a_different_tag() -> None:
+def test_the_same_content_under_a_different_build_is_a_different_tag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The property the whole module exists for."""
     tag = build_scoped_etag("unchanged-file")
     assert BUILD_TAG in tag
-    stale = f'"{"0" * len(BUILD_TAG)}-unchanged-file"'
-    assert stale != tag
+    other_build = "0" * len(BUILD_TAG)
+    monkeypatch.setattr(http_caching, "BUILD_TAG", other_build)
+    changed = build_scoped_etag("unchanged-file")
+    assert changed.startswith(f'"{other_build}-')
+    assert changed != tag
+
+
+@pytest.mark.parametrize(
+    "identity",
+    ["rollup-/folder/雪", 'quoted-"identity"', "line\r\nbreak", "back\\slash", "\ud800", ""],
+    ids=["unicode", "quote", "controls", "backslash", "surrogate", "empty"],
+)
+def test_arbitrary_content_identities_produce_valid_opaque_headers(identity: str) -> None:
+    tag = build_scoped_etag(identity)
+    assert tag == build_scoped_etag(identity)
+    assert re.fullmatch(rf'"{BUILD_TAG}-[0-9a-f]{{64}}"', tag)
+    assert tag.isascii()
+    response = Response(headers=etag_headers(tag))
+    assert response.headers["etag"] == tag
+    assert response.raw_headers[0] == (b"etag", tag.encode("ascii"))
+
+
+def test_encoding_preserves_distinct_identities_without_normalizing_them() -> None:
+    identities = ["雪", "雨", "é", "e\u0301", "\ud800", "\ud801", "line\n", "line\r", ""]
+    tags = [build_scoped_etag(identity) for identity in identities]
+    assert len(set(tags)) == len(identities)
 
 
 def test_a_store_tag_names_the_store_and_not_its_path(tmp_path: Path) -> None:

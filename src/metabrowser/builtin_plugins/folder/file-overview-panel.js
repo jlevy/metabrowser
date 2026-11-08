@@ -20,25 +20,9 @@
 
 import { mountFileTotalsPanel } from "./file-totals-panel.js";
 import { mountFileTypeSummary } from "./file-type-summary.js";
+import { notIndexedStatement } from "./folder-totals.js";
 
 /** @typedef {{mount: (container: HTMLElement) => () => void, get: () => {metric: "size" | "files", includeIgnored: boolean}, subscribe: (listener: (state: {metric: "size" | "files", includeIgnored: boolean}) => void) => () => void}} FolderRollupControls */
-
-/** Why a folder the inventory leaves out has no totals, by the envelope's `dir.not_indexed`. */
-const NOT_INDEXED_STATEMENTS = Object.freeze({
-  hidden: "Metabrowser does not index hidden folders, so this one has no file totals.",
-  symlink:
-    "Metabrowser does not follow symbolic links when it indexes, so this folder has no file totals here.",
-});
-
-/**
- * @param {unknown} raw The folder envelope.
- * @returns {string | null}
- */
-function notIndexedStatement(raw) {
-  const dir = /** @type {{dir?: {not_indexed?: "hidden" | "symlink"}} | null | undefined} */ (raw)
-    ?.dir;
-  return dir?.not_indexed ? NOT_INDEXED_STATEMENTS[dir.not_indexed] : null;
-}
 
 /**
  * @param {HTMLElement} container

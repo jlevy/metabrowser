@@ -553,6 +553,81 @@ $ node tests/dom/page-connections-session.js
 ? 0
 ```
 
+An expanded folder that failed while disconnected retries after an authoritative
+snapshot or filtered tree response.
+Successful, collapsed, loading, pinned, Recent, and disposed views keep their state;
+failed retries wait for another recovery.
+
+```console
+$ node tests/dom/page-reconnect-behavior.js
+{
+  "observations": [
+    {
+      "filtered": false,
+      "calls": [
+        [
+          "retire",
+          "gone.md"
+        ],
+        [
+          "patch",
+          "excluded"
+        ]
+      ]
+    },
+    {
+      "filtered": true,
+      "calls": [
+        [
+          "retire",
+          "gone.md"
+        ],
+        [
+          "filtered-tree",
+          true
+        ]
+      ]
+    }
+  ],
+  "resumed": 1,
+  "recovery": [
+    {
+      "filtered": false,
+      "folder": "docs",
+      "restored": "docs/guide.md",
+      "parses": 1,
+      "snapshots": 1,
+      "healthyCacheRetained": true,
+      "staleReadRejected": true
+    },
+    {
+      "filtered": true,
+      "folder": "docs",
+      "restored": "docs/guide.md",
+      "parses": 1,
+      "snapshots": 1,
+      "healthyCacheRetained": true,
+      "staleReadRejected": true
+    }
+  ],
+  "boundaries": {
+    "kept": [
+      "successful",
+      "collapsed",
+      "pinned",
+      "Recent",
+      "detached",
+      "disposed"
+    ],
+    "inFlight": "joined; invalidated answer revalidated",
+    "failedRetry": "waits for authoritative recovery",
+    "collapsedAncestor": "expanded child repaired; own-collapsed body retained",
+    "suppliedChildren": "stale failure removed without fetching"
+  }
+}
+? 0
+```
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

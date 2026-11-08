@@ -1171,6 +1171,7 @@ async function loadTree(options = {}) {
         } else {
           renderFilesFromTree();
         }
+        retryFailedExpandedSubtrees();
       }
       _inlineTreeBaseline = null;
       // Rows are on screen; now go get the numbers that ride beside them. The
@@ -1357,6 +1358,9 @@ function reconcileTreeContainer(container, nextNodes, work) {
     }
   }
 
+  // This container now has authoritative children. A failed lazy read is no
+  // longer its answer, even when keyed reconciliation keeps the container.
+  container.querySelector(":scope > .tree-lazy-error")?.remove();
   removeDeferredPageForContainer(container);
   for (var nextIndex = 0; nextIndex < nextVisible.length; nextIndex++) {
     var node = nextVisible[nextIndex];
@@ -2019,6 +2023,34 @@ function subtreeIsExpanded(childrenEl) {
     folder.classList.contains("expanded") &&
     !childrenEl.classList.contains("tree-children-collapsed")
   );
+}
+
+// An authoritative recovery preserves mounted folders, including their failed
+// bodies. Retry just those still expanded; successful, collapsed and loading
+// bodies have nothing to repair. loadSubtree replaces the failure immediately
+// and joins any existing fetch. An identical shallow sentinel still invalidates
+// failed deep reads; filtered membership waits for one authoritative root read.
+// @param {boolean} [revalidate] A deduplicated sentinel, not a newly applied tree.
+function retryFailedExpandedSubtrees(revalidate = false) {
+  window.MetabrowserNavigationRoute.recoverFailedExpandedFolders({
+    panel: document.getElementById("tab-files"),
+    revision: isGitRevisionSource(),
+    recent: filesPanelUsesRecentSource(),
+    load(path, children) {
+      if (revalidate) {
+        const key = subtreeCacheKey(path);
+        subtreeCache.delete(key);
+        subtreeRequests.delete(key);
+        if (filterState && filterHasConstraints(filterState.get())) {
+          if (_rootTreeRequestsInFlight === 0) {
+            void loadTree({ reconcileMountedRoot: true });
+          }
+          return;
+        }
+      }
+      return loadSubtree(path, children);
+    },
+  });
 }
 
 function scheduleSubtreeRetry(path, childrenEl) {
@@ -6492,6 +6524,8 @@ function fileStoreApplySnapshotInner(scope, entries) {
   window.metabrowserDirectoryTotalsStore?.applySnapshot(entries);
   if (filtered && !filesPanelUsesRecentSource()) {
     void loadTree({ reconcileMountedRoot: true });
+  } else if (!filtered) {
+    retryFailedExpandedSubtrees();
   }
   notifyFileStoreSubscribers({ kind: "snapshot", scope: scope });
 }
@@ -7543,6 +7577,7 @@ function _createInventoryEventSource() {
         for (const path of fileCache.keys()) {
           fileNeedsRevalidate.add(path);
         }
+        retryFailedExpandedSubtrees(true);
       }
       _scheduleRecentRecompute();
       // Every depth-limited sentinel establishes a transport boundary. The

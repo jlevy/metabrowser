@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import AsyncIterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -53,6 +54,7 @@ from metabrowser.events_route import (
     api_pending_tally_diagnostic,
     parse_sse_frames,
 )
+from metabrowser.http_caching import BUILD_TAG
 from metabrowser.inventory_engine.contract import (
     DiscoveryBudget,
     InventoryConfig,
@@ -576,7 +578,7 @@ def test_api_index_progress_etag_round_trip(tmp_path: Path) -> None:
 
     status1, etag, status2 = asyncio.run(_run())
     assert status1 == 200
-    assert etag
+    assert re.fullmatch(rf'"{BUILD_TAG}-[0-9a-f]{{64}}"', etag)
     assert status2 == 304
 
 

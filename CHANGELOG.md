@@ -4,6 +4,15 @@ All notable changes to Metabrowser are documented here.
 
 ## 0.12.0 (unreleased)
 
+- Treemap explains when a hidden folder or a path through a symbolic link is outside the
+  file index, using the same message as File Overview without requesting totals.
+
+- Cache validators accept Unicode paths and arbitrary content identities, including
+  progress responses, while retaining build and source isolation and conditional reads.
+
+- Expanded folders that failed to load while the server was unavailable retry when an
+  authoritative inventory snapshot arrives after reconnection.
+
 - **Breaking:** Cache and configuration now use separate XDG locations on macOS and
   Linux: `~/.cache/metabrowser` and `~/.config/metabrowser/config.yml`. Use
   `--cache-dir` / `METABROWSER_CACHE_DIR` and `--config-dir` / `METABROWSER_CONFIG_DIR`
