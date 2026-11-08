@@ -5,7 +5,7 @@ title: "Landing gate: regular-folder behavior is unchanged from v0.11.0 except d
 kind: task
 status: in_progress
 priority: 1
-version: 19
+version: 20
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -23,12 +23,16 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T19:53:16.765Z
-updated_at: 2026-11-08T05:55:40.655Z
+updated_at: 2026-11-08T07:31:56.149Z
 started_at: 2026-10-01T19:53:20.458Z
 ---
 The user's requirement (2026-10-01): 'carefully review to make sure the entire PR stack can land safely without destabilizing any existing features for regular pages (bugfixes excepted) ... thoroughly tested/reviewed. then the new features are purely additive.' Earlier evidence (byte-identical CLI output on 14 routes, a landing-risk review, a browser smoke) was taken at #244 and is stale: later PRs changed code every page uses (#246 capability SDK removal and --doctor; #248 pin guard and pageshow handling; #249 ROOT rule and the Git panel's commit loading; #254 plugin SDK split into an on-demand views file, plugin loading order, lazy imports; #261 run_git reading stderr; the page-connection and mirror-name fixes). Gate: on the final stack tip, three independent differentials against v0.11.0 on regular trusted folders, each re-runnable with one command: (1) evidence audit: every test, golden and fixture that exists on main and was modified or deleted in the stack, classified hunk by hunk; main's own black-box goldens run against the tip's build; (2) data and modes: every route main registers, every CLI mode and flag, response headers, plugin loading and environment handling, over several corpora, byte-compared; (3) browser: a scripted matrix of views and interactions in stock Chrome on both builds, comparing normalized DOM, console, requests and screenshots. Every difference is classified: identical; intended change with its CHANGELOG entry; bugfix; or unexplained. Accept rule: zero unexplained differences, and a written list of every intended non-additive change to an existing feature for the user to sign off (known so far: Plugin SDK 0.6 -> 0.7 is breaking; --untrusted and --no-active-content now render Markdown inert and apply a strict CSP; --doctor output; metab '' is refused; a scheme:// argument is always a source; source views gained a line gutter). Cross-browser paint (Safari, Firefox) remains a manual check for the user.
 
 ## Notes
+
+November 8 checkpoint: documentation #332 merged at main240da85cbb45b72defed0084aadc99ee0be234ed, tree equal to gated e204ce9b566eaf72f82bf36536fc780edd774a04. All nine PR and main CI jobs pass. Both default CLI aliases and three existing previews are installed from gated 0.11.1.dev1277+e204ce9b5 (wheel fe271138444c3ed8018b3d9889942c2bf3824dfa2d2f284b529de74cda15a723), doctor11healthy,30servedassets verified; managedpreview pin240. Installed QA reproduced commit-loading stall. mb-4mfc is now a release blocker: JS loading-timer overwrite and superseded-paint pending-claim races deterministically red/green; independent review clear after fixes,35focusedpytest+2goldenblocks+types passed; managed sourcepreview renders16files, existing-checkout smoke underway; fullgate inprogress before commit/push/PR. First fullgate stopped before tests on broad public-reference wording check; documentation uses explicit public links, check now passes; preserved first failure. Future branch/worktree chooser mb-itzy remains paused/design-only. No release/tag/publication approval.
+
+PartC e204 comparison completed143observedfailure/error classifications (98harness42intended3bugfix), awaiting independent acceptance review; original non-green raw reports and separately corrected profiles preserved. Full functional data differential still runs exact e204; final fixed GitPanel is explicitly outside that pin. Browser matrix waits final gated fixed artifact. Quietexp057 unrun under active functional/indexer load.
 
 November7 final-followup Part A: independently audited all308 newly unclassified index rows at519c33239 vs published0.11.0, split between Python157, DOM121 and golden30. Actual final index has189 pre-existing changedtestfiles and1063hunks (988unique file/key pairs); duplicatekeys were explicitly preserved/countedasoccurrences. Final merged current-key classification has0unclassified,0unexplained, and no lostbehavioralassertion finding. 61historic staleclassificationkeys retained separately rather than reusing obsoleteclaims. Durable receipts:partA-receipt-519c.json,partA-final-519c.tsv,partA-summary-519c.txt, plusthree reviewerTSVs in release-preparation evidence. This completes Part A at this source only; Parts B/C, data/browser differentials and final-artifact/tree-equivalence signoff remain open. A Low stale-changelog-counter inconsistency is tracked in mb-ucc1; no productcode was changed or timingsclaimed by this audit.
 

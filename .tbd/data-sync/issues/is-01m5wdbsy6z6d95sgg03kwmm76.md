@@ -5,7 +5,7 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: in_progress
 priority: 1
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -19,7 +19,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-08T05:29:12.142Z
+updated_at: 2026-11-08T07:31:52.778Z
 started_at: 2026-11-08T01:58:21.485Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
@@ -60,6 +60,8 @@ The full list with how each was checked is docs/project/reviews/review-2026-10-0
 PRACTICAL CONSTRAINT: on 2026-10-26 the data volume was 94 percent full, 403 GiB used of 460 GiB with 26 GiB free (read /System/Volumes/Data, not /, which is the sealed system volume and reports misleadingly). Worktrees are NOT the cause: 40 of the 49 worktree records are stale pointers to directories that no longer exist, so `git worktree prune` cleans records and reclaims nothing, and every metabrowser checkout together is under 2 GiB. The differentials need rebuilt corpora plus two installed builds, which 26 GiB should carry; the 300,000-file flat-stress pass from exp-036 is what disk blocked before, so check free space before attempting that one specifically.
 
 ## Notes
+
+November 8 checkpoint: documentation #332 merged at main240da85cbb45b72defed0084aadc99ee0be234ed, tree equal to gated e204ce9b566eaf72f82bf36536fc780edd774a04. All nine PR and main CI jobs pass. Both default CLI aliases and three existing previews are installed from gated 0.11.1.dev1277+e204ce9b5 (wheel fe271138444c3ed8018b3d9889942c2bf3824dfa2d2f284b529de74cda15a723), doctor11healthy,30servedassets verified; managedpreview pin240. Installed QA reproduced commit-loading stall. mb-4mfc is now a release blocker: JS loading-timer overwrite and superseded-paint pending-claim races deterministically red/green; independent review clear after fixes,35focusedpytest+2goldenblocks+types passed; managed sourcepreview renders16files, existing-checkout smoke underway; fullgate inprogress before commit/push/PR. First fullgate stopped before tests on broad public-reference wording check; documentation uses explicit public links, check now passes; preserved first failure. Future branch/worktree chooser mb-itzy remains paused/design-only. No release/tag/publication approval.
 
 November7 final implementation checkpoint: stack331 PR328/329/330 merged at d33550455d1a44bb275d5e71492f9bdbc682f0c5; full tree exactly equals reviewed/gated519c33239, retained as ancestor. All9 CI on each head and all9 merged-main CI jobs passed (run42449868134). Full519c verify passed4917/9expectedskips,385goldens, audits/distribution/installedwheel and0filesystem errors. Both globalaliases and3previews installed exactwheel0.11.1.dev1275+519c33239 SHA780a9922e2446d7e925717457d4cb7e9e5ffc4a9f3ae70ce630298d31e085768; installed browser sessions bothsource modes passed PRtabs, stackmenus/ShiftJ preservingChecks, route restoration, Reloadkeyboard/layout, contextual actor typography. UIbeads am7d,x1v5,4kpu,xvz2 andcorpus lsm5 closed/synced. PartA audit at519 complete189files/1063indexedhunks/988uniquekeys/0unclassified/0unexplained; PartsB/C/data/browser remainopen. Final10MD userguide/changelog/design/QA/plan corrections under mb-ucc1 on codex/v012-release-documentation-20261107, independent read-onlyreview noactionablefindings, fullgate running beforecommit; not yetPRd. Futureworkflow mb-itzy remainsholdpaused per latestuserinstruction; no chooserimplementation. Exp056 valid444ms>350hardgate remainsunresolved, noquiet057 result. Hostloaded/scratchlimited; otherreleasegates andownerpublicationapproval remainrequired. No tag/release/publish.
 
