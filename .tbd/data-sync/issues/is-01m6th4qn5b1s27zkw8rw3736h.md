@@ -3,9 +3,9 @@ type: is
 id: is-01m6th4qn5b1s27zkw8rw3736h
 title: Prefetch PR details in the background when the page loads
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 10
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -17,12 +17,18 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-07T08:14:02.404Z
-updated_at: 2026-11-08T01:50:20.975Z
+updated_at: 2026-11-08T02:41:40.397Z
 started_at: 2026-11-07T08:14:58.231Z
+closed_at: 2026-11-08T02:41:40.397Z
+close_reason: Owning PRs are actually merged in native stack302 at main68534af933f0fcb38a5d81d62691bb42732d58ab, whose complete tree equals reviewed6cf001cdf and retains it in history. All28publishedheads were green with zero unresolved threads. Full gated6cf verification passed4916tests/9expectedskips,385goldens,audits and distribution; exact wheel installed and previews verified. Post-landing main verification and release preparation remain separate in mb-5k2w/mb-4bd2; no release tag or publication.
+resolution: null
+duplicate_of: null
 ---
 User observes a one-to-two-second detail fetch after clicking PRs and wants lightweight PR metadata/details prepared in the background as soon as the page loads. Trace current prefetch admission, cache reads, visible-row preparation, and click settlement; measure competing hypotheses and implement the minimal bounded scheduler/cache correction. Do not bulk fetch diffs already available through Git or trigger per-row Git acquisition. Record call counts, cache state, timing and concise automated/session/browser evidence, update design and performance notes, and install the verified build.
 
 ## Notes
+
+Owning PRs are actually merged in native stack302 at main68534af933f0fcb38a5d81d62691bb42732d58ab, whose complete tree equals reviewed6cf001cdf and retains it in history. All28publishedheads were green with zero unresolved threads. Full gated6cf verification passed4916tests/9expectedskips,385goldens,audits and distribution; exact wheel installed and previews verified. Post-landing main verification and release preparation remain separate in mb-5k2w/mb-4bd2; no release tag or publication. The mixed-readiness initial warmup diagnostic is retained without a regression/speedup claim; follow-up investigation is mb-b0aq.
 
 Final scheduler2fc is independently reviewed and integrated. Exp055/H84 accepts only the observed metadata-readiness result: six alternating pairs for public pull request310, the twelfth Open row, measured71–80ms versus1123–3357ms from driver click to visible exact description. No full record existed before any click. Added GraphQL work, unknown uninstrumented costs, and unequal footprint windows are reported. Startup and full-record ranges overlap; no paint, INP, universal startup, or full Conversation speed claim. Production sessions cover viewport/catalog traversal, prolonged contention, reconnect, Open-first priority, and identity replacement. Final full gate, publication, and CI are pending.
 

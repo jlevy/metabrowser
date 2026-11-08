@@ -3,9 +3,9 @@ type: is
 id: is-01m6thmx3973vnsw532ya5nk4h
 title: Navigate PR stacks with Shift J and Shift K
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 4
+version: 6
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -13,12 +13,18 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-07T08:22:52.251Z
-updated_at: 2026-11-07T09:43:51.323Z
+updated_at: 2026-11-08T02:41:40.409Z
 started_at: 2026-11-07T08:24:16.884Z
+closed_at: 2026-11-08T02:41:40.409Z
+close_reason: Owning PRs are actually merged in native stack302 at main68534af933f0fcb38a5d81d62691bb42732d58ab, whose complete tree equals reviewed6cf001cdf and retains it in history. All28publishedheads were green with zero unresolved threads. Full gated6cf verification passed4916tests/9expectedskips,385goldens,audits and distribution; exact wheel installed and previews verified. Post-landing main verification and release preparation remain separate in mb-5k2w/mb-4bd2; no release tag or publication.
+resolution: null
+duplicate_of: null
 ---
 Match GitHub stack traversal from the active PR: Shift-J moves one layer toward the base, Shift-K one layer toward the top. Use the existing shortcut and Help/keycap system with the shift glyph followed by J or K. Operate only in an active PR with known stack membership, preserve text entry and dialog keyboard handling, handle first/last members without unexpected navigation, and dispose listeners on leaving the view. Include focused session tests, Help hints, and manual browser verification alongside the compact stack menu.
 
 ## Notes
+
+Owning PRs are actually merged in native stack302 at main68534af933f0fcb38a5d81d62691bb42732d58ab, whose complete tree equals reviewed6cf001cdf and retains it in history. All28publishedheads were green with zero unresolved threads. Full gated6cf verification passed4916tests/9expectedskips,385goldens,audits and distribution; exact wheel installed and previews verified. Post-landing main verification and release preparation remain separate in mb-5k2w/mb-4bd2; no release tag or publication.
 
 Shortcut8065e090 uses the active PR's public capability. Independent review, registry sessions, and the golden pass. In the browser, ShiftJ moved321/checks to320/checks while Checks stayed selected; ShiftK moves toward the top. Menu/keyboard navigation preserve the tab and clear an old file selection. Editor, dialog, repeat, unknown membership, endpoint, and disposal guards are covered. Final full gate, publication, and CI are pending.
 
