@@ -5,7 +5,7 @@ title: "Landing gate: regular-folder behavior is unchanged from v0.11.0 except d
 kind: task
 status: in_progress
 priority: 1
-version: 27
+version: 29
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,15 +21,24 @@ child_order_hints:
   - is-01m3zcr18c7gmtctd4g8d8sfc1
   - is-01m6wvm3fgbszk7p0bkerfc5fd
   - is-01m6y2aa5f1yyw84wr9mxbvz78
+  - is-01m6y4h6q6zpjdf6t0gtgccrc8
 hold: null
 hold_until: null
 created_at: 2026-10-01T19:53:16.765Z
-updated_at: 2026-11-08T17:11:54.286Z
+updated_at: 2026-11-08T17:51:17.690Z
 started_at: 2026-10-01T19:53:20.458Z
 ---
 The user's requirement (2026-10-01): 'carefully review to make sure the entire PR stack can land safely without destabilizing any existing features for regular pages (bugfixes excepted) ... thoroughly tested/reviewed. then the new features are purely additive.' Earlier evidence (byte-identical CLI output on 14 routes, a landing-risk review, a browser smoke) was taken at #244 and is stale: later PRs changed code every page uses (#246 capability SDK removal and --doctor; #248 pin guard and pageshow handling; #249 ROOT rule and the Git panel's commit loading; #254 plugin SDK split into an on-demand views file, plugin loading order, lazy imports; #261 run_git reading stderr; the page-connection and mirror-name fixes). Gate: on the final stack tip, three independent differentials against v0.11.0 on regular trusted folders, each re-runnable with one command: (1) evidence audit: every test, golden and fixture that exists on main and was modified or deleted in the stack, classified hunk by hunk; main's own black-box goldens run against the tip's build; (2) data and modes: every route main registers, every CLI mode and flag, response headers, plugin loading and environment handling, over several corpora, byte-compared; (3) browser: a scripted matrix of views and interactions in stock Chrome on both builds, comparing normalized DOM, console, requests and screenshots. Every difference is classified: identical; intended change with its CHANGELOG entry; bugfix; or unexplained. Accept rule: zero unexplained differences, and a written list of every intended non-additive change to an existing feature for the user to sign off (known so far: Plugin SDK 0.6 -> 0.7 is breaking; --untrusted and --no-active-content now render Markdown inert and apply a strict CSP; --doctor output; metab '' is refused; a scheme:// argument is always a source; source views gained a line gutter). Cross-browser paint (Safari, Firefox) remains a manual check for the user.
 
 ## Notes
+
+November 8, 17:50 UTC: Parts A/B/C accepted at exact426; full data/browser still open
+
+Strong independent Part C review is accepted for functional scope with explicit retained exceptions. Fresh203-module control:2185 pass/1 unchanged skip. Baseline on exact426:2035 pass/122 fail/16 error/1 skip; all138 observations specifically classified (93 harness,42 intended,3 bugfix),0 unexplained/new failed IDs versus e204. Current49-module selfcheck:772 pass/3 exact source-context failures (checkout location and2dev-banner annotations); these are not relabeled passes. Case reconciliation2186−15 unavailable parser cases+1collection error+2new corpus cases=2174. All15 missing cases map to actual passing current parser/route evidence. Wheel344members,115JS,353baseline/627currentblobs, command/status/JUnit completeness, singleattempts/zeroGHcalls verified. Evidence partC-candidate-426-20261108/review/{review.txt,reviewed-receipt.json,partC-reviewed-426.tsv,case-reconciliation.json}. Original non-green receipts remain intact.
+
+Independent priority5 DATA triage: three raw literal-backslash API spellings correctly miss under the canonical identity contract; exactly3 isolated canonical queries on426 return200 and identical full original-control payloads. Unreadable/corrupt-gzip404 differences are documented/tested safety/logical-read fixes. Proof data-priority5-426-independent-20261108T1743Z-cli; all original responses/profile/fixture bytes preserved, no DATA traffic. Do not turn these specific findings into a general mask or whole-run acceptance.
+
+Final DATA capture continues (at least1250/1921CLI plus completedHTTP/special prefix), with complete coverage/33trace rows and remaining semantic review required. The broad browser matrix is interrupted90complete+2partialcontrol/0candidate and tracked in explicit blocker mb-cz5s. Bounded control native-key experiment supports correcting a private test-input field; no candidate/fullmatrix/performance acceptance. Inventory107/106 counter difference and historicalreverse now have focused blocker mb-l4hr; initial-rollup-health hypothesis was falsified, backgroundcatalog startup cause remains under independent review. Full release/owner/quiet-performance qualification remains open.
 
 November 8: exact-426 full functional data comparison running
 

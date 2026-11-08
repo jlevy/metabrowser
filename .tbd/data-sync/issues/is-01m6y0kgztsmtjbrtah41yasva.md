@@ -5,7 +5,7 @@ title: Refresh release QA after the final product merges
 kind: task
 status: in_progress
 priority: 2
-version: 3
+version: 4
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -14,12 +14,18 @@ parent_id: is-01m6wdjwawp9g1bvnefz2hxze3
 hold: null
 hold_until: null
 created_at: 2026-11-08T16:41:59.028Z
-updated_at: 2026-11-08T17:08:47.566Z
+updated_at: 2026-11-08T17:51:14.573Z
 started_at: 2026-11-08T16:42:12.287Z
 ---
 The public release QA record still describes PR #334's prefetch ownership fix as awaiting review and names an older installation as current. Refresh this dated checkpoint with merged #334/#335, exact gated426/default installation, green nine-job PR/main CI, accepted Part A delta, the current 55-file CLI pass and blocked manual cells, ongoing functional comparisons and deferred quiet performance. Preserve historical identities, unresolved observations and the paused mb-itzy scope. Change documentation only, then obtain independent review, required verification/CI and merge; no release or publication.
 
 ## Notes
+
+November 8, 17:50 UTC: QA checkpoint published as draft #336
+
+Branch110a3ae2aad54f8e1da2038d0c26e05ccefdc6f4 passed complete makeverify through normal prepush:4917 tests/9 expected skips,386 goldens, lint/types/parity/hygiene, both audits, distribution and installed-wheel smoke; filesystem observer0bytes. Gate1475.51s, pytest1111.24s, goldens285.84s. Exact QA wheel/sdist preserved under qa-evidence-mckq-20261108/gated-110a3ae2a; runtime qualification and installed aliases remain frozen426.
+
+Draft https://github.com/jlevy/metabrowser/pull/336 targets main e1cf; independent A round1/2 published as reviews5818906340 and5818907214. CI42505866893 is still running under watch47654. The PR remains draft until latest manual/data/browser/C receipts and findings are incorporated; don't merge the earlier capture-status snapshot as final qualification. Source stays clean with one QA-only changed file. Initial hygiene and private-observer setup failures are preserved and not counted as test runs. Installed app discovered #336 automatically (Open1→2, total321→322), without manualReload and with PR335 Changes selection preserved; functional proof only, no latency measurement.
 
 November 8, 17:09 UTC: QA follow-up at 110a3ae2a
 
