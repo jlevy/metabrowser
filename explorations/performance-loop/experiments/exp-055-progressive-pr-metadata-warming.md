@@ -202,6 +202,29 @@ TypeScript checks. These deterministic recovery checks complement the browser gu
 browser guard does not simulate provider failures or measure full-Conversation
 completion.
 
+## Ownership Cleanup Follow-Up
+
+The coverage-only ownership correction at `48be073f8` releases a retained producer after
+a `ready` or `partial` receipt, before advancing to another cohort.
+Three production-controller regressions fail against `11dbb8ba3` and pass with the
+correction: partial followed by hiding, partial followed by disposal, and ready followed
+by hiding. Held cleanup also prevents a later cohort overtaking the release.
+The integrated focused check passed 13 tests, eight golden scenarios, and both
+TypeScript configurations.
+
+A fresh browser smoke used independent catalog-only seeds, installed `11dbb8ba3` and
+source `48be073f8`, with the same target and corpus as the review-fix guard.
+The target was eighteenth among 29 Open rows in the live 314-row catalog.
+The initial control classification found a core, while the candidate classification did
+not. The candidate later completed all 314 cores without loading a full record; its
+prepared-description observation was 77 ms.
+The control observation was 828 ms.
+The extra tool time and different initial coverage make these diagnostics, not a matched
+latency comparison or another speedup result.
+The initial candidate miss is retained for a separate startup/retry investigation.
+A trial interrupted by a long session pause was excluded before any timed click and
+retained as an invalid diagnostic.
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->
