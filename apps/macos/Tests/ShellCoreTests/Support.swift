@@ -12,11 +12,14 @@ nonisolated final class FakeProcess: ServerProcess, @unchecked Sendable {
     private let outputEnd = Latch<Void>()
     private let tail = OutputTail(limit: 200)
     private let ignoresTerm: Bool
+    /// Stands in for a process in uninterruptible I/O, which not even SIGKILL ends.
+    private let ignoresKill: Bool
     private let record = OSAllocatedUnfairLock(initialState: (signals: [Int32](), exitedBy: Int32?.none))
 
-    init(pid: pid_t = 4242, ignoresTerm: Bool = false) {
+    init(pid: pid_t = 4242, ignoresTerm: Bool = false, ignoresKill: Bool = false) {
         self.pid = pid
         self.ignoresTerm = ignoresTerm
+        self.ignoresKill = ignoresKill
         (lines, sink) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(200))
     }
 
@@ -42,7 +45,7 @@ nonisolated final class FakeProcess: ServerProcess, @unchecked Sendable {
     func signalGroup(_ signal: Int32) {
         record.withLock { $0.signals.append(signal) }
         guard !exit.isResolved else { return }
-        if signal == SIGKILL || (signal == SIGTERM && !ignoresTerm) {
+        if (signal == SIGKILL && !ignoresKill) || (signal == SIGTERM && !ignoresTerm) {
             record.withLock { $0.exitedBy = signal }
             finishOutput()
             exit.resolve(signal)  // a wait status whose low bits name the signal

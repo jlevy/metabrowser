@@ -30,16 +30,25 @@ public nonisolated struct SupervisorPolicy: Sendable {
     /// How long to let the output pipe drain after an exit, so the error view shows
     /// the child's last lines.
     public var outputSettle: Duration = .milliseconds(500)
+    /// How long to wait for the exit after SIGKILL. A process in uninterruptible I/O
+    /// (a hung network mount) ignores even SIGKILL until the I/O returns; quitting and
+    /// logging out must not wait on it.
+    public var killWait: Duration = .seconds(2)
 
     public init() {}
 }
 
 /// Owns one server child: start, readiness, and a bounded stop that leaves no orphan.
 ///
-/// Every launch and stop bumps `generation`; a callback from an older child sees the
-/// mismatch and does nothing, which is how a stop during startup, a crash during a
-/// readiness wait, and a retry cannot overwrite each other's state. There is no
-/// automatic restart: an unexpected exit is a failure the window shows with Retry.
+/// Every launch and stop bumps `generation`; work for an older generation sees the
+/// mismatch and stops, which is how a stop during startup, a crash during a readiness
+/// wait, and a retry cannot overwrite each other's state. There is no automatic
+/// restart: an unexpected exit is a failure the window shows with Retry.
+///
+/// Every child is ended by exactly one tracked termination (`retire`), whoever asks
+/// for it: a stop, a restart, a newer launch, or a start that gave up. `stop()` waits
+/// for all of them, and `childPIDs` lists their children until they are reaped, so no
+/// path can drop a child it has not finished stopping.
 public final class ServerSupervisor {
     public typealias ProcessFactory = (LaunchSpec) throws -> any ServerProcess
     public typealias ReadinessProbe = @Sendable (URL) async -> Bool
@@ -58,9 +67,21 @@ public final class ServerSupervisor {
     private let makeProcess: ProcessFactory
     private let probe: ReadinessProbe
     private let clock = ContinuousClock()
+    /// The current launch's child. A child leaves this only by being retired.
     private var process: (any ServerProcess)?
     private var generation = 0
-    private var stopping: Task<Void, Never>?
+    private var terminations: [ObjectIdentifier: Termination] = [:]
+
+    private struct Termination {
+        let child: any ServerProcess
+        let task: Task<TerminationResult, Never>
+    }
+
+    private struct TerminationResult {
+        var status: Int32?
+        /// Whether the child was still running when it was signaled.
+        var signaled: Bool
+    }
 
     public init(
         spec: LaunchSpec,
@@ -78,8 +99,16 @@ public final class ServerSupervisor {
         self.probe = probe
     }
 
-    /// The running child's pid, which is also its process group id.
+    /// The current child's pid, which is also its process group id.
     public var pid: pid_t? { process?.pid }
+
+    /// Every child not yet reaped: the current one and any still being stopped. Each pid
+    /// is also its process group id.
+    public var childPIDs: [pid_t] {
+        ([process].compactMap(\.self) + terminations.values.map(\.child))
+            .filter { !$0.hasExited }
+            .map(\.pid)
+    }
 
     /// Starts a server unless one is starting, running, or stopping.
     public func start() async {
@@ -95,21 +124,17 @@ public final class ServerSupervisor {
         await launchChild()
     }
 
-    /// SIGTERM to the process group, a bounded wait, then SIGKILL. Safe in any state,
-    /// and concurrent callers all wait for the same stop.
+    /// Ends the current child and waits for every termination in flight, including one
+    /// a failed start began. Safe in any state and from concurrent callers.
     public func stop() async {
         generation += 1
         let mine = generation
-        if let stopping {
-            await stopping.value
-        } else if let child = process {
+        if let child = process {
             process = nil
-            state = .stopping
-            let task = Task { _ = await self.terminate(child) }
-            stopping = task
-            await task.value
-            stopping = nil
+            retire(child)
         }
+        if !terminations.isEmpty { state = .stopping }
+        await awaitTerminations()
         if mine == generation { state = .stopped }
     }
 
@@ -117,6 +142,14 @@ public final class ServerSupervisor {
         generation += 1
         let current = generation
         state = .starting
+        // A child a superseded launch left behind is stopped before another starts,
+        // which also frees its port for the next port walk.
+        if let previous = process {
+            process = nil
+            retire(previous)
+        }
+        await awaitTerminations()
+        guard current == generation else { return }
         if let gate { await gate.acquire() }
         defer { gate?.release() }
         guard current == generation else { return }
@@ -156,7 +189,7 @@ public final class ServerSupervisor {
                 return nil
             },
         ])
-        guard current == generation else { return }
+        guard current == generation else { return superseded(child) }
         guard let endpoint else {
             let timedOut = started.duration(to: clock.now) >= policy.startupTimeout
             await abandon(child, timedOut: timedOut, waitingFor: "announce its address")
@@ -177,27 +210,34 @@ public final class ServerSupervisor {
             }
             try? await clock.sleep(for: policy.probeInterval)
         }
-        guard current == generation else { return }
+        guard current == generation else { return superseded(child) }
         await abandon(
             child, timedOut: !child.hasExited, waitingFor: "answer \(url.absoluteString) with a 2xx")
     }
 
+    /// A launch overtaken after it spawned ends its own child, unless whatever overtook
+    /// it already did (every path that bumps the generation retires the current child).
+    private func superseded(_ child: any ServerProcess) {
+        guard process === child else { return }
+        process = nil
+        retire(child)
+    }
+
     /// Ends a start that never became ready. A child that exited by itself is reported
-    /// with its status; one that is still running is stopped.
+    /// with its status; one that is still running is stopped. Either way the ending is
+    /// a tracked termination, so a stop or quit meanwhile waits for it.
     private func abandon(_ child: any ServerProcess, timedOut: Bool, waitingFor what: String) async {
         generation += 1  // this exit is expected now; childExited must not report it
         let mine = generation
-        process = nil
-        let exited: Int32? =
-            timedOut ? nil : await firstResult(within: .seconds(1), of: [{ @Sendable in await child.waitForExit() }])
+        if process === child { process = nil }
+        let result = await retire(child, allowingNaturalExitFor: timedOut ? .zero : .seconds(1)).value
         let summary: String
-        if let exited {
-            summary = "The server exited before it was ready (\(ExitStatus(waitStatus: exited)))."
-            child.signalGroup(SIGKILL)  // anything it left in its group
-            await settleOutput(child)
-        } else {
+        if timedOut {
             summary = "The server did not \(what) within \(policy.startupTimeout)."
-            await terminate(child)
+        } else if !result.signaled, let status = result.status {
+            summary = "The server exited before it was ready (\(ExitStatus(waitStatus: status)))."
+        } else {
+            summary = "The server closed its output before it was ready."
         }
         event(summary)
         guard mine == generation else { return }
@@ -211,28 +251,65 @@ public final class ServerSupervisor {
         generation += 1
         let mine = generation
         process = nil
-        child.signalGroup(SIGKILL)  // anything it left in its group
-        await settleOutput(child)
+        _ = await retire(child).value  // already exited: sweeps its group and drains output
         let summary = "The server stopped unexpectedly (\(ExitStatus(waitStatus: status)))."
         event(summary)
         guard mine == generation else { return }
         state = .failed(ServerFailure(summary: summary, recentOutput: child.recentOutput()))
     }
 
+    /// Starts the one termination of `child`, or returns the one already running.
     @discardableResult
-    private func terminate(_ child: any ServerProcess) async -> Int32? {
-        event("stopping pid \(child.pid): SIGTERM to its process group")
-        child.signalGroup(SIGTERM)
-        var status = await firstResult(within: policy.shutdownGrace, of: [{ @Sendable in await child.waitForExit() }])
-        if status == nil {
-            event("pid \(child.pid) still running after \(policy.shutdownGrace): SIGKILL to its process group")
-            child.signalGroup(SIGKILL)
-            status = await child.waitForExit()
+    private func retire(
+        _ child: any ServerProcess, allowingNaturalExitFor wait: Duration = .zero
+    ) -> Task<TerminationResult, Never> {
+        let id = ObjectIdentifier(child)
+        if let running = terminations[id] { return running.task }
+        let task = Task {
+            let result = await self.terminate(child, allowingNaturalExitFor: wait)
+            self.terminations[id] = nil
+            return result
+        }
+        terminations[id] = Termination(child: child, task: task)
+        return task
+    }
+
+    private func awaitTerminations() async {
+        while let next = terminations.values.first {
+            _ = await next.task.value
+        }
+    }
+
+    /// SIGTERM to the process group, a bounded wait, SIGKILL, another bounded wait,
+    /// and a final SIGKILL to anything left in the group.
+    private func terminate(
+        _ child: any ServerProcess, allowingNaturalExitFor wait: Duration
+    ) async -> TerminationResult {
+        var status: Int32?
+        if wait > .zero {
+            status = await firstResult(within: wait, of: [{ @Sendable in await child.waitForExit() }])
+        }
+        var signaled = false
+        if status == nil, child.hasExited {
+            status = await child.waitForExit()  // resolved already
+        } else if status == nil {
+            signaled = true
+            event("stopping pid \(child.pid): SIGTERM to its process group")
+            child.signalGroup(SIGTERM)
+            status = await firstResult(within: policy.shutdownGrace, of: [{ @Sendable in await child.waitForExit() }])
+            if status == nil {
+                event("pid \(child.pid) still running after \(policy.shutdownGrace): SIGKILL to its process group")
+                child.signalGroup(SIGKILL)
+                status = await firstResult(within: policy.killWait, of: [{ @Sendable in await child.waitForExit() }])
+                if status == nil {
+                    event("pid \(child.pid) did not exit within \(policy.killWait) of SIGKILL (uninterruptible I/O?); giving up on it")
+                }
+            }
         }
         child.signalGroup(SIGKILL)  // anything still in its group after the leader exited
         await settleOutput(child)
         if let status { event("pid \(child.pid) stopped (\(ExitStatus(waitStatus: status)))") }
-        return status
+        return TerminationResult(status: status, signaled: signaled)
     }
 
     private func settleOutput(_ child: any ServerProcess) async {

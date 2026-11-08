@@ -99,9 +99,11 @@ rule: finding a runtime before one exists, windows, menus, the Dock, and file ev
    Its stdin is a pipe the app holds open, ready to become the parent-death signal.
 3. **Ready.** The server prints `Serving ROOT at http://127.0.0.1:PORT/view/` before its
    socket listens, so the supervisor parses that line and then polls the URL for a 2xx,
-   within 60 seconds. `LaunchGate` lets one server start at a time, because `metab`
-   chooses its port by probing and binds later, so two servers starting together could
-   choose the same port.
+   within 60 seconds. The line must start with `Serving ` and end with the URL, and a
+   folder whose path contains a line break is refused, since its name could forge the
+   line; the JSON ready line of host mode removes this class of problem.
+   `LaunchGate` lets one server start at a time, because `metab` chooses its port by
+   probing and binds later, so two servers starting together could choose the same port.
 4. **Show.** The window loads the URL in a `WKWebView` with the persistent default
    website data store, because Metabrowser keeps preferences in host-only cookies.
    A native “Starting” view covers the window until the page commits; its spinner
@@ -111,9 +113,19 @@ rule: finding a runtime before one exists, windows, menus, the Dock, and file ev
    Nothing restarts automatically.
    After Retry, each window returns to the page it showed, on the new port.
 6. **Stop.** Closing a folder’s last window stops its server: SIGTERM to the process
-   group, up to 5 seconds, then SIGKILL, then SIGKILL to anything left in the group.
-   Quitting stops every server before the app exits, including a quit caused by SIGTERM,
-   SIGINT, or SIGHUP sent to the app.
+   group, up to 5 seconds, then SIGKILL, up to 2 more seconds (a process stuck in
+   uninterruptible I/O, such as a hung network mount, ignores even SIGKILL, and quit
+   must not wait on it), then SIGKILL to anything left in the group.
+   Quitting stops every server, including servers of windows closed moments before,
+   before the app exits, also when the quit comes from SIGTERM, SIGINT, or SIGHUP sent
+   to the app.
+
+Every child is ended by one tracked termination, whoever asks for it: a stop, a restart,
+a newer launch, or a start that gave up.
+A stop waits for all of them, and a launch first waits for any left by the launch it
+replaced, so overlapping restarts cannot drop a running child.
+`ServerFleet` holds the open and still-stopping servers for the app delegate, which is
+how its quit ordering is tested.
 
 `ServerLaunch` is the seam for the brief’s host mode.
 It owns the arguments, the stdin line, the readiness parser, the readiness URL, and the
@@ -147,7 +159,9 @@ reveals the logs folder.
 ### The Child’s Environment
 
 The server’s environment is built from an allowlist, never inherited.
-It keeps `HOME`, `USER`, `LOGNAME`, `TMPDIR`, and locale names, and sets:
+It keeps `HOME`, `USER`, `LOGNAME`, `TMPDIR`, locale names, `SSH_AUTH_SOCK` (`metab`
+runs Git over ssh in batch mode, so ssh remotes need the agent), and the proxy variables
+`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, and `ALL_PROXY` in either case, and sets:
 
 - `PATH` to the directories of the `git` and `gh` found at setup, then
   `/usr/bin:/bin:/usr/sbin:/sbin`. A Finder launch would otherwise give the server
@@ -161,17 +175,23 @@ Terminal launch.
 
 ### The Window
 
-- **Navigation:** the server’s origin (scheme, host, and port) stays in the window;
-  other `http`, `https`, and `mailto` links open in the default browser; `file://` and
-  other schemes are cancelled.
+- **Navigation:** the server’s origin (scheme, host, and port) stays in the window.
+  A clicked link to another `http`, `https`, or `mailto` URL opens in the default
+  browser; the same URL reached by script, redirect, form, or Back and Forward is
+  cancelled, so a page cannot open the browser by itself, and Back to a page of a server
+  that restarted on another port does nothing.
+  `file://` and other schemes are cancelled.
   `target=_blank`, `window.open`, and Command-click on links to the same server open a
   new tab of the folder’s window.
 - **Downloads:** `WKDownload` with a save panel that opens in Downloads.
   Choosing the destination is user intent, so no Downloads privacy prompt appears.
+  A confirmed Replace removes the existing file first, since `WKDownload` refuses a
+  destination that exists.
 - **Browser features:** Back and Forward (Command-\[ and Command-\]), Reload, zoom
   (persisted), Print through `printOperation`, Find through `NSTextFinder` with a find
-  bar container, JavaScript `alert`, `confirm`, and `prompt` as sheets, file inputs, and
-  a reload if the web content process dies.
+  bar container, JavaScript `alert`, `confirm`, and `prompt` as sheets, and file inputs.
+  If the web content process dies, the window reloads, at most twice in 30 seconds, and
+  then shows the status view.
 
 ### Pitfalls Found in the Live Run
 
@@ -220,7 +240,8 @@ Each gap points to the part of the brief that closes it.
 | --- | --- | --- |
 | **Session token and cookie exchange** | None: like the CLI, the server answers any local process. `WebAuthorization.cookie` is the slot. | Layering item 1; Security Models |
 | **Port 0 and a JSON ready line** | Ports walk up from 8411; the `Serving` line is parsed and the URL polled; `LaunchGate` serializes starts. | Layering item 1 |
-| **Exit on stdin EOF** | The stdin pipe is held open, but today’s server ignores it, so a crashed or force-quit app orphans its servers; an orderly quit does not. | Layering item 1 |
+| **Exit on stdin EOF** | The stdin pipe is held open, but today’s server ignores it, so a crashed or force-quit app orphans its servers until they are stopped by hand; an orderly quit does not. An interim option is a pidfile per server and reaping stale groups at the next launch, which needs a start-time check against pid reuse; it is not implemented. | Layering item 1 |
+| **Descendants in other groups** | The group kill reaches only the server’s own process group. Git and `gh` run in their own groups, which the server ends on its graceful path; a server that needs SIGKILL leaves them running. | Layering item 1 (bounded shutdown that ends those groups) |
 | **`/healthz`** | Readiness polls the `/view/` entry page. | Layering item 1 |
 | **Rootless runtime report** | `metab --version` validates; `--doctor` output is shown as text. | Layering item 2 |
 | **Explicit tool paths** | `git` and `gh` are found by their directories on `PATH`. | Layering item 5 |

@@ -177,12 +177,24 @@ private func loginShellOutput(path: String) -> [String] {
         "UV_PYTHON": "3.9", "NODE_OPTIONS": "--inspect", "SSH_AUTH_SOCK": "/tmp/agent",
     ]
 
-    @Test func keepsIdentityAndLocaleAndDropsEverythingElse() {
-        let built = ChildEnvironment.build(inherited: inherited, toolDirectories: [])
+    @Test func keepsIdentityLocaleAgentAndProxiesAndDropsEverythingElse() {
+        var parent = inherited
+        parent["HTTPS_PROXY"] = "http://proxy.invalid:3128"
+        parent["no_proxy"] = "localhost,127.0.0.1"
+        let built = ChildEnvironment.build(inherited: parent, toolDirectories: [])
         #expect(built == [
             "HOME": "/Volumes/Home", "USER": "someone", "LANG": "en_US.UTF-8", "TMPDIR": "/var/tmp/",
+            "SSH_AUTH_SOCK": "/tmp/agent", "HTTPS_PROXY": "http://proxy.invalid:3128",
+            "no_proxy": "localhost,127.0.0.1",
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "PYTHONNOUSERSITE": "1", "PYTHONUNBUFFERED": "1",
         ])
+    }
+
+    @Test func everyProxySpellingPassesThrough() {
+        let names = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY"]
+        for name in names + names.map({ $0.lowercased() }) {
+            #expect(ChildEnvironment.build(inherited: [name: "x"], toolDirectories: [])[name] == "x")
+        }
     }
 
     @Test func toolDirectoriesComeFirstOnAFixedPath() {
@@ -218,6 +230,13 @@ private func loginShellOutput(path: String) -> [String] {
         #expect(settings.usable(isExecutable: { _ in false }) == nil)
         settings.clear()
         #expect(settings.load() == nil)
+    }
+
+    @Test func aRelativeSavedPathIsNeverUsable() {
+        let settings = RuntimeSettings(defaults: defaults())
+        settings.save(RuntimeSetup(
+            runtime: Runtime(executable: "bin/metab", version: "0.12.0", source: .chosen), tools: ToolPaths()))
+        #expect(settings.usable(isExecutable: { _ in true }) == nil)
     }
 
     @Test func recentFoldersPersist() {

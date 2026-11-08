@@ -64,11 +64,13 @@ public nonisolated struct LaunchSpec: Equatable, Sendable {
 }
 
 public nonisolated enum SpawnError: Error, Equatable, CustomStringConvertible {
+    case relativeExecutable(String)
     case pipe(Int32)
     case spawn(Int32)
 
     public var description: String {
         switch self {
+        case .relativeExecutable(let path): "\(path) is not an absolute path"
         case .pipe(let code): "could not create a pipe: \(String(cString: strerror(code)))"
         case .spawn(let code): String(cString: strerror(code))
         }
@@ -95,6 +97,9 @@ public nonisolated final class SpawnedProcess: ServerProcess, @unchecked Sendabl
     private let exitSource: DispatchSourceProcess
 
     public init(_ spec: LaunchSpec) throws(SpawnError) {
+        // posix_spawn resolves a relative path after the working-directory change, so
+        // `metab` could otherwise name a file inside the folder being served.
+        guard spec.executable.hasPrefix("/") else { throw .relativeExecutable(spec.executable) }
         var stdinPipe: [Int32] = [-1, -1]
         var outputPipe: [Int32] = [-1, -1]
         guard pipe(&stdinPipe) == 0 else { throw .pipe(errno) }

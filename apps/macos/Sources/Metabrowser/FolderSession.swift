@@ -7,7 +7,7 @@ import WebKit
 /// The first window opens before the server starts and shows its progress; windows the
 /// page opens (`target=_blank`, Command-click) join it as tabs. When the last window
 /// closes, the server stops: a folder nobody is looking at keeps no process running.
-final class FolderSession {
+final class FolderSession: ManagedServer {
     let root: URL
     let logURL: URL
     private let supervisor: ServerSupervisor
@@ -46,8 +46,8 @@ final class FolderSession {
 
     var folderName: String { FileManager.default.displayName(atPath: root.path(percentEncoded: false)) }
 
-    /// The server's pid, which is also its process group.
-    var serverPID: pid_t? { supervisor.pid }
+    /// Every server child not yet reaped; each pid is also its process group.
+    var childPIDs: [pid_t] { supervisor.childPIDs }
 
     func start() {
         let controller = makeWindow()

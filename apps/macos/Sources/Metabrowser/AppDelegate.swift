@@ -15,10 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let launchGate = LaunchGate()
     private let runtimeModel = RuntimeModel()
     private var setup: RuntimeSetup?
-    /// Open folders, by canonical path: one session, and so one server, per root.
-    private var sessions: [String: FolderSession] = [:]
-    /// Servers of closed windows, still stopping. Quitting waits for them too.
-    private var retiring: [Task<Void, Never>] = []
+    /// Open folders by canonical path (one session, and so one server, per root), plus
+    /// the sessions of closed windows whose servers are still stopping.
+    private let sessions = ServerFleet()
     /// Folders asked for before a runtime was found.
     private var pendingFolders: [URL] = []
     private var runtimeWindow: RuntimeWindowController?
@@ -56,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A launch or reopen with nothing to show offers the Open panel.
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
         if setup != nil {
-            if sessions.isEmpty && pendingFolders.isEmpty { openFolder(nil) }
+            if sessions.openServers.isEmpty && pendingFolders.isEmpty { openFolder(nil) }
         } else {
             showPanelAfterDiscovery = true
         }
@@ -68,26 +67,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Stops every server, each with SIGTERM to its group, a bounded wait, then SIGKILL,
     /// before the app exits.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let live = Array(sessions.values)
-        let stopping = retiring
-        guard !live.isEmpty || !stopping.isEmpty else { return .terminateNow }
-        AppLog.app.info("quitting: stopping \(live.count + stopping.count) server(s)")
+        guard !sessions.isEmpty else { return .terminateNow }
+        AppLog.app.info(
+            "quitting: stopping \(self.sessions.openServers.count) server(s), \(self.sessions.stoppingCount) already stopping"
+        )
         Task {
-            await withTaskGroup(of: Void.self) { group in
-                for session in live { group.addTask { await session.stop() } }
-                for task in stopping { group.addTask { await task.value } }
-            }
+            await sessions.stopAll()
             AppLog.app.info("all servers stopped")
             NSApp.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
     }
 
-    /// A last resort for any server still running here, which the normal quit path
-    /// never leaves.
+    /// A last resort for any server child still unreaped here, which the normal quit
+    /// path never leaves.
     func applicationWillTerminate(_ notification: Notification) {
-        for session in sessions.values {
-            guard let pid = session.serverPID else { continue }
+        for pid in sessions.childPIDs {
             AppLog.app.error("server \(pid) still running at exit; stopping its group")
             kill(-pid, SIGTERM)
             for _ in 0..<20 where kill(pid, 0) == 0 { usleep(50_000) }
@@ -132,7 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         if !hasVisibleWindows {
-            if let session = sessions.values.first {
+            if let session = sessions.openServers.first as? FolderSession {
                 session.showFrontWindow()
             } else if setup != nil {
                 openFolder(nil)
@@ -152,16 +147,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             filePath: FileChecks.canonicalPath(url.path(percentEncoded: false)), directoryHint: .isDirectory)
         let key = root.path(percentEncoded: false)
         guard FileChecks.isDirectory(key) else {
-            let alert = NSAlert()
-            alert.messageText = "Metabrowser opens folders"
-            alert.informativeText = "\(url.lastPathComponent) is not a folder. Open the folder that contains it."
-            alert.runModal()
-            return
+            return refuse("Metabrowser opens folders", "\(url.lastPathComponent) is not a folder. Open the folder that contains it.")
+        }
+        if let reason = CLIServeLaunch.unservableReason(root) {
+            return refuse("Metabrowser cannot open this folder", "\(url.lastPathComponent) cannot be served: \(reason).")
         }
         var folders = recents.folders
         folders.add(key)
         recents.folders = folders
-        if let session = sessions[key] {
+        if let session = sessions[key] as? FolderSession {
             session.showFrontWindow()
             return
         }
@@ -171,20 +165,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         let session = FolderSession(root: root, setup: setup, gate: launchGate)
-        session.onAllWindowsClosed = { [weak self] closed in self?.retire(closed, key: key) }
-        sessions[key] = session
+        session.onAllWindowsClosed = { [weak self] closed in self?.sessions.retire(closed) }
+        sessions.insert(session, for: key)
         session.start()
     }
 
-    private func retire(_ session: FolderSession, key: String) {
-        guard sessions[key] === session else { return }
-        sessions[key] = nil
-        let task = Task { await session.stop() }
-        retiring.append(task)
-        Task {
-            await task.value
-            retiring.removeAll { $0 == task }
-        }
+    private func refuse(_ message: String, _ detail: String) {
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = detail
+        alert.runModal()
     }
 
     private func openPendingFolders() {
@@ -255,7 +245,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         use(found)
-        if showPanelAfterDiscovery, sessions.isEmpty, pendingFolders.isEmpty { openFolder(nil) }
+        if showPanelAfterDiscovery, sessions.openServers.isEmpty, pendingFolders.isEmpty { openFolder(nil) }
         showPanelAfterDiscovery = false
     }
 

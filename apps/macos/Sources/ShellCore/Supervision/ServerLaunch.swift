@@ -71,17 +71,29 @@ public nonisolated struct CLIServeLaunch: ServerLaunch {
 
     public func authorization(for endpoint: ServerEndpoint) -> WebAuthorization { .none }
 
+    /// Why `root` cannot be served this way, or nil. The announcement is one line of
+    /// text that contains the root, so a line break in the path would let the folder's
+    /// name forge an announcement. The JSON ready line of host mode removes this class.
+    public static func unservableReason(_ root: URL) -> String? {
+        let path = root.path(percentEncoded: false)
+        return path.contains(where: { $0.isNewline }) ? "its path contains a line break" : nil
+    }
+
     /// Parses `Serving <root> at <url>`, optionally followed by `  [dev build: …]`.
     ///
-    /// The root may contain anything, including " at ", so the URL is the last
-    /// " at http://" match. Only plain HTTP on a loopback address with an explicit
-    /// port is accepted.
+    /// The root may contain anything but a line break, including " at ", so the URL is
+    /// the token after the last " at ", and it must end the line (before the optional
+    /// suffix). Only plain HTTP on a loopback address with an explicit port is accepted.
     public static func parseServingLine(_ line: String) -> ServerEndpoint? {
-        guard line.hasPrefix("Serving "),
-              let marker = line.range(of: " at http://", options: .backwards)
-        else { return nil }
-        let rest = line[marker.upperBound...].prefix { !$0.isWhitespace }
-        guard let url = URL(string: "http://" + rest),
+        guard line.hasPrefix("Serving "), !line.contains(where: { $0.isNewline }) else { return nil }
+        var text = Substring(line)
+        if let suffix = text.range(of: "  [dev build: ", options: .backwards), text.hasSuffix("]") {
+            text = text[..<suffix.lowerBound]
+        }
+        guard let marker = text.range(of: " at ", options: .backwards) else { return nil }
+        let token = text[marker.upperBound...]
+        guard token.hasPrefix("http://"), !token.contains(where: { $0.isWhitespace }),
+              let url = URL(string: String(token)),
               url.scheme == "http",
               let host = url.host(percentEncoded: false),
               host == "127.0.0.1" || host == "::1",

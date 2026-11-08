@@ -34,10 +34,20 @@ import Testing
         "Serving /tmp at http://127.0.0.1/view/",
         "Serving /tmp at http://user@127.0.0.1:8411/view/",
         "  Serving /tmp at http://127.0.0.1:8411/view/",
+        "Serving /tmp at http://127.0.0.1:8411/view/ and more",
+        "Serving /tmp/x at http://127.0.0.1:9999/view/\nfoo at http://127.0.0.1:8411/view/",
+        "Serving /tmp at http://127.0.0.1:8411/view/  [dev build: x",
         "",
     ])
     func rejectsAnythingElse(_ line: String) {
         #expect(parse(line) == nil)
+    }
+
+    @Test func aFolderWhosePathHasALineBreakIsRefused() {
+        // Its name could forge a whole announcement line, so it is never served.
+        #expect(CLIServeLaunch.unservableReason(URL(filePath: "/tmp/x at http://127.0.0.1:9/view/\nfoo")) != nil)
+        #expect(CLIServeLaunch.unservableReason(URL(filePath: "/tmp/a\rb")) != nil)
+        #expect(CLIServeLaunch.unservableReason(URL(filePath: "/tmp/My Notes at home")) == nil)
     }
 
     @Test func argumentsServeTheRootWithoutOpeningABrowser() {

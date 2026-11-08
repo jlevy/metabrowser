@@ -89,10 +89,11 @@ public final class RuntimeSettings {
         defaults.removeObject(forKey: Self.key)
     }
 
-    /// The saved setup if its `metab` is still an executable file. A launch checks only
-    /// that, so it costs no subprocess; Settings re-runs `--version`.
+    /// The saved setup if its `metab` is still an executable file at an absolute path.
+    /// A launch checks only that, so it costs no subprocess; Settings re-runs `--version`.
     public func usable(isExecutable: (String) -> Bool = FileChecks.isExecutableFile) -> RuntimeSetup? {
-        guard let setup = load(), isExecutable(setup.runtime.executable) else { return nil }
+        guard let setup = load(), setup.runtime.executable.hasPrefix("/"), isExecutable(setup.runtime.executable)
+        else { return nil }
         return setup
     }
 }

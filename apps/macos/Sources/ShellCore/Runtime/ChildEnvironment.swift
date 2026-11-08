@@ -8,10 +8,14 @@
 public nonisolated enum ChildEnvironment {
     public static let systemPath = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]
 
-    /// Identity, locale, and temporary-directory names. Everything else is dropped.
+    /// Identity, locale, temporary-directory, ssh-agent, and proxy names. Everything
+    /// else is dropped. `metab` runs Git over ssh with `BatchMode`, so without the agent
+    /// socket an ssh remote fails; Git and `gh` honor the proxy variables.
     public static let passedThrough: Set<String> = [
         "HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "LC_MESSAGES",
-        "TZ", "__CF_USER_TEXT_ENCODING",
+        "TZ", "__CF_USER_TEXT_ENCODING", "SSH_AUTH_SOCK",
+        "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+        "http_proxy", "https_proxy", "no_proxy", "all_proxy",
     ]
 
     public static func build(inherited: [String: String], toolDirectories: [String]) -> [String: String] {

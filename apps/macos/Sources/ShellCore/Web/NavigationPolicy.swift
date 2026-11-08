@@ -12,11 +12,15 @@ public nonisolated enum NavigationDecision: Equatable, Sendable {
 
 /// Which navigations stay in a folder's window.
 ///
-/// The server's origin (scheme, host, and port) stays; any other `http`, `https`, or
-/// `mailto` URL goes to the default browser; everything else, including a `file://`
-/// navigation from a stray drop, is cancelled. Subframes are left to the page's own
-/// policy. `127.0.0.1` and `localhost` are different origins, and every URL the window
-/// loads comes from the server's announcement, so only the announced one matches.
+/// The server's origin (scheme, host, and port) stays. A click on a link to any other
+/// `http`, `https`, or `mailto` URL goes to the default browser; the same URL reached
+/// any other way (script, redirect, form, Back or Forward) is cancelled, so a page
+/// cannot open the browser by itself, and Back to a page of a server that has since
+/// restarted on another port does nothing rather than leaving the app. Everything else,
+/// including a `file://` navigation from a stray drop, is cancelled. Subframes are left
+/// to the page's own policy. `127.0.0.1` and `localhost` are different origins, and
+/// every URL the window loads comes from the server's announcement, so only the
+/// announced one matches.
 public nonisolated struct NavigationPolicy: Equatable, Sendable {
     public var origin: URL?
 
@@ -37,22 +41,25 @@ public nonisolated struct NavigationPolicy: Equatable, Sendable {
     /// - Parameters:
     ///   - isMainFrame: false for a subframe; a new-window request (no target frame)
     ///     counts as main frame.
+    ///   - isLinkClick: the user activated a link (`WKNavigationType.linkActivated`).
     ///   - shouldDownload: the link carried a `download` attribute.
     ///   - wantsNewWindow: a Command-click on a link.
     public func decide(
-        _ url: URL?, isMainFrame: Bool, shouldDownload: Bool = false, wantsNewWindow: Bool = false
+        _ url: URL?, isMainFrame: Bool, isLinkClick: Bool, shouldDownload: Bool = false,
+        wantsNewWindow: Bool = false
     ) -> NavigationDecision {
         guard let url, let scheme = url.scheme?.lowercased() else { return .cancel }
         if shouldDownload { return .download }
         if !isMainFrame { return .allow }
-        if isAppOrigin(url) { return wantsNewWindow ? .openInNewWindow(url) : .allow }
+        if isAppOrigin(url) { return wantsNewWindow && isLinkClick ? .openInNewWindow(url) : .allow }
         if Self.inWindowSchemes.contains(scheme) { return .allow }
-        if Self.externalSchemes.contains(scheme) { return .openExternally(url) }
+        if Self.externalSchemes.contains(scheme), isLinkClick { return .openExternally(url) }
         return .cancel
     }
 
     /// For `target=_blank` and `window.open`: a window of this folder, or the default
-    /// browser, or nothing.
+    /// browser, or nothing. WebKit asks only on a user gesture, because it blocks
+    /// `window.open` without one (`javaScriptCanOpenWindowsAutomatically` is off).
     public func decideNewWindow(_ url: URL?) -> NavigationDecision {
         guard let url, let scheme = url.scheme?.lowercased() else { return .cancel }
         if isAppOrigin(url) { return .openInNewWindow(url) }

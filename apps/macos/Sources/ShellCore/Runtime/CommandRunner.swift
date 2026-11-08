@@ -28,21 +28,36 @@ public nonisolated enum CommandRunner {
 
     public static let live: Run = { spec, limit in await run(spec, timeout: limit) }
 
+    /// How long to wait for the exit after SIGKILL; see `SupervisorPolicy.killWait`.
+    public static let killWait: Duration = .seconds(2)
+
     public static func run(_ spec: LaunchSpec, timeout: Duration) async -> CommandResult {
-        var spec = spec
-        spec.closesStdin = true
-        spec.tailLimit = max(spec.tailLimit, 5_000)
         let child: SpawnedProcess
         do {
-            child = try SpawnedProcess(spec)
+            child = try SpawnedProcess(Self.oneShot(spec))
         } catch {
             return CommandResult(status: nil, output: [], launchError: error.description)
         }
+        return await finish(child, timeout: timeout)
+    }
+
+    static func oneShot(_ spec: LaunchSpec) -> LaunchSpec {
+        var spec = spec
+        spec.closesStdin = true
+        spec.tailLimit = max(spec.tailLimit, 5_000)
+        return spec
+    }
+
+    /// Waits for `child` within `timeout`, killing its group at the deadline; a child
+    /// that survives SIGKILL (uninterruptible I/O) is given up on after `killWait`.
+    static func finish(
+        _ child: any ServerProcess, timeout: Duration, killWait: Duration = CommandRunner.killWait
+    ) async -> CommandResult {
         var status = await firstResult(within: timeout, of: [{ @Sendable in await child.waitForExit() }])
         let timedOut = status == nil
         if timedOut {
             child.signalGroup(SIGKILL)
-            status = await child.waitForExit()
+            status = await firstResult(within: killWait, of: [{ @Sendable in await child.waitForExit() }])
         }
         // A background job the command started can hold the pipe open; take what has
         // arrived, then end the job with the rest of the group.

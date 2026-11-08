@@ -8,41 +8,48 @@ import Testing
     private func url(_ text: String) -> URL { URL(string: text)! }
 
     @Test func sameOriginStaysInTheWindow() {
-        #expect(policy.decide(url("http://127.0.0.1:8412/view/docs/"), isMainFrame: true) == .allow)
-        #expect(policy.decide(url("HTTP://127.0.0.1:8412/api/x"), isMainFrame: true) == .allow)
+        #expect(policy.decide(url("http://127.0.0.1:8412/view/docs/"), isMainFrame: true, isLinkClick: true) == .allow)
+        #expect(policy.decide(url("HTTP://127.0.0.1:8412/api/x"), isMainFrame: true, isLinkClick: false) == .allow)
     }
 
-    @Test func anotherPortOrHostIsAnotherOrigin() {
-        for other in ["http://127.0.0.1:8411/view/", "http://localhost:8412/view/", "https://127.0.0.1:8412/"] {
-            #expect(policy.decide(url(other), isMainFrame: true) == .openExternally(url(other)))
+    @Test func aClickedLinkToAnotherOriginGoesToTheDefaultBrowser() {
+        for other in [
+            "http://127.0.0.1:8411/view/", "http://localhost:8412/view/", "https://127.0.0.1:8412/",
+            "https://github.com/jlevy/metabrowser", "mailto:someone@example.com",
+        ] {
+            #expect(policy.decide(url(other), isMainFrame: true, isLinkClick: true) == .openExternally(url(other)))
         }
     }
 
-    @Test func webAndMailLinksGoToTheDefaultBrowser() {
-        let link = url("https://github.com/jlevy/metabrowser")
-        #expect(policy.decide(link, isMainFrame: true) == .openExternally(link))
-        let mail = url("mailto:someone@example.com")
-        #expect(policy.decide(mail, isMainFrame: true) == .openExternally(mail))
+    @Test func scriptsRedirectsAndHistoryCannotOpenTheBrowser() {
+        // window.location, a redirect, a form, or Back to a server that restarted on a new
+        // port: none was a click on a link, so each is cancelled.
+        for other in ["https://example.com/", "http://127.0.0.1:8399/view/old.md"] {
+            #expect(policy.decide(url(other), isMainFrame: true, isLinkClick: false) == .cancel)
+        }
     }
 
     @Test func fileAndUnknownSchemesAreCancelled() {
-        #expect(policy.decide(url("file:///etc/passwd"), isMainFrame: true) == .cancel)
-        #expect(policy.decide(url("vscode://file/x"), isMainFrame: true) == .cancel)
-        #expect(policy.decide(nil, isMainFrame: true) == .cancel)
+        #expect(policy.decide(url("file:///etc/passwd"), isMainFrame: true, isLinkClick: true) == .cancel)
+        #expect(policy.decide(url("vscode://file/x"), isMainFrame: true, isLinkClick: true) == .cancel)
+        #expect(policy.decide(nil, isMainFrame: true, isLinkClick: true) == .cancel)
     }
 
     @Test func subframesBlankAndDownloadsAreLeftToWebKit() {
-        #expect(policy.decide(url("https://example.com/embed"), isMainFrame: false) == .allow)
-        #expect(policy.decide(url("about:blank"), isMainFrame: true) == .allow)
-        #expect(policy.decide(url("http://127.0.0.1:8412/raw/a.zip"), isMainFrame: true, shouldDownload: true)
+        #expect(policy.decide(url("https://example.com/embed"), isMainFrame: false, isLinkClick: false) == .allow)
+        #expect(policy.decide(url("about:blank"), isMainFrame: true, isLinkClick: false) == .allow)
+        #expect(policy.decide(
+            url("http://127.0.0.1:8412/raw/a.zip"), isMainFrame: true, isLinkClick: true, shouldDownload: true)
             == .download)
     }
 
     @Test func commandClickOpensAnotherWindowOfTheFolder() {
         let target = url("http://127.0.0.1:8412/view/a.md")
-        #expect(policy.decide(target, isMainFrame: true, wantsNewWindow: true) == .openInNewWindow(target))
+        #expect(policy.decide(target, isMainFrame: true, isLinkClick: true, wantsNewWindow: true)
+            == .openInNewWindow(target))
         let outside = url("https://example.com")
-        #expect(policy.decide(outside, isMainFrame: true, wantsNewWindow: true) == .openExternally(outside))
+        #expect(policy.decide(outside, isMainFrame: true, isLinkClick: true, wantsNewWindow: true)
+            == .openExternally(outside))
     }
 
     @Test func newWindowRequests() {
@@ -56,14 +63,20 @@ import Testing
 
     @Test func nothingIsTheAppOriginBeforeTheServerIsReady() {
         let early = NavigationPolicy()
-        #expect(early.decide(url("http://127.0.0.1:8412/view/"), isMainFrame: true)
-            == .openExternally(url("http://127.0.0.1:8412/view/")))
+        #expect(early.decide(url("http://127.0.0.1:8412/view/"), isMainFrame: true, isLinkClick: false) == .cancel)
     }
 
     @Test func rebaseMovesAPageToTheRestartedServer() {
         let moved = NavigationPolicy.rebase(
             url("http://127.0.0.1:8412/view/docs/a%20b.md?mode=raw#top"), onto: url("http://127.0.0.1:8415"))
         #expect(moved?.absoluteString == "http://127.0.0.1:8415/view/docs/a%20b.md?mode=raw#top")
+    }
+
+    @Test func contentRecoveryIsBudgeted() {
+        var budget = RecoveryBudget(limit: 2, within: .seconds(30))
+        let start = ContinuousClock.now
+        let allowed = [0, 1, 2, 31].map { budget.allow(at: start.advanced(by: .seconds($0))) }
+        #expect(allowed == [true, true, false, true])
     }
 }
 

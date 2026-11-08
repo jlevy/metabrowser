@@ -78,6 +78,13 @@ import Testing
         #expect(await eventually { !processExists(pid) })
     }
 
+    @Test func relativeExecutableIsRefused() {
+        // posix_spawn would resolve it inside the working directory: the served folder.
+        #expect(throws: SpawnError.relativeExecutable("metab")) {
+            try SpawnedProcess(LaunchSpec(executable: "metab", workingDirectory: "/tmp"))
+        }
+    }
+
     @Test func missingExecutableThrows() {
         #expect(throws: SpawnError.spawn(ENOENT)) {
             try SpawnedProcess(LaunchSpec(executable: "/nonexistent/metab"))

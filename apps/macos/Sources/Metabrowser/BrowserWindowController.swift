@@ -21,6 +21,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private var revealOnCommit = false
     /// The page to return to when the server comes back on a new port.
     private var resumeURL: URL?
+    /// Reloads after the web content process dies: two within 30 s, then the status view.
+    private var contentRecoveries = RecoveryBudget(limit: 2, within: .seconds(30))
     private static var cascadePoint = NSPoint.zero
 
     /// Pass `configuration` only from `createWebViewWith`, which requires the web view
@@ -231,10 +233,11 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate, WKDownloa
         _ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
         decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
     ) {
-        let commandClick = action.navigationType == .linkActivated && action.modifierFlags.contains(.command)
+        let linkClick = action.navigationType == .linkActivated
         let decision = policy.decide(
-            action.request.url, isMainFrame: action.targetFrame?.isMainFrame ?? true,
-            shouldDownload: action.shouldPerformDownload, wantsNewWindow: commandClick)
+            action.request.url, isMainFrame: action.targetFrame?.isMainFrame ?? true, isLinkClick: linkClick,
+            shouldDownload: action.shouldPerformDownload,
+            wantsNewWindow: linkClick && action.modifierFlags.contains(.command))
         switch decision {
         case .allow: decisionHandler(.allow)
         case .download: decisionHandler(.download)
@@ -274,6 +277,14 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate, WKDownloa
 
     /// WebContent crashed or was killed under memory pressure; never leave a blank window.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard contentRecoveries.allow() else {
+            AppLog.app.error("web content process died repeatedly; showing the status view")
+            status.phase = .failed(ServerFailure(
+                summary: "The page stopped responding repeatedly. Retry restarts the folder's server.",
+                recentOutput: []))
+            container.showsStatus = true
+            return
+        }
         webView.reload()
     }
 
@@ -317,7 +328,18 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate, WKDownloa
         panel.nameFieldStringValue = suggestedFilename
         panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         panel.beginSheetModal(for: window) { result in
-            completionHandler(result == .OK ? panel.url : nil)
+            guard result == .OK, let destination = panel.url else { return completionHandler(nil) }
+            // The panel already asked whether to replace an existing file, and WKDownload
+            // refuses a destination that exists, so a confirmed Replace removes it first.
+            if FileManager.default.fileExists(atPath: destination.path(percentEncoded: false)) {
+                do {
+                    try FileManager.default.removeItem(at: destination)
+                } catch {
+                    AppLog.app.error("could not replace \(destination.path, privacy: .public): \(error, privacy: .public)")
+                    return completionHandler(nil)
+                }
+            }
+            completionHandler(destination)
         }
     }
 
