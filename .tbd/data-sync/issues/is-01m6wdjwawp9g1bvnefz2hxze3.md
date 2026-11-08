@@ -5,7 +5,7 @@ title: Prepare the next Metabrowser release candidate without publishing
 kind: task
 status: in_progress
 priority: 1
-version: 8
+version: 9
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -17,12 +17,18 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-08T01:50:20.508Z
-updated_at: 2026-11-08T11:44:54.620Z
+updated_at: 2026-11-08T15:46:10.980Z
 started_at: 2026-11-08T01:55:06.900Z
 ---
 Prepare Metabrowser 0.12.0 under release coordinator mb-4bd2. Product layers through PR #334 are merged, reviewed, CI-green and installed. Finish the separate release-documentation correction mb-y489 and its full gate, independent reviews, PR/CI and merge. Then freeze the exact candidate for final data/audit/browser differentials mb-2g6f, the above-50-file comparison mb-8pyc, quiet previous-release rehearsal mb-cf6y, navigation and large-PR qualification mb-4ifm, the complete installed-wheel runbook mb-m20f and owner matrix mb-etqi. Keep docs, plans, skill identity, changelog and the behavior-change record current; prepare complete 0.11.0-to-0.12.0 release notes and a concrete artifact/checklist packet. Preserve historical failed, interrupted and invalidated observations at their original source identities. No tag, GitHub release, PyPI publication or post-publication claim before the owner's approval of the exact final commit and notes. Future Files source/branch workflow mb-itzy remains paused and outside this scope.
 
 ## Notes
+
+November 8: latest reviewed product and documentation layers merged
+
+PR #334's prefetch producer/pass ownership fixes are merged as fe04 and installed from exact gated1ede, with functional browser checks and all PR/main CI green. PR #335's release-command and trust documentation corrections passed local full verification (4,917 tests, nine expected skips, 386 goldens, audits/distribution/installed-wheel checks), independent senior/security reviews and all nine PR CI checks. It merged as e1cfca1a66277aa86887f031f9b28b250d4a4928 with exact gated426 tree; post-merge main CI is running. mb-y489 stays open until that receipt is checked.
+
+No non-reference product PR remains open; draft #247 is explicitly excluded. Exp-057 is now collecting the exact426 wheel against published0.11.0 in fresh benchmark-only environments, with quiet-host and original hard-gate rules. Navigation hypothesis measurements, final data/audit/browser differentials, installed final QA and the owner acceptance matrix remain open. The two-second managed pull-refresh warning has not been explained or accepted as fast. mb-itzy remains paused and outside current implementation. No tag, release or publication is authorized.
 
 November 8: PR334 complete; release docs gating
 

@@ -5,7 +5,7 @@ title: Run the 0.12 release rehearsal against published 0.11.0
 kind: task
 status: in_progress
 priority: 1
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,12 +21,18 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T20:29:17.780Z
-updated_at: 2026-11-08T09:56:53.398Z
+updated_at: 2026-11-08T15:46:08.256Z
 started_at: 2026-10-01T20:29:25.524Z
 ---
 Run the standard release checklist stability rehearsal against published 0.11.0 on the reviewed current application candidate: complete make verify, previous-release performance comparison with committed experiment/report, exact-head CI and release-note/version review. Version 0.12.0 is already decided. All candidate captures must satisfy committed hard responsiveness/correctness gates; repeatable regressions block until fixed or explicitly accepted. Review backend semantic equivalence before timings. User authorization now includes merging reviewed green work; no tag, release or publication is authorized without approval of the exact final commit and notes. Preserve historical runs and rerun on the final candidate rather than relabeling old evidence. Related final data/browser/test-evidence gate is mb-2g6f; PR-specific navigation diagnostics are separate in mb-4ifm.
 
 ## Notes
+
+November 8: exp-057 resumed on the reviewed 426 candidate
+
+PR #335 passed all nine CI jobs and merged as e1cfca1a66277aa86887f031f9b28b250d4a4928; its tree exactly equals gated426, d330f3312d5c21737dd9627e5d5e93cfb7e94d3b. The exact comparison candidate is 0.11.1.dev1287+426ce7b62, wheel SHA-256 476aba4d52c3d3d0f24edf77efae3f3286e4065f231fbad596b4ccd3663c79ab. Main CI is running separately.
+
+The sole quiet_release_comparison agent has GO for the prepared exp-057 protocol, preserving all gates and the frozen project-10 corpus. Three fresh benchmark environments retain exactly 45 nonproject dependency pins; the four historical browser/backend/audit environments remain reserved and unchanged. Existing canonical recorder rows may append normally; no recorder algorithm or RESULTS-path changes. Candidate hard misses stop the run; no hard-miss repeats. Actual captures/results are not yet accepted. Default1ede CLI/previews and unrelated jobs remain intact; root parks browser and local builds/tests during captures. This is not release approval or final qualification of any later source change.
 
 November 8: quiet collection deferred before captures
 
