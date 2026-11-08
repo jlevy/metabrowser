@@ -1,11 +1,11 @@
 ---
 type: is
 id: is-01m3wjge2pn6nf3cvcvpbbdx2z
-title: "Release rehearsal for v0.12 before landing: the standard release checklist's stability steps against v0.11.0"
+title: Run the 0.12 release rehearsal against published 0.11.0
 kind: task
 status: in_progress
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,12 +21,25 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T20:29:17.780Z
-updated_at: 2026-11-08T03:19:20.828Z
+updated_at: 2026-11-08T09:32:12.757Z
 started_at: 2026-10-01T20:29:25.524Z
 ---
-The user, 2026-10-01: 'We have a standard release process to check for stability and no regressions on features or performance. Let's go ahead and run that early before we land this entire stack. Since there are so many changes, there's quite a bit of risk.' Run docs/publishing.md's Release Checklist steps 1-5 as a rehearsal on the stack's candidate, without tagging, releasing or merging: (2) the complete 'make verify'; (3) the previous-release performance loop (explorations/performance-loop/README.md, 'Comparing a candidate with the previous release') against v0.11.0, recorded as a committed experiment with the performance report regenerated; every candidate run must pass the hard responsiveness and correctness gates, and a repeatable wrong-way metric blocks until fixed or explicitly accepted by the user; read the backend comparison's equivalence (differing rows is a regression until shown otherwise; differing tallies must be confined to what the changelog describes); (4) CI green on the exact candidate commit; (5) review the changes since v0.11.0 and propose the version. Steps 6-10 (tag, publish, post-release checks) are not run. Re-run on the final tip before the landing decision. Related gates: mb-2g6f (regular-folder differentials), mb-67s1 (wall-clock pairs on a quiet machine).
+Run the standard release checklist stability rehearsal against published 0.11.0 on the reviewed current application candidate: complete make verify, previous-release performance comparison with committed experiment/report, exact-head CI and release-note/version review. Version 0.12.0 is already decided. All candidate captures must satisfy committed hard responsiveness/correctness gates; repeatable regressions block until fixed or explicitly accepted. Review backend semantic equivalence before timings. User authorization now includes merging reviewed green work; no tag, release or publication is authorized without approval of the exact final commit and notes. Preserve historical runs and rerun on the final candidate rather than relabeling old evidence. Related final data/browser/test-evidence gate is mb-2g6f; PR-specific navigation diagnostics are separate in mb-4ifm.
 
 ## Notes
+
+November 8: exp-057 collection authorized
+
+All product changes through PR #333 are merged and verified at main 9416b78b8dc2657a3e1745f5d6b7152c9dfc6e98. Its tree equals gated application head a2bb0d29ab6165dacf95705bf189b2208b96c534. Both CLI aliases and three previews use that exact wheel, 0.11.1.dev1280+a2bb0d29a (SHA-256 81524fde0549e9111a76c94305fb578fef544e93cf9e08d340a4ea4389479bb0). Local full gate and all PR/main CI jobs pass; installed browser checks pass.
+
+The new clean branch is codex/v012-navigation-performance-20261108. The quiet_release_comparison agent is sole exp-057 collector using the prepared existing driver/protocol. Preliminary host observations show 92–93% CPU idle and almost no disk traffic; it must reconfirm before capturing. No other local tests, builds or browser interactions will run during collection. Default servers and unrelated jobs stay running.
+
+Freeze this reviewed application artifact against exact published 0.11.0, using the existing unchanged shape-2 project-10 corpus/fingerprint. Collect five alternating browser pairs, then five backend pairs. Keep all budgets, validity/identity guards, semantic checks and the declared 1.1 paired rule. Stop immediately on a valid candidate hard-gate failure; do not repeat it into a pass. Preserve exp-056's valid 444 ms failure and all historical evidence.
+
+No new timings or acceptance claim yet. The final release-head data/audit/browser checks, PR navigation hypotheses, final QA and owner approval remain separate. No tag or publication.
+
+Original rehearsal request (historical; later owner instructions authorize reviewed merges):
+The user, 2026-10-01: 'We have a standard release process to check for stability and no regressions on features or performance. Let's go ahead and run that early before we land this entire stack. Since there are so many changes, there's quite a bit of risk.' Run docs/publishing.md's Release Checklist steps 1-5 as a rehearsal on the stack's candidate, without tagging, releasing or merging: (2) the complete 'make verify'; (3) the previous-release performance loop (explorations/performance-loop/README.md, 'Comparing a candidate with the previous release') against v0.11.0, recorded as a committed experiment with the performance report regenerated; every candidate run must pass the hard responsiveness and correctness gates, and a repeatable wrong-way metric blocks until fixed or explicitly accepted by the user; read the backend comparison's equivalence (differing rows is a regression until shown otherwise; differing tallies must be confined to what the changelog describes); (4) CI green on the exact candidate commit; (5) review the changes since v0.11.0 and propose the version. Steps 6-10 (tag, publish, post-release checks) are not run. Re-run on the final tip before the landing decision. Related gates: mb-2g6f (regular-folder differentials), mb-67s1 (wall-clock pairs on a quiet machine).
 
 November 7 release-preparation checkpoint: Release preparation is now on merged, verified main68534af93. Previous published baseline remains0.11.0; exact control wheel matches published SHA256. The malformed linked-root corpus was reproduced with a tiny failing behavioral test; correction under mb-lsm5 passes26 serving-harness tests. Five headed and five backend pairs have NOT yet run in this round; wait for the explicit admitted-Git tier to finish before creating/fingerprinting the frozen project10 corpus and measuring. Preserve exp038 failures and all old runs as historical evidence.
 
