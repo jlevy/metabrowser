@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: in_progress
 priority: 1
-version: 89
+version: 90
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -82,12 +82,14 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-07T12:19:48.483Z
+updated_at: 2026-11-08T01:50:19.672Z
 started_at: 2026-11-07T05:39:51.585Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.
 
 ## Notes
+
+New user authorization, November 7, 2026: finish verification and review, merge the entire ready PR stack, then prepare a release under the standard process. Do not cut or publish the release without the user's approval. This supersedes earlier owner-only merge checkpoints; the publication approval gate remains explicit. Ownership fix c84d25f8 is integrated through all affected layers. Production regressions fail the prior code and pass the fix; 13 focused tests, eight goldens and both TypeScript checks pass. Frozen full gate is running at6cf001cdf. No PR has yet merged in this round. The latest browser smoke has mixed initial cache readiness and is retained as diagnostic, with a separate investigation below.
 
 Current checkpoint, 2026-11-07: frozen 11dbb8ba3 passed full make verify (4,916 tests, nine expected skips, 385 goldens, both audits, distribution and installed-package smoke checks; 1,255.49 seconds) and its five forward-updated branches were atomically pushed. The original 14 review findings and the PR #327 status finding are resolved, with reviewer acceptance preserved for the three rebuttals. Merge readiness is held for newly confirmed P1 mb-jhgj under mb-1e2y, owned by PR #324: both ready and partial coverage receipts can retain server window W1 while the client records W2, so hide/dispose releases the wrong token. A frontend-only ownership correction needs retained-owner production regressions for both receipts, independent review, forward integration and fresh verification/CI. This is the 16th finding in the current review cycle; preserve the successful 11db gate and all earlier checkpoints as historical evidence. No feature PR has been merged or history rewritten.
 
