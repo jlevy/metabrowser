@@ -30,10 +30,10 @@ completed successfully with all nine jobs green.
 At the stack-331 installation checkpoint, both CLI names and all three previews used
 `0.11.1.dev1275+519c33239`. The preserved wheel’s SHA-256 is
 `780a9922e2446d7e925717457d4cb7e9e5ffc4a9f3ae70ce630298d31e085768`. All eleven plugins
-are healthy, and ten served assets per preview match the installed package.
-The portable skill matches source, with its source pin advanced to `519c33239`. The
-installed wheel predates the merge commit, whose tree is identical; it is not a
-published 0.12.0 release.
+were healthy, and ten served assets per preview matched the installed package.
+The portable skill matched source, with its source pin advanced to `519c33239`. The
+installed wheel predated the merge commit, whose tree is identical.
+This was an unpublished development build.
 
 ### Documentation checkpoint
 
@@ -46,12 +46,12 @@ All nine PR jobs and all nine
 [merged-main jobs](https://github.com/jlevy/metabrowser/actions/runs/42455413320)
 passed.
 
-The installed checkpoint is `0.11.1.dev1277+e204ce9b5` for both CLI names and all three
+The installed checkpoint was `0.11.1.dev1277+e204ce9b5` for both CLI names and all three
 previews. Its preserved wheel SHA-256 is
-`fe271138444c3ed8018b3d9889942c2bf3824dfa2d2f284b529de74cda15a723`. Eleven plugins are
-healthy, thirty served-asset checks match the package, and the managed preview selects
-merged main `240da85cb`. This checkpoint exposed the commit-loading race below; it does
-not establish release acceptance.
+`fe271138444c3ed8018b3d9889942c2bf3824dfa2d2f284b529de74cda15a723`. Eleven plugins were
+healthy, thirty served-asset checks matched the package, and the managed preview
+selected merged main `240da85cb`. This checkpoint exposed the commit-loading race below;
+it does not establish release acceptance.
 
 ### Commit-loading checkpoint
 
@@ -62,10 +62,64 @@ Exact-head `make verify` passed 4,917 tests with nine expected skips, 386 golden
 lint, types, both locked audits, distribution inspection and installed-wheel smoke
 checks. All nine PR jobs and all nine
 [merged-main jobs](https://github.com/jlevy/metabrowser/actions/runs/42465916831)
-passed. Both CLI names and the three previews use the preserved wheel
+passed. Both CLI names and the three previews used the preserved wheel
 `0.11.1.dev1280+a2bb0d29a`, whose SHA-256 is
-`81524fde0549e9111a76c94305fb578fef544e93cf9e08d340a4ea4389479bb0`. Doctor reports
-eleven healthy plugins, and all 33 served-asset comparisons match.
+`81524fde0549e9111a76c94305fb578fef544e93cf9e08d340a4ea4389479bb0`. Doctor reported
+eleven healthy plugins, and all 33 served-asset comparisons matched.
+
+### Prefetch-ownership checkpoint
+
+[#334](https://github.com/jlevy/metabrowser/pull/334) merged at
+[main `fe04a4b1c`](https://github.com/jlevy/metabrowser/commit/fe04a4b1cfb25cc16e1e8399252f4b664633a6c6).
+Its tree equals reviewed tip `1ede1e220`, retained as an ancestor.
+Independent reviews A through D accepted the producer-retention and traversal-pass
+corrections after the review finding was fixed.
+Exact-head `make verify` passed 4,917 tests with nine expected skips, 386 golden checks,
+lint, types, locked audits, distribution inspection and installed-wheel smoke checks,
+with no filesystem errors.
+All nine [PR jobs](https://github.com/jlevy/metabrowser/actions/runs/42473368957) and
+all nine
+[merged-main jobs](https://github.com/jlevy/metabrowser/actions/runs/42474957597)
+passed.
+
+Both CLI names and all three previews used `0.11.1.dev1283+1ede1e220`. The preserved
+wheel SHA-256 is `8987325d400ec95fe7b42ad8d3b8ba8ce41bcc43a78e8206e4fb33fe4140a4c8`.
+Doctor reported eleven healthy plugins, all 33 served-asset comparisons matched, and all
+45 applicable runtime pins were preserved.
+PR #334’s Conversation, six changed files and nine successful checks passed in both
+managed and checkout modes.
+The checkout session also passed Quick Search and independent tab restoration.
+The filesystem preview retained its original Markdown layout.
+A managed PR refresh emitted a slow-response warning at 2,014 ms, including 2,010 ms of
+server time. Its cause and latency qualification remain open under `mb-4ifm`.
+
+### Release-documentation checkpoint
+
+[#335](https://github.com/jlevy/metabrowser/pull/335) merged at
+[main `e1cfca1a`](https://github.com/jlevy/metabrowser/commit/e1cfca1a66277aa86887f031f9b28b250d4a4928).
+Its tree equals reviewed and gated tip `426ce7b62`, retained as an ancestor.
+The change corrects fresh-release installation probes, public skill verification and the
+README trust summary.
+Exact-head `make verify` passed 4,917 tests with nine expected skips, 386 golden checks,
+lint, types, locked audits, distribution inspection and installed-wheel smoke checks,
+with no filesystem errors.
+Independent senior and security/process reviews accepted the change, and all nine
+[PR CI jobs](https://github.com/jlevy/metabrowser/actions/runs/42477792812) passed.
+All nine
+[merged-main jobs](https://github.com/jlevy/metabrowser/actions/runs/42496190135) also
+passed.
+
+Both default CLI names and all three retained previews now use the preserved
+`0.11.1.dev1287+426ce7b62` wheel, SHA-256
+`476aba4d52c3d3d0f24edf77efae3f3286e4065f231fbad596b4ccd3663c79ab`. Doctor reports
+eleven healthy plugins, all 33 served-asset comparisons match the wheel, and all 45
+applicable runtime dependency pins are unchanged.
+The
+[post-merge session](https://github.com/jlevy/metabrowser/pull/335#issuecomment-6723744302)
+passed PR #335’s nine-check summary in both source modes, the managed two-file Changes
+view, checkout latest-commit rendering, independent tab restoration and Markdown
+alignment/padding. Freshly reloaded sessions had no warning/error entries during that
+smoke; the earlier managed-refresh warning remains a separate unresolved observation.
 
 ## Post-Landing Sessions
 
@@ -118,8 +172,10 @@ The correction binds terminal effects to their originating pass while retaining 
 producer ownership. Six 600-row sessions cover ready, partial, failed, busy, not-owner
 and malformed coverage replies across a revision outside the held prefix.
 Each revisits the changed member, completes all 600 current cores and leaves no timers.
-Full verification, independent review and installed-artifact acceptance of this
-correction remain pending; these sessions do not measure painted latency.
+The correction passed full verification, independent review and installed-artifact
+acceptance in #334, as recorded above.
+The scoped correctness findings `mb-b0aq` and `mb-ygiq` are closed.
+These sessions do not measure painted latency.
 
 Part A of the differential test-evidence audit is complete at `519c33239`: 189 changed
 pre-existing test files, 1,063 indexed hunks and 988 unique file/key pairs have no
@@ -139,7 +195,29 @@ preserved; this is not a claim that the raw comparison passed every old assertio
 The data run at that build was stopped cleanly after the new loading fix made it an
 intermediate candidate.
 Its completed observations remain supporting evidence.
-All three release differentials still require the frozen final candidate.
+At `426ce7b62`, Part A independently confirms 189 changed pre-existing test files, 1,070
+indexed hunks and 994 current keys, with zero unclassified entries.
+All seven new classifications preserve baseline assertions and behavior coverage.
+The replaced combined-hunk classification remains historical alongside the earlier 61
+stale keys. The other accepted classifications are inherited at unchanged keys.
+
+The exact-candidate data comparison and headless functional browser matrix are now
+running with isolated installed wheels.
+The data selection includes 1,921 CLI cases, 53 HTTP groups containing 17,012 requests,
+47 specials and all 33 trace rows.
+The browser matrix covers 396 jobs across four viewport/theme configurations.
+Capture completeness, raw failures and semantic dispositions remain under review.
+Timing cases and the browser’s six ten-page Step9 sequences are excluded from these
+loaded-host functional runs; their quiet-window checks remain open.
+Part B also completed at exact `426ce7b62`: all 22 control transcripts and all 22
+current-version selfchecks pass on their installed wheels, using one attempt per phase.
+Of 131 baseline blocks on the candidate, 116 match and 15 differ.
+Review accounts for all 15 differences: nine intended changes, four obsolete
+test-harness assumptions and two documented bug fixes.
+The original non-green execution receipt and raw failures remain preserved separately
+from this semantic acceptance.
+Final Part C remains separate work; its accepted `e204ce9b5` result retains that source
+pin.
 
 ### Earlier integrated-main evidence
 
@@ -177,8 +255,13 @@ The installed `519c33239` follow-up subsequently repeated this comparison: the f
 again equals the control, all 55 patches apply to the same target, and both fresh
 Unified and Split sessions reach and hydrate the final file without a partial counter or
 console warnings or errors.
-This completes the fixture check at the integrated product candidate; final release-head
-and owner sign-off remain separate.
+This completes the fixture check at that integrated product candidate.
+The exact `426ce7b62` follow-up also has an identical complete 55-file/55-patch CLI
+payload and clean apply oracles against the same target.
+Its four fresh browser cells, control/candidate in Split/Unified, are blocked and were
+not run because browser control reported a locked Mac.
+The earlier browser results retain their original source pin; current browser and owner
+acceptance remain open.
 
 Additional source tiers at `68534af93` passed 20 macOS checks, eight live read-only
 public GitHub checks including the typed missing-or-private refusal, and all 1,124
@@ -199,13 +282,13 @@ Local commit navigation without Git acquisition is a separate tracked enhancemen
 
 | Gate | State | Tracking |
 | --- | --- | --- |
-| Post-landing browser smoke and current documentation | Documentation [#332](https://github.com/jlevy/metabrowser/pull/332) and loading correction [#333](https://github.com/jlevy/metabrowser/pull/333) are merged, reviewed and installed; both source modes pass | `mb-5k2w`, `mb-4mfc`, `mb-ucc1` closed |
+| Post-landing browser smoke and current documentation | Product fixes through [#334](https://github.com/jlevy/metabrowser/pull/334) are merged, reviewed and installed; both source modes pass. Documentation [#335](https://github.com/jlevy/metabrowser/pull/335) is merged and installed, with all nine PR and merged-main jobs green | `mb-5k2w`, `mb-4mfc`, `mb-ucc1`, `mb-b0aq`, `mb-ygiq`, `mb-y489` closed |
 | Previous-release performance comparison | [Exp-056](../../../explorations/performance-loop/experiments/exp-056-previous-release-rehearsal.md) stopped after a valid 444 ms candidate first-row result exceeded the 350 ms hard gate. A quiet final-candidate exp-057 comparison remains required | `mb-cf6y` |
-| PR and Commit navigation performance | PR-core cancellation on a same-identity prefix update is reproduced, with a focused correction awaiting full verification and review. Cold-asset attribution and natural intent/request joining remain open. The regular-folder release comparison does not cover these interactions | `mb-4ifm`, `mb-5rm1`, `mb-97ex`, `mb-b0aq` |
+| PR and Commit navigation performance | The same-identity prefetch ownership correction is accepted in #334. Cold-asset attribution, natural intent/request joining and the observed two-second managed refresh remain open. The regular-folder release comparison does not cover these interactions | `mb-4ifm`, `mb-5rm1`, `mb-97ex` |
 | Large-PR performance qualifications | Quiet public comparisons and the measured render-window follow-up remain separate from regular-folder acceptance | `mb-jwfx`, `mb-mwuz` |
 | Linked dependency roots in the benchmark corpus | Behavioral regression test and corpus correction merged in stack 331 | `mb-lsm5` closed |
-| Regular-folder data, test-evidence and browser differentials | Audit Parts A and B complete at `519c33239`; classified Part C accepted at `e204ce9b5`; intermediate data run stopped cleanly; all three final-candidate differentials remain pending | `mb-2g6f` |
-| Plain-folder comparison above 50 files | Control and installed `519c33239` have identical 55-file CLI payloads, clean apply oracles and both browser layouts; final release-head and owner sign-off remain | `mb-8pyc` |
+| Regular-folder data, test-evidence and browser differentials | Parts A and B accepted at `426ce7b62`; earlier Part C retains its pin. Exact-candidate data and headless browser captures are running; final completeness, semantic review and quiet Step9 remain open | `mb-2g6f` |
+| Plain-folder comparison above 50 files | Control and exact `426ce7b62` have identical 55-file/55-patch CLI payloads and clean apply oracles; four current browser cells are blocked/not run, with owner sign-off pending | `mb-8pyc` |
 | Complete installed-wheel QA runbook and opt-in tiers | In progress; report every step as passed, failed, blocked or not run | `mb-m20f` |
 | Cross-browser, private-access and external-plugin acceptance | Preserve prior evidence separately; current browser matrix and owner sign-off remain open | `mb-etqi` |
 | Release notes, intended behavior changes and final approval packet | Drafting; version 0.12.0 is already decided | `mb-gew9`, `mb-4bd2` |
@@ -224,9 +307,11 @@ relabeled as successful final-candidate evidence.
 The exp-057 host preflight deferred collection because unrelated workloads and external
 disk traffic remained active.
 It collected no browser or backend pairs.
-The prepared protocol needs the final gated artifact and confirmed host conditions
-before measurements.
-The PR-warmup correction remains separate in `mb-b0aq`.
+The prepared protocol now targets gated `426ce7b62` and still requires confirmed host
+conditions before measurements.
+The latest preflight also deferred collection, with no browser or backend pairs.
+The accepted prefetch correction in #334 establishes correctness and functional
+behavior; its painted-latency effect remains unmeasured.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
