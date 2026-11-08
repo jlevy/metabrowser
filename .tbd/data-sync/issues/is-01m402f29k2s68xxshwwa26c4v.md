@@ -5,15 +5,17 @@ title: Execute the full v0.12 QA runbook on a pinned post-landing candidate
 kind: task
 status: in_progress
 priority: 1
-version: 4
+version: 5
 delegate: codex@spud10
 labels: []
-dependencies: []
+dependencies:
+  - type: blocks
+    target: is-01m5wdbsy6z6d95sgg03kwmm76
 parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 hold: null
 hold_until: null
 created_at: 2026-10-03T05:05:53.458Z
-updated_at: 2026-11-08T11:44:51.610Z
+updated_at: 2026-11-08T15:46:44.804Z
 started_at: 2026-11-08T03:02:07.630Z
 ---
 Run setup/doctor including negative controls, full make verify, admitted Git/macOS/live-GitHub tiers, refusal checks, plain-folder features in real browsers, acquisition/cache/pins/trust, GitHub URLs and PR pages, refresh/ref switching/offline reopening, and regression comparisons. Record step-level pass/fail/blocked/untested. Keep caches and temporary outputs on external scratch and durable evidence outside scratch.
