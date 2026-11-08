@@ -5,17 +5,19 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: in_progress
 priority: 1
-version: 6
+version: 8
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
   - release:v0.12.0
 dependencies: []
 parent_id: is-01m402dbhn3zsc1h896f3xnrsq
+child_order_hints:
+  - is-01m6wdjwawp9g1bvnefz2hxze3
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-08T01:58:21.486Z
+updated_at: 2026-11-08T01:58:27.398Z
 started_at: 2026-11-08T01:58:21.485Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
@@ -56,6 +58,8 @@ The full list with how each was checked is docs/project/reviews/review-2026-10-0
 PRACTICAL CONSTRAINT: on 2026-10-26 the data volume was 94 percent full, 403 GiB used of 460 GiB with 26 GiB free (read /System/Volumes/Data, not /, which is the sealed system volume and reports misleadingly). Worktrees are NOT the cause: 40 of the 49 worktree records are stale pointers to directories that no longer exist, so `git worktree prune` cleans records and reclaims nothing, and every metabrowser checkout together is under 2 GiB. The differentials need rebuilt corpora plus two installed builds, which 26 GiB should carry; the 300,000-file flat-stress pass from exp-036 is what disk blocked before, so check free space before attempting that one specifically.
 
 ## Notes
+
+November 7, 2026: the user explicitly authorized merging the reviewed, green PR stack, followed by complete release preparation; cutting or publishing the release still requires the user's approval. The existing coordinator remains authoritative and the version decision remains 0.12.0, as decided on October 26. The current published baseline is independently confirmed as 0.11.0 on GitHub and live PyPI. Native stack302 has28 product layers; final ownership-fix verification is running at6cf001cdf before its last four forward updates. Sub-agents hit their usage limit; the root agent is continuing directly. New preparation task mb-gew9 coordinates the existing release tasks rather than replacing their acceptance bars: mb-2g6f/mb-8pyc release-head differentials, mb-cf6y installed-wheel performance rehearsal, mb-m20f full QA, mb-etqi human acceptance, and the final behavior-change/release sign-off. No tag, GitHub release or PyPI publication has occurred.
 
 2026-11-01 status: the order of work above still holds. Done since: step 1 (#269); step 2 at 87712198, to re-run on the tagged head (mb-2g6f); step 5's documents in #272, open. make test-live-github 7 of 7 and make test-macos 19 of 19 on c934a0b4. The six open PRs #272-#277 merged together pass install, lint and 4,118 tests locally; merging them in that order conflicts only in #275 and #276, and each PR has a comment with the resolution. Still owed: required reviews of those PRs, exp-039 on a quiet machine (mb-cf6y), the full runbook (mb-m20f), the human matrix (mb-etqi), and the owner's sign-off.
 
