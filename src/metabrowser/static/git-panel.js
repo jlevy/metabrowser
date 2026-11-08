@@ -25,9 +25,6 @@
   const SEGMENT_REBASE_PX = settings.GIT_HISTORY_SEGMENT_REBASE_PX || 8_000_000;
   const HOVER_DEBOUNCE_MS = settings.GIT_HOVER_DEBOUNCE_MS ?? 300;
   const DETAIL_CACHE_SIZE = settings.GIT_DETAIL_CACHE_SIZE || 200;
-  // Initial empty loads keep the measured quiet period. Retained content uses
-  // the shell's immediate preview-navigation state instead.
-  const PENDING_DELAY_MS = 120;
 
   // Distance from the bottom at which the next page is requested. One
   // row height would fetch too late to feel seamless; three viewport
@@ -142,8 +139,6 @@
   let hoverTimer = null;
   /** @type {string | null} */
   let hoverRevision = null;
-  /** @type {ReturnType<typeof setTimeout> | null} */
-  let pendingTimer = null;
   /** @type {number | null} */
   let pendingPreviewClaim = null;
   let started = false;
@@ -1718,10 +1713,6 @@
   // ── Commit detail view ─────────────────────────────────────
 
   function clearPendingState() {
-    if (pendingTimer !== null) {
-      clearTimeout(pendingTimer);
-      pendingTimer = null;
-    }
     if (pendingPreviewClaim !== null) {
       shell()?.endPreviewNavigation(pendingPreviewClaim);
       pendingPreviewClaim = null;
@@ -2005,20 +1996,17 @@
           return;
         }
         if (!retainedPreview) {
-          pendingTimer = setTimeout(() => {
-            pendingTimer = null;
-            if (state.selectedId !== revision || !bridge.isPreviewClaimCurrent(previewClaim)) {
-              return;
-            }
-            const loading = bridge.renderPreviewHtml(
-              '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
-                '<span class="sr-only">Loading commit…</span></div>',
-              previewClaim,
-            );
-            if (loading) {
-              bridge.beginPreviewNavigation(previewClaim);
-            }
-          }, PENDING_DELAY_MS);
+          // The shared CSS delays this initial status. Install it before staging:
+          // a later timer could remove the connected mount or overwrite a ready
+          // commit while the browser defers its paint callbacks.
+          const loading = bridge.renderPreviewHtml(
+            '<div class="loading mb-delayed-loading"><div class="spinner"></div>' +
+              '<span class="sr-only">Loading commit…</span></div>',
+            previewClaim,
+          );
+          if (loading) {
+            bridge.beginPreviewNavigation(previewClaim);
+          }
         }
 
         const detail = await preparation.detail;
@@ -2054,13 +2042,17 @@
               previewClaim,
             );
           }
-          clearPendingState();
+          if (pendingPreviewClaim === previewClaim) {
+            clearPendingState();
+          }
           return;
         }
         await renderCommitDetail(detail, previewClaim, preparation);
         if (state.selectedId === revision && bridge.isPreviewClaimCurrent(previewClaim)) {
           await afterNextPaint();
-          clearPendingState();
+          if (pendingPreviewClaim === previewClaim) {
+            clearPendingState();
+          }
         }
       },
       { revision },

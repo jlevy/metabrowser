@@ -151,7 +151,15 @@ class FakeElement {
 
   set innerHTML(value) {
     this._html = String(value);
+    for (const child of this.children) {
+      child.parentNode = null;
+    }
     this.children = [];
+    if (this._html.startsWith('<div class="loading ')) {
+      const loading = new FakeElement("div", this.ownerDocument);
+      loading.className = "loading mb-delayed-loading";
+      this.appendChild(loading);
+    }
     if (this._html.includes("git-commit-diff")) {
       const diffHost = new FakeElement("div", this.ownerDocument);
       diffHost.className = "git-commit-diff";
@@ -424,7 +432,10 @@ sandbox.MetabrowserShell = {
       return false;
     }
     const preview = document.getElementById("preview-pane");
-    if (!preview?.firstElementChild || preview.firstElementChild.classList.contains("loading")) {
+    if (
+      !preview?.firstElementChild ||
+      preview.firstElementChild.classList.contains("preview-empty")
+    ) {
       return false;
     }
     preview.classList.add("preview-navigation-pending");
@@ -450,13 +461,8 @@ sandbox.MetabrowserShell = {
       return null;
     }
     previewHtml = html;
-    const preview = new FakeElement("div", document);
+    const preview = document.getElementById("preview-pane");
     preview.innerHTML = html;
-    if (html.includes("git-commit-diff")) {
-      const diffHost = new FakeElement("div", document);
-      diffHost.className = "git-commit-diff";
-      preview.appendChild(diffHost);
-    }
     return preview;
   },
   stagePreviewNode: (node, claim) => {
@@ -708,6 +714,7 @@ function keyboardEvent(key, options = {}) {
 }
 
 async function run() {
+  let commitLoadingSession;
   // ── Ref badges ─────────────────────────────────────────────
   {
     const html = internals.renderRefBadges([
@@ -1923,6 +1930,255 @@ async function run() {
     rows[0].dispatch("mouseleave");
   }
 
+  // Initial loading must not replace a connected stage or a ready commit while
+  // the browser defers paint. Timers and frames advance independently.
+  {
+    const originalTimeout = sandbox.setTimeout;
+    const originalClearTimeout = sandbox.clearTimeout;
+    const originalAssets = sandbox.metabrowser.ensureKindAssets;
+    const originalFreshness = sandbox.MetabrowserShell.sourceFreshness;
+    const timers = new Map();
+    const frames = [];
+    let clock = 0;
+    let nextTimer = 0;
+    sandbox.setTimeout = (callback, delay) => {
+      const id = ++nextTimer;
+      timers.set(id, { callback, at: clock + delay });
+      return id;
+    };
+    sandbox.clearTimeout = (id) => timers.delete(id);
+    sandbox.requestAnimationFrame = (callback) => frames.push(callback);
+    const advance = (milliseconds) => {
+      clock += milliseconds;
+      for (const [id, timer] of [...timers]) {
+        if (timer.at <= clock && timers.delete(id)) {
+          timer.callback();
+        }
+      }
+    };
+    const until = async (predicate, label) => {
+      for (let turn = 0; turn < 100; turn += 1) {
+        if (predicate()) {
+          return;
+        }
+        await Promise.resolve();
+      }
+      throw new Error(`loading session did not reach ${label}`);
+    };
+    const pane = document.getElementById("preview-pane");
+    const checkpoints = {};
+    try {
+      for (const boundary of ["paint", "assets"]) {
+        const revision = (boundary === "paint" ? "21" : "22").repeat(20);
+        responses.set(`/api/git/commit/${revision}`, {
+          is_repo: true,
+          commit: commit(revision, [], `ready before ${boundary}`),
+          body: "",
+          stats: { files_changed: 1, additions: 1, deletions: 0 },
+          files: [{ path: "ready.js", status: "modified", additions: 1, deletions: 0 }],
+          files_truncated: false,
+        });
+        let releaseAssets;
+        const heldAssets = new Promise((resolve) => {
+          releaseAssets = resolve;
+        });
+        sandbox.metabrowser.ensureKindAssets =
+          boundary === "assets" ? () => heldAssets : originalAssets;
+        pane.replaceChildren();
+        const selecting = internals.selectCommit(revision);
+        await until(
+          () =>
+            boundary === "paint"
+              ? frames.length > 0
+              : pane.querySelector(".git-commit-stage") !== null,
+          boundary,
+        );
+        const stage = pane.querySelector(".git-commit-stage");
+        advance(120);
+        if (boundary === "paint") {
+          const ready = pane.querySelector(".git-commit-stage");
+          assertTrue("loading: paused paint retains the promoted commit", ready === stage);
+          assertNotContains(
+            "loading: paused paint never restores the spinner",
+            previewHtml,
+            "Loading commit",
+          );
+          checkpoints[boundary] = {
+            readyConnected: stage.isConnected,
+            loading: previewHtml.includes("Loading commit"),
+          };
+        } else {
+          assertTrue(
+            "loading: delayed spinner preserves the connected mount stage",
+            stage.isConnected,
+          );
+          assertContains(
+            "loading: slow initial assets still show the standard spinner",
+            previewHtml,
+            'class="spinner"',
+          );
+          checkpoints[boundary] = {
+            stageConnected: stage.isConnected,
+            spinner: previewHtml.includes('class="spinner"'),
+          };
+          releaseAssets();
+          await until(() => frames.length > 0, "assets released");
+        }
+        assertEqual(
+          "loading: busy state remains until paint",
+          pane.getAttribute("aria-busy"),
+          "true",
+        );
+        frames.shift()();
+        frames.shift()();
+        await selecting;
+        assertContains(
+          `loading: ${boundary} ends on the selected commit`,
+          previewHtml,
+          `ready before ${boundary}`,
+        );
+        assertEqual(
+          `loading: ${boundary} mounts the selected diff`,
+          renderedDiffRevisions.at(-1),
+          revision,
+        );
+        assertTrue(
+          `loading: ${boundary} mounted diff stays connected`,
+          renderedDiffConnections.at(-1),
+        );
+        assertEqual(`loading: ${boundary} leaves no pending timer`, timers.size, 0);
+        assertEqual("loading: paint clears busy state", pane.getAttribute("aria-busy"), null);
+      }
+      // An older paint callback must not finish the newer selection's busy state.
+      const older = "23".repeat(20);
+      const newer = "24".repeat(20);
+      let releaseNewer;
+      sandbox.metabrowser.ensureKindAssets = originalAssets;
+      for (const revision of [older, newer]) {
+        const detail = {
+          is_repo: true,
+          commit: commit(revision, [], revision === older ? "older ready" : "newer ready"),
+          body: "",
+          stats: { files_changed: 0, additions: 0, deletions: 0 },
+          files: [],
+          files_truncated: false,
+        };
+        responses.set(
+          `/api/git/commit/${revision}`,
+          revision === older
+            ? detail
+            : () =>
+                new Promise((resolve) => {
+                  releaseNewer = () => resolve(detail);
+                }),
+        );
+      }
+      const selectingOlder = internals.selectCommit(older);
+      await until(() => frames.length > 0, "older paint");
+      const selectingNewer = internals.selectCommit(newer);
+      await until(() => releaseNewer !== undefined, "newer detail request");
+      const newerClaim = pane.getAttribute("data-preview-pending-claim");
+      frames.shift()();
+      frames.shift()();
+      await selectingOlder;
+      assertEqual(
+        "loading: older paint preserves newer busy state",
+        pane.getAttribute("aria-busy"),
+        "true",
+      );
+      assertEqual(
+        "loading: older paint preserves newer claim",
+        pane.getAttribute("data-preview-pending-claim"),
+        newerClaim,
+      );
+      checkpoints.crossing = {
+        newerBusyAfterOlderPaint: pane.getAttribute("aria-busy") === "true",
+      };
+      releaseNewer();
+      await until(() => frames.length > 0, "newer paint");
+      frames.shift()();
+      frames.shift()();
+      await selectingNewer;
+      assertContains(
+        "loading: crossing selections ends on newer commit",
+        previewHtml,
+        "newer ready",
+      );
+      assertEqual(
+        "loading: newer paint clears its own busy state",
+        pane.getAttribute("aria-busy"),
+        null,
+      );
+      // A missing commit can wait for freshness assets after another selection starts.
+      const missing = "27".repeat(20);
+      const found = "28".repeat(20);
+      let releaseFreshness;
+      let releaseFound;
+      sandbox.MetabrowserShell.sourceFreshness = () =>
+        new Promise((resolve) => {
+          releaseFreshness = resolve;
+        });
+      responses.set(`/api/git/commit/${missing}`, {
+        httpStatus: 404,
+        body: { error: "unknown revision", code: "commit_not_found" },
+      });
+      responses.set(
+        `/api/git/commit/${found}`,
+        () =>
+          new Promise((resolve) => {
+            releaseFound = resolve;
+          }),
+      );
+      const selectingMissing = internals.selectCommit(missing);
+      await until(() => releaseFreshness !== undefined, "missing commit freshness assets");
+      const selectingFound = internals.selectCommit(found);
+      await until(() => releaseFound !== undefined, "found commit detail");
+      const foundClaim = pane.getAttribute("data-preview-pending-claim");
+      releaseFreshness(null);
+      await selectingMissing;
+      assertEqual(
+        "loading: missing completion preserves newer busy state",
+        pane.getAttribute("aria-busy"),
+        "true",
+      );
+      assertEqual(
+        "loading: missing completion preserves newer claim",
+        pane.getAttribute("data-preview-pending-claim"),
+        foundClaim,
+      );
+      checkpoints.missing = { newerBusyAfterMissing: pane.getAttribute("aria-busy") === "true" };
+      releaseFound({
+        is_repo: true,
+        commit: commit(found, [], "found after missing"),
+        body: "",
+        stats: { files_changed: 0, additions: 0, deletions: 0 },
+        files: [],
+        files_truncated: false,
+      });
+      await until(() => frames.length > 0, "found commit paint");
+      frames.shift()();
+      frames.shift()();
+      await selectingFound;
+      assertContains(
+        "loading: missing crossing ends on newer commit",
+        previewHtml,
+        "found after missing",
+      );
+      assertEqual(
+        "loading: found commit paint clears its busy state",
+        pane.getAttribute("aria-busy"),
+        null,
+      );
+      commitLoadingSession = checkpoints;
+    } finally {
+      sandbox.setTimeout = originalTimeout;
+      sandbox.clearTimeout = originalClearTimeout;
+      sandbox.metabrowser.ensureKindAssets = originalAssets;
+      sandbox.MetabrowserShell.sourceFreshness = originalFreshness;
+      delete sandbox.requestAnimationFrame;
+    }
+  }
+
   // The renderer must never start on a stage a newer pane owner removed.
   // Resolve each real preparation boundary in turn; selection and comparison
   // remain the production state machine, not a simulated cancellation result.
@@ -3021,6 +3277,7 @@ async function run() {
     process.exit(1);
   }
   console.log("OK git panel behavior");
+  console.log(`commit loading session ${JSON.stringify(commitLoadingSession)}`);
 }
 
 run().catch((err) => {

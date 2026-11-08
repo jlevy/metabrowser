@@ -1,6 +1,6 @@
 # Metabrowser 0.12.0 Release Preparation
 
-**Status:** In progress on November 7, 2026. The product stacks are merged and the
+**Status:** In progress; updated November 8, 2026. The product stacks are merged and the
 reviewed build is installed locally.
 Release acceptance remains incomplete; no tag or publication is authorized until the
 owner approves the exact candidate and notes.
@@ -27,13 +27,31 @@ The subsequent
 [merged-main CI](https://github.com/jlevy/metabrowser/actions/runs/42449868134)
 completed successfully with all nine jobs green.
 
-Both installed CLI names and all three existing previews use `0.11.1.dev1275+519c33239`.
-The preserved wheel’s SHA-256 is
+At the stack-331 installation checkpoint, both CLI names and all three previews used
+`0.11.1.dev1275+519c33239`. The preserved wheel’s SHA-256 is
 `780a9922e2446d7e925717457d4cb7e9e5ffc4a9f3ae70ce630298d31e085768`. All eleven plugins
 are healthy, and ten served assets per preview match the installed package.
 The portable skill matches source, with its source pin advanced to `519c33239`. The
 installed wheel predates the merge commit, whose tree is identical; it is not a
 published 0.12.0 release.
+
+### Documentation checkpoint
+
+[#332](https://github.com/jlevy/metabrowser/pull/332) merged at
+[main `240da85cb`](https://github.com/jlevy/metabrowser/commit/240da85cbb45b72defed0084aadc99ee0be234ed).
+Its tree equals reviewed documentation tip `e204ce9b5`, retained as an ancestor.
+Exact-head `make verify` passed 4,917 tests with nine expected skips, 385 golden checks,
+lint, types, locked audits, distribution inspection and installed-wheel smoke checks.
+All nine PR jobs and all nine
+[merged-main jobs](https://github.com/jlevy/metabrowser/actions/runs/42455413320)
+passed.
+
+The installed checkpoint is `0.11.1.dev1277+e204ce9b5` for both CLI names and all three
+previews. Its preserved wheel SHA-256 is
+`fe271138444c3ed8018b3d9889942c2bf3824dfa2d2f284b529de74cda15a723`. Eleven plugins are
+healthy, thirty served-asset checks match the package, and the managed preview selects
+merged main `240da85cb`. This checkpoint exposed the commit-loading race below; it does
+not establish release acceptance.
 
 ## Post-Landing Sessions
 
@@ -49,10 +67,17 @@ Reload remains keyboard reachable beside Open, Closed and All; the update-age li
 below the repository summary.
 View on GitHub has its leading brand icon.
 
-One source-preview PR-to-Commits transition previously stalled after the URL changed.
-Direct reload, a fresh repeat and an installed-build cold repeat passed.
-There is no confirmed cause or justified product fix; `mb-4mfc` retains the diagnostic
-and the request-settlement evidence to capture if it recurs.
+The earlier intermittent PR-to-Commits loading stall recurred on installed `e204ce9b5`:
+the URL selected merged main, but the preview retained only its loading placeholder.
+A deterministic production-JavaScript session confirmed that a delayed loading callback
+could remove the connected diff stage or overwrite ready content while paint callbacks
+were deferred. Independent review also reproduced an older selection’s paint or
+missing-commit completion clearing a newer selection’s pending indicator.
+The focused fix installs the shared CSS-delayed spinner before staging and restricts
+cleanup to its owning selection.
+The source preview opens the previously stalled commit and renders its sixteen changed
+files. Full gating, review, merge and installed-artifact verification remain required in
+`mb-4mfc`; earlier passing repetitions remain history.
 
 Part A of the differential test-evidence audit is complete at `519c33239`: 189 changed
 pre-existing test files, 1,063 indexed hunks and 988 unique file/key pairs have no
@@ -65,7 +90,14 @@ blocks on the candidate, 116 match and 15 differ: nine intended surface changes,
 documented bug fixes and four obsolete test-harness assumptions.
 The current semantic classification has no missing or unclassified blocks.
 Original failures, retries and the initial unclassified report remain preserved.
-This does not complete the data, browser or audit Part C gates.
+The classified Part C comparison at `e204ce9b5` also passed independent review: 143
+observed failure or error cases have specific dispositions, with no unexplained
+differences. Original non-green runs and separately corrected harness profiles remain
+preserved; this is not a claim that the raw comparison passed every old assertion.
+The data run at that build was stopped cleanly after the new loading fix made it an
+intermediate candidate.
+Its completed observations remain supporting evidence.
+All three release differentials still require the frozen final candidate.
 
 ### Earlier integrated-main evidence
 
@@ -117,14 +149,20 @@ The branch/worktree chooser is future workflow `mb-itzy`, explicitly paused by t
 It tracks the design of live working-tree and cached branch-snapshot browsing and does
 not expand this stabilization or release scope.
 
+Conversation commit summaries currently use validated GitHub destinations.
+Local commit navigation without Git acquisition is a separate tracked enhancement,
+`mb-g47g`; the current timeline does not claim that local destination behavior.
+
 ## Remaining Acceptance
 
 | Gate | State | Tracking |
 | --- | --- | --- |
-| Post-landing browser smoke and current documentation | Both source modes passed on the installed follow-up build; final documentation review and landing remain | `mb-5k2w`, `mb-ucc1` |
+| Post-landing browser smoke and current documentation | Documentation [#332](https://github.com/jlevy/metabrowser/pull/332) is merged and installed; the reproduced commit-loading race still blocks completion | `mb-5k2w`, `mb-4mfc`; `mb-ucc1` closed |
 | Previous-release performance comparison | [Exp-056](../../../explorations/performance-loop/experiments/exp-056-previous-release-rehearsal.md) stopped after a valid 444 ms candidate first-row result exceeded the 350 ms hard gate. A quiet final-candidate exp-057 comparison remains required | `mb-cf6y` |
+| PR and Commit navigation performance | Delivered prefetch layers retain their recorded evidence; cold-asset attribution, natural intent/request joining and the initial PR-core scheduling diagnostic remain open. The regular-folder release comparison does not cover these interactions | `mb-4ifm`, `mb-5rm1`, `mb-97ex`, `mb-b0aq` |
+| Large-PR performance qualifications | Quiet public comparisons and the measured render-window follow-up remain separate from regular-folder acceptance | `mb-jwfx`, `mb-mwuz` |
 | Linked dependency roots in the benchmark corpus | Behavioral regression test and corpus correction merged in stack 331 | `mb-lsm5` closed |
-| Regular-folder data, test-evidence and browser differentials | Audit Parts A and B complete at `519c33239`; frozen data fixtures prepared; data, browser and audit Part C remain pending, with zero unexplained differences required | `mb-2g6f` |
+| Regular-folder data, test-evidence and browser differentials | Audit Parts A and B complete at `519c33239`; classified Part C accepted at `e204ce9b5`; intermediate data run stopped cleanly; all three final-candidate differentials remain pending | `mb-2g6f` |
 | Plain-folder comparison above 50 files | Control and installed `519c33239` have identical 55-file CLI payloads, clean apply oracles and both browser layouts; final release-head and owner sign-off remain | `mb-8pyc` |
 | Complete installed-wheel QA runbook and opt-in tiers | In progress; report every step as passed, failed, blocked or not run | `mb-m20f` |
 | Cross-browser, private-access and external-plugin acceptance | Preserve prior evidence separately; current browser matrix and owner sign-off remain open | `mb-etqi` |
