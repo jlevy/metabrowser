@@ -31,6 +31,11 @@ Three requirements shape the design as much as the choice of shell:
 - **Plugins never require an app rebuild.** Users and projects add plugins, including
   ones with Python data hooks, to an installed app.
 
+Two further use cases are explored here without a decision: agents controlling a
+long-lived server that any viewer (the app or a browser) attaches to in any order, and
+the security model such a server needs, from an explicit browsing context to a
+Finder-like browser contained by the operating system.
+
 ## Summary
 
 - **Architecture:** put a host protocol (ephemeral port, ready line, session token,
@@ -49,6 +54,14 @@ Three requirements shape the design as much as the choice of shell:
   Project-provided plugins need a recorded trust step and their own spec.
 - **Distribution:** a notarized DMG and a cask in a personal Homebrew tap; arm64 only,
   macOS 15 or later.
+- **Agent-controlled servers (open):** the options run from per-root servers that write
+  discoverable state files to one shared per-user server with an explicit browsing
+  context; if either is chosen, the app becomes one optional viewer of a server an agent
+  may own.
+- **Security model (open):** the leaning is a browsing context enforced by the server,
+  with client authentication first and a Seatbelt sandbox as the later kernel boundary;
+  TCC alone protects too little, and the App Sandbox most likely cannot run a
+  uv-installed Python.
 
 What changed since the August brief: the scope is macOS first; Electron’s cost is about
 300 MB installed, not the 85–120 MB compressed download; `disable-library-validation` is
@@ -66,12 +79,16 @@ rested on Linux drag-and-drop, which does not apply on macOS.
    design?
 7. How do users install and update, and what verifies an update?
 8. What do shipping apps, and the sibling paraverse app, teach?
+9. How could agents control a long-lived server whose views reach every attached viewer,
+   with components started in any order?
+10. Which security model fits a local file browser that agents control?
 
 ## Scope
 
 **In scope:** an arm64 macOS app; the layering between core, CLI, and shells; runtime
-provisioning through uv; plugin workflows; distribution and updates; each option’s
-consequence for a later Windows or Linux app.
+provisioning through uv; plugin workflows; distribution and updates; agent-controlled
+servers and attach; security models; each option’s consequence for a later Windows or
+Linux app.
 
 **Out of scope:** Windows and Linux implementation detail (the August brief and the tbd
 Tauri guideline hold the Linux WebKitGTK findings); the Mac App Store; mobile; the full
@@ -90,6 +107,10 @@ design of project-provided plugins; the remote/SSH mode, which no option here ch
   uv).
 - **Host protocol:** what a shell needs from a server it supervises: port, ready line,
   token exchange, health, and shutdown.
+- **Browsing context:** the explicit set of folders and files a server is allowed to
+  serve, added and removed through `metab`.
+- **Boot id:** a random identifier a server picks at each start, which lets clients tell
+  a restarted or different server from the one they knew.
 - **Acronyms:** PBS is python-build-standalone, Astral’s relocatable CPython builds.
   TCC (Transparency, Consent, and Control) is macOS’s privacy-permission system.
   SSE is server-sent events, CDP the Chrome DevTools Protocol, IPC inter-process
@@ -430,7 +451,9 @@ These are the adjustments, each a route or flag with its parity row and golden:
    in both engines. Add `/healthz` and a bounded SIGTERM shutdown that also ends Git and
    `gh` process groups.
    Authentication applies only when a host enables it; hardening the standalone CLI is a
-   separate decision under SECURITY.md.
+   separate decision under SECURITY.md, though the agent-controlled server use cases
+   force it, because an agent-started CLI server that the app attaches to is the
+   standalone CLI.
 2. **A rootless runtime report:** extend `metab --doctor --json`, which is already
    rootless and already reports plugin sources and errors, with the package and
    host-protocol versions, the Python executable, the environment prefix, the install
@@ -464,10 +487,11 @@ These are the adjustments, each a route or flag with its parity row and golden:
    `metab`’s config file; only shell settings (which runtime, window state) live in the
    app’s preferences.
 
-Two decisions stay as they are.
+Two decisions hold for the first steps.
 **One server per root:** the shell starts a server per root, which needs no change to
 the server, keeps each root’s plugins on their own origin, and avoids the stable-origin
-work a browser app window would need.
+work a browser app window would need; whether a shared, agent-controlled server should
+replace it is open (see Use Cases Under Exploration).
 **The page never calls a shell API**, so any shell can replace another.
 
 The shell-only exemptions, each with its reason: finding a runtime and the first-run
@@ -561,7 +585,8 @@ plugin change touches the bundle.
 - **A restart is enough.** Discovery runs at server import, so adding a plugin means
   restarting that runtime’s servers and reloading their windows, which a shell does in
   seconds. Hot reloading inside a running server is deliberately deferred in the code and
-  is not needed.
+  is not needed for the app; agent-registered views may change that (see Use Cases Under
+  Exploration).
 
 - **Incompatible plugins are already skipped.** A core update can leave a plugin on an
   older `PLUGIN_SDK_VERSION`; serving already skips it and starts.
@@ -589,6 +614,280 @@ plugin change touches the bundle.
     future multi-root origin would remove that isolation.
 
   This changes the plugin trust model and needs its own spec.
+
+## Use Cases Under Exploration: Agent-Controlled Servers
+
+These use cases are under evaluation, not decided.
+This section maps what they need, what the code does today, and the options with their
+trade-offs.
+
+### The Use Cases
+
+1. **An agent owns serving.** A user installs the Metabrowser skill; the agent starts a
+   server, adds folders and views to it, and opens the result in the user’s browser.
+   If the user says they use the native app, the app is a convenient window onto that
+   same server, which any browser could also open.
+2. **Start in any order.** A server started from the CLI and open in a browser shows the
+   same content when the app starts later; an app started first exposes its server to
+   the CLI and agents.
+3. **A long-lived server.** It is managed externally or restarted and reloaded at any
+   time, and views an agent registers appear in every connected window, in the app or a
+   browser.
+4. **A settable app.** The app can start a server, attach to a running one, or show the
+   command an agent should run.
+5. **An explicit browsing context.** The server serves only folders and files that the
+   user or an agent explicitly added through `metab` commands.
+
+### What the Code Does Today
+
+Read from the source at `e1cfca1a`:
+
+- **No discovery and no identity.** There is no state, pid, or lock file, no list of
+  running servers, and no identity or health route.
+  `metab --api` runs in-process; no client mode targets a running server.
+  An agent changes an open page today mainly by changing files, which the watcher
+  pushes, or by calling `POST /api/source/refresh` or `/api/source/pin` directly.
+- **Reconnects keep stale state.** The page’s event stream reconnects with backoff and
+  receives a fresh snapshot, but nothing replays missed events, and the page keeps its
+  old shell, settings, and plugin assets.
+  The build tag inlined in the page feeds ETags only and is never compared, so the page
+  never reloads after a restart.
+  A restart on a different port leaves the page retrying a dead origin.
+- **The port walk misroutes tabs.** Because every server walks up from 8411, a server
+  for a different root can take a port that open tabs still point at, and they silently
+  reattach to the wrong root.
+  The source-pin guard is an existing pattern for checking identity and reloading once.
+- **The registry is fixed at import.** Plugin discovery, kind rules, and data-hook
+  routes are built once.
+  The browser SDK can add plugins at runtime but cannot replace a loaded one (loads are
+  memoized by name and module URLs are unversioned), and `/api/file` ETags are not
+  scoped to a registry revision.
+- **One root per process.** The root is a module global used by about 15 modules, with
+  one inventory and one subject per process, and URLs carry no root segment.
+  `metab file.md` serves the file’s whole parent folder.
+- **No authority boundary.** Requests without `Origin` or `Sec-Fetch-Site` pass.
+  The `--allow-edits` mutations capability gates no route yet, while
+  `POST /api/kpress/export` already writes inside the root, gated only by the folder
+  source’s own mutation flag, which every folder has.
+- **The skill** starts one background server per path with `--no-open`, reports its URL,
+  and reads data with `--api` and `--show`.
+
+### How Other Tools Do It
+
+| Tool | Discovery | Authentication | Attach behavior | Live changes |
+| --- | --- | --- | --- | --- |
+| Jupyter Server | `jpserver-<pid>.json` in a 0700 runtime directory (URL, port, token, root, pid, version); readers drop dead pids; `jupyter server list --json` | a random token per boot, exchanged once for a cookie whose secret persists across restarts; Host-header check | JupyterLab Desktop starts its own server and can connect to listed external ones | one root per server; extensions need a restart |
+| LM Studio | `http-server.json` (port, pid), then a greeting probe | a CLI passkey file | one shared service; the CLI launches the app or daemon | `lms load` changes the live service, restored on launch |
+| Ollama | fixed port 11434, probed with `HEAD /` | none on the API | the app replaces a user-started server; the CLI launches the app when the port is down | none found (not exhaustive) |
+| Syncthing | API key and address in `config.xml` | `X-API-Key` header | the macOS wrapper always starts its own daemon | folders added over REST and saved; a config event patches the open GUI |
+| VS Code | a per-user socket claimed by binding; refusal means stale | socket permissions; an inherited variable for the integrated terminal | a second instance forwards its arguments and exits | `code --add` adds folders to the open window |
+| Storybook and Vite | fixed port | none | none | an index-invalidated event makes clients refetch; code changes and restarts force a reload |
+| MCP in GUI apps | Figma’s local MCP endpoint; JetBrains’ built-in server with copyable client config | the MCP specification requires Origin validation and recommends authentication; Figma’s page names none | agents connect to the running app | not applicable |
+
+Key sources:
+[Jupyter Server’s runtime files](https://github.com/jupyter-server/jupyter_server/blob/e39ebd56b3ed2b201aa615448ec6adbeed8fa99c/jupyter_server/serverapp.py#L3289-L3324),
+[JupyterLab Desktop’s server handling](https://github.com/jupyterlab/jupyterlab-desktop/blob/0d7e537b04e49c80ed61911d895273eee9af0f44/src/main/server.ts#L229),
+[LM Studio’s `lms` client](https://github.com/lmstudio-ai/lms/blob/43d4b2680e3cf679ad19753fcc7af0cb0e4a12a2/src/localAPIServer.ts),
+[Syncthing’s REST API](https://docs.syncthing.net/dev/rest.html),
+[VS Code multi-root workspaces](https://code.visualstudio.com/docs/editing/workspaces/multi-root-workspaces),
+[Figma’s local MCP server](https://developers.figma.com/docs/figma-mcp-server/local-server-installation/),
+and [JetBrains’ MCP server](https://www.jetbrains.com/help/idea/mcp-server.html).
+
+### Options
+
+The server options are lettered P, P+, S, and F to keep them apart from the shell
+options A–F.
+
+| Option | What it is | For | Against |
+| --- | --- | --- | --- |
+| **P: per-root servers the app starts** | the current plan | smallest change; privacy prompts always name the app | fails use cases 1–3: an agent’s server and the app’s are different processes, and nothing is shared or persisted |
+| **P+: per-root servers plus state files** | each server writes an owner-only state file (URL, pid, root, boot id); `metab ROOT` reuses a live server for that root; the app lists and attaches to running servers; pages reload once when the boot id changes; a fixed port fails instead of walking | covers start-in-any-order and restart-to-add-a-view for one root; keeps per-root origin isolation; little core change | many ports and processes; views appear only after a restart; no single browsing context |
+| **S: one shared per-user server with an explicit browsing context** | a discovery file (`~/Library/Application Support/Metabrowser/run/server.json`, 0600, with pid, URL, version, boot id); an owner-only Unix socket through which the CLI and the app get the token; an unauthenticated identity route checked against the boot id; a lock that serializes find-or-start; a persisted list of added folders and files edited by `metab add`, `metab remove`, and `metab roots` through routes | serves every use case; a stable address for a browser app window; the agent owns the lifecycle and the app is one viewer | the largest refactor (multi-root URLs, per-root inventories and event buses, file-only entries); a new lifecycle to manage (stop, upgrade, version skew between CLI and server); `metab ROOT` changes meaning; one origin shares plugin JavaScript across roots |
+| **F: a fixed port only** | discovery by probing a known port | the simplest discovery | the token still needs a file or socket; another program can squat or answer the port; contradicts the port walk; better as a preferred port combined with S’s discovery file |
+
+Under Option S, who starts the shared server decides who gets the privacy prompts:
+
+- **S1: the CLI starts it detached.** It works without the app, but prompts and grants
+  name whatever launched the agent (a terminal, an editor, or an agent app), and folders
+  granted through the app’s Open panel probably do not apply (untested).
+  An agent that is itself sandboxed passes its sandbox to the server it starts, which
+  then cannot apply its own profile, and Anthropic’s sandbox runtime blocks local
+  listening by default.
+- **S2: the CLI asks the app to start it,** as LM Studio and Ollama do.
+  Prompts and grants attach to the app, but it needs the app installed and falls back to
+  S1 without it. A preference such as “start servers with the app, the CLI, or
+  automatically” could choose.
+- **S3: a login item** (`SMAppService` LaunchAgent, macOS 13 and later).
+  It is always on and expected to be attributed to the app (untested), at the cost of a
+  Login Items approval, a Mach-O launcher (a Python script breaks TCC attribution), and
+  less freedom for agents to restart it with new flags.
+  The always-on LaunchAgent rejected under Eliminated Options becomes viable only with
+  its preconditions met: the token first, and a check that folder access is not silently
+  denied.
+
+Two mechanisms can make a newly registered view appear in open windows:
+
+- **Restart and reload.** The server restarts on a stable address; pages see a new boot
+  id on reconnect and reload once.
+  It needs no registry changes, costs a server start (imports measured at 0.77–0.93 s
+  warm, plus an inventory rewalk), and works for Python data hooks, which can only load
+  at startup. The cookie secret must persist across restarts, or every reload signs the
+  browser out (Jupyter persists it; Livebook does not).
+- **A registry revision event.** A `registry-changed` event with a revision tells pages
+  to refetch the view list, as Storybook does.
+  It needs a mutable registry, ETags scoped to the revision, and dynamic routes, and it
+  is tractable only for views defined as data or JavaScript; replacing already-loaded
+  code still needs a reload.
+
+Pieces common to every shared-server option:
+
+- **The app’s startup setting:** attach to a running server, start one, or show the
+  command for an agent, modeled on JupyterLab Desktop’s connect dialog and JetBrains’
+  copyable MCP configuration.
+- **Where to open:** `metab` opens in the browser or the app according to a stored
+  preference that the CLI and agents honor, passing the URL to the app through its URL
+  scheme. Compared with passing a root and flags for the app to spawn a server, this
+  needs no flag translation, but the app must verify that the URL names a loopback
+  Metabrowser server it trusts.
+- **Browsers get a one-time URL** that exchanges the token for a cookie; the CLI and the
+  app get the token over the owner-only socket, because a sandboxed agent can often read
+  any file in the home folder.
+  Tokens stay out of argv and logs; `webbrowser.open` and an agent reporting a tokenized
+  URL would leak it, which Jupyter avoids with a redirect file.
+- **An optional `metab` MCP adapter** over the same routes would help agents without a
+  shell, at the cost of a second surface to keep in parity.
+
+### Questions That Decide It
+
+- Is one browsing context per user worth a multi-root server, or do per-root servers
+  with state files (P+) cover the agent workflow well enough?
+- Which security model applies (see Security Models)?
+  An explicit browsing context is a natural fit for a shared server, and per-root
+  servers keep per-origin isolation.
+- Who should be charged for privacy prompts, the app or the agent’s host process, and
+  does a folder granted in the app’s Open panel cover a child server?
+  Both are untested.
+- Must views an agent registers be live without a reload, or is reload-on-restart
+  enough?
+
+Every option keeps the layering above: discovery, attach, the browsing context, and view
+registration are `metab` routes and commands with parity rows and goldens, and the app
+stays a viewer that adds only platform behavior.
+
+## Security Models
+
+A long-lived server that agents control and several clients attach to raises the
+question of what Metabrowser may read and who may ask it to.
+Two framings compete: a server that serves only an explicit browsing context, and a true
+local file browser, like Finder, that relies on the operating system or another sandbox
+for containment. They are evaluated here as candidates, not decisions.
+
+### Threats
+
+- **Other local processes and users:** today any of them can call every route, because a
+  request without `Origin` or `Sec-Fetch-Site` passes.
+- **Web pages in the user’s browser:** DNS rebinding is blocked by the Host check;
+  Chrome now asks before a public site reaches loopback (its Local Network Access
+  prompt), and Safari has announced nothing comparable.
+- **Hostile content in browsed files** that exploits a renderer or the server.
+- **A confused or malicious agent** that adds too much, or a sandboxed agent or app that
+  uses the server to read what its own sandbox forbids.
+- **Untrusted plugin or view code**, which runs same-origin with the API.
+- **Probing outside the served set:** `/raw` sits outside the origin check, so its
+  responses can reveal whether a path exists; a browsing context bounds what such a
+  probe can reach.
+
+### Candidate Models
+
+| Model | Protects against | User cost | Code cost | macOS fit |
+| --- | --- | --- | --- | --- |
+| **Server-enforced browsing context** (only added folders and files) | over-broad clients and agents, containment bugs, probing outside the context | folders must be added first; adding takes effect at once; the app’s Open panel avoids prompts for the app (untested for its server) | moderate: a context registry replaces the global root, files open by descriptor, routes are scoped | good |
+| **True local browser, TCC only** | only what TCC protects: Desktop, Documents, Downloads, iCloud and other file providers, removable and network volumes, other apps’ data | best, Finder-like | smallest | not a secrets boundary: `~/.ssh`, `~/.aws`, dotfiles, and browser profiles are unprotected ([Eclectic Light, macOS 26.4](https://eclecticlight.co/2026/04/15/privacy-which-folders-are-protected-in-tahoe/)) |
+| **Seatbelt worker** (a `sandbox-exec` profile generated from the context) | a compromised server process, path bugs, symlink tricks | a server restart whenever the context grows (time unmeasured) | moderate to high: a supervisor, a profile generator, a helper for Git’s network access, a Linux counterpart | Seatbelt is relied on through the deprecated `sandbox-exec` by Anthropic’s sandbox runtime, OpenAI Codex, Bazel, and SwiftPM, and directly by Chromium; a uv-installed CPython ran under a deny-by-default read allowlist in a probe |
+| **App Sandbox with security-scoped bookmarks** | a compromised server | an Open panel per folder; only the app can start the server | high | poor: children inherit only static rights, not Powerbox grants, and Apple DTS says executables a sandboxed app creates are always quarantined, so a Python the sandboxed app downloads most likely cannot run (inferred; unlike the unsandboxed case under Quarantine above) |
+| **Separate user, virtual machine, or container** | nearly everything | heavy | high | Apple’s `container` needs macOS 26; worth it only for hostile acquired content |
+
+Two layers apply under every model:
+
+- **Client authentication:** a token per server start, an owner-only Unix socket for the
+  CLI, agents, and the app (checked with `getpeereid`), and a one-time URL that gives
+  browsers a cookie, with `/raw` behind a secret path prefix.
+  It also stops the server from relaying its starter’s privacy grants to other
+  processes. Browsers cannot use a Unix socket, so loopback TCP stays for them.
+- **Plugin and view isolation:** at minimum declarative agent-registered views and a
+  content security policy that keeps data on the machine (`connect-src 'self'`); later,
+  plugin views in opaque-origin iframes with a message-passing SDK (a
+  `PLUGIN_SDK_VERSION` break) and Python hooks out of process.
+
+### What the Probes and Code Show
+
+- **Containment checks a path, then reopens it by name.** `_safe_path` and the content
+  source resolve and check a path, and `FileResponse` opens the same name later, so a
+  writer inside a served folder could swap in a symlink in between.
+  That matters only for an adversary who can write inside the folder but cannot read the
+  target directly, such as a sandboxed agent.
+- **Hidden names are hidden in the tree but not refused** by the resolvers (inferred
+  from the code, not exercised against a running server).
+- **Python path checks keep the spelling given:** `realpath` preserves case and the
+  `/System/Volumes/Data` firmlink prefix, which fails closed under an allowlist and open
+  under a deny list; with today’s single root this is harmless.
+  Seatbelt normalizes case, firmlink, `/tmp`, and symlink spellings, but an existing
+  hard link bypasses its path rules (a sandboxed process cannot create one).
+- **macOS can open files strictly beneath a folder:** `O_RESOLVE_BENEATH` refuses `..`,
+  absolute paths, and escaping symlinks (it appears in a 2025 XNU release, inferred to
+  be macOS 15.4; Python lacks the constant), `O_UNIQUE` refuses hard-linked files on
+  macOS 26, and `F_GETPATH` returns the canonical path of an opened file on any version.
+- **A Seatbelt profile cannot change after launch,** and a passed directory descriptor
+  does not grant its subtree, so a growing context means restarting the worker.
+  The alternatives are brokering file descriptors from an unsandboxed helper (heavy) or
+  WebKit’s private sandbox-extension interface (not public API).
+- **A server must exclude its own secrets.** Jupyter Server leaked its token through its
+  own API when it served the home folder
+  ([GHSA-q874-g24w-4q9g](https://github.com/advisories/GHSA-q874-g24w-4q9g)).
+- **Codex guards its own daemon from sandboxed commands** by denying them its socket
+  directory, and Anthropic’s sandbox runtime blocks Unix sockets by default.
+
+### Leaning and Trade-Offs
+
+The two framings overlap more than they compete.
+“Browse anything” can be a broad entry the user deliberately adds to the browsing
+context, and a Seatbelt worker is what later turns the context into a kernel-enforced
+boundary. The fairest case for the TCC-only model is that it matches Finder, costs the
+least code, and adds little against an unsandboxed agent that can already read
+everything. Its weakness is that a server exploit by hostile content would expose every
+secret in the home folder; client authentication, which applies under every model,
+covers web pages and sandboxed agents, but not a compromised server.
+
+If a long-lived, multi-client server goes ahead, these would come first:
+
+1. Client authentication as above, removing the “no headers means trusted” branch while
+   keeping the Host and origin checks.
+2. One owner that starts the server, so its privacy identity does not depend on who
+   asked: the app’s login item (S3) or a documented `metab` daemon whose attribution is
+   documented as the terminal’s (S1). This narrows S1–S3 and is in tension with starting
+   in any order, so it is part of the same decision.
+3. The browsing context enforced by the server: open files by descriptor beneath each
+   entry, verify opened paths with `F_GETPATH`, refuse hidden names by default, exclude
+   the server’s own state, and put every route, data hook, Git child, and watcher behind
+   the context.
+4. No broad entries (`/`, `~`, `~/Library`, credential folders) added by an agent
+   without a user step.
+5. Declarative agent-registered views and a strict content security policy.
+
+Later, in order: a Seatbelt worker on macOS (Landlock or bubblewrap on Linux), scoped
+and expiring agent tokens with an audit log, iframe-isolated plugin views and
+out-of-process Python hooks, per-context ports, and a virtual-machine mode for hostile
+sources. The App Sandbox for the server, and TCC as the only gate, are the two models
+this research does not favor.
+
+Open questions: whether a folder picked in the app’s Open panel reaches a child or
+launchd-started server; how TCC attributes an `SMAppService` server versus one started
+from Terminal; how long a Seatbelt worker restart takes, including the event-stream
+reconnect, on which the restart model stands or falls; whether a narrowed production
+profile still runs uvicorn, FSEvents, Git, and `gh`; whether clipboard writes work on
+the loopback origin in WebKit (the secure context itself was verified in the probe); how
+to treat hard links and mount points; whether agent tokens should bind to the client’s
+code signature; and whether these results hold on macOS 27 (the probes ran on 26.5).
 
 ## Comparison Matrix
 
@@ -893,11 +1192,19 @@ parity with the measurement harness turns out to matter more than about 300 MB.
    cask upgrades and an in-app notice, and add Sparkle 2.10 or later when shell updates
    become routine.
 7. **Write the project-plugin trust spec** before supporting project plugins.
-8. **Keep the CLI and the framework-free frontend** as they are.
-9. **Revisit the shell choice** if a Windows or Linux app enters the near-term roadmap
-   (Option E), and when Tauri 3’s CEF runtime is stable, Wails v3’s macOS window
-   handling lands, or Electrobun gains signed updates.
-   Add Option B only if the server ever serves several roots from one origin.
+8. **Decide the server lifetime and security model together, before step 5.2.** Client
+   authentication, a boot id, and an owner-only state file help under every option, so
+   they can land with host mode.
+   Choosing between per-root servers with state files and one shared server with a
+   browsing context needs the answers listed under Questions That Decide It and the open
+   security questions; prototype the agent workflow through the skill on both before
+   committing.
+9. **Keep the CLI and the framework-free frontend** as they are.
+10. **Revisit the shell choice** if a Windows or Linux app enters the near-term roadmap
+    (Option E), and when Tauri 3’s CEF runtime is stable, Wails v3’s macOS window
+    handling lands, or Electrobun gains signed updates.
+    Add Option B only if the server ever serves several roots from one origin, as server
+    Option S would.
 
 ## Next Steps
 
@@ -914,10 +1221,19 @@ parity with the measurement harness turns out to matter more than about 300 MB.
   child server, the `install_name_tool` prompt, and notarization of the bundled Python
   archive.
 - [ ] Write the project-plugin trust spec.
+- [ ] Prototype the skill-driven agent workflow against per-root servers with state
+  files (P+) and against a shared server (S), and test whether an Open-panel folder
+  grant reaches a child or login-item server.
+- [ ] Measure a Seatbelt worker restart, including the event-stream reconnect, before
+  choosing the restart model for a growing browsing context.
+- [ ] Write a security-model decision record covering client authentication, the
+  browsing context, and the Seatbelt worker.
 - [ ] Add a macOS release job with signing secrets and a `notarytool` API key.
-- [ ] Update the tbd desktop guidelines: Electron’s installed size and support window,
-  Tauri’s security floor and shell-plugin behavior, Electrobun’s digest, uv’s signed
-  binaries, and when Python needs `disable-library-validation`.
+- [ ] Land the tbd desktop guideline refresh, a separate pull request in `jlevy/tbd`:
+  Electron’s installed size and support window, Tauri’s security floor and shell-plugin
+  behavior, Electrobun’s digest, uv’s signed binaries, when Python needs
+  `disable-library-validation`, and new guidelines for macOS WebView shells and desktop
+  Python runtimes.
 
 ## Methodology
 
@@ -926,7 +1242,10 @@ sources: official documentation, GitHub releases and source read at pinned tags,
 registries, and issue trackers.
 Three independent reviews then checked the facts against those sources, the architecture
 against the codebase, and the prose against the documentation guidelines.
-Version claims follow the cool-off.
+Three further tracks covered the agent-controlled server: a code audit of live updates,
+the registry, and the root model; precedents for discovery, attach, and live changes;
+and security models, including Seatbelt and `open(2)` probes on macOS 26.5. Version
+claims follow the cool-off.
 Metabrowser facts come from the source at `e1cfca1a`. Experiments ran on a macOS 26.5
 arm64 machine with full Xcode: uv layouts in an isolated lab with every uv directory
 redirected, a 150-line AppKit and `WKWebView` probe, a pywebview launcher bundle, and a
