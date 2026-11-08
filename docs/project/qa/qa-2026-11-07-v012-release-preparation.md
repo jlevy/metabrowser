@@ -86,8 +86,8 @@ Both CLI names and all three previews used `0.11.1.dev1283+1ede1e220`. The prese
 wheel SHA-256 is `8987325d400ec95fe7b42ad8d3b8ba8ce41bcc43a78e8206e4fb33fe4140a4c8`.
 Doctor reported eleven healthy plugins, all 33 served-asset comparisons matched, and all
 45 applicable runtime pins were preserved.
-PR #334’s Conversation, six changed files and nine successful checks passed in both
-managed and checkout modes.
+[#334](https://github.com/jlevy/metabrowser/pull/334)’s Conversation, six changed files
+and nine successful checks passed in both managed and checkout modes.
 The checkout session also passed Quick Search and independent tab restoration.
 The filesystem preview retained its original Markdown layout.
 A managed PR refresh emitted a slow-response warning at 2,014 ms, including 2,010 ms of
@@ -116,10 +116,11 @@ eleven healthy plugins, all 33 served-asset comparisons match the wheel, and all
 applicable runtime dependency pins are unchanged.
 The
 [post-merge session](https://github.com/jlevy/metabrowser/pull/335#issuecomment-6723744302)
-passed PR #335’s nine-check summary in both source modes, the managed two-file Changes
-view, checkout latest-commit rendering, independent tab restoration and Markdown
-alignment/padding. Freshly reloaded sessions had no warning/error entries during that
-smoke; the earlier managed-refresh warning remains a separate unresolved observation.
+passed [#335](https://github.com/jlevy/metabrowser/pull/335)’s nine-check summary in
+both source modes, the managed two-file Changes view, checkout latest-commit rendering,
+independent tab restoration and Markdown alignment/padding.
+Freshly reloaded sessions had no warning/error entries during that smoke; the earlier
+managed-refresh warning remains a separate unresolved observation.
 
 ## Post-Landing Sessions
 
