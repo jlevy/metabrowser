@@ -5,7 +5,7 @@ title: Prepare the next Metabrowser release candidate without publishing
 kind: task
 status: in_progress
 priority: 1
-version: 10
+version: 11
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -17,18 +17,22 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-08T01:50:20.508Z
-updated_at: 2026-11-08T16:05:54.170Z
+updated_at: 2026-11-08T16:08:37.420Z
 started_at: 2026-11-08T01:55:06.900Z
 ---
-Prepare Metabrowser0.12.0 under release coordinator mb-4bd2. All product and release-command layers through PR335 are merged, independently reviewed and CI-green; exact gated426 is installed. Complete final data/audit/browser differentials mb-2g6f, the above50-filecomparison mb-8pyc, quiet previous-release rehearsal mb-cf6y, navigation andlarge-PRqualification mb-4ifm, installed-wheelrunbook mb-m20f andownermatrix mb-etqi. Keepdocs/plans/skill/changelog/behavior-change recordcurrent, andpreparecomplete0.11.0-to0.12.0notes plusconcreteartifact/checklistpacket. Preservefailed/interrupted/nonfinalevidence atoriginalidentities. No tag/GitHubrelease/PyPIpublication orpostpublicationclaim beforeownerapprovesexactfinalcommitandnotes. FutureFileslive/branchworkflow mb-itzy remains paused andoutside scope.
+Prepare Metabrowser 0.12.0 under release coordinator mb-4bd2. All product and release-command layers through PR #335 are merged, independently reviewed and CI-green; exact gated 426 is installed. Complete final data/audit/browser differentials mb-2g6f, the above-50-file comparison mb-8pyc, quiet previous-release rehearsal mb-cf6y, navigation and large-PR qualification mb-4ifm, the installed-wheel runbook mb-m20f and owner matrix mb-etqi. Keep docs, plans, skill identity, changelog and the behavior-change record current, and prepare complete 0.11.0-to-0.12.0 notes and a concrete artifact/checklist packet. Preserve failed, interrupted and nonfinal evidence at its original identity. No tag, GitHub release, PyPI publication or post-publication claim before the owner approves the exact final commit and notes. Future Files live-worktree/branch browsing mb-itzy remains paused and outside scope.
 
 ## Notes
 
-November 8: merged-main CI and installed426 complete; final release qualification active
+November 8: merged-main CI and installed 426 complete
 
-PR335 mergedmain e1cfca1a66277aa86887f031f9b28b250d4a4928 passedallnineCIjobs (42496190135), preserving exactgated426tree. Independentreviewsandfullgatealready passed; mb-y489 closedandsynced. BothdefaultCLIaliases andthreepreviews nowuseexactgated426wheel, withdoctor11/33assets/45unchangedpins andfreshfunctionalbrowserchecks inbothsource modes. Sourcecheckoutremainscleanat426. Publicpostmerge receipt: https://github.com/jlevy/metabrowser/pull/335#issuecomment-6723744302 . No productPRremainsopenapartfromexcludedreferencedraft247.
+PR #335 merged as e1cfca1a66277aa86887f031f9b28b250d4a4928 and passed all nine main CI jobs (42496190135), preserving the exact gated 426 tree. Independent reviews and the full local gate passed; mb-y489 is closed and synced. Both default CLI aliases and the three previews use the exact gated wheel. Doctor, 33 asset matches, 45 unchanged dependency pins and fresh functional browser checks passed in both source modes. The source checkout remains clean at 426.
 
-Exp057 deferredaftertwofailedhostquietnesschecks withzerocaptures. Final426functionaldata comparison isrunningunder mb-2g6f, mandatory33tracecoverage included andtimingexcluded. Browserfunctional differential and55-filefinalcomparison arebeingpreparedseparately. Finalaudit/differentials, navigation/large-PRmeasurements, fullinstalledQA, owner matrix andexactcommit/notesapproval remainopen. Releasebeadnowexplicitlydepends on m20f/etqi/8pyc asalreadyrequired. AQArecordreconciliationpatch ispreparedoutside source underthisbead; applyoncecurrentmeasurement/QAoutcomes areknown, preservingoldercheckpoints. mb-itzy remains paused; no tag/release/publication.
+Public receipt: https://github.com/jlevy/metabrowser/pull/335#issuecomment-6723744302 . No product PR remains open; reference draft #247 is explicitly excluded.
+
+Exp-057 collected zero pairs after two failed host-quietness checks. The final-426 functional data comparison is running under mb-2g6f, including mandatory trace coverage and excluding timing. The functional browser differential and final 55-file comparison are being prepared separately. Final audit/differential review, navigation and large-PR measurements, full installed QA, owner acceptance and approval of the exact commit and notes remain open. The release bead now explicitly depends on mb-m20f, mb-etqi and mb-8pyc.
+
+A QA-record reconciliation patch is prepared outside source under this bead. Incorporate current QA results while preserving older checkpoints. mb-itzy remains paused. No tag, release or publication is authorized.
 
 November 8: latest reviewed product and documentation layers merged
 

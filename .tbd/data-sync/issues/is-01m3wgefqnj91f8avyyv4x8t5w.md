@@ -5,7 +5,7 @@ title: "Landing gate: regular-folder behavior is unchanged from v0.11.0 except d
 kind: task
 status: in_progress
 priority: 1
-version: 25
+version: 26
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -23,18 +23,20 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T19:53:16.765Z
-updated_at: 2026-11-08T16:05:45.356Z
+updated_at: 2026-11-08T16:08:31.917Z
 started_at: 2026-10-01T19:53:20.458Z
 ---
 The user's requirement (2026-10-01): 'carefully review to make sure the entire PR stack can land safely without destabilizing any existing features for regular pages (bugfixes excepted) ... thoroughly tested/reviewed. then the new features are purely additive.' Earlier evidence (byte-identical CLI output on 14 routes, a landing-risk review, a browser smoke) was taken at #244 and is stale: later PRs changed code every page uses (#246 capability SDK removal and --doctor; #248 pin guard and pageshow handling; #249 ROOT rule and the Git panel's commit loading; #254 plugin SDK split into an on-demand views file, plugin loading order, lazy imports; #261 run_git reading stderr; the page-connection and mirror-name fixes). Gate: on the final stack tip, three independent differentials against v0.11.0 on regular trusted folders, each re-runnable with one command: (1) evidence audit: every test, golden and fixture that exists on main and was modified or deleted in the stack, classified hunk by hunk; main's own black-box goldens run against the tip's build; (2) data and modes: every route main registers, every CLI mode and flag, response headers, plugin loading and environment handling, over several corpora, byte-compared; (3) browser: a scripted matrix of views and interactions in stock Chrome on both builds, comparing normalized DOM, console, requests and screenshots. Every difference is classified: identical; intended change with its CHANGELOG entry; bugfix; or unexplained. Accept rule: zero unexplained differences, and a written list of every intended non-additive change to an existing feature for the user to sign off (known so far: Plugin SDK 0.6 -> 0.7 is breaking; --untrusted and --no-active-content now render Markdown inert and apply a strict CSP; --doctor output; metab '' is refused; a scheme:// argument is always a source; source views gained a line gutter). Cross-browser paint (Safari, Firefox) remains a manual check for the user.
 
 ## Notes
 
-November 8: exact426 full functional data comparison running
+November 8: exact-426 full functional data comparison running
 
-Baseline published0.11.0 (6c278f3f) and gated426ce7b62 (mergedmain e1cf hasidenticaltree) are installed in new isolated comparison profiles. Everywheelmember/RECORD, version, launcher, packageorigin anddependencycheck passed;44sharednonprojectpins andcandidate-onlySoftschema0.8.1 are recorded explicitly. All28boundedobserverchecks passed acrossbothprofiles, all33tracebindings declared, missingauthoritativeRAWfailsclosed, noSDKshim/orglobalappsourceimports. Historicalenvironments/wrappers/e204A106-B107counterevidence preserved; itscause remains unresolved.
+Published 0.11.0 (6c278f3f) and gated 426ce7b62 are installed in new isolated comparison profiles; merged main e1cf has the gated candidate's exact tree. Every wheel member, RECORD entry, version, launcher, package origin and dependency check passed. The profile records 44 shared nonproject pins and candidate-only Softschema 0.8.1. All 28 bounded observer checks passed across both profiles. All 33 trace bindings are declared; a missing authoritative raw-output boundary fails closed. No SDK shim or global application-source import path was added.
 
-The reviewedone-shot driver launched final-data426-20261108T155237Z once. Headerselects1921CLI cases,53HTTPgroups/17012requests and47specials; all33trace rows are mandatory. Physicalwork/caches remain external scratch; rawresults are durableoutside scratch. jobs1, perf-pairs0 andspeedcasesexcluded: this isfunctionalcomparisonunderhostload, notperformanceacceptance. Actualharness/reportexits, selectioncompleteness andallsemanticdifferences mustbereviewed beforeacceptance. Finalbrowser/test-evidence differentials remain separate. Laterappchangesinvalidatequalificationofthatlatercandidate.
+The reviewed one-shot driver launched final-data426-20261108T155237Z once. Its header selects 1,921 CLI cases, 53 HTTP groups containing 17,012 requests, and 47 specials. All 33 trace rows are mandatory. Physical work stays in external scratch; raw results are durable outside scratch. The run uses one worker, zero performance pairs and no speed cases: it is a functional comparison under host load, not performance acceptance.
+
+Review actual harness/report exits, exact selection completeness and every semantic difference before acceptance. Historical environments, wrappers and e204's unresolved A106/B107 debug-counter evidence remain preserved. Final browser and test-evidence comparisons remain separate. A later application change requires qualification of that changed candidate.
 
 November 8: final-candidate preparation
 

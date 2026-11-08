@@ -5,7 +5,7 @@ title: Execute the full v0.12 QA runbook on a pinned post-landing candidate
 kind: task
 status: in_progress
 priority: 1
-version: 6
+version: 7
 delegate: codex@spud10
 labels: []
 dependencies:
@@ -15,16 +15,20 @@ parent_id: is-01m402dbhn3zsc1h896f3xnrsq
 hold: null
 hold_until: null
 created_at: 2026-10-03T05:05:53.458Z
-updated_at: 2026-11-08T16:05:42.432Z
+updated_at: 2026-11-08T16:08:28.513Z
 started_at: 2026-11-08T03:02:07.630Z
 ---
 Run setup/doctor including negative controls, full make verify, admitted Git/macOS/live-GitHub tiers, refusal checks, plain-folder features in real browsers, acquisition/cache/pins/trust, GitHub URLs and PR pages, refresh/ref switching/offline reopening, and regression comparisons. Record step-level pass/fail/blocked/untested. Keep caches and temporary outputs on external scratch and durable evidence outside scratch.
 
 ## Notes
 
-November 8: installed426 functional smoke accepted
+November 8: installed 426 functional smoke passed
 
-Both default CLI aliases now use exact gated0.11.1.dev1287+426ce7b62, installed offline without rebuilding or upgrading dependencies. Doctor11, all33servedassetmatches,45applicablepins, operatorPATH and unchangedskillcontent/manualprovenance passed. Managedpreviewselects mergedmain e1cf; filesystemtargets/cache/config/localchanges remain intact. Freshly reloaded built-in sessions passed PR335: nineChecks in both source modes, two-fileChanges (+63/-10) in managedmode, latestmergedCommit e1cf withsamefile/linetotals incheckoutmode, independentPulls335/Checks andCommits/e1cf restoration. OriginalCHANGELOG.md card andfirstDocumenttab share323.994px leftedge,40pxinnerhorizontalpadding andrightTOC. Freshreloadwarn/errorlogs empty inallthreesessions. Receipts: metabrowser-installed-gated-release-docs-426ce7b62-20261108/{installation,post-verification,browser-smoke}.json. Functional evidence only; finalfullQA/owner matrix remains open. Historical1ede2014msmanagedrefreshwarning remains unresolved evidence, not erased by empty newerlogs.
+Both default CLI aliases now use exact gated 0.11.1.dev1287+426ce7b62, installed offline without rebuilding or upgrading dependencies. Doctor reports 11 healthy plugins. All 33 served-asset matches, 45 applicable dependency pins, operator PATH checks and unchanged skill-content/manual-provenance checks passed. The managed preview selects merged main e1cf; filesystem targets, caches, configuration and local changes remain intact.
+
+Freshly reloaded built-in browser sessions passed PR #335: nine successful checks in both source modes, its two-file comparison (+63/-10) in managed mode, and latest merged commit e1cf with the same file and line totals in checkout mode. Switching tabs independently restores PR #335/Checks and commit e1cf. The original CHANGELOG.md card and first Document tab share the 323.994 px left edge, with 40 px horizontal inner padding and the table of contents on the right. All three freshly reloaded sessions had empty warning/error logs during this smoke.
+
+Receipts: metabrowser-installed-gated-release-docs-426ce7b62-20261108/{installation,post-verification,browser-smoke}.json. This is functional evidence; the full final QA runbook and owner matrix remain open. The historical 1ede managed refresh warning at 2,014 ms remains unresolved evidence.
 
 November 8: installed 1ede functional session
 

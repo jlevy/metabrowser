@@ -5,7 +5,7 @@ title: Re-run the folder comparison after this branch merges
 kind: task
 status: in_progress
 priority: 1
-version: 9
+version: 10
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -16,12 +16,16 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:57.084Z
-updated_at: 2026-11-08T15:46:44.822Z
+updated_at: 2026-11-08T16:12:21.870Z
 started_at: 2026-11-03T09:32:28.834Z
 ---
 This branch changes plain-folder narrow diffs, and possibly toggles. Extends mb-2g6f's re-run on the head to be tagged; the sign-off record must then name this branch's changes too.
 
 ## Notes
+
+November 8, 2026: exact gated 426ce7b62dccdd6ce4aefdba5b6744d7a510259b (0.11.1.dev1287+426ce7b62; wheel SHA256 476aba4d52c3d3d0f24edf77efae3f3286e4065f231fbad596b4ccd3663c79ab) was compared with the preserved published 0.11.0 wheel (SHA256 b099786f84408968df10296fdf7226218dd8853faf1cdb02a25787c5ab396e7f), using the exact read-only fd426 wheel profiles. The original 55-file fixture was reused unchanged: base 7d475f4a3fb584542ea9632131ef4d7da669485d, head 8070d037181c545f1743e56918d21dff29fcd852. Complete CLI --diff HEAD --format json payloads match, with 55 manifest files and 55 patches. Both --diff-check apply oracles are clean and reproduce target a4f6e55d71f87e75db3d653dae36f65ad0495984418b9cebe64282ed1c206408.
+
+The four current-head browser cells (published/candidate, Split/Unified) are blocked and NOT RUN. CUA could not create an iab tab; its inventory reported no browser and a locked Mac. No unlock or alternate control technology was attempted, no tabs were created, and prior 519c browser proof remains historical. No warning/error counts or timing acceptance are claimed for these unrun cells. Owned servers on 8871/8872 were verified and cleaned; both PIDs/listeners are absent, default previews remain, fixture and source checkout remain clean/unchanged. Used origins are recorded for later cold-origin exclusions. Durable evidence: folder55-final426-20261108/{comparison.json,cli-comparison.json,fixture-before.json,browser-blocker.json,cleanup.json,used-ports.json}. Keep this bead open for current-head browser completion and separate owner acceptance.
 
 November7 exactinstalled519c33239 follow-up completed:0.11.1.dev1275+519c33239 CLI --diff HEAD --format json equals preserved0.11.0controlfullpayload,55manifestfiles/55patches, cleaninmemoryapplytargeta4f6e55d71f87e75db3d653dae36f65ad0495984418b9cebe64282ed1c206408,fixtureunchanged. Rootbuilt-inbrowser freshUnifiedandfreshSplit reach/hydratefile54withVALUE_12=120 (barpositions679/698of900viewport),55sectionbars,noNofMcounter,0warnings/errors. Switchinglayoutretainslastfilehydration; viewportresets,sofreshSplitwascheckedseparately. Evidencefolder55-installed-519c-comparison.json preservesprecisescope. Tempserver8892andbothagenttabsclosed. Currentproductfixtureacceptancecomplete; finalreleasehead/ownersignoffstillseparate. BehaviorchangerecordnowhasdatedNov7addendumunderfinaldocsPRpreparation.
 

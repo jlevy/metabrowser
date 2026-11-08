@@ -5,7 +5,7 @@ title: Run the 0.12 release rehearsal against published 0.11.0
 kind: task
 status: in_progress
 priority: 1
-version: 14
+version: 15
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,18 +21,20 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T20:29:17.780Z
-updated_at: 2026-11-08T16:05:48.458Z
+updated_at: 2026-11-08T16:08:34.547Z
 started_at: 2026-10-01T20:29:25.524Z
 ---
 Run the standard release checklist stability rehearsal against published 0.11.0 on the reviewed current application candidate: complete make verify, previous-release performance comparison with committed experiment/report, exact-head CI and release-note/version review. Version 0.12.0 is already decided. All candidate captures must satisfy committed hard responsiveness/correctness gates; repeatable regressions block until fixed or explicitly accepted. Review backend semantic equivalence before timings. User authorization now includes merging reviewed green work; no tag, release or publication is authorized without approval of the exact final commit and notes. Preserve historical runs and rerun on the final candidate rather than relabeling old evidence. Related final data/browser/test-evidence gate is mb-2g6f; PR-specific navigation diagnostics are separate in mb-4ifm.
 
 ## Notes
 
-November 8: exp057 GO preflights deferred again; zero captures
+November 8: both exp-057 preflights deferred; zero captures
 
-Both approvedquiet-hostchecks failed beforelaunch: unrelatedCPU/diskactivity, thenSpotlight/systemwork, withidlefallingto21percent inboundedrecheck. Noexistingjobsstopped, noperformancebudgetsweakened. Threefresh45-pinbenchmarkenvs andapprovedpath/statebindings are prepared, but no projectwheelinstalled/switched, servercreated, paircollected orledger/sourcewritten. Sourcep harnessimports andexplicitprojectenvironment provenance passed. Deferralreceipt: exp-057/go-deferred-426-20261108T1549Z.json. Historicalfourenvs/corpus/defaultCLI preserved; defaulthasnowseparatelyadvancedto426aftermainCI.
+Both approved host checks failed before launch: unrelated CPU and disk activity, followed by Spotlight/system work, with idle time falling to 21% in the bounded recheck. No unrelated jobs were stopped or performance budgets weakened. Three fresh benchmark environments with 45 pinned dependencies and approved path/state bindings are prepared. No project wheel was installed or switched, no server or pair was created, and no ledger or source was changed. Source-checkout harness imports and the explicit project-environment provenance passed.
 
-FullfunctionaldataQA isnowrunning, andbrowserfunctionalpreparation isindependent. Exp057 mustremainhelduntilrootacknowledgesnewquietconditionsafterlocalQA, retainingtheexactcandidateandalloriginalgates. Noquietresultorspeedclaim.
+Receipt: exp-057/go-deferred-426-20261108T1549Z.json. The four historical environments and frozen corpus remain unchanged. The default CLI separately advanced to gated 426 after merged-main CI passed.
+
+Full functional data QA is now running; functional browser preparation is separate. Exp-057 remains held until the coordinator confirms new quiet conditions after local QA. Keep the exact candidate and original gates. No quiet result or speedup is claimed.
 
 November 8: exp-057 resumed on the reviewed 426 candidate
 
