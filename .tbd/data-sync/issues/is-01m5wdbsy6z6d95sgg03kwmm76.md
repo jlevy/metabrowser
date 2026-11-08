@@ -5,7 +5,7 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: in_progress
 priority: 1
-version: 20
+version: 21
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-08T23:12:30.527Z
+updated_at: 2026-11-08T23:25:03.089Z
 started_at: 2026-11-08T01:58:21.485Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
@@ -127,3 +127,11 @@ November 8 forward-integration checkpoint: all nine SDK a177 CI jobs pass in wor
 Main196 forward merges are complete locally: PR #337 head308d72c460ce7d3494c3e169e719759bda5f7388, #336 head5784d8031e5f07fdb68051d2e80b050c013cd399, #340 head8a6c80c66b84e8c7abf17998f1094f2ec08fddef. Each merge increment equals the exact five documentation/policy paths from main and preserves 974 runtime/test entries and the original layer delta. Independently approved fourth local layer b2fb62099f9c8a3a628edc2a1a76d31505c63c6a on codex/research-acceptance-corrections-20261108 contains only four A1/A2 research correction hunks in one document, fourteen added and six removed lines. All four local heads are independently approved.
 
 The normal full gate and atomic, non-force four-ref push at b2fb are running; no completion, new integrated-head qualification/CI, published heads or new fourth-layer PR number is claimed. Installation remains a177. Actual merges and exact-head reconciliation are still pending, so this bead is not closed. Research #338 is already merged; A3 remains open for owner disposition of the effective standing grant, and this step contains no policy revert or native-app architecture adoption. Quiet performance, Step9, complete installed QA, owner acceptance and exact final release approval remain open; mb-itzy stays paused and reference draft #247 excluded.
+
+November 8 published integration/delivery checkpoint: native stack #339 now has four remote layers, #337 at 308d72c460ce7d3494c3e169e719759bda5f7388, #336 at 5784d8031e5f07fdb68051d2e80b050c013cd399, #340 at 8a6c80c66b84e8c7abf17998f1094f2ec08fddef and #342 at b2fb62099f9c8a3a628edc2a1a76d31505c63c6a. Independent follow-up reviews are published and verified: #337 E 5820091134, #336 C 5820092952, #340 C 5820094242, #342 A 5820097396. Exact b2fb normal full gate passed in 1,317.35 seconds: 4,931 Python passes, 9 skips, 388 goldens in 204.14 seconds, clean audits/distribution/smokes and zero-byte observer; atomic four-ref push exited zero. Fresh #337/#336/#340 CI each has all nine passes; #342 has eight passes and Python 3.14 running at this checkpoint. Actual merges remain pending.
+
+Qualified b2fb tree 8d69ce06a4054c4a394248c36ba05e12ddd38fcc wheel 0.11.1.dev1304+b2fb62099 SHA-256 7c6c304373329ecc35ff01dd0a05e9c4a9d68ae6d087292e9f681b6ba697f50f is installed for both aliases and all four global servers. Doctor eleven, 45 unchanged pins and 68 served assets match, preserving targets/configuration. Selected SDK manual replay completed at prior a177; its owned fixture process/listener are cleaned up. No new performance or full downstream/owner acceptance is inferred.
+
+New release blocker mb-9e1t is under mb-4bd2, which depends on it: simplify canonical metabrowser.config/cache identifiers and graceful malformed-config guidance, no permanent old aliases/f02 compatibility, retain f01/v1 payloads. A successor from b2fb is being implemented. User explicitly authorized the private one-account alpha upgrade; read-only inventory found one config root, one cache root, 17 headers and valid config. No account writes occurred. Automatic review rejected raw YAML backup duplication; a safer reversible delta-header journal is planned and the user was informed. No migration success or delivered fix is claimed.
+
+The user explicitly separated macOS spike #341: another agent owns its reviews/fixes, our partial read-only review stopped unpublished, and open mb-ndeh under mb-rvcj is not a release blocker. Research #338 is merged; A1/A2 corrections are in published #342, A3 effective-grant owner disposition remains separate/open with no policy revert. Quiet performance, complete installed QA and exact owner release approval remain open; no tag/publication authorization. mb-itzy stays paused. No bead closure before actual merges.
