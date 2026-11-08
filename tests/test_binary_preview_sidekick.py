@@ -456,14 +456,19 @@ def test_a_negative_default_chunk_size_reads_nothing_and_says_whether_bytes_rema
     monkeypatch.setattr(sidekick, "BINARY_PREVIEW_CHUNK_BYTES", chunk)
 
     for name in ("a.bin", "a.bin.gz"):
+        tags: dict[int, str] = {}
         for offset, more in ((0, True), (100, True), (256, False), (9999, False)):
             status, body, etag = _route_chunk(binary_route, name, offset=offset)
             assert status == 200, (name, offset, body)
             assert _empty_chunk(body) == ("binary_chunk", 0, 0, ""), (name, offset, body)
             assert (body["offset"], body["has_more"]) == (offset, more), (name, body)
             assert (body["logical_size"], body["preview_limited"]) == (256, False), name
-            # The address of the window is the one 0.11.0 gave it.
-            assert etag.endswith(f'-{offset}-{chunk}"'), etag
+            assert etag == _route_chunk(binary_route, name, offset=offset)[2]
+            tags[offset] = etag
+        assert len(set(tags.values())) == len(tags), "offsets remain distinct identities"
+        monkeypatch.setattr(sidekick, "BINARY_PREVIEW_CHUNK_BYTES", chunk - 1)
+        assert _route_chunk(binary_route, name, offset=0)[2] != tags[0]
+        monkeypatch.setattr(sidekick, "BINARY_PREVIEW_CHUNK_BYTES", chunk)
     status, body, _etag = _route_chunk(binary_route, "empty.bin")
     assert (status, _empty_chunk(body), body["has_more"]) == (
         200,
@@ -485,16 +490,39 @@ def test_a_negative_per_request_maximum_reads_nothing_for_a_named_limit(
     monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_CHUNK_BYTES", maximum)
 
     for name in ("a.bin", "a.bin.gz"):
+        tags: dict[int, str] = {}
         for offset, more in ((0, True), (100, True), (256, False)):
             status, body, etag = _route_chunk(binary_route, name, offset=offset, limit=64)
             assert status == 200, (name, offset, body)
             assert _empty_chunk(body) == ("binary_chunk", 0, 0, ""), (name, offset, body)
             assert (body["offset"], body["has_more"]) == (offset, more), (name, body)
-            assert etag.endswith(f'-{offset}-{maximum}"'), etag
+            assert etag == _route_chunk(binary_route, name, offset=offset, limit=65)[2]
+            tags[offset] = etag
+        assert len(set(tags.values())) == len(tags)
+        monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_CHUNK_BYTES", maximum - 1)
+        assert _route_chunk(binary_route, name, offset=0, limit=64)[2] != tags[0]
+        monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_CHUNK_BYTES", maximum)
 
     # The default limit is not clamped, so a request without one reads as before.
     status, body, _etag = _route_chunk(binary_route, "a.bin")
     assert (status, _payload(body), body["has_more"]) == (200, ALL_BYTES, False)
+
+
+def test_chunk_tags_identify_the_effective_bounded_window(
+    binary_route: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_BYTES", 128)
+    monkeypatch.setattr(sidekick, "BINARY_PREVIEW_MAX_CHUNK_BYTES", 32)
+    for name in ("a.bin", "a.bin.gz"):
+        status, body, tag = _route_chunk(binary_route, name, offset=100, limit=10_000)
+        assert status == 200 and _payload(body) == ALL_BYTES[100:128]
+        for limit in (28, 29, 32, 10_000):
+            repeated_status, repeated, repeated_tag = _route_chunk(
+                binary_route, name, offset=100, limit=limit
+            )
+            assert repeated_status == 200 and repeated == body and repeated_tag == tag
+        assert _route_chunk(binary_route, name, offset=101, limit=10_000)[2] != tag
+        assert _route_chunk(binary_route, name, offset=100, limit=27)[2] != tag
 
 
 @pytest.mark.parametrize("ceiling", [-1, -2, -5000])

@@ -1,0 +1,268 @@
+# metab <ROOT>/资料 --api '/api/rollup?path=&depth=0' --format json
+exit: 0
+--- stdout ---
+{
+  "root": "<ROOT>",
+  "path": "",
+  "node": {
+    "name": "资料",
+    "path": "",
+    "type": "dir",
+    "state": "complete",
+    "total_files": 2,
+    "total_size": 12,
+    "unignored_files": 2,
+    "unignored_size": 12,
+    "mtime": 1700000000.0,
+    "gitignored": false,
+    "dominant_ext": ".txt",
+    "children": null
+  },
+  "ext_tallies": [
+    [
+      ".txt",
+      1,
+      7,
+      1,
+      7
+    ],
+    [
+      ".md",
+      1,
+      5,
+      1,
+      5
+    ]
+  ],
+  "file_type_breakdown": {
+    "schema": "file-type-breakdown-v1",
+    "registry": {
+      "schema_version": 4,
+      "revision": 3,
+      "fingerprint": "d6a500a45b7da7e5acf2587c735000ee74b99d7dbb5845f2f3481a0cd5ed0e1c"
+    },
+    "metrics": {
+      "all": {
+        "files": 2,
+        "bytes": 12
+      },
+      "unignored": {
+        "files": 2,
+        "bytes": 12
+      }
+    },
+    "groups": [
+      {
+        "id": "docs",
+        "families": [
+          {
+            "id": "markdown",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 5
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 5
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".md",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 5
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 5
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "plain-text",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 7
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 7
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".txt",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 7
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 7
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "no_extension": {
+      "metrics": {
+        "all": {
+          "files": 0,
+          "bytes": 0
+        },
+        "unignored": {
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "filenames": [],
+      "others": null
+    },
+    "remaining_types": {
+      "metrics": {
+        "all": {
+          "files": 0,
+          "bytes": 0
+        },
+        "unignored": {
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "extensions": [],
+      "others": null
+    }
+  },
+  "index_status": "done",
+  "indexed_files": 2,
+  "max_files": 500000,
+  "truncated": false
+}
+--- stderr ---
+
+# metab <ROOT>/资料 --api '/api/rollup?path=子目录&depth=0' --format json
+exit: 0
+--- stdout ---
+{
+  "root": "<ROOT>",
+  "path": "子目录",
+  "node": {
+    "name": "子目录",
+    "path": "子目录",
+    "type": "dir",
+    "state": "complete",
+    "total_files": 1,
+    "total_size": 7,
+    "unignored_files": 1,
+    "unignored_size": 7,
+    "mtime": 1700000000.0,
+    "gitignored": false,
+    "dominant_ext": ".txt",
+    "children": null
+  },
+  "ext_tallies": [
+    [
+      ".txt",
+      1,
+      7,
+      1,
+      7
+    ]
+  ],
+  "file_type_breakdown": {
+    "schema": "file-type-breakdown-v1",
+    "registry": {
+      "schema_version": 4,
+      "revision": 3,
+      "fingerprint": "d6a500a45b7da7e5acf2587c735000ee74b99d7dbb5845f2f3481a0cd5ed0e1c"
+    },
+    "metrics": {
+      "all": {
+        "files": 1,
+        "bytes": 7
+      },
+      "unignored": {
+        "files": 1,
+        "bytes": 7
+      }
+    },
+    "groups": [
+      {
+        "id": "docs",
+        "families": [
+          {
+            "id": "plain-text",
+            "metrics": {
+              "all": {
+                "files": 1,
+                "bytes": 7
+              },
+              "unignored": {
+                "files": 1,
+                "bytes": 7
+              }
+            },
+            "extensions": [
+              {
+                "extension": ".txt",
+                "metrics": {
+                  "all": {
+                    "files": 1,
+                    "bytes": 7
+                  },
+                  "unignored": {
+                    "files": 1,
+                    "bytes": 7
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "no_extension": {
+      "metrics": {
+        "all": {
+          "files": 0,
+          "bytes": 0
+        },
+        "unignored": {
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "filenames": [],
+      "others": null
+    },
+    "remaining_types": {
+      "metrics": {
+        "all": {
+          "files": 0,
+          "bytes": 0
+        },
+        "unignored": {
+          "files": 0,
+          "bytes": 0
+        }
+      },
+      "extensions": [],
+      "others": null
+    }
+  },
+  "index_status": "done",
+  "indexed_files": 2,
+  "max_files": 500000,
+  "truncated": false
+}
+--- stderr ---

@@ -2,7 +2,7 @@
 GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=<STORE>
 status: 200
 cache-control: private, max-age=31536000, immutable
-etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+etag: "<BUILD>-<ETAG-1>"
 content-encoding: gzip
 vary: Accept-Encoding
 work: 1 manifest, 1 patch
@@ -11,7 +11,7 @@ work: 1 manifest, 1 patch
 GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=<STORE>
 status: 200
 cache-control: private, max-age=31536000, immutable
-etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+etag: "<BUILD>-<ETAG-1>"
 content-encoding: gzip
 vary: Accept-Encoding
 work: 0 manifest, 0 patch
@@ -20,14 +20,14 @@ work: 0 manifest, 0 patch
 GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=<STORE>
 status: 304
 cache-control: private, max-age=31536000, immutable
-etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+etag: "<BUILD>-<ETAG-1>"
 work: 0 manifest, 0 patch
 
 ## Not naming a build: the browser must ask
 GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base
 status: 200
 cache-control: no-cache
-etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+etag: "<BUILD>-<ETAG-1>"
 content-encoding: gzip
 vary: Accept-Encoding
 work: 0 manifest, 0 patch
@@ -36,7 +36,7 @@ work: 0 manifest, 0 patch
 GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=000000000000&store=<STORE>
 status: 200
 cache-control: no-cache
-etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+etag: "<BUILD>-<ETAG-1>"
 content-encoding: gzip
 vary: Accept-Encoding
 work: 0 manifest, 0 patch
@@ -45,7 +45,7 @@ work: 0 manifest, 0 patch
 GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=0000000000000000
 status: 200
 cache-control: no-cache
-etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+etag: "<BUILD>-<ETAG-1>"
 content-encoding: gzip
 vary: Accept-Encoding
 work: 0 manifest, 0 patch
@@ -54,7 +54,7 @@ work: 0 manifest, 0 patch
 GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>
 status: 200
 cache-control: no-cache
-etag: "<BUILD>-comparison-<STORE>-fa40825c6b23973f5d51659125bc5aa3"
+etag: "<BUILD>-<ETAG-1>"
 content-encoding: gzip
 vary: Accept-Encoding
 work: 0 manifest, 0 patch
@@ -63,7 +63,7 @@ work: 0 manifest, 0 patch
 GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=direct&build=<BUILD>&store=<STORE>
 status: 200
 cache-control: private, max-age=31536000, immutable
-etag: "<BUILD>-comparison-<STORE>-002b0b9aa48d4d17e215dd1ab23ddaaa"
+etag: "<BUILD>-<ETAG-2>"
 content-encoding: gzip
 vary: Accept-Encoding
 work: 1 manifest, 1 patch
@@ -72,7 +72,7 @@ work: 1 manifest, 1 patch
 GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=<STORE>&file=a.py
 status: 200
 cache-control: private, max-age=31536000, immutable
-etag: "<BUILD>-comparison-<STORE>-b95d75fd2f3b02901d173323a7b3d9a2"
+etag: "<BUILD>-<ETAG-3>"
 content-encoding: gzip
 vary: Accept-Encoding
 work: 0 manifest, 1 patch
@@ -81,7 +81,7 @@ work: 0 manifest, 1 patch
 GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=<STORE>&file=a.py
 status: 200
 cache-control: private, max-age=31536000, immutable
-etag: "<BUILD>-comparison-<STORE>-b95d75fd2f3b02901d173323a7b3d9a2"
+etag: "<BUILD>-<ETAG-3>"
 content-encoding: gzip
 vary: Accept-Encoding
 work: 0 manifest, 0 patch
@@ -90,7 +90,7 @@ work: 0 manifest, 0 patch
 GET /api/plugin/diff/comparison?left=daeee5956645c196f036ff27fbf48aca3dd9cc87&right=107738382d9c4ce46f160dfde5230dfedc22a386&base_policy=merge_base&build=<BUILD>&store=<STORE>&file=a.py
 status: 200
 cache-control: private, max-age=31536000, immutable
-etag: "<BUILD>-comparison-<STORE>-b95d75fd2f3b02901d173323a7b3d9a2"
+etag: "<BUILD>-<ETAG-3>"
 vary: Accept-Encoding, Accept-Encoding
 work: 0 manifest, 0 patch
 
@@ -98,7 +98,7 @@ work: 0 manifest, 0 patch
 GET /api/plugin/diff/comparison?revision=107738382d9c4ce46f160dfde5230dfedc22a386&build=<BUILD>&store=<STORE>
 status: 200
 cache-control: private, max-age=31536000, immutable
-etag: "<BUILD>-comparison-<STORE>-8a2841149da4f02f23ad01c29f09d433"
+etag: "<BUILD>-<ETAG-4>"
 content-encoding: gzip
 vary: Accept-Encoding
 work: 1 manifest, 1 patch

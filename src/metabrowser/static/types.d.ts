@@ -317,6 +317,12 @@ type MetabrowserNavigationRouteRuntime = Readonly<{
   normalizeTarget(target: MetabrowserNavigationTarget): MetabrowserNavigationTarget;
   parse(pathname: string, search?: string, hash?: string): MetabrowserNavigationTarget | null;
   parseCommit(pathname: string): Readonly<{ revision: string; file: string }> | null;
+  recoverFailedExpandedFolders(options: {
+    panel: HTMLElement | null;
+    revision: boolean;
+    recent: boolean;
+    load(path: string, children: HTMLElement): unknown;
+  }): void;
   replaceFileSnapshot(
     previous: Map<string, Record<string, unknown>>,
     entries: Array<Record<string, unknown> & { path: string }>,

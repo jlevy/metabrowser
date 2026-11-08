@@ -248,6 +248,7 @@ for (const relative of [
   vm.runInContext(source, sandbox, { filename: relative });
 }
 const moduleSources = [
+  "src/metabrowser/builtin_plugins/folder/folder-totals.js",
   "src/metabrowser/builtin_plugins/folder/treemap-layout.js",
   "src/metabrowser/builtin_plugins/folder/treemap-model.js",
   "src/metabrowser/builtin_plugins/folder/rollup-controls.js",

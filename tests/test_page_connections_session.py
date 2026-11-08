@@ -234,6 +234,7 @@ def test_connecting_stream_is_closed_and_restored(
 
 
 def test_filtered_snapshot_and_resume_failure_boundaries() -> None:
+    import json
     import subprocess
     from pathlib import Path
 
@@ -248,6 +249,16 @@ def test_filtered_snapshot_and_resume_failure_boundaries() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
+    session = json.loads(result.stdout)
+    assert [step["filtered"] for step in session["recovery"]] == [False, True]
+    assert session["boundaries"]["kept"] == [
+        "successful",
+        "collapsed",
+        "pinned",
+        "Recent",
+        "detached",
+        "disposed",
+    ]
 
 
 def test_deleted_log_does_not_keep_a_live_badge(scenarios: dict[str, list[dict[str, Any]]]) -> None:
