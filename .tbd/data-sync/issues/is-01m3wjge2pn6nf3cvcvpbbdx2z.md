@@ -5,7 +5,7 @@ title: Run the 0.12 release rehearsal against published 0.11.0
 kind: task
 status: in_progress
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,12 +21,16 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T20:29:17.780Z
-updated_at: 2026-11-08T09:32:12.757Z
+updated_at: 2026-11-08T09:56:53.398Z
 started_at: 2026-10-01T20:29:25.524Z
 ---
 Run the standard release checklist stability rehearsal against published 0.11.0 on the reviewed current application candidate: complete make verify, previous-release performance comparison with committed experiment/report, exact-head CI and release-note/version review. Version 0.12.0 is already decided. All candidate captures must satisfy committed hard responsiveness/correctness gates; repeatable regressions block until fixed or explicitly accepted. Review backend semantic equivalence before timings. User authorization now includes merging reviewed green work; no tag, release or publication is authorized without approval of the exact final commit and notes. Preserve historical runs and rerun on the final candidate rather than relabeling old evidence. Related final data/browser/test-evidence gate is mb-2g6f; PR-specific navigation diagnostics are separate in mb-4ifm.
 
 ## Notes
+
+November 8: quiet collection deferred before captures
+
+Exp-057 final host preflight found unrelated Python activity and external disk traffic. Zero browser/backend pairs were collected; no benchmark environment, default CLI, preview or ledger changed. Preserve preflight-deferred-20261108T0937Z.json and host observations. The newly confirmed PR-prefetch ownership bug mb-b0aq is now claimed for a focused correction; another artifact will need gating before final release measurements. Default installation remains verified a2bb0d29a. Missing-gh installed QA passed independently (mb-m20f), and its temporary port8917 is now in the private used-port history. Do not stop unrelated workloads or weaken budgets to obtain a quiet result.
 
 November 8: exp-057 collection authorized
 
