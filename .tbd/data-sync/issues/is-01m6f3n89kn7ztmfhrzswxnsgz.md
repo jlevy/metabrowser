@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: in_progress
 priority: 1
-version: 97
+version: 98
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -88,7 +88,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-08T20:57:43.147Z
+updated_at: 2026-11-08T21:38:36.213Z
 started_at: 2026-11-07T05:39:51.585Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.
@@ -142,3 +142,11 @@ Earlier chronological notes (superseded where they describe pending final gates)
 The reviewed PR-support stack is landed and fully accepted for managed repository sources and existing checkouts. The earlier merge and final feature-acceptance prerequisites are satisfied. Keep this broad parent open for genuine remaining rendering/windowing, quiet-host performance and release follow-ups. Loaded-host measurements do not prove that all performance goals pass.
 
 2026-11-07 final review and installation update. Native stack #302 has 21 non-draft layers, #299 through #320 excluding stack number #302. Every PR contains its exact declared base and current main db52ec09, is mergeable/CLEAN, has green exact-head CI and zero unresolved review threads. Final tip ab905365. Local make verify passed 4,892 tests with nine expected default-tier skips, 384 golden scenarios, both audits and distribution checks. Three opt-in real-gh PR sessions passed separately. Independent review and built-in browser sessions cover checkout and managed modes, loading/reconnect/cache behavior, keyboard disclosure and shared Markdown/PR layout. Both default CLI names and user previews run 0.11.1.dev1214+ab905365; the installed skill matches source. Ready for owner merge. Owner acceptance mb-i9ll, landed/release reconciliation mb-5k2w, quiet-host/tagged-head comparisons and clock-provenance follow-up mb-irrw remain tracked in their existing scopes.
+
+November 8, current forward checkpoint (supersedes older current-install/awaiting-landing notes): native stack #339 is registered remotely as PR #337 at c3d093d2d222ddce74568e7c74111e2cc0c57d3f, then QA PR #336 at 0a0319daf2d99105aed2ec4c1528f2da4b1d7187. Both heads passed their complete normal gates and all nine PR CI jobs; latest #336 run is 42523716622. The installed application remains exact c3 for both default aliases and the three retained previews. The managed browsed snapshot remains e1cf; that data pin is distinct from the application source.
+
+Local SDK-template readiness commit d69e3e71f876904bbbc116d87e5e14b5f9da1e8d adds the focused mb-vnm1 fix and two minimal plan-status corrections above QA0a. All thirteen unchanged blobs have independent review; integrated checks passed 44 focused pytest cases, one golden, both browser type projects, parity and hygiene. Startup remains twenty requests and 178592 bytes, with 1119 bytes below the unchanged ceiling. Eight live GitHub checks passed in 53.25 seconds. The normal complete gate/push is running in root session 22632; no gate completion or new SDK PR publication is claimed. The new vnm1 P1 release-blocker fix still needs its qualified artifact, CI, installation and cold direct-view replay before closure.
+
+Selected DATA, Parts A/B/C, the corrected full396 browser run and Quick Search supplement, and the 55-file CLI/apply plus four manual browser cells are accepted at their exact historical 426 scope with raw exceptions retained. They do not qualify all later source or quiet performance. mb-06p9 and mb-4ifm retain the 18.7-second Source warning, native-stack poller diagnostics and the current slow managed refresh; causal phase attribution and quiet qualification remain open, with no c3 regression-origin or latency acceptance.
+
+Final publication still requires the owner's approval of the exact final commit and complete notes. The full installed QA/owner matrix, quiet release/navigation/large-PR/Step9 gates remain separate. mb-itzy's future live-worktree workflow remains explicitly paused; reference draft #247 is excluded. No PR merge, release tag or publication is inferred from this checkpoint.

@@ -5,7 +5,7 @@ title: Make PR and Git navigation feel immediate with measured prefetching
 kind: feature
 status: in_progress
 priority: 1
-version: 32
+version: 33
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex-prefetch
 labels: []
@@ -33,7 +33,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-05T01:47:46.617Z
-updated_at: 2026-11-08T20:56:45.332Z
+updated_at: 2026-11-08T21:38:37.751Z
 started_at: 2026-11-05T01:47:47.197Z
 ---
 Improve perceived navigation latency for pull-request selection and Git history on a new branch from verified main. Follow the existing performance-loop framework: register a few falsifiable hypotheses before implementation; test their mechanisms on the unchanged build; use frozen subjects and explicit cold, warm, prepared and unprepared cache states; measure trusted input to exact useful painted content, including server, decode, asset and mount phases. Confirm accepted changes with interleaved repeated controls and candidate runs, preserve correctness/cancellation/account/source ownership and bounded background work, and record rejected hypotheses as well. Reuse existing harnesses and concise session/golden tests rather than adding a parallel framework. Preserve the default installed verified build and the two user preview servers while experimenting; install a successor only after verification. Track actual timings, ranges, bytes, request counts/concurrency, long tasks, CPU/RSS and cache provenance. Branch: codex/perf-prefetch-20261104. No speculative product changes before diagnostic evidence.
@@ -71,3 +71,9 @@ Pulls UI status follow-up mb-bn0z is complete in PR #303, the fourth layer of na
 2026-11-07 stack readiness update. Native #302 now has 21 clean, green and reviewed PR layers through #320 ab905365. The accepted prefetch experiments and later UI/caching work are integrated forward with current main included. Final full gate, three opt-in real-gh sessions and checkout/managed browser checks pass. Both default commands run 0.11.1.dev1214+ab905365. Owner merge is the next landing step. Existing quiet-host and tagged-head performance qualifications continue in the separately scoped beads.
 
 November 8, installed c3 observation retained: managed preview emitted a real slow POST /api/plugin/github/pull-refresh at 20:19:33Z, 2022 ms total, 2017 ms server, five ms transit, response 1302 bytes. Runtime is exact installed 0.11.1.dev1290+c3d093d2d after normal full verification and nine green PR #337 CI jobs. This was a functional session, not an admitted quiet timing comparison: no cache classification, useful-paint clock, attribution or regression conclusion is established. The older 19:21 stacks entry at 2491 ms predates this installation. Retain the earlier 2014 ms managed refresh observation and all H74/H75/large-PR requirements. No performance acceptance or parent closure follows from the installed functional passes.
+
+November 8, diagnostic follow-up proposal only: retain the measured 18.7-second Source main-thread warning under mb-06p9 and the native-stack poller observation around 606 ms. The remaining approximately 2.4 seconds of elapsed time is unassigned residual, not evidence of network or backend work. Source/append/style/view-state code is unchanged across 426 and c3; host load, long AX/tool activity and scheduling remain confounders, so neither a c3 regression origin nor a performance pass is established.
+
+Before product changes, propose a bounded quiet phase-attribution diagnostic using the existing performance-loop framework: freeze source, subject and cache state; separate trusted input, provider/network, poll cadence, parse/mount and tool/AX observation phases; distinguish actual HTTP time from elapsed gaps; and retain both warnings and unsuccessful admissions. The native-stack-poll diagnosis remains a proposal, not an experiment run or an accepted optimization. Do not change polling, eager assets or Source rendering just to move the measured clock.
+
+Current delivery context: remote native stack #339 has PR337 c3 then PR336 QA0a, both full-gate and nine-job CI green; installed c3 defaults are retained. SDK readiness d69e3e71f is independently reviewed with 44 focused tests, one golden, both type projects and startup 178592 bytes. Eight live GitHub checks passed in 53.25 seconds; its normal full gate/push is still running in session22632, with no SDK PR yet. These functional/gate facts do not discharge the diagnostic or quiet navigation/large-PR targets.

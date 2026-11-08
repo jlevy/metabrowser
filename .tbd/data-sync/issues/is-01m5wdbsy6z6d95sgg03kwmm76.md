@@ -5,7 +5,7 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: in_progress
 priority: 1
-version: 15
+version: 16
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -20,7 +20,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-08T10:09:33.021Z
+updated_at: 2026-11-08T21:38:36.986Z
 started_at: 2026-11-08T01:58:21.485Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
@@ -90,3 +90,11 @@ November 7, 2026: the user explicitly authorized merging the reviewed, green PR 
 2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
 
 The old statements that #272–#277 or the later PR layers remain open and that nothing has merged are historical. This completes the current feature landing and local development-build installation only. Keep the release coordinator open for the quiet rehearsal, release-head differentials, full release runbook and human matrix, owner release sign-off, version/tag and publication requirements. No release tag, GitHub Release or PyPI publication is claimed.
+
+November 8, current forward checkpoint (supersedes older current-install/awaiting-landing notes): native stack #339 is registered remotely as PR #337 at c3d093d2d222ddce74568e7c74111e2cc0c57d3f, then QA PR #336 at 0a0319daf2d99105aed2ec4c1528f2da4b1d7187. Both heads passed their complete normal gates and all nine PR CI jobs; latest #336 run is 42523716622. The installed application remains exact c3 for both default aliases and the three retained previews. The managed browsed snapshot remains e1cf; that data pin is distinct from the application source.
+
+Local SDK-template readiness commit d69e3e71f876904bbbc116d87e5e14b5f9da1e8d adds the focused mb-vnm1 fix and two minimal plan-status corrections above QA0a. All thirteen unchanged blobs have independent review; integrated checks passed 44 focused pytest cases, one golden, both browser type projects, parity and hygiene. Startup remains twenty requests and 178592 bytes, with 1119 bytes below the unchanged ceiling. Eight live GitHub checks passed in 53.25 seconds. The normal complete gate/push is running in root session 22632; no gate completion or new SDK PR publication is claimed. The new vnm1 P1 release-blocker fix still needs its qualified artifact, CI, installation and cold direct-view replay before closure.
+
+Selected DATA, Parts A/B/C, the corrected full396 browser run and Quick Search supplement, and the 55-file CLI/apply plus four manual browser cells are accepted at their exact historical 426 scope with raw exceptions retained. They do not qualify all later source or quiet performance. mb-06p9 and mb-4ifm retain the 18.7-second Source warning, native-stack poller diagnostics and the current slow managed refresh; causal phase attribution and quiet qualification remain open, with no c3 regression-origin or latency acceptance.
+
+Final publication still requires the owner's approval of the exact final commit and complete notes. The full installed QA/owner matrix, quiet release/navigation/large-PR/Step9 gates remain separate. mb-itzy's future live-worktree workflow remains explicitly paused; reference draft #247 is excluded. No PR merge, release tag or publication is inferred from this checkpoint.
