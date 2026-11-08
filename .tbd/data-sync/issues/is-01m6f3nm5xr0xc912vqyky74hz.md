@@ -5,7 +5,7 @@ title: Re-run the folder comparison after this branch merges
 kind: task
 status: in_progress
 priority: 1
-version: 10
+version: 11
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -16,12 +16,18 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:57.084Z
-updated_at: 2026-11-08T16:12:21.870Z
+updated_at: 2026-11-08T17:21:17.831Z
 started_at: 2026-11-03T09:32:28.834Z
 ---
 This branch changes plain-folder narrow diffs, and possibly toggles. Extends mb-2g6f's re-run on the head to be tagged; the sign-off record must then name this branch's changes too.
 
 ## Notes
+
+November 8, 17:20 UTC: all four exact426 browser cells pass
+
+After the owner unlocked the Mac, root used the built-in ChatGPT browser to compare published0.11.0 and exact gated426 on the unchanged 55-file fixture. Split and Unified on each build reached src/file-54.py and showed the actual VALUE_12=12 to120 diff fully inside the viewport. Per-cell console warning/error logs are empty from the recorded cutoffs. No routine partial counter appeared in the observed states on either build. Candidate commit description is a neutral white page-card, normal text color, Source Sans3 at15px/22.5px with preserved newlines. Screenshots, full AX and DOM/console receipts are saved for all four cells. This is functional evidence, not a painted-latency or quiet performance verdict. Prior locked-Mac/not-run receipts remain intact. Temporary browser tabs69/70 are closed; only the three retained previews remain. Owned test servers8981/8982 are being cleaned by the server agent, with exact PID/argv/cwd checks.
+
+Evidence: folder55-final426-20261108/manual-followup-20261108T171350Z and the matching durable visualization artifacts. The original CLI55-file/55-patch equality and clean apply-oracle proof remain unchanged. Keep the bead open for the eventual tag-head and separate owner acceptance; no release publication is authorized.
 
 November 8, 2026: exact gated 426ce7b62dccdd6ce4aefdba5b6744d7a510259b (0.11.1.dev1287+426ce7b62; wheel SHA256 476aba4d52c3d3d0f24edf77efae3f3286e4065f231fbad596b4ccd3663c79ab) was compared with the preserved published 0.11.0 wheel (SHA256 b099786f84408968df10296fdf7226218dd8853faf1cdb02a25787c5ab396e7f), using the exact read-only fd426 wheel profiles. The original 55-file fixture was reused unchanged: base 7d475f4a3fb584542ea9632131ef4d7da669485d, head 8070d037181c545f1743e56918d21dff29fcd852. Complete CLI --diff HEAD --format json payloads match, with 55 manifest files and 55 patches. Both --diff-check apply oracles are clean and reproduce target a4f6e55d71f87e75db3d653dae36f65ad0495984418b9cebe64282ed1c206408.
 
