@@ -5,7 +5,7 @@ title: Re-run the folder comparison after this branch merges
 kind: task
 status: in_progress
 priority: 1
-version: 6
+version: 7
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -14,12 +14,14 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:57.084Z
-updated_at: 2026-11-08T03:02:07.340Z
+updated_at: 2026-11-08T03:19:21.112Z
 started_at: 2026-11-03T09:32:28.834Z
 ---
 This branch changes plain-folder narrow diffs, and possibly toggles. Extends mb-2g6f's re-run on the head to be tagged; the sign-off record must then name this branch's changes too.
 
 ## Notes
+
+November 7 release-preparation checkpoint: Installed main68534af93 candidate now passes an explicit55-file plain-folder session: complete CLI document55patches, clean apply with identical produced/target tree SHA256 a4f6e55d71f87e75db3d653dae36f65ad0495984418b9cebe64282ed1c206408, final deferred file hydrates after End scrolling in both Split and Unified, no routine partial counter, neutral15px/22.5px commit description. Evidence recorded in the release-preparation directory. This is the candidate half only; baseline comparison and eventual release-head/owner sign-off remain open.
 
 Review A of PR #284 (A6): include a commit of more than 50 files in the plain-folder re-run. On a folder nothing is kept, so each deferred file costs the manifest run again (about 0.7 s at 1,183 files), one after the other; the scheduler's one-at-a-time hydration is a folder-visible change beside the narrow diffs and toggles.
 
