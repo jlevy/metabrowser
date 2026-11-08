@@ -1,9 +1,13 @@
 # Metabrowser 0.12.0 Release Preparation
 
-**Status:** In progress; updated November 8, 2026. The product stacks are merged and the
-reviewed build is installed locally.
-Release acceptance remains incomplete; no tag or publication is authorized until the
-owner approves the exact candidate and notes.
+**Status:** In progress; updated November 8, 2026. Earlier product stacks are merged.
+The corrective runtime layer [#337](https://github.com/jlevy/metabrowser/pull/337) is
+independently reviewed, passes its full gate and all nine CI jobs, and is installed as
+`0.11.1.dev1290+c3d093d2d`. Its affected filesystem checks pass, and PR views pass in
+both source modes. The QA layer [#336](https://github.com/jlevy/metabrowser/pull/336) is
+being forward-stacked above it.
+Quiet performance, remaining owner acceptance and release approval remain open; no tag
+or publication is authorized.
 
 ## Integrated Candidate
 
@@ -109,8 +113,8 @@ All nine
 [merged-main jobs](https://github.com/jlevy/metabrowser/actions/runs/42496190135) also
 passed.
 
-Both default CLI names and all three retained previews now use the preserved
-`0.11.1.dev1287+426ce7b62` wheel, SHA-256
+At this checkpoint, both default CLI names and all three retained previews used the
+preserved `0.11.1.dev1287+426ce7b62` wheel, SHA-256
 `476aba4d52c3d3d0f24edf77efae3f3286e4065f231fbad596b4ccd3663c79ab`. Doctor reports
 eleven healthy plugins, all 33 served-asset comparisons match the wheel, and all 45
 applicable runtime dependency pins are unchanged.
@@ -202,23 +206,132 @@ All seven new classifications preserve baseline assertions and behavior coverage
 The replaced combined-hunk classification remains historical alongside the earlier 61
 stale keys. The other accepted classifications are inherited at unchanged keys.
 
-The exact-candidate data comparison and headless functional browser matrix are now
-running with isolated installed wheels.
-The data selection includes 1,921 CLI cases, 53 HTTP groups containing 17,012 requests,
-47 specials and all 33 trace rows.
-The browser matrix covers 396 jobs across four viewport/theme configurations.
-Capture completeness, raw failures and semantic dispositions remain under review.
-Timing cases and the browser’s six ten-page Step9 sequences are excluded from these
-loaded-host functional runs; their quiet-window checks remain open.
-Part B also completed at exact `426ce7b62`: all 22 control transcripts and all 22
-current-version selfchecks pass on their installed wheels, using one attempt per phase.
-Of 131 baseline blocks on the candidate, 116 match and 15 differ.
-Review accounts for all 15 differences: nine intended changes, four obsolete
-test-harness assumptions and two documented bug fixes.
-The original non-green execution receipt and raw failures remain preserved separately
-from this semantic acceptance.
-Final Part C remains separate work; its accepted `e204ce9b5` result retains that source
-pin.
+### Exact-426 functional differential checkpoint
+
+Part B completed at exact `426ce7b62` with one attempt per transcript and phase.
+All 22 control transcripts and all 22 current-version selfchecks pass on their installed
+wheels. Of 131 baseline blocks on the candidate, 116 match and 15 differ.
+Review accounts for nine intended changes, four obsolete harness assumptions and two
+documented bug fixes.
+The original non-green execution receipt remains preserved separately from this
+classified acceptance.
+
+Part C received independent functional acceptance at `426ce7b62`. The 203-module control
+reports 2,185 passes and one expected skip.
+Baseline tests on the installed candidate report 2,035 passes, 122 failures, 16 errors
+and one skip. All 138 failure/error observations have specific dispositions, with none
+unexplained. Fifteen unavailable parser cases map to actual passing current replacements
+and are not counted as executed old bodies.
+The 49-module current selfcheck reports 772 passes and three retained source-context
+failures, concerning the checkout location and two development-banner annotations.
+Those raw failures and the separate passing source gate keep their own provenance.
+
+The selected DATA comparison completed against published 0.11.0 with 1,921 CLI cases, 53
+HTTP groups containing 17,012 requests, and 47 specials.
+All 33 selected trace rows contain actual observations from both builds, with 66 healthy
+profiles. Capture completeness and selected semantic review are accepted.
+The sealed manifest SHA-256 is
+`c4db97b6b98d2ef1cc9d374f1d4da15606874b046b1971f862daaaffe0c286e2`. All 20,666
+observation rows retain their original values and duplicate observations.
+Every selected outcome has a recorded disposition.
+Lifecycle-exit capture limits remain explicit rather than being treated as recovered
+observations. The earlier missing-helper gap `mb-q834` is closed.
+This acceptance covers the frozen selection, not the Unicode-root defect found outside
+it or any later application build.
+
+The corrected headless browser capture completed all 396 jobs, 198 per build, across
+four viewport/theme configurations, with 1,120 capture sets per build.
+Wheel, corpus, private-harness integrity and cleanup were verified.
+The private input correction omits the problematic native key-code field for both
+builds. The original interrupted run, with 90 complete and two partial control jobs and
+no candidate jobs, remains preserved.
+
+Source-linked review dispositioned the 1,152 initially unclassified rows against 673
+exact hunk variants.
+Of those rows, 1,130 have specific presentation or retained-state explanations, 12
+retain the obsolete-selector gap and its separate supplement, and ten identify the
+folder-recovery regression or its scenario totals.
+The main run’s four old **Quick File** selector failures remain in place.
+A separate four-case candidate supplement used the current **Quick Search** label,
+recording 48 capture sets and 240 artifacts.
+It verified the dialog and destination document in every configuration, with no action,
+runtime, frame, capture or unsettled-state failure.
+One favicon 404 is retained.
+These supplemental observations do not replace the original failed steps.
+
+The browser review found `mb-ivwy`: an expanded folder that fails while offline can
+remain unavailable after the server returns.
+Independent route evidence also found `mb-sn0s`, where a valid non-Latin-1 root can fail
+cache-validator response construction.
+Both defects are corrected in the runtime layer below.
+The selected `mb-o12l` correction gives a known not-indexed folder its reason in Treemap
+without starting rollup work.
+Its own full gate, CI, installation and affected browser checks are recorded below,
+separately from the frozen 426 comparisons.
+Final release acceptance remains open.
+Timing cases and the browser’s six ten-page Step9 sequences were excluded from these
+loaded-host functional runs.
+Quiet performance and Step9 remain open.
+
+### Runtime stabilization checkpoint
+
+Forward commit
+[`c83c3178e`](https://github.com/jlevy/metabrowser/commit/c83c3178e4ec495d0cfa3472a36d95702b096737)
+implements the Unicode validator, expanded-folder reconnect and not-indexed Treemap
+corrections. Independent reviews A/B/C approved the exact committed fixes.
+The reconnect regression also passes through the actual event listener when the
+returning server supplies identical shallow sentinels; healthy cached paths remain
+untouched. The focused reconnect checks record 25 pytest passes, two golden commands,
+browser types and parity, with the original failing assertions preserved.
+
+The first complete gate stopped before pytest because startup scripts totaled 180,160
+bytes, 449 bytes above the unchanged ceiling.
+Python typing had passed with zero errors and warnings.
+Forward commit
+[`c3d093d2d`](https://github.com/jlevy/metabrowser/commit/c3d093d2d222ddce74568e7c74111e2cc0c57d3f)
+shortens seven explanatory comment blocks.
+Its independent review D confirms that non-comment lines and JSDoc are unchanged.
+The startup checker now passes at 178,536 bytes, reported as 174 KB, with 1,175 bytes of
+headroom and the same 20 script requests.
+This is a transfer-budget correction, not a measured latency result.
+
+The second normal-hook `make verify` passed at exact `c3d093d2d`: 4,929 Python tests,
+nine expected skips and 388 golden checks, with lint, types, locked audits, distribution
+inspection and isolated installed-wheel smoke checks.
+The Python suite took 1,129.08 seconds, goldens 223.26 seconds and the complete gate
+1,438.51 seconds. The filesystem observer recorded no errors.
+The branch was pushed through that successful hook, and all nine
+[PR CI jobs](https://github.com/jlevy/metabrowser/actions/runs/42518226853) passed.
+Reviews A through D and their finding dispositions are published on
+[#337](https://github.com/jlevy/metabrowser/pull/337).
+
+Both CLI aliases and the three default previews use the exact preserved wheel
+`0.11.1.dev1290+c3d093d2d`, SHA-256
+`bdee1058dfc92553e79f3aa2c0bd4085e5f2b074fc54f8e98bd7f1c9a3891d3c`. Doctor reports
+eleven healthy plugins.
+All 349 wheel payload files, 355 installed RECORD hashes, 45 runtime dependency pins and
+45 served-asset comparisons match.
+The managed source remains at `e1cfca1a`; replacing the application did not switch its
+selected repository revision.
+
+The built-in-browser replay first admitted an actual failed expanded-folder request
+while the isolated server was stopped.
+Restarting the same executable, root and port repaired its children and preview without
+Reload or collapse/reopen.
+Hidden and linked-folder Treemaps show the same reasons as Overview and retain Treemap
+through parent navigation.
+The Unicode-root Treemap renders its three files and 279 bytes.
+These are functional checks, with no recovery-time or painted-latency claim.
+
+Both managed and existing-checkout previews render
+[#337](https://github.com/jlevy/metabrowser/pull/337) Conversation, all 26 Changes with
++1,334/−177, and nine successful Checks.
+The checkout also renders commit `e1cfca1a` with +63/−10 and restores #337 Checks when
+returning from Commits to Pulls.
+A managed `pull-refresh` warning records 2,022 ms total, 2,017 ms server time and 1,302
+bytes; it remains under `mb-4ifm`. This and the earlier 2,014 ms warning are separate
+diagnostics, not paired measurements.
+Quiet performance and owner acceptance remain separate.
 
 ### Earlier integrated-main evidence
 
@@ -259,10 +372,13 @@ console warnings or errors.
 This completes the fixture check at that integrated product candidate.
 The exact `426ce7b62` follow-up also has an identical complete 55-file/55-patch CLI
 payload and clean apply oracles against the same target.
-Its four fresh browser cells, control/candidate in Split/Unified, are blocked and were
-not run because browser control reported a locked Mac.
-The earlier browser results retain their original source pin; current browser and owner
-acceptance remain open.
+The first manual attempt was blocked by a locked Mac and remains recorded that way.
+After unlock, all four fresh cells passed, control and candidate in Split and Unified.
+Each showed the actual final-file diff lines, with no warning or error in its recorded
+console window. The candidate description retained its neutral 15 px sans treatment.
+The fixture and earlier receipts are unchanged.
+These are four browser cells on one 55-file fixture.
+Final tag-head attribution and owner acceptance remain separate.
 
 Additional source tiers at `68534af93` passed 20 macOS checks, eight live read-only
 public GitHub checks including the typed missing-or-private refusal, and all 1,124
@@ -288,11 +404,12 @@ Local commit navigation without Git acquisition is a separate tracked enhancemen
 | PR and Commit navigation performance | The same-identity prefetch ownership correction is accepted in #334. Cold-asset attribution, natural intent/request joining and the observed two-second managed refresh remain open. The regular-folder release comparison does not cover these interactions | `mb-4ifm`, `mb-5rm1`, `mb-97ex` |
 | Large-PR performance qualifications | Quiet public comparisons and the measured render-window follow-up remain separate from regular-folder acceptance | `mb-jwfx`, `mb-mwuz` |
 | Linked dependency roots in the benchmark corpus | Behavioral regression test and corpus correction merged in stack 331 | `mb-lsm5` closed |
-| Regular-folder data, test-evidence and browser differentials | Parts A and B accepted at `426ce7b62`; earlier Part C retains its pin. Exact-candidate data and headless browser captures are running; final completeness, semantic review and quiet Step9 remain open | `mb-2g6f` |
-| Plain-folder comparison above 50 files | Control and exact `426ce7b62` have identical 55-file/55-patch CLI payloads and clean apply oracles; four current browser cells are blocked/not run, with owner sign-off pending | `mb-8pyc` |
+| Regular-folder data and test-evidence differentials | Parts A/B/C and selected DATA are accepted at `426ce7b62`, with raw exceptions and capture limits preserved. The corrective runtime has its own focused regressions, full gate and affected installed-browser checks; final release acceptance remains open | `mb-2g6f`; instrumentation gap `mb-q834` closed |
+| Browser differential and runtime stabilization | Corrected 396-job capture and four-case Quick Search supplement complete with row dispositions. The three corrections and startup-budget successor are independently reviewed in #337. Full gate, nine CI jobs, exact-wheel installation and affected built-in-browser replays pass; landing and quiet/owner gates remain open | `mb-sn0s`, `mb-ivwy`, `mb-o12l`, `mb-2g6f`; quiet Step9 remains open |
+| Plain-folder comparison above 50 files | Control and exact `426ce7b62` have identical complete 55-file/55-patch CLI payloads, clean apply oracles and four passing browser cells. Final tag-head attribution and owner acceptance remain pending | `mb-8pyc` |
 | Complete installed-wheel QA runbook and opt-in tiers | In progress; report every step as passed, failed, blocked or not run | `mb-m20f` |
 | Cross-browser, private-access and external-plugin acceptance | Preserve prior evidence separately; current browser matrix and owner sign-off remain open | `mb-etqi` |
-| Release notes, intended behavior changes and final approval packet | Drafting; version 0.12.0 is already decided | `mb-gew9`, `mb-4bd2` |
+| Release notes, intended behavior changes and final approval packet | QA-only checkpoint `110a3ae2a` passed its full gate and all nine [#336](https://github.com/jlevy/metabrowser/pull/336) CI jobs, with independent reviews. Draft holds this reconciliation and final corrected-artifact receipts. Version 0.12.0 is decided | `mb-gew9`, `mb-4bd2`, [#336](https://github.com/jlevy/metabrowser/pull/336) |
 | Tag, GitHub release and PyPI publication | Await explicit user approval of the exact candidate and notes | `mb-4bd2` |
 | Published metadata, pinned installs and public skill verification | Run only after approved publication | `mb-4bd2` |
 
@@ -308,9 +425,9 @@ relabeled as successful final-candidate evidence.
 The exp-057 host preflight deferred collection because unrelated workloads and external
 disk traffic remained active.
 It collected no browser or backend pairs.
-The prepared protocol now targets gated `426ce7b62` and still requires confirmed host
-conditions before measurements.
-The latest preflight also deferred collection, with no browser or backend pairs.
+The prepared protocol was bound to gated `426ce7b62`. A corrected final artifact and
+confirmed host conditions are now required before collection.
+The latest preflight also deferred, with no browser or backend pairs.
 The accepted prefetch correction in #334 establishes correctness and functional
 behavior; its painted-latency effect remains unmeasured.
 

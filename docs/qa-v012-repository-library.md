@@ -836,9 +836,9 @@ line. Open that address with the browser’s developer tools open.
    wide. It renders as a document, with **Document** and **Source** tabs and a
    **Contents** list beside it.
    Narrow the window to about 1,000 pixels: the list folds away.
-   Scroll to the end of the document: a table-of-contents button stays in the top-left
-   corner of the pane. Click it: the Contents drawer opens over the pane, not over the
-   file tree. Click an entry: the document scrolls to that heading, the address gains its
+   Scroll to the end of the document: a table-of-contents button stays at the trailing
+   edge of the pane. Click it: the Contents drawer opens over the pane, not over the file
+   tree. Click an entry: the document scrolls to that heading, the address gains its
    fragment, and the drawer closes.
    Open it again and click outside it: it closes.
 
@@ -1868,7 +1868,7 @@ uv --config-file uv.toml run --frozen metab "file://${QA_TOC}/origin.git" --no-o
    Replace the address’s fragment with `#install` and reload: the page scrolls to
    **Install**, as github.com does.
 5. Narrow the window until the rail folds away and scroll down to the end: the toggle
-   appears in the pane’s top-left corner and stays there at every depth.
+   appears at the pane’s trailing edge and stays there at every depth.
    From the end of the document it opens the drawer over the pane, not the file tree,
    and an entry or the backdrop closes it.
    Repeat in the trusted folder of step 6.

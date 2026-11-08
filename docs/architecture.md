@@ -140,7 +140,8 @@ Each descriptor declares its initial disclosure state.
 File Overview and README begin expanded.
 Toggling a heading changes only body visibility, so live rollup watches, rendered
 Markdown state, TOC state, and keyed panel mounts remain intact.
-In Overview, the Markdown mount keeps its ordinary document semantics, TOC, and card.
+In Overview, the Markdown mount keeps its ordinary document semantics and card while
+suppressing the nested table of contents.
 The card retains its border and shadow at regular and wide document bands, then follows
 KPress’s standard borderless narrow layout.
 The File Overview summary remains a flat chrome section; its edges follow the README
