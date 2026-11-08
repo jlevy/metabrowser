@@ -5,7 +5,7 @@ title: Ensure SDK template renderers work on direct plugin-page loads
 kind: bug
 status: in_progress
 priority: 1
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex/prefetch_ownership_review
 labels: []
@@ -16,7 +16,7 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-08T20:57:43.147Z
-updated_at: 2026-11-08T22:32:49.903Z
+updated_at: 2026-11-08T22:45:38.242Z
 started_at: 2026-11-08T21:02:13.494Z
 ---
 Installed c3 authored SDK 0.7 sample works after navigating from folder Overview, but direct reload of the public long-controls.md plugin page renders Could not display this view. Console records metabrowser.render: Mustache.js is not loaded — bundle is missing at plugin-sdk.js456, sample index.js30, view-composition mount151 and app6035. Both fixture manifest and styles match the existing public sample; it uses the documented synchronous SDK render helper. First establish whether the SDK or plugin asset-declaration contract owns template readiness, reproduce a focused regression and use existing asset loading/lifetime mechanisms. Do not add speculative compatibility or an unconditional large eager dependency. Preserve original console and failed reload. Independently review the smallest correct fix, normal complete gate and current installed direct-entry/browser replay. This is separate from measured large-source continuation and actual downstream owner migration.
@@ -48,3 +48,9 @@ The first literal cold entry on reserved fresh origin8986/long-controls.md passe
 Fresh remote facts supersede the prior unmerged-research plan: #338 merged unchanged48fec at21:51:06Z into main196ee3c5458b39bcc616f414cc1d1db0f5083f06. Review A findings A1/A2/A3 have no published disposition in the fresh sweep. The standing grant is now effective on main, so the earlier still-ineffective-proposal revert rationale is not an operation already performed. Main196 is not an ancestor of lower c3, even though GitHub reports337/336 CLEAN; root owns the forward-base incorporation and propagation decision, with actual resulting qualification/CI. No refs or source are changed by these notes.
 
 Historical426 differential acceptance/raw exceptions, c3 manual evidence, slow-fetch/Source/poller diagnostics, quiet release/navigation/large-PR/Step9, full installed QA and owner release approval remain separate. No latency pass, new regression-origin claim, release tag or publication. The mb-itzy workflow remains paused and reference247 excluded.
+
+November 8 forward-integration checkpoint: all nine SDK a177 CI jobs pass in workflow 42529805379 and its watch exited zero. The selected installed authored SDK replay is complete: cold long Card, long/small direct Reload, exact 38-character short and 2,960,074-character long copy/paste through final row 040000, initial Source 524,288 characters and two continuation controls. Full Source continuation retains its earlier unchanged-renderer c3 proof and was not rerun at a177; inspection deadlines remain preserved with no timing claim. Product stack menu and Checks-preserving selection pass. Fixture tab 74 is closed; identity-verified PID 79738 received SIGINT, and process/listener 8986 are absent. The four global servers and installed 0.11.1.dev1296+a17752dd9 remain unchanged. Authored integration coverage does not complete actual downstream/owner acceptance.
+
+Main196 forward merges are complete locally: PR #337 head308d72c460ce7d3494c3e169e719759bda5f7388, #336 head5784d8031e5f07fdb68051d2e80b050c013cd399, #340 head8a6c80c66b84e8c7abf17998f1094f2ec08fddef. Each merge increment equals the exact five documentation/policy paths from main and preserves 974 runtime/test entries and the original layer delta. Independently approved fourth local layer b2fb62099f9c8a3a628edc2a1a76d31505c63c6a on codex/research-acceptance-corrections-20261108 contains only four A1/A2 research correction hunks in one document, fourteen added and six removed lines. All four local heads are independently approved.
+
+The normal full gate and atomic, non-force four-ref push at b2fb are running; no completion, new integrated-head qualification/CI, published heads or new fourth-layer PR number is claimed. Installation remains a177. Actual merges and exact-head reconciliation are still pending, so this bead is not closed. Research #338 is already merged; A3 remains open for owner disposition of the effective standing grant, and this step contains no policy revert or native-app architecture adoption. Quiet performance, Step9, complete installed QA, owner acceptance and exact final release approval remain open; mb-itzy stays paused and reference draft #247 excluded.

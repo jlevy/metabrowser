@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: in_progress
 priority: 1
-version: 100
+version: 101
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -88,7 +88,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-08T22:32:50.702Z
+updated_at: 2026-11-08T22:45:38.811Z
 started_at: 2026-11-07T05:39:51.585Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.
@@ -172,3 +172,9 @@ The first literal cold entry on reserved fresh origin8986/long-controls.md passe
 Fresh remote facts supersede the prior unmerged-research plan: #338 merged unchanged48fec at21:51:06Z into main196ee3c5458b39bcc616f414cc1d1db0f5083f06. Review A findings A1/A2/A3 have no published disposition in the fresh sweep. The standing grant is now effective on main, so the earlier still-ineffective-proposal revert rationale is not an operation already performed. Main196 is not an ancestor of lower c3, even though GitHub reports337/336 CLEAN; root owns the forward-base incorporation and propagation decision, with actual resulting qualification/CI. No refs or source are changed by these notes.
 
 Historical426 differential acceptance/raw exceptions, c3 manual evidence, slow-fetch/Source/poller diagnostics, quiet release/navigation/large-PR/Step9, full installed QA and owner release approval remain separate. No latency pass, new regression-origin claim, release tag or publication. The mb-itzy workflow remains paused and reference247 excluded.
+
+November 8 forward-integration checkpoint: all nine SDK a177 CI jobs pass in workflow 42529805379 and its watch exited zero. The selected installed authored SDK replay is complete: cold long Card, long/small direct Reload, exact 38-character short and 2,960,074-character long copy/paste through final row 040000, initial Source 524,288 characters and two continuation controls. Full Source continuation retains its earlier unchanged-renderer c3 proof and was not rerun at a177; inspection deadlines remain preserved with no timing claim. Product stack menu and Checks-preserving selection pass. Fixture tab 74 is closed; identity-verified PID 79738 received SIGINT, and process/listener 8986 are absent. The four global servers and installed 0.11.1.dev1296+a17752dd9 remain unchanged. Authored integration coverage does not complete actual downstream/owner acceptance.
+
+Main196 forward merges are complete locally: PR #337 head308d72c460ce7d3494c3e169e719759bda5f7388, #336 head5784d8031e5f07fdb68051d2e80b050c013cd399, #340 head8a6c80c66b84e8c7abf17998f1094f2ec08fddef. Each merge increment equals the exact five documentation/policy paths from main and preserves 974 runtime/test entries and the original layer delta. Independently approved fourth local layer b2fb62099f9c8a3a628edc2a1a76d31505c63c6a on codex/research-acceptance-corrections-20261108 contains only four A1/A2 research correction hunks in one document, fourteen added and six removed lines. All four local heads are independently approved.
+
+The normal full gate and atomic, non-force four-ref push at b2fb are running; no completion, new integrated-head qualification/CI, published heads or new fourth-layer PR number is claimed. Installation remains a177. Actual merges and exact-head reconciliation are still pending, so this bead is not closed. Research #338 is already merged; A3 remains open for owner disposition of the effective standing grant, and this step contains no policy revert or native-app architecture adoption. Quiet performance, Step9, complete installed QA, owner acceptance and exact final release approval remain open; mb-itzy stays paused and reference draft #247 excluded.

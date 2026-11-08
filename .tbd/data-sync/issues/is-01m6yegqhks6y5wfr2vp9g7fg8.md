@@ -5,14 +5,14 @@ title: "Review PR #338 research corrections and standing-policy readiness"
 kind: task
 status: in_progress
 priority: 2
-version: 5
+version: 6
 delegate: codex-beads_reconcile_review
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-08T20:45:07.506Z
-updated_at: 2026-11-08T22:35:28.609Z
+updated_at: 2026-11-08T22:45:40.098Z
 started_at: 2026-11-08T20:46:05.791Z
 ---
 Review and qualify https://github.com/jlevy/metabrowser/pull/338 independently from release QA/runtime work. Pinned head 48fec15957eedea77dfdd51f76d91972d1cca775 on main e1cfca1a66277aa86887f031f9b28b250d4a4928 changes five research/index/agent-policy/cache files, no product code.
@@ -36,3 +36,7 @@ November 8 actual landing/follow-up scope: PR #338 merged unchanged head48fec159
 Root's source author is now preparing the four-hunk A1/A2 factual research correction on a new top branch after forward integration. The main-integration reviewer is assigned. No new PR number, pushed head, gate or completed correction is claimed here. Preserve the broader owner acceptance and same-UID socket-auth limits; do not adopt a native-app architecture or close this bead yet.
 
 Separately, product SDK #340 at a177 has successful R2/full installation and completed selected authored SDK cold Card/direct-Reload/copy-paste replay. That does not resolve research A1/A2/A3 or actual downstream/owner acceptance. Source continuation retains its prior runtime-identical c3 evidence; no new timing claim. Public functional update: https://github.com/jlevy/metabrowser/pull/340#issuecomment-6728064093.
+
+November 8 research correction source checkpoint: unchanged PR #338 remains actually merged at main196. A1/A2 are now corrected in independently approved local commit b2fb62099f9c8a3a628edc2a1a76d31505c63c6a, parent8a6c80c66b84e8c7abf17998f1094f2ec08fddef, branch codex/research-acceptance-corrections-20261108. Exactly four hunks in one research document add fourteen and remove six lines, preserving the full owner acceptance scope and stating same-UID socket-auth limits. Runtime/test/lock/policy surfaces are unchanged. All three lower branches have forward-integrated main196 and independent approval.
+
+The normal complete gate and atomic four-ref push at b2fb are currently running. No published correction head, new PR number, completed qualification/CI, actual correction merge or closure is claimed. A3 remains open for owner disposition of the already-effective standing grant; no policy revert is included. Current task delegation remains explicitly authorized, without inferring new standing-policy consent. The exact a177 SDK artifact separately passed all nine CI jobs and selected installed authored replay; its fixture is cleaned up and four defaults remain unchanged. That does not resolve A3 or actual downstream owner acceptance.

@@ -5,7 +5,7 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: in_progress
 priority: 1
-version: 18
+version: 19
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -20,7 +20,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-08T22:32:51.495Z
+updated_at: 2026-11-08T22:45:39.370Z
 started_at: 2026-11-08T01:58:21.485Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
@@ -120,3 +120,9 @@ The first literal cold entry on reserved fresh origin8986/long-controls.md passe
 Fresh remote facts supersede the prior unmerged-research plan: #338 merged unchanged48fec at21:51:06Z into main196ee3c5458b39bcc616f414cc1d1db0f5083f06. Review A findings A1/A2/A3 have no published disposition in the fresh sweep. The standing grant is now effective on main, so the earlier still-ineffective-proposal revert rationale is not an operation already performed. Main196 is not an ancestor of lower c3, even though GitHub reports337/336 CLEAN; root owns the forward-base incorporation and propagation decision, with actual resulting qualification/CI. No refs or source are changed by these notes.
 
 Historical426 differential acceptance/raw exceptions, c3 manual evidence, slow-fetch/Source/poller diagnostics, quiet release/navigation/large-PR/Step9, full installed QA and owner release approval remain separate. No latency pass, new regression-origin claim, release tag or publication. The mb-itzy workflow remains paused and reference247 excluded.
+
+November 8 forward-integration checkpoint: all nine SDK a177 CI jobs pass in workflow 42529805379 and its watch exited zero. The selected installed authored SDK replay is complete: cold long Card, long/small direct Reload, exact 38-character short and 2,960,074-character long copy/paste through final row 040000, initial Source 524,288 characters and two continuation controls. Full Source continuation retains its earlier unchanged-renderer c3 proof and was not rerun at a177; inspection deadlines remain preserved with no timing claim. Product stack menu and Checks-preserving selection pass. Fixture tab 74 is closed; identity-verified PID 79738 received SIGINT, and process/listener 8986 are absent. The four global servers and installed 0.11.1.dev1296+a17752dd9 remain unchanged. Authored integration coverage does not complete actual downstream/owner acceptance.
+
+Main196 forward merges are complete locally: PR #337 head308d72c460ce7d3494c3e169e719759bda5f7388, #336 head5784d8031e5f07fdb68051d2e80b050c013cd399, #340 head8a6c80c66b84e8c7abf17998f1094f2ec08fddef. Each merge increment equals the exact five documentation/policy paths from main and preserves 974 runtime/test entries and the original layer delta. Independently approved fourth local layer b2fb62099f9c8a3a628edc2a1a76d31505c63c6a on codex/research-acceptance-corrections-20261108 contains only four A1/A2 research correction hunks in one document, fourteen added and six removed lines. All four local heads are independently approved.
+
+The normal full gate and atomic, non-force four-ref push at b2fb are running; no completion, new integrated-head qualification/CI, published heads or new fourth-layer PR number is claimed. Installation remains a177. Actual merges and exact-head reconciliation are still pending, so this bead is not closed. Research #338 is already merged; A3 remains open for owner disposition of the effective standing grant, and this step contains no policy revert or native-app architecture adoption. Quiet performance, Step9, complete installed QA, owner acceptance and exact final release approval remain open; mb-itzy stays paused and reference draft #247 excluded.
