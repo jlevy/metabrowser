@@ -3,9 +3,9 @@ type: is
 id: is-01m6wdjwshpc22fta0bf5mwwbs
 title: Preserve unfinished PR prefetch across catalog prefix updates
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 5
+version: 6
 delegate: codex@spud10
 labels: []
 dependencies: []
@@ -15,8 +15,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-08T01:50:20.975Z
-updated_at: 2026-11-08T10:12:46.506Z
+updated_at: 2026-11-08T11:41:38.484Z
 started_at: 2026-11-08T09:53:45.590Z
+closed_at: 2026-11-08T11:41:38.484Z
+close_reason: "Merged in PR #334 at fe04a4b1cfb25cc16e1e8399252f4b664633a6c6, with the exact tree of reviewed/gated 1ede1e220. Independent reviews A–D confirmed the producer-retention and traversal-pass fixes; B1 is fixed. Full make verify passed 4,917 tests with nine expected skips and 386 golden checks; all nine PR and all nine main CI jobs passed. Exact wheel 0.11.1.dev1283+1ede1e220 is installed for both aliases and all three previews, with 33 asset matches, 45 unchanged applicable pins and 11 healthy plugins. Installed functional sessions passed in checkout and managed modes, including all six PR diff files, nine checks, Quick Search, tab restoration and Markdown gutters. Quiet painted latency and the observed slow refresh remain under mb-4ifm; this closes the scoped correctness fixes, not release acceptance."
+resolution: null
+duplicate_of: null
 ---
 A diagnostic ownership-fix smoke compared installed11db with source48be using independent catalog-only seeds and target310, eighteenth among29Open rows. The control had a core at initial classification; the candidate did not, and eight nearby Open rows remained deferred while later catalog cores accumulated. The candidate eventually warmed all314 cores and served the prepared target in77ms. This is not a matched speed comparison or proven regression. Reproduce with alternating trials and record initial prefix replacement, cancellation, provider attempts, lease deadlines and cursor scheduling. Test the hypothesis that a canceled priming cohort retains its attempt lease and deferred members wait behind the All traversal. Fix only if measurements/production-session evidence establish a useful change; preserve source/reader isolation, bounded attempts and fairness for later rows.
 
