@@ -504,6 +504,38 @@
   }
 
   /**
+   * Recover failed, still-expanded folder bodies after an authoritative answer.
+   * The loader replaces the failure synchronously and joins any existing fetch;
+   * repeated recovery therefore leaves loading and successful bodies alone.
+   *
+   * @param {{
+   *   panel: HTMLElement | null,
+   *   revision: boolean,
+   *   recent: boolean,
+   *   load: (path: string, children: HTMLElement) => unknown,
+   * }} options
+   */
+  function recoverFailedExpandedFolders({ panel, revision, recent, load }) {
+    if (!panel || revision || recent) {
+      return;
+    }
+    for (const failure of panel.querySelectorAll(".tree-children > .tree-lazy-error")) {
+      const children = failure.parentElement;
+      const row = /** @type {HTMLElement | null | undefined} */ (children?.previousElementSibling);
+      if (
+        children?.parentNode &&
+        panel.contains(children) &&
+        row?.classList.contains("tree-folder") &&
+        row.classList.contains("expanded") &&
+        !children.classList.contains("tree-children-collapsed") &&
+        row.dataset.path
+      ) {
+        void load(row.dataset.path, children);
+      }
+    }
+  }
+
+  /**
    * What a page's long-lived connections do when it leaves and comes back.
    *
    * A browser keeps the open requests of a page it holds for Back, and opens six
@@ -1152,6 +1184,7 @@
     openFailureOutcome,
     parse,
     parseCommit,
+    recoverFailedExpandedFolders,
     replaceFileSnapshot,
     requestFailure,
     responseBodyFailure,

@@ -1171,6 +1171,7 @@ async function loadTree(options = {}) {
         } else {
           renderFilesFromTree();
         }
+        retryFailedExpandedSubtrees();
       }
       _inlineTreeBaseline = null;
       // Rows are on screen; now go get the numbers that ride beside them. The
@@ -1357,6 +1358,9 @@ function reconcileTreeContainer(container, nextNodes, work) {
     }
   }
 
+  // This container now has authoritative children. A failed lazy read is no
+  // longer its answer, even when keyed reconciliation keeps the container.
+  container.querySelector(":scope > .tree-lazy-error")?.remove();
   removeDeferredPageForContainer(container);
   for (var nextIndex = 0; nextIndex < nextVisible.length; nextIndex++) {
     var node = nextVisible[nextIndex];
@@ -2021,6 +2025,34 @@ function subtreeIsExpanded(childrenEl) {
   );
 }
 
+// An authoritative recovery preserves mounted folders, including their failed
+// bodies. Retry just those still expanded; successful, collapsed and loading
+// bodies have nothing to repair. loadSubtree replaces the failure immediately
+// and joins any existing fetch. An identical shallow sentinel still invalidates
+// failed deep reads; filtered membership waits for one authoritative root read.
+// @param {boolean} [revalidate] A deduplicated sentinel, not a newly applied tree.
+function retryFailedExpandedSubtrees(revalidate = false) {
+  window.MetabrowserNavigationRoute.recoverFailedExpandedFolders({
+    panel: document.getElementById("tab-files"),
+    revision: isGitRevisionSource(),
+    recent: filesPanelUsesRecentSource(),
+    load(path, children) {
+      if (revalidate) {
+        const key = subtreeCacheKey(path);
+        subtreeCache.delete(key);
+        subtreeRequests.delete(key);
+        if (filterState && filterHasConstraints(filterState.get())) {
+          if (_rootTreeRequestsInFlight === 0) {
+            void loadTree({ reconcileMountedRoot: true });
+          }
+          return;
+        }
+      }
+      return loadSubtree(path, children);
+    },
+  });
+}
+
 function scheduleSubtreeRetry(path, childrenEl) {
   if (subtreeRetryTimers.has(childrenEl)) {
     return;
@@ -2219,24 +2251,10 @@ async function loadSubtree(path, childrenEl, options) {
 }
 
 // ── Subtree prefetch ────────────────────────────────────────────
-//
-// Expanding a folder should be instant, which means the subtree is
-// already in hand before the click (see "Everything is effortlessly
-// fast" in docs/design-system.md). The rendered tree names its own
-// candidates: every unexpanded folder past the server's depth cap
-// carries a lazy stub. The sweep runs when the browser is idle, a few
-// at a time, so warming the tree never competes with the request a
-// reader is actually waiting on.
-//
-// "The folders a reader can open next" is a claim about the screen, not
-// about the DOM. A stub inside a collapsed branch belongs to a folder
-// that is two clicks away, and one below the fold is behind a scroll, so
-// neither is next. Taking stubs in DOM order instead sent 32 requests
-// for folders nobody could see on a 100,000-file tree, where the root
-// render mounts 121 stubs with no folder expanded — measured in
-// explorations/performance-loop/experiments/exp-002. Candidates are the stubs whose
-// folder row is on screen, plus one screen of lookahead, and the sweep
-// re-arms on scroll so the next screen warms as it arrives.
+// Warm lazy-stub rows on screen plus one screen of lookahead, re-arming on
+// scroll and expansion. Skip collapsed ancestors; idle batches yield to selected
+// work. DOM-order warming sent 32 offscreen requests on a 100,000-file tree
+// (explorations/performance-loop/experiments/exp-002).
 const SUBTREE_PREFETCH_MAX_CONCURRENT = 3;
 const SUBTREE_PREFETCH_MAX_PER_SWEEP = 32;
 const SUBTREE_PREFETCH_IDLE_TIMEOUT_MS = 2000;
@@ -2603,20 +2621,9 @@ if (!treePane) {
   throw new Error("Metabrowser shell is missing #tree-pane");
 }
 
-// Coalesced roving-focus and ARIA repair for event-driven tree mutations.
-//
-// treeKeyboard.synchronize() rewrites level, position, set-size, expansion,
-// and selection on every rendered row and then re-derives the visible row
-// list, so it costs one walk of the painted tree. That is the right price for
-// a user action, but the inventory stream calls into the tree once per entry:
-// a reconnect replays a whole snapshot through applyCellPatch, and the walker
-// pushes changes for as long as it runs. Paying a full walk per event is the
-// same hazard scheduleFilterReapply() already guards against for filters.
-//
-// Bursts therefore collapse into one repair on the next task. The earliest
-// pending focus snapshot wins, because that is the one describing the tree as
-// the user last saw it; a later burst must not overwrite the anchor lineage
-// captured before the first mutation.
+// Coalesce roving-focus/ARIA repair into one painted-tree walk per task.
+// Snapshot/event bursts must not walk once per entry. Keep the earliest pending
+// focus snapshot: it captures the anchor lineage before the first mutation.
 var _treeSynchronizeHandle = null;
 /** @type {ReturnType<NonNullable<typeof treeKeyboard>["prepareForMutation"]> | null} */
 var _treeSynchronizeMutation = null;
@@ -3558,21 +3565,10 @@ function startIndexProgressPolling() {
 }
 
 // ── Nav panel registry ─────────────────────────────────────────
-//
-// The tab bar used to be hardcoded buttons and a click handler that knew
-// each panel by name. It is a registry now for two reasons: a panel can
-// be conditional (Git appears only when the served root resolves to a
-// repository, which is not known until /api/git/repo answers), and a
-// panel's first-show hook belongs beside its declaration rather than in
-// an if-chain inside the handler.
-//
-// Files stays in the server-rendered HTML — it is first-paint critical,
-// and creating it in JS would flash an empty nav. Panels registered
-// later create their own button and container, which is what makes a
-// stale registration dangerous rather than merely dead: registering a
-// retired panel would put its tab back on screen.
-// This is the seam a plugin-facing registerNavPanel would build on; no
-// such SDK surface is exposed yet.
+// Files is server-rendered for first paint. Conditional panels register after
+// discovery (for example /api/git/repo), with their own first-show hooks. Late
+// registration creates a tab/container, so retired panels must not register.
+// This remains internal; no plugin registerNavPanel surface is exposed.
 
 /** @type {ReturnType<NonNullable<Window["MetabrowserMainTabs"]>["create"]> | null} */
 var mainTabs = null;
@@ -4904,19 +4900,10 @@ function applyTreeFiltersInner() {
   scheduleTreeSynchronize();
 }
 
-// The tree source: /api/tree was asked the question and answered it over the
-// whole index, so every row it sent belongs and every folder aggregate already
-// reports its matches. Re-deciding a folder's fate here from mounted rows is
-// exactly what used to list folders with nothing in them and then delete them
-// once expanding proved it.
-//
-// One thing is still this side's to judge. Rows arriving on /api/events were
-// never part of any response, so a file written while a filter is on would
-// otherwise appear regardless of it. Only leaves are judged: a live folder row
-// keeps whatever the last response said about it until the next one, which is
-// staleness rather than the wrong answer, and far cheaper than a refetch —
-// a refetch repaints the panel and would collapse the tree under a reader
-// every time anything on disk changed.
+// /api/tree already filters the whole index and supplies matching folder
+// totals; mounted descendants cannot determine folder membership. Apply local
+// filters only to new event-stream leaves. Live folders retain authoritative
+// aggregates until the next response; refetching per event would collapse rows.
 function _applyTreeSourceFilters(panel, state) {
   var rows = /** @type {HTMLElement[]} */ (
     Array.prototype.slice.call(
@@ -5928,16 +5915,9 @@ async function renderFile(data, preferredViewId, claim, options = {}) {
           html += "</div>";
         }
 
-        // Data-driven tab rendering from server views.
-        //
-        // Every (kind, viewId) goes through the plugin registry: built-in
-        // plugins (markdown, agent-log, unknown-jsonl, text) own their own
-        // kinds; entry-point plugins own theirs. The shell here
-        // builds the empty containers; each plugin's render(container, ctx)
-        // fires below once the DOM is in place. If no plugin claims a
-        // (kind, viewId) we paint an unavailable-view message — never a
-        // fallback that pulls renderers out of the shell. This is the
-        // contract: every kind is a plugin.
+        // Plugins own every (kind, viewId). The shell mounts empty hosts before
+        // calling render(container, ctx); an unclaimed view gets an unavailable
+        // message, never a shell-renderer fallback.
         var preparedViews = composition.views;
         var views = preparedViews.map((prepared) => prepared.view);
         // Plugin navigation can preserve a working mode across resources. An
@@ -6492,6 +6472,8 @@ function fileStoreApplySnapshotInner(scope, entries) {
   window.metabrowserDirectoryTotalsStore?.applySnapshot(entries);
   if (filtered && !filesPanelUsesRecentSource()) {
     void loadTree({ reconcileMountedRoot: true });
+  } else if (!filtered) {
+    retryFailedExpandedSubtrees();
   }
   notifyFileStoreSubscribers({ kind: "snapshot", scope: scope });
 }
@@ -7062,19 +7044,10 @@ function _removeDeferredTreePageEntries(path) {
   }
 }
 
-// Insert a new row into a child container at sorted position.
-// Containers may include a `.tree-page-more` sentinel at the end
-// (when the initial render hit TREE_PAGE_SIZE). Entries already in
-// that deferred page stay deferred; genuinely new arrivals go before
-// the sentinel so they remain visible without a reload.
-// Idempotent: if a row with this data-path already exists in the
-// container, do nothing (the patch path will handle updates).
-//
-// After the initial inventory settles, the newly-inserted .tree-item gets a
-// `tree-item-flash-in` class to play the pale-yellow → transparent fade defined
-// in styles.css. Startup rows establish baseline state and stay neutral. The
-// class is auto-removed on `animationend` so subsequent layout (selection,
-// hover) doesn't fight a dangling class.
+// Insert new arrivals in sorted order before any tree-page-more sentinel;
+// entries already deferred remain deferred, and existing paths are patched
+// separately. After startup settles, flash new rows and remove the flash class
+// on animationend. Baseline rows stay neutral.
 function _insertRowSorted(container, entry, options, highlightChange) {
   var safe = escapePathForSelector(entry.path);
   var existing = container.querySelector(`:scope > .tree-item[data-path="${safe}"]`);
@@ -7329,20 +7302,9 @@ function applyCellPatch(entry, highlightChange) {
   scheduleTreeSynchronize();
 }
 
-// Remove all rendered rows (in any tab panel) for *path*. For
-// folders, also removes the sibling .tree-children container so
-// the rendered subtree is gone too. Called by fileStoreApplyChange
-// on op=remove. Idempotent.
-//
-// The row gets a `tree-item-flash-out` class so it briefly flashes
-// pale yellow + fades to opacity 0 + collapses height to 0, THEN
-// the JS drops it from the DOM. ``forwards`` fill mode in the
-// CSS keeps the row invisible during the small gap between
-// `animationend` and the actual `.remove()` call. The folder's
-// sibling `.tree-children` is removed immediately (no animation
-// — its descendants would double-animate as their own removes
-// arrive on the wire, and a collapsing tree-children container
-// reads as confusing motion).
+// Remove matching rows from every tab, idempotently. Animate each row out,
+// keeping it invisible with CSS forwards fill until removal. Remove a folder
+// child container immediately so descendant events do not double-animate it.
 function _removeRenderedRows(path) {
   var removalMutation = treeKeyboard?.prepareForMutation();
   var safe = escapePathForSelector(path);
@@ -7543,6 +7505,7 @@ function _createInventoryEventSource() {
         for (const path of fileCache.keys()) {
           fileNeedsRevalidate.add(path);
         }
+        retryFailedExpandedSubtrees(true);
       }
       _scheduleRecentRecompute();
       // Every depth-limited sentinel establishes a transport boundary. The

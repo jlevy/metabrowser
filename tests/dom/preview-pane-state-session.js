@@ -39,6 +39,7 @@ const STARTUP_SCRIPTS = [
 // compositor, the SDK's view helpers with the line anchors applyNavigationTarget
 // reads an address with, and the pull-request page's routes and host.
 const ASSET_BUNDLES = {
+  mustache: [{ src: "/static/vendor/mustache.min.js", provides: "Mustache" }],
   "view-composition": [{ src: "/static/view-composition.js" }],
   "sdk-views": [{ src: "/static/plugin-sdk-views.js", provides: "MetabrowserSourceLineAnchors" }],
   "pull-route": [{ src: "/static/pull-route.js", provides: "MetabrowserPullRoute" }],
@@ -1467,7 +1468,7 @@ async function pullRouteLoadsOnDemand() {
   // that reaches such an address through history, with no host yet, fetches them and
   // then mounts the page; and an address under /pull/ that is no page lands nowhere.
   // The page's plugin is loaded with no compositor, so its load fetches the SDK's
-  // view helpers.
+  // view helpers and the template library.
   const folder = createShell("/view/", (requested) =>
     Promise.resolve(jsonResponse({ kind: requested ? "text" : "folder", path: requested })),
   );
@@ -1564,6 +1565,21 @@ async function onDemandCodeRefused() {
   helpers.sandbox.applyPullHistoryLanding();
   await settle();
 
+  // The template prerequisite can also fail after the other helpers are ready.
+  // A later route retries only that library before reporting an absent plugin.
+  const templatesRefused = new Set(["vendor/mustache.min.js"]);
+  const templates = createShell("/pull/7", refusedFetch, {
+    refused: templatesRefused,
+    startupScripts: ["pull-route.js"],
+  });
+  await templates.sandbox.navigationController.start();
+  await settle();
+  const templatesFailed = { pane: templates.pane(), scriptRequests: [...templates.scriptRequests] };
+  templatesRefused.clear();
+  templates.sandbox.location.pathname = "/pull/7/files";
+  templates.sandbox.applyPullHistoryLanding();
+  await settle();
+
   return {
     viewHelpersOpeningAFile: {
       failed: fileFailed,
@@ -1575,6 +1591,13 @@ async function onDemandCodeRefused() {
     },
     pullRoutesAtAPullAddress: { pane: routes.pane(), scriptRequests: routes.scriptRequests },
     pullRoutesOnAHistoryLanding: { pane: landing.pane(), scriptRequests: landing.scriptRequests },
+    templatesOnThePullPage: {
+      failed: templatesFailed,
+      nextRoute: {
+        pane: templates.pane(),
+        scriptRequests: templates.scriptRequests.slice(templatesFailed.scriptRequests.length),
+      },
+    },
     viewHelpersOnThePullPage: {
       failed: helpersFailed,
       nextRoute: {

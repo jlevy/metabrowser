@@ -368,16 +368,19 @@ testing plan performs neither.
 
 ### Landing status
 
-**Current integration, 2026-11-07.** The product stack and its reviewed presentation and
-preparation follow-ups are merged, most recently in
+**Current integration.** The
+[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
+the reviewed sources, candidate qualifications, installation evidence and remaining
+release gates. The dated entries below preserve their original source and acceptance
+scope. Tagging and publication still require the user’s explicit approval.
+
+**Integration checkpoint, 2026-11-07.** The product stack and its reviewed presentation
+and preparation follow-ups merged in
 [stack 331](https://github.com/jlevy/metabrowser/stack/331), through
 [#330](https://github.com/jlevy/metabrowser/pull/330), at
 [`main` `d33550455`](https://github.com/jlevy/metabrowser/commit/d33550455d1a44bb275d5e71492f9bdbc682f0c5).
 The landed tree exactly matches reviewed and gated tip `519c33239`, retained as an
-ancestor. The
-[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) holds
-the current checks and installation evidence, with their exact source pins.
-Tagging and publication still require the user’s explicit approval.
+ancestor.
 
 **Product-stack landing, 2026-11-07.** All 28 product layers in
 [stack 302](https://github.com/jlevy/metabrowser/stack/302), through

@@ -68,6 +68,8 @@ function createPage() {
   /** @type {string[]} */
   const requested = [];
   const fixtureLog = [];
+  const templateLog = [];
+  const pluginErrors = [];
 
   function describe(element) {
     const url = element.src || element.getAttribute("src") || element.getAttribute("href") || "";
@@ -126,10 +128,16 @@ function createPage() {
     URL,
     clearInterval,
     clearTimeout,
-    console: { error() {}, warn() {} },
+    console: {
+      error(...args) {
+        pluginErrors.push(args.map((arg) => arg?.message || String(arg)).join(" "));
+      },
+      warn() {},
+    },
     fetch: () => Promise.reject(new Error("no request is part of this session")),
     location: { origin: "http://localhost" },
     METABROWSER_ASSET_BUNDLES: {
+      mustache: [{ src: "/static/vendor/mustache.min.js", provides: "Mustache" }],
       "sdk-views": [
         { src: "/static/plugin-sdk-views.js", provides: "MetabrowserSourceLineAnchors" },
       ],
@@ -160,6 +168,7 @@ function createPage() {
       head: { append: request, appendChild: request },
     },
     viewHelperFixtureLog: fixtureLog,
+    viewHelperTemplateLog: templateLog,
   };
   sandbox.window = sandbox;
   sandbox.globalThis = sandbox;
@@ -189,6 +198,8 @@ function createPage() {
 
   return {
     fixtureLog,
+    templateLog,
+    pluginErrors,
     requested,
     sandbox,
     /** One plugin for *kind*: a stylesheet and the fixture's module. */
@@ -210,8 +221,12 @@ function createPage() {
       return `${present.length} of ${HELPERS.length}`;
     },
     /** Answer what the page is waiting for; a name in *failing* gets an error. */
-    answer(failing = []) {
+    answer(failing = [], held = []) {
       for (const { element, name } of waiting.splice(0)) {
+        if (held.some((part) => name.includes(part))) {
+          waiting.push({ element, name });
+          continue;
+        }
         if (failing.some((part) => name.includes(part))) {
           element.fire("error");
           continue;
@@ -254,6 +269,9 @@ async function withoutACompositor() {
   const loaded = { loading: loading.settled, pluginCode: [...page.fixtureLog] };
 
   const view = page.sandbox.metabrowser.getRegisteredView("fixture-kind", "fixture");
+  if (!view) {
+    throw new Error(`plugin did not register: ${page.pluginErrors.join("; ")}`);
+  }
   const container = page.sandbox.document.createElement("div");
   view.render(container, { kind: "fixture-kind" });
   container.fire("click");
@@ -274,6 +292,7 @@ async function withoutACompositor() {
     loaded,
     helpersAfter: page.helpers(),
     pluginCode: page.fixtureLog,
+    templateCalls: page.templateLog,
     aSecondPlugin: { requested: secondRequests, loading: second.settled },
   };
 }
@@ -301,6 +320,48 @@ async function whenTheHelpersCannotBeFetched() {
   return {
     afterFailure,
     retry: { requested: retryRequests, loading: retried.settled, pluginCode: page.fixtureLog },
+  };
+}
+
+// Idle prefetch and a direct kind request share one template load. Holding its
+// response must hold plugin evaluation, even after the other helpers are ready.
+async function whenTemplatesCannotBeFetched() {
+  const page = createPage();
+  page.configure("fixture-kind");
+  const prefetch = fate(page.sandbox.MetabrowserAssets.ensureAsset("mustache"));
+  const loading = fate(page.sandbox.metabrowser.ensureKindAssets("fixture-kind"));
+  await turn();
+  page.answer([], ["mustache.min.js"]);
+  await turn();
+  const whileHeld = {
+    loading: loading.settled,
+    helpers: page.helpers(),
+    templateRequests: page.requested.filter((name) => name.includes("mustache.min.js")).length,
+    pluginCode: [...page.fixtureLog],
+  };
+  page.answer(["mustache.min.js"]);
+  await turn();
+  const afterFailure = {
+    loading: loading.settled,
+    prefetch: prefetch.settled,
+    pluginCode: [...page.fixtureLog],
+    viewRegistered: !!page.sandbox.metabrowser.getRegisteredView("fixture-kind", "fixture"),
+  };
+  const alreadyRequested = page.requested.length;
+  const retried = fate(page.sandbox.metabrowser.ensureKindAssets("fixture-kind"));
+  await turn();
+  const retryRequests = page.requested.slice(alreadyRequested);
+  page.answer();
+  await turn();
+  return {
+    whileHeld,
+    afterFailure,
+    retry: {
+      requested: retryRequests,
+      loading: retried.settled,
+      pluginCode: page.fixtureLog,
+      templateCalls: page.templateLog,
+    },
   };
 }
 
@@ -388,6 +449,7 @@ async function main() {
   const report = {
     withoutACompositor: await withoutACompositor(),
     whenTheHelpersCannotBeFetched: await whenTheHelpersCannotBeFetched(),
+    whenTemplatesCannotBeFetched: await whenTemplatesCannotBeFetched(),
     sourceHeaderReadiness: await sourceHeaderReadiness(),
   };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);

@@ -4,6 +4,18 @@ All notable changes to Metabrowser are documented here.
 
 ## 0.12.0 (unreleased)
 
+- Plugin template rendering waits for its shared library before plugin code runs, so a
+  directly opened custom view works before idle asset prefetch finishes.
+
+- Treemap explains when a hidden folder or a path through a symbolic link is outside the
+  file index, using the same message as File Overview without requesting totals.
+
+- Cache validators accept Unicode paths and arbitrary content identities, including
+  progress responses, while retaining build and source isolation and conditional reads.
+
+- Expanded folders that failed to load while the server was unavailable retry when an
+  authoritative inventory snapshot arrives after reconnection.
+
 - **Breaking:** Cache and configuration now use separate XDG locations on macOS and
   Linux: `~/.cache/metabrowser` and `~/.config/metabrowser/config.yml`. Use
   `--cache-dir` / `METABROWSER_CACHE_DIR` and `--config-dir` / `METABROWSER_CONFIG_DIR`
@@ -1448,12 +1460,12 @@ Fixes:
   “Showing 2.0 MB of 15.2 MB” and the next Load more read from 2.0 MB again, repeating
   text. `/api/file` on a pin now reports the cursor, as a served folder does.
 
-- In a pane too narrow for the Contents rail, the table-of-contents toggle now stays in
-  the pane’s top-left corner as the document scrolls, so the drawer opens from any
-  depth. It used to scroll away with the document, in a trusted folder and a mirror
-  alike, because the scrolling preview pane was also the box its fixed position pinned
-  to. The pane now scrolls inside a non-scrolling frame that holds the drawer, its
-  toggle, and its backdrop, as KPress’s embedding contract asks.
+- In a pane too narrow for the Contents rail, the table-of-contents toggle now stays at
+  the pane’s trailing edge as the document scrolls, so the drawer opens from any depth.
+  It used to scroll away with the document, in a trusted folder and a mirror alike,
+  because the scrolling preview pane was also the box its fixed position pinned to.
+  The pane now scrolls inside a non-scrolling frame that holds the drawer, its toggle,
+  and its backdrop, as KPress’s embedding contract asks.
 
 - A tree row replaced during the tooltip’s 300 ms delay, as when its folder re-renders,
   no longer puts a tooltip at the window’s top-left corner until the next hover.

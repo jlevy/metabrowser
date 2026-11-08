@@ -39,6 +39,7 @@ VIEW_HELPERS_SESSION = TESTS / "dom" / "plugin-view-helpers-session.js"
 STYLESHEET = "link rel=stylesheet /plugin-static/fixture-kind/styles.css"
 MODULE_PRELOAD = "link rel=modulepreload <the plugin's module>"
 VIEW_HELPERS = "script /static/plugin-sdk-views.js"
+TEMPLATES = "script /static/vendor/mustache.min.js"
 
 
 def _sdk_source() -> str:
@@ -65,12 +66,17 @@ def test_view_helpers_are_no_startup_script() -> None:
     startup = check_startup_scripts.startup_script_paths(html)
     assert "/static/plugin-sdk.js" in startup
     assert "/static/plugin-sdk-views.js" not in startup
+    assert "/static/vendor/mustache.min.js" not in startup
     bundles = json.loads(
         html.split("window.METABROWSER_ASSET_BUNDLES=", 1)[1].split(";</script>", 1)[0]
     )
     assert [entry["src"].partition("?")[0] for entry in bundles["sdk-views"]] == [
         "/static/plugin-sdk-views.js"
     ]
+    assert [entry["src"].partition("?")[0] for entry in bundles["mustache"]] == [
+        "/static/vendor/mustache.min.js"
+    ]
+    assert bundles["mustache"][0]["provides"] == "Mustache"
 
 
 def test_a_plugin_finds_every_view_helper_wherever_its_code_runs(
@@ -85,7 +91,7 @@ def test_a_plugin_finds_every_view_helper_wherever_its_code_runs(
     assert loaded["helpersAfter"] == "15 of 15"
     # The plugin's stylesheet and module are on the wire beside the helpers, not a
     # round trip after them, and none of its code has run while they are.
-    assert loaded["requestedTogether"] == [STYLESHEET, MODULE_PRELOAD, VIEW_HELPERS]
+    assert loaded["requestedTogether"] == [STYLESHEET, MODULE_PRELOAD, VIEW_HELPERS, TEMPLATES]
     assert loaded["whileWaiting"] == {"loading": "pending", "pluginCode": []}
     # A documented helper works while the module evaluates, in a view's render, and in
     # a handler: the three places a plugin's code runs.
@@ -94,9 +100,17 @@ def test_a_plugin_finds_every_view_helper_wherever_its_code_runs(
         "render: a Source view with a gutter of 2 lines",
         "click handler: a Source view with a gutter of 3 lines",
     ]
+    template = "<p>&lt;card&gt; &amp; text</p><b>one</b><b>&lt;two&gt;</b>"
+    assert loaded["templateCalls"] == [
+        f"module evaluation: {template}",
+        f"render: {template}",
+        f"click handler: {template}",
+        f"module evaluation: {template}",
+    ]
     # Once they are there, another plugin's load asks only for its own assets.
     assert loaded["aSecondPlugin"]["loading"] == "resolved"
     assert VIEW_HELPERS not in loaded["aSecondPlugin"]["requested"]
+    assert TEMPLATES not in loaded["aSecondPlugin"]["requested"]
     assert len(loaded["aSecondPlugin"]["requested"]) == 2
 
 
@@ -116,20 +130,67 @@ def test_no_plugin_code_runs_without_the_view_helpers(view_helpers: dict[str, An
     }
 
 
+def test_template_readiness_joins_prefetch_and_retries_before_plugin_evaluation(
+    view_helpers: dict[str, Any],
+) -> None:
+    refused = view_helpers["whenTemplatesCannotBeFetched"]
+    assert refused["whileHeld"] == {
+        "loading": "pending",
+        "helpers": "15 of 15",
+        "templateRequests": 1,
+        "pluginCode": [],
+    }
+    failure = "rejected: Failed to load asset: /static/vendor/mustache.min.js"
+    assert refused["afterFailure"] == {
+        "loading": failure,
+        "prefetch": failure,
+        "pluginCode": [],
+        "viewRegistered": False,
+    }
+    assert refused["retry"] == {
+        "requested": [TEMPLATES],
+        "loading": "resolved",
+        "pluginCode": ["module evaluation: a Source view with a gutter of 1 lines"],
+        "templateCalls": [
+            "module evaluation: <p>&lt;card&gt; &amp; text</p><b>one</b><b>&lt;two&gt;</b>"
+        ],
+    }
+
+
 # The shell's prefetch chain, as the server wrote it into the page, run to its end with
 # every script answering at once. It reports whether the flag was already set when the
 # terminal event was dispatched.
 _RUN_PREFETCH_CHAIN = """
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const vm = require("node:vm");
+const [chain, bundles, loaderPath, mustachePath, failTemplates] = process.argv.slice(1);
 const seen = [];
+const warnings = [];
+const requests = [];
+const templateLoads = [];
+let idle;
 const sandbox = {
-  console,
+  console: { warn(...args) { warnings.push(args.map((v) => v?.message || String(v)).join(" ")); } },
+  METABROWSER_ASSET_BUNDLES: JSON.parse(bundles),
   document: {
     readyState: "complete",
-    createElement: () => ({}),
-    head: { appendChild(script) { queueMicrotask(() => script.onload()); } },
+    createElement: () => ({ remove() {} }),
+    head: {
+      appendChild(script) {
+        requests.push(script.src.split("?")[0]);
+        if (script.src.includes("/mustache.min.js")) {
+          templateLoads.push(script);
+        } else {
+          queueMicrotask(() => {
+            if (script.src.includes("/highlight.min.js")) sandbox.hljs = {};
+            script.onload();
+          });
+        }
+      },
+    },
   },
-  CustomEvent: class { constructor(type) { this.type = type; } },
+  CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init?.detail; } },
   Event: class { constructor(type) { this.type = type; } },
   dispatchEvent(event) {
     if (event.type === "metabrowser:optional-assets-loaded") {
@@ -137,16 +198,61 @@ const sandbox = {
     }
     return true;
   },
-  setTimeout: (run) => queueMicrotask(run),
+  requestIdleCallback(run) { idle = run; },
 };
 sandbox.window = sandbox;
 vm.createContext(sandbox);
-vm.runInContext(process.argv[1], sandbox);
-setImmediate(() => process.stdout.write(JSON.stringify({ flagWhenAnnounced: seen })));
+vm.runInContext(fs.readFileSync(loaderPath, "utf8"), sandbox, { filename: loaderPath });
+vm.runInContext(chain, sandbox, { filename: "server-generated-optional-assets.js" });
+async function turn() {
+  for (let i = 0; i < 6; i += 1) await new Promise((resolve) => setImmediate(resolve));
+}
+function answerTemplate(script, fail) {
+  if (fail) script.onerror();
+  else {
+    vm.runInContext(fs.readFileSync(mustachePath, "utf8"), sandbox, { filename: mustachePath });
+    script.onload();
+  }
+}
+async function main() {
+  assert.equal(typeof idle, "function");
+  assert.equal(requests.length, 0, "scheduling prefetch must not eagerly request templates");
+  const demand = sandbox.MetabrowserAssets.ensureAsset("mustache").then(
+    () => "resolved", () => "rejected",
+  );
+  idle();
+  await turn();
+  assert.equal(templateLoads.length, 1, "idle prefetch and demand must share one request");
+  answerTemplate(templateLoads[0], failTemplates === "fail");
+  const demandResult = await demand;
+  await turn();
+  assert.deepEqual(seen, [true], "the optional chain settles even after a template failure");
+  let retry = null;
+  if (failTemplates === "fail") {
+    const retried = sandbox.MetabrowserAssets.ensureAsset("mustache");
+    await turn();
+    assert.equal(templateLoads.length, 2);
+    answerTemplate(templateLoads[1], false);
+    await retried;
+    retry = "resolved";
+  }
+  const rendered = sandbox.Mustache.render("{{value}}", { value: "<template>" });
+  assert.equal(rendered, "&lt;template&gt;");
+  process.stdout.write(JSON.stringify({
+    demand: demandResult,
+    flagWhenAnnounced: seen,
+    requests,
+    warnings: warnings.length,
+    retry,
+    rendered,
+  }));
+}
+main().catch((error) => { console.error(error); process.exitCode = 1; });
 """
 
 
-def test_the_prefetch_chain_records_its_end_before_announcing_it() -> None:
+@pytest.mark.parametrize("template_failure", [False, True])
+def test_the_prefetch_chain_records_its_end_before_announcing_it(template_failure: bool) -> None:
     # The syntax service waits on the optional assets' terminal event. It loads with
     # the first view, which can be after that event fired, so the chain leaves a flag
     # behind it and sets the flag first: a listener that runs on the event and one that
@@ -156,14 +262,39 @@ def test_the_prefetch_chain_records_its_end_before_announcing_it() -> None:
     blocks = [block for block in html.split("<script>")[1:] if "optional-assets-loaded" in block]
     assert len(blocks) == 1
     chain = blocks[0].split("</script>", 1)[0]
+    bundles = html.split("window.METABROWSER_ASSET_BUNDLES=", 1)[1].split(";</script>", 1)[0]
     result = subprocess.run(
-        [require_node(), "-e", _RUN_PREFETCH_CHAIN, chain],
+        [
+            require_node(),
+            "-e",
+            _RUN_PREFETCH_CHAIN,
+            chain,
+            bundles,
+            str(STATIC / "asset-loader.js"),
+            str(STATIC / "vendor" / "mustache.min.js"),
+            "fail" if template_failure else "pass",
+        ],
         capture_output=True,
         check=True,
         text=True,
         timeout=20,
     )
-    assert json.loads(result.stdout) == {"flagWhenAnnounced": [True]}
+    observed = json.loads(result.stdout)
+    expected_requests = [
+        "/static/vendor/mustache.min.js",
+        "/static/vendor/highlight.min.js",
+        "/static/vendor/highlight-toml.min.js",
+    ]
+    if template_failure:
+        expected_requests.append("/static/vendor/mustache.min.js")
+    assert observed == {
+        "demand": "rejected" if template_failure else "resolved",
+        "flagWhenAnnounced": [True],
+        "requests": expected_requests,
+        "warnings": int(template_failure),
+        "retry": "resolved" if template_failure else None,
+        "rendered": "&lt;template&gt;",
+    }
 
 
 def test_sdk_exports_size_html() -> None:

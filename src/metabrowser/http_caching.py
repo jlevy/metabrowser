@@ -156,11 +156,13 @@ def build_scoped_etag(content_identity: str) -> str:
     """Return a strong ETag scoped to both ``content_identity`` and this build.
 
     ``content_identity`` names the source the body was derived from — a file's
-    ``strif.file_mtime_hash``, or a state key such as an index revision. Strong
-    ETags are quoted per RFC 7232, and this is the only place in the package
-    that produces that quoting.
+    ``strif.file_mtime_hash``, or a state key such as an index revision. Hash
+    arbitrary identity strings so native paths, quotes and controls cannot break
+    the opaque HTTP token. Surrogate code points remain distinct Python identities.
+    This is the only place in the package that produces the quoted validator.
     """
-    return f'"{BUILD_TAG}-{content_identity}"'
+    digest = hashlib.sha256(content_identity.encode("utf-8", errors="surrogatepass")).hexdigest()
+    return f'"{BUILD_TAG}-{digest}"'
 
 
 def etag_headers(etag: str) -> dict[str, str]:

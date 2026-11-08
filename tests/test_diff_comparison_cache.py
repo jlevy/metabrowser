@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import threading
 from pathlib import Path
 from typing import Any
@@ -71,7 +72,14 @@ class _Spy:
         monkeypatch.setattr(GitDiffSource, "_patch", patch)
 
 
-def _block(title: str, route: str, response: Response, spy: _Spy, store: str) -> str:
+def _block(
+    title: str,
+    route: str,
+    response: Response,
+    spy: _Spy,
+    store: str,
+    tag_labels: dict[str, str],
+) -> str:
     """One request of the transcript: what it asked, and the headers that say what is kept."""
 
     def shown(text: str) -> str:
@@ -81,6 +89,11 @@ def _block(title: str, route: str, response: Response, spy: _Spy, store: str) ->
     for name in ("cache-control", "etag", "content-encoding", "vary"):
         value = response.headers.get(name)
         if value is not None:
+            if name == "etag":
+                assert re.fullmatch(rf'"{BUILD_TAG}-[0-9a-f]{{64}}"', value)
+                # A digest contains the sandbox store identity. Keep its equality
+                # relationships across this whole transcript, not its random spelling.
+                value = tag_labels.setdefault(value, f'"<BUILD>-<ETAG-{len(tag_labels) + 1}>"')
             lines.append(f"{name}: {shown(value)}")
     lines.append(f"work: {spy.manifests} manifest, {spy.patches} patch")
     spy.manifests = spy.patches = 0
@@ -91,11 +104,13 @@ def test_what_a_store_keeps_and_says(tmp_path: Path, monkeypatch: pytest.MonkeyP
     store, base, target = _store(tmp_path)
     spy = _Spy(monkeypatch)
     token = store_tag(store)
-    # The fixture pins identity and dates, so its commit IDs and these tags are fixed.
+    # The fixture pins commit IDs. Tags also name the sandbox store, so the
+    # transcript labels them after checking their real syntax and build scope.
     two = (("left", base), ("right", target), ("base_policy", "merge_base"))
     scoped = (("build", BUILD_TAG), ("store", token))
     named = (*two, *scoped)
     blocks: list[str] = []
+    tag_labels: dict[str, str] = {}
 
     async def run() -> None:
         async with pinned_client(store, target) as (client, _subject):
@@ -104,7 +119,7 @@ def test_what_a_store_keeps_and_says(tmp_path: Path, monkeypatch: pytest.MonkeyP
                 title: str, route: str, headers: dict[str, str] | None = None
             ) -> Response:
                 response = await client.get(route, headers=headers or {})
-                blocks.append(_block(title, route, response, spy, token))
+                blocks.append(_block(title, route, response, spy, token, tag_labels))
                 return response
 
             first = await ask(
@@ -115,7 +130,6 @@ def test_what_a_store_keeps_and_says(tmp_path: Path, monkeypatch: pytest.MonkeyP
             again = await ask("The same address again: no Git at all", _route(*named))
             assert again.json() == document
             etag = first.headers["etag"]
-            assert token in etag, "the tag names the store, so another store's never matches"
             conditional = await ask(
                 "A reload with what it holds: no body", _route(*named), {"if-none-match": etag}
             )
@@ -178,6 +192,32 @@ def test_what_a_store_keeps_and_says(tmp_path: Path, monkeypatch: pytest.MonkeyP
     check_golden("cli-diff-comparison-cache.txt", "\n\n".join(blocks) + "\n")
 
 
+def test_two_stores_holding_the_same_commits_have_distinct_validators(tmp_path: Path) -> None:
+    store, base, target = _store(tmp_path)
+    other = tmp_path / "other.git"
+    git(tmp_path, "clone", "-q", "--bare", "--template=", str(store), str(other))
+    assert store_tag(store) != store_tag(other)
+    two = (("left", base), ("right", target), ("base_policy", "merge_base"))
+
+    async def run() -> None:
+        async with pinned_client(store, target) as (client, _subject):
+            first = await client.get(_route(*two))
+            assert first.status_code == 200
+            tag = first.headers["etag"]
+            document = first.json()
+        async with pinned_client(other, target) as (client, _subject):
+            replayed = await client.get(_route(*two), headers={"if-none-match": tag})
+            assert replayed.status_code == 200
+            assert replayed.json() == document
+            assert replayed.headers["etag"] != tag
+            own = await client.get(
+                _route(*two), headers={"if-none-match": replayed.headers["etag"]}
+            )
+            assert own.status_code == 304 and own.content == b""
+
+    asyncio.run(run())
+
+
 def test_another_store_on_the_same_origin_answers_for_itself(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -233,7 +273,7 @@ def test_a_readers_global_attributes_do_not_reach_a_store(
     store, base, target = _store(tmp_path)
     two = (("left", base), ("right", target), ("base_policy", "direct"))
 
-    async def ask(*, fresh: bool = True) -> tuple[dict[str, str], str]:
+    async def ask(*, fresh: bool = True) -> tuple[dict[str, str], str, str]:
         """What each file is, and the cache control, from a fresh process or this one."""
         if fresh:
             monkeypatch.setattr(sidekick, "_COMPARISONS", ComparisonCache())
@@ -242,12 +282,16 @@ def test_a_readers_global_attributes_do_not_reach_a_store(
                 _route(*two, ("build", BUILD_TAG), ("store", store_tag(store)))
             )
             assert response.status_code == 200
-            return {
-                (c.get("new") or c["old"])["path"]: c["availability"]
-                for c in response.json()["manifest"]["files"]
-            }, response.headers["cache-control"]
+            return (
+                {
+                    (c.get("new") or c["old"])["path"]: c["availability"]
+                    for c in response.json()["manifest"]["files"]
+                },
+                response.headers["cache-control"],
+                response.headers["etag"],
+            )
 
-    before, _ = asyncio.run(ask())
+    before, _, _ = asyncio.run(ask())
     assert before["a.py"] == "ready"
     xdg = tmp_path / "xdg"
     (xdg / "git").mkdir(parents=True)
@@ -268,14 +312,15 @@ def test_a_readers_global_attributes_do_not_reach_a_store(
     one_process = ComparisonCache()
     monkeypatch.setattr(sidekick, "_COMPARISONS", one_process)
     before_token = store_tag(store)
-    kept, control = asyncio.run(ask(fresh=False))
+    kept, control, kept_etag = asyncio.run(ask(fresh=False))
     assert kept["a.py"] == "ready" and control.endswith("immutable")
     assert one_process.sizes()["bodies"] == 1
     (store / "info").mkdir(exist_ok=True)
     (store / "info" / "attributes").write_text("*.py -diff\n")
     assert store_tag(store) != before_token
-    edited, control = asyncio.run(ask(fresh=False))
+    edited, control, edited_etag = asyncio.run(ask(fresh=False))
     assert edited["a.py"] == "binary" and control.endswith("immutable")
+    assert edited_etag != kept_etag
     assert one_process.sizes()["bodies"] == 2, "the old answer is kept under its own key"
     assert asyncio.run(ask())[0] == edited, "what a fresh process answers"
 

@@ -19,6 +19,7 @@ import {
   buildFolderTotalsComposition,
   mountFolderTotalsView,
   normalizeFolderTotals,
+  notIndexedStatement,
 } from "./folder-totals.js";
 import { layoutTree } from "./treemap-layout.js";
 import { parentNavigation } from "./treemap-model.js";
@@ -225,8 +226,6 @@ export function registerTreemap(mb, palette, rollupControls) {
    * @param {Record<string, any>} ctx
    */
   function renderTreemap(container, ctx) {
-    /** @type {TreemapState} */
-    let state = rollupControls.get();
     /** @type {Record<string, any> | null} */
     let envelope = null;
     let rollupFailed = false;
@@ -245,6 +244,40 @@ export function registerTreemap(mb, palette, rollupControls) {
         `<span>${mb.escapeHtml(parent.label)}</span></button></div>`
       : "";
 
+    function openParent() {
+      if (parent) {
+        void mb.navigation.open({ path: parent.path }, { viewId: TREEMAP_VIEW_ID });
+      }
+    }
+
+    const statement = notIndexedStatement(ctx.raw);
+    if (statement) {
+      container.innerHTML =
+        '<h2 class="tm-totals-heading">Files</h2>' +
+        parentControlHtml +
+        `<div class="preview-empty">${mb.escapeHtml(statement)}</div>`;
+      const parentControl = parent
+        ? /** @type {HTMLButtonElement} */ (container.querySelector(".tm-parent-nav"))
+        : null;
+      if (parentControl) {
+        parentControl.addEventListener("click", openParent);
+      }
+      return Object.freeze({
+        dispose() {
+          if (disposed) {
+            return;
+          }
+          disposed = true;
+          if (parentControl) {
+            parentControl.removeEventListener("click", openParent);
+          }
+          mb.tooltip.hide();
+        },
+      });
+    }
+
+    /** @type {TreemapState} */
+    let state = rollupControls.get();
     container.innerHTML =
       '<h2 class="tm-totals-heading">Files</h2>' +
       // One row for both halves, above the bars they govern — the same
@@ -306,12 +339,6 @@ export function registerTreemap(mb, palette, rollupControls) {
     }
     // No parts argument: this row is both halves.
     const unmountControls = rollupControls.mount(rollupControlsHost);
-
-    function openParent() {
-      if (parent) {
-        void mb.navigation.open({ path: parent.path }, { viewId: TREEMAP_VIEW_ID });
-      }
-    }
 
     if (parentControl) {
       parentControl.addEventListener("click", openParent);

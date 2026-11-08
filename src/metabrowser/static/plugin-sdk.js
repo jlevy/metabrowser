@@ -324,12 +324,15 @@
     return loading;
   }
 
-  // plugin-sdk-views.js is here before any plugin's code runs; it says why.
+  // Both synchronous rendering helpers are ready before any plugin code runs.
+  // Demand joins Mustache's idle prefetch; neither asset is an eager script.
   /** @returns {Promise<void>} */
   function _ensureViewHelpers() {
-    return typeof global.metabrowser.renderSourceView === "function"
-      ? Promise.resolve()
-      : ensureAsset("sdk-views");
+    const views =
+      typeof global.metabrowser.renderSourceView === "function"
+        ? Promise.resolve()
+        : ensureAsset("sdk-views");
+    return Promise.all([views, ensureAsset("mustache")]).then(() => {});
   }
 
   // The helpers gate each plugin's code, not its transfer. Rejects when they cannot

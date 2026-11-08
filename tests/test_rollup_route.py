@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import threading
 from dataclasses import replace
 from pathlib import Path
@@ -11,6 +12,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from metabrowser import server
+from metabrowser.http_caching import BUILD_TAG
 from metabrowser.inventory_engine.contract import (
     DiscoveryBudget,
     EngineVersion,
@@ -295,6 +297,46 @@ def test_rollup_revalidates_and_reuses_unchanged_body(tmp_path: Path) -> None:
     assert cached_etag == etag
     assert deeper_etag != etag
     assert etag in server._ROLLUP_BODY_CACHE
+
+
+def test_unicode_root_and_subfolder_rollups_revalidate_independently(tmp_path: Path) -> None:
+    root = tmp_path / "资料"
+    child = root / "子目录"
+    child.mkdir(parents=True)
+    (root / "README.md").write_text("root\n")
+    (child / "雪.txt").write_text("nested\n")
+    server._set_root_dir(root)
+
+    async def run() -> None:
+        async with inventory_harness(root, config=_WATCH_OFF) as harness:
+            tags: list[str] = []
+            for path, files, size in (("", 2, 12), ("子目录", 1, 7)):
+                params = {"path": path, "depth": "0"}
+                first = await _response(harness, params)
+                assert first.status_code == 200
+                body = json.loads(bytes(first.body))
+                validate_rollup_envelope(body)
+                assert body["path"] == path
+                assert body["node"]["total_files"] == files
+                assert body["node"]["total_size"] == size
+                tag = first.headers["etag"]
+                assert re.fullmatch(rf'"{BUILD_TAG}-[0-9a-f]{{64}}"', tag)
+                tags.append(tag)
+                repeated = await _response(harness, params)
+                assert repeated.headers["etag"] == tag
+                assert bytes(repeated.body) == bytes(first.body)
+                revalidated = await _response(harness, params, tag)
+                assert revalidated.status_code == 304
+                assert bytes(revalidated.body) == b""
+                deeper = await _response(harness, {"path": path, "depth": "1"}, tag)
+                assert deeper.status_code == 200
+                assert deeper.headers["etag"] != tag
+            assert tags[0] != tags[1]
+            different_path = await _response(harness, {"path": "子目录", "depth": "0"}, tags[0])
+            assert different_path.status_code == 200
+            assert different_path.headers["etag"] == tags[1]
+
+    asyncio.run(run())
 
 
 def test_simultaneous_identical_rollups_compute_once(

@@ -255,9 +255,10 @@ def test_pull_request_routes_load_only_for_a_pull_request_address(
     }
     # A page that loads at a pull-request address has the routes with its shell, so it
     # asks for none. Its plugin is loaded with no compositor, which fetches the view
-    # helpers once, however many landings follow, and the page is the host's.
-    assert pull["pullAddress"]["scriptRequests"] == ["plugin-sdk-views.js"]
-    assert pull["pullAddress"]["afterTabLanding"]["scriptRequests"] == ["plugin-sdk-views.js"]
+    # helpers and templates once, however many landings follow, and the page is the host's.
+    prerequisites = ["plugin-sdk-views.js", "vendor/mustache.min.js"]
+    assert pull["pullAddress"]["scriptRequests"] == prerequisites
+    assert pull["pullAddress"]["afterTabLanding"]["scriptRequests"] == prerequisites
     assert pull["pullAddress"]["pane"]["owner"] == "pull-request"
     assert pull["pullAddress"]["pane"]["shows"] == NO_PULL_PLUGIN
     # What is under /pull/ and is no page's address lands nowhere, as it did.
@@ -265,7 +266,7 @@ def test_pull_request_routes_load_only_for_a_pull_request_address(
     # A history landing with no host yet fetches the routes and then mounts the page.
     landing = pull["historyLandingWithoutHost"]
     assert landing["before"] == {"scriptRequests": [], "hostCreated": False}
-    assert landing["scriptRequests"] == ["pull-route.js", "plugin-sdk-views.js"]
+    assert landing["scriptRequests"] == ["pull-route.js", *prerequisites]
     assert landing["pane"]["owner"] == "pull-request"
 
 
@@ -313,6 +314,7 @@ def test_on_demand_code_that_does_not_arrive_is_said_and_asked_for_again(
         refused["pullRoutesAtAPullAddress"]["pane"],
         refused["pullRoutesOnAHistoryLanding"]["pane"],
         refused["viewHelpersOnThePullPage"]["failed"]["pane"],
+        refused["templatesOnThePullPage"]["failed"]["pane"],
     ):
         assert state["owner"] == "pull-request"
         assert state["shows"] == PULL_PAGE_FAILED
@@ -321,6 +323,9 @@ def test_on_demand_code_that_does_not_arrive_is_said_and_asked_for_again(
     retried = refused["viewHelpersOnThePullPage"]["nextRoute"]
     assert retried["scriptRequests"] == ["plugin-sdk-views.js"]
     assert retried["pane"]["shows"] == NO_PULL_PLUGIN
+    templates = refused["templatesOnThePullPage"]["nextRoute"]
+    assert templates["scriptRequests"] == ["vendor/mustache.min.js"]
+    assert templates["pane"]["shows"] == NO_PULL_PLUGIN
 
 
 def test_pull_request_routes_are_a_startup_script_of_pull_addresses_only() -> None:

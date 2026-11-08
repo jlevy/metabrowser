@@ -91,7 +91,7 @@ parallel.
 | 8 | Hosted-review models | `mb-63ym` | 0 | Phase 0 records were on #134 and were removed from the stack on 2026-09-30; they are kept on the `reference/v012-hosted-review` branch, tagged `reference/v012-hosted-review-2026-09-30` |
 | 9 | Bounded provider runner, `gh api` adapter, broker-pinned Git credential bridge, capability registry, auth-scoped store, repository summary, then direct PR bundle | `mb-y1ax`, `mb-p4sw`, `mb-s123`, `mb-ji83`, `mb-s0gv`, `mb-i3xc`, `mb-2oxp`, `mb-cbak`, `mb-h64t` | 5, 7, 8 | Superseded: the PR data step (#232) runs `gh` and stores one record per pull request; the credential bridge, capability registry, auth-scoped store, and binding are retired, and `mb-cbak` is deferred |
 | 10 | Plugin router, address-space lifecycle, and direct PR document/diff | `mb-xzj3`, `mb-6mle`, `mb-81p5` | 6, 9 | Superseded: the PR view step (#233) renders the pull-request page inside the GitHub plugin |
-| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | Deferred by the user’s 2026-09-23 decision; `mb-uh6p` is retired |
+| 11 | Query-keyed bounded PR index and virtual nav | `mb-lnkl`, `mb-uh6p`, `mb-iw1v` | 9, 10 | Implemented successor: the [Pulls tab plan](plan-2026-10-01-github-pulls-tab.md) delivers the resumable catalog and Pulls navigation, superseding the 2026-09-23 deferral; `mb-uh6p` remains retired |
 | 12 | Anchored review threads | `mb-rldc` | 10 | Deferred by the user’s 2026-09-23 decision |
 
 Row 6 records the trust foundation that landed through #209, which every served pin
