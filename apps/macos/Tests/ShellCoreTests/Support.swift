@@ -1,0 +1,88 @@
+import Darwin
+import Foundation
+import os
+@testable import ShellCore
+
+/// A child that prints what the test tells it to and exits when signaled.
+nonisolated final class FakeProcess: ServerProcess, @unchecked Sendable {
+    let pid: pid_t
+    let lines: AsyncStream<String>
+    private let sink: AsyncStream<String>.Continuation
+    private let exit = Latch<Int32>()
+    private let outputEnd = Latch<Void>()
+    private let tail = OutputTail(limit: 200)
+    private let ignoresTerm: Bool
+    private let record = OSAllocatedUnfairLock(initialState: (signals: [Int32](), exitedBy: Int32?.none))
+
+    init(pid: pid_t = 4242, ignoresTerm: Bool = false) {
+        self.pid = pid
+        self.ignoresTerm = ignoresTerm
+        (lines, sink) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(200))
+    }
+
+    var signals: [Int32] { record.withLock { $0.signals } }
+    var exitedBy: Int32? { record.withLock { $0.exitedBy } }
+    var hasExited: Bool { exit.isResolved }
+
+    func say(_ line: String) {
+        tail.append(line)
+        sink.yield(line)
+    }
+
+    /// Exits with `code`, as a crash or a startup error would.
+    func exitOnItsOwn(code: Int32 = 1) {
+        finishOutput()
+        exit.resolve(code << 8)
+    }
+
+    func recentOutput() -> [String] { tail.snapshot }
+    func waitForExit() async -> Int32? { await exit.wait() }
+    func waitForOutputEnd() async -> Void? { await outputEnd.wait() }
+
+    func signalGroup(_ signal: Int32) {
+        record.withLock { $0.signals.append(signal) }
+        guard !exit.isResolved else { return }
+        if signal == SIGKILL || (signal == SIGTERM && !ignoresTerm) {
+            record.withLock { $0.exitedBy = signal }
+            finishOutput()
+            exit.resolve(signal)  // a wait status whose low bits name the signal
+        }
+    }
+
+    private func finishOutput() {
+        sink.finish()
+        outputEnd.resolve(())
+    }
+}
+
+/// A thread-safe counter and log for fakes called from @Sendable closures.
+nonisolated final class Recorder<Value: Sendable>: Sendable {
+    private let values = OSAllocatedUnfairLock(initialState: [Value]())
+    func append(_ value: Value) { values.withLock { $0.append(value) } }
+    var all: [Value] { values.withLock { $0 } }
+    var count: Int { values.withLock { $0.count } }
+}
+
+/// Polls `condition` until it holds or `limit` passes.
+func eventually(within limit: Duration = .seconds(5), _ condition: () -> Bool) async -> Bool {
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: limit)
+    while clock.now < deadline {
+        if condition() { return true }
+        try? await Task.sleep(for: .milliseconds(5))
+    }
+    return condition()
+}
+
+/// A fresh directory under the system temporary directory, canonicalized.
+func temporaryDirectory(_ name: String = #function) throws -> URL {
+    let base = URL(filePath: FileChecks.canonicalPath(FileManager.default.temporaryDirectory.path), directoryHint: .isDirectory)
+    let safe = name.filter { $0.isLetter || $0.isNumber }
+    let url = base.appending(path: "shellcore-\(safe)-\(UUID().uuidString.prefix(8))", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return url
+}
+
+func processExists(_ pid: pid_t) -> Bool {
+    kill(pid, 0) == 0 || errno == EPERM
+}

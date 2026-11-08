@@ -118,6 +118,8 @@ exclude = [
     "/attic/",
     "/dist/",
     "/node_modules/",
+    # The native macOS app (Swift) builds separately and never ships in the Python package.
+    "/apps/",
 ]
 
 [tool.hatch.build.targets.wheel]

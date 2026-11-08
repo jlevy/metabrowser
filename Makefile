@@ -264,6 +264,17 @@ build:
 
 verify: install lint-check test audit build
 
+# The native macOS app in apps/macos (README.md there). It needs macOS and Swift, so
+# elsewhere these targets say so and succeed, and `verify` does not depend on them.
+MACOS_APP_TARGETS := macos-build macos-test macos-app macos-run macos-clean
+.PHONY: $(MACOS_APP_TARGETS)
+$(MACOS_APP_TARGETS):
+ifeq ($(shell uname -s),Darwin)
+	$(MAKE) -C apps/macos $(@:macos-%=%)
+else
+	@echo "$@: the macOS app builds only on macOS; skipping."
+endif
+
 clean:
 	-rm -rf dist/
 	-rm -rf *.egg-info/

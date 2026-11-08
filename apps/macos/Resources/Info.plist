@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The bundle identifier keys TCC grants, the user defaults domain, and LaunchServices. Choose it once. -->
+  <key>CFBundleIdentifier</key>          <string>io.github.jlevy.metabrowser</string>
+  <key>CFBundleName</key>                <string>Metabrowser</string>
+  <key>CFBundleDisplayName</key>         <string>Metabrowser</string>
+  <key>CFBundleExecutable</key>          <string>Metabrowser</string>
+  <key>CFBundlePackageType</key>         <string>APPL</string>
+  <key>CFBundleInfoDictionaryVersion</key> <string>6.0</string>
+  <!-- Stamped by scripts/build-app.sh. -->
+  <key>CFBundleShortVersionString</key>  <string>0.0.0</string>
+  <key>CFBundleVersion</key>             <string>0</string>
+  <key>CFBundleIconFile</key>            <string>AppIcon</string>
+  <key>LSMinimumSystemVersion</key>      <string>15.0</string>
+  <key>LSApplicationCategoryType</key>   <string>public.app-category.developer-tools</string>
+  <key>NSPrincipalClass</key>            <string>NSApplication</string>
+  <key>NSHighResolutionCapable</key>     <true/>
+  <!-- Either would let macOS kill the app without asking it to quit, skipping the server shutdown. -->
+  <key>NSSupportsAutomaticTermination</key> <false/>
+  <key>NSSupportsSuddenTermination</key> <false/>
+  <!-- No LSFileQuarantineEnabled: children would quarantine everything they write. -->
+
+  <!-- Loopback HTTP: the documented declaration, which also covers the readiness probe. -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>   <true/>
+  </dict>
+
+  <!-- Folders dropped on the Dock icon, opened with Open With, or passed to open -a. -->
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>        <string>Folder</string>
+      <key>CFBundleTypeRole</key>        <string>Viewer</string>
+      <key>LSHandlerRank</key>           <string>Alternate</string>
+      <key>LSItemContentTypes</key>      <array><string>public.folder</string></array>
+    </dict>
+  </array>
+
+  <!-- The app is the responsible process for its server, so the server's reads prompt in its name. -->
+  <key>NSDesktopFolderUsageDescription</key>
+  <string>Metabrowser shows the folders you open from your Desktop.</string>
+  <key>NSDocumentsFolderUsageDescription</key>
+  <string>Metabrowser shows the folders you open from Documents.</string>
+  <key>NSDownloadsFolderUsageDescription</key>
+  <string>Metabrowser shows the folders you open from Downloads.</string>
+  <key>NSRemovableVolumesUsageDescription</key>
+  <string>Metabrowser shows folders you open on removable drives.</string>
+  <key>NSNetworkVolumesUsageDescription</key>
+  <string>Metabrowser shows folders you open on network drives.</string>
+  <key>NSFileProviderDomainUsageDescription</key>
+  <string>Metabrowser shows folders you open in iCloud Drive and other cloud storage.</string>
+  <key>NSAppDataUsageDescription</key>
+  <string>Metabrowser shows folders you open inside other apps' data.</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Metabrowser's Git sources can fetch from servers on your local network.</string>
+</dict>
+</plist>
