@@ -5,7 +5,7 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: in_progress
 priority: 1
-version: 13
+version: 14
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -19,7 +19,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-08T07:31:52.778Z
+updated_at: 2026-11-08T09:27:04.867Z
 started_at: 2026-11-08T01:58:21.485Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
@@ -60,6 +60,18 @@ The full list with how each was checked is docs/project/reviews/review-2026-10-0
 PRACTICAL CONSTRAINT: on 2026-10-26 the data volume was 94 percent full, 403 GiB used of 460 GiB with 26 GiB free (read /System/Volumes/Data, not /, which is the sealed system volume and reports misleadingly). Worktrees are NOT the cause: 40 of the 49 worktree records are stale pointers to directories that no longer exist, so `git worktree prune` cleans records and reclaims nothing, and every metabrowser checkout together is under 2 GiB. The differentials need rebuilt corpora plus two installed builds, which 26 GiB should carry; the 300,000-file flat-stress pass from exp-036 is what disk blocked before, so check free space before attempting that one specifically.
 
 ## Notes
+
+November 8: stabilization completed
+
+PR #333 merged forward at main 9416b78b8dc2657a3e1745f5d6b7152c9dfc6e98. Its full tree e933e676afc54d99521986f709c6c8ecd2e7717f equals reviewed head a2bb0d29ab6165dacf95705bf189b2208b96c534, retained as an ancestor. Independent Review A has no open findings. All nine PR CI jobs and all nine merged-main jobs passed.
+
+The exact gated wheel 0.11.1.dev1280+a2bb0d29a (SHA-256 81524fde0549e9111a76c94305fb578fef544e93cf9e08d340a4ea4389479bb0) is installed for both CLI aliases. Doctor reports 11 healthy plugins, all 33 served assets match, all 45 applicable runtime pins are unchanged, and the portable skill content is verified with its source pin advanced. Only the three verified old preview servers were replaced; cache, config, targets and checkout edits were preserved.
+
+Installed browser checks pass PR-to-Commits in managed and checkout modes: correct commit, one connected diff, no remaining loading state. Managed preview selects main 9416b78. The original CHANGELOG route retains aligned card padding and right-hand contents. No current console warning/error appears after installation; old logs remain historical. Source checks also cover rapid replacement and independent tab restoration.
+
+Complete exact-head make verify passed 4,917 tests, nine expected skips, 386 golden checks, lint/types, audits and artifact checks with zero filesystem errors. Red/green evidence covers loading-timer overwrite, superseded paint cleanup and superseded missing-commit freshness cleanup. All asynchronous cleanup paths were audited. The earlier interrupted push and partial e204 differential remain preserved, not relabeled as passes.
+
+PR status and post-merge evidence are current. Release differentials, quiet performance/navigation work, final installed QA/owner acceptance and release approval remain separate and open. mb-itzy stays paused; no branch/worktree chooser implementation. No tag or release was created.
 
 November 8 checkpoint: documentation #332 merged at main240da85cbb45b72defed0084aadc99ee0be234ed, tree equal to gated e204ce9b566eaf72f82bf36536fc780edd774a04. All nine PR and main CI jobs pass. Both default CLI aliases and three existing previews are installed from gated 0.11.1.dev1277+e204ce9b5 (wheel fe271138444c3ed8018b3d9889942c2bf3824dfa2d2f284b529de74cda15a723), doctor11healthy,30servedassets verified; managedpreview pin240. Installed QA reproduced commit-loading stall. mb-4mfc is now a release blocker: JS loading-timer overwrite and superseded-paint pending-claim races deterministically red/green; independent review clear after fixes,35focusedpytest+2goldenblocks+types passed; managed sourcepreview renders16files, existing-checkout smoke underway; fullgate inprogress before commit/push/PR. First fullgate stopped before tests on broad public-reference wording check; documentation uses explicit public links, check now passes; preserved first failure. Future branch/worktree chooser mb-itzy remains paused/design-only. No release/tag/publication approval.
 
