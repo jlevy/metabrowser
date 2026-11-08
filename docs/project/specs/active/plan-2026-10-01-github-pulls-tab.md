@@ -147,9 +147,13 @@ Separate private snapshots, conditional pages, account/source checks and bounded
 background jobs keep ordinary PR reading independent of optional tooling or API
 failures.
 
-A known member opens a Layers icon and position/total menu.
-Member rows show their ordinal, title from the matching local catalog, and PR number,
-with the current member marked.
+A known member shows a Layers icon and position/total beside its PR number in the left
+list, from the shared optional snapshot without per-row requests.
+On the PR page, the Layers position/total menu sits immediately to the right of the
+state badge. Its disclosure stays mounted while other header details update.
+Member rows read **1/6** · title · #123, with small middle dots, a bold position, the
+title from the matching local catalog and its PR number to the right.
+The current member is marked.
 Native membership is authoritative; a missing title falls back to the PR number.
 Selection and ⇧J/⇧K navigation preserve the selected tab while clearing a preceding file
 selection. ⇧J moves toward the base and ⇧K toward the top.
@@ -157,8 +161,10 @@ The shared shortcut registry owns editor, dialog, endpoint, and disposal behavio
 Unknown membership in a partial or unavailable snapshot is not an assertion that the PR
 has no stack. Cold PR pages use the existing gray pulse in their reading column; cached
 refreshes keep content visible.
-The shared [design system](../../../design-system.md#the-pulls-tab) uses dark PR
-numbers, normal-size bold gray usernames, and smaller branch refs.
+The shared [design system](../../../design-system.md#the-pulls-tab) uses dark PR numbers
+at the title’s navigation size, bold usernames in normal text ink at the repository
+summary’s small metadata size, and compact branch refs.
+The **View on GitHub** action uses a leading GitHub brand mark.
 The
 [focused QA session](../../../qa-v012-repository-library.md#57b-optional-stacks-and-pr-presentation)
 records the final artifact and cache conditions without a new testing framework.

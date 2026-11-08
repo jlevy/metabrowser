@@ -30,6 +30,7 @@
   font-weight: var(--weight-normal);
 }
 .github-pull-meta {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -385,6 +386,9 @@
    docs/design-system.md, "The Pulls Tab". Its controls, notices, and ages are the shell's
    primitives; what is here is their placement, and a row, which takes the row contract. */
 .github-pulls-filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   position: sticky;
   top: 0;
   z-index: 1;
@@ -392,7 +396,12 @@
   background: var(--sidebar-bg);
 }
 .github-pulls-filters .chip-group {
+  min-width: 0;
   max-width: 100%;
+}
+.github-pulls-reload {
+  flex: none;
+  margin-inline-start: auto;
 }
 .github-pulls-filters .chip {
   overflow-wrap: anywhere;
@@ -500,21 +509,28 @@
 .github-pulls-meta {
   grid-column: 3 / -1;
   color: var(--muted);
-  font-size: var(--nav-font-size);
+  font-size: var(--ui-small-font-size);
 }
 .github-pulls-number {
   color: var(--text);
-}
-.github-pull-author {
-  color: var(--muted);
-  font-weight: var(--weight-bold);
+  font-size: var(--nav-font-size);
 }
 .github-pulls-refs {
   color: var(--git-ref-remote);
 }
-.github-pulls-refs,
-.github-pulls-stack {
+.github-pulls-refs {
   font-size: var(--ui-small-font-size);
+}
+.github-pulls-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: 4px;
+  vertical-align: middle;
+  font-size: var(--ui-small-font-size);
+}
+.github-pulls-stack[hidden] {
+  display: none;
 }
 /* The registry's chevron, at the tree's 12px glyph in a 16px box; `.collapsed` and `.expanded`
    on the row turn it, as they turn a folder's. */
@@ -641,10 +657,9 @@
   outline-offset: 1px;
 }
 
-/* Optional native membership follows the title's reading column, outside the age/status
-   repaint. The disclosure contains PR addresses; the stack itself has no HTML URL. */
+/* Optional membership stays beside the state badge in a retained status row.
+   The menu aligns to that row, so it fits a narrow pane as well as a wide one. */
 .github-pull-stacks {
-  padding-inline: var(--content-padding-x);
   font-size: var(--ui-small-font-size);
 }
 .github-pull-stacks[hidden] {
@@ -654,10 +669,9 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--chip-cluster-gap);
-  padding-block-end: 6px;
 }
 .github-pull-stack-disclosure {
-  position: relative;
+  position: static;
 }
 .github-pull-stack-trigger {
   display: inline-flex;
@@ -695,19 +709,28 @@
   width: var(--icon-glyph);
 }
 .github-pull-stack-member-copy {
-  display: flex;
-  flex-direction: column;
+  display: block;
   min-width: 0;
-  gap: 2px;
+}
+.github-pull-stack-position,
+.github-pull-stack-member-position {
+  font-weight: var(--weight-bold);
+  font-variant-numeric: var(--tabular-numerals);
+  white-space: nowrap;
+}
+.github-pull-stack-dot {
+  color: var(--muted);
+  font-size: var(--micro-font-size);
+}
+.github-pull-stack-member-number {
+  color: var(--text);
+  white-space: nowrap;
 }
 .github-pull-stack-member-title {
   overflow-wrap: anywhere;
 }
 .github-pull-stack-member[aria-current="page"] {
   background: var(--hover-bg);
-}
-.github-pull-stack-member[aria-current="page"] .github-pull-stack-member-title {
-  font-weight: var(--weight-bold);
 }
 .github-pull-loading {
   margin: 0;

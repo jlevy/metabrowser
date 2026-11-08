@@ -17,6 +17,23 @@ class Element {
   get childNodes() {
     return this.children;
   }
+  get firstChild() {
+    return this.children[0] ?? null;
+  }
+  get lastChild() {
+    return this.children.at(-1) ?? null;
+  }
+  insertBefore(node, before) {
+    node.remove?.();
+    node.parentNode = this;
+    const at = this.children.indexOf(before);
+    if (at < 0) {
+      this.children.push(node);
+    } else {
+      this.children.splice(at, 0, node);
+    }
+    return node;
+  }
   setAttribute(key, value) {
     this.attributes.set(key, String(value));
   }
@@ -116,6 +133,32 @@ for (const [href, expected] of [
   }
   report.push({ href, icon: expected });
 }
+const explicit = document.createElement("a");
+explicit.setAttribute("href", "https://github.com/octo/demo/pull/7");
+explicit.setAttribute("target", "_blank");
+explicit.setAttribute("rel", "noopener noreferrer");
+const label = document.createTextNode("View on GitHub");
+explicit.append(label);
+decorate(explicit, { icon: "github", position: "before" });
+const brand = explicit.firstChild;
+assert.equal(brand.getAttribute("data-external-kind"), "github");
+assert.equal(explicit.lastChild, label);
+assert.equal(explicit.getAttribute("target"), "_blank");
+assert.equal(explicit.getAttribute("rel"), "noopener noreferrer");
+decorate(explicit, { icon: "github", position: "before" });
+assert.deepEqual(
+  explicit.children,
+  [brand, label],
+  "brand decoration is stable and precedes the label",
+);
+decorate(explicit);
+assert.deepEqual(
+  explicit.children,
+  [label, brand],
+  "default decoration restores destination semantics",
+);
+assert.equal(brand.getAttribute("data-external-kind"), "pull");
+
 const link = document.createElement("a");
 link.setAttribute("href", "https://github.com/octo/demo/pull/7");
 const authored = document.createElement("span");
@@ -144,6 +187,7 @@ const summary = {
     "authored forged marker retained without trust",
     "new destination reclassified",
   ],
+  explicitBrandAction: { position: "before", destination: "github", label: "View on GitHub" },
   providerCalls: 0,
 };
 

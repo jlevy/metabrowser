@@ -135,6 +135,11 @@ $ node tests/dom/external-links-session.js
     "authored forged marker retained without trust",
     "new destination reclassified"
   ],
+  "explicitBrandAction": {
+    "position": "before",
+    "destination": "github",
+    "label": "View on GitHub"
+  },
   "providerCalls": 0,
   "sanitizedConversation": [
     {

@@ -2,11 +2,12 @@ const assert = require("node:assert/strict");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 (async () => {
-  const { createStackController, createStackIndex, stackMembership, memberRoute } = await import(
-    pathToFileURL(
-      path.resolve(__dirname, "../../src/metabrowser/builtin_plugins/github/pull-stacks.js"),
-    ).href
-  );
+  const { createStackController, createStackIndex, stackMembership, stackCaption, memberRoute } =
+    await import(
+      pathToFileURL(
+        path.resolve(__dirname, "../../src/metabrowser/builtin_plugins/github/pull-stacks.js"),
+      ).href
+    );
   const identity = { source: "https://github.com/octo/demo", reader: "gh:octo-reader" };
   const cached = {
     ...identity,
@@ -29,6 +30,16 @@ const { pathToFileURL } = require("node:url");
     ],
   };
   const index = createStackIndex(cached);
+  assert.deepEqual(stackCaption(index, identity, 8), {
+    text: "2/3",
+    hint: "Stack #286, position 2 of 3",
+  });
+  assert.deepEqual(stackCaption(index, identity, 9), {
+    text: "3/3 · 1/2",
+    hint: "Stack #286, position 3 of 3; Stack #900, position 1 of 2",
+  });
+  assert.equal(stackCaption(index, { ...identity, reader: "gh:other" }, 8), null);
+
   assert.deepEqual(
     stackMembership(index, identity, 8).map((stack) => stack.number),
     [286],
@@ -235,6 +246,11 @@ const { pathToFileURL } = require("node:url");
   noRepository.dispose();
   console.log(
     JSON.stringify({
+      rowCaptions: {
+        single: stackCaption(index, identity, 8),
+        shared: stackCaption(index, identity, 9),
+        foreign: stackCaption(index, { ...identity, reader: "gh:other" }, 8),
+      },
       authoritativeMembership: true,
       multipleStacks: true,
       identityGuard: true,

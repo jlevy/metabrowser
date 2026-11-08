@@ -315,7 +315,7 @@
       html += `<span class="git-commit-refs">${renderRefBadges(commit.refs, compact ? false : "inline")}</span>`;
     }
     html += "</span>";
-    html += `<span class="git-commit-author">${escapeHtml(commit.author?.name || "")}</span>`;
+    html += `<span class="actor-name git-commit-author">${escapeHtml(commit.author?.name || "")}</span>`;
     html += `<span class="git-commit-age ${escapeHtml(ageClass(commit.committed_at))}">`;
     html += `${escapeHtml(relativeAge(commit.committed_at, { style: "relative" }))}</span>`;
     html += "</div>";
@@ -1623,7 +1623,7 @@
     body.innerHTML =
       (refs ? `<span class="git-graph-refs">${refs}</span>` : "") +
       `<span class="git-graph-subject">${escapeHtml(commit.subject)}</span>` +
-      `<span class="git-graph-meta">${escapeHtml(commit.author?.name || "")}` +
+      `<span class="git-graph-meta"><span class="actor-name">${escapeHtml(commit.author?.name || "")}</span>` +
       `<span class="git-graph-age ${escapeHtml(ageClass(commit.committed_at))}">` +
       `${escapeHtml(relativeAge(commit.committed_at))}</span></span>`;
     element.appendChild(body);

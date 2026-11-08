@@ -1732,8 +1732,18 @@ order, conditional pages without `Link`, cache-only reads and missing-tool backo
    PR reading works, matching cached badges remain, and refreshes back off.
    An account/source mismatch must hide those badges.
 
-3. On narrow and wide screens, check dark PR numbers, normal-size bold gray usernames
-   and smaller consistently colored branches in the list, header and conversation.
+3. On narrow and wide screens, check dark PR numbers, bold normal-text-color usernames
+   and consistently colored branch chips in the list, header and conversation.
+   Sidebar usernames match the repository summary’s small metadata size; page actors,
+   actions and ages share their larger baseline.
+   Commit authors use the same name style.
+   Reload sits flush right beside Open, Closed, All and remains in the keyboard tab
+   order; the update age stays below the repository summary.
+   The list’s stack icon and position sit beside its PR number.
+   The page’s stack menu sits immediately right of its state badge.
+   Menu rows read **1/6** · title · #123, with only the position bold; the menu fits the
+   pane and retains focus through refresh.
+   View on GitHub uses the GitHub brand icon before the label.
    Cold Conversation and Files changed show aligned gray pulsing blocks; cached refresh
    keeps content and focus.
    Check reduced motion, late stack arrival, expanded trees and scroll after the actual

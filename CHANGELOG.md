@@ -45,6 +45,9 @@ PR and Git navigation:
   Selection takes priority; discussion, checks, and Git objects load when needed.
 - PR stacks open from a compact position menu with titles, ordinals, and PR numbers.
   Use ⇧J toward the stack base and ⇧K toward its top.
+- Usernames and repository names use bold normal text ink, with names inheriting their
+  context’s font size.
+  Branches share colored, copyable ref chips across navigation and page headers.
 - PR author, action, and age share one metadata size and baseline.
   Commit descriptions share PR cards’ neutral surface and sans prose typography.
 - A selected PR can show its verified header and description before discussion, checks

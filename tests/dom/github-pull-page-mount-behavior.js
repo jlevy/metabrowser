@@ -41,6 +41,30 @@ class Element {
   get ownerDocument() {
     return globalThis.document;
   }
+  get childNodes() {
+    return this.children;
+  }
+  get firstChild() {
+    return this.children[0] ?? null;
+  }
+  get lastChild() {
+    return this.children.at(-1) ?? null;
+  }
+  get nextSibling() {
+    const peers = this.parentNode?.children ?? [];
+    return peers[peers.indexOf(this) + 1] ?? null;
+  }
+  insertBefore(node, before) {
+    if (node === before) {
+      return node;
+    }
+    node.remove();
+    const at = before === null ? this.children.length : this.children.indexOf(before);
+    assert(at >= 0, "insertBefore reference belongs to its parent");
+    node.parentNode = this;
+    this.children.splice(at, 0, node);
+    return node;
+  }
   getAttribute(name) {
     return this.attributes.get(name) ?? null;
   }
@@ -53,6 +77,7 @@ class Element {
   append(...children) {
     for (const child of children) {
       if (typeof child !== "string") {
+        child.remove();
         child.parentNode = this;
       }
       this.children.push(child);
@@ -584,9 +609,18 @@ async function run() {
       title.parentNode.children.indexOf(meta),
       title.parentNode.children.indexOf(title) + 1,
     );
-    const [stateBadge] = meta.children;
+    const [stateBadgeSlot, stackSlot] = meta.children;
+    const stateBadge = stateBadgeSlot.children[0];
+    assert.equal(stackSlot, container.querySelector(".github-pull-stacks"));
     assert.equal(stateBadge.getAttribute("data-state"), "open");
     assert.deepEqual(stateBadge.children, ["Open"]);
+    const githubAction = [...container.descendants()].find(
+      (node) => node.tag === "a" && node.textContent === "View on GitHub",
+    );
+    assert(githubAction);
+    assert.equal(githubAction.firstChild.getAttribute("data-external-kind"), "github");
+    assert.equal(githubAction.lastChild, "View on GitHub");
+
     assert.equal(stateBadge.getAttribute("aria-hidden"), null);
     assert.deepEqual(
       container
