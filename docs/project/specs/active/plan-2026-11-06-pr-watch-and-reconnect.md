@@ -1,8 +1,9 @@
 # Plan for Watching GitHub Pull Requests
 
-**Status.** Implementation and verification tracked in `mb-bzhx`. The design is
-`mb-lz7e`, catalog refresh and recovery are `mb-ad70`, the Pulls UI is `mb-81f2`, and
-session verification is `mb-khc4`. Shared row arrivals are tracked in `mb-x9v7`.
+**Status.** Implemented and merged on `main` at `68534af93` on 2026-11-07;
+implementation and verification are closed in `mb-bzhx`. The design is `mb-lz7e`,
+catalog refresh and recovery are `mb-ad70`, the Pulls UI is `mb-81f2`, and session
+verification is `mb-khc4`. Shared row arrivals are tracked in `mb-x9v7`.
 
 ## Reader Behavior
 

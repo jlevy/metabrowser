@@ -849,7 +849,16 @@ async function paintStory(panel, selection = false) {
     const connection = container.childNodes.find((node) =>
       node.classList?.contains("github-pulls-connection"),
     );
-    const [connectionText, , reload] = connection.childNodes;
+    const [connectionText] = connection.childNodes;
+    const controlsRow = container.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-filters"),
+    );
+    const reload = controlsRow.childNodes.at(-1);
+    assert(reload.classList.contains("github-pulls-reload"), "Reload follows the state filters");
+    assert(
+      reload.getAttribute("aria-checked") === null && reload.tabIndex !== -1,
+      "Reload remains a normal keyboard action rather than a filter chip",
+    );
     const [spinner, message] = connectionText.childNodes;
     assert(
       !connection.hidden && message.textContent === "Fetching pull requests…",
@@ -880,7 +889,9 @@ async function paintStory(panel, selection = false) {
     const filters = container.childNodes.find((node) =>
       node.classList?.contains("github-pulls-filters"),
     );
-    const filterChips = [...filters.querySelectorAll("button")];
+    const filterChips = [...filters.querySelectorAll("button")].filter(
+      (node) => node.dataset.chipValue !== undefined,
+    );
     assert(filterChips.length === 3, "all filter chips have a tally");
     for (const chip of filterChips) {
       const tally = chip.childNodes.at(-1);
@@ -895,7 +906,7 @@ async function paintStory(panel, selection = false) {
     await answer(first);
     assert(spinner.hidden && message.textContent.startsWith("Updated "), "the same row settles");
     assert(
-      connection.childNodes.at(-1) === reload && reload.getAttribute("aria-disabled") === "false",
+      controlsRow.childNodes.at(-1) === reload && reload.getAttribute("aria-disabled") === "false",
       "the stable Reload becomes available when settled",
     );
     assert(document.activeElement === filterChips.at(-1), "tallies leave the focused chip mounted");

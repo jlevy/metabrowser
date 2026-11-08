@@ -20,6 +20,14 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   Element.prototype.contains = function (node) {
     return this === node || [...this.descendants()].includes(node);
   };
+  // Real replacement detaches focused descendants even if the same nodes return.
+  const replace = Element.prototype.replaceChildren;
+  Element.prototype.replaceChildren = function (...nodes) {
+    if (this !== document.activeElement && this.contains(document.activeElement)) {
+      document.activeElement = null;
+    }
+    replace.call(this, ...nodes);
+  };
   const captures = new WeakMap();
   const listen = Element.prototype.addEventListener;
   Element.prototype.addEventListener = function (name, listener, options) {
@@ -203,6 +211,10 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   const trigger = warm.querySelector(".github-pull-stack-trigger");
   assert.equal(trigger.getAttribute("aria-label"), "Navigate Stack #286, position 2 of 3");
   assert.equal(trigger.getAttribute("aria-haspopup"), "menu");
+  assert(
+    warm.querySelector(".github-pull-meta").contains(trigger),
+    "stack control shares the state row",
+  );
   assert(warm.querySelector(".github-pull-author"), "page actor uses semantic username treatment");
   const disclosure = warm.querySelector(".github-pull-stack-disclosure");
   assert.equal(warm.querySelector(".github-pull-stack-menu"), null, "member list is lazy");
@@ -211,9 +223,15 @@ const { Element, recorded, root, settle, perf } = require("./github-pull-page-mo
   const members = warm.querySelector(".github-pull-stack-menu");
   assert.deepEqual(
     [...members.descendants()].filter((item) => item.tag === "a").map((item) => item.textContent),
-    ["Stack change 83/3 · #8", "✓Stack change 72/3 · #7", "Stack change 61/3 · #6"],
+    ["3/3 · Stack change 8 · #8", "✓2/3 · Stack change 7 · #7", "1/3 · Stack change 6 · #6"],
   );
   const anchors = [...members.descendants()].filter((element) => element.tag === "a");
+  anchors[0].focus();
+  next.setTab("files");
+  await settle();
+  assert.equal(disclosure.open, true, "same-page repaint retains the open disclosure");
+  assert.equal(document.activeElement, anchors[0], "same-page repaint retains menu focus");
+
   const previous = anchors.find((element) => element.getAttribute("href") === "/pull/6/files");
   const following = anchors.find((element) => element.getAttribute("href") === "/pull/8/files");
   assert(previous);

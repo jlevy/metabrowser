@@ -322,6 +322,12 @@ A literal fails the build unless its exemption list names the selector and why.
 Keep these roles distinct:
 
 - labels and metadata use normal weight and muted text;
+- person names use `.actor-name`, and repository names use `.repository-name`: bold
+  normal text ink, inheriting the surrounding context’s font size.
+  Apply the same person-name primitive to commit authors, PR authors, mergers, comments,
+  and reviews;
+- branch names use the shared [ref chip](#branch-chips), including its color and
+  hover-to-copy control, in navigation, headers, and histories;
 - filenames are the identity of a row and carry bold weight at full contrast, while the
   parent path beside them is context and stays regular weight and muted;
 - byte counts, durations, timestamps, and numeric table columns use tabular numerals;
@@ -485,7 +491,9 @@ General GitHub, CLI, documentation, gist and API links use the GitHub mark.
 Canonical issue and pull-request addresses use a neutral entity icon when their state is
 unknown. Matching PR metadata supplies the existing open, closed, draft or merged icon;
 the address alone never establishes a state.
-Icons preserve the link’s text, wrapping, focus and safe external-navigation attributes.
+The explicit **View on GitHub** action uses the GitHub brand mark before its text,
+including when its destination is a PR. Other PR references retain their entity/state
+icon. Icons preserve text, wrapping, focus and safe external-navigation attributes.
 
 Use the shared `decorateExternalLink` view helper after source-link localization and
 sanitization. A link localized to a served file stays internal.
@@ -1124,7 +1132,7 @@ Until its render arrives a text shows as plain text in the same face and size.
 | --- | --- | --- |
 | Title | `--page-title-font-size`, `--weight-bold`, sans | The number beside it uses normal text ink and regular weight at the same size |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome |
-| Username | `.github-pull-author`, bold and muted at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
+| Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
 | Base and head branch | `.git-ref.git-ref-remote`, at `--ui-small-font-size` | The [ref chip](#branch-chips), smaller than the actor and action; the list uses the same remote-ref ink |
 | Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
 | Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
@@ -1139,7 +1147,7 @@ Until its render arrives a text shows as plain text in the same face and size.
 | Refresh, Fetch, Switch to the head | `.btn` |  |
 
 Author, action, and relative age share one metadata size and baseline in a header or
-discussion card. The bold username uses the same muted ink wherever it names an actor.
+discussion card. The bold username uses the normal text ink wherever it names an actor.
 The avatar centers independently beside that text baseline.
 Compact navigation ages and branch chips retain their smaller chrome sizes.
 
@@ -1168,8 +1176,8 @@ The shown page’s row opens automatically and closes when the page moves, unles
 opened it.
 
 The metadata line gives the PR number normal row size and text ink.
-The username is the same size, bold and muted; the branch names are smaller in the
-shared remote-ref color.
+Usernames and the repository summary use the same small metadata size and bold normal
+text ink. Branch names use the small shared remote-ref chip.
 Known native stack numbers use quiet text on that line.
 Their shared repository snapshot is indexed once by PR number; rows make no stack
 requests, and enrichment updates retain the row and any focused changed-file tree.
@@ -1222,10 +1230,13 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | State icon | The 16px alignment box around `--icon-glyph` | [One Glyph Size](#one-glyph-size) |
 | Title | `--nav-font-size`, full contrast, cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity |
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
-| PR number and username | `--nav-font-size`; number uses text ink, username uses `.github-pull-author` | Both are readable context; usernames stay bold and muted across PR surfaces |
-| Base and head | `--ui-small-font-size`, remote-ref ink | Ref context is smaller than the number and username |
+| PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
+| Username and repository summary | `--ui-small-font-size`; username uses `.actor-name` | Secondary context stays the same size; usernames remain bold in normal text ink |
+| Stack position | Layers icon and bold position/total beside the PR number | A passive list badge uses the shared optional snapshot and identifies its stack in the tooltip |
+| Base and head | `--ui-small-font-size`, remote-ref ink | Compact contextual chips below the title’s primary size |
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Counts describe the repository and the displayed window. |
+| Reload | Flush right beside Open, Closed, All, in the same sticky row | The update age stays below the repository summary. |
 | Connection | One live status row with the shared small gray spinner during work, a quiet update age when idle, and actionable copy during failures | Cached rows stay visible. |
 | Fetch more, Reload | `.btn` | Fetch more extends the display window. Reload checks GitHub for updates. See [Control Families](#control-families). |
 

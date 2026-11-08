@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import os
 import subprocess
 import sys
 import zipfile
@@ -12,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from devtools import bench_serving
 from devtools.bench_serving import (
     MetabBuild,
     Server,
@@ -353,3 +355,40 @@ def test_benchmark_observes_fast_scan_completion(
         assert completed is not None
         assert completed["files"] == 1
         assert completed["status"] == "done"
+
+
+def test_project_corpus_materializes_linked_install_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for name in ("src", "tests", "docs"):
+        (repo / name).mkdir()
+        (repo / name / "tracked.txt").write_text(name)
+    for name in ("node_modules", ".venv"):
+        installed = tmp_path / f"installed-{name}"
+        installed.mkdir()
+        (installed / "dependency.txt").write_text(name)
+        (repo / name).symlink_to(installed, target_is_directory=True)
+    monkeypatch.setattr(bench_serving, "REPO", repo)
+
+    for name in ("fresh", "old-shape"):
+        root = tmp_path / name
+        if name == "old-shape":
+            root.mkdir()
+            (root / ".bench-corpus.json").write_text(
+                json.dumps({"projects": 1, "shape": 1, "files": 0, "dirs": 0})
+            )
+        result = bench_serving.build_project_corpus(root, projects=1)
+        for install in ("node_modules", ".venv"):
+            copied = root / "project00" / install
+            assert not copied.is_symlink()
+            assert (copied / "dependency.txt").read_text() == install
+        walked = {
+            str(Path(directory, filename).relative_to(root))
+            for directory, _, filenames in os.walk(root)
+            for filename in filenames
+        }
+        assert "project00/node_modules/dependency.txt" in walked
+        assert "project00/.venv/dependency.txt" in walked
+        assert result["files"] > 2

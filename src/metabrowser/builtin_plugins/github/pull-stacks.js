@@ -10,25 +10,28 @@
  * last_refresh: {outcome: string, at: string, reset_at: string | null} | null,
  * stacks: NativeStack[],
  * }} StackEnvelope */
-/** @typedef {{source: string | null, reader: string | null, byPull: Map<number, NativeStack[]>, labels: Map<number, string>}} StackIndex */
+/** @typedef {{source: string | null, reader: string | null, byPull: Map<number, NativeStack[]>, labels: Map<number, {text: string, hint: string}>}} StackIndex */
 
 /** @param {StackEnvelope | null} envelope @returns {StackIndex} */
 export function createStackIndex(envelope) {
   /** @type {Map<number, NativeStack[]>} */
   const byPull = new Map();
+  /** @type {Map<number, {text: string, hint: string}>} */
+  const labels = new Map();
   for (const stack of envelope?.stacks ?? []) {
-    for (const number of stack.pulls) {
+    for (const [at, number] of stack.pulls.entries()) {
       const membership = byPull.get(number) ?? [];
       membership.push(stack);
       byPull.set(number, membership);
+      const previous = labels.get(number);
+      const text = `${at + 1}/${stack.pulls.length}`;
+      const hint = `Stack #${stack.number}, position ${at + 1} of ${stack.pulls.length}`;
+      labels.set(number, {
+        text: previous ? `${previous.text} · ${text}` : text,
+        hint: previous ? `${previous.hint}; ${hint}` : hint,
+      });
     }
   }
-  const labels = new Map(
-    [...byPull].map(([number, stacks]) => [
-      number,
-      stacks.map((stack) => ` · Stack #${stack.number}`).join(""),
-    ]),
-  );
   return { source: envelope?.source ?? null, reader: envelope?.reader ?? null, byPull, labels };
 }
 
@@ -52,8 +55,8 @@ export function stackCaption(index, identity, number) {
     identity.reader &&
     index.source === identity.source &&
     index.reader === identity.reader
-    ? (index.labels.get(number) ?? "")
-    : "";
+    ? (index.labels.get(number) ?? null)
+    : null;
 }
 
 /** A member selection has the same explicit-reader fetch intent as a catalog click.

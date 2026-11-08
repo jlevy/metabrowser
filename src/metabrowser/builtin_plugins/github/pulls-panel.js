@@ -2343,10 +2343,10 @@ export function mountPullsPanel(container, ctx, mb) {
     ["Reload"],
   );
   reloadButton.addEventListener("click", () => void controller.reload());
+  filters.append(reloadButton);
   const connection = h("div", { class: "github-pulls-connection", hidden: "" }, [
     connectionText,
     connectionHelp,
-    reloadButton,
   ]);
   const foot = h("div", { class: "github-pulls-foot" });
   const moreButton = /** @type {HTMLButtonElement} */ (
@@ -2410,6 +2410,8 @@ export function mountPullsPanel(container, ctx, mb) {
   const chevronSvg = new DOMParser().parseFromString(mb.icons?.toggle || "", "text/html").body
     .firstElementChild;
   const chevron = () => (chevronSvg === null ? null : document.importNode(chevronSvg, true));
+  const stackSvg = new DOMParser().parseFromString(mb.icons?.layers || "", "text/html").body
+    .firstElementChild;
   // Narrowed once, for the functions below that run later.
   const tab = nav;
 
@@ -2593,10 +2595,44 @@ export function mountPullsPanel(container, ctx, mb) {
     return { at, ...when };
   }
 
+  /** A passive badge stays inside the row's one primary link.
+   * @param {HTMLElement} element
+   * @param {number} number
+   */
+  function paintStackBadge(element, number) {
+    const caption = stackCaption(stackIndex, stackIdentity, number);
+    const text = caption?.text ?? "";
+    const hint = caption?.hint ?? "";
+    if (element.dataset.stackLabel === text && element.dataset.tipText === hint) {
+      return;
+    }
+    element.dataset.stackLabel = text;
+    element.dataset.tipText = hint;
+    element.hidden = caption === null;
+    if (caption === null) {
+      element.replaceChildren();
+      element.removeAttribute("aria-label");
+      return;
+    }
+    element.setAttribute("aria-label", hint);
+    element.replaceChildren(
+      h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
+      ...(stackSvg === null
+        ? []
+        : [
+            h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [
+              document.importNode(stackSvg, true),
+            ]),
+          ]),
+      h("span", { class: "github-pull-stack-position" }, [text]),
+    );
+  }
+
   /** @param {PullRow} row @param {HTMLElement} stack */
   function rowMeta(row, stack) {
     return h("span", { class: "github-pulls-meta" }, [
       h("span", { class: "github-pulls-number" }, [`#${row.number}`]),
+      stack,
       " · ",
       authorLabel(row.author, row.avatar, "github-pulls-author"),
       " · ",
@@ -2605,7 +2641,6 @@ export function mountPullsPanel(container, ctx, mb) {
         " ← ",
         mb.refChip(row.headRef, { label: row.headLabel, kind: "remote", copy: "sibling" }),
       ]),
-      stack,
     ]);
   }
 
@@ -2669,9 +2704,8 @@ export function mountPullsPanel(container, ctx, mb) {
       },
       [when.label],
     );
-    const stack = h("span", { class: "github-pulls-stack" }, [
-      stackCaption(stackIndex, stackIdentity, row.number),
-    ]);
+    const stack = h("span", { class: "github-pulls-stack", role: "img", hidden: "" });
+    paintStackBadge(stack, row.number);
     const meta = rowMeta(row, stack);
     const icon = pullStateIcon(row.state);
     // The registry's chevron in the 16px box a folder's takes, since the row is a container.
@@ -2902,10 +2936,7 @@ export function mountPullsPanel(container, ctx, mb) {
       } else if (entry.key !== key) {
         patchRow(entry, row, key);
       }
-      const caption = stackCaption(stackIndex, stackIdentity, row.number);
-      if (entry.stack.textContent !== caption) {
-        entry.stack.textContent = caption;
-      }
+      paintStackBadge(entry.stack, row.number);
       entry.row.setAttribute("aria-posinset", String(part.index + 1));
       entry.row.setAttribute("aria-setsize", String(placedSize));
       nodes.push(entry.item);
@@ -3030,7 +3061,7 @@ export function mountPullsPanel(container, ctx, mb) {
       readingPlace = null;
       list.replaceChildren();
       paintedVersion = -1;
-      for (const chip of filters.querySelectorAll("button")) {
+      for (const { chip } of tallies) {
         const on = chip.dataset.chipValue === model.filter;
         chip.setAttribute("aria-checked", String(on));
         chip.tabIndex = on ? 0 : -1;
@@ -3067,7 +3098,7 @@ export function mountPullsPanel(container, ctx, mb) {
     list.hidden = model.rows.length === 0;
     const lines = [];
     if (model.repository !== null) {
-      const repository = h("strong", { class: "github-pulls-total" }, [model.repository]);
+      const repository = h("strong", { class: "repository-name" }, [model.repository]);
       lines.push(
         h(
           "span",

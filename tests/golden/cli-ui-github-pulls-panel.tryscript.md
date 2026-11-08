@@ -821,7 +821,7 @@ overwrite a new owner.
 
 ```console
 $ node tests/dom/github-pull-stacks-behavior.js
-{"authoritativeMembership":true,"multipleStacks":true,"identityGuard":true,"tabAndReaderIntent":true,"sharedRead":true,"failureRetention":true,"retryWindow":true,"disposal":true,"lateOwnerGuard":true,"initialFailureRetry":true}
+{"rowCaptions":{"single":{"text":"2/3","hint":"Stack #286, position 2 of 3"},"shared":{"text":"3/3 · 1/2","hint":"Stack #286, position 3 of 3; Stack #900, position 1 of 2"},"foreign":null},"authoritativeMembership":true,"multipleStacks":true,"identityGuard":true,"tabAndReaderIntent":true,"sharedRead":true,"failureRetention":true,"retryWindow":true,"disposal":true,"lateOwnerGuard":true,"initialFailureRetry":true}
 ? 0
 ```
 

@@ -367,13 +367,29 @@ testing plan performs neither.
 
 ### Landing status
 
+**Current integration, 2026-11-07.** All 28 product layers in
+[stack 302](https://github.com/jlevy/metabrowser/stack/302), through
+[#327](https://github.com/jlevy/metabrowser/pull/327), are merged on
+[`main` at `68534af93`](https://github.com/jlevy/metabrowser/commit/68534af933f0fcb38a5d81d62691bb42732d58ab).
+The landed tree exactly matches the reviewed and gated tip `6cf001cdf`, which remains an
+ancestor. The
+[integration review](https://github.com/jlevy/metabrowser/pull/327#pullrequestreview-5816169303)
+records the final findings and their dispositions.
+[Main CI](https://github.com/jlevy/metabrowser/actions/runs/42439267509) passed all nine
+jobs. The
+[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) tracks
+post-landing verification, installation, current comparisons and outstanding release
+acceptance. Earlier observations below retain their original source pins.
+The user authorized feature merges and release preparation; tagging and publication
+still require explicit approval.
+
 **Feature landing, 2026-11-04.** The feature layers through
 [#283](https://github.com/jlevy/metabrowser/pull/283) and
 [#295](https://github.com/jlevy/metabrowser/pull/295) landed on
 [`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b).
 
-**Current integration, 2026-11-04.** The later changed-file account-publication fix in
-[#297](https://github.com/jlevy/metabrowser/pull/297), reviewed at
+**Integration checkpoint, 2026-11-04.** The later changed-file account-publication fix
+in [#297](https://github.com/jlevy/metabrowser/pull/297), reviewed at
 [`cc93c132`](https://github.com/jlevy/metabrowser/commit/cc93c1320e097768836089f77068f9e665333ac4),
 is merged into
 [`main` at afaf38b8](https://github.com/jlevy/metabrowser/commit/afaf38b85a83443e25002765203c216bd11f8dfa).
@@ -468,7 +484,9 @@ SDK gate still apply.
   The full runbook on an installed wheel from the release commit, and the checks below
   that only a person can make.
 
-- **These documents** (`mb-bdwl`, in progress).
+- **Documentation.** The earlier refresh `mb-bdwl` is closed.
+  Current post-landing reconciliation and release preparation are `mb-5k2w` and
+  `mb-gew9`.
 
 **Closed.**
 
@@ -491,14 +509,16 @@ SDK gate still apply.
 - `mb-y28u`: the fixes in #264.
 - `mb-gnr9`: the acceptance runs, T0 through T2, in the QA record.
 
-**Not in this release.** The Pulls tab is [planned](plan-2026-10-01-github-pulls-tab.md)
-only, and starts after 0.12.0 is tagged.
+**Included in 0.12.0.** The [Pulls tab](plan-2026-10-01-github-pulls-tab.md),
+checkout-backed review, live updates, Quick Search, shared reading layout, persistent
+metadata preparation and optional native-stack navigation are implemented on `main`.
 
 **Review.** The
 [review ledger](../../reviews/review-2026-10-01-v012-stack-review-ledger.md) has a row
 for every pull request in the stack, for #268, and for
-[stack 278](https://github.com/jlevy/metabrowser/stack/278), and states its limits: no
-person has reviewed the stack, and no pull request has a GitHub review decision.
+[stack 278](https://github.com/jlevy/metabrowser/stack/278), and preserves its original
+review limits. Current feature reviews and their dispositions are linked from the
+release-preparation record above.
 Its #267 row holds that pull request’s independent review, which reported on 2026-11-01.
 
 **The user’s decisions and checks.**
@@ -514,9 +534,9 @@ Its #267 row holds that pull request’s independent review, which reported on 2
 - The checks only a person can make (`mb-etqi`), which are Part 4 of the runbook’s
   [walk-through](../../../qa-v012-repository-library.md#walk-through-this-yourself):
   Safari and Firefox as well as Chrome, including repeated page loads in one tab; a
-  private repository the user’s account can read and one it cannot, which is row M10 and
-  stays blocked until an operator-owned private fixture exists; and a third-party plugin
-  against Plugin SDK 0.7, where one exists.
+  private repository the user’s account can read and one it cannot, which is row M10
+  (the unreadable case may use a nonexistent name); and a third-party plugin against
+  Plugin SDK 0.7, where one exists.
 - Approval to tag and release 0.12.0 (`mb-4bd2`).
 
 **Release method.** Steps 6 to 10 of the

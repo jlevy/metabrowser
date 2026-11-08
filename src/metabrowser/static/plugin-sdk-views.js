@@ -1628,18 +1628,20 @@
    * Only the calling view may supply a state icon; document attributes are never read.
    * @template {HTMLElement} T
    * @param {T} anchor
-   * @param {{icon?: Element}} [options]
+   * @param {{icon?: Element | "github", position?: "before" | "after"}} [options]
    * @returns {T}
    */
   function decorateExternalLink(anchor, options = {}) {
-    const kind = anchor.tagName === "A" ? githubDestination(anchor.getAttribute("href")) : null;
+    const destination =
+      anchor.tagName === "A" ? githubDestination(anchor.getAttribute("href")) : null;
+    const kind = destination === null ? null : options.icon === "github" ? "github" : destination;
     let mark = linkMarks.get(anchor);
     if (kind === null) {
       mark?.node.remove();
       linkMarks.delete(anchor);
       return anchor;
     }
-    const supplied = kind === "github" ? undefined : options.icon;
+    const supplied = kind === "github" || options.icon === "github" ? undefined : options.icon;
     if (!mark || mark.node.parentNode !== anchor) {
       const node = anchor.ownerDocument.createElement("span");
       node.className = "external-link-icon";
@@ -1657,6 +1659,15 @@
       mark.node.setAttribute("data-external-kind", kind);
       mark.kind = kind;
       mark.supplied = supplied;
+    }
+    const leading = options.position === "before";
+    mark.node.className = leading
+      ? "external-link-icon external-link-icon-leading"
+      : "external-link-icon";
+    if (leading && anchor.firstChild !== mark.node) {
+      anchor.insertBefore(mark.node, anchor.firstChild);
+    } else if (!leading && anchor.lastChild !== mark.node) {
+      anchor.append(mark.node);
     }
     return anchor;
   }

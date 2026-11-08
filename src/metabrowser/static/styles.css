@@ -5656,6 +5656,12 @@ pre.code-block.metabrowser-source-lines > code {
   margin-top: 10px;
 }
 
+.actor-name,
+.repository-name {
+  color: var(--text);
+  font-weight: var(--weight-bold);
+}
+
 /* ── Ref badges ─────────────────────────────────────────────── */
 
 /* Branch chips are their own vocabulary, not filter chips: at this
@@ -6091,6 +6097,10 @@ pre.code-block.metabrowser-source-lines > code {
   height: var(--icon-glyph);
   margin-inline-start: 0.25em;
   vertical-align: -0.12em;
+}
+.external-link-icon-leading {
+  margin-inline-start: 0;
+  margin-inline-end: 0.25em;
 }
 .external-link-icon > svg,
 .external-link-icon > .github-pull-state-icon,

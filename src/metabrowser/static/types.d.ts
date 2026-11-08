@@ -1176,7 +1176,10 @@ type MetabrowserSdk = {
   ): HTMLElement;
   mountRefCopies(primary: HTMLElement, host: HTMLElement): () => void;
   /** View-phase destination mark; a state icon may come only from trusted view metadata. */
-  decorateExternalLink<T extends HTMLElement>(anchor: T, options?: { icon?: Element }): T;
+  decorateExternalLink<T extends HTMLElement>(
+    anchor: T,
+    options?: { icon?: Element | "github"; position?: "before" | "after" },
+  ): T;
   formatAge(
     secondsSinceEpoch: number,
     options?: { style?: "compact" | "relative" },

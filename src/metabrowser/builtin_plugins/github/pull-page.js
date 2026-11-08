@@ -1977,7 +1977,9 @@ export function authorLabel(name, url, className = "") {
     label.append(image);
   }
   label.append(
-    h("strong", { class: `github-pull-author${className ? ` ${className}` : ""}` }, [name]),
+    h("strong", { class: `actor-name github-pull-author${className ? ` ${className}` : ""}` }, [
+      name,
+    ]),
   );
   return label;
 }
@@ -2099,7 +2101,7 @@ export function createStackMenu(initial, number, deps) {
   const signal = listening.signal;
   /** @type {HTMLElement[]} */
   const links = [];
-  /** @type {Map<number, {link: HTMLElement, title: HTMLElement, identity: HTMLElement}>} */
+  /** @type {Map<number, {link: HTMLElement, title: HTMLElement, position: HTMLElement, number: HTMLElement}>} */
   const rows = new Map();
   const label = h("div", { class: "menu-section-label" }, [`Stack #${stack.number}`]);
   let populated = false;
@@ -2111,7 +2113,8 @@ export function createStackMenu(initial, number, deps) {
       if (row) {
         row.title.textContent =
           stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`);
-        row.identity.textContent = `${at + 1}/${stack.pulls.length} · #${target}`;
+        row.position.textContent = `${at + 1}/${stack.pulls.length}`;
+        row.number.textContent = `#${target}`;
       }
     }
   }
@@ -2143,14 +2146,25 @@ export function createStackMenu(initial, number, deps) {
           link.setAttribute("aria-current", "page");
         }
         const title = h("span", { class: "github-pull-stack-member-title" });
-        const identity = h("span", { class: "github-pull-quiet" });
+        const position = h("strong", { class: "github-pull-stack-member-position" });
+        const identity = h("span", { class: "github-pull-stack-member-number" });
         link.append(
           h("span", { class: "github-pull-stack-current", "aria-hidden": "true" }, [
             target === number ? "✓" : "",
           ]),
-          h("span", { class: "github-pull-stack-member-copy" }, [title, identity]),
+          h("span", { class: "github-pull-stack-member-copy" }, [
+            position,
+            " ",
+            h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
+            " ",
+            title,
+            " ",
+            h("span", { class: "github-pull-stack-dot", "aria-hidden": "true" }, ["·"]),
+            " ",
+            identity,
+          ]),
         );
-        row = { link, title, identity };
+        row = { link, title, position, number: identity };
         rows.set(target, row);
       }
       links.push(row.link);
@@ -2331,7 +2345,11 @@ export function mountPullPage(container, ctx, mb) {
   container.classList.add("github-pull");
   const header = h("div", { class: "github-pull-header page-reading-column" });
   const body = h("div", { class: "github-pull-body" });
-  const stackColumn = h("div", { class: "page-reading-column github-pull-stacks", hidden: "" });
+  const stackColumn = h("div", { class: "github-pull-stacks", hidden: "" });
+  const stateBadge = h("span");
+  const stateDetails = h("span");
+  const stateRow = h("div", { class: "github-pull-meta" }, [stateBadge, stackColumn, stateDetails]);
+  header.append(stateRow);
   let stackIndex = createStackIndex(null);
   /** @type {import("./pull-stacks.js").StackIdentity | null} */
   let stackIdentity = null;
@@ -2343,7 +2361,7 @@ export function mountPullPage(container, ctx, mb) {
   // Follow the reading column at every width; Files changed keeps the full pane.
   const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Pull request" });
   const tabColumn = h("div", { class: "page-reading-column" }, [tabBar]);
-  container.replaceChildren(header, stackColumn, body, live);
+  container.replaceChildren(header, body, live);
 
   /** @type {PullModel | null} */
   let shown = null;
@@ -2754,7 +2772,7 @@ export function mountPullPage(container, ctx, mb) {
     return { id, link };
   });
 
-  /** Optional membership stays separate from the frequently repainted ages/status header.
+  /** Optional membership retains its status-row disclosure while other header details repaint.
    * @param {PullModel} model
    */
   function paintStacks(model) {
@@ -2827,6 +2845,22 @@ export function mountPullPage(container, ctx, mb) {
     return memberships.find((stack) => stack.number === preferredStack) ?? memberships[0] ?? null;
   }
 
+  /** Keep stack disclosure and focus connected while ages and record details repaint.
+   * @param {NonNullable<PullModel["pull"]>} pull
+   */
+  function paintStateRow(pull) {
+    stateRow.hidden = false;
+    stateBadge.replaceChildren(badge(pull.state, pull.stateLabel));
+    stateDetails.replaceChildren(
+      ...(pull.actor === null ? [] : [authorLabel(pull.actor, pull.actorAvatar)]),
+      `${pull.actor === null ? "" : " "}${pull.action} `,
+      mb.refChip(pull.baseRef, { label: pull.base, kind: "remote" }),
+      " from ",
+      mb.refChip(pull.headRef, { label: pull.head, kind: "remote" }),
+    );
+    return stateRow;
+  }
+
   /** @param {PullModel} model */
   function paintHeader(model) {
     const children = [];
@@ -2841,16 +2875,7 @@ export function mountPullPage(container, ctx, mb) {
             h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
           ]),
         ]),
-        h("div", { class: "github-pull-meta" }, [
-          badge(pull.state, pull.stateLabel),
-          h("span", {}, [
-            pull.actor === null ? null : authorLabel(pull.actor, pull.actorAvatar),
-            `${pull.actor === null ? "" : " "}${pull.action} `,
-            mb.refChip(pull.baseRef, { label: pull.base, kind: "remote" }),
-            " from ",
-            mb.refChip(pull.headRef, { label: pull.head, kind: "remote" }),
-          ]),
-        ]),
+        paintStateRow(pull),
         h("div", { class: "github-pull-quiet" }, [
           "Opened ",
           age(pull.created),
@@ -2858,7 +2883,10 @@ export function mountPullPage(container, ctx, mb) {
           age(pull.updated),
           ...(pull.closed && pull.closedLabel ? [` · ${pull.closedLabel} `, age(pull.closed)] : []),
           " · ",
-          decoratePullLink(outside(mb, pull.htmlUrl, "", ["View on GitHub"]), pull, mb),
+          mb.decorateExternalLink(outside(mb, pull.htmlUrl, "", ["View on GitHub"]), {
+            icon: "github",
+            position: "before",
+          }),
           model.browse === null ? null : " · ",
           model.browse === null ? null : browseControl(model.browse),
         ]),
@@ -2922,7 +2950,22 @@ export function mountPullPage(container, ctx, mb) {
       status.append(h("span", { class: "github-pull-offer" }, [model.checkoutAtHead, " ", root]));
     }
     children.push(status);
-    header.replaceChildren(...children.filter((child) => child !== null));
+    const visible = children.filter((child) => child !== null);
+    /** @type {Set<Node>} */
+    const retained = new Set(visible);
+    for (const node of [...header.childNodes]) {
+      if (!retained.has(node)) {
+        node.remove();
+      }
+    }
+    let cursor = header.firstChild;
+    for (const node of visible) {
+      if (node === cursor) {
+        cursor = cursor.nextSibling;
+      } else {
+        header.insertBefore(node, cursor);
+      }
+    }
     if (model.pull === null) {
       tabColumn.remove();
     } else {
@@ -2930,7 +2973,7 @@ export function mountPullPage(container, ctx, mb) {
         link.classList.toggle("active", model.tab === id);
         link.setAttribute("aria-selected", String(model.tab === id));
       }
-      stackColumn.after(tabColumn);
+      header.after(tabColumn);
     }
     live.textContent = [model.message, model.failure].filter(Boolean).join(" ");
   }
