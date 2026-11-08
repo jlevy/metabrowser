@@ -31,6 +31,7 @@ async function run() {
     notGithub = false,
     unavailableUntil = 0,
     failedRefreshReads = 0,
+    trackOwnership = false,
   } = {}) {
     let now = 0,
       online = true,
@@ -43,6 +44,10 @@ async function run() {
       cached = new Set(),
       jobs = new Map();
     let releaseRefresh = null;
+    let serverOwner = null;
+    let nextCoverage = null;
+    let finishRelease = null;
+    const releases = [];
     const revoked = [];
     let currentFailure = failure;
     let catalogGeneration = raw.generation;
@@ -53,6 +58,16 @@ async function run() {
         if (route.endsWith("pull-cores-prepare")) {
           const body = options.body;
           if (body.numbers.length === 0) {
+            if (trackOwnership) {
+              releases.push(body.window.id);
+              await new Promise((resolve) => {
+                finishRelease = resolve;
+              });
+              if (serverOwner !== body.window.id) {
+                return { status: 200, body: { preparation: "not_owner" } };
+              }
+              serverOwner = null;
+            }
             return { status: 200, body: { preparation: "released" } };
           }
           if (failedPrepareReads > 0) {
@@ -70,6 +85,30 @@ async function run() {
             )
           ) {
             return { status: 200, body: { preparation: "not_owner" } };
+          }
+          if (nextCoverage !== null) {
+            const preparation = nextCoverage;
+            nextCoverage = null;
+            const ready = preparation === "ready" ? body.numbers : body.numbers.slice(0, -1);
+            for (const number of ready) {
+              cached.add(number);
+            }
+            // Like the backend's cache-only ready/lease-held partial paths:
+            // availability changes, but the previous server token stays owned.
+            return {
+              status: 200,
+              body: {
+                preparation,
+                ready_numbers: ready,
+                skipped_numbers: [],
+                ...(preparation === "partial"
+                  ? {
+                      retry_numbers: body.numbers.slice(-1),
+                      retry_at: new Date(65000).toISOString(),
+                    }
+                  : {}),
+              },
+            };
           }
           if (now < unownedUntil) {
             revoked.push(now);
@@ -125,6 +164,9 @@ async function run() {
             };
           }
           if (!jobs.has(key)) {
+            if (trackOwnership) {
+              serverOwner = body.window.id;
+            }
             batches.push(missing);
             jobs.set(key, now + 1000);
           }
@@ -245,6 +287,22 @@ async function run() {
       cached,
       timers,
       revoked,
+      releases,
+      owner: () => serverOwner,
+      settleNextCoverage(preparation) {
+        nextCoverage = preparation;
+        // The old producer settles without its client polling the terminal reply.
+        for (const batch of batches) {
+          for (const number of batch) {
+            cached.add(number);
+          }
+        }
+      },
+      finishRelease() {
+        assert.equal(typeof finishRelease, "function");
+        finishRelease();
+        finishRelease = null;
+      },
       releaseRefresh() {
         assert.equal(typeof releaseRefresh, "function");
         releaseRefresh();
@@ -311,6 +369,53 @@ async function run() {
       now: () => now,
     };
   }
+  let settledOwnershipReleases = 0;
+  for (const [coverage, exit] of [
+    ["partial", "hide"],
+    ["partial", "dispose"],
+    ["ready", "hide"],
+  ]) {
+    const ownership = rig({ shown: true, trackOwnership: true });
+    await ownership.start();
+    ownership.controller.prepareVisible(rows.slice(0, 8).map((row) => row.number));
+    await settle();
+    const previous = ownership.owner();
+    assert(previous !== null, "a 202 producer owns the first token");
+    ownership.settleNextCoverage(coverage);
+    ownership.controller.prepareVisible(rows.slice(8, 16).map((row) => row.number));
+    await settle();
+    assert.deepEqual(
+      ownership.releases,
+      [previous],
+      "settled coverage releases the actual old owner",
+    );
+    const admissions = () =>
+      ownership.requests.filter(
+        (request) =>
+          request.route.endsWith("pull-cores-prepare") && request.body.numbers.length > 0,
+      );
+    ownership.controller.prepareVisible(rows.slice(16, 24).map((row) => row.number));
+    await settle();
+    assert.equal(admissions().length, 2, "the pending release serializes later cohort admission");
+    if (exit === "hide") {
+      ownership.controller.setShown(false);
+    } else {
+      ownership.controller.dispose();
+    }
+    await settle();
+    assert.equal(admissions().length, 2, "hide or disposal cannot overtake the pending release");
+    ownership.finishRelease();
+    await settle();
+    assert.equal(ownership.owner(), null);
+    assert.deepEqual(
+      ownership.releases,
+      [previous],
+      "the coverage-only token is never released as owner",
+    );
+    ownership.controller.dispose();
+    settledOwnershipReleases += 1;
+  }
+
   const startup = rig();
   await startup.start();
   assert.equal(startup.attempts.length, 0, "startup catalog paint precedes speculative work");
@@ -566,6 +671,7 @@ async function run() {
 
   return {
     catalogRows: rows.length,
+    settledOwnershipReleases,
     hiddenBatches: startup.batches.slice(0, 3).map((batch) => batch.length),
     busyAttemptsMs: viewport.attempts.slice(0, 4).map((a) => a.at),
     allVisibleReadyMs: readyAt,
