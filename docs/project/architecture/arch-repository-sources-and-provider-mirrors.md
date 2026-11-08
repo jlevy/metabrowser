@@ -803,6 +803,10 @@ Disk validation runs off the event loop, followed by a memory-only ownership and
 check on the loop immediately before the response is constructed.
 
 A preparation request names at most one transport batch.
+Only a `202 started` or `202 joined` response admits the request as a server-window
+owner. A `200 ready` or `200 partial` response reports coverage and can leave a previous
+window owned. The client clears its owner handle and releases that previous exact token
+before advancing coverage or admitting another cohort.
 A ready receipt lists `ready_numbers` backed by validated cores and `skipped_numbers`
 with readable full records.
 An unreadable or schema-mismatched record supplies no coverage; its separate validated

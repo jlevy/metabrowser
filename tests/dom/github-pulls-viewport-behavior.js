@@ -457,9 +457,19 @@ async function paint() {
   timers.delete(afterSecondBusy[0]);
   afterSecondBusy[1].fn();
   await settle();
-  assert.equal(controls.length, beforeBusy + 3);
-  assert.deepEqual(controls.at(-1), demand, "the eventual ready retry retains exact ownership");
-  assert.equal(retry(), undefined, "an admitted window stops retrying");
+  const prepareAttempts = controls.slice(beforeBusy).filter((body) => body.numbers.length > 0);
+  assert.equal(prepareAttempts.length, 3);
+  assert.deepEqual(
+    prepareAttempts.at(-1),
+    demand,
+    "the eventual ready retry keeps its request token",
+  );
+  assert.deepEqual(
+    controls.at(-1),
+    { ...previous, numbers: [] },
+    "a cache-only ready receipt releases the previous exact owner",
+  );
+  assert.equal(retry(), undefined, "settled coverage stops retrying");
 
   refuseAdmission = "not_owner";
   await sampleAt(600);

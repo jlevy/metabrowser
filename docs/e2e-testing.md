@@ -466,9 +466,14 @@ framework:
    Click once as soon as the row is visible, once while preparation is running, and once
    after it finishes. Record the actual batch state with each planned dwell.
    With two tabs, confirm a refused preparation leaves the first tab’s window available.
+   Let one owned batch settle without polling its result, then scroll to a cohort that
+   answers cache-only `ready` or lease-held `partial`. Confirm the previous exact token
+   is released before another cohort starts.
+   Hide or dispose during that release and check that the coverage-only token is never
+   treated as the owner.
    Hold a batch while scrolling to a second window.
-   Check that the busy window retries once, repeated tokens cannot refetch unchanged
-   rows, and overlapping prepared descriptions retain their original expiry.
+   Check that busy admission keeps retrying with bounded backoff, repeated tokens cannot
+   refetch unchanged rows within their lease, and prepared descriptions remain readable.
    While a batch runs or after it becomes ready, change one admitted summary and confirm
    an unchanged sibling is still readable.
 4. In Git, compare natural and prepared selection, re-enter the displayed row, and leave
