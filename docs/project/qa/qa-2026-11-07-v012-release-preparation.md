@@ -53,6 +53,20 @@ healthy, thirty served-asset checks match the package, and the managed preview s
 merged main `240da85cb`. This checkpoint exposed the commit-loading race below; it does
 not establish release acceptance.
 
+### Commit-loading checkpoint
+
+[#333](https://github.com/jlevy/metabrowser/pull/333) merged at
+[main `9416b78b8`](https://github.com/jlevy/metabrowser/commit/9416b78b8dc2657a3e1745f5d6b7152c9dfc6e98).
+Its tree equals reviewed tip `a2bb0d29a`, retained as an ancestor.
+Exact-head `make verify` passed 4,917 tests with nine expected skips, 386 golden checks,
+lint, types, both locked audits, distribution inspection and installed-wheel smoke
+checks. All nine PR jobs and all nine
+[merged-main jobs](https://github.com/jlevy/metabrowser/actions/runs/42465916831)
+passed. Both CLI names and the three previews use the preserved wheel
+`0.11.1.dev1280+a2bb0d29a`, whose SHA-256 is
+`81524fde0549e9111a76c94305fb578fef544e93cf9e08d340a4ea4389479bb0`. Doctor reports
+eleven healthy plugins, and all 33 served-asset comparisons match.
+
 ## Post-Landing Sessions
 
 The
@@ -75,9 +89,37 @@ were deferred. Independent review also reproduced an older selection’s paint o
 missing-commit completion clearing a newer selection’s pending indicator.
 The focused fix installs the shared CSS-delayed spinner before staging and restricts
 cleanup to its owning selection.
-The source preview opens the previously stalled commit and renders its sixteen changed
-files. Full gating, review, merge and installed-artifact verification remain required in
-`mb-4mfc`; earlier passing repetitions remain history.
+The fix passed independent review and landed in
+[#333](https://github.com/jlevy/metabrowser/pull/333). Source and installed-browser
+sessions passed in both managed-repository and checkout modes, including rapid selection
+replacement and independent tab restoration.
+The installed Markdown card retains its tab alignment, inner padding and right contents
+rail. `mb-4mfc` and the post-landing reconciliation `mb-5k2w` are closed.
+
+An installed-wheel negative setup session also passed with `gh` absent from the child
+process’s `PATH`: Pulls returns typed `gh_missing`, shows one visible setup message and
+the official installation link, and retains its separate accessible live announcement.
+Files and local Commits remain usable, including a rendered four-file commit.
+The isolated fixture’s initial cache-permission refusal was corrected before this check;
+normal caches, credentials and preview processes were unchanged.
+
+The initial PR-core scheduling investigation, `mb-b0aq`, now has a deterministic
+reproduction. Replacing a catalog prefix during unfinished preparation releases its
+producer even when the repository, reader and epoch are unchanged.
+The retained attempt leases then defer the early rows while later cohorts proceed.
+Source-pinned backend controls show that retaining the producer completes unchanged
+members with one provider call.
+The focused correction preserves that work while re-priming traversal, and keeps
+cancellation for actual identity changes and disposal.
+Production-controller sessions cover unchanged, changed and removed members, later
+cohorts, and source, reader, epoch and disposal cancellation.
+Independent review caught a late receipt advancing the restarted traversal’s cursor.
+The correction binds terminal effects to their originating pass while retaining accepted
+producer ownership. Six 600-row sessions cover ready, partial, failed, busy, not-owner
+and malformed coverage replies across a revision outside the held prefix.
+Each revisits the changed member, completes all 600 current cores and leaves no timers.
+Full verification, independent review and installed-artifact acceptance of this
+correction remain pending; these sessions do not measure painted latency.
 
 Part A of the differential test-evidence audit is complete at `519c33239`: 189 changed
 pre-existing test files, 1,063 indexed hunks and 988 unique file/key pairs have no
@@ -157,9 +199,9 @@ Local commit navigation without Git acquisition is a separate tracked enhancemen
 
 | Gate | State | Tracking |
 | --- | --- | --- |
-| Post-landing browser smoke and current documentation | Documentation [#332](https://github.com/jlevy/metabrowser/pull/332) is merged and installed; the reproduced commit-loading race still blocks completion | `mb-5k2w`, `mb-4mfc`; `mb-ucc1` closed |
+| Post-landing browser smoke and current documentation | Documentation [#332](https://github.com/jlevy/metabrowser/pull/332) and loading correction [#333](https://github.com/jlevy/metabrowser/pull/333) are merged, reviewed and installed; both source modes pass | `mb-5k2w`, `mb-4mfc`, `mb-ucc1` closed |
 | Previous-release performance comparison | [Exp-056](../../../explorations/performance-loop/experiments/exp-056-previous-release-rehearsal.md) stopped after a valid 444 ms candidate first-row result exceeded the 350 ms hard gate. A quiet final-candidate exp-057 comparison remains required | `mb-cf6y` |
-| PR and Commit navigation performance | Delivered prefetch layers retain their recorded evidence; cold-asset attribution, natural intent/request joining and the initial PR-core scheduling diagnostic remain open. The regular-folder release comparison does not cover these interactions | `mb-4ifm`, `mb-5rm1`, `mb-97ex`, `mb-b0aq` |
+| PR and Commit navigation performance | PR-core cancellation on a same-identity prefix update is reproduced, with a focused correction awaiting full verification and review. Cold-asset attribution and natural intent/request joining remain open. The regular-folder release comparison does not cover these interactions | `mb-4ifm`, `mb-5rm1`, `mb-97ex`, `mb-b0aq` |
 | Large-PR performance qualifications | Quiet public comparisons and the measured render-window follow-up remain separate from regular-folder acceptance | `mb-jwfx`, `mb-mwuz` |
 | Linked dependency roots in the benchmark corpus | Behavioral regression test and corpus correction merged in stack 331 | `mb-lsm5` closed |
 | Regular-folder data, test-evidence and browser differentials | Audit Parts A and B complete at `519c33239`; classified Part C accepted at `e204ce9b5`; intermediate data run stopped cleanly; all three final-candidate differentials remain pending | `mb-2g6f` |
@@ -179,10 +221,12 @@ and the [QA runbook](../../qa-v012-repository-library.md) defines the manual row
 Measurements retain their exact application source and artifact identities.
 Historical loaded-host runs, interrupted captures and mixed-cache observations are not
 relabeled as successful final-candidate evidence.
-No quiet exp-057 result has been collected while functional verification runs.
-Its prepared protocol still needs the final gated artifact and confirmed host conditions
+The exp-057 host preflight deferred collection because unrelated workloads and external
+disk traffic remained active.
+It collected no browser or backend pairs.
+The prepared protocol needs the final gated artifact and confirmed host conditions
 before measurements.
-The initial PR-warmup diagnostic remains a separate investigation in `mb-b0aq`.
+The PR-warmup correction remains separate in `mb-b0aq`.
 
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.

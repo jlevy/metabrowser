@@ -479,7 +479,7 @@ function pinChanged(response) {
 
 /**
  * @typedef {{state: string, window: {id: string, generation: string}, numbers: number[]}} CoreWindowRequest
- * @typedef {{epoch: number, body: CoreWindowRequest, canRetry: boolean, retryDelay: number, lane: "visible" | "background", queueKey: string, done: boolean}} CoreDemand
+ * @typedef {{epoch: number, pass: number, body: CoreWindowRequest, canRetry: boolean, retryDelay: number, lane: "visible" | "background", queueKey: string, done: boolean}} CoreDemand
  * @typedef {{status: number, etag: string | null, body: unknown}} PullsResponse
  * @typedef {{
  *   request(
@@ -619,6 +619,8 @@ export function createPullsController(deps, options = {}) {
   /** Last token that may still own the server window. @type {CoreDemand | null} */
   let coreHeld = null;
   let coreEpoch = 0;
+  // Traversal can restart while the same accepted producer remains owned.
+  let corePass = 0;
   let sendingCore = false;
   /** @type {unknown} */
   let coreRetryTimer = null;
@@ -730,7 +732,9 @@ export function createPullsController(deps, options = {}) {
     }, delay);
   }
 
-  function restartCorePass() {
+  /** @param {boolean} [release] Whether the catalog identity revoked its producer. */
+  function restartCorePass(release = true) {
+    corePass += 1;
     warmAfter = null;
     warmGeneration = null;
     warmDeferredAt = null;
@@ -740,7 +744,9 @@ export function createPullsController(deps, options = {}) {
     visibleCores = [];
     visibleCoreAt = 0;
     primeHeldCores = true;
-    clearCoreWindow();
+    if (release) {
+      clearCoreWindow();
+    }
   }
 
   /** Read only the next batch of locally cataloged metadata; never extend the provider scan. */
@@ -954,6 +960,17 @@ export function createPullsController(deps, options = {}) {
           }
           coreSent = null;
         } else if (
+          demand.pass !== corePass &&
+          !admitted &&
+          demand === coreWanted &&
+          demand.canRetry &&
+          coreLive()
+        ) {
+          // Keep polling a retained producer until it settles, but its old receipt
+          // cannot advance, defer or pause the traversal that replaced its pass.
+          demand.done = true;
+          queueCores();
+        } else if (
           busy &&
           demand.canRetry &&
           demand === coreWanted &&
@@ -1055,6 +1072,7 @@ export function createPullsController(deps, options = {}) {
       lane,
       done: false,
       epoch: coreEpoch,
+      pass: corePass,
       canRetry: true,
       retryDelay: CORE_BUSY_RETRY_MS,
       body: { state, window: { id, generation }, numbers: rows.map((row) => row.number) },
@@ -1219,8 +1237,9 @@ export function createPullsController(deps, options = {}) {
       (identity !== warmIdentity ||
         (typeof previous?.generation === "string" && envelope.generation !== previous.generation))
     ) {
+      const replaced = identity !== warmIdentity;
       warmIdentity = identity;
-      restartCorePass();
+      restartCorePass(replaced);
     }
     if (envelope.last_refresh !== null && envelope.last_refresh.outcome !== "succeeded") {
       arrivalBaseline = null;
@@ -1347,11 +1366,16 @@ export function createPullsController(deps, options = {}) {
     ) {
       return false;
     }
+    const previousIdentity = list.envelope === null ? null : coreCatalogIdentity(list.envelope);
     holdRows(list, rows, top.source);
     list.nextAfter = after;
     list.content = content;
     peeked.clear();
-    clearCoreWindow();
+    // An accepted producer rechecks individual members before publication. A prefix
+    // revision alone must not cancel it and strand unchanged rows behind attempt leases.
+    if (previousIdentity === null || previousIdentity !== coreCatalogIdentity(top)) {
+      clearCoreWindow();
+    }
     return true;
   }
 

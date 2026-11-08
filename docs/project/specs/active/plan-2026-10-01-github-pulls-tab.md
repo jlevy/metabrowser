@@ -100,6 +100,15 @@ Later batches, ordinary freshness expiry, and server restart retain useful metad
 changed summary revokes exact readiness while stale text remains explicitly stale.
 Full records supersede lightweight cores.
 Discussion, checks, files, and Git acquisition remain separate demand-driven work.
+
+A prefix revision within the same repository, reader and catalog epoch re-primes the
+traversal without canceling its accepted producer.
+A terminal reply from an earlier traversal cannot advance, defer or pause the
+replacement traversal.
+Publication rechecks each member’s current fingerprint, so changed or removed members
+cannot become current coverage from an obsolete reply.
+Repository, reader or epoch replacement, hiding and disposal retain their exact-owner
+cancellation boundaries.
 The
 [progressive preparation experiment](../../../../explorations/performance-loop/experiments/exp-055-progressive-pr-metadata-warming.md)
 records controller evidence and the separate browser performance acceptance status.

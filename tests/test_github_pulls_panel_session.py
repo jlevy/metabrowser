@@ -765,6 +765,8 @@ def test_background_core_warming_covers_viewport_and_catalog_without_stranding_r
     assert run_session("github-pr-prefetch-behavior.js") == {
         "catalogRows": 24,
         "settledOwnershipReleases": 3,
+        "prefixOwnership": {"retained": 3, "revoked": 4},
+        "latePassReceipts": ["ready", "partial", "failed", "busy", "not_owner", "invalid"],
         "hiddenBatches": [8, 8, 8],
         "busyAttemptsMs": [0, 1000, 3000, 7000],
         "allVisibleReadyMs": 12000,
