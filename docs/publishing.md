@@ -151,8 +151,8 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
     ```
 
     Select project-local installation in that directory when prompted.
-    Record the installed `SKILL.md` path within that directory as `INSTALLED_SKILL`,
-    then verify its bytes:
+    Record the absolute path of its installed `SKILL.md` within that directory as
+    `INSTALLED_SKILL`, then verify its bytes:
 
     ```shell
     cmp "$skill_check_dir/expected-SKILL.md" "$INSTALLED_SKILL"
