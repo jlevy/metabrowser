@@ -32,6 +32,7 @@ async function run() {
     unavailableUntil = 0,
     failedRefreshReads = 0,
     trackOwnership = false,
+    holdFirstCore = false,
   } = {}) {
     let now = 0,
       online = true,
@@ -47,6 +48,9 @@ async function run() {
     let serverOwner = null;
     let nextCoverage = null;
     let finishRelease = null;
+    let heldCore = null;
+    let catalogSource = raw.source;
+    let catalogReader = raw.reader;
     const releases = [];
     const revoked = [];
     let currentFailure = failure;
@@ -67,8 +71,15 @@ async function run() {
                 return { status: 200, body: { preparation: "not_owner" } };
               }
               serverOwner = null;
+              if (heldCore?.owner === body.window.id) {
+                heldCore.cancelled = true;
+                jobs.delete(heldCore.key);
+              }
             }
             return { status: 200, body: { preparation: "released" } };
+          }
+          if (heldCore?.owner === body.window.id && !heldCore.cancelled) {
+            return { status: 202, body: { preparation: "joined" } };
           }
           if (failedPrepareReads > 0) {
             failedPrepareReads -= 1;
@@ -169,6 +180,19 @@ async function run() {
             }
             batches.push(missing);
             jobs.set(key, now + 1000);
+            if (holdFirstCore) {
+              holdFirstCore = false;
+              heldCore = {
+                owner: body.window.id,
+                key,
+                source: catalogSource,
+                reader: catalogReader,
+                epoch: catalogGeneration.split(":")[0],
+                rows: missing.map((number) => inventory.find((row) => row.number === number)),
+                cancelled: false,
+              };
+              jobs.set(key, Infinity);
+            }
           }
           if (now < jobs.get(key)) {
             return { status: 202, body: { preparation: "joined" } };
@@ -250,6 +274,8 @@ async function run() {
           etag: null,
           body: {
             ...raw,
+            source: catalogSource,
+            reader: catalogReader,
             state: "current",
             refreshing,
             complete: !refreshing,
@@ -289,6 +315,37 @@ async function run() {
       revoked,
       releases,
       owner: () => serverOwner,
+      releasePending: () => finishRelease !== null,
+      finishCore() {
+        assert(heldCore !== null, "a provider reply is held");
+        if (
+          !heldCore.cancelled &&
+          serverOwner === heldCore.owner &&
+          heldCore.source === catalogSource &&
+          heldCore.reader === catalogReader &&
+          heldCore.epoch === catalogGeneration.split(":")[0]
+        ) {
+          for (const row of heldCore.rows) {
+            if (inventory.some((current) => JSON.stringify(current) === JSON.stringify(row))) {
+              cached.add(row.number);
+            }
+          }
+        }
+        jobs.delete(heldCore.key);
+        heldCore = null;
+      },
+      changeIdentity(kind) {
+        if (kind === "source") {
+          catalogSource = "https://github.com/octo/other";
+        }
+        if (kind === "reader") {
+          catalogReader = "gh:other-reader";
+        }
+        if (kind === "epoch") {
+          catalogGeneration = "other-epoch:0";
+        }
+        controller.onFocus();
+      },
       settleNextCoverage(preparation) {
         nextCoverage = preparation;
         // The old producer settles without its client polling the terminal reply.
@@ -452,6 +509,85 @@ async function run() {
   );
   assert.equal(earlyEpoch.batches.length, 4, "new identity replaces the unfinished prime cohort");
   earlyEpoch.controller.dispose();
+
+  let retainedPrefixCohorts = 0;
+  for (const change of ["unchanged", "changed", "removed"]) {
+    const prefix = rig({ trackOwnership: true, holdFirstCore: true });
+    await prefix.start();
+    await prefix.next();
+    const owner = prefix.owner();
+    assert(owner !== null);
+    const replacement = rows.flatMap((row, index) =>
+      index !== 0 || change === "unchanged"
+        ? [row]
+        : change === "removed"
+          ? []
+          : [{ ...row, title: "Updated while the first cohort is held" }],
+    );
+    prefix.revise(replacement);
+    prefix.controller.onFocus();
+    await settle();
+    assert.deepEqual(prefix.releases, [], "a same-identity prefix cannot cancel admitted work");
+    prefix.finishCore();
+    await prefix.until(() => prefix.releases.length === 1);
+    assert.equal(prefix.releases[0], prefix.owner(), "settlement releases the actual owner");
+    if (change === "unchanged") {
+      assert.deepEqual(prefix.releases, [owner], "unchanged coverage retains the original owner");
+    }
+    prefix.finishRelease();
+    await settle();
+    // Every later cohort also serializes its exact-owner release.
+    for (let turns = 0; turns < 80 && prefix.cached.size < replacement.length; turns++) {
+      if (prefix.releasePending()) {
+        prefix.finishRelease();
+        await settle();
+      } else {
+        await prefix.next();
+      }
+    }
+    assert.equal(prefix.cached.size, replacement.length);
+    assert.equal(prefix.cached.has(rows[0].number), change !== "removed");
+    assert.deepEqual(
+      prefix.batches[0],
+      rows.slice(0, 8).map((row) => row.number),
+    );
+    assert.equal(
+      prefix.batches
+        .slice(1)
+        .flat()
+        .filter((number) => number === rows[0].number).length,
+      change === "changed" ? 1 : 0,
+      "only a changed first member needs another provider attempt",
+    );
+    if (prefix.releasePending()) {
+      prefix.finishRelease();
+    }
+    prefix.controller.dispose();
+    await settle();
+    retainedPrefixCohorts += 1;
+  }
+
+  let revokedPrefixOwners = 0;
+  for (const change of ["source", "reader", "epoch", "dispose"]) {
+    const revoked = rig({ trackOwnership: true, holdFirstCore: true });
+    await revoked.start();
+    await revoked.next();
+    const owner = revoked.owner();
+    if (change === "dispose") {
+      revoked.controller.dispose();
+    } else {
+      revoked.changeIdentity(change);
+    }
+    await settle();
+    assert.deepEqual(revoked.releases, [owner], "real ownership loss releases the old producer");
+    revoked.finishRelease();
+    await settle();
+    revoked.finishCore();
+    assert.equal(revoked.cached.size, 0, "a revoked provider reply cannot become cached coverage");
+    revoked.controller.dispose();
+    await settle();
+    revokedPrefixOwners += 1;
+  }
 
   const recentClosed = rows.slice(0, 12).map((row, at) => ({
     ...row,
@@ -672,6 +808,7 @@ async function run() {
   return {
     catalogRows: rows.length,
     settledOwnershipReleases,
+    prefixOwnership: { retained: retainedPrefixCohorts, revoked: revokedPrefixOwners },
     hiddenBatches: startup.batches.slice(0, 3).map((batch) => batch.length),
     busyAttemptsMs: viewport.attempts.slice(0, 4).map((a) => a.at),
     allVisibleReadyMs: readyAt,

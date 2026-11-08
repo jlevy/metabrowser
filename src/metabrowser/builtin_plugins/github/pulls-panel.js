@@ -730,7 +730,8 @@ export function createPullsController(deps, options = {}) {
     }, delay);
   }
 
-  function restartCorePass() {
+  /** @param {boolean} [release] Whether the catalog identity revoked its producer. */
+  function restartCorePass(release = true) {
     warmAfter = null;
     warmGeneration = null;
     warmDeferredAt = null;
@@ -740,7 +741,9 @@ export function createPullsController(deps, options = {}) {
     visibleCores = [];
     visibleCoreAt = 0;
     primeHeldCores = true;
-    clearCoreWindow();
+    if (release) {
+      clearCoreWindow();
+    }
   }
 
   /** Read only the next batch of locally cataloged metadata; never extend the provider scan. */
@@ -1219,8 +1222,9 @@ export function createPullsController(deps, options = {}) {
       (identity !== warmIdentity ||
         (typeof previous?.generation === "string" && envelope.generation !== previous.generation))
     ) {
+      const replaced = identity !== warmIdentity;
       warmIdentity = identity;
-      restartCorePass();
+      restartCorePass(replaced);
     }
     if (envelope.last_refresh !== null && envelope.last_refresh.outcome !== "succeeded") {
       arrivalBaseline = null;
@@ -1347,11 +1351,16 @@ export function createPullsController(deps, options = {}) {
     ) {
       return false;
     }
+    const previousIdentity = list.envelope === null ? null : coreCatalogIdentity(list.envelope);
     holdRows(list, rows, top.source);
     list.nextAfter = after;
     list.content = content;
     peeked.clear();
-    clearCoreWindow();
+    // An accepted producer rechecks individual members before publication. A prefix
+    // revision alone must not cancel it and strand unchanged rows behind attempt leases.
+    if (previousIdentity === null || previousIdentity !== coreCatalogIdentity(top)) {
+      clearCoreWindow();
+    }
     return true;
   }
 
