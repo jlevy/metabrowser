@@ -5,7 +5,7 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: in_progress
 priority: 1
-version: 21
+version: 22
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-08T23:25:03.089Z
+updated_at: 2026-11-08T23:44:45.459Z
 started_at: 2026-11-08T01:58:21.485Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
@@ -135,3 +135,9 @@ Qualified b2fb tree 8d69ce06a4054c4a394248c36ba05e12ddd38fcc wheel 0.11.1.dev130
 New release blocker mb-9e1t is under mb-4bd2, which depends on it: simplify canonical metabrowser.config/cache identifiers and graceful malformed-config guidance, no permanent old aliases/f02 compatibility, retain f01/v1 payloads. A successor from b2fb is being implemented. User explicitly authorized the private one-account alpha upgrade; read-only inventory found one config root, one cache root, 17 headers and valid config. No account writes occurred. Automatic review rejected raw YAML backup duplication; a safer reversible delta-header journal is planned and the user was informed. No migration success or delivered fix is claimed.
 
 The user explicitly separated macOS spike #341: another agent owns its reviews/fixes, our partial read-only review stopped unpublished, and open mb-ndeh under mb-rvcj is not a release blocker. Research #338 is merged; A1/A2 corrections are in published #342, A3 effective-grant owner disposition remains separate/open with no policy revert. Quiet performance, complete installed QA and exact owner release approval remain open; no tag/publication authorization. mb-itzy stays paused. No bead closure before actual merges.
+
+November 8 actual delivery. Native stack #339 atomically merged PRs #337, #336, #340 and #342 into main a2677882a2281a1e5b622acf4788ded9e5516331 from 23:27:15 to 23:27:18 UTC. Its tree 8d69ce06a4054c4a394248c36ba05e12ddd38fcc matches qualified installed b2fb exactly. All four PRs and merged main passed nine CI contexts. https://github.com/jlevy/metabrowser/actions/runs/42535251691
+
+The installed b2fb browser showed Open 2, Closed 325 and All 327 without Reload, fresh foreground #336 Merged with 18 successful checks from two nine-context CI runs, then restored Files. The prior a177 593 ms background prepare-receipt warning remains under mb-4ifm and supplies no CPU attribution or timing qualification.
+
+The first frozen 23-file patch (+167/−54) is based on merged main a267. Its focused gate passed 218 Python tests, 17 cache API cases, artifact schema/parity and targeted types. Review A1 found a fresh-config ENOSPC traceback. Typed read/create I/O handling now passes its focused 80-test rerun and awaits independent re-pin. Private journal review B1 found a block-scalar comment copying risk. The revised journal passes four fixtures including the new comment boundary check. The account work remains read-only and the 17-header delta upgrade still awaits review and a qualified artifact. mb-9e1t continues to block release. Before any release tag, finish the config/cache successor, account upgrade proof, quiet performance, complete installed QA and owner matrix. Reconcile README release/version pins, installation-guide commands and shipped Agent Skill content/pin to the same release identity. Prepare the exact final main commit and immutable release notes/comparison for owner approval before tagging or publishing. The macOS #341 spike and standing-grant owner disposition are separate.

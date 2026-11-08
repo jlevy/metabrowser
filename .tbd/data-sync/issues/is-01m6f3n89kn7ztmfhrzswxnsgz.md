@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: in_progress
 priority: 1
-version: 102
+version: 103
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -88,7 +88,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-08T23:25:02.529Z
+updated_at: 2026-11-08T23:44:44.935Z
 started_at: 2026-11-07T05:39:51.585Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.
@@ -186,3 +186,9 @@ Qualified b2fb tree 8d69ce06a4054c4a394248c36ba05e12ddd38fcc wheel 0.11.1.dev130
 New release blocker mb-9e1t is under mb-4bd2, which depends on it: simplify canonical metabrowser.config/cache identifiers and graceful malformed-config guidance, no permanent old aliases/f02 compatibility, retain f01/v1 payloads. A successor from b2fb is being implemented. User explicitly authorized the private one-account alpha upgrade; read-only inventory found one config root, one cache root, 17 headers and valid config. No account writes occurred. Automatic review rejected raw YAML backup duplication; a safer reversible delta-header journal is planned and the user was informed. No migration success or delivered fix is claimed.
 
 The user explicitly separated macOS spike #341: another agent owns its reviews/fixes, our partial read-only review stopped unpublished, and open mb-ndeh under mb-rvcj is not a release blocker. Research #338 is merged; A1/A2 corrections are in published #342, A3 effective-grant owner disposition remains separate/open with no policy revert. Quiet performance, complete installed QA and exact owner release approval remain open; no tag/publication authorization. mb-itzy stays paused. No bead closure before actual merges.
+
+November 8 actual delivery. Native stack #339 atomically merged PRs #337, #336, #340 and #342 into main a2677882a2281a1e5b622acf4788ded9e5516331 from 23:27:15 to 23:27:18 UTC. Its tree 8d69ce06a4054c4a394248c36ba05e12ddd38fcc matches qualified installed b2fb exactly. All four PRs and merged main passed nine CI contexts. https://github.com/jlevy/metabrowser/actions/runs/42535251691
+
+The installed b2fb browser showed Open 2, Closed 325 and All 327 without Reload, fresh foreground #336 Merged with 18 successful checks from two nine-context CI runs, then restored Files. The prior a177 593 ms background prepare-receipt warning remains under mb-4ifm and supplies no CPU attribution or timing qualification.
+
+Scoped Unicode, reconnect, Treemap, QA document and SDK fixes delivered. PR/Git performance and broader release work remain on their respective beads. The user keeps mb-itzy paused and #341 separate. Draft #247 is reference only.

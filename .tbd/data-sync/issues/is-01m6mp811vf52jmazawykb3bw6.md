@@ -5,7 +5,7 @@ title: Make PR and Git navigation feel immediate with measured prefetching
 kind: feature
 status: in_progress
 priority: 1
-version: 33
+version: 34
 spec_path: docs/project/specs/active/plan-2026-08-21-load-time-performance.md
 delegate: codex-prefetch
 labels: []
@@ -33,7 +33,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-05T01:47:46.617Z
-updated_at: 2026-11-08T21:38:37.751Z
+updated_at: 2026-11-08T23:39:30.547Z
 started_at: 2026-11-05T01:47:47.197Z
 ---
 Improve perceived navigation latency for pull-request selection and Git history on a new branch from verified main. Follow the existing performance-loop framework: register a few falsifiable hypotheses before implementation; test their mechanisms on the unchanged build; use frozen subjects and explicit cold, warm, prepared and unprepared cache states; measure trusted input to exact useful painted content, including server, decode, asset and mount phases. Confirm accepted changes with interleaved repeated controls and candidate runs, preserve correctness/cancellation/account/source ownership and bounded background work, and record rejected hypotheses as well. Reuse existing harnesses and concise session/golden tests rather than adding a parallel framework. Preserve the default installed verified build and the two user preview servers while experimenting; install a successor only after verification. Track actual timings, ranges, bytes, request counts/concurrency, long tasks, CPU/RSS and cache provenance. Branch: codex/perf-prefetch-20261104. No speculative product changes before diagnostic evidence.
@@ -77,3 +77,5 @@ November 8, diagnostic follow-up proposal only: retain the measured 18.7-second 
 Before product changes, propose a bounded quiet phase-attribution diagnostic using the existing performance-loop framework: freeze source, subject and cache state; separate trusted input, provider/network, poll cadence, parse/mount and tool/AX observation phases; distinguish actual HTTP time from elapsed gaps; and retain both warnings and unsuccessful admissions. The native-stack-poll diagnosis remains a proposal, not an experiment run or an accepted optimization. Do not change polling, eager assets or Source rendering just to move the measured clock.
 
 Current delivery context: remote native stack #339 has PR337 c3 then PR336 QA0a, both full-gate and nine-job CI green; installed c3 defaults are retained. SDK readiness d69e3e71f is independently reviewed with 44 focused tests, one golden, both type projects and startup 178592 bytes. Eight live GitHub checks passed in 53.25 seconds; its normal full gate/push is still running in session22632, with no SDK PR yet. These functional/gate facts do not discharge the diagnostic or quiet navigation/large-PR targets.
+
+November 8 separate prefetch-receipt observation (not timing qualification): a background built-in tab on the a177 client document reported a 593 ms Long Task at 23:06:25.626Z, overlapping 595 ms async githubPulls:decode for /api/plugin/github/pull-cores-prepare. LoAF 594 ms/544 ms blocking, zero render, no script/resource attribution. The selected browser tab was elsewhere; document visibility alone was misleading. Source confirms this endpoint returns a small control receipt (status and up to eight numeric IDs), not prepared bodies, full details or Git patches. Eight is a transport batch; warming continues through the measured viewport and catalog cursor. Async response.json wall time is overlap, not parser CPU. Do not conflate with the earlier stack timer 613 ms, 2.013 s server refresh, or Source/AX stall. Next: three selected-tab runs with the existing public PR fixture, bytes/server response-start/body completion/decode/Long Task separately, then click-to-description/paint beyond row eight. Only trace/fix if attributable. Browser/catalog functional evidence: after stack339 merge, counts changed to Open2/Closed325/All327 without Reload; fresh foreground PR336 Checks showed Merged and 18 successes from two exact-head runs. Raw evidence stack339-final-merge-20261108/browser-addendum/receipt.json. No code change or quiet/performance pass.

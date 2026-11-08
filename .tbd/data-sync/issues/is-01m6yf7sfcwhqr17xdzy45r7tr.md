@@ -3,9 +3,9 @@ type: is
 id: is-01m6yf7sfcwhqr17xdzy45r7tr
 title: Ensure SDK template renderers work on direct plugin-page loads
 kind: bug
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 10
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex/prefetch_ownership_review
 labels: []
@@ -16,8 +16,12 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-08T20:57:43.147Z
-updated_at: 2026-11-08T22:45:38.242Z
+updated_at: 2026-11-08T23:44:47.346Z
 started_at: 2026-11-08T21:02:13.494Z
+closed_at: 2026-11-08T23:44:47.345Z
+close_reason: "SDK cold direct-entry fix delivered in PR #340 with authored installed replay and merged-main CI."
+resolution: null
+duplicate_of: null
 ---
 Installed c3 authored SDK 0.7 sample works after navigating from folder Overview, but direct reload of the public long-controls.md plugin page renders Could not display this view. Console records metabrowser.render: Mustache.js is not loaded — bundle is missing at plugin-sdk.js456, sample index.js30, view-composition mount151 and app6035. Both fixture manifest and styles match the existing public sample; it uses the documented synchronous SDK render helper. First establish whether the SDK or plugin asset-declaration contract owns template readiness, reproduce a focused regression and use existing asset loading/lifetime mechanisms. Do not add speculative compatibility or an unconditional large eager dependency. Preserve original console and failed reload. Independently review the smallest correct fix, normal complete gate and current installed direct-entry/browser replay. This is separate from measured large-source continuation and actual downstream owner migration.
 
@@ -54,3 +58,7 @@ November 8 forward-integration checkpoint: all nine SDK a177 CI jobs pass in wor
 Main196 forward merges are complete locally: PR #337 head308d72c460ce7d3494c3e169e719759bda5f7388, #336 head5784d8031e5f07fdb68051d2e80b050c013cd399, #340 head8a6c80c66b84e8c7abf17998f1094f2ec08fddef. Each merge increment equals the exact five documentation/policy paths from main and preserves 974 runtime/test entries and the original layer delta. Independently approved fourth local layer b2fb62099f9c8a3a628edc2a1a76d31505c63c6a on codex/research-acceptance-corrections-20261108 contains only four A1/A2 research correction hunks in one document, fourteen added and six removed lines. All four local heads are independently approved.
 
 The normal full gate and atomic, non-force four-ref push at b2fb are running; no completion, new integrated-head qualification/CI, published heads or new fourth-layer PR number is claimed. Installation remains a177. Actual merges and exact-head reconciliation are still pending, so this bead is not closed. Research #338 is already merged; A3 remains open for owner disposition of the effective standing grant, and this step contains no policy revert or native-app architecture adoption. Quiet performance, Step9, complete installed QA, owner acceptance and exact final release approval remain open; mb-itzy stays paused and reference draft #247 excluded.
+
+November 8 actual delivery. Native stack #339 atomically merged PRs #337, #336, #340 and #342 into main a2677882a2281a1e5b622acf4788ded9e5516331 from 23:27:15 to 23:27:18 UTC. Its tree 8d69ce06a4054c4a394248c36ba05e12ddd38fcc matches qualified installed b2fb exactly. All four PRs and merged main passed nine CI contexts. https://github.com/jlevy/metabrowser/actions/runs/42535251691
+
+The reviewed SDK template readiness fix and its fixture-only follow-up landed in #340. The installed a177 authored fixture passed cold literal Card, direct Reload and exact 38-character and 2,960,074-character copy/paste. Full Source continuation retains unchanged-renderer c3 evidence. The original R1 failure is preserved and downstream owner acceptance is separate.

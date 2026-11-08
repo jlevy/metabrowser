@@ -5,14 +5,14 @@ title: "Review PR #338 research corrections and standing-policy readiness"
 kind: task
 status: in_progress
 priority: 2
-version: 6
+version: 7
 delegate: codex-beads_reconcile_review
 labels: []
 dependencies: []
 hold: null
 hold_until: null
 created_at: 2026-11-08T20:45:07.506Z
-updated_at: 2026-11-08T22:45:40.098Z
+updated_at: 2026-11-08T23:44:46.500Z
 started_at: 2026-11-08T20:46:05.791Z
 ---
 Review and qualify https://github.com/jlevy/metabrowser/pull/338 independently from release QA/runtime work. Pinned head 48fec15957eedea77dfdd51f76d91972d1cca775 on main e1cfca1a66277aa86887f031f9b28b250d4a4928 changes five research/index/agent-policy/cache files, no product code.
@@ -40,3 +40,9 @@ Separately, product SDK #340 at a177 has successful R2/full installation and com
 November 8 research correction source checkpoint: unchanged PR #338 remains actually merged at main196. A1/A2 are now corrected in independently approved local commit b2fb62099f9c8a3a628edc2a1a76d31505c63c6a, parent8a6c80c66b84e8c7abf17998f1094f2ec08fddef, branch codex/research-acceptance-corrections-20261108. Exactly four hunks in one research document add fourteen and remove six lines, preserving the full owner acceptance scope and stating same-UID socket-auth limits. Runtime/test/lock/policy surfaces are unchanged. All three lower branches have forward-integrated main196 and independent approval.
 
 The normal complete gate and atomic four-ref push at b2fb are currently running. No published correction head, new PR number, completed qualification/CI, actual correction merge or closure is claimed. A3 remains open for owner disposition of the already-effective standing grant; no policy revert is included. Current task delegation remains explicitly authorized, without inferring new standing-policy consent. The exact a177 SDK artifact separately passed all nine CI jobs and selected installed authored replay; its fixture is cleaned up and four defaults remain unchanged. That does not resolve A3 or actual downstream owner acceptance.
+
+November 8 actual delivery. Native stack #339 atomically merged PRs #337, #336, #340 and #342 into main a2677882a2281a1e5b622acf4788ded9e5516331 from 23:27:15 to 23:27:18 UTC. Its tree 8d69ce06a4054c4a394248c36ba05e12ddd38fcc matches qualified installed b2fb exactly. All four PRs and merged main passed nine CI contexts. https://github.com/jlevy/metabrowser/actions/runs/42535251691
+
+A1 and A2 are delivered in merged #342. The original #338 follow-up publishes both factual dispositions, preserving complete owner acceptance and accurately qualifying same-UID socket authentication. https://github.com/jlevy/metabrowser/pull/338#issuecomment-6728719172
+
+A3 remains open for owner disposition of the effective standing grant and outside the current runtime release. Task delegation remains explicitly authorized. Native-app implementation is separate under #341 and belongs to another agent.
