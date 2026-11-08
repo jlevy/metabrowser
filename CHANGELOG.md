@@ -4,6 +4,9 @@ All notable changes to Metabrowser are documented here.
 
 ## 0.12.0 (unreleased)
 
+- Plugin template rendering waits for its shared library before plugin code runs, so a
+  directly opened custom view works before idle asset prefetch finishes.
+
 - Treemap explains when a hidden folder or a path through a symbolic link is outside the
   file index, using the same message as File Overview without requesting totals.
 

@@ -158,6 +158,9 @@ is wrong. This is the core module list in `server.py` and it stays small.
 **Prefetched.** Fetched after first paint, during idle, before anything asks.
 For code small relative to how likely it is to be wanted, where arriving late would be
 visible. A consumer awaits it rather than discovering it missing.
+Mustache’s idle prefetch and the required plugin-initialization gate share the same
+`mustache` bundle, so a direct file view can demand it before idle without a second
+load.
 
 **On demand.** Fetched the first time something needs it, and never otherwise.
 For code that is large, narrowly used, or both.

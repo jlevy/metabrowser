@@ -15,6 +15,14 @@ if (
 
 /** @param {string} when @param {{innerHTML: string}} host @param {string} content */
 function drawSource(when, host, content) {
+  const template = mb.render("<p>{{title}}</p>{{#tags}}<b>{{.}}</b>{{/tags}}", {
+    title: "<card> & text",
+    tags: ["one", "<two>"],
+  });
+  if (template !== "<p>&lt;card&gt; &amp; text</p><b>one</b><b>&lt;two&gt;</b>") {
+    throw new Error("the synchronous template helper lost escaping or sections");
+  }
+  window.viewHelperTemplateLog.push(`${when}: ${template}`);
   mb.renderSourceView(host, { path: "notes.py", content });
   const lines = /aria-valuemax="(\d+)"/.exec(host.innerHTML)?.[1] ?? "no";
   log.push(`${when}: a Source view with a gutter of ${lines} lines`);

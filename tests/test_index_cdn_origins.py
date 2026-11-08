@@ -149,10 +149,13 @@ def test_chart_js_is_published_on_demand_rather_than_loaded_eagerly() -> None:
         "vendor/chartjs-plugin-annotation.min.js"
     )
 
-    # The prefetched tier still runs on load: a source view that highlights a
-    # beat late is visible, and these are small.
-    for name in ("vendor/highlight.min.js", "vendor/mustache.min.js"):
-        assert name in chain, f"prefetched asset missing from the load chain: {name}"
+    # Highlighting is best-effort. Mustache's idle prefetch shares the required
+    # plugin gate's named bundle, so demand never races an independent script tag.
+    assert "vendor/highlight.min.js" in chain
+    assert "vendor/mustache.min.js" in bundles
+    assert '"provides": "Mustache"' in bundles
+    assert 'ensureAsset("mustache")' in chain
+    assert "vendor/mustache.min.js" not in chain
 
     # The loader has to be present before anything can ask it for a bundle.
     assert "/static/asset-loader.js" in html
