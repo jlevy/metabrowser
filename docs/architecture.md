@@ -337,7 +337,7 @@ which space it belongs to:
 | `/commit/<rev>` | One commit’s change set, compared against its first parent | A revision |
 | `/commit/<rev>/<inner>` | One file’s diff inside that change set | A revision, then a path within the comparison |
 | `/pull/<n>`, `/pull/<n>/files`, `/pull/<n>/checks` | A pull request’s Conversation, Changes, or Checks tab | A pull-request number, then an optional tab |
-| `/pull/<n>/files/<inner>` | One changed file of that page’s Files changed | A pull-request number, then a path within its comparison |
+| `/pull/<n>/files/<inner>` | One changed file of that page’s Changes tab | A pull-request number, then a path within its comparison |
 | `/pulls` | A repository’s list of pull requests, with none selected | Open by default; `?state=closed` or `?state=all` selects another filter |
 | `/compare/<base>..<head>` | An explicit comparison (`...` for merge-base) | Two revisions |
 | `/compare/<spec>/<inner>` | One file’s diff inside that comparison | A comparison spec, then a path within it |
@@ -352,7 +352,7 @@ The shape after the route is deliberately uniform —
 patch file and a commit are both containers whose children are file changes; only the
 container’s own address differs, so `/view/changes.patch/src/app.py` and
 `/commit/abc123/src/app.py` are the same grammar over two address spaces.
-A pull request’s Files changed is a container in its own address space, so
+A pull request’s Changes tab is a container in its own address space, so
 `/pull/7/files/src/app.py` is the same grammar again; an archive will be too.
 
 A repository branch is not another browser address space.

@@ -1,11 +1,10 @@
 # Plan: GitHub Pulls Tab for Mirrors and Local Checkouts
 
 **Status:** The catalog, Pulls tab, numbered PR pages, changed-file navigation, and
-checkout-backed comparisons are on
-[`main` at 68534af93](https://github.com/jlevy/metabrowser/commit/68534af933f0fcb38a5d81d62691bb42732d58ab),
-recorded on 2026-11-07. [Delivery](#delivery) records the owning layers; the
-[alpha plan’s landing status](plan-2026-09-22-v012-alpha-testing.md#landing-status)
-records current integration and release evidence.
+checkout-backed comparisons are implemented on `main`. [Delivery](#delivery) records the
+owning layers; the
+[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
+the current integrated candidate, installed artifact and remaining release gates.
 The original design prose remains background where a revision supersedes it.
 
 This plan builds on the [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), which

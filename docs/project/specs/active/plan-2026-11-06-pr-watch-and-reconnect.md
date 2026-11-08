@@ -1,9 +1,12 @@
 # Plan for Watching GitHub Pull Requests
 
-**Status.** Implemented and merged on `main` at `68534af93` on 2026-11-07;
-implementation and verification are closed in `mb-bzhx`. The design is `mb-lz7e`,
-catalog refresh and recovery are `mb-ad70`, the Pulls UI is `mb-81f2`, and session
-verification is `mb-khc4`. Shared row arrivals are tracked in `mb-x9v7`.
+**Status.** Implemented on `main`; implementation and verification are closed in
+`mb-bzhx`. The
+[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
+the current integrated candidate, installed artifact and remaining release gates.
+The design is `mb-lz7e`, catalog refresh and recovery are `mb-ad70`, the Pulls UI is
+`mb-81f2`, and session verification is `mb-khc4`. Shared row arrivals are tracked in
+`mb-x9v7`.
 
 ## Reader Behavior
 

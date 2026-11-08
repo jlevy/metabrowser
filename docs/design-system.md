@@ -1172,13 +1172,16 @@ newest first. Like the page it opens, it has almost no vocabulary of its own.
 A pull request’s row is a container: its chevron opens a changed-files tree under the
 row, connected by `aria-owns`. Clicking the row opens the page and toggles the tree;
 Right expands or enters it, and Left collapses it.
-The shown page’s row opens automatically and closes when the page moves, unless a reader
-opened it.
+Selecting a PR, including with Up, Down, J, or K, does not expand its tree.
+An address naming a changed file opens its owner’s tree if needed.
+Moving to another PR closes a tree opened only for that address; trees the reader opened
+stay open.
 
 The metadata line gives the PR number normal row size and text ink.
 Usernames and the repository summary use the same small metadata size and bold normal
 text ink. Branch names use the small shared remote-ref chip.
-Known native stack numbers use quiet text on that line.
+Known native stack membership uses a small Layers icon and bold position on that line;
+the tooltip names the stack.
 Their shared repository snapshot is indexed once by PR number; rows make no stack
 requests, and enrichment updates retain the row and any focused changed-file tree.
 

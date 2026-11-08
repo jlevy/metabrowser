@@ -321,8 +321,8 @@ It exists for a list of a comparison’s files, so it takes a path and not a fil
   typed the same way: `{kind: "file", path, fileId, changeKind, availability}`, where
   `changeKind` is the change’s own kind, or
   `{kind: "not_in_comparison", path, listTruncated}`, and on the page’s handle
-  `{kind: "no_diff", path}` while Files changed is not mounted, so a list can grey a row
-  the comparison lacks and leave alone one it cannot ask about yet.
+  `{kind: "no_diff", path}` while Changes is not mounted, so a list can grey a row the
+  comparison lacks and leave alone one it cannot ask about yet.
 - **The answer** is immediate and typed, since a list from GitHub and a comparison
   computed here can differ:
   - `{kind: "jumped", fileId, path, availability, lines}`, where `lines` is a promise of
@@ -332,8 +332,8 @@ It exists for a list of a comparison’s files, so it takes a path and not a fil
     `listTruncated` says the comparison’s own list stopped at its bound, so the file may
     exist past it.
   - `{kind: "disposed", path}` from a view that is gone, and on the page’s handle
-    `{kind: "no_diff", path}` while Files changed is not mounted, for which
-    `setTab("files")` and `whenFilesReady()` are the way there.
+    `{kind: "no_diff", path}` while Changes is not mounted, for which `setTab("files")`
+    and `whenFilesReady()` are the way there.
 - **The file** is at the top of the pane when it returns, with no smooth scroll,
   expanded if it was collapsed, and stays there as anything else fills in, until the
   reader moves by wheel, touch, pointer or key.

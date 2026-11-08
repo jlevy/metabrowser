@@ -1,9 +1,10 @@
 # Plan: v0.12 Alpha Testing and Stack Acceptance
 
 **Status:** Active until 0.12.0 is released.
-The implemented feature layers are on
-[`main` at da87bb13](https://github.com/jlevy/metabrowser/commit/da87bb13c4434324af576b554711278139621b6b)
-as of 2026-11-04. 0.12.0 is not yet tagged or released.
+The implemented feature layers are on `main`; the
+[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) records
+the current integrated candidate, installed artifact and remaining release gates.
+0.12.0 is not yet tagged or released.
 T0 through T2 were run on 2026-09-24 in the scope of the
 [thin-mirror plan](plan-2026-09-23-v012-thin-mirror.md), and
 [QA: v0.12 alpha acceptance](../../qa/qa-2026-09-24-v012-alpha-acceptance.md) records
@@ -367,7 +368,18 @@ testing plan performs neither.
 
 ### Landing status
 
-**Current integration, 2026-11-07.** All 28 product layers in
+**Current integration, 2026-11-07.** The product stack and its reviewed presentation and
+preparation follow-ups are merged, most recently in
+[stack 331](https://github.com/jlevy/metabrowser/stack/331), through
+[#330](https://github.com/jlevy/metabrowser/pull/330), at
+[`main` `d33550455`](https://github.com/jlevy/metabrowser/commit/d33550455d1a44bb275d5e71492f9bdbc682f0c5).
+The landed tree exactly matches reviewed and gated tip `519c33239`, retained as an
+ancestor. The
+[release-preparation record](../../qa/qa-2026-11-07-v012-release-preparation.md) holds
+the current checks and installation evidence, with their exact source pins.
+Tagging and publication still require the user’s explicit approval.
+
+**Product-stack landing, 2026-11-07.** All 28 product layers in
 [stack 302](https://github.com/jlevy/metabrowser/stack/302), through
 [#327](https://github.com/jlevy/metabrowser/pull/327), are merged on
 [`main` at `68534af93`](https://github.com/jlevy/metabrowser/commit/68534af933f0fcb38a5d81d62691bb42732d58ab).
