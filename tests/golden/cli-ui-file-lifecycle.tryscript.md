@@ -836,7 +836,8 @@ $ node tests/dom/preview-pane-state-session.js
       },
       "pullAddress": {
         "scriptRequests": [
-          "plugin-sdk-views.js"
+          "plugin-sdk-views.js",
+          "vendor/mustache.min.js"
         ],
         "pane": {
           "claim": 1,
@@ -847,7 +848,8 @@ $ node tests/dom/preview-pane-state-session.js
         },
         "afterTabLanding": {
           "scriptRequests": [
-            "plugin-sdk-views.js"
+            "plugin-sdk-views.js",
+            "vendor/mustache.min.js"
           ]
         }
       },
@@ -870,7 +872,8 @@ $ node tests/dom/preview-pane-state-session.js
         },
         "scriptRequests": [
           "pull-route.js",
-          "plugin-sdk-views.js"
+          "plugin-sdk-views.js",
+          "vendor/mustache.min.js"
         ],
         "pane": {
           "claim": 2,
@@ -937,6 +940,33 @@ $ node tests/dom/preview-pane-state-session.js
           "pull-route.js"
         ]
       },
+      "templatesOnThePullPage": {
+        "failed": {
+          "pane": {
+            "claim": 1,
+            "owner": "pull-request",
+            "path": null,
+            "phase": "external",
+            "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
+          },
+          "scriptRequests": [
+            "plugin-sdk-views.js",
+            "vendor/mustache.min.js"
+          ]
+        },
+        "nextRoute": {
+          "pane": {
+            "claim": 3,
+            "owner": "pull-request",
+            "path": null,
+            "phase": "external",
+            "shows": "preview-empty: No plugin renders pull-request pages here."
+          },
+          "scriptRequests": [
+            "vendor/mustache.min.js"
+          ]
+        }
+      },
       "viewHelpersOnThePullPage": {
         "failed": {
           "pane": {
@@ -947,7 +977,8 @@ $ node tests/dom/preview-pane-state-session.js
             "shows": "preview-empty preview-error: Could not load the pull-request page. Refresh the page to try again."
           },
           "scriptRequests": [
-            "plugin-sdk-views.js"
+            "plugin-sdk-views.js",
+            "vendor/mustache.min.js"
           ]
         },
         "nextRoute": {
