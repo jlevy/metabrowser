@@ -113,6 +113,11 @@ The focused correction preserves that work while re-priming traversal, and keeps
 cancellation for actual identity changes and disposal.
 Production-controller sessions cover unchanged, changed and removed members, later
 cohorts, and source, reader, epoch and disposal cancellation.
+Independent review caught a late receipt advancing the restarted traversal’s cursor.
+The correction binds terminal effects to their originating pass while retaining accepted
+producer ownership. Six 600-row sessions cover ready, partial, failed, busy, not-owner
+and malformed coverage replies across a revision outside the held prefix.
+Each revisits the changed member, completes all 600 current cores and leaves no timers.
 Full verification, independent review and installed-artifact acceptance of this
 correction remain pending; these sessions do not measure painted latency.
 

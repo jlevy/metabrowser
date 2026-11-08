@@ -30,6 +30,8 @@ async function run() {
     failedPrepareReads = 0,
     notGithub = false,
     unavailableUntil = 0,
+    unavailableNumber = rows[0].number,
+    holdReceipt = null,
     failedRefreshReads = 0,
     trackOwnership = false,
     holdFirstCore = false,
@@ -48,6 +50,7 @@ async function run() {
     let serverOwner = null;
     let nextCoverage = null;
     let finishRelease = null;
+    let finishReceipt = null;
     let heldCore = null;
     let catalogSource = raw.source;
     let catalogReader = raw.reader;
@@ -56,7 +59,7 @@ async function run() {
     let currentFailure = failure;
     let catalogGeneration = raw.generation;
     let catalogReadyAt = cold ? Infinity : 0;
-    const controller = createPullsController({
+    const deps = {
       request: async (method, route, options) => {
         requests.push({ method, route, body: options.body });
         if (route.endsWith("pull-cores-prepare")) {
@@ -132,7 +135,7 @@ async function run() {
               body: { preparation: "ready", ready_numbers: [], skipped_numbers: [] },
             };
           }
-          attempts.push({ at: now, numbers: body.numbers });
+          attempts.push({ at: now, numbers: body.numbers, generation: body.window.generation });
           if (now < busyUntil) {
             return { status: 200, body: { preparation: "busy" } };
           }
@@ -153,7 +156,7 @@ async function run() {
             };
           }
           const retryNumbers = body.numbers.filter(
-            (number) => number === rows[0].number && now < unavailableUntil,
+            (number) => number === unavailableNumber && now < unavailableUntil,
           );
           const readyNumbers = body.numbers.filter((number) => !retryNumbers.includes(number));
           const receipt = () =>
@@ -304,7 +307,21 @@ async function run() {
       reveal() {},
       open() {},
       filterChanged() {},
-    });
+    };
+    const request = deps.request;
+    deps.request = async (method, route, options) => {
+      const response = await request(method, route, options);
+      const held = holdReceipt?.(options.body, response);
+      if (held) {
+        holdReceipt = null;
+        await new Promise((resolve) => {
+          finishReceipt = resolve;
+        });
+        return held;
+      }
+      return response;
+    };
+    const controller = createPullsController(deps);
     return {
       controller,
       requests,
@@ -314,6 +331,12 @@ async function run() {
       timers,
       revoked,
       releases,
+      receiptHeld: () => finishReceipt !== null,
+      finishReceipt() {
+        assert.equal(typeof finishReceipt, "function");
+        finishReceipt();
+        finishReceipt = null;
+      },
       owner: () => serverOwner,
       releasePending: () => finishRelease !== null,
       finishCore() {
@@ -393,8 +416,8 @@ async function run() {
         await settle();
         return true;
       },
-      async until(done) {
-        for (let n = 0; n < 120 && !done(); n++) {
+      async until(done, limit = 120) {
+        for (let n = 0; n < limit && !done(); n++) {
           assert(await this.next(), "pending warming has a wakeup");
         }
         assert(done());
@@ -587,6 +610,67 @@ async function run() {
     revoked.controller.dispose();
     await settle();
     revokedPrefixOwners += 1;
+  }
+
+  const latePassReceipts = ["ready", "partial", "failed", "busy", "not_owner", "invalid"];
+  for (const preparation of latePassReceipts) {
+    const inventory = Array.from({ length: 600 }, (_, index) => ({
+      ...rows[0],
+      number: 1000 - index,
+    }));
+    const retryAt = 1000000000;
+    const late = rig({
+      inventory,
+      unavailableNumber: 433,
+      unavailableUntil: preparation === "partial" ? retryAt : 0,
+      holdReceipt(body, response) {
+        if (
+          body?.state !== "all" ||
+          !body.numbers.includes(440) ||
+          response.body?.preparation !== (preparation === "partial" ? "partial" : "ready")
+        ) {
+          return null;
+        }
+        if (preparation === "ready" || preparation === "partial") {
+          return response;
+        }
+        return {
+          status: 200,
+          body:
+            preparation === "invalid"
+              ? { preparation: "ready", ready_numbers: [], skipped_numbers: [] }
+              : { preparation, failure: { outcome: "not_logged_in" } },
+        };
+      },
+    });
+    await late.start();
+    await late.until(() => late.receiptHeld(), 2000);
+    assert(late.cached.has(460), "the revised member was covered before the held receipt");
+    late.revise(
+      inventory.map((row) =>
+        row.number === 460 ? { ...row, title: "Changed beyond the held 500-row prefix" } : row,
+      ),
+      [460],
+    );
+    late.controller.onFocus();
+    await settle();
+    assert.equal(late.cached.has(460), false);
+    late.finishReceipt();
+    await settle();
+    await late.until(
+      () => late.cached.has(460) || [...late.timers.values()].every((timer) => timer.at >= retryAt),
+      2000,
+    );
+    assert(late.cached.has(460), `old ${preparation} cannot skip or pause the replacement pass`);
+    assert(
+      late.attempts.some(
+        (attempt) => attempt.numbers.includes(460) && attempt.generation.endsWith(":42"),
+      ),
+      "the changed member is attempted under the replacement generation",
+    );
+    await late.until(() => late.cached.size === inventory.length, 2000);
+    await late.until(() => late.timers.size === 0, 2000);
+    late.controller.dispose();
   }
 
   const recentClosed = rows.slice(0, 12).map((row, at) => ({
@@ -809,6 +893,7 @@ async function run() {
     catalogRows: rows.length,
     settledOwnershipReleases,
     prefixOwnership: { retained: retainedPrefixCohorts, revoked: revokedPrefixOwners },
+    latePassReceipts,
     hiddenBatches: startup.batches.slice(0, 3).map((batch) => batch.length),
     busyAttemptsMs: viewport.attempts.slice(0, 4).map((a) => a.at),
     allVisibleReadyMs: readyAt,
