@@ -5,7 +5,7 @@ title: "Review pull requests well on large repositories: fresh mirror and existi
 kind: epic
 status: in_progress
 priority: 1
-version: 99
+version: 100
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -88,7 +88,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:44.914Z
-updated_at: 2026-11-08T21:58:23.555Z
+updated_at: 2026-11-08T22:32:50.702Z
 started_at: 2026-11-07T05:39:51.585Z
 ---
 The owner's goal, 2026-11-02: review PRs seamlessly both fresh from the cached mirror and from an existing checkout without duplicating its storage, responsive on large PRs faster than GitHub itself, following the design system rigorously, with all workflows documented cleanly. Found by testing on a real 1.2 GB private repository with a shallow checkout and 211 linked worktrees. All work lands on branch claude/v012-pr-review-workflows, above release stack 278. The Pulls tab itself is a separate stack in the linked session: mb-q3jt, mb-x174, mb-zx9q, mb-cbak, mb-r50o, mb-lnkl, mb-iw1v.
@@ -160,3 +160,15 @@ Remote native stack #339 still has exactly two members: PR #337 at c3 then QA PR
 All global server preparation includes four ports: 8411, 8864, 8863 and concurrent 8412, whose effective target matches 8411. All remain on installed c3 now. The user authorized updating all; root will preserve each URL, target, configuration and working directory, including 8412, through controlled restart only after a qualified-wheel GO. No server or installation change has occurred in this checkpoint. The earlier 45 asset comparisons cover the three audited previews, not a new four-server validation.
 
 Historical 426 differential acceptance and raw exceptions remain separate. Quiet performance, source warning attribution under mb-06p9/mb-4ifm, Step9, the full installed owner matrix and exact final release approval remain open. No latency pass, c3 regression origin, release tag or publication is inferred. The mb-itzy workflow remains paused and reference draft #247 excluded.
+
+November 8, qualified SDK R2 delivery (no closure before actual merge): exact a17752dd9695b3cdd4ed17926b6c0289cfd60fc0 passed normal full make verify/push in 1493.61 seconds, with 4931 Python passes, nine expected skips, 388 goldens, clean types/locked audits/distribution/smokes and zero-byte filesystem observer. Original d69 R1 remains failed with two fixture assertions and no qualified artifact or push. Review A is published at https://github.com/jlevy/metabrowser/pull/340#pullrequestreview-5819928655 and Review B at https://github.com/jlevy/metabrowser/pull/340#pullrequestreview-5819928920, covering unchanged reviewed blobs.
+
+SDK PR #340 is now the third member of native stack #339 above #336 and #337, exact a177 on QA0a. Its current CI workflow 42529805379 is running; prior #337/#336 exact heads retain nine green jobs and reviews. All three are drafts in the current metadata snapshot. No merge readiness is inferred from a successful local gate alone.
+
+Both global CLI aliases and all four known servers (8411,8864,8863,8412) now run exact qualified wheel 0.11.1.dev1296+a17752dd9, SHA-256 e6971cfca83f37b84761ef847ed9a358a7723c5301a339b19f153a6f44d42df0. Doctor eleven, 45 unchanged runtime pins, 349 payload files, 355 installed RECORD hashes and 68 served-asset matches pass. Existing targets/configuration/working directories and port8412 URL were preserved. Managed data remains snapshot e1cf, distinct from application source.
+
+The first literal cold entry on reserved fresh origin8986/long-controls.md passes the expected heading, Card, copy control and paste field without the prior Mustache error; root is continuing the full authored SDK replay. That initial result does not complete cold Reload/continuation checks, actual downstream SDK migration, the owner matrix or performance acceptance. Keep vnm1 open until completed replay, exact current CI and actual merge reconciliation.
+
+Fresh remote facts supersede the prior unmerged-research plan: #338 merged unchanged48fec at21:51:06Z into main196ee3c5458b39bcc616f414cc1d1db0f5083f06. Review A findings A1/A2/A3 have no published disposition in the fresh sweep. The standing grant is now effective on main, so the earlier still-ineffective-proposal revert rationale is not an operation already performed. Main196 is not an ancestor of lower c3, even though GitHub reports337/336 CLEAN; root owns the forward-base incorporation and propagation decision, with actual resulting qualification/CI. No refs or source are changed by these notes.
+
+Historical426 differential acceptance/raw exceptions, c3 manual evidence, slow-fetch/Source/poller diagnostics, quiet release/navigation/large-PR/Step9, full installed QA and owner release approval remain separate. No latency pass, new regression-origin claim, release tag or publication. The mb-itzy workflow remains paused and reference247 excluded.
