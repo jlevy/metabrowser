@@ -101,17 +101,67 @@ Confirm the repository’s public-hygiene gate is green before changing visibili
 8. Verify the published metadata and files on PyPI, including the AGPL license, Python
    classifiers, source and issue links, and release notes.
 
-9. Run an isolated smoke test against the released version:
+9. Run isolated smoke tests against the released version.
+   As in the [publish workflow](../.github/workflows/publish.yml), exempt only the
+   reviewed Metabrowser release from the cool-off and refresh its package metadata on
+   each probe. Dependencies retain the configured cool-off.
 
    ```shell
-   uvx metabrowser@X.Y.Z --help
-   uvx --from metabrowser==X.Y.Z metab --help
-   uvx --from metabrowser==X.Y.Z metabrowser --help
+   release_version=X.Y.Z
+   release_bound="$(date -u +%Y-%m-%d)T23:59:59Z"
+   uv --config-file uv.toml tool run \
+     --refresh-package metabrowser \
+     --exclude-newer-package "metabrowser=$release_bound" \
+     "metabrowser@$release_version" --help
+   uv --config-file uv.toml tool run \
+     --refresh-package metabrowser \
+     --exclude-newer-package "metabrowser=$release_bound" \
+     --from "metabrowser==$release_version" metab --help
+   uv --config-file uv.toml tool run \
+     --refresh-package metabrowser \
+     --exclude-newer-package "metabrowser=$release_bound" \
+     --from "metabrowser==$release_version" metabrowser --help
    ```
 
-10. From a clean temporary directory, install the public Agent Skill and confirm it
-    retains the documented local-`metab` or `uvx metabrowser@latest` runner policy with
-    `npx skills add jlevy/metabrowser --skill metabrowser`.
+10. Verify a fresh, project-local installation of the public Agent Skill.
+    Review and record an exact `skills` installer version under the
+    [supply-chain policy](../SUPPLY-CHAIN-SECURITY.md), then replace the installer
+    placeholder below. Pin the skill source separately to the approved `RELEASE_COMMIT`;
+    the installer’s
+    [command reference](https://github.com/vercel-labs/skills/blob/main/docs/commands.md)
+    documents the `owner/repo@ref` syntax for a tag or full commit.
+
+    From the repository, save the approved skill and npm configuration path before
+    entering a fresh temporary directory.
+    Passing that configuration explicitly keeps npm’s lifecycle-script, release-age and
+    engine checks active there:
+
+    ```shell
+    SKILLS_INSTALLER_VERSION='<reviewed-exact-version>'
+    release_npmrc="$PWD/.npmrc"
+    skill_check_dir="$(mktemp -d)"
+    git show "${RELEASE_COMMIT}:skills/metabrowser/SKILL.md" \
+      > "$skill_check_dir/expected-SKILL.md"
+    (
+      cd "$skill_check_dir" || exit 1
+      npx --userconfig "$release_npmrc" \
+        "skills@$SKILLS_INSTALLER_VERSION" add \
+        "jlevy/metabrowser@$RELEASE_COMMIT" --skill metabrowser
+    )
+    ```
+
+    Select project-local installation in that directory when prompted.
+    Record the absolute path of its installed `SKILL.md` within that directory as
+    `INSTALLED_SKILL`, then verify its bytes:
+
+    ```shell
+    cmp "$skill_check_dir/expected-SKILL.md" "$INSTALLED_SKILL"
+    ```
+
+    Confirm that the installed skill retains the documented local-`metab` or
+    `uvx metabrowser@latest` runner policy.
+    Record the installer version, source commit, installed path and comparison result as
+    the fresh-install evidence.
 
 For the first release, the intended tag and package version are `v0.1.0` and `0.1.0`.
 
