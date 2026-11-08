@@ -5,7 +5,7 @@ title: "Landing gate: regular-folder behavior is unchanged from v0.11.0 except d
 kind: task
 status: in_progress
 priority: 1
-version: 22
+version: 23
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -23,12 +23,14 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T19:53:16.765Z
-updated_at: 2026-11-08T08:19:44.920Z
+updated_at: 2026-11-08T08:38:13.178Z
 started_at: 2026-10-01T19:53:20.458Z
 ---
 The user's requirement (2026-10-01): 'carefully review to make sure the entire PR stack can land safely without destabilizing any existing features for regular pages (bugfixes excepted) ... thoroughly tested/reviewed. then the new features are purely additive.' Earlier evidence (byte-identical CLI output on 14 routes, a landing-risk review, a browser smoke) was taken at #244 and is stale: later PRs changed code every page uses (#246 capability SDK removal and --doctor; #248 pin guard and pageshow handling; #249 ROOT rule and the Git panel's commit loading; #254 plugin SDK split into an on-demand views file, plugin loading order, lazy imports; #261 run_git reading stderr; the page-connection and mirror-name fixes). Gate: on the final stack tip, three independent differentials against v0.11.0 on regular trusted folders, each re-runnable with one command: (1) evidence audit: every test, golden and fixture that exists on main and was modified or deleted in the stack, classified hunk by hunk; main's own black-box goldens run against the tip's build; (2) data and modes: every route main registers, every CLI mode and flag, response headers, plugin loading and environment handling, over several corpora, byte-compared; (3) browser: a scripted matrix of views and interactions in stock Chrome on both builds, comparing normalized DOM, console, requests and screenshots. Every difference is classified: identical; intended change with its CHANGELOG entry; bugfix; or unexplained. Accept rule: zero unexplained differences, and a written list of every intended non-additive change to an existing feature for the user to sign off (known so far: Plugin SDK 0.6 -> 0.7 is breaking; --untrusted and --no-active-content now render Markdown inert and apply a strict CSP; --doctor output; metab '' is refused; a scheme:// argument is always a source; source views gained a line gutter). Cross-browser paint (Safari, Firefox) remains a manual check for the user.
 
 ## Notes
+
+November8 preparation update: approvedminimal final-harness boundarypatch ae38fb92c0f194c7fd1894bc2a2791a5860be140c2ab40e1fdd7a96e09328811 applied ONLYto fresh data-final-tip-ghqqc7dx. ResolvesphysicalWORK andpassesauthoritativedurableCtx.raw to5capturecallers; exactly3moduleschanged.24captureboundaryselfchecks passedwithrealwrites/simulatedresults, zeroapp executions; alloldharness/classifications/corpus/envfingerprintsunchanged. Nofinalrunstarted; waitexactfinalartifact/GO. Completedoldobservations have380addedGitcommandobservations, allread-onlydiff/cat-file/merge-base/rev-parse/ls-files; noaddedfetch/clone/pull/push/networkcommandheads. Threebackslashdocumentcases provedcanonicalidentitycontract (canonicalqueries200identicalto6controlbodies; usablepatchsuccess), corruptgzip404documenteddecodefailure; nosourcefixneeded. Historicalstabledebugcounter+1 staysunclassified; focusedexactwheelprefixboth106/106, notproofoldcausality. Oldpartialrunremainsunaccepted. Loadingfix finalforwardhead a2bb0d29ab6165dacf95705bf189b2208b96c534 clean, finalnormalpushfullverifyrunningafterprecommit4917/9+386goldens+fullchecks/0FSerrors. No releaseapproval.
 
 November8 current data checkpoint: e204 intermediate run cleanlyinterrupted130 at nextpreservedboundary after818/1921CLI comparisons, all17012selectedHTTPrequests/all47functionalspecialentries,19562completedrows. Only3/33servedtracegroups executed;30CLItraces unrun andoriginalfinalmutationrowabsent. Normalhandler+ownedchildSIGINT cleanup leftnoownedprocesses/8841-8848listeners; originalreportexit0 isreportcreationonly, neveracceptance. Privateharnessandbothenvsunchanged; independentcorpuscheckfoundonly10approvedrecentmtimechanges, contentsunchanged. Supportingexactsemanticproofs explain1700distinctIDs/1717completedrows (17repeatIDsidentical),381rowsstillresidual. FivecompressedcomparisonIDdeltas proveddecodedcontenthash/capped8MiB documented; no blanketmasks/rulechanges. Residualpaths/exporthashes/Gittraces/debugcounter +fourdocument200->404edgecases underexactreview. Separateagentdiff_document_residual_review checksPOSIXbackslashfixturepaths/corrupt.gz againstactualcontents/contracts beforeacceptance; noconfirmedproductregressionyet. Finalheadfreshpaireddata/audit/browser rerunsstillrequired; no controlreplayframework. Rootcurrentloadingfixfullgate35132runningbeforeforwardcommit; d0edd4c firstcommitunpublished, sourcepushinterruptedafteranotherconfirmedmissing-pathownershipboundary. Allhistoricale204rawresultsandfailurespreserved.
 
