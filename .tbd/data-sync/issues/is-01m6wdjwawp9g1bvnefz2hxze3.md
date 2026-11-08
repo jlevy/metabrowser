@@ -5,7 +5,7 @@ title: Prepare the next Metabrowser release candidate without publishing
 kind: task
 status: in_progress
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -17,12 +17,18 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-08T01:50:20.508Z
-updated_at: 2026-11-08T15:46:10.980Z
+updated_at: 2026-11-08T16:05:54.170Z
 started_at: 2026-11-08T01:55:06.900Z
 ---
-Prepare Metabrowser 0.12.0 under release coordinator mb-4bd2. Product layers through PR #334 are merged, reviewed, CI-green and installed. Finish the separate release-documentation correction mb-y489 and its full gate, independent reviews, PR/CI and merge. Then freeze the exact candidate for final data/audit/browser differentials mb-2g6f, the above-50-file comparison mb-8pyc, quiet previous-release rehearsal mb-cf6y, navigation and large-PR qualification mb-4ifm, the complete installed-wheel runbook mb-m20f and owner matrix mb-etqi. Keep docs, plans, skill identity, changelog and the behavior-change record current; prepare complete 0.11.0-to-0.12.0 release notes and a concrete artifact/checklist packet. Preserve historical failed, interrupted and invalidated observations at their original source identities. No tag, GitHub release, PyPI publication or post-publication claim before the owner's approval of the exact final commit and notes. Future Files source/branch workflow mb-itzy remains paused and outside this scope.
+Prepare Metabrowser0.12.0 under release coordinator mb-4bd2. All product and release-command layers through PR335 are merged, independently reviewed and CI-green; exact gated426 is installed. Complete final data/audit/browser differentials mb-2g6f, the above50-filecomparison mb-8pyc, quiet previous-release rehearsal mb-cf6y, navigation andlarge-PRqualification mb-4ifm, installed-wheelrunbook mb-m20f andownermatrix mb-etqi. Keepdocs/plans/skill/changelog/behavior-change recordcurrent, andpreparecomplete0.11.0-to0.12.0notes plusconcreteartifact/checklistpacket. Preservefailed/interrupted/nonfinalevidence atoriginalidentities. No tag/GitHubrelease/PyPIpublication orpostpublicationclaim beforeownerapprovesexactfinalcommitandnotes. FutureFileslive/branchworkflow mb-itzy remains paused andoutside scope.
 
 ## Notes
+
+November 8: merged-main CI and installed426 complete; final release qualification active
+
+PR335 mergedmain e1cfca1a66277aa86887f031f9b28b250d4a4928 passedallnineCIjobs (42496190135), preserving exactgated426tree. Independentreviewsandfullgatealready passed; mb-y489 closedandsynced. BothdefaultCLIaliases andthreepreviews nowuseexactgated426wheel, withdoctor11/33assets/45unchangedpins andfreshfunctionalbrowserchecks inbothsource modes. Sourcecheckoutremainscleanat426. Publicpostmerge receipt: https://github.com/jlevy/metabrowser/pull/335#issuecomment-6723744302 . No productPRremainsopenapartfromexcludedreferencedraft247.
+
+Exp057 deferredaftertwofailedhostquietnesschecks withzerocaptures. Final426functionaldata comparison isrunningunder mb-2g6f, mandatory33tracecoverage included andtimingexcluded. Browserfunctional differential and55-filefinalcomparison arebeingpreparedseparately. Finalaudit/differentials, navigation/large-PRmeasurements, fullinstalledQA, owner matrix andexactcommit/notesapproval remainopen. Releasebeadnowexplicitlydepends on m20f/etqi/8pyc asalreadyrequired. AQArecordreconciliationpatch ispreparedoutside source underthisbead; applyoncecurrentmeasurement/QAoutcomes areknown, preservingoldercheckpoints. mb-itzy remains paused; no tag/release/publication.
 
 November 8: latest reviewed product and documentation layers merged
 
