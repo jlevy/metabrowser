@@ -5,7 +5,7 @@ title: Re-run the folder comparison after this branch merges
 kind: task
 status: in_progress
 priority: 1
-version: 7
+version: 8
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -14,12 +14,14 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:57.084Z
-updated_at: 2026-11-08T03:19:21.112Z
+updated_at: 2026-11-08T05:42:20.086Z
 started_at: 2026-11-03T09:32:28.834Z
 ---
 This branch changes plain-folder narrow diffs, and possibly toggles. Extends mb-2g6f's re-run on the head to be tagged; the sign-off record must then name this branch's changes too.
 
 ## Notes
+
+November7 exactinstalled519c33239 follow-up completed:0.11.1.dev1275+519c33239 CLI --diff HEAD --format json equals preserved0.11.0controlfullpayload,55manifestfiles/55patches, cleaninmemoryapplytargeta4f6e55d71f87e75db3d653dae36f65ad0495984418b9cebe64282ed1c206408,fixtureunchanged. Rootbuilt-inbrowser freshUnifiedandfreshSplit reach/hydratefile54withVALUE_12=120 (barpositions679/698of900viewport),55sectionbars,noNofMcounter,0warnings/errors. Switchinglayoutretainslastfilehydration; viewportresets,sofreshSplitwascheckedseparately. Evidencefolder55-installed-519c-comparison.json preservesprecisescope. Tempserver8892andbothagenttabsclosed. Currentproductfixtureacceptancecomplete; finalreleasehead/ownersignoffstillseparate. BehaviorchangerecordnowhasdatedNov7addendumunderfinaldocsPRpreparation.
 
 November 7 release-preparation checkpoint: Installed main68534af93 candidate now passes an explicit55-file plain-folder session: complete CLI document55patches, clean apply with identical produced/target tree SHA256 a4f6e55d71f87e75db3d653dae36f65ad0495984418b9cebe64282ed1c206408, final deferred file hydrates after End scrolling in both Split and Unified, no routine partial counter, neutral15px/22.5px commit description. Evidence recorded in the release-preparation directory. This is the candidate half only; baseline comparison and eventual release-head/owner sign-off remain open.
 
