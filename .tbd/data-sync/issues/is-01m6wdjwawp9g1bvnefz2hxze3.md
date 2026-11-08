@@ -5,7 +5,7 @@ title: Prepare the next Metabrowser release candidate without publishing
 kind: task
 status: in_progress
 priority: 1
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -18,12 +18,22 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-08T01:50:20.508Z
-updated_at: 2026-11-08T16:41:59.028Z
+updated_at: 2026-11-08T17:33:49.681Z
 started_at: 2026-11-08T01:55:06.900Z
 ---
 Prepare Metabrowser 0.12.0 under release coordinator mb-4bd2. All product and release-command layers through PR #335 are merged, independently reviewed and CI-green; exact gated 426 is installed. Complete final data/audit/browser differentials mb-2g6f, the above-50-file comparison mb-8pyc, quiet previous-release rehearsal mb-cf6y, navigation and large-PR qualification mb-4ifm, the installed-wheel runbook mb-m20f and owner matrix mb-etqi. Keep docs, plans, skill identity, changelog and the behavior-change record current, and prepare complete 0.11.0-to-0.12.0 notes and a concrete artifact/checklist packet. Preserve failed, interrupted and nonfinal evidence at its original identity. No tag, GitHub release, PyPI publication or post-publication claim before the owner approves the exact final commit and notes. Future Files live-worktree/branch browsing mb-itzy remains paused and outside scope.
 
 ## Notes
+
+November 8, 17:33 UTC: current release qualification
+
+Runtime through #335 remains merged/reviewed/CI-green and installed from exact gated426. All four fresh greater-than-50-file manual cells now pass in the built-in ChatGPT browser after owner unlock; actual final-file lines render in both layouts on both builds, no console warnings/errors in recorded windows, neutral white 15px sans commit description. Temporary test tabs and owned8981/8982 servers are gone; the three defaults remain. mb-8pyc stays open for eventual tag-head and separate owner acceptance.
+
+Parts A and B are accepted at exact426. Fresh Part C control completes203 modules with2185 passes/1 expected skip; baseline-oncandidate/current-self captures finished once and specific semantic review is active. Final DATA capture is still running and its completed prefix is undergoing independent review; no blanket acceptance of unexplained outcomes. The full browser matrix was interrupted at90 complete+2 partial control jobs and zero candidate jobs, with native Chrome/AppKit input stalls. Its raw failures/cleanup are preserved; recovery is explicit blocker mb-cz5s under mb-2g6f. Only a bounded control-only native-key diagnostic is being prepared; no full replacement/performance success claimed.
+
+QA-only branch codex/v012-qa-evidence-20261108 is clean at110a3ae2aad54f8e1da2038d0c26e05ccefdc6f4, sole change the dated QA record; runtime, locks and test inputs remain426. Independent A approves the initial blob and final two-public-link correction. Normal prepush complete makeverify is active; Python portion passed4917/9 expected skips, other stages pending. Initial hygiene and private-observer setup failures ran no pytest cases and remain preserved. Keep the QA follow-up open while latest comparison findings/receipts are reconciled; no PR/main CI/merge success yet.
+
+Exp057 still has zero captures after failed quiet preflights. Navigation/large-PR timing, full installed runbook, owner matrix and exact final commit/notes approval remain open. Private release-readiness packet is current; publication remains unauthorized. Future workflow mb-itzy is paused.
 
 November 8: merged-main CI and installed 426 complete
 
