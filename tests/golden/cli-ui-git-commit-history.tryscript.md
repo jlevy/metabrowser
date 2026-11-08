@@ -17,6 +17,11 @@ An address with a short commit ID says it needs the full lowercase one, a panel 
 went away and came back starts over, and a folder that is not a repository has no Git
 panel listening.
 
+The panel’s loading session holds paint callbacks and diff assets independently.
+Its initial spinner preserves the connected diff stage, and deferred paint preserves the
+ready commit. An older selection’s paint callback preserves the newer selection’s busy
+state.
+
 ```console
 $ node tests/dom/git-commit-history-session.js
 {
@@ -253,3 +258,14 @@ $ node tests/dom/git-commit-history-session.js
 }
 ? 0
 ```
+
+```console
+$ node tests/dom/git-panel-behavior.js
+OK git panel behavior
+commit loading session {"paint":{"readyConnected":true,"loading":false},"assets":{"stageConnected":true,"spinner":true},"crossing":{"newerBusyAfterOlderPaint":true}}
+? 0
+```
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->
