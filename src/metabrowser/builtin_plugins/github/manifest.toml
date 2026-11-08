@@ -22,11 +22,23 @@ route = "pull-refresh"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_refresh_handler"
 methods = ["POST"]
 
+# Background lightweight metadata batches; selected full refresh remains a separate action.
+[[data_hook]]
+route = "pull-cores-prepare"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_cores_prepare_handler"
+methods = ["POST"]
+
 # A pinned comparison from an acquired checkout store. GET never starts acquisition.
 [[data_hook]]
 route = "pull-comparison"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_comparison_handler"
 methods = ["GET"]
+
+# A selected PR's bounded Conversation projection, held separately from discussion.
+[[data_hook]]
+route = "pull-timeline"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_timeline_handler"
+methods = ["POST"]
 
 # One text of a pull request's cached record -- its description or one comment or
 # review -- rendered as Markdown through KPress in its sanitized mode.

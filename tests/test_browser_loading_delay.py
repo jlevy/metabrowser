@@ -270,7 +270,7 @@ def test_git_commit_staging_has_one_shell_owned_atomic_handoff() -> None:
     select = git[git.index("async function selectCommit") : git.index("function renderFileRow")]
     assert "disposeCommitDiff();" not in select[: select.index("await preparation.detail")]
     assert "prepareRevision(revision, false)" in select
-    assert "renderPreviewNode(stage, previewClaim)" in select
-    assert select.index("beginDiffPreparation") < select.index("renderPreviewNode")
+    handoff = select.index("renderPreviewNode(stage, previewClaim)")
+    assert select.index("beginDiffPreparation") < handoff
     assert "ctx.raw === undefined" in diff
     assert "showSummary: !ctx.revision" in diff

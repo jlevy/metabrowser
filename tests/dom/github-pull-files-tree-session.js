@@ -24,7 +24,6 @@ for (const envelope of Object.values(recorded)) {
   envelope.rows = envelope.rows.map((row) => JSON.parse(row));
 }
 const treePath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pull-files-tree.js");
-const panelPath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pulls-panel.js");
 // Open every folder up to this many files. The panel's measured threshold is the next step's;
 // here one list is under the first and over the second.
 const LARGE = 300;
@@ -80,11 +79,10 @@ function show(rows) {
 
 async function main() {
   const tree = await import(pathToFileURL(treePath).href);
-  const panel = await import(pathToFileURL(panelPath).href);
   const formatTime = (iso) => iso;
   const describe = (envelope) => {
     const model = tree.describeFileList(envelope);
-    const failure = panel.refreshFailure(envelope, formatTime);
+    const failure = tree.fileListFailure(envelope, formatTime);
     return { ...model, failure: model.failure?.outcome ?? null, says: failure?.text ?? null };
   };
   const stories = {};
@@ -151,13 +149,33 @@ async function main() {
     throw Error("timestamps must not split the same progressive generation");
   }
   const rowExpansion = tree.createRowExpansion();
-  const expandedRows = [rowExpansion.shown(7), rowExpansion.shown(8)];
+  const expandedRows = [rowExpansion.shown(7, "a.py"), rowExpansion.shown(8, "b.py")];
   rowExpansion.expand(8);
-  expandedRows.push(rowExpansion.shown(9));
+  expandedRows.push(rowExpansion.shown(9, "c.py"));
   if (!rowExpansion.isExpanded(8)) {
     throw Error("a reader's expansion must survive page replacement");
   }
-  stories["only automatic row expansions close when the page moves"] = expandedRows;
+  stories["only file-address expansions close when the page moves"] = expandedRows;
+  const routes = tree.createRowExpansion();
+  routes.shown(7, "a.py");
+  routes.shown(7, null);
+  if (!routes.isExpanded(7)) {
+    throw Error("returning to the same PR preview preserves disclosure");
+  }
+  routes.collapse(7);
+  routes.shown(7, "a.py");
+  routes.collapse(7);
+  if (routes.shown(7, "a.py").expand.length !== 0) {
+    throw Error("a repeated file notification must respect manual collapse");
+  }
+  if (routes.shown(7, "b.py").expand[0] !== 7) {
+    throw Error("a different file address must reveal its collapsed owner");
+  }
+  routes.expand(7);
+  if (routes.shown(8, "c.py").collapse.length !== 0 || !routes.isExpanded(7)) {
+    throw Error("reader-owned expansion survives navigation to another PR");
+  }
+
   stories["a long tree draws only its viewport and overscan"] = [0, 12000, 200000].map((top) =>
     tree.windowRange({
       count: 4539,
@@ -377,13 +395,13 @@ async function controllerStory(tree) {
   look("a failed first read offers Retry and keeps reading");
   reads.push("absent");
   await controller.retry();
-  if (requests.some((line) => line.startsWith("POST"))) {
-    throw Error("an address alone fetched");
+  if (requests.filter((line) => line.startsWith("POST")).length !== 1) {
+    throw Error("an expanded tree with a missing cache must ask exactly once");
   }
-  look("Retry reads the cache; an address alone fetches nothing");
-  controller.expand({ reader: true });
-  await settle();
-  look("a reader's expansion asks for an uncached list");
+  if (!model.loading || model.notice !== null) {
+    throw Error("an expanded tree lists automatically while showing progress");
+  }
+  look("Retry reads the cache and automatically lists missing files");
   for (const name of ["filling 1", "filling 2", "filled"]) {
     reads.push(name);
     await fire(tree.FILES_POLL_MS);

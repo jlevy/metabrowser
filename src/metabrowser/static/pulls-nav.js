@@ -46,8 +46,7 @@
    * Which tab an address shows, given the tab that is showing; null to leave it. A pull
    * request's address shows Pulls, and a file's address shows Files: leaving the first for the
    * second is the one way a file opens with Pulls in front, by a link on the page or by Back.
-   * Selecting a tab by hand changes no address, so nothing here moves it off that tab until
-   * the address changes.
+   * This only marks a panel for the address the shell already owns.
    *
    * @param {MetabrowserPublicPullRouteRuntime} routes
    * @param {string} pathname
@@ -94,6 +93,7 @@
     let filter = "open";
     /** @type {string | null} */
     let lastPlace = null;
+    let preserveScroll = false;
 
     function address() {
       const { pathname, search } = deps.location();
@@ -135,14 +135,9 @@
                 current: here?.page ?? null,
                 file: here?.file ?? null,
                 shown,
-                // A checkout reads and refreshes nothing until the tab is shown, by the plan's
-                // rule for a checkout: the network only once the reader opens the tab. On a
-                // mirror, starting the list's refresh once the first tree has settled was
-                // measured against leaving it for the tab's first show, nine back-to-back pairs
-                // on pallets/click at a load average of 4 to 6: first row 1.001x and the mirror's
-                // own refresh 0.998x. Started as the page starts, it was 1.09x to 1.14x on the
-                // first row, past the plan's 1.1x, so it starts here and not there.
-                refreshAhead: !checkout,
+                // Warm PR metadata after the shell's first tree has settled in both
+                // repository modes. Details use the shared bounded background scheduler.
+                refreshAhead: true,
                 checkout,
                 scrollRoot: deps.scrollRoot(),
                 open: (
@@ -173,7 +168,7 @@
           // The reader may have moved on while it loaded.
           handle?.setShown(shown);
           const there = address();
-          handle?.setCurrent(there?.page ?? null, there?.file ?? null);
+          handle?.setCurrent(there?.page ?? null, there?.file ?? null, { preserveScroll });
         } catch (error) {
           console.error("metabrowser pulls tab: the list could not load", error);
           if (shown && !disposed) {
@@ -231,29 +226,53 @@
 
     /**
      * The address changed, by history or in the page: which tab, and what the panel marks.
-     * A step that stays in one place, such as a fragment in a file, moves no tab, so a reader
-     * who chose Pulls there by hand keeps it; Back from one filter of the list to another is
-     * a new place, and shows the list.
+     * A step that stays in one place, such as a fragment in a file, moves no tab.
+     * Back from one filter of the list to another shows the list.
      */
-    function routeChanged() {
+    /** @param {{preserveScroll?: boolean}} [options] */
+    function routeChanged(options = {}) {
       if (disposed) {
         return;
       }
       const { pathname, search } = deps.location();
-      if (place(pathname, search) !== lastPlace) {
-        lastPlace = place(pathname, search);
+      const herePlace = place(pathname, search);
+      if (herePlace !== lastPlace) {
+        preserveScroll = options.preserveScroll === true;
+        lastPlace = herePlace;
         const tab = tabForAddress(deps.routes, pathname, search, deps.activeTab());
         if (tab !== null) {
           deps.activate(tab);
         }
+      } else if (options.preserveScroll) {
+        preserveScroll = true;
       }
       const here = address();
       if (handle !== null) {
-        handle.setCurrent(here?.page ?? null, here?.file ?? null);
+        handle.setCurrent(here?.page ?? null, here?.file ?? null, { preserveScroll });
         if (here?.filter) {
           handle.setFilter(here.filter);
         }
       }
+    }
+
+    /** The active PR renderer may offer stack navigation; custom renderers need not.
+     * @returns {MetabrowserPublicPullStackNavigation | null}
+     */
+    function stackPage() {
+      if (disposed || !shown || deps.activeTab() !== PANEL_ID) {
+        return null;
+      }
+      const number = address()?.page;
+      if (number === null || number === undefined) {
+        return null;
+      }
+      const page = /** @type {Partial<MetabrowserPublicPullStackNavigation> | null | undefined} */ (
+        deps.pageFor(number)
+      );
+      if (typeof page?.hasStack !== "function" || typeof page.moveStack !== "function") {
+        return null;
+      }
+      return page.hasStack() ? /** @type {MetabrowserPublicPullStackNavigation} */ (page) : null;
     }
 
     return Object.freeze({
@@ -271,9 +290,8 @@
             deps.activate(tab);
           }
         }
-        // A checkout's tab mounts on its first show: even the cached read would load the
-        // cache into a folder's server, and its refresh asks GitHub.
-        if (handle === null && mounting === null && !checkout) {
+        // Read metadata in idle time without making Files startup wait for GitHub.
+        if (handle === null && mounting === null) {
           prefetch = deps.schedulePrefetch(() => {
             prefetch = null;
             void ensureMounted();
@@ -287,6 +305,9 @@
         handle?.released();
       },
       activateAnchor: () => handle?.activateAnchor() ?? false,
+      hasStack: () => stackPage() !== null,
+      /** @param {-1 | 1} delta */
+      moveStack: (delta) => stackPage()?.moveStack(delta) ?? false,
       expand: () => handle?.expand() ?? false,
       collapse: () => handle?.collapse() ?? false,
       /** @param {-1 | 1} delta @param {{repeat?: boolean}} [how] */
@@ -317,6 +338,38 @@
     /** @param {Record<string, unknown>} context */
     const repeating = (context) => /** @type {{event?: KeyboardEvent}} */ (context).event?.repeat;
     return [
+      shortcuts.register({
+        bindings: [{ key: "j", modifiers: { shift: "require" } }],
+        available: () => nav.hasStack(),
+        copy: {
+          action: "Toward stack base",
+          description: "Open the adjacent pull request toward the stack base.",
+          hint: "Stack",
+        },
+        group: "pull-stack",
+        handler: () => nav.moveStack(-1),
+        id: "pulls.stack.base",
+        order: 10,
+        repeat: false,
+        scope: "global",
+        surfaces: { help: "always" },
+      }),
+      shortcuts.register({
+        bindings: [{ key: "k", modifiers: { shift: "require" } }],
+        available: () => nav.hasStack(),
+        copy: {
+          action: "Toward stack top",
+          description: "Open the adjacent pull request toward the stack top.",
+          hint: "Stack",
+        },
+        group: "pull-stack",
+        handler: () => nav.moveStack(1),
+        id: "pulls.stack.top",
+        order: 20,
+        repeat: false,
+        scope: "global",
+        surfaces: { help: "always" },
+      }),
       shortcuts.register({
         bindings: [{ key: "ArrowUp" }, { key: "k" }],
         copy: {
@@ -366,7 +419,7 @@
         copy: {
           action: "Show changed files",
           description: "Show the focused pull request's changed files, or go to the first.",
-          hint: "Files",
+          hint: "Changes",
         },
         group: "pull-requests",
         handler: () => nav.expand(),
@@ -380,7 +433,7 @@
         copy: {
           action: "Hide changed files",
           description: "Hide the focused pull request's changed files.",
-          hint: "Files",
+          hint: "Changes",
         },
         group: "pull-requests",
         handler: () => nav.collapse(),
@@ -390,12 +443,12 @@
         surfaces: { help: "always" },
       }),
       // A pull request's changed files, a collection of their own: moving shows the file in
-      // Files changed, and the folders open and close as the Files tree's do.
+      // Changes, and the folders open and close as the Files tree's do.
       shortcuts.register({
         bindings: [{ key: "ArrowUp" }, { key: "k" }],
         copy: {
           action: "Previous changed file",
-          description: "Show the previous changed file in Files changed.",
+          description: "Show the previous changed file in Changes.",
           hint: "Browse",
         },
         group: "pull-requests",
@@ -410,7 +463,7 @@
         bindings: [{ key: "ArrowDown" }, { key: "j" }],
         copy: {
           action: "Next changed file",
-          description: "Show the next changed file in Files changed.",
+          description: "Show the next changed file in Changes.",
           hint: "Browse",
         },
         group: "pull-requests",
@@ -550,7 +603,10 @@
       // a GitHub checkout.
       checkout: sdk.sourceKind() === "filesystem",
       location: () => window.location,
-      pushHref: (href) => window.history.pushState(null, "", href),
+      pushHref: (href) => {
+        window.history.pushState(null, "", href);
+        shell.rememberMainTabAddress();
+      },
       activeTab: () =>
         document.querySelector(".nav-tab-bar .tab-btn.active")?.getAttribute("data-tab") ?? null,
       registerPanel: shell.registerNavPanel,
@@ -622,7 +678,7 @@
       },
       { signal },
     );
-    window.addEventListener("popstate", nav.routeChanged, { signal });
+    window.addEventListener("popstate", () => nav.routeChanged(), { signal });
   }
 
   /** End the tab and everything it holds: the view, the keys, and the listeners. */
@@ -642,7 +698,8 @@
     init,
     pullAddress,
     registerKeys,
-    routeChanged: () => current?.routeChanged(),
+    routeChanged: (/** @type {{preserveScroll?: boolean}} */ options) =>
+      current?.routeChanged(options),
     tabForAddress,
   });
 })();

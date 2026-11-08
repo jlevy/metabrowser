@@ -12,11 +12,11 @@ review comments with their file, line, and diff hunk, checks, and notes.
 It polls that route while the page is visible, quickly while a refresh runs or the
 record is pending and slowly otherwise, with `If-None-Match` so an unchanged answer is a
 304 and repaints nothing.
-An absent record offers a fetch and a stale one a refresh, each through
-`POST /api/plugin/github/pull-refresh`. An address alone fetches nothing: only a
-reader’s press sends `"retry": true`, and past the bound on jobs it is refused and says
-why. A stale page also asks by itself, without `retry`, once a reader has stayed on it,
-once per visible period, so a page walked past asks nothing.
+A visible page with nothing cached fetches its record through
+`POST /api/plugin/github/pull-refresh`. A page with an earlier failure leaves Fetch
+available, and a refused press says why.
+A stale page offers Refresh and also asks by itself, without `retry`, once a reader has
+stayed on it, once per visible period, so a page walked past asks nothing.
 The Markdown of each text is asked for one part at a time from
 `/api/plugin/github/pull-markdown`, two at once, and a render of a record the page no
 longer shows is dropped.
@@ -72,10 +72,10 @@ $ node tests/dom/github-pull-page-session.js
       "timer": "slow",
       "paints": 2,
       "paint": {
-        "status": "absent",
+        "status": "pending",
         "tab": "conversation",
-        "message": "This pull request has not been fetched yet.",
-        "canRefresh": true,
+        "message": "Fetching the pull request…",
+        "canRefresh": false,
         "freshness": null,
         "failure": null,
         "header": null,
@@ -92,21 +92,12 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "an unchanged answer is a 304",
+      "step": "a visible cold page fetches itself",
       "requests": [
-        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
-      ],
-      "timer": "slow",
-      "paints": 0,
-      "markdown": []
-    },
-    {
-      "step": "fetch it",
-      "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true}"
+        "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"wait_core\":true}"
       ],
       "timer": "fast",
-      "paints": 2,
+      "paints": 1,
       "paint": {
         "status": "pending",
         "tab": "conversation",
@@ -148,7 +139,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -181,6 +172,15 @@ $ node tests/dom/github-pull-page-session.js
         "comparison": "f92fd713acd5...85fcb2fa9e77"
       },
       "conversation": "repaint",
+      "markdown": []
+    },
+    {
+      "step": "an unchanged answer is a 304",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 0,
       "markdown": []
     },
     {
@@ -245,7 +245,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": "Could not switch to the head (selection_not_found).",
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -304,7 +304,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -347,7 +347,7 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "open Files changed",
+      "step": "open Changes",
       "requests": [],
       "timer": "slow",
       "paints": 1,
@@ -356,7 +356,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "files",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -400,7 +400,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -448,7 +448,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 5 min ago by octo-reader · may be out of date",
+        "freshness": "Fetched 5 min ago via GitHub CLI · may be out of date",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -495,7 +495,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 5 min ago by octo-reader",
+        "freshness": "Refreshing… · fetched 5 min ago via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -551,7 +551,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -607,7 +607,7 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -688,7 +688,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 5 min ago by octo-reader · may be out of date",
+        "freshness": "Fetched 5 min ago via GitHub CLI · may be out of date",
         "failure": null,
         "browse": "link to the root",
         "headOffer": null
@@ -716,7 +716,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 5 min ago by octo-reader",
+        "freshness": "Refreshing… · fetched 5 min ago via GitHub CLI",
         "failure": null,
         "browse": "link to the root",
         "headOffer": null
@@ -735,7 +735,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 5 min ago by octo-reader · may be out of date",
+        "freshness": "Fetched 5 min ago via GitHub CLI · may be out of date",
         "failure": null,
         "browse": "link to the root",
         "headOffer": null
@@ -798,7 +798,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 24 min ago by octo-reader",
+        "freshness": "Refreshing… · fetched 24 min ago via GitHub CLI",
         "failure": null,
         "browse": "switches to refs/pull/8/head",
         "headOffer": null
@@ -817,7 +817,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "current",
         "message": null,
         "canRefresh": false,
-        "freshness": "Fetched just now by octo-reader",
+        "freshness": "Fetched just now via GitHub CLI",
         "failure": null,
         "browse": "link to the root",
         "headOffer": "refs/pull/7/head"
@@ -836,7 +836,7 @@ $ node tests/dom/github-pull-page-session.js
       "markdown": []
     },
     {
-      "step": "an address alone reads what is cached",
+      "step": "a cold page with an earlier failure leaves Fetch available",
       "requests": [
         "GET /api/plugin/github/pull?number=14"
       ],
@@ -847,7 +847,7 @@ $ node tests/dom/github-pull-page-session.js
         "message": "This pull request has not been fetched yet.",
         "canRefresh": true,
         "freshness": null,
-        "failure": null,
+        "failure": "The last refresh failed: gh could not reach api.github.com",
         "browse": null,
         "headOffer": null
       },
@@ -874,7 +874,7 @@ $ node tests/dom/github-pull-page-session.js
     {
       "step": "a press past the bound is refused and says why",
       "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":14,\"retry\":true}"
+        "POST /api/plugin/github/pull-refresh {\"number\":14,\"retry\":true,\"wait_core\":true}"
       ],
       "timer": "slow",
       "paints": 2,
@@ -883,7 +883,7 @@ $ node tests/dom/github-pull-page-session.js
         "message": "The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
         "canRefresh": true,
         "freshness": null,
-        "failure": null,
+        "failure": "The last refresh failed: gh could not reach api.github.com",
         "browse": null,
         "headOffer": null
       },
@@ -897,10 +897,10 @@ $ node tests/dom/github-pull-page-session.js
       "timer": "slow",
       "paints": 2,
       "paint": {
-        "status": "absent",
+        "status": "pending",
         "tab": "conversation",
-        "message": "This pull request has not been fetched yet.",
-        "canRefresh": true,
+        "message": "Fetching the pull request…",
+        "canRefresh": false,
         "freshness": null,
         "failure": null,
         "header": null,
@@ -997,9 +997,10 @@ The session is printed in two parts, by `github-pull-page-session.js` and by
 `github-pull-page-second-session.js`, which runs the same session whole, because
 tryscript matches a command’s expected output as one regular expression, and the
 transcript in one block is larger than V8 compiles.
-The second part is what Files changed says when the comparison is unavailable, a server
-with no store among them, the page on a checkout, the review comments’ hunks, and the
-reader’s place. A checkout’s page has no pin, so no Browse code and no switch, and it
+The second part is what the Changes tab says when the comparison is unavailable, a
+server with no store among them, the page on a checkout, the review comments’ hunks, and
+the reader’s place.
+A checkout’s page has no pin, so no Browse code and no switch, and it
 says only when the checkout’s is the pull request’s head.
 
 ```console
@@ -1007,45 +1008,45 @@ $ node tests/dom/github-pull-page-second-session.js
 {
   "filesUnavailable": {
     "fetch_failed": {
-      "files": "Files changed is unavailable: the pull request's base could not be compared with its head.",
+      "files": "Changes are unavailable: the pull request's base could not be compared with its head.",
       "notes": [
-        "Files changed could not be read (fetch failed)."
+        "Changes could not be read (fetch failed)."
       ]
     },
     "no_merge_base": {
-      "files": "Files changed is unavailable: the pull request's base could not be compared with its head.",
+      "files": "Changes are unavailable: the pull request's base could not be compared with its head.",
       "notes": [
-        "Files changed could not be read (no merge base)."
+        "Changes could not be read (no merge base)."
       ]
     },
     "base_uncertain": {
-      "files": "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.",
+      "files": "Changes are not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.",
       "notes": [
-        "Files changed could not be read (base uncertain)."
+        "Changes could not be read (base uncertain)."
       ]
     },
     "commits_unavailable": {
-      "files": "Files changed is unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.",
+      "files": "Changes are unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.",
       "notes": [
-        "Files changed could not be read (commits unavailable)."
+        "Changes could not be read (commits unavailable)."
       ]
     },
     "no_store": {
-      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged.",
+      "files": "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged.",
       "notes": [
-        "Files changed could not be read (no store)."
+        "Changes could not be read (no store)."
       ]
     },
     "comparison_timeout": {
-      "files": "Files changed is unavailable: checking this pull request's history took too long. Refresh to try again.",
+      "files": "Changes are unavailable: checking this pull request's history took too long. Refresh to try again.",
       "notes": [
-        "Files changed could not be read (comparison timeout)."
+        "Changes could not be read (comparison timeout)."
       ]
     },
     "comparison_too_large": {
-      "files": "Files changed is unavailable: checking this pull request's history exceeded the comparison limit.",
+      "files": "Changes are unavailable: checking this pull request's history exceeded the comparison limit.",
       "notes": [
-        "Files changed could not be read (comparison too large)."
+        "Changes could not be read (comparison too large)."
       ]
     }
   },
@@ -1055,21 +1056,21 @@ $ node tests/dom/github-pull-page-second-session.js
       "headOffer": null,
       "checkoutAtHead": "This checkout's HEAD is this pull request's head.",
       "comparison": null,
-      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
+      "files": "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
     },
     "HEAD is elsewhere": {
       "browse": null,
       "headOffer": null,
       "checkoutAtHead": null,
       "comparison": null,
-      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
+      "files": "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
     },
     "no repository context": {
       "browse": null,
       "headOffer": null,
       "checkoutAtHead": null,
       "comparison": null,
-      "files": "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
+      "files": "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
     },
     "a mirror's page, whatever it is handed": {
       "browse": "switches to refs/pull/7/head",
@@ -1283,6 +1284,9 @@ $ node tests/dom/github-pull-page-second-session.js
     "/pull/7/files is #7's files: true",
     "/pull/7/files/src/app.py is #7's files: true",
     "/pull/7/files/src/app.py is #7's conversation: false",
+    "/pull/7/checks is #7's checks: true",
+    "/pull/7/checks is #7's conversation: false",
+    "/pull/7/checks/src/app.py is #7's checks: false",
     "/pull/70/files is #7's files: false",
     "/pull/7/filesx is #7's files: false",
     "/pull/8/files/src/app.py is #7's files: false"
@@ -1290,6 +1294,8 @@ $ node tests/dom/github-pull-page-second-session.js
 }
 ? 0
 ```
+The mounted PR heading starts with a decorative state glyph and keeps the state as a
+text badge below the heading.
 The production mount keeps the displayed comparison through waiting and failed repairs,
 and remounts it once after success even if metadata has advanced to another head.
 Pending and disposed controls cannot issue duplicate requests.
@@ -1298,6 +1304,57 @@ retains its explicit Fetch changes.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsExplicit":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsExplicit":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true}
+? 0
+```
+
+The selected and direct cold-page cases hold the POST until a description preview is
+ready. It verifies plain text, explicit unfinished sections, no premature Markdown or
+comparison actions, full-record priority, and cancellation without losing the previous
+useful surface. Checks has its own route and loading state, and it retains the existing
+check links and notices once the record is ready.
+
+```console
+$ node tests/dom/github-pull-core-preview-behavior.js
+{"description":"plain preview before full conversation","pendingParts":["discussion","checks"],"checkResults":{"route":"/pull/7/checks","links":2,"empty":true,"pending":true},"waitCorePost":{"number":7,"retry":true,"wait_core":true},"previewMarkdownRequests":0,"fullMarkdownRequests":1,"fullRecordWins":true,"crossOwnerRetirement":true,"stagedReplacement":"A retained through B cancellation until C commits"}
+? 0
+```
+
+<!-- This document follows common-doc-guidelines.md.
+See github.com/jlevy/practical-prose and review guidelines before editing.
+-->
+
+Conversation paints before its commit timeline request.
+A later partial timeline interleaves commit summaries with existing cards in provider
+order, keeps unmatched and pending discussion, and retains the rendered Markdown and
+focus. The pending request uses the shared delayed spinner.
+A stale page can show a held timeline before its metadata refresh.
+A cache miss waits for metadata settlement before asking the provider, and an old
+response cannot publish after a revision change or a tab switch.
+An explicitly retryable provider failure can try again once while the reader stays.
+A partial timeline and its focused commit link remain in place during the retry.
+
+```console
+$ node tests/dom/github-pull-timeline-session.js
+{
+  "interleaved": [
+    "body",
+    "issue_comment/9007199254740993",
+    "<img> First commit",
+    "review/9007199254740993",
+    "Last commit",
+    "review/3279967139",
+    "review/15",
+    "Some commits may be missing."
+  ],
+  "destination": "https://github.com/octo/demo/pull/7/commits/0123456789012345678901234567890123456789",
+  "heldMarkdownAndFocus": true,
+  "staleCacheHitBeforeMetadata": true,
+  "staleCacheMissWaited": true,
+  "supersededReadAborted": true,
+  "departedReadAborted": true,
+  "unavailableKeepsDiscussion": true,
+  "transientRetryIsBoundedAndKeepsPartial": true
+}
 ? 0
 ```

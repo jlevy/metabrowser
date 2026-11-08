@@ -129,8 +129,8 @@ headers, comments, reviews, full commit summaries and folder headers use relativ
 Call sites choose the presentation style and positioning, never their own suffix,
 abbreviation, color, or weight.
 A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
-in `data-tip-text`. Freshness sentences such as “Fetched 2 min ago by a reader” retain
-their sentence formatter.
+in `data-tip-text`. Freshness sentences such as “Fetched 2 min ago via GitHub CLI”
+retain their sentence formatter.
 
 ## Typography
 
@@ -170,18 +170,15 @@ A document is what the repository holds, and the reading font exists for reading
 length. A message is conversation about the content, and setting it in the document’s
 face makes the two read as one thing.
 
-A message reads at the document’s size in `--prose-sans-font`, the face a document takes
-under the sans reading font, so the face is the only difference, and a pull request’s
-text looks the same as its Markdown would in sans.
-Its width is `--message-measure`, the reader’s same “Max text width” in characters (see
-[Reading Width](#reading-width)).
+A message reads at the document’s size in `--prose-sans-font`. PR descriptions,
+comments, and reviews share the rendered README’s resolved reading width, including when
+the reading font is serif.
+See [Reading Width](#reading-width).
 
 The serif face reaches a page only through KPress’s `--kpress-host-font-prose` hook,
 which `static/styles.css` points at the reading font.
-A surface of messages that renders through KPress points that hook at
-`--prose-sans-font` and `--doc-measure` at `--message-measure` on its own root, as the
-pull request page does on `.github-pull`, so its KPress prose and its column follow
-together. No other rule names a serif.
+The pull request page points that hook at `--prose-sans-font` on `.github-pull`. Its
+KPress prose and reading column both inherit `--doc-measure`.
 `test_serif_is_only_for_documents` holds this.
 
 ### Keyboard Keys
@@ -211,6 +208,8 @@ glyph itself.
 | `?` | `?` | Question mark | Omitted when matched as a produced character |
 | `/` | `/` | Slash | Omitted when matched as a produced character |
 | Letter key | Uppercase letter, such as `T` | The letter | Uppercase letter, such as `T` |
+| Digit key | The digit | The digit | The digit |
+| Command modifier | `⌘` | Command | `Meta` |
 | `ArrowUp` | `↑` | Up arrow | `ArrowUp` |
 | `ArrowDown` | `↓` | Down arrow | `ArrowDown` |
 | `ArrowLeft` | `←` | Left arrow | `ArrowLeft` |
@@ -237,6 +236,14 @@ When modifier bindings are introduced, the formatter owns both platform labels a
 serialization; no call site chooses between names such as Control, Command, or Meta.
 Adding a key that is not in this vocabulary requires adding its display, spoken, and
 ARIA policy together with formatter tests.
+
+#### Main Tab Shortcuts
+
+The sidebar orders Files, Commits, and Pulls in that order.
+Help shows the fixed shortcuts: `⌘1` for Files, `⌘2` for Commits, and `⌘3` for Pulls.
+A missing tab keeps its number reserved.
+Use the number alone outside text fields and dialogs when the browser uses the Command
+chord for its own tab bar.
 
 #### Binding Grammar and Accessibility
 
@@ -346,9 +353,11 @@ Prose reads at a width the reader sets, in **characters**, through “Max text w
 the Metabrowser menu.
 Characters rather than a length because that is the decision a reader has: 45–75 is the
 classic range for a single column, and a browser pane is wide enough to sit above it.
-The default is 102.
+The default is 102. Choose 80 for a narrower reading target in the same control.
+That adjustable target follows
+[WCAG 2.2 SC 1.4.8, Visual Presentation (Level AAA)](https://www.w3.org/WAI/WCAG22/Understanding/visual-presentation.html).
 
-Document tokens live on `:root`; the PR page owns its message measure:
+Document tokens live on `:root`.
 
 | Token | Meaning |
 | --- | --- |
@@ -356,17 +365,12 @@ Document tokens live on `:root`; the PR page owns its message measure:
 | `--doc-char-advance` | average glyph advance per em for the current reading face |
 | `--sans-char-advance` | the calibrated advance of the clean sans |
 | `--doc-measure` | the resolved length: base × chars × advance |
-| `--message-measure` | on `.github-pull`, the same characters at the active sans advance |
 
-`--doc-measure` is the single source of truth for how wide prose reads anywhere in the
-app, and it and `--message-measure` beside it are the only places the character count is
-converted. Every prose surface reads it: the KPress bridge, the folder Overview’s card
-widths, the pull request page’s column, and the fallback `md-body` path a plugin gets
-when it renders Markdown without KPress.
-A surface of messages, the pull request page, points `--doc-measure` at
-`--message-measure` on its own root, so the bridge and its column read the message width
-with no second spelling ([Serif Is for Documents](#serif-is-for-documents)). A new
-surface that lays out prose reads `--doc-measure`, never a literal.
+`--doc-measure` converts the character setting to a length once.
+The KPress bridge, Overview cards, the commit and PR reading column, and the fallback
+`md-body` path use that length.
+The reading column adds the card inset and any pane gutter inside its box so the text
+can reach the same measure.
 Markdown rebuilt from an untrusted source goes through
 `MetabrowserInertHtml.kpressProse`, which sets it in KPress’s prose element with the
 classes the allowlist removed, so it reaches the same rules.
@@ -388,15 +392,32 @@ reading mode swaps the ratio and the same character count still holds.
 This is the average advance, not the CSS `ch` unit — `ch` is the advance of “0” and
 overstates a proportional face by roughly 23%. KPress ships no per-face constants
 because a host may swap the face; Metabrowser pins its own faces, so it owns the
-conversion. For PR messages in the system font set, `github/message-measure.js` measures
-the active system sans with Canvas and sets a page-local advance.
-It observes font-setting changes and disposes with the view; clean fonts keep their
-calibration. Size and character-count changes remain CSS inputs.
-Folder startup and document widths do not run this measurement.
+conversion. Size and character-count changes are CSS inputs.
 
 Verify a width change by measuring the *text* box with padding excluded, in both the
 single-column and wide bands, and against the same file opened on its own.
 A card can be the right width while the text inside it is an inset-pair too narrow.
+
+### Rendered Markdown Layout
+
+Document and Source keep the same outer pane gutter, `--content-padding-x`. Card borders
+and source surfaces start at the first tab’s outer edge.
+KPress keeps its normal padding inside the card: 4 rem in the single-column band and 2.5
+rem in the wide band, with its compact prose gutter on narrow panes.
+Source and Raw keep their code-block padding and line-number columns inside the shared
+outer gutter. KPress’s card and `--doc-measure` cap the reading column.
+At a preview width of 75 rem or more, a document with a table of contents puts the
+sticky KPress rail to the right, with a 3 rem gap.
+A thumbnail sits above the prose.
+A wide table scrolls inside the column beside a rail.
+In a single column it can use available space to the right of the text.
+
+Below 75 rem, KPress’s icon opens the existing overlay from the trailing gutter to keep
+the beginning of each line clear.
+The Folder Overview README shares the same prose edge and maximum measure.
+Its panel headings and bodies follow the document card’s outer edge, with text at the
+README’s responsive inner inset.
+It uses the surrounding folder navigation for context.
 
 ### Embedded Document Themes
 
@@ -837,15 +858,21 @@ The server computes all counts before bounding the returned file list, so a larg
 remains exact. Line totals use the shared semantic colors and weight and render a true
 minus sign. Missing totals remain visibly unknown.
 
-The subject, ref badges, author, age, file-status counts, units, and line counts use
-`--body-font-size` in both projections.
-The revision is the one deliberate exception: it is monospace, and mono at body size
-renders optically larger than the sans text beside it, so it uses `--nav-font-size` —
-one step down the ramp — to sit level with its row.
+The full subject uses `.page-heading` at `--page-title-font-size`, the PR title’s scale.
+Its summary starts at the pane’s content edge and uses `.page-reading-column` for the
+maximum reading width.
+The compact subject, ref badges, author, age, file-status counts, units, and line counts
+use `--body-font-size`. The revision is the one deliberate exception: it is monospace,
+and mono at body size renders optically larger than the sans text beside it, so it uses
+`--nav-font-size` — one step down the ramp — to sit level with its row.
 The compact tooltip is bounded by width and subject line count, not made denser with
-smaller type. The optional full-summary description is prose: it uses `--font-sans` at
-`--body-font-size`, wraps naturally, and preserves the newlines authored in the commit
-message.
+smaller type. The optional full-summary description uses the same sans prose as a PR
+description: `--prose-sans-font`, `--document-body-font-size`, and
+`--kpress-line-height-normal`. It preserves authored newlines and wraps long text.
+Commit descriptions and PR discussion cards share `.page-card`: the normal page
+background, text ink, border, and chrome radius.
+Each content type owns its inner padding; code blocks and diffs keep their source
+typography and spacing.
 
 Pointer hover on a Git history row uses `.git-commit-summary-compact` as the tooltip
 projection of this component.
@@ -930,7 +957,7 @@ They do not change addition/deletion counts or patch-line backgrounds.
 
 ## Diffs
 
-Diff surfaces serve a commit, a comparison, and a pull request’s Files changed, and they
+Diff surfaces serve a commit, a comparison, and a pull request’s Changes tab, and they
 share these rules wherever they appear.
 
 ### Inline Change Stats
@@ -1032,24 +1059,41 @@ tests named beside each primitive.
 
 The page is a header, optional native stack navigation, a [tab bar](#the-tab-bar), and a
 body, in that order.
-The header and the conversation share a **reading column**: `--doc-measure` plus two
-card insets, centered in a wider pane as a Markdown file’s card and Overview’s stack
-are. So a card’s text box is the one a file’s text has, and the title lines up with the
-cards under it. The Conversation and Files changed tabs follow that same column, so the
-first tab aligns with the content on both narrow and wide screens.
-The Files changed body keeps the full pane: a diff needs room for Split.
+The header, tabs, Conversation, and Checks use `.page-reading-column` and start at the
+same pane gutter as the commit summary.
+The first tab aligns with the content in narrow and wide panes.
+The column includes the card’s insets so its text can reach the same measure as the
+rendered README. Both headers use `.page-heading`. The title begins with the Pulls state
+icon at the title’s font size.
+The text wraps under its first line while the icon stays beside the first line.
+The colored badge below the title gives the state in text and the title icon is
+decorative. The Changes body keeps the full pane so a diff has room for Split.
 A cold page uses the same gray pulsing row skeleton as other known text layouts, in the
-reading column even when Files changed is selected.
+reading column even when Changes is selected.
 Its reveal wrapper and skeleton are separate nodes, so the shared loading delay does not
 replace the pulse or reduced-motion rule.
 A cached page stays readable during refresh.
+The header pairs the shared spinner with `Refreshing…` on a cached page or
+`Loading details…` on a description preview.
+Its freshness copy names GitHub CLI and the fetch age.
+The Checks tab uses the same heading, status badges, and detail links for check runs and
+status contexts. Use a shared small gray spinner beside each active section’s status
+after the page has rendered.
+Idle and failed sections use static notices.
 
 Native stack navigation uses the repository snapshot’s verified membership and order.
-The quiet Stack #N disclosure, position, and Previous PR / Next PR links share the
-reading column. The disclosure creates its ordered member links when opened.
-A member selection preserves Conversation or Files changed and clears the previous file
-selection. Unknown membership and unavailable optional tooling add no placeholder or
-setup notice; known cached membership remains visible during refresh or failure.
+A Layers icon and position/total, such as 5/23, open a menu in the reading column.
+The menu shows titles, ordinals, and PR numbers, ordered from stack top to base, with
+the current member marked.
+Its links are created only when opened.
+Arrow keys, Home, End, Escape, outside click, and focus return follow the menu pattern.
+On a selected PR, ⇧J moves toward the stack base and ⇧K toward the top; Help uses the
+shared Shift key glyph.
+Editors, dialogs, unknown membership, and inactive pages keep their normal keyboard
+behavior. Stack endpoints consume the shortcut without moving.
+A member selection preserves the current PR tab and clears the previous file selection.
+Unknown membership and unavailable optional tooling add no placeholder or setup notice;
+known cached membership remains visible during refresh or failure.
 
 ### Text
 
@@ -1088,11 +1132,16 @@ Until its render arrives a text shows as plain text in the same face and size.
 | Link | `--link`, underline on hover, the focus ring | As the freshness row’s link is |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
-| Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Files changed cannot be drawn; no severity for the offer of newer changes, which carries its own control |
+| Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Changes cannot be drawn; no severity for the offer of newer changes, which carries its own control |
 | A review comment’s earlier lines | [`.fold-expander`](#fold-expanders) on a native `summary` | States its count, and the inverse when open |
 | A review comment’s hunk | `--font-mono` at `--mono-block-font-size` | The user’s code, with the diff view’s row tints |
 | Empty state | `--muted`, sentence with a period |  |
 | Refresh, Fetch, Switch to the head | `.btn` |  |
+
+Author, action, and relative age share one metadata size and baseline in a header or
+discussion card. The bold username uses the same muted ink wherever it names an actor.
+The avatar centers independently beside that text baseline.
+Compact navigation ages and branch chips retain their smaller chrome sizes.
 
 Author avatars are decorative circles beside the visible username, with fixed dimensions
 so image arrival or failure does not move the text.
@@ -1108,8 +1157,8 @@ Document image sanitization remains independent; see [Content Trust](../SECURITY
 
 ## The Pulls Tab
 
-The list beside Files and Git, on a GitHub repository, shows every pull request newest
-first. Like the page it opens, it has almost no vocabulary of its own.
+The list beside Files and Commits, on a GitHub repository, shows every pull request
+newest first. Like the page it opens, it has almost no vocabulary of its own.
 `test_the_pulls_tab_carries_the_shells_primitives` holds what follows.
 
 A pull request’s row is a container: its chevron opens a changed-files tree under the
@@ -1157,10 +1206,9 @@ Four states, each with the shape GitHub gives it and a color token in GitHub’s
 
 The tokens are the plugin’s, in its stylesheet, as a domain’s tokens are, and each is
 one color seen against two backgrounds: the hue is GitHub’s and the same in both themes.
-Color is never the only signal: the shapes differ, the icon’s accessible name and
-tooltip say the state in the page header’s words, and the page’s state badge is the same
-icon beside its word.
-Everything goes through `pullStateIcon` and `displayState` in
+The shapes differ. In the list, the icon’s accessible name and tooltip give the state.
+On the page, the same glyph sits beside the title and the text badge below names the
+state. Everything goes through `pullStateIcon` and `displayState` in
 `builtin_plugins/github/pull-state.js`, so a row and its page cannot disagree.
 `test_pull_state_colors_keep_their_hue_and_read_on_both_grounds` holds the hue and a
 4.5:1 contrast on both grounds, because a badge sets its word in that color.
@@ -1176,17 +1224,18 @@ Everything goes through `pullStateIcon` and `displayState` in
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | PR number and username | `--nav-font-size`; number uses text ink, username uses `.github-pull-author` | Both are readable context; usernames stay bold and muted across PR surfaces |
 | Base and head | `--ui-small-font-size`, remote-ref ink | Ref context is smaller than the number and username |
-| Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | [Choosing Among Values](#choosing-among-values) |
-| Count and freshness | Bold numeric total with “PRs on owner/repo”; a separate “Showing last 500” line when the display is partial, followed by muted freshness | A status sentence is the [Age](#age) exception |
-| A refresh’s failure, cut rows | [`.notice`](#notices), `warning`, with **Retry** in it when a reader can act | A cached list still shows under it |
-| No rows yet | The `.recent-loading` shape under `.mb-delayed-loading` | [Loading States Are Shapes](#loading-states-are-shapes-not-sentences) |
-| Fetch more, Retry | `.btn` | [Control Families](#control-families) |
+| Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
+| Count | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Counts describe the repository and the displayed window. |
+| Connection | One live status row with the shared small gray spinner during work, a quiet update age when idle, and actionable copy during failures | Cached rows stay visible. |
+| Fetch more, Reload | `.btn` | Fetch more extends the display window. Reload checks GitHub for updates. See [Control Families](#control-families). |
 
 A row is two lines and one target, because a pane is narrower than its parts: the state
 icon and the title with the age beside it, sharing a baseline, then the metadata line
 under them. It is one link, so a new tab and a copied address are the browser’s own, and
 all of its text is text: GitHub’s users write it, and none of it reaches markup or a
 style.
+
+New pull requests use the [shared arrival highlight](#live-row-arrivals).
 
 ### Keys
 
@@ -1248,8 +1297,8 @@ it passed. The collections differ in the rest:
 
 - **A pointer click** pushes an entry in the file tree, and in the Pulls tab for a row
   that is not the one open.
-  In Git it replaces the entry, as every selection there does that does not come from
-  the address: a commit is a selection that holds the address while it is shown
+  In Commits it replaces the entry, as every selection there does that does not come
+  from the address: a commit is a selection that holds the address while it is shown
   (`static/git-panel.js`, `selectCommit`).
 - **Enter and Space** open only in the Pulls tab, and push an entry only for a row that
   is not the one open.
@@ -1324,14 +1373,14 @@ surface-specific constraints:
 
 | Copy | Form | Example |
 | --- | --- | --- |
-| Action or trigger label | Short sentence-case noun or verb phrase; no punctuation | `Quick File` |
+| Action or trigger label | Short sentence-case noun or verb phrase; no punctuation | `Quick Search` |
 | Compact hint | One to three words; sentence case; no punctuation | `Toggle folder` |
 | Help description | One complete active-voice sentence describing context or result | `Open the selected file.` |
 | Context note | One complete sentence saying when the group applies | `Available while a file-tree row has focus.` |
 
 Copy never repeats the rendered key name, uses a slash to mean “or,” or says “click” for
 an action that also works from the keyboard.
-Use the canonical product terms “Help,” “Quick File,” “navigation pane,” “file tree,”
+Use the canonical product terms “Help,” “Quick Search,” “navigation pane,” “file tree,”
 and “main pane.” Key abbreviations belong only inside `.kbd`; ordinary prose uses the
 full key name.
 
@@ -1343,6 +1392,19 @@ instead of duplicating it.
 The project link identifies GitHub and announces that it opens a new tab.
 Help has a visible labelled trigger, so learning the `?` shortcut is never a
 prerequisite for opening it.
+
+### Quick Search Results
+
+Quick Search uses one option list for files and pull requests.
+File rows show the filename and path.
+Pull request rows show the title first, with the PR number and state below it.
+The accessible option name includes that context.
+In a GitHub repository, a leading `#` scopes results to PRs.
+The empty prefix lists recent PRs, digits match number prefixes, and words match titles.
+
+Use the same arrow, Enter, and Escape behavior for every result type.
+Keep the active option selected by identity as providers return, and open the result
+through its normal navigation route.
 
 ## Icons and Icon Buttons
 
@@ -1729,17 +1791,10 @@ Changing the metric therefore reveals the relevant skew without making equal row
 unpredictably.
 
 Overview renders the README at the same measure a reader gets opening that file on its
-own, at every breakpoint.
-Both surfaces run the same renderer over the same file, so the reader compares them
-directly and any difference reads as a defect rather than as a choice.
-Three things have to agree, and each one broke it alone: the band boundaries must query
-one container — KPress’s `kpress-doc` on the preview pane, not Overview’s own host,
-which is that pane minus its padding and so crosses 75rem about 25px later; the wide
-column must be KPress’s content track, the measure plus its 2.5rem insets, because
-sizing it to the measure leaves the prose padded for a track it is no longer in; and the
-narrow inset must equal the article padding Overview drops, or the text runs short by
-twice the difference.
-`test_one_document_surface_has_one_set_of_breakpoints` holds all three.
+own. Both use the same Markdown mount and pane gutter.
+The panel’s width includes the document inset so the card border, section rules, and
+surface panels share an edge.
+`test_one_document_surface_has_one_set_of_breakpoints` holds this contract.
 
 The **File Overview** section begins expanded.
 It opens with one control row carrying the shared Files / Bytes measure and the **Show
@@ -1917,8 +1972,8 @@ itself requires independent horizontal or virtual scrolling.
 ### The Tab Bar
 
 A tab is `.tab-btn` in a `.tab-bar`, everywhere: OVERVIEW and TREEMAP, DOCUMENT and
-SOURCE, FILES and GIT, and CONVERSATION and FILES CHANGED. Markup keeps the label’s
-natural case, “Files changed”, and the caps are presentational.
+SOURCE, FILES and COMMITS, and CONVERSATION and CHANGES. Markup keeps the label’s
+natural case, and the caps are presentational.
 `.active` paints the selected tab; under `role="tab"`, `aria-selected` says the same to
 assistive technology, and both are set together.
 
@@ -1926,6 +1981,11 @@ A tab that is an address is `<a class="tab-btn" href>`, so back, forward, and op
 new tab keep working.
 `a.tab-btn` states what a `<button>` gets from the browser, so the two render as one
 tab.
+
+Files, Commits, and Pulls each keep their last selection and navigation scroll position.
+A reader who switches tabs returns to that tab’s destination, or to its default on the
+first visit. A direct URL or a browser history step selects the tab that owns the
+destination.
 
 The bar is as wide as the pane and sits under the identity it belongs to and over the
 content it switches.
@@ -1993,7 +2053,8 @@ Panel bodies use one of two presentations:
   File Overview uses this presentation without surrounding cards.
 - A **document panel** supplies its normal rendered-document surface.
   README therefore looks exactly like an ordinarily rendered Markdown file, including
-  its metadata, diagnostics, TOC, breakpoints, and print behavior.
+  its metadata, diagnostics, breakpoints, and print behavior.
+  The Overview suppresses a nested table of contents.
   Overview adds the shared section heading but does not override the document card.
   The card keeps its standard border and shadow at regular and wide document bands, then
   becomes borderless through KPress’s own narrow breakpoint.
@@ -2003,22 +2064,11 @@ around unlike content.
 Surface content, section headings, and document content use one responsive alignment
 contract and shared stack gap.
 At regular and wide Markdown breakpoints, flat surface panels and section headings align
-to the README card’s outer edges; the TOC keeps its own rail in the wide band.
-In the regular band, the target is the visible `.kpress-long-text` card rather than the
-wider `.kpress-doc` frame.
-The shared width is
-`min(100% - 4rem, var(--doc-measure) + 2 * var(--folder-overview-regular-inset))` — the
-column box, meaning the reading measure plus KPress’s inset on each side — which puts
-the README’s text at exactly the measure and aligns section rules, labels, tallies, and
-bars with the card border.
-It reads `--doc-measure`, the app’s own reading width, and never `--kpress-measure`:
-KPress declares that token on `:root` from a stylesheet loaded after the app’s, so host
-CSS outside a `.kpress` scope resolves KPress’s default instead of the reader’s setting.
-See [Reading Width](#reading-width).
-Below the card breakpoint, KPress removes the card boundary and the alignment follows
-the README prose edge.
-The Overview composer mirrors those pinned KPress breakpoints so the rule remains exact
-rather than approximating the document geometry.
+to the README card’s outer edges.
+The shared column is bounded by `--doc-measure` plus its document insets.
+The same `kpress-doc` container selects the card breakpoint for the README and a
+standalone file. The Markdown mount supplies KPress’s rendering and the pane gutter for
+both. See [Reading Width](#reading-width).
 
 Panel availability is independent.
 A missing README removes only that region, and one failed optional panel gets a local
@@ -2323,6 +2373,25 @@ Avoid looping animation except for active progress indicators.
 Respect `prefers-reduced-motion`. Content and status must remain understandable when
 transitions are disabled.
 
+### Live Row Arrivals
+
+The Files tree and Pulls apply `.tree-item-flash-in` to a newly arrived row.
+The shared `--row-flash-bg` tint fades to transparent in 900 ms and uses the
+near-instant reduced-motion treatment.
+The highlight leaves the row’s size and controls in place.
+
+Initial snapshots, older rows revealed by paging, and edits to existing rows use their
+regular presentation.
+Each data source decides which rows arrived.
+A live list fed by another provider can apply the same treatment when it inserts a new
+item.
+
+PR arrival classification uses a conservative timestamp cutoff.
+A machine clock ahead of GitHub can suppress the tint.
+The new catalog row still appears with its regular controls and selection behavior.
+
+### Loading Chrome
+
 Transient loading chrome has a quiet period through the shared `.mb-delayed-loading`
 utility, whose length is `--loading-state-delay` in `styles.css`. The placeholder
 reserves its final layout immediately but stays invisible long enough for synchronous
@@ -2425,6 +2494,8 @@ That text is not visible copy; the rule is about what is painted.
 Visible copy is for a state neither form can express — a scan still running behind an
 empty result, an index that failed — and it says what that state is rather than that
 something is loading.
+For a background fetch alongside usable content, the Pulls tab pairs one gray spinner
+with a short status, as the Files tab does for scanning.
 
 ## Text Selection
 

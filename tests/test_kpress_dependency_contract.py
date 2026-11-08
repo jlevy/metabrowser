@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import re
 import tomllib
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
-from kpress.runtime import get_static_asset
+from kpress import runtime
+from kpress.runtime import KPressRenderRequest, get_static_asset
+from pytest import MonkeyPatch
+
+from metabrowser.kpress_adapter import render_kpress_view
+from tests.test_design_vocabulary import _rules_of
 
 PROJECT_FILE = Path(__file__).resolve().parent.parent / "pyproject.toml"
 SOURCE_DIR = PROJECT_FILE.parent / "src" / "metabrowser"
@@ -43,32 +50,103 @@ def test_kpress_does_not_resolve_from_the_monorepo_workspace() -> None:
     assert "kpress" not in project.get("tool", {}).get("uv", {}).get("sources", {})
 
 
-def test_the_toc_rail_is_reserved_through_kpress_not_reimplemented_in_host_css() -> None:
-    """The reading column holds one position, and KPress is what holds it.
+def test_markdown_uses_the_kpress_toc_only_when_the_document_has_one(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    """The former reserved-rail cache entry cannot answer the auto layout."""
 
-    Metabrowser briefly carried its own reserved-rail CSS because KPress had no
-    option for it. KPress 0.3.1 does (``RenderOptions.toc_rail``), and the two
-    implementations must never coexist: upstream reserves the rail by gridding
-    the wide band and placing the prose in track 2, the host version used a left
-    margin, and together they offset the column twice.
-    """
+    render = runtime.render_view
 
-    adapter = (SOURCE_DIR / "kpress_adapter.py").read_text(encoding="utf-8")
-    styles = (SOURCE_DIR / "static" / "styles.css").read_text(encoding="utf-8")
+    def seed_reserved_rail(request: KPressRenderRequest) -> dict[str, Any]:
+        if request.source_path == "short.md":
+            old = render(replace(request, toc_rail="reserved"))
+            assert 'data-kpress-toc-rail="reserved"' in old["html"]
+        return render(request)
 
-    assert 'toc_rail="reserved"' in adapter
+    monkeypatch.setattr(runtime, "render_view", seed_reserved_rail)
 
-    # The host reimplementation and every token it needed are gone for good.
-    for residue in (
-        "Reserved TOC rail",
-        "--embedded-toc-rail-width",
-        "--embedded-doc-column-width",
-        ":not(:has(.kpress-toc))",
-    ):
-        assert residue not in styles, (
-            f"{residue!r} is host CSS reimplementing KPress's reserved rail; "
-            'pass toc_rail="reserved" instead and delete it'
+    short = "# Short\n\nOne paragraph."
+    for _ in range(2):
+        html = render_kpress_view(
+            source_text=short,
+            source_path="short.md",
+            kind="markdown",
+            view="document",
+            ext=".md",
+            mtime_hash="toc-short",
+            size=len(short.encode()),
+        )["html"]
+        assert "data-kpress-toc-rail" not in html
+        assert "data-kpress-toc-toggle" not in html
+
+    text = "\n\n".join(
+        f"## Section {number}\n\n" + "A sentence about the document. " * 24 for number in range(9)
+    )
+    for _ in range(2):
+        html = render_kpress_view(
+            source_text=text,
+            source_path="long.md",
+            kind="markdown",
+            view="document",
+            ext=".md",
+            mtime_hash="toc-long",
+            size=len(text.encode()),
+            frontmatter={"thumbnail_url": "thumbnail.png"},
+        )["html"]
+        assert "data-kpress-toc-toggle" in html
+        assert "data-kpress-toc-rail" not in html
+        assert html.index('class="thumbnail kpress-image"') < html.index(
+            'class="kpress-prose kpress-long-text"'
         )
+
+    rules = {
+        " ".join(selector.split()): declarations
+        for selector, declarations in _rules_of(
+            SOURCE_DIR / "builtin_plugins" / "markdown" / "markdown.css"
+        )
+    }
+    document = ".metabrowser-markdown-document > .kpress-doc"
+    layout = f"{document} > .kpress-doc-layout"
+    gutter = rules[f"{document}:has(> .kpress-doc-layout > .kpress-toc)"]
+    assert gutter["--kpress-doc-gutter"] == "var(--kpress-toc-toggle-clearance)"
+    assert gutter["padding-inline-start"] == "0"
+    toggle = rules[f"{layout} > .kpress-toc-toggle"]
+    assert toggle["left"] == "auto"
+    assert toggle["right"] == "0.75rem"
+    toc_layout = f"{layout}:has(> .kpress-toc)"
+    assert rules[toc_layout]["grid-template-areas"] == '"prose toc"'
+    assert " ".join(rules[f"{toc_layout}:has(> .thumbnail)"]["grid-template-areas"].split()) == (
+        '"thumbnail toc" "prose toc"'
+    )
+    assert rules[f"{layout} > .thumbnail"]["grid-area"] == "thumbnail"
+    table = rules[f'{document} .kpress-table-wrap[data-kpress-table-scale="wide"]']
+    assert table["width"] == "max-content"
+    assert table["min-width"] == "100%"
+    assert (
+        " ".join(table["max-width"].split())
+        == "calc(100cqw - 2 * (var(--content-padding-x) + var(--kpress-column-inset)))"
+    )
+
+
+def test_embedded_readme_keeps_wide_tables_inside_the_panel() -> None:
+    """A clipping Overview card must leave the table's own scroll area reachable."""
+
+    rules = {
+        " ".join(selector.split()): declarations
+        for selector, declarations in _rules_of(
+            SOURCE_DIR / "builtin_plugins" / "markdown" / "markdown.css"
+        )
+    }
+    embedded = (
+        ".folder-overview-panel-document > .metabrowser-markdown-document > .kpress-doc "
+        '.kpress-table-wrap[data-kpress-table-scale="wide"]'
+    )
+    assert rules[embedded]["max-width"] == "100%"
+    with_toc = (
+        ".metabrowser-markdown-document > .kpress-doc "
+        '> .kpress-doc-layout:has(> .kpress-toc) .kpress-table-wrap[data-kpress-table-scale="wide"]'
+    )
+    assert rules[with_toc]["max-width"] == "100%"
 
 
 def test_runtime_has_no_optional_kpress_branch() -> None:

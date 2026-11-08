@@ -625,6 +625,15 @@ class RefreshCoordinator:
             except Exception:
                 log.exception("a background refresh failed")
 
+    def cancel(self, key: str) -> asyncio.Task[None] | None:
+        """Signal a live keyed job and return it to a caller that needs to drain it."""
+        job = self._jobs.get(key)
+        if job is None or job.done():
+            return None
+        if not job.cancelling():
+            job.cancel()
+        return job
+
     def slot(self) -> asyncio.Semaphore:
         """One of the limited slots, for a job started with ``network=False`` to hold."""
 

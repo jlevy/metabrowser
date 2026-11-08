@@ -13,6 +13,7 @@
 // Only the DOM, the network, the renderer, and unrelated shell services are
 // doubles. Nothing here restates a decision the production code makes.
 
+const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
@@ -41,6 +42,8 @@ const ASSET_BUNDLES = {
   "view-composition": [{ src: "/static/view-composition.js" }],
   "sdk-views": [{ src: "/static/plugin-sdk-views.js", provides: "MetabrowserSourceLineAnchors" }],
   "pull-route": [{ src: "/static/pull-route.js", provides: "MetabrowserPullRoute" }],
+  "main-tabs": [{ src: "/static/main-tabs.js", provides: "MetabrowserMainTabs" }],
+  "shell-tools": [{ src: "/static/main-tabs.js", provides: "MetabrowserMainTabs" }],
 };
 
 // Shared with every sandbox so `instanceof` agrees across the realm boundary.
@@ -339,7 +342,13 @@ const SHELL_FUNCTIONS = [
   "previewPlaceholderHtml",
   "beginPreviewNavigation",
   "endPreviewNavigation",
-  "activateNavPanel",
+  "finishRetainedPullPage",
+  "stagePreviewNode",
+  "createFilePreviewStage",
+  "isGitHistoryLanding",
+  "cancelMainTabPreview",
+  "attachMainTabs",
+  "initNavTabs",
   "fileSelectionFailureOutcome",
   "beginViewCompositionLoad",
   "selectFile",
@@ -355,6 +364,7 @@ const SHELL_FUNCTIONS = [
   "loadViewComposition",
   "isPullAddress",
   "loadPullPageHost",
+  "openQuickSearchPull",
   "showPullPageLoadFailure",
   "pullPageHostDeps",
   "applyPullHistoryLanding",
@@ -370,6 +380,7 @@ const shellSource = [
   // The host is created on demand, when an address under /pull/ is opened; none of
   // these states opens one, so the pane's claim finds no page to dispose.
   appDeclaration(/^var pullPageHost = null;$/m, "pull-request page host"),
+  appDeclaration(/^var retainedPullPageDispose = null;$/m, "retained pull-request finalizer"),
   appDeclaration(/^var pluginViewLifecycle = null;$/m, "plugin view lifecycle"),
   appDeclaration(/^var navigationController = [\s\S]*?^\}\);$/m, "navigation controller"),
   ...SHELL_FUNCTIONS.map((name) =>
@@ -392,12 +403,15 @@ function fakeElement(fields = {}) {
     },
     dataset: {},
     get firstElementChild() {
-      const match = /^<[a-z]+(?: class="([^"]*)")?/.exec(this.innerHTML);
+      const match = /^<[a-z]+(?: class="([^"]*)")?[^>]*>/.exec(this.innerHTML);
       if (!match) {
         return null;
       }
       const names = new Set((match[1] || "").split(/\s+/).filter(Boolean));
-      return { classList: { contains: (name) => names.has(name) } };
+      return {
+        classList: { contains: (name) => names.has(name) },
+        hasAttribute: (name) => match[0].includes(` ${name}=`),
+      };
     },
     getAttribute: (name) => (attributes.has(name) ? attributes.get(name) : null),
     hasAttribute: (name) => attributes.has(name),
@@ -463,13 +477,42 @@ function createShell(pathname, network, options = {}) {
     ["preview-pane", preview],
     ["nav-filter-bar", fakeElement()],
   ]);
-  if (options.scroller) {
-    // The one scroller the navigation panels share.
-    elements.set("tree-content", options.scroller);
+  const scroller = options.scroller ?? fakeElement({ scrollTop: 0 });
+  const panelIds = ["files"];
+  if (!options.withoutGit) {
+    panelIds.push("git");
   }
-  const navBar = fakeElement();
-  const tabButtons = ["files", "git"].map((tab) => fakeElement({ dataset: { tab } }));
-  const tabPanels = ["files", "git"].map((tab) => fakeElement({ dataset: { tabContent: tab } }));
+  if (options.pulls) {
+    panelIds.push("pulls");
+  }
+  const tabButtons = panelIds.map((tab) => fakeElement({ dataset: { tab }, focus() {} }));
+  const tabPanels = panelIds.map((tab) => fakeElement({ dataset: { tabContent: tab } }));
+  scroller.querySelector = () => ({});
+  scroller.querySelectorAll = () => tabPanels;
+  elements.set("tree-content", scroller);
+  const previewTab = fakeElement({ dataset: { tabContent: "source" }, style: { display: "" } });
+  const initialPanel = options.pulls && pathname.startsWith("/pull") ? "pulls" : "files";
+  for (const button of tabButtons) {
+    button.setAttribute("data-tab", button.dataset.tab);
+    button.classList.toggle("active", button.dataset.tab === initialPanel);
+    button.closest = () => button;
+  }
+  let tabClick;
+  const navBar = fakeElement({
+    insertBefore(button, next) {
+      tabButtons.splice(next ? tabButtons.indexOf(next) : tabButtons.length, 0, button);
+    },
+    addEventListener(_type, listener) {
+      tabClick = listener;
+    },
+    querySelectorAll: () => tabButtons,
+    querySelector: (selector) =>
+      tabButtons.find((btn) =>
+        selector === ".tab-btn.active"
+          ? btn.classList.contains("active")
+          : selector === `.tab-btn[data-tab="${btn.dataset.tab}"]`,
+      ) ?? null,
+  });
   const fetched = [];
   const panelShows = [];
   const timers = [];
@@ -494,21 +537,41 @@ function createShell(pathname, network, options = {}) {
   function requestScript(script) {
     const name = String(script.src).replace("/static/", "");
     scriptRequests.push(name);
-    setImmediate(() => {
+    function respond() {
       if (refused.has(name)) {
         script.onerror?.();
         return;
       }
       runScript(name);
       script.onload?.();
-    });
+    }
+    const gate = options.scriptGates?.get(name);
+    if (gate) {
+      void gate.then(respond);
+    } else {
+      setImmediate(respond);
+    }
   }
-  const moveTo = (_state, _title, href) => {
+  const writes = [];
+  const listeners = new Set();
+  let keydown;
+  const history = {
+    state: null,
+    pushState(state, _title, href) {
+      writes.push(href);
+      moveTo(state, href);
+    },
+    replaceState(state, _title, href) {
+      moveTo(state, href);
+    },
+  };
+  function moveTo(state, href) {
     const url = new URL(href, "http://metabrowser.test");
+    history.state = state;
     location.pathname = url.pathname;
     location.search = url.search;
     location.hash = url.hash;
-  };
+  }
 
   const sandbox = loadNavigation({
     CustomEvent: class {
@@ -517,7 +580,11 @@ function createShell(pathname, network, options = {}) {
         this.detail = init?.detail;
       }
     },
-    addEventListener() {},
+    addEventListener(type, listener) {
+      if (type === "popstate") {
+        listeners.add(listener);
+      }
+    },
     dispatchEvent(event) {
       if (event.type === "metabrowser:navigation-fragment") {
         counters.fragments += 1;
@@ -525,15 +592,26 @@ function createShell(pathname, network, options = {}) {
       return true;
     },
     document: {
-      addEventListener() {},
+      addEventListener(type, listener) {
+        if (type === "keydown") {
+          keydown = listener;
+        }
+      },
       body: { append() {} },
       cookie: "",
-      createElement: () => fakeElement({ remove() {} }),
+      createElement: () => fakeElement({ focus() {}, remove() {} }),
       documentElement: { getAttribute: () => null },
       getElementById: (id) => elements.get(id) ?? null,
+      querySelector: (selector) => (selector === ".nav-tab-bar" ? navBar : null),
+      querySelectorAll: () => [...tabPanels, previewTab],
       head: { append() {}, appendChild: requestScript },
     },
     DOMException,
+    Element: {
+      [Symbol.hasInstance](value) {
+        return typeof value?.closest === "function";
+      },
+    },
     METABROWSER_ASSET_BUNDLES: ASSET_BUNDLES,
     METABROWSER_SETTINGS: {
       SYNTAX_HIGHLIGHT_MAX_BYTES: 512 * 1024,
@@ -542,21 +620,17 @@ function createShell(pathname, network, options = {}) {
     },
     TextEncoder,
     URL,
-    history: { pushState: moveTo, replaceState: moveTo },
+    URLSearchParams,
+    history,
     location,
-    removeEventListener() {},
-    // The navigation bar activateNavPanel toggles.
-    navPanels: [
-      { id: "files", onFirstShow: null },
-      {
-        id: "git",
-        onFirstShow: () => panelShows.push("git first show"),
-        onShow: () => panelShows.push("git show"),
-      },
-    ],
-    navPanelsShown: new Set(["files"]),
-    activeNavPanelId: "files",
-    navPanelScroll: new Map(),
+    removeEventListener(type, listener) {
+      if (type === "popstate") {
+        listeners.delete(listener);
+      }
+    },
+    mainTabs: null,
+    mainTabIntent: 0,
+    pullHistoryGeneration: 0,
     navScrollShadowUpdate: null,
     queryHtml: (selector) =>
       selector === ".nav-tab-bar"
@@ -657,6 +731,21 @@ function createShell(pathname, network, options = {}) {
     runScript(name);
   }
   vm.runInContext(shellSource, sandbox, { filename: "app.js (preview pane functions)" });
+  if (!options.deferTabs) {
+    runScript("main-tabs.js");
+    if (!options.withoutGit) {
+      sandbox.attachMainTabs().register({
+        id: "git",
+        label: "Commits",
+        onFirstShow: () => panelShows.push("git first show"),
+        onShow: () => panelShows.push("git show"),
+        onHide: options.onGitHide,
+      });
+    } else {
+      sandbox.attachMainTabs();
+    }
+  }
+  sandbox.initNavTabs();
   // What server.py ships in the pane before any script runs.
   preview.innerHTML = sandbox.previewPlaceholderHtml(sandbox.previewPane.placeholder(0));
 
@@ -685,6 +774,19 @@ function createShell(pathname, network, options = {}) {
       return claim;
     },
     counters,
+    tabButtons,
+    pressTabShortcut(key, options) {
+      let consumed = false;
+      keydown({
+        key,
+        ...options,
+        preventDefault: () => {
+          consumed = true;
+        },
+      });
+      return consumed;
+    },
+    clickTab: (panel) => tabClick({ target: tabButtons.find((btn) => btn.dataset.tab === panel) }),
     /** Let the loading-indicator delay elapse. */
     elapseLoadingDelay() {
       for (const [index, callback] of timers.entries()) {
@@ -696,6 +798,14 @@ function createShell(pathname, network, options = {}) {
     outcome,
     pane,
     panelShows,
+    previewTab,
+    pop(href, state = null) {
+      moveTo(state, href);
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+    writes,
     refused,
     renderedViews,
     scriptRequests,
@@ -709,16 +819,16 @@ function createShell(pathname, network, options = {}) {
 const refusedFetch = () => Promise.reject(new TypeError("Failed to fetch"));
 
 async function tabSwitchDuringLoad() {
-  // A navigation tab switch changes which list is visible, not what is
-  // selected, so the folder still loading underneath keeps the pane and lands.
+  // Marking the tab for a route leaves the existing preview producer in charge.
   const response = deferred();
   const shell = createShell("/view/big/", () => response.promise);
   const started = shell.sandbox.navigationController.start();
   await settle();
   const loading = shell.pane();
-  shell.sandbox.activateNavPanel("git");
+  shell.sandbox.mainTabs.activate("git");
+  assert.equal(shell.previewTab.style.display, "", "main tabs leave preview tabs alone");
   const onGitTab = { pane: shell.pane(), tabs: shell.tabs() };
-  shell.sandbox.activateNavPanel("files");
+  shell.sandbox.mainTabs.activate("files");
   const backOnFilesTab = { pane: shell.pane(), tabs: shell.tabs() };
   response.resolve(jsonResponse({ kind: "folder", path: "big" }));
   await started;
@@ -738,10 +848,11 @@ function navPanelsKeepTheirPlace() {
   // and tells the panel that leaves, so one that polls can stop; choosing the panel already
   // in front moves nothing and tells nobody. Before this, Files' offset carried into Git.
   const scroller = fakeElement({ scrollTop: 0 });
-  const shell = createShell("/view/", refusedFetch, { scroller });
   const told = [];
-  shell.sandbox.navPanels[0].onHide = () => told.push("files hidden");
-  shell.sandbox.navPanels[1].onHide = () => told.push("git hidden");
+  const shell = createShell("/view/", refusedFetch, {
+    scroller,
+    onGitHide: () => told.push("git hidden"),
+  });
   const switches = [];
   for (const [scrolled, panel] of [
     [400, "git"],
@@ -750,10 +861,329 @@ function navPanelsKeepTheirPlace() {
     [250, "git"],
   ]) {
     scroller.scrollTop = scrolled;
-    shell.sandbox.activateNavPanel(panel);
+    shell.sandbox.mainTabs.activate(panel);
     switches.push(`scrolled to ${scrolled}, ${panel} chosen: shows ${scroller.scrollTop}`);
   }
   return { switches, told };
+}
+
+async function mainTabShortcuts() {
+  // The server supplies Files and Pulls. Git can arrive after the keyboard registry.
+  const shell = createShell(
+    "/view/",
+    (path) => Promise.resolve(jsonResponse({ kind: "text", path })),
+    {
+      pulls: true,
+      withoutGit: true,
+      startupScripts: ["keyboard-shortcuts.js"],
+    },
+  );
+  const { sandbox, tabButtons } = shell;
+  const shortcuts = sandbox.MetabrowserKeyboardShortcuts.create({ document: sandbox.document });
+  sandbox.mainTabs.bindShortcuts(shortcuts);
+  const press = (key, options) => shell.pressTabShortcut(key, options);
+  assert.equal(press("2", { metaKey: true }), false, "absent Git leaves Command-2 alone");
+  assert.equal(press("3", { metaKey: true }), true, "Pulls keeps Command-3 while Git is absent");
+  assert.equal(sandbox.mainTabs.active(), "pulls");
+  await settle();
+
+  sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
+  assert.deepEqual(
+    tabButtons.map((button) => button.dataset.tab),
+    ["files", "git", "pulls"],
+  );
+  assert.equal(press("2", { metaKey: true, target: { tagName: "INPUT" } }), false);
+  assert.equal(press("2", { metaKey: true, shiftKey: true }), false);
+  const closeModal = shortcuts.activateScope("help", { exclusive: true });
+  assert.equal(press("2", { metaKey: true }), false, "modal scopes own their keys");
+  closeModal();
+  assert.equal(press("2", { metaKey: true }), true);
+  assert.equal(sandbox.mainTabs.active(), "git");
+  await settle();
+  assert.equal(press("1", {}), true, "a plain number is the browser fallback");
+  assert.equal(sandbox.mainTabs.active(), "files");
+  await settle();
+
+  const help = shortcuts.snapshot("help").find((group) => group.id === "main-tabs");
+  assert.deepEqual(plain(help.commands.map((command) => command.bindings.spoken)), [
+    "Command plus 1 or 1",
+    "Command plus 2 or 2",
+    "Command plus 3 or 3",
+  ]);
+  return {
+    tabOrder: tabButtons.map((button) => button.dataset.tab),
+    ariaKeys: tabButtons.map((button) => button.getAttribute("aria-keyshortcuts")),
+    keyboardRoutes: shell.writes,
+  };
+}
+
+async function quickSearchPullRoute() {
+  const read = async (path) => jsonResponse({ kind: "text", path });
+  const selectedFile = "/view/notes.md?plain=1#L2";
+  const shell = createShell("/view/notes.md", read, { pulls: true });
+  const { sandbox } = shell;
+  sandbox.history.replaceState(null, "", selectedFile);
+  sandbox.addEventListener("popstate", sandbox.applyPullHistoryLanding);
+  await sandbox.navigationController.start();
+  const opened = await sandbox.openQuickSearchPull(307);
+  assert.equal(opened.status, "opened");
+  assert.equal(opened.focusTarget, sandbox.document.getElementById("preview-pane"));
+  assert.equal(sandbox.mainTabs.active(), "pulls");
+  assert.equal(shell.pane().owner, "pull-request");
+  assert.deepEqual(shell.writes, ["/pull/307"], "opening makes a single history step");
+  shell.pop(selectedFile);
+  await settle();
+  assert.equal(sandbox.mainTabs.active(), "files");
+  assert.equal(shell.pane().owner, "file");
+
+  const gate = deferred();
+  const pending = createShell("/view/notes.md", read, {
+    pulls: true,
+    scriptGates: new Map([["pull-route.js", gate.promise]]),
+  });
+  await pending.sandbox.navigationController.start();
+  const earlier = pending.sandbox.openQuickSearchPull(307);
+  await pending.sandbox.navigateToPath("newer.md");
+  gate.resolve();
+  const superseded = await earlier;
+  assert.equal(superseded.status, "cancelled");
+  assert.equal(pending.sandbox.location.pathname, "/view/newer.md");
+
+  return {
+    opened: shell.writes,
+    backTo: sandbox.location.pathname + sandbox.location.search + sandbox.location.hash,
+    superseded: superseded.status,
+  };
+}
+
+async function independentMainTabs() {
+  const read = (path) => Promise.resolve(jsonResponse({ kind: "text", path }));
+  const pendingFile = deferred();
+  const scroller = fakeElement({ scrollTop: 0 });
+  const shell = createShell(
+    "/view/notes.md",
+    (path) => (path === "notes.md" ? pendingFile.promise : read(path)),
+    {
+      scroller,
+      pulls: true,
+      async revealInTree(_path, { scroll }) {
+        if (scroll) {
+          scroller.scrollTop = 999;
+        }
+      },
+    },
+  );
+  const { sandbox } = shell;
+  const selectedFile = "/view/notes.md?plain=1#L2";
+  const selectedPull = "/pull/7/files/src/a.py";
+  const older = "b".repeat(40);
+  const commit = `/commit/${older}/src/a.py#diff-2`;
+  const place = { pullPlace: { top: 35 } };
+  const selections = [];
+  sandbox.addEventListener("popstate", sandbox.applyPullHistoryLanding);
+  sandbox.MetabrowserPullsNav = {
+    routeChanged() {
+      if (sandbox.location.pathname === selectedPull) {
+        // The mounted Pulls panel can reveal an offscreen selected row.
+        scroller.scrollTop = 999;
+      }
+    },
+  };
+  const commitLandings = [];
+  sandbox.MetabrowserGitPanel = {
+    cancelPending() {},
+    async restoreCommitLanding() {
+      const parsed = sandbox.MetabrowserNavigationRoute.parseCommit(sandbox.location.pathname);
+      commitLandings.push(parsed.revision);
+      shell.claimGit(parsed.revision);
+    },
+  };
+  sandbox.history.replaceState(null, "", selectedFile);
+  const initial = sandbox.navigationController.start();
+  await settle();
+
+  function snapshot() {
+    const { pathname, search, hash } = sandbox.location;
+    return {
+      address: pathname + search + hash,
+      panel: sandbox.mainTabs.active(),
+      owner: shell.pane().owner,
+      scroll: scroller.scrollTop,
+    };
+  }
+  async function open(panel) {
+    shell.clickTab(panel);
+    await settle();
+    selections.push(snapshot());
+  }
+  scroller.scrollTop = 240;
+  const outgoing = shell.pane().claim;
+  await open("pulls");
+  assert.equal(selections.at(-1).address, "/pulls");
+  assert.equal(selections.at(-1).owner, "pull-request");
+  assert.equal(
+    sandbox.isPreviewClaimCurrent(outgoing),
+    false,
+    "a held Files response lost ownership",
+  );
+  pendingFile.resolve(jsonResponse({ kind: "text", path: "notes.md" }));
+  await initial;
+  await settle();
+  assert.equal(shell.pane().owner, "pull-request", "late Files cannot replace Pulls");
+
+  // A filtered list and a changed file are ordinary browser entries.
+  shell.pop("/pulls?state=closed");
+  await settle();
+  scroller.scrollTop = 80;
+  await open("git");
+  assert.equal(selections.at(-1).address, "/view/");
+  assert.equal(sandbox.history.state.gitLanding, true);
+  assert.match(shell.pane().shows, /Select a commit to preview/);
+  assert.deepEqual(commitLandings, [], "a first Git visit does not open commit detail");
+  sandbox.history.replaceState(null, "", commit);
+  sandbox.mainTabs.remember();
+  scroller.scrollTop = 120;
+  await open("pulls");
+  assert.equal(selections.at(-1).address, "/pulls?state=closed");
+  assert.equal(scroller.scrollTop, 80);
+  shell.pop(selectedPull, place);
+  await settle();
+  await open("files");
+  assert.equal(selections.at(-1).address, selectedFile);
+  assert.equal(scroller.scrollTop, 240);
+  await open("pulls");
+  assert.equal(selections.at(-1).address, selectedPull);
+  assert.equal(scroller.scrollTop, 80, "revealing the PR must not replace the saved offset");
+  assert.deepEqual(sandbox.history.state, place);
+  await open("git");
+  assert.equal(selections.at(-1).address, commit);
+  assert.equal(sandbox.history.state.cachedCommit, true);
+  assert.deepEqual(commitLandings, [older]);
+  assert.equal(scroller.scrollTop, 120);
+  const still = shell.pane().claim;
+  const pushed = shell.writes.length;
+  shell.clickTab("git");
+  assert.equal(shell.writes.length, pushed, "the active tab pushes no history");
+  assert.equal(shell.pane().claim, still, "the active tab makes no preview claim");
+
+  shell.pop(selectedFile);
+  await settle();
+  assert.equal(sandbox.mainTabs.active(), "files", "Back activates the address owner");
+  assert.equal(shell.pane().owner, "file");
+  shell.pop(selectedPull, place);
+  await settle();
+  assert.equal(sandbox.mainTabs.active(), "pulls", "Forward activates the address owner");
+  assert.equal(shell.pane().owner, "pull-request");
+  assert.equal(shell.writes.length, pushed, "Back and Forward never write another entry");
+
+  const pullStartup = createShell(selectedPull, read, { pulls: true });
+  await pullStartup.sandbox.navigationController.start();
+  pullStartup.clickTab("files");
+  await settle();
+  assert.equal(
+    pullStartup.sandbox.location.pathname,
+    "/view/",
+    "the first Files visit opens its root",
+  );
+  const activeAfterHistory = sandbox.mainTabs.active();
+  shell.pop("/view/", { gitLanding: true });
+  await settle();
+  assert.equal(sandbox.mainTabs.active(), "git");
+  assert.match(shell.pane().shows, /Select a commit to preview/);
+  shell.pop("/view/");
+  await settle();
+  assert.equal(sandbox.mainTabs.active(), "files", "Files and neutral Git can share a pathname");
+  assert.equal(shell.pane().owner, "file");
+
+  const reloaded = createShell("/view/", read);
+  reloaded.sandbox.history.replaceState({ gitLanding: true, other: 1 }, "", "/view/");
+  await reloaded.sandbox.navigationController.start();
+  assert.match(reloaded.pane().shows, /Select a commit to preview/);
+  await reloaded.sandbox.mainTabs.finishGitDiscovery();
+  assert.equal(reloaded.sandbox.mainTabs.active(), "git", "deferred registration restores Git");
+  const unavailable = createShell("/view/", read, { withoutGit: true });
+  unavailable.sandbox.history.replaceState({ gitLanding: true, other: 1 }, "", "/view/");
+  await unavailable.sandbox.navigationController.start();
+  await unavailable.sandbox.mainTabs.finishGitDiscovery();
+  assert.equal(unavailable.pane().owner, "file", "failed discovery falls back to Files root");
+  assert.deepEqual(plain(unavailable.sandbox.history.state), { other: 1 });
+  assert.deepEqual(unavailable.writes, [], "failed discovery repairs the same history entry");
+  const missingGit = createShell("/view/", read, { withoutGit: true });
+  missingGit.sandbox.addEventListener("popstate", missingGit.sandbox.applyPullHistoryLanding);
+  await missingGit.sandbox.navigationController.start();
+  await missingGit.sandbox.mainTabs.finishGitDiscovery();
+  missingGit.pop("/view/", { gitLanding: true, other: 2 });
+  await settle();
+  assert.equal(missingGit.sandbox.mainTabs.active(), "files");
+  assert.doesNotMatch(missingGit.pane().shows, /Select a commit to preview/);
+  assert.deepEqual(plain(missingGit.sandbox.history.state), { other: 2 });
+  assert.deepEqual(missingGit.writes, [], "Back repairs the same history entry");
+
+  const pendingGit = createShell("/view/", read, { withoutGit: true });
+  pendingGit.sandbox.addEventListener("popstate", pendingGit.sandbox.applyPullHistoryLanding);
+  await pendingGit.sandbox.navigationController.start();
+  pendingGit.pop("/view/", { gitLanding: true });
+  await settle();
+  assert.equal(pendingGit.sandbox.history.state.gitLanding, true, "Back waits for Git discovery");
+  pendingGit.sandbox.mainTabs.register({ id: "git", label: "Commits", onFirstShow: null });
+  await pendingGit.sandbox.mainTabs.finishGitDiscovery();
+  assert.equal(pendingGit.sandbox.mainTabs.active(), "git");
+  assert.match(pendingGit.pane().shows, /Select a commit to preview/);
+
+  const early = createShell("/view/", read, { pulls: true, deferTabs: true });
+  assert.equal(early.sandbox.mainTabs, null, "plain startup does not fetch main tabs");
+  early.clickTab("pulls");
+  await early.sandbox.MetabrowserAssets.ensureAsset("shell-tools");
+  await settle();
+  assert.equal(early.sandbox.location.pathname, "/pulls");
+  assert.equal(early.sandbox.mainTabs.active(), "pulls");
+  assert.deepEqual(
+    early.scriptRequests.filter((name) => name === "main-tabs.js"),
+    ["main-tabs.js"],
+  );
+  const superseded = createShell("/view/", read, { pulls: true, deferTabs: true });
+  superseded.clickTab("pulls");
+  superseded.clickTab("files");
+  await settle();
+  assert.deepEqual(superseded.writes, [], "a later active-tab click cancels an early switch");
+  assert.equal(superseded.sandbox.pullHistoryGeneration, 0, "clicks did not affect pull history");
+  const earlyFiles = createShell(selectedPull, read, { pulls: true, deferTabs: true });
+  earlyFiles.clickTab("files");
+  const booting = earlyFiles.sandbox.navigationController.start();
+  await booting;
+  await settle();
+  assert.equal(
+    earlyFiles.sandbox.location.pathname,
+    "/view/",
+    "startup does not override an early Files click",
+  );
+  for (const replace of [false, true]) {
+    const mainTabsScript = deferred();
+    const newerPull = createShell("/pull/7", read, {
+      pulls: true,
+      deferTabs: true,
+      scriptGates: new Map([["main-tabs.js", mainTabsScript.promise]]),
+    });
+    await newerPull.sandbox.navigationController.start();
+    const host = await newerPull.sandbox.loadPullPageHost();
+    newerPull.clickTab("files");
+    await settle();
+    assert(newerPull.scriptRequests.includes("main-tabs.js"), "the Files click requested tabs");
+    assert.equal(newerPull.sandbox.mainTabs, null, "the tab module is still held");
+    await host.open({ number: 7, tab: "files", file: "src/a.py", replace });
+    assert.equal(newerPull.sandbox.location.pathname, selectedPull);
+    mainTabsScript.resolve();
+    await settle();
+    assert.equal(newerPull.sandbox.location.pathname, selectedPull, "the newer PR route wins");
+    assert.equal(newerPull.sandbox.mainTabs.active(), "pulls");
+    assert.deepEqual(newerPull.writes, replace ? [] : [selectedPull]);
+  }
+  return {
+    selections,
+    historyPushes: shell.writes.length,
+    activeAfterHistory,
+    neutralGitDetailOpens: commitLandings.length - 1,
+  };
 }
 
 async function reselectAfterFailure() {
@@ -1156,6 +1586,22 @@ async function onDemandCodeRefused() {
 }
 
 async function shell() {
+  const pulls = createShell("/pulls", refusedFetch);
+  const preview = pulls.sandbox.document.getElementById("preview-pane");
+  preview.innerHTML =
+    '<div class="content-body pull-request-list-host" data-preview-empty="">' +
+    '<div class="preview-empty">Select a pull request.</div></div>';
+  const claim = pulls.sandbox.claimPreview("pull-request", "294");
+  assert.equal(
+    pulls.sandbox.beginPreviewNavigation(claim),
+    false,
+    "the neutral list host cannot hide initial PR loading blocks",
+  );
+  assert.equal(preview.getAttribute("aria-busy"), null);
+  preview.innerHTML = '<article class="github-pull">A useful previous pull request</article>';
+  assert.equal(pulls.sandbox.beginPreviewNavigation(claim), true);
+  assert.equal(preview.getAttribute("aria-busy"), "true");
+
   const shipped = createShell("/view/", refusedFetch);
   return {
     shippedPlaceholderHtml: shipped.sandbox.previewPlaceholderHtml(
@@ -1163,6 +1609,9 @@ async function shell() {
     ),
     tabSwitchDuringLoad: await tabSwitchDuringLoad(),
     navPanelsKeepTheirPlace: navPanelsKeepTheirPlace(),
+    independentMainTabs: await independentMainTabs(),
+    mainTabShortcuts: await mainTabShortcuts(),
+    quickSearchPullRoute: await quickSearchPullRoute(),
     reselectAfterFailure: await reselectAfterFailure(),
     bodyReadFailure: await bodyReadFailure(),
     reconnectRetry: await reconnectRetry(),

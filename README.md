@@ -107,16 +107,17 @@ read Markdown docs.
   target exactly.
 
 - **GitHub pull-request review.** Paste a pull-request URL to read its description,
-  conversation, reviews, inline review comments, checks, and Files changed beside its
-  code, for public and private repositories, online or from the cache offline.
+  conversation, reviews, inline review comments, checks, and changes beside its code,
+  for public and private repositories, online or from the cache offline.
   See [reviewing pull requests](docs/reviewing-pull-requests.md).
 
-- **Quick File navigation.** Press `/` or `T` to open a fuzzy finder over every
-  non-gitignored file under the root, then jump straight to it by name or path fragment.
+- **Quick Search.** Press `/` or `T` to find files by name or path and, in GitHub
+  repositories, pull requests by number or title.
+  Enter opens the selected result.
 
 - **Built-in keyboard Help.** Press `?` or use the visible Help control for a concise
   explanation, the project link, and the complete shortcut list.
-  A persistent hint strip keeps Help and Quick File discoverable and adds contextual
+  A persistent hint strip keeps Help and Quick Search discoverable and adds contextual
   commands while you work in the file tree.
 
 - **Accessible file-tree navigation.** Move through the tree with the arrow keys or J

@@ -487,6 +487,13 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-cores-prepare",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-files",
       "methods": [
         "GET",
@@ -511,6 +518,13 @@ status: 200
     },
     {
       "path": "/api/plugin/github/pull-refresh",
+      "methods": [
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/plugin/github/pull-timeline",
       "methods": [
         "POST"
       ],
@@ -718,7 +732,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 56
+  "count": 58
 }
 ? 0
 ```
@@ -781,7 +795,7 @@ api: /api/kpress/render?path=README.md&view=document
 status: 200
 {
   "type": "kpress-rendered-document",
-  "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" style=\"display: none\">[..]</svg>\n<article class=\"kpress kpress-doc kpress-print-surface\" data-kpress-profile=\"document\" data-kpress-fonts=\"custom\" data-kpress-card=\"on\" data-kpress-table-wide-min-columns=\"6\" data-kpress-table-wide-min-row-chars=\"100\" aria-label=\"README.md\"><div class=\"kpress-doc-layout kpress-content-with-toc\" data-kpress-toc-rail=\"reserved\"><div class=\"kpress-prose kpress-long-text\"><h1 id=\"sample\">Sample</h1>\n<p>Hello.</p></div></div></article>",
+  "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" style=\"display: none\">[..]</svg>\n<article class=\"kpress kpress-doc kpress-print-surface\" data-kpress-profile=\"document\" data-kpress-fonts=\"custom\" data-kpress-card=\"on\" data-kpress-table-wide-min-columns=\"6\" data-kpress-table-wide-min-row-chars=\"100\" aria-label=\"README.md\"><div class=\"kpress-doc-layout kpress-content-with-toc\"><div class=\"kpress-prose kpress-long-text\"><h1 id=\"sample\">Sample</h1>\n<p>Hello.</p></div></div></article>",
   "profile": "document",
   "printable": true,
   "assets": {
@@ -952,7 +966,7 @@ api: /api/kpress/render
 status: 200
 {
   "type": "kpress-rendered-document",
-  "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" style=\"display: none\">[..]</svg>\n<article class=\"kpress kpress-doc kpress-print-surface\" data-kpress-profile=\"document\" data-kpress-fonts=\"custom\" data-kpress-card=\"on\" data-kpress-table-wide-min-columns=\"6\" data-kpress-table-wide-min-row-chars=\"100\" aria-label=\"README.md\"><div class=\"kpress-doc-layout kpress-content-with-toc\" data-kpress-toc-rail=\"reserved\"><div class=\"kpress-prose kpress-long-text\"><h1 id=\"overridden\">Overridden</h1>\n<p>Body.</p></div></div></article>",
+  "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" style=\"display: none\">[..]</svg>\n<article class=\"kpress kpress-doc kpress-print-surface\" data-kpress-profile=\"document\" data-kpress-fonts=\"custom\" data-kpress-card=\"on\" data-kpress-table-wide-min-columns=\"6\" data-kpress-table-wide-min-row-chars=\"100\" aria-label=\"README.md\"><div class=\"kpress-doc-layout kpress-content-with-toc\"><div class=\"kpress-prose kpress-long-text\"><h1 id=\"overridden\">Overridden</h1>\n<p>Body.</p></div></div></article>",
   "profile": "document",
   "printable": true,
   "assets": {

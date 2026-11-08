@@ -13,14 +13,14 @@ import logging
 import sqlite3
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import partial
 from typing import Any, Literal
 
 from metabrowser.builtin_plugins.github import pull_list
 from metabrowser.builtin_plugins.github.avatars import avatar_of
 from metabrowser.builtin_plugins.github.checkout import claim_source
-from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError, gh_graphql
+from metabrowser.builtin_plugins.github.gh import GhCursorError, GhError, GhServerError, gh_graphql
 from metabrowser.builtin_plugins.github.gh_lists import (
     READ_FAILURES,
     PullDataError,
@@ -54,6 +54,7 @@ from metabrowser.home import PrivateStorageError
 from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 
 log = logging.getLogger(__name__)
+_MAX_RATE_HOLD_S = 15 * 60
 
 # Two public repositories, two 100-row pages each (2026-11-03): 46–49 KB instead
 # of REST's 1.9–2.2 MB, with every existing row field. GitHub reported cost=1/query.
@@ -208,7 +209,12 @@ async def _read_page(
     except GhCursorError:
         raise
     except GhError as exc:
-        raise PullDataError(exc.state, str(exc), reset_at=exc.reset_at) from exc
+        message = (
+            "GitHub has no readable repository here"
+            if exc.state == "not_found_or_private"
+            else str(exc)
+        )
+        raise PullDataError(exc.state, message, reset_at=exc.reset_at) from exc
     try:
         if as_dict(data["viewer"])["login"] != login:
             raise PullDataError("account_changed", "the active gh account changed during the read")
@@ -289,6 +295,21 @@ async def _publish(
         ) from exc
 
 
+def _rate_limit_retry_at(now: datetime, previous: PullRefreshStamp | None) -> str:
+    """Hold for at least a minute and back off if a refusal follows the last reset."""
+
+    delay = FRESHNESS_WINDOW_S
+    if previous is not None and previous.outcome == "rate_limited" and previous.reset_at:
+        reset = pull_list.parse_stamp(previous.reset_at)
+        if 0 <= (now - reset).total_seconds() <= FRESHNESS_WINDOW_S:
+            previous_delay = (reset - pull_list.parse_stamp(previous.at)).total_seconds()
+            delay = min(_MAX_RATE_HOLD_S, max(delay, 2 * previous_delay))
+    deadline = now + timedelta(seconds=delay)
+    if deadline.microsecond:
+        deadline += timedelta(seconds=1)
+    return utc_stamp(deadline)
+
+
 async def refresh_pull_list(
     repository: ListedRepository,
     name: PullListName,
@@ -301,6 +322,7 @@ async def refresh_pull_list(
 ) -> CatalogState:
     """Warm a requested prefix, then resume all metadata; each page yields its slot."""
     reader: str | None = None
+    last_refresh: PullRefreshStamp | None = None
     source_claimed = False
     try:
         repository = await claim_source(repository)
@@ -348,15 +370,15 @@ async def refresh_pull_list(
             )
             try:
                 async with slot if slot is not None else contextlib.nullcontext():
-                    held = await asyncio.to_thread(
+                    last_refresh = await asyncio.to_thread(
                         read_list_refresh, repository.home, repository.slug, "all"
                     )
-                    if rate_limit_holds(held, now=pull_list.utc_now()):
-                        assert held is not None
+                    if rate_limit_holds(last_refresh, now=pull_list.utc_now()):
+                        assert last_refresh is not None
                         raise PullDataError(
                             "rate_limited",
                             "GitHub's API rate limit is exhausted",
-                            reset_at=held.reset_at,
+                            reset_at=last_refresh.reset_at,
                         )
                     page = await _read_page(
                         repository, "all" if updated else scan, cursor, login=login, updated=updated
@@ -439,6 +461,12 @@ async def refresh_pull_list(
                 )
             await asyncio.sleep(0)
     except PullDataError as exc:
+        now = pull_list.utc_now()
+        outcome = "github_unavailable" if isinstance(exc.__cause__, GhServerError) else exc.state
+        message, reset_at = str(exc), exc.reset_at
+        if exc.state == "rate_limited" and reset_at is None:
+            message = "GitHub reached its API rate limit without reporting a reset time"
+            reset_at = _rate_limit_retry_at(now, last_refresh)
         await run_lock_section(
             partial(
                 write_list_refresh,
@@ -446,15 +474,17 @@ async def refresh_pull_list(
                 repository.slug,
                 "all",
                 PullRefreshStamp(
-                    outcome=exc.state,
-                    message=str(exc)[:1000],
-                    reset_at=exc.reset_at,
-                    at=utc_stamp(pull_list.utc_now()),
+                    outcome=outcome,
+                    message=message[:1000],
+                    reset_at=reset_at,
+                    at=utc_stamp(now),
                     reader=reader,
                 ),
                 persist=source_claimed,
             )
         )
+        if outcome != exc.state:
+            raise PullDataError(outcome, message) from exc
         raise
 
 

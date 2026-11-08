@@ -131,6 +131,9 @@ class FakeElement {
   get parentElement() {
     return this.parentNode;
   }
+  get isConnected() {
+    return this === this.ownerDocument.root || Boolean(this.parentNode?.isConnected);
+  }
   get firstElementChild() {
     return this.children[0] || null;
   }
@@ -196,6 +199,7 @@ class FakeElement {
       }
       return child;
     }
+    child.remove();
     child.parentNode = this;
     this.children.push(child);
     return child;
@@ -206,6 +210,9 @@ class FakeElement {
     }
   }
   replaceChildren(...nodes) {
+    for (const child of this.children) {
+      child.parentNode = null;
+    }
     this.children = [];
     this._html = "";
     this._text = "";
@@ -397,12 +404,17 @@ sandbox.history = {
 let previewHtml = "";
 let previewNode = null;
 let previewClaim = 0;
+let pendingStageCleanup = null;
+const stagedPreviewNodes = [];
+document.register("preview-pane", document.createElement("div"));
 // The page's freshness controller: null when a folder is served.
 let freshnessController = null;
 const removedPanels = [];
 let registeredPanel = null;
 sandbox.MetabrowserShell = {
+  rememberMainTabAddress() {},
   claimPreview: () => {
+    pendingStageCleanup?.();
     previewClaim += 1;
     return previewClaim;
   },
@@ -447,12 +459,32 @@ sandbox.MetabrowserShell = {
     }
     return preview;
   },
+  stagePreviewNode: (node, claim) => {
+    if (claim !== previewClaim) {
+      return null;
+    }
+    pendingStageCleanup?.();
+    const stage = document.createElement("div");
+    stage.className = "preview-file-stage";
+    stage.appendChild(node);
+    document.getElementById("preview-pane").appendChild(stage);
+    stagedPreviewNodes.push(node);
+    const cleanup = () => {
+      stage.remove();
+      if (pendingStageCleanup === cleanup) {
+        pendingStageCleanup = null;
+      }
+    };
+    pendingStageCleanup = cleanup;
+    return cleanup;
+  },
   renderPreviewNode: (node, claim) => {
     if (claim !== undefined && claim !== previewClaim) {
       return null;
     }
     previewHtml = node.innerHTML;
     previewNode = node;
+    document.getElementById("preview-pane").replaceChildren(node);
     return node;
   },
   activateNavPanel: () => {},
@@ -466,6 +498,7 @@ let diffAssetsLoaded = false;
 const ensuredKinds = [];
 const renderedDiffRevisions = [];
 const renderedDiffContexts = [];
+const renderedDiffConnections = [];
 const canceledDiffRevisions = [];
 const disposedDiffRevisions = [];
 const comparisonFetches = [];
@@ -493,9 +526,11 @@ sandbox.metabrowser = {
       return null;
     }
     return {
-      render: async (_host, context) => {
+      render: async (host, context) => {
+        renderedDiffConnections.push(host.isConnected);
         renderedDiffRevisions.push(context.revision);
         renderedDiffContexts.push(context);
+        await context.raw;
         return {
           cancelPending: () => canceledDiffRevisions.push(context.revision),
           dispose: () => disposedDiffRevisions.push(context.revision),
@@ -914,7 +949,7 @@ async function run() {
   assertContains(
     "detail: summary has one component root",
     previewHtml,
-    '<section class="git-commit-summary"',
+    '<section class="git-commit-summary page-reading-column"',
   );
   assertContains(
     "detail: summary gives change stats their own child",
@@ -926,7 +961,14 @@ async function run() {
   assertFileStatus("detail: summary omits zero deleted files", previewHtml, "deleted", 0);
   assertContains("detail: summary counts additions", previewHtml, "+5");
   assertContains("detail: summary counts deletions", previewHtml, "−1");
-  const summaryStart = previewHtml.indexOf('<section class="git-commit-summary"');
+  assertContains(
+    "detail: uses the shared page heading",
+    previewHtml,
+    '<h1 class="git-commit-subject page-heading"',
+  );
+  const summaryStart = previewHtml.indexOf(
+    '<section class="git-commit-summary page-reading-column"',
+  );
   const summaryEnd = previewHtml.indexOf("</section>", summaryStart);
   assertTrue(
     "detail: component owns subject, metadata, refs, and description",
@@ -942,6 +984,14 @@ async function run() {
   assertContains("detail: mounts the diff host", previewHtml, "git-commit-diff");
   assertEqual("detail: loads fresh diff assets", ensuredKinds, ["diff"]);
   assertEqual("detail: renders after loading diff assets", renderedDiffRevisions, [SHA_A]);
+  assertEqual("detail: diff renders in the connected staging layer", renderedDiffConnections, [
+    true,
+  ]);
+  assertEqual(
+    "detail: successful handoff removes its hidden staging wrapper",
+    document.querySelectorAll(".preview-file-stage").length,
+    0,
+  );
   assertEqual("detail: prepared comparison reaches the view", await renderedDiffContexts[0].raw, {
     comparison_id: SHA_A,
   });
@@ -1676,8 +1726,9 @@ async function run() {
     const container = document.getElementById("tab-git");
     appendTestPage(
       [commit(SHA_E, [], "prepared first"), commit(SHA_B, [], "prepared second")],
-      null,
+      "prepared-next",
     );
+    appendTestPage([commit(SHA_C, [], "prepared third")], null);
     internals.renderPanel();
     const rows = container.querySelectorAll(".git-graph-row");
     let resolveDetail;
@@ -1780,14 +1831,54 @@ async function run() {
       !previewPane.classList.contains("preview-navigation-pending"),
     );
 
-    const slotBefore = comparisonFetches.length;
     comparisonResponder = async (revision) => ({ comparison_id: revision });
+    const selectedComparisons = comparisonFetches.length;
+    const selectedDetails = fetchCount;
+    const selectedTooltips = shownTooltips.length;
+    rows[0]._hovered = false;
+    rows[0].dispatch("mouseleave");
+    rows[0]._hovered = true;
     rows[0].dispatch("mouseenter");
     await new Promise((resolve) => setTimeout(resolve, 10));
-    const firstSignal = comparisonFetches[slotBefore].signal;
+    assertEqual(
+      "prepare: re-entering the current selected row does not refetch its comparison",
+      comparisonFetches.length,
+      selectedComparisons,
+    );
+    assertEqual("prepare: selected-row tooltip reuses detail", fetchCount, selectedDetails);
+    assertEqual(
+      "prepare: selected-row tooltip still opens",
+      shownTooltips.length,
+      selectedTooltips + 1,
+    );
+
+    for (const [revision, subject] of [
+      [SHA_B, "prepared second"],
+      [SHA_C, "prepared third"],
+    ]) {
+      responses.set(`/api/git/commit/${revision}`, {
+        is_repo: true,
+        commit: commit(revision, [], subject),
+        body: "",
+        stats: { files_changed: 0, additions: 0, deletions: 0 },
+        files: [],
+        files_truncated: false,
+      });
+    }
+    const slotBefore = comparisonFetches.length;
     rows[0]._hovered = false;
     rows[1]._hovered = true;
     rows[1].dispatch("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assertEqual(
+      "prepare: a different row can still prepare after selected-row hover",
+      comparisonFetches.length,
+      slotBefore + 1,
+    );
+    const firstSignal = comparisonFetches[slotBefore].signal;
+    rows[1]._hovered = false;
+    rows[2]._hovered = true;
+    rows[2].dispatch("mouseenter");
     assertTrue("prepare: newer pointer intent aborts the old slot", firstSignal.aborted);
     assertEqual(
       "prepare: replacement waits for stable intent",
@@ -1800,8 +1891,350 @@ async function run() {
       comparisonFetches.length,
       slotBefore + 2,
     );
-    rows[1]._hovered = false;
-    rows[1].dispatch("mouseleave");
+    rows[2]._hovered = false;
+    rows[2].dispatch("mouseleave");
+
+    // A file claiming the pane leaves selectedId intact, but its claim
+    // invalidates the Git selection. Returning must prepare and reopen it.
+    sandbox.MetabrowserShell.claimPreview("file");
+    const reopenComparisons = comparisonFetches.length;
+    const reopenMounts = renderedDiffRevisions.length;
+    rows[0]._hovered = true;
+    rows[0].dispatch("mouseenter");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assertEqual(
+      "prepare: another preview owner permits the same selected revision to prepare",
+      comparisonFetches.length,
+      reopenComparisons + 1,
+    );
+    await internals.selectCommit(SHA_E);
+    assertEqual(
+      "prepare: reopening joins the comparison prepared after another owner",
+      comparisonFetches.length,
+      reopenComparisons + 1,
+    );
+    assertEqual(
+      "prepare: reopening mounts the selected revision",
+      renderedDiffRevisions.length,
+      reopenMounts + 1,
+    );
+    assertContains("prepare: reopening shows the same commit", previewHtml, "prepared first");
+    rows[0]._hovered = false;
+    rows[0].dispatch("mouseleave");
+  }
+
+  // The renderer must never start on a stage a newer pane owner removed.
+  // Resolve each real preparation boundary in turn; selection and comparison
+  // remain the production state machine, not a simulated cancellation result.
+  {
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const originalAssets = sandbox.metabrowser.ensureKindAssets;
+    const originalComparison = comparisonResponder;
+    const originalView = sandbox.metabrowser.getRegisteredView;
+    for (const [index, boundary] of ["assets", "comparison", "renderer"].entries()) {
+      const revision = `${index + 10}`.repeat(20);
+      responses.set(`/api/git/commit/${revision}`, {
+        is_repo: true,
+        commit: commit(revision, [], `staged ${boundary}`),
+        body: "",
+        stats: { files_changed: 1, additions: 1, deletions: 0 },
+        files: [{ path: "stage.js", status: "modified", additions: 1, deletions: 0 }],
+        files_truncated: false,
+      });
+      let release;
+      const held = new Promise((resolve) => {
+        release = resolve;
+      });
+      sandbox.metabrowser.ensureKindAssets =
+        boundary === "assets"
+          ? async () => {
+              await held;
+              diffAssetsLoaded = true;
+            }
+          : originalAssets;
+      comparisonResponder =
+        boundary === "comparison"
+          ? async () => {
+              await held;
+              return { comparison_id: revision };
+            }
+          : async () => ({ comparison_id: revision });
+      sandbox.metabrowser.getRegisteredView = (kind, view) => {
+        const registered = originalView(kind, view);
+        if (!registered || boundary !== "renderer") {
+          return registered;
+        }
+        return {
+          render: async (host, context) => {
+            const handle = await registered.render(host, context);
+            await held;
+            return handle;
+          },
+        };
+      };
+      const pane = document.getElementById("preview-pane");
+      const prior = document.createElement("div");
+      prior.textContent = `prior useful ${boundary}`;
+      pane.replaceChildren(prior);
+      const rendersBefore = renderedDiffRevisions.length;
+      const disposedBefore = disposedDiffRevisions.length;
+      const selecting = internals.selectCommit(revision);
+      await tick();
+      assertTrue(`stage ${boundary}: prior useful content remains connected`, prior.isConnected);
+      assertEqual(
+        `stage ${boundary}: exactly one pending connected wrapper`,
+        pane.querySelectorAll(".preview-file-stage").length,
+        1,
+      );
+      assertEqual(
+        `stage ${boundary}: render waits for selected preparation`,
+        renderedDiffRevisions.length,
+        rendersBefore + (boundary === "renderer" ? 1 : 0),
+      );
+      const fileClaim = sandbox.MetabrowserShell.claimPreview("file");
+      assertEqual(
+        `stage ${boundary}: another owner immediately removes staging`,
+        pane.querySelectorAll(".preview-file-stage").length,
+        0,
+      );
+      sandbox.MetabrowserShell.renderPreviewHtml(
+        `<div>file wins over ${boundary}</div>`,
+        fileClaim,
+      );
+      release();
+      await selecting;
+      assertContains(
+        `stage ${boundary}: late work preserves file owner`,
+        previewHtml,
+        `file wins over ${boundary}`,
+      );
+      assertEqual(
+        `stage ${boundary}: stale preparation never starts a renderer`,
+        renderedDiffRevisions.length,
+        rendersBefore + (boundary === "renderer" ? 1 : 0),
+      );
+      assertEqual(
+        `stage ${boundary}: returned stale handle is disposed`,
+        disposedDiffRevisions.length,
+        disposedBefore + (boundary === "renderer" ? 1 : 0),
+      );
+      assertEqual(
+        `stage ${boundary}: no staged wrapper leaks`,
+        pane.querySelectorAll(".preview-file-stage").length,
+        0,
+      );
+    }
+    sandbox.metabrowser.ensureKindAssets = originalAssets;
+    comparisonResponder = originalComparison;
+    sandbox.metabrowser.getRegisteredView = originalView;
+  }
+
+  // Use the actual shell claim boundary and production hydration scheduler:
+  // a file or Pulls owner must stop old Git work while retaining its DOM.
+  {
+    const originalClaim = sandbox.MetabrowserShell.claimPreview;
+    const originalFetch = sandbox.metabrowser.fetchPluginData;
+    const originalView = sandbox.metabrowser.getRegisteredView;
+    const app = fs.readFileSync(path.join(repoRoot, "src/metabrowser/static/app.js"), "utf8");
+    const actualClaim = app.match(
+      /\nfunction claimPreview\(owner, selection\) \{[\s\S]*?\n\}/,
+    )?.[0];
+    assertTrue("cross-owner: actual shell claim function found", Boolean(actualClaim));
+    sandbox.cancelPendingFilePreviewStage = () => {
+      pendingStageCleanup?.();
+    };
+    sandbox.pullPageHost = null;
+    sandbox.retainedPullPageDispose = null;
+    sandbox.clearPreviewNavigationState = (pane) => {
+      pane.classList.remove("preview-navigation-pending");
+      pane.removeAttribute("aria-busy");
+      pane.removeAttribute("data-preview-pending-claim");
+    };
+    sandbox.previewPane = {
+      claim: () => {
+        previewClaim += 1;
+        return previewClaim;
+      },
+    };
+    vm.runInContext(actualClaim, sandbox, { filename: "actual-app-claimPreview.js" });
+    sandbox.MetabrowserShell.claimPreview = sandbox.claimPreview;
+    const flush = async () => {
+      for (let turn = 0; turn < 4; turn += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    };
+    const revision = "90".repeat(20);
+    const detail = (id) => ({
+      is_repo: true,
+      commit: commit(id, [], "cross-owner commit"),
+      body: "",
+      stats: { files_changed: 0, additions: 0, deletions: 0 },
+      files: [],
+      files_truncated: false,
+    });
+    responses.set(`/api/git/commit/${revision}`, detail(revision));
+    let releaseComparison;
+    const comparisonReleases = [];
+    let staleSuccesses = 0;
+    sandbox.metabrowser.fetchPluginData = (plugin, route, params, options) => {
+      comparisonFetches.push({ plugin, route, params, signal: options?.signal });
+      return new Promise((resolve, reject) => {
+        const signal = options.signal;
+        signal.addEventListener(
+          "abort",
+          () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+          { once: true },
+        );
+        releaseComparison = () => {
+          if (!signal.aborted) {
+            staleSuccesses += 1;
+            resolve({ comparison_id: params.revision });
+          }
+        };
+        comparisonReleases.push(releaseComparison);
+      });
+    };
+    const selecting = internals.selectCommit(revision);
+    await flush();
+    const pendingSignal = comparisonFetches.at(-1).signal;
+    const mountedBefore = renderedDiffRevisions.length;
+    const comparisonsBeforeReopen = comparisonFetches.length;
+    const releaseOldComparison = releaseComparison;
+    sandbox.MetabrowserShell.claimPreview("file", { folder: false, path: "controlled.txt" });
+    assertTrue("cross-owner: file claim aborts pending Git comparison", pendingSignal.aborted);
+    assertEqual(
+      "cross-owner: file claim retains Git selection",
+      internals.stateForTests().selectedId,
+      revision,
+    );
+    // Reopen synchronously before the old canceled selection's finally runs.
+    // Its cleanup must not clear the new preparation for this same revision.
+    const reopening = internals.selectCommit(revision);
+    releaseOldComparison();
+    await selecting;
+    assertEqual("cross-owner: canceled comparison cannot succeed later", staleSuccesses, 0);
+    assertEqual(
+      "cross-owner: canceled comparison never starts renderer",
+      renderedDiffRevisions.length,
+      mountedBefore,
+    );
+    await flush();
+    const rejoining = internals.selectCommit(revision);
+    await flush();
+    assertEqual(
+      "cross-owner: old selection cleanup preserves the new same-revision slot",
+      comparisonFetches.length,
+      comparisonsBeforeReopen + 1,
+    );
+    for (const release of comparisonReleases) {
+      release();
+    }
+    await Promise.all([reopening, rejoining]);
+    sandbox.metabrowser.fetchPluginData = originalFetch;
+
+    const { createHydrationScheduler } = await import(
+      require("node:url").pathToFileURL(
+        path.join(repoRoot, "src/metabrowser/builtin_plugins/diff/diff-view.js"),
+      ).href
+    );
+    const requests = [],
+      frames = [];
+    let oldRenders = 0,
+      cancelCalls = 0;
+    const hydration = createHydrationScheduler({
+      now: () => 0,
+      load: (id, signal) =>
+        new Promise((resolve, reject) => {
+          requests.push({ id, signal, resolve });
+          signal.addEventListener(
+            "abort",
+            () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+            { once: true },
+          );
+        }),
+      render: () => {
+        oldRenders += 1;
+        return "painted";
+      },
+      fail: () => {},
+      abandon: () => {},
+      frame: (callback) => {
+        frames.push(callback);
+        return callback;
+      },
+      cancelFrame: (callback) => {
+        const at = frames.indexOf(callback);
+        if (at >= 0) {
+          frames.splice(at, 1);
+        }
+      },
+      after: () => {
+        throw new Error("no jump timer expected");
+      },
+      cancelAfter: () => {},
+    });
+    sandbox.metabrowser.getRegisteredView = () => ({
+      render: async () => ({
+        cancelPending: () => {
+          cancelCalls += 1;
+          hydration.dispose();
+        },
+        dispose: () => hydration.dispose(),
+      }),
+    });
+    const mountedRevision = "91".repeat(20);
+    responses.set(`/api/git/commit/${mountedRevision}`, detail(mountedRevision));
+    await internals.selectCommit(mountedRevision);
+    const retained = previewNode;
+    const history = internals.stateForTests().pageCache;
+    hydration.add("old-active", 0);
+    hydration.add("old-queued", 1);
+    hydration.setNearby([
+      ["old-active", true],
+      ["old-queued", true],
+    ]);
+    assertEqual("cross-owner: one active hydration and one queued", requests.length, 1);
+    sandbox.MetabrowserShell.claimPreview("pull-request");
+    assertEqual("cross-owner: Pulls claim cancels mounted Git work", cancelCalls, 1);
+    assertTrue("cross-owner: active deferred request aborts", requests[0].signal.aborted);
+    assertTrue("cross-owner: prior Git DOM stays connected", retained.isConnected);
+    requests[0].resolve({});
+    await flush();
+    for (const frame of frames.splice(0)) {
+      frame();
+    }
+    await flush();
+    assertEqual("cross-owner: queued old request never starts", requests.length, 1);
+    assertEqual("cross-owner: no old deferred answer renders", oldRenders, 0);
+    assertTrue(
+      "cross-owner: history pages retained",
+      internals.stateForTests().pageCache === history,
+    );
+    assertEqual(
+      "cross-owner: selected revision retained",
+      internals.stateForTests().selectedId,
+      mountedRevision,
+    );
+    sandbox.metabrowser.getRegisteredView = originalView;
+    const comparisonsBefore = comparisonFetches.length;
+    await internals.selectCommit(mountedRevision);
+    assertEqual(
+      "cross-owner: returning same selected Git revision prepares again",
+      comparisonFetches.length,
+      comparisonsBefore + 1,
+    );
+    assertContains(
+      "cross-owner: returning Git renders its commit",
+      previewHtml,
+      "cross-owner commit",
+    );
+    assertEqual(
+      "cross-owner: returning Git has no leaked stages",
+      document.querySelectorAll(".preview-file-stage").length,
+      0,
+    );
+    hydration.dispose();
+    sandbox.MetabrowserShell.claimPreview = originalClaim;
   }
 
   // ── Changed files navigate through the shell ───────────────
@@ -2311,6 +2744,37 @@ async function run() {
       null,
     );
     assertEqual("missing commit: state on the element", previewNode.dataset.state, "not_found");
+
+    const cachedMissing = "9".repeat(40);
+    let askedForFreshness = false;
+    freshnessController = {
+      fetchMissing() {
+        askedForFreshness = true;
+        throw new Error("tab restoration must not start source refresh");
+      },
+    };
+    responses.set(`/api/git/commit/${cachedMissing}`, notFound);
+    const originalLocation = sandbox.location;
+    const originalParse = sandbox.MetabrowserNavigationRoute.parseCommit;
+    sandbox.location = { pathname: `/commit/${cachedMissing}` };
+    sandbox.MetabrowserNavigationRoute.parseCommit = () => ({ revision: cachedMissing });
+    sandbox.history.state = { cachedCommit: true };
+    responses.set("/api/git/repo", {
+      is_repo: true,
+      root: "",
+      head: { ref: "refs/heads/main", revision: SHA_A, detached: false, unborn: false },
+    });
+    await panel.init();
+    internals.teardown();
+    sandbox.location = originalLocation;
+    sandbox.MetabrowserNavigationRoute.parseCommit = originalParse;
+    delete sandbox.history.state;
+    assertEqual("missing cached selection: no refresh", askedForFreshness, false);
+    assertContains(
+      "missing cached selection: names the local miss",
+      previewHtml,
+      "not available in the local repository",
+    );
 
     // A request that failed is still a load failure, not a missing commit.
     responses.set(`/api/git/commit/${SHA_BROKEN}`, {

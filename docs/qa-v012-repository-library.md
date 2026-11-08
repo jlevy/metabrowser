@@ -881,7 +881,7 @@ line. Open that address with the browser’s developer tools open.
    tree, header, tabs, or buttons.
    Cancel it.
 
-10. **The Git panel after a commit.** Select the **Git** tab beside **Files**: the
+10. **The Git panel after a commit.** Select the **Commits** tab beside **Files**: the
     history is one commit, `QA first commit`. From a second terminal:
 
     ```shell
@@ -890,9 +890,9 @@ line. Open that address with the browser’s developer tools open.
     ```
 
     The list does not change by itself.
-    Select **Files** and then **Git** again: `QA second commit` is first, carrying the
-    `main` label. Click it: the address becomes `/commit/<id>`, and the pane shows the
-    subject, the short commit ID, `1 M file`, `+2 −0 lines`, and the diff of
+    Select **Files** and then **Commits** again: `QA second commit` is first, carrying
+    the `main` label. Click it: the address becomes `/commit/<id>`, and the pane shows
+    the subject, the short commit ID, `1 M file`, `+2 −0 lines`, and the diff of
     `overview.md` in **Split**, with a **Unified** switch.
     The file bar has no View file control, because a folder has no file at a commit to
     open. Reload: the same commit opens.
@@ -1405,7 +1405,7 @@ Open `http://127.0.0.1:8471/view/` in a browser, with its developer tools open.
 5. A Markdown file’s Source tab, `package.json` (Tree), an image, and a binary file each
    open in their usual view.
 6. An HTML file offers only its Source tab.
-7. The Git tab lists history starting at the pinned commit.
+7. The Commits tab lists history starting at the pinned commit.
    Selecting a commit shows its detail and a split or unified diff.
    Reloading that `/commit/…` address reopens the same commit.
 8. Reload a `/view/g1-…` address, use back and forward, and open a copied link in a
@@ -1512,7 +1512,7 @@ Open `http://127.0.0.1:8474/view/` and keep it open.
 
 3. Before switching, open the same address in a second tab.
    Click **Switch** in the first.
-   The page reloads, the heading shows the new short commit, and the Git tab lists
+   The page reloads, the heading shows the new short commit, and the Commits tab lists
    `QA newer commit` first.
    In the second tab, open another file: the request is refused as `pin_changed` and the
    row offers **Reload** at once, instead of showing the new commit’s file under the old
@@ -1585,7 +1585,7 @@ address.
 1. The page shows **Count to two in the app #7** with an **Open** badge,
    `forker wants to merge 2 commits into octo:topic from forker:count-to-two`, the
    opened and updated times, **View on GitHub**, **Browse code**, and the `enhancement`
-   label. The status line reads `Fetched … by octo-reader`; the records were fetched on
+   label. The status line reads `Fetched … via GitHub CLI`. The records were fetched on
    2026-09-17, so it first adds `may be out of date` and offers **Refresh**, and the
    freshness row at the foot of the navigation pane refreshes on its own and links
    **Pull request #7**.
@@ -1594,19 +1594,22 @@ address.
    review, the comment `Thanks. CI is green; one question inline.`, and the **approved**
    review `Looks right.`
 3. **Review comments (2)** shows `src/app.txt` with an **outdated** badge and its diff
-   hunk, then forker’s reply on `src/app.txt:2`. **Checks** reads
-   `2 success · 1 pending`, with `tests (3.13)`, `docs` (in progress), and the Read the
-   Docs status, each linking out in a new tab, and `No conflicts with the base branch`.
-4. Click **Files changed**. The address becomes `/pull/7/files` and the diff shows two
-   files, `docs/new.md` and `src/app.txt`, and not `README.md`, which changed only on
-   `topic`. Reload: the page opens on Files changed.
-   Back: the conversation.
+   hunk, then forker’s reply on `src/app.txt:2`. Open **Checks** at `/pull/7/checks`. It
+   reads `2 success · 1 pending`, with `tests (3.13)`, `docs` (in progress), and the
+   Read the Docs status.
+   Each links out in a new tab.
+   The tab also says `No conflicts with the base branch`.
+4. Return to **Conversation** and click **Changes**. The address becomes
+   `/pull/7/files`. The diff shows `docs/new.md` and `src/app.txt`. The base-only change
+   to `README.md` stays out of the diff.
+   Reload opens Changes.
+   Back returns to Conversation.
 5. Click `src/app.txt:2`. The file opens at `/view/g1-c3Jj/g1-YXBwLnR4dA#L2` from the
    served head, `one` and `two`, with line 2 highlighted.
    Back returns to the pull-request page.
 6. Click **Refresh** while the record is stale.
-   The status line reads `Refreshing…` and then `Fetched just now by octo-reader`; the
-   conversation does not flicker or jump.
+   The status line shows a spinner with `Refreshing…` and then
+   `Fetched just now via GitHub CLI`. The conversation stays visible and in place.
 7. Open `/pull/8/files`. The same server shows pull request 8’s cached comparison;
    browsing it does not change the served code pin.
    Confirm the code banner is unchanged.
@@ -1938,7 +1941,8 @@ uv --config-file uv.toml run --frozen metab "file://${QA_VF}/origin.git" --no-op
 ```
 
 `trunk` is `first` (`a5232ab93056`) then `second` (`6ac4c8b5eb94`), which the server
-pins. Open `http://127.0.0.1:8476/view/`, select the **Git** tab, and click `second`.
+pins.
+Open `http://127.0.0.1:8476/view/`, select the **Commits** tab, and click `second`.
 
 1. The diff shows seven files, and each file bar ends with the sides the change has:
    `README.md` and `latin1-�.txt` (a name that is not UTF-8) have **View at parent** and
@@ -1969,7 +1973,7 @@ pins. Open `http://127.0.0.1:8476/view/`, select the **Git** tab, and click `sec
    reloads on `6ac4c8b5eb94`, the file reads `a Latin-1 name, edited`, and the button
    under the heading reads `Branch: trunk` again, not `Commit: …`.
 
-5. Click `first` in the **Git** tab instead: a commit with no parent has only **View
+5. Click `first` in the **Commits** tab instead: a commit with no parent has only **View
    file** on each bar. Open `changes.patch` from the **Files** tab: a patch file’s bars
    have no View file control, because its two sides are not commits.
 

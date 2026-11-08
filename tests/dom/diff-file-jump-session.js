@@ -167,6 +167,15 @@ class LaidOutElement {
 
   /** This element's own height in the fixture's layout. */
   layoutHeight() {
+    if (this.hidden) {
+      return 0;
+    }
+    if (this.tagName === "H1") {
+      return 3 * ROW_PX;
+    }
+    if (this.classList.contains("diff-hydration-failure")) {
+      return ROW_PX;
+    }
     if (this.classList.contains("diff-end-spacer")) {
       return Number.parseFloat(this.style.height ?? "0") || 0;
     }
@@ -219,8 +228,10 @@ class LaidOutElement {
 class ScriptedObserver {
   static all = [];
 
-  constructor(callback) {
+  constructor(callback, options) {
     this.callback = callback;
+    this.root = options?.root ?? null;
+    this.ahead = Number.parseInt(options?.rootMargin.split(" ")[2] ?? "0", 10);
     this.observed = new Set();
     this.shown = new Set();
     ScriptedObserver.all.push(this);
@@ -243,9 +254,10 @@ class ScriptedObserver {
   /** What the browser does after layout: report the sections that crossed the pane's edges. */
   report(pane) {
     const entries = [];
+    const bottom = this.root === pane ? PANE_PX + this.ahead : PANE_PX;
     for (const target of this.observed) {
       const rect = target.getBoundingClientRect();
-      const isIntersecting = rect.bottom > 0 && rect.top < PANE_PX;
+      const isIntersecting = rect.height > 0 && rect.bottom > 0 && rect.top < bottom;
       if (isIntersecting !== this.shown.has(target)) {
         entries.push({ target, isIntersecting });
         if (isIntersecting) {
@@ -437,7 +449,10 @@ async function main() {
   /** The loader is the plugin's, one per page, so one page's requests are on at a time. */
   let open = null;
 
-  function mount(document_ = comparison(), { laidOut = true, observeWidth = false } = {}) {
+  function mount(
+    document_ = comparison(),
+    { laidOut = true, observeWidth = false, heading = false } = {},
+  ) {
     globalThis.ResizeObserver = observeWidth ? WidthObserver : undefined;
     globalThis.getComputedStyle = observeWidth ? () => ({ fontSize: "14px" }) : undefined;
     let changeLayout = null;
@@ -448,6 +463,9 @@ async function main() {
     pane.scrollTop = 0;
     pane.clientHeight = PANE_PX;
     pane.getBoundingClientRect = () => ({ top: 0, bottom: PANE_PX, height: PANE_PX });
+    if (heading) {
+      pane.append(new LaidOutElement("h1"));
+    }
     // The window a key press reaches, which the view listens to through the pane's document.
     const window_ = new LaidOutElement("window");
     pane.ownerDocument = { defaultView: window_ };
@@ -543,15 +561,14 @@ async function main() {
         });
       },
       line(jump) {
+        const failure = pane.find("diff-hydration-failure")[0];
         return {
           answer: jump && { ...jump, lines: undefined },
           atTop: this.topFile(),
           asked: requests.map(
             (r) => `${r.file}${r.signal.aborted ? " (cancelled)" : r.answered ? "" : " (waiting)"}`,
           ),
-          partial: pane.find("diff-partial-note")[0]?.hidden
-            ? null
-            : (pane.find("diff-partial-note")[0]?.textContent ?? null),
+          ...(failure?.hidden === false ? { failure: failure.textContent } : {}),
         };
       },
       topFile() {
@@ -613,10 +630,84 @@ async function main() {
     return { scheduler, loads, log, run };
   }
 
+  // The lookahead expands the nested scroll pane. A file below the fold can start
+  // while a long ready file fills the pane, and a jump still takes the single slot.
+  const ahead = mount(readyComparison(1, 24, 5));
+  assert(ahead.observer.root === ahead.pane, "lookahead used the document viewport");
+  const firstDeferredTop = ahead.sectionOf("d1.py").getBoundingClientRect().top;
+  assert(
+    firstDeferredTop > PANE_PX && firstDeferredTop < PANE_PX + ahead.observer.ahead,
+    "fixture needs the first deferred file just below the fold",
+  );
+  await ahead.turn();
+  assert(
+    ahead
+      .inFlight()
+      .map((request) => request.file)
+      .join() === "d1.py",
+  );
+  assert(ahead.pane.find("diff-hydration-failure")[0].hidden === true);
+  say("the nested scroll pane prepares one file below the fold", ahead, undefined, {
+    pixelsBelowFold: firstDeferredTop - PANE_PX,
+  });
+  const aheadJump = ahead.handle.scrollToFile("d5.py");
+  assert(ahead.requests[0].signal.aborted, "a jump did not cancel lookahead");
+  assert(
+    ahead
+      .inFlight()
+      .map((request) => request.file)
+      .join() === "d5.py",
+  );
+  const jumpProgress = ahead.sectionOf("d5.py").find("diff-progress")[0];
+  assert(jumpProgress?.classList.contains("mb-delayed-loading"), "missing delayed file spinner");
+  say("a file jump takes the one request slot from lookahead", ahead, aheadJump);
+  ahead.handle.dispose();
+  assert((await aheadJump.lines) === "superseded");
+
+  // A failure notice changes height above the files. Keep the heading at the
+  // pane top, but compensate when the reader is already inside a file.
+  for (const insideFile of [false, true]) {
+    const reading = mount(readyComparison(1, 24, 5), { heading: true });
+    const first = reading.sectionOf("r1.py");
+    reading.pane.scrollTop = insideFile ? 5 * ROW_PX : 0;
+    const firstTop = first.getBoundingClientRect().top;
+    await reading.turn();
+    const realError = console.error;
+    console.error = () => {};
+    try {
+      reading.refuse("d1.py");
+      await reading.turn();
+    } finally {
+      console.error = realError;
+    }
+    const expectedTop = insideFile ? firstTop : firstTop + ROW_PX;
+    assert(first.getBoundingClientRect().top === expectedTop, "failure moved the reader's place");
+    assert(reading.pane.scrollTop === (insideFile ? 6 * ROW_PX : 0));
+    say(
+      insideFile
+        ? "a lookahead failure keeps the current file in place"
+        : "a lookahead failure keeps the heading in place",
+      reading,
+    );
+  }
+
+  // A large patch can displace the next observed file before the observer reports.
+  const growth = mount();
+  await growth.turn();
+  const next = growth.sectionOf("src/moved.py");
+  const bottom = PANE_PX + growth.observer.ahead;
+  assert(next.getBoundingClientRect().top < bottom, "fixture needs an initial nearby file");
+  growth.answer("src/a.py", 38);
+  await growth.turn();
+  assert(next.getBoundingClientRect().top > bottom, "the patch did not push the next file away");
+  await growth.turn();
+  assert(growth.requests.length === 1, "a stale lookahead started another request");
+  say("a growing patch removes a distant file before the next request", growth);
+
   // ── A path, in every shape a list can give it ─────────────────
   const paths = mount();
   await paths.turn();
-  say("mounted: the first file's lines, no request past what is on screen", paths);
+  say("mounted: the first file's lines, with the nearest deferred file requested", paths);
   const fromRename = paths.handle.fileForPath("src/moved.py");
   const fromOld = paths.handle.fileForPath("src/was.py");
   const fromDeleted = paths.handle.fileForPath("src/gone.py");
@@ -636,7 +727,13 @@ async function main() {
   truncated.manifest.cursor = "manifest-cap";
   const capped = mount(truncated);
   const pastCap = capped.handle.scrollToFile("past/the/cap.py");
-  say("the same in a list that stopped at its bound says so", capped, pastCap);
+  const truncation = capped.pane
+    .find("diff-availability")
+    .find((notice) => notice.textContent.startsWith("The change list was truncated"));
+  assert(truncation, "missing comparison truncation notice");
+  say("the same in a list that stopped at its bound says so", capped, pastCap, {
+    warning: truncation.textContent,
+  });
   capped.handle.dispose();
 
   // ── One jump ──────────────────────────────────────────────────
@@ -799,12 +896,49 @@ async function main() {
 
   // ── The scheduler: a request's answer is the request's, not the file's ──
   {
+    const { scheduler, loads, log } = schedulerUnderScript();
+    scheduler.add("f1", 1);
+    scheduler.add("f2", 2);
+    scheduler.add("f3", 3);
+    scheduler.setNearby([
+      ["f3", true],
+      ["f2", true],
+    ]);
+    assert(loads.map((load) => load.id).join() === "f2", "observer order beat file order");
+    scheduler.setNearby([
+      ["f2", false],
+      ["f1", true],
+      ["f3", false],
+    ]);
+    assert(loads.map((load) => load.id).join() === "f2,f1", "a departed file started");
+    assert(loads[0].signal.aborted, "a departed request stayed active");
+    say(
+      "a scroll batch drops departed files before choosing the first current candidate",
+      undefined,
+      undefined,
+      {
+        scheduler: log,
+      },
+    );
+    scheduler.dispose();
+  }
+  {
+    const { scheduler, loads } = schedulerUnderScript();
+    scheduler.add("f1", 1);
+    scheduler.add("f2", 2);
+    scheduler.setNearby([["f2", true]]);
+    scheduler.setNearby([["f1", true]]);
+    assert(loads[0].signal.aborted, "earlier file did not preempt forward lookahead");
+    assert(loads.map((load) => load.id).join() === "f2,f1");
+    scheduler.dispose();
+  }
+  {
     const scripted = schedulerUnderScript();
     const { scheduler, loads, log, run } = scripted;
     scheduler.add("f7", 7);
-    scheduler.setVisible("f7", true); // load #1
-    scheduler.setVisible("f7", false); // abandoned: #1 aborted, f7 pending again
-    scheduler.setVisible("f7", true); // load #2
+    scheduler.setNearby([["f7", true]]); // load #1
+    scheduler.setNearby([["f7", false]]); // abandoned: #1 aborted, f7 pending again
+    scheduler.setNearby([["f7", true]]); // load #2
     assert(loads.length === 2 && loads[0].signal.aborted, "the first request was not cancelled");
     loads[0].reject(new DOMException("The user aborted a request.", "AbortError"));
     await nextTask();
@@ -825,10 +959,10 @@ async function main() {
     // costs is less than asking again.
     const { scheduler, loads, log, run } = schedulerUnderScript();
     scheduler.add("f1", 1);
-    scheduler.setVisible("f1", true);
+    scheduler.setNearby([["f1", true]]);
     loads[0].resolve({ lines: "f1" });
     await nextTask();
-    scheduler.setVisible("f1", false);
+    scheduler.setNearby([["f1", false]]);
     run();
     assert(log.includes("render f1") && loads.length === 1, "an arrived answer was thrown away");
   }
@@ -837,8 +971,8 @@ async function main() {
     const { scheduler, loads, log, run } = schedulerUnderScript({ throwOn: "f1" });
     scheduler.add("f1", 1);
     scheduler.add("f2", 2);
-    scheduler.setVisible("f1", true);
-    scheduler.setVisible("f2", true);
+    scheduler.setNearby([["f1", true]]);
+    scheduler.setNearby([["f2", true]]);
     const lines = scheduler.jump("f1");
     loads[0].resolve({ lines: "f1" });
     await nextTask();
@@ -846,6 +980,7 @@ async function main() {
     run();
     assert((await lines) === "failed", "a throwing render did not settle the jump");
     assert(log.includes("fail f1"), "a throwing render was not reported as the file's failure");
+    run(); // let layout settle before continuing passive work
     assert(loads.length === 2 && loads[1].id === "f2", "a throwing render stopped the scheduler");
   }
 
@@ -895,7 +1030,8 @@ async function main() {
     console.error = realError;
     assert((await stuck.lines) === "failed", "a refused render did not settle the jump");
     assert(
-      refusing.pane.find("diff-partial-note")[0].textContent.includes("1 could not be loaded"),
+      refusing.pane.find("diff-hydration-failure")[0].textContent ===
+        "Could not load changes for 1 file.",
       "a refused render was not counted",
     );
     clock += 1000;
@@ -1217,9 +1353,10 @@ async function main() {
   );
   assert(keyPage.requests.length === 0, "a held key over held files asked for one");
 
-  // Held and deferred together: a held file is loaded, so the count says what is still to come.
+  // Held and deferred files do not add a routine loading notice.
   const mixed = mount(readyComparison(6, 8, 3));
-  say("held files are loaded: the count is of the files still to come", mixed, undefined, {
+  assert(mixed.pane.find("diff-hydration-failure")[0].hidden === true);
+  say("mixed ready and deferred files have no routine loading notice", mixed, undefined, {
     drawn: drawnFiles(mixed),
   });
 

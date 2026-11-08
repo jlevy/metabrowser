@@ -8,25 +8,39 @@ source-alias lock; no network operation runs while that lock is held.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import os
 import sqlite3
 import uuid
 from collections.abc import Generator
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository, PullListRow, parse_stamp
 from metabrowser.builtin_plugins.github.pull_record import ensure_pulls_directory
 from metabrowser.cache.locks import source_alias_lock
-from metabrowser.cache.paths import PULL_LIST_NAMES, PullListName, source_pulls_directory
+from metabrowser.cache.paths import (
+    MAX_PULL_REQUEST_NUMBER,
+    PULL_LIST_NAMES,
+    PullListName,
+    source_pulls_directory,
+)
 from metabrowser.home import PrivateStorageError, open_private_file, write_private_file_atomic
 
 CATALOG_SCHEMA = 1
 CATALOG_PROJECTION = 1
 PAGE_SIZE = 100
 MAX_WINDOW = 1000
+MAX_CATALOG_MEMBERS = 8
+_SEARCH_RESULT_LIMIT = 12
+# Production cache reads on a Mac took 3–4 ms for a sparse title match at 1,375 rows
+# and 62–69 ms at the 50k candidate limit, including the cutoff for a 100k catalog.
+# Recent pulls and numeric queries use the primary key at any catalog size.
+_SEARCH_TITLE_ROWS = 50_000
+_SEARCH_READ_OPCODES = 500_000
 
 # One exact disposable schema: no user triggers, views, or missing query indexes.
 # Initialization and admission share the same SQL so neither can drift independently.
@@ -134,7 +148,9 @@ def _admit(home: Path, relative: str, *, write: bool) -> tuple[int, os.stat_resu
 
 
 @contextlib.contextmanager
-def _database(home: Path, slug: str, *, write: bool = False) -> Generator[sqlite3.Connection]:
+def _database(
+    home: Path, slug: str, *, write: bool = False, read_opcodes: int = 100_000
+) -> Generator[sqlite3.Connection]:
     relative = _relative(slug)
     fd, held = _admit(home, relative, write=write)
     connection: sqlite3.Connection | None = None
@@ -153,8 +169,8 @@ def _database(home: Path, slug: str, *, write: bool = False) -> Generator[sqlite
 
             def bounded_read() -> int:
                 nonlocal steps
-                steps += 1
-                return int(steps > 100)
+                steps += 1000
+                return int(steps > read_opcodes)
 
             connection.set_progress_handler(bounded_read, 1000)
         yield connection
@@ -213,6 +229,186 @@ def catalog_window(
             return state, wire, rows[-1].number if len(result) > limit and rows else None
     except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
         return None, [], None
+
+
+class PullSearchRow(TypedDict):
+    number: int
+    title: str
+    state: Literal["open", "closed", "merged", "draft"]
+
+
+class PullSearchEnvelope(TypedDict):
+    rows: list[PullSearchRow]
+    complete: bool
+    limited: bool
+    truncated: bool
+
+
+def _search_numbers(
+    db: sqlite3.Connection, digits: str, *, include_prefix: bool
+) -> list[tuple[str]]:
+    canonical = digits.lstrip("0")
+    max_width = len(str(MAX_PULL_REQUEST_NUMBER))
+    if not canonical or len(canonical) > max_width:
+        return []
+    number = int(canonical)
+    if number > MAX_PULL_REQUEST_NUMBER:
+        return []
+    rows: list[tuple[str]] = db.execute(
+        "SELECT body FROM pulls WHERE number = ?", (number,)
+    ).fetchall()
+    if include_prefix and digits == canonical:
+        # A decimal prefix gives one disjoint primary-key range per additional
+        # digit. Longer numbers sort first and the exact number stays at the top.
+        for width in range(max_width - len(canonical), 0, -1):
+            scale = 10**width
+            remaining = _SEARCH_RESULT_LIMIT + 1 - len(rows)
+            rows.extend(
+                db.execute(
+                    "SELECT body FROM pulls WHERE number BETWEEN ? AND ? "
+                    "ORDER BY number DESC LIMIT ?",
+                    (
+                        number * scale,
+                        min((number + 1) * scale - 1, MAX_PULL_REQUEST_NUMBER),
+                        remaining,
+                    ),
+                )
+            )
+            if len(rows) > _SEARCH_RESULT_LIMIT:
+                break
+    return rows
+
+
+def catalog_search(repository: ListedRepository | None, query: str) -> PullSearchEnvelope:
+    """Read recent pulls or search local metadata across open and closed PRs."""
+    empty = PullSearchEnvelope(rows=[], complete=False, limited=False, truncated=False)
+    if repository is None:
+        return empty
+    explicit = query.startswith("#")
+    text = query[1:].strip() if explicit else query
+    try:
+        with _database(repository.home, repository.slug, read_opcodes=_SEARCH_READ_OPCODES) as db:
+            db.execute("BEGIN")
+            state = _state(db)
+            if state is None or state.source != repository.source:
+                return empty
+            complete = state.done["all"]
+            limited = False
+            matches: list[tuple[str]] | sqlite3.Cursor
+            if text.isascii() and text.isdecimal():
+                matches = _search_numbers(db, text, include_prefix=explicit)
+            elif not text:
+                matches = db.execute(
+                    "SELECT body FROM pulls ORDER BY number DESC LIMIT ?",
+                    (_SEARCH_RESULT_LIMIT + 1,),
+                )
+            else:
+                terms = tuple(dict.fromkeys(text.casefold().split()))
+
+                def title_matches(title: object) -> bool:
+                    if not isinstance(title, str):
+                        return False
+                    folded = title.casefold()
+                    return all(term in folded for term in terms)
+
+                db.create_function("title_matches", 1, title_matches, deterministic=True)
+                limited = state.cached["all"] > _SEARCH_TITLE_ROWS
+                oldest = 1
+                if limited:
+                    cutoff = db.execute(
+                        "SELECT number FROM pulls ORDER BY number DESC LIMIT 1 OFFSET ?",
+                        (_SEARCH_TITLE_ROWS - 1,),
+                    ).fetchone()
+                    if cutoff is not None:
+                        oldest = cutoff[0]
+                matches = db.execute(
+                    "SELECT body FROM pulls WHERE number >= ? "
+                    "AND title_matches(json_extract(body, '$.title')) "
+                    "ORDER BY number DESC LIMIT ?",
+                    (oldest, _SEARCH_RESULT_LIMIT + 1),
+                )
+            rows: list[PullSearchRow] = []
+            for (body,) in matches:
+                row = PullListRow.model_validate_json(body)
+                rows.append(
+                    {
+                        "number": row.number,
+                        "title": row.title,
+                        "state": "merged"
+                        if row.merged
+                        else "draft"
+                        if row.state == "open" and row.draft
+                        else row.state,
+                    }
+                )
+            return {
+                "rows": rows[:_SEARCH_RESULT_LIMIT],
+                "complete": complete,
+                "limited": limited,
+                "truncated": len(rows) > _SEARCH_RESULT_LIMIT,
+            }
+    except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
+        return empty
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogMember:
+    updated_at: str
+    fingerprint: bytes
+
+
+def catalog_members(
+    home: Path, slug: str, name: PullListName, numbers: tuple[int, ...]
+) -> tuple[CatalogState | None, dict[int, CatalogMember]]:
+    """Fingerprint the bounded summaries found by number in one checkpoint snapshot."""
+    if not numbers or len(numbers) > MAX_CATALOG_MEMBERS or name not in PULL_LIST_NAMES:
+        raise ValueError("invalid catalog membership request")
+    try:
+        with _database(home, slug) as db:
+            db.execute("BEGIN")
+            state = _state(db)
+            placeholders = ",".join("?" for _ in numbers)
+            query = f"SELECT number,updated_at,body FROM pulls WHERE number IN ({placeholders})"
+            values: tuple[int | str, ...] = numbers
+            if name != "all":
+                query += " AND state = ?"
+                values = (*numbers, name)
+            members: dict[int, CatalogMember] = {}
+            for number, stamp, summary in db.execute(query, values):
+                if not isinstance(stamp, str) or not isinstance(summary, str):
+                    return None, {}
+                parse_stamp(stamp)
+                members[number] = CatalogMember(stamp, hashlib.sha256(summary.encode()).digest())
+            return state, members
+    except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
+        return None, {}
+
+
+def catalog_titles(
+    repository: ListedRepository, reader: str, numbers: tuple[int, ...]
+) -> dict[int, str]:
+    """Read one indexed title batch, using the catalog's existing window bound."""
+    if not numbers or len(numbers) > MAX_WINDOW:
+        raise ValueError("invalid catalog title request")
+    try:
+        with _database(repository.home, repository.slug) as db:
+            db.execute("BEGIN")
+            state = _state(db)
+            if state is None or (state.source, state.reader) != (repository.source, reader):
+                return {}
+            placeholders = ",".join("?" for _ in numbers)
+            rows = db.execute(
+                f"SELECT number,body FROM pulls WHERE number IN ({placeholders})", numbers
+            )
+            titles: dict[int, str] = {}
+            for number, body in rows:
+                row = PullListRow.model_validate_json(body)
+                if row.number != number:
+                    return {}
+                titles[number] = row.title
+            return titles
+    except (FileNotFoundError, PrivateStorageError, OSError, sqlite3.Error, ValueError):
+        return {}
 
 
 def catalog_row(home: Path, slug: str, number: int) -> PullListRow | None:

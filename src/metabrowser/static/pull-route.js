@@ -6,8 +6,8 @@
 // URL; the shell supplies the pane, this loads that plugin, and the view gets the host's `open`.
 // The view owns everything else: fetching the record, polling, refreshing, and Files changed.
 //
-// `/pull/<n>[/files[/<path>]]` and `/pulls` are the pull requests' address space (Browser
-// URL Grammar). Only such an address, or the Pulls tab, reaches this code, so it is no startup
+// `/pull/<n>` and its subroutes, and `/pulls`, are the pull requests' address space
+// (Browser URL Grammar). Only such an address, or the Pulls tab, reaches this code, so it is no startup
 // script of any other page. The server writes it into the shell of a pull-request address,
 // where the page needs it before it can show anything; anything else takes it as the
 // `pull-route` on-demand bundle.
@@ -20,7 +20,7 @@
   const PULL_PREFIX = "/pull/";
   // Keep aligned with view_routes._PULL_NUMBER and PULL_ROUTE_TABS.
   const PULL_NUMBER_PATTERN = /^[1-9][0-9]{0,9}$/;
-  const PULL_TABS = Object.freeze(["", "files"]);
+  const PULL_TABS = Object.freeze(["", "files", "checks"]);
   // Keep aligned with view_routes.PULLS_ROUTE and cache.paths.PULL_LIST_NAMES.
   const PULLS_PATH = "/pulls";
   const PULL_LISTS = Object.freeze(["open", "closed", "all"]);
@@ -43,10 +43,9 @@
   }
 
   /**
-   * Encode a pull request's page: `/pull/<n>` for its conversation,
-   * `/pull/<n>/files` for its Files changed, and `/pull/<n>/files/<path>` for one file
-   * of it, each segment of the path percent-encoded. This is the one way a path written
-   * by whoever opened the pull request reaches an address.
+   * Encode a pull request's page: `/pull/<n>` for Conversation, `/pull/<n>/files`
+   * for Changes, and `/pull/<n>/checks` for Checks. Only Changes can name a file,
+   * with each segment of the path percent-encoded.
    *
    * @param {number} number
    * @param {string} [tab]
@@ -63,7 +62,7 @@
     }
     const segments = typeof file === "string" && tab === "files" ? file.split("/") : [""];
     if (!segments.every(isFileSegment)) {
-      throw new TypeError("pull route names a file of Files changed by a normalized path");
+      throw new TypeError("pull route requires a normalized changed-file path");
     }
     try {
       return `${head}/${segments.map((segment) => encodeURIComponent(segment)).join("/")}`;
@@ -179,7 +178,7 @@
 
   /**
    * The shell's host for a pull request's page. It decides what a
-   * `/pull/<n>[/files]` route does to the pane -- switch the shown page's tab, or claim
+   * pull-request route does to the pane -- switch the shown page's tab, or claim
    * the pane and mount a page -- keeps the page's tab in the URL, and disposes a render
    * a later claim superseded. The list's address holds the pane the same way. The shell
    * supplies the pane and the history; nothing here touches the DOM.
@@ -197,7 +196,7 @@
    * `pageFor` hands it to what sits beside the pane, the Pulls tab, which walks a pull
    * request's files without moving the address on every key.
    *
-   * @template {{land?: (route: {tab: string, file?: string}) => void, setTab?: (tab: string) => void, showFile?: (path: string) => unknown, flush?: () => void, dispose?: () => void}} Handle
+   * @template {{land?: (route: {tab: string, file?: string}) => void, setTab?: (tab: string) => void, showFile?: (path: string) => unknown, flush?: () => void, ready?: Promise<void>, cancelPending?: () => void, dispose?: () => void}} Handle
    * @param {{
    *   claim: () => number,
    *   isCurrent: (claim: number) => boolean,
@@ -213,13 +212,15 @@
    * }} deps
    */
   function createPullPageHost(deps) {
-    /** @type {{number: number | "list", claim: number, handle: Handle | null} | null} */
+    /** @type {{number: number | "list", claim: number, handle: Handle | null, ready: boolean, opening: Promise<{status: "opened" | "cancelled"}> | null, pendingRoute: {tab: string, file?: string, jumped?: boolean} | null, restore: boolean} | null} */
     let page = null;
 
     // The page that holds the pane, or null once anything else claimed it or while it
     // is still mounting.
     function shown() {
-      return page !== null && page.handle !== null && deps.isCurrent(page.claim) ? page : null;
+      return page !== null && page.handle !== null && page.ready && deps.isCurrent(page.claim)
+        ? page
+        : null;
     }
 
     function dispose() {
@@ -231,6 +232,24 @@
       } catch (error) {
         console.error("pull-request page dispose error:", error);
       }
+    }
+
+    /** Stop the page immediately; only an already visible page may leave inert DOM behind.
+     * @returns {(() => void) | null}
+     */
+    function release() {
+      const held = page;
+      page = null;
+      notifyPage();
+      if (!held?.handle) {
+        return null;
+      }
+      if (!held.ready || typeof held.handle.cancelPending !== "function") {
+        held.handle.dispose?.();
+        return null;
+      }
+      held.handle.cancelPending();
+      return () => held.handle?.dispose?.();
     }
 
     /**
@@ -262,7 +281,15 @@
     async function take(number, mount, file = "", restore = true) {
       const claim = deps.claim();
       /** @type {NonNullable<typeof page>} */
-      const mine = { number, claim, handle: null };
+      const mine = {
+        number,
+        claim,
+        handle: null,
+        ready: false,
+        opening: null,
+        pendingRoute: null,
+        restore,
+      };
       page = mine;
       notifyPage();
       const handle = await mount(claim);
@@ -276,9 +303,31 @@
         notifyPage();
         return { status: "opened" };
       }
+      // Track the instance before awaiting readiness so a new claim can cancel it now.
       mine.handle = handle;
+      try {
+        if (handle.ready) {
+          await handle.ready;
+        }
+      } catch {
+        handle.dispose?.();
+        if (page === mine) {
+          page = null;
+          notifyPage();
+        }
+        return { status: "cancelled" };
+      }
+      if (page !== mine || !deps.isCurrent(claim)) {
+        handle.dispose?.();
+        return { status: "cancelled" };
+      }
+      mine.ready = true;
       notifyPage();
-      if (file) {
+      if (mine.pendingRoute) {
+        if (mine.pendingRoute.jumped !== true) {
+          land(handle, mine.pendingRoute, mine.restore);
+        }
+      } else if (file) {
         land(handle, { tab: "files", file }, restore);
       }
       return { status: "opened" };
@@ -301,12 +350,23 @@
         }
         return { status: "opened" };
       }
-      return take(
+      if (page !== null && page.number === route.number && deps.isCurrent(page.claim)) {
+        // Route changes during the core wait join the same instance and keep only the
+        // latest tab/file intent. They must not restart its selected provider request.
+        page.pendingRoute = route;
+        page.restore = how.restore !== false;
+        return page.opening ?? { status: "cancelled" };
+      }
+      const opening = take(
         route.number,
         (claim) => deps.mount(claim, route, open),
         route.file ?? "",
         how.restore !== false,
       );
+      if (page?.number === route.number) {
+        page.opening = opening;
+      }
+      return opening;
     }
 
     /** Show the list's address in the pane, unless it already holds the pane. */
@@ -394,6 +454,7 @@
 
     const host = Object.freeze({
       dispose,
+      release,
       onHistory,
       open,
       /** The handle of the pull request's page holding the pane, for what sits beside it, or null. */
@@ -438,6 +499,9 @@
    *   isCurrent: (claim: number) => boolean,
    *   renderHtml: (html: string, claim: number) => unknown,
    *   renderNode: (node: HTMLElement, claim: number) => unknown,
+   *   beginNavigation: (claim: number) => boolean,
+   *   endNavigation: (claim: number) => void,
+   *   stageNode: (node: HTMLElement, claim: number) => (() => void) | null,
    *   showLoadFailure: (claim: number, what: string) => void,
    * }} shell
    */
@@ -471,10 +535,70 @@
       }
       const host = document.createElement("div");
       host.className = `content-body ${kind}-host`;
-      shell.renderNode(host, claim);
-      return /** @type {{setTab?: (tab: string) => void, flush?: () => void, dispose?: () => void} | null} */ (
-        await view.render(host, { kind, ...context })
+      const retained = page && shell.beginNavigation(claim);
+      const cleanupStage = retained ? shell.stageNode(host, claim) : null;
+      if (!retained) {
+        shell.renderNode(host, claim);
+      }
+      let instance;
+      try {
+        instance =
+          /** @type {{setTab?: (tab: string) => void, land?: (route: {tab: string, file?: string}) => void, showFile?: (path: string) => unknown, flush?: () => void, ready?: Promise<void>, activate?: () => void, cancelPending?: () => void, dispose?: () => void}} */ (
+            (await view.render(host, { kind, ...context })) ?? {}
+          );
+      } catch (error) {
+        cleanupStage?.();
+        shell.endNavigation(claim);
+        if (shell.isCurrent(claim)) {
+          shell.showLoadFailure(claim, page ? "the pull-request page" : what);
+        }
+        console.error(`metabrowser: ${what} could not render`, error);
+        return null;
+      }
+      let disposed = false;
+      // Only a real cancellation capability promises that disposal can wait for handoff.
+      const stop =
+        typeof instance.cancelPending === "function"
+          ? () => {
+              host.inert = true;
+              instance.cancelPending?.();
+            }
+          : undefined;
+      const dispose = () => {
+        if (disposed) {
+          return;
+        }
+        disposed = true;
+        cleanupStage?.();
+        instance.dispose?.();
+        shell.endNavigation(claim);
+      };
+      if (!shell.isCurrent(claim)) {
+        dispose();
+        return null;
+      }
+      const ready = Promise.resolve(instance.ready).then(
+        () => {
+          if (disposed || !shell.isCurrent(claim)) {
+            return;
+          }
+          if (retained) {
+            shell.renderNode(host, claim);
+            cleanupStage?.();
+          }
+          instance.activate?.();
+          shell.endNavigation(claim);
+        },
+        (error) => {
+          dispose();
+          if (shell.isCurrent(claim)) {
+            shell.showLoadFailure(claim, "the pull-request page");
+          }
+          console.error("metabrowser: pull-request readiness failed", error);
+          throw error;
+        },
       );
+      return { ...instance, ready, cancelPending: stop, dispose };
     };
   }
 

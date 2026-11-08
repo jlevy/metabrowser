@@ -794,13 +794,13 @@ def test_git_commit_summary_is_one_component() -> None:
     assert "html += renderCommitSummary(detail);" in panel
     assert "renderCommitSummary(detail, { compact: true })" in panel
     for component_part in (
-        'class="git-commit-subject"',
+        'const subjectClass = compact ? "git-commit-subject"',
         'class="git-commit-meta"',
         'class="git-commit-identity"',
         'class="git-commit-file-statuses"',
         'class="git-commit-change-stats"',
         'class="git-commit-refs"',
-        'class="git-commit-body"',
+        'class="git-commit-body page-card"',
     ):
         assert panel.count(component_part) == 1, f"summary part drifted: {component_part}"
     change_stats = _rule(styles, ".git-commit-change-stats")
@@ -819,8 +819,8 @@ def test_git_commit_summary_is_one_component() -> None:
     assert "display: grid" in change_stats
     assert "white-space: nowrap" in change_stats
     assert "display: inline-flex" in stats_rows
-    assert "font-family: var(--font-sans)" in summary_body
-    assert "font-size: var(--body-font-size)" in summary_body
+    assert "font-family: var(--prose-sans-font)" in summary_body
+    assert "font-size: var(--document-body-font-size)" in summary_body
     assert "white-space: pre-wrap" in summary_body
     for rule in (
         meta,
@@ -859,51 +859,29 @@ def test_navigation_tooltips_are_pointer_only() -> None:
 
 
 def test_one_document_surface_has_one_set_of_breakpoints() -> None:
-    """A README reads at the same measure in Overview as on its own.
+    """The README and standalone file share one Markdown column implementation."""
 
-    The two surfaces render the same file through the same renderer, so the
-    reader compares them directly and any difference reads as a bug. Three
-    things have to agree for that to hold, and each one broke it on its own:
-
-    * the band boundaries, which must be the *same* container. Overview used
-      to query its own host, which is the preview pane minus its padding, so
-      the two crossed 75rem about 25px apart and there was a band of window
-      widths where the README's text jumped while every other panel stayed.
-    * the wide column, which is KPress's content track (the measure plus its
-      2.5rem insets), not the measure alone. Sized to the measure, the column
-      is right and the text inside it is 5rem short, because KPress still pads
-      the prose for a track it is no longer in.
-    * the narrow inset, which must equal the article padding Overview zeroes,
-      or the text runs short by twice the difference.
-    """
-
-    css = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/overview.css").read_text(
+    folder = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/overview.css").read_text(
         encoding="utf-8"
     )
-    # One container names the bands for both surfaces.
-    assert "@container kpress-doc (min-width: 75rem)" in css
-    assert "@container kpress-doc (max-width: 47.99rem)" in css
-    assert "@container (min-width:" not in css, "an unnamed band drifts from KPress's"
-    assert "@container (max-width:" not in css, "an unnamed band drifts from KPress's"
-
-    # The wide column is the track, not the measure.
-    assert "--folder-overview-wide-card-width: calc(" in css
-    wide = css[css.index("--folder-overview-wide-card-width:") :][:200]
-    assert "var(--doc-measure)" in wide and "--folder-overview-wide-toc-inset" in wide
-    # Both of KPress's measure caps are lifted, never one: lifting the outer
-    # alone leaves the inner centred at the measure, which reads as a wide left
-    # margin with the content spilling past its right edge.
-    assert ".folder-overview-panel-document > .folder-overview-panel-body > .kpress," in css
-    assert ".folder-overview-panel-document .kpress-doc-layout {" in css
-
-    # The narrow inset replaces the article padding Overview drops.
-    assert "--folder-overview-narrow-document-gutter: 0.5rem" in css
-    assert "padding-inline: 0" in css
-
-    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
-    assert "Overview renders the README at the same measure" in doc, (
-        "the rule belongs in the design system, not only in the stylesheet"
+    markdown = (REPO_ROOT / "src/metabrowser/builtin_plugins/markdown/markdown.css").read_text(
+        encoding="utf-8"
     )
+    assert "@container kpress-doc (min-width: 48rem)" in folder
+    for css in (folder, markdown):
+        assert "@container kpress-doc (min-width: 75rem)" in css
+        assert "@container (min-width:" not in css
+    assert "--kpress-column-inset:" not in markdown
+    assert "--kpress-prose-gutter:" not in markdown
+    assert ".metabrowser-markdown-document > .kpress-doc" in markdown
+    assert "var(--doc-measure)" in folder
+    assert "padding-inline: var(--folder-overview-text-inset)" in folder
+    readme = (REPO_ROOT / "src/metabrowser/builtin_plugins/folder/readme-panel.js").read_text(
+        encoding="utf-8"
+    )
+    assert 'includeToc: "off"' in readme
+    doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
+    assert "Overview renders the README at the same measure" in doc
 
 
 # ── Tabs, type sizes, toggles, and reading width ───────────────────
@@ -1184,10 +1162,31 @@ def test_every_prose_surface_reads_the_measure() -> None:
     assert fallback == ["var(--doc-measure)"]
     overview = (REPO_ROOT / BUILTIN_PLUGINS / "folder/overview.css").read_text(encoding="utf-8")
     assert "var(--doc-measure)" in overview
-    # The pull request page: its column, and no length of its own.
-    github_css = REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"
-    column = dict(_rules_of(github_css))[".github-pull-column"]
+    # Commit and PR pages start at the pane gutter and share the README's measure.
+    rules = _rules_of(STATIC / "styles.css")
+    columns = [
+        declarations for selector, declarations in rules if selector == ".page-reading-column"
+    ]
+    assert len(columns) == 1
+    column = columns[0]
     assert "var(--doc-measure)" in column["max-width"]
+    assert column["margin-inline-end"] == "auto"
+    placeholder_columns = [
+        declarations
+        for selector, declarations in rules
+        if selector == ".pull-request-placeholder" and "max-width" in declarations
+    ]
+    assert placeholder_columns == [column]
+    assert dict(rules)[".page-heading"]["font-size"] == "var(--page-title-font-size)"
+    github_css = REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"
+    page = dict(_rules_of(github_css))[".github-pull"]
+    assert "--doc-measure" not in page
+    assert (
+        page["--page-reading-gutter"]
+        == dict(_rules_of(STATIC / "styles.css"))[".pull-request-placeholder"][
+            "--page-reading-gutter"
+        ]
+    )
     for selector, declarations in _rules_of(github_css):
         width = declarations.get("max-width", "")
         assert re.search(r"\d(?:px|rem|em|ch)", width) is None, (
@@ -1233,7 +1232,9 @@ def test_section_headings_and_fold_expanders_are_primitives() -> None:
     diff = (plugins / "diff/diff-view.js").read_text(encoding="utf-8")
     assert '"fold-expander diff-fold-control"' in diff
     page = (plugins / "github/pull-page.js").read_text(encoding="utf-8")
-    assert page.count('h("h2", { class: "section-heading" }') == 2
+    headings = re.findall(r'h\("h2", \{([^}]+)\}', page)
+    assert headings and len(headings) == page.count('h("h2",')
+    assert all('class: "section-heading"' in attributes for attributes in headings)
     assert 'h("summary", { class: "fold-expander" }' in page
     # A hunk's fold states its size and then the inverse, as a fold does.
     assert "earlier ${lines}" in page and "`Hide ${earlierLines} ${lines}`" in page
@@ -1361,11 +1362,13 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # A row and its page match: one state's icon, from one module.
     assert "pullStateIcon(" in panel and "pullStateIcon(" in page
     assert 'aria-label", PULL_STATES[state].label' in state
-    # Ages, filters, notices, and the skeleton are the shell's.
+    # Ages, filters, buttons, and the spinner are the shell's.
     assert "mb.formatAge(" in panel
     assert "controls.groupHtml(" in panel
-    assert 'class: "notice github-pulls-notice"' in panel
-    assert '"recent-loading mb-delayed-loading"' in panel
+    assert 'class: "github-pulls-connection"' in panel
+    assert 'class: "btn github-pulls-reload"' in panel
+    assert '"mb-delayed-loading"' in panel
+    assert 'class: "spinner spinner-sm"' in panel
     assert 'class: "btn github-pulls-more"' in panel
 
 
@@ -1385,6 +1388,13 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert "`file-header-badge github-pull-badge github-pull-${kind}`" in page
     assert 'class: "notice github-pull-notice"' in page
     github = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))
+    # The heading scales the shared glyph to its own type and wraps text in its own track.
+    assert 'class: "page-heading github-pull-title' in page
+    assert github[".github-pull-title-with-state"]["grid-template-columns"] == "auto minmax(0, 1fr)"
+    title_icon = github[".github-pull-title > .github-pull-state-icon"]
+    assert (title_icon["width"], title_icon["height"]) == ("1em", "1lh")
+    title_glyph = github[".github-pull-title > .github-pull-state-icon svg"]
+    assert (title_glyph["width"], title_glyph["height"]) == ("1em", "1em")
     # Links take the link token rather than the browser's blue.
     assert github[".github-pull-header a"]["color"] == "var(--link)"
     # A button that moves the pin looks as a link does: no primitive's border or fill.
@@ -1402,6 +1412,14 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # form, where the link alone let it follow the text. Measured in Chrome on a 685 px card
     # head: before, the link's head was 45 px and the button's 63 px; after, both 63 px.
     assert github[".github-pull-file"]["display"] == "inline-block"
+    # The author, action, and relative age share one prose size and baseline.
+    assert github[".github-pull-card-head"]["font-size"] == "var(--body-font-size)"
+    age = github[".github-pull-card-head .github-pull-age"]
+    assert (age["font-size"], age["line-height"]) == ("var(--body-font-size)", "inherit")
+    assert ".github-pull-card-head .github-pull-author" not in github
+    identity = github[".github-pull-identity"]
+    assert (identity["align-items"], identity["vertical-align"]) == ("baseline", "baseline")
+    assert github[".github-pull-avatar"]["align-self"] == "center"
     # A hunk is the user's code, at the chrome-context mono size, in the app's mono face.
     assert github[".github-pull-hunk"]["font-family"] == "var(--font-mono)"
     assert github[".github-pull-hunk"]["font-size"] == "var(--mono-block-font-size)"
@@ -1433,11 +1451,9 @@ def test_serif_is_only_for_documents() -> None:
     assert dict(_rules_of(styles))['html[data-prose-font="sans"]']["--doc-char-advance"] == (
         "var(--sans-char-advance)"
     )
-    # The pull request page is a surface of messages: its prose face and its width.
+    # The pull request page uses the sans prose face.
     page = dict(_rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"))[".github-pull"]
     assert page["--kpress-host-font-prose"] == "var(--prose-sans-font)"
-    assert page["--doc-measure"] == "var(--message-measure)"
-    assert "var(--message-char-advance, var(--sans-char-advance))" in page["--message-measure"]
     doc = (REPO_ROOT / "docs/design-system.md").read_text(encoding="utf-8")
     assert "### Serif Is for Documents" in doc
     assert "test_serif_is_only_for_documents" in doc

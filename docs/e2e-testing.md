@@ -413,6 +413,153 @@ Open the printed URL and verify:
 
 Do not make the manual check the only coverage for a deterministic contract.
 
+### Markdown Reading Layout
+
+Open a long Markdown file with a table of contents in the built-in browser.
+Compare the document card border with the leftmost tab’s outer edge.
+Switch to Source and check the pane gutter and line-number column.
+At a preview width of 75 rem or more, check the TOC to the right of the prose and follow
+a heading link.
+Use a document with a thumbnail and a wide table to check their positions
+beside the rail.
+
+Narrow the preview through tablet and phone widths.
+Scroll past the first section, open the TOC with its icon, and follow a heading.
+Reopen the overlay and dismiss it with Escape.
+Open a short file, then reopen it after a warm read to check the same start edge.
+In Folder Overview, compare the README’s prose edge with the same file opened directly,
+and check the section rules and panel borders along the stack.
+In a wide pane, compare paragraph widths in Markdown and a PR conversation at both 102
+and 80 in **Max text width**. Restore the setting after the comparison.
+
+Check the first tab’s outer box against the document card border and Source surface.
+Keep KPress’s normal left and right padding inside the card; prose does not have to
+align with the tab label.
+Both views keep the shared outer pane padding; the document card’s inner padding must
+not conceal an absent outer gutter.
+Compare the same README directly and in Overview, retaining the same text measure.
+
+### PR and Git Navigation Performance
+
+Use the
+[performance loop](../explorations/performance-loop/README.md#attributing-stateful-navigation-delay)
+for timing and the focused browserless sessions for deterministic behavior.
+Keep a small review playbook beside the experiment rather than adding another test
+framework:
+
+1. Freeze the build, public repository, PR numbers, full Git revisions and viewport.
+   Name Git-object, detailed-record, browser HTTP, asset and prepared-payload cache
+   states separately. Use an isolated test cache for absent-record cases.
+2. Test a first PR from the neutral prompt, then a different uncached PR from a fully
+   rendered, settled cached PR. A neutral prompt is not prior useful content.
+   Require the previous description and reading position to survive until the correct
+   new description or an actionable failure appears.
+3. Measure description readiness separately from completed discussion, checks and
+   comparison. Exercise row selection, a cold direct link, retry after failure, rapid
+   keyboard replacement, and cached reopening on a managed repository and a checkout.
+   A description preview must not claim that unread sections or Git acquisition are
+   complete. Hold the selected refresh after its description appears and finish it
+   between polling ticks.
+   Check that the waiting cache read returns the correct full record, and that a
+   duplicate or canceled read does not change provider work.
+   To test background description preparation, start in Files and open Pulls.
+   Click once as soon as the row is visible, once while preparation is running, and once
+   after it finishes. Record the actual batch state with each planned dwell.
+   With two tabs, confirm a refused preparation leaves the first tab’s window available.
+   Let one owned batch settle without polling its result, then scroll to a cohort that
+   answers cache-only `ready` or lease-held `partial`. Confirm the previous exact token
+   is released before another cohort starts.
+   Hide or dispose during that release and check that the coverage-only token is never
+   treated as the owner.
+   Hold a batch while scrolling to a second window.
+   Check that viewport demand covers all visible rows and that the background cursor
+   continues through the cached catalog beyond the first transport batch.
+   Keep the provider busy for longer than a minute, then confirm retry resumes without
+   another scroll. Hide or disconnect the browser, then resume the unfinished cursor.
+   Check that default Open rows warm before newer Closed rows and that a known rate
+   reset resumes the pass while Files remains selected.
+   Repeated ready reads must not refetch unchanged rows.
+   Reopen an early prepared description after later batches, a minute, and server
+   restart; confirm that the durable lightweight record is served without a provider
+   call. While a batch runs or after it becomes ready, change one admitted summary and
+   confirm an unchanged sibling is still readable.
+   Replace the repository or authenticated reader and confirm that old admission or
+   cached metadata cannot cross that boundary.
+4. In Commits, compare natural and prepared selection, re-enter the displayed row, and
+   leave for a file while deferred requests are active.
+   Check exact route and subject, cancellation, queued work, single active ownership and
+   final content.
+5. Keep matching request counts and bytes beside painted readiness, Long Tasks, Event
+   Timing, retained heap and sampled backend RSS. Follow the loop’s repetition and
+   acceptance rules; retain failures and distinguish an isolated mechanism probe from a
+   complete navigation result.
+
+### Shared Content Layout and Stack Navigation
+
+Compare a Markdown document, its Source and Raw views, a folder README, a commit with a
+description, and a PR with comments.
+At wide and narrow pane widths, check that card borders and source surfaces begin at the
+first display tab’s outer edge.
+Retain the document card’s roomy KPress inset, with the desktop contents rail on the
+right and the existing narrow contents icon and drawer.
+A wide table must remain reachable by horizontal scrolling without expanding the pane.
+Commit descriptions and PR prose use the same sans size, ink, and neutral bordered
+surface. Author, action, and age must share a baseline while branch chips stay smaller.
+
+On a PR in a known stack, open the position menu.
+Check titles, ordinal and PR number, current-member indication, focus, Escape, outside
+click, and keyboard selection.
+Use ⇧J toward the base and ⇧K toward the top; preserve the selected PR tab and clear the
+old file selection. Confirm endpoint handling and that an editor or open dialog retains
+its keys.
+
+### Quick Search and Main Tabs
+
+Open the same public GitHub repository in a checkout and a managed mirror.
+From Files or a selected commit, press `T` and type `#`. Check that the list shows
+recent PRs across states.
+Add title text, then replace it with a number prefix.
+Check that both queries show only PR options and that an exact number appears first.
+Check the title, number, state, and accessible option name.
+Press Enter and verify that Conversation opens in one history step.
+Back returns to the previous view.
+
+With an isolated cache, try a search before opening Pulls.
+A catalog refresh should start once, and subsequent queries should read the local
+catalog. Reopen a cached result with `gh` unavailable.
+In a plain folder, the dialog should still say Quick Search and search only files.
+
+After Git discovery, check Files, Commits, and Pulls order and the fixed numbers in
+Help. Try the plain digits if the browser owns the Command chords.
+In a plain folder, check that the Files shortcut still uses `1` and the other numbers
+leave the selection alone.
+
+### Pulls Watch and Reconnect
+
+The
+[watch verification plan](project/specs/active/plan-2026-11-06-pr-watch-and-reconnect.md)
+covers incremental provider updates, cached use during an outage, connection recovery,
+and the Reload action in both repository modes.
+
+### Pulls Paging
+
+Use a repository or a seeded catalog with more than 500 matching PRs.
+Start in Pulls and verify the initial window.
+Scroll near its end and check that the next window appears without a click.
+Repeat through the final partial window.
+Keep an eye on the selected row and switch filters during an in-flight page.
+For a partial catalog, verify the same interaction joins the metadata refresh and can
+continue when rows arrive.
+
+### Pull Request Checks
+
+In a checkout and a managed repository, open a PR with checks.
+Select **Checks** and verify the status summary and detail links.
+Navigate to Conversation and Changes, then use Back and Forward to restore the selected
+tab. Reload `/pull/<n>/checks` directly.
+Repeat with an empty check list and a pending PR record to verify each loading or empty
+state. On a cached PR, all three tabs use the same record.
+
 ### Headless Screenshots
 
 There is no automated visual-regression layer.

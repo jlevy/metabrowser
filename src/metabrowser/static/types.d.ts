@@ -10,6 +10,8 @@ type MetabrowserRenderContext = {
     base_policy: "direct" | "merge_base";
     route?: string;
   };
+  /** The owner of a selected comparison read, while its view is mounting. */
+  comparisonSignal?: AbortSignal;
   /** A pull request's page: its number, the tab its route names, and how it
    *  asks the shell to open a tab, or another pull request's page, in the URL. */
   number?: number;
@@ -64,7 +66,11 @@ type MetabrowserPullsNavHost = Readonly<{
 /** What the list's view hands the Pulls tab's host. */
 type MetabrowserPullsPanelHandle = Readonly<{
   setShown(shown: boolean): void;
-  setCurrent(number: number | null, file?: string | null): void;
+  setCurrent(
+    number: number | null,
+    file?: string | null,
+    options?: { preserveScroll?: boolean },
+  ): void;
   setFilter(state: string): void;
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
   released(): void;
@@ -210,6 +216,7 @@ type MetabrowserNavigationController = Readonly<{
     target: MetabrowserNavigationTarget,
     options?: { replace?: boolean; viewId?: string },
   ): Promise<unknown>;
+  restore(): Promise<unknown>;
   start(): Promise<unknown>;
 }>;
 
@@ -369,6 +376,8 @@ type KpressRenderPayload = {
 
 type DisposableHandle = {
   dispose?: () => void;
+  /** Stop progressive work while retaining inert DOM through a pending handoff. */
+  cancelPending?: () => void;
   /** Initial useful content is ready; later progressive work stays outside this boundary. */
   ready?: Promise<void>;
 };
@@ -521,6 +530,12 @@ type MetabrowserSourceLineAnchorState = Readonly<{
   message: string;
 }>;
 
+/** Navigation offered by the mounted GitHub PR page to its core tab host. */
+type MetabrowserPullStackNavigation = Readonly<{
+  hasStack(): boolean;
+  moveStack(delta: -1 | 1): boolean;
+}>;
+
 type MetabrowserPullRouteRuntime = Readonly<{
   createPullPageHost<
     Handle extends {
@@ -528,6 +543,8 @@ type MetabrowserPullRouteRuntime = Readonly<{
       setTab?(tab: string): void;
       showFile?(path: string): unknown;
       flush?(): void;
+      ready?: Promise<void>;
+      cancelPending?(): void;
       dispose?(): void;
     },
   >(deps: {
@@ -544,6 +561,8 @@ type MetabrowserPullRouteRuntime = Readonly<{
     replaceHref(href: string): void;
   }): Readonly<{
     dispose(): void;
+    /** Cancel a visible page now, returning its final DOM disposal for actual handoff. */
+    release(): (() => void) | null;
     onHistory(
       pathname: string,
       heldTarget: boolean,
@@ -566,12 +585,21 @@ type MetabrowserPullRouteRuntime = Readonly<{
     isCurrent(claim: number): boolean;
     renderHtml(html: string, claim: number): unknown;
     renderNode(node: HTMLElement, claim: number): unknown;
+    beginNavigation(claim: number): boolean;
+    endNavigation(claim: number): void;
+    stageNode(node: HTMLElement, claim: number): (() => void) | null;
     showLoadFailure(claim: number, what: string): void;
   }): (
     claim: number,
     kind: string,
     context: Record<string, unknown>,
-  ) => Promise<{ setTab?(tab: string): void; flush?(): void; dispose?(): void } | null>;
+  ) => Promise<{
+    setTab?(tab: string): void;
+    flush?(): void;
+    ready: Promise<void>;
+    cancelPending?(): void;
+    dispose(): void;
+  } | null>;
   /** The host the shell made, for the Pulls tab beside the pane; null until one is made. */
   attachedHost(): { pageFor(number: number): unknown } | null;
   onPageChange(listener: () => void): () => void;
@@ -1874,7 +1902,7 @@ type MetabrowserFileFuzzyMatchRuntime = Readonly<{
 type MetabrowserSearchRequest = Readonly<{
   match: "fuzzy";
   query: string;
-  target: "file";
+  target: "all" | "file";
 }>;
 
 type MetabrowserSearchFileResult = Readonly<{
@@ -1890,17 +1918,35 @@ type MetabrowserSearchFileResult = Readonly<{
   score: number;
 }>;
 
+type MetabrowserSearchPullState = "open" | "draft" | "closed" | "merged";
+
+type MetabrowserSearchPullResult = Readonly<{
+  id: string;
+  kind: "pull";
+  label: string;
+  matchRanges: ReadonlyArray<Readonly<{ start: number; end: number }>>;
+  number: number;
+  providerId: string;
+  score: number;
+  state: MetabrowserSearchPullState;
+}>;
+
+type MetabrowserSearchResult = MetabrowserSearchFileResult | MetabrowserSearchPullResult;
+
 type MetabrowserSearchBatch = Readonly<{
   candidateCount?: number;
   complete: boolean;
   providerId: string;
-  results: ReadonlyArray<MetabrowserSearchFileResult>;
+  results: ReadonlyArray<MetabrowserSearchResult>;
   revision?: number;
   statusMessage?: string;
   truncated: boolean;
 }>;
 
-type MetabrowserSearchContext = Readonly<{ requestId: number }>;
+type MetabrowserSearchContext = Readonly<{
+  requestId: number;
+  publishBatch?(batch: MetabrowserSearchBatch): void;
+}>;
 
 type MetabrowserSearchProvider = Readonly<{
   activation?: "fallback" | "immediate";
@@ -1931,7 +1977,7 @@ type MetabrowserSearchState = Readonly<{
   phase: "idle" | "searching" | "complete";
   request: MetabrowserSearchRequest | null;
   requestId: number;
-  results: ReadonlyArray<MetabrowserSearchFileResult>;
+  results: ReadonlyArray<MetabrowserSearchResult>;
   statusMessage: string;
   truncated: boolean;
 }>;
@@ -1958,6 +2004,11 @@ type MetabrowserSearchRuntime = Readonly<{
     syncThreshold?: number;
     yieldControl?: (signal: AbortSignal) => Promise<void>;
   }): MetabrowserSearchProvider;
+  createPullProvider(options?: {
+    fetch?: typeof fetch;
+    maxResults?: number;
+  }): MetabrowserSearchProvider;
+  isExplicitPullQuery(query: string): boolean;
 }>;
 
 /** A failed open always says why, so the palette never has to classify it again. */
@@ -1998,6 +2049,7 @@ type MetabrowserSearchPaletteRuntime = Readonly<{
     onNotFound?(path: string): void | Promise<void>;
     onOpen?(): void;
     openFile(path: string): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
+    openPull?(number: number): MetabrowserOpenFileOutcome | Promise<MetabrowserOpenFileOutcome>;
     overlay: MetabrowserOverlayRuntime;
     resolveFocusFallback?(previous: HTMLElement | null): HTMLElement | null;
     shortcuts: MetabrowserShortcutRegistry;
@@ -2756,6 +2808,8 @@ declare global {
 
   type MetabrowserGitPanelRuntime = {
     init(): Promise<void>;
+    cancelPending(): void;
+    restoreCommitLanding(): Promise<void>;
     /** Test-only surface; not part of any supported contract. */
     _internals: Record<string, unknown>;
   };
@@ -2775,6 +2829,28 @@ declare global {
     onHide?: (() => void) | null;
   };
 
+  type MetabrowserMainTabsDeps = {
+    cancelPreview(): void;
+    flushPull(): void;
+    isGitHistoryLanding(): boolean;
+    isPullAddress(pathname: string): boolean;
+    restore(): Promise<unknown>;
+    scrollShadow(): void;
+  };
+  type MetabrowserMainTabsController = {
+    active(): string;
+    activate(id: string): void;
+    bindShortcuts(shortcuts: MetabrowserShortcutRegistry): void;
+    finishGitDiscovery(): Promise<void>;
+    fileLanding(): void;
+    onHistory(): void;
+    open(id: string): void;
+    register(panel: MetabrowserNavPanel): void;
+    remember(): void;
+    remove(id: string): void;
+    takeFilesScroll(): boolean;
+  };
+
   type MetabrowserPreviewClaim = number;
 
   /**
@@ -2784,6 +2860,7 @@ declare global {
    */
   type MetabrowserShellRuntime = {
     activateNavPanel(panelId: string): void;
+    rememberMainTabAddress(): void;
     beginPreviewNavigation(claim: MetabrowserPreviewClaim): boolean;
     claimPreview(owner: string): MetabrowserPreviewClaim;
     endPreviewNavigation(claim: MetabrowserPreviewClaim): void;
@@ -2793,12 +2870,14 @@ declare global {
     removeNavPanel(panelId: string): void;
     renderPreviewHtml(html: string, claim: MetabrowserPreviewClaim): HTMLElement | null;
     renderPreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): HTMLElement | null;
+    stagePreviewNode(node: HTMLElement, claim: MetabrowserPreviewClaim): (() => void) | null;
     shortcuts(): ReturnType<MetabrowserKeyboardShortcutsRuntime["create"]> | null;
     /** The page's freshness controller once it is mounted; null when a folder is served. */
     sourceFreshness(): Promise<MetabrowserSourceFreshnessController | null>;
   };
   type MetabrowserPublicFileTypeTaxonomyRuntime = MetabrowserFileTypeTaxonomyRuntime;
   type MetabrowserPublicPullRouteRuntime = MetabrowserPullRouteRuntime;
+  type MetabrowserPublicPullStackNavigation = MetabrowserPullStackNavigation;
   type MetabrowserPublicPullsPanelHandle = MetabrowserPullsPanelHandle;
   type MetabrowserPublicPreparedViewComposition = MetabrowserPreparedViewComposition;
   type MetabrowserPublicRenderContext = MetabrowserRenderContext;
@@ -2876,6 +2955,9 @@ declare global {
     MetabrowserResourceContext: MetabrowserResourceContextRuntime;
     MetabrowserSearch: MetabrowserSearchRuntime;
     MetabrowserShell?: MetabrowserShellRuntime;
+    MetabrowserMainTabs?: Readonly<{
+      create(deps: MetabrowserMainTabsDeps): MetabrowserMainTabsController;
+    }>;
     MetabrowserSearchPalette: MetabrowserSearchPaletteRuntime;
     MetabrowserTheme: MetabrowserThemeRuntime;
     MetabrowserTreeExpansion: MetabrowserTreeExpansion;
@@ -2897,7 +2979,7 @@ declare global {
       ): void;
       dispose(): void;
       init(): Promise<void>;
-      routeChanged(): void;
+      routeChanged(options?: { preserveScroll?: boolean }): void;
     }>;
     MetabrowserSourceFreshness?: MetabrowserSourceFreshnessRuntime;
     MetabrowserSourceRefSelector?: MetabrowserSourceRefSelectorRuntime;

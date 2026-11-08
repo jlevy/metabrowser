@@ -399,8 +399,10 @@ def test_recording_is_what_a_served_mirror_answers(
 ) -> None:
     recorded, provider_calls = _record(tmp_path, monkeypatch, pull_origin)
     assert recorded["absent"]["body"]["reason"] == "not_cached"
+    assert recorded["absent"]["body"]["filter_totals"] is None
     assert recorded["refresh_started"]["status"] == 202
     assert recorded["pending"]["body"]["state"] == "pending"
+    assert recorded["pending"]["body"]["filter_totals"] is None
     current = recorded["current"]["body"]
     assert (
         current["repository_total"],
@@ -412,6 +414,8 @@ def test_recording_is_what_a_served_mirror_answers(
     assert len(recorded["more_window"]["body"]["rows"]) == 2
     assert recorded["open_current"]["body"]["total"] == 100
     assert recorded["closed_current"]["body"]["total"] == 2
+    for label in ("current", "open_current", "closed_current", "more_window"):
+        assert recorded[label]["body"]["filter_totals"] == {"all": 102, "open": 100, "closed": 2}
     assert recorded["stale"]["body"]["state"] == "stale"
     assert recorded["not_due"]["body"]["refresh"] == "not_due"
     assert recorded["rate_limit_holds"]["body"]["refresh"] == "not_due"
@@ -446,6 +450,11 @@ def test_recording_is_what_a_served_mirror_answers(
     assert recorded["pin_changed"]["body"]["code"] == "pin_changed"
     assert recorded["landing_gh_missing"]["body"]["last_refresh"]["outcome"] == "gh_missing"
     assert recorded["landing_empty_refreshing"]["body"]["fetched"] == 0
+    assert recorded["landing_empty_refreshing"]["body"]["filter_totals"] == {
+        "all": 0,
+        "open": 0,
+        "closed": 0,
+    }
     assert recorded["landing_empty_refreshing"]["body"]["refreshing"] is True
     assert recorded["landing_found_rows"]["body"]["fetched"] == 102
     # Keep complete route answers, split by scenario so each recording is reviewable.
@@ -501,15 +510,10 @@ def test_the_recording_holds_every_failure_the_plan_names() -> None:
         assert f"failed {name}" in recording, name
 
 
-def test_polling_checkout_landing_keeps_its_origin_refusal() -> None:
-    """Landing polling keeps the served-checkout context and stops after its refusal."""
-
-    landing = run_session("github-pulls-panel-session.js", "--part", "all")["landing"]
-    assert landing["a polling checkout landing preserves its origin refusal"] == {
-        "said": ["This checkout's origin is not a GitHub repository Metabrowser can list."],
-        "requests": ["GET /api/plugin/github/pulls?limit=0"],
-        "timers": [],
-    }
+def test_pulls_landing_leaves_connection_status_to_the_sidebar() -> None:
+    paint = run_session("github-pulls-panel-session.js", "--part", "all")["paint"]
+    assert paint["landing"] == "Select a pull request."
+    assert paint["ready action"] == "Reload"
 
 
 def test_catalog_windows_and_late_request_ownership() -> None:
@@ -517,6 +521,14 @@ def test_catalog_windows_and_late_request_ownership() -> None:
         "defaultFilter": "open",
         "initialRows": 500,
         "explicitRows": 1000,
+        "scrollRows": 600,
+        "terminalRows": 645,
+        "repeatedScrollSharesRequest": True,
+        "keepsSelection": True,
+        "cachedGrowthKeepsEveryRow": True,
+        "failedProviderUsesCacheOnly": True,
+        "hiddenTailIsIdle": True,
+        "staleTailCannotChangeFilter": True,
         "progressOnlyReads": 1,
         "generationPages": 10,
         "detailReads": 0,
@@ -527,8 +539,22 @@ def test_catalog_windows_and_late_request_ownership() -> None:
         "lateFilterRejected": True,
         "failedWindowDoesNotSpin": True,
         "newerRefreshKeepsOwnership": True,
-        "emptyFilterDoesNotHideOtherPulls": True,
         "freshPartialCatalogResumes": True,
+        "offlineKeepsCache": True,
+        "reconnectUsesBackgroundHint": True,
+        "interactiveFilterKeepsPriority": True,
+        "directAndHistoryFiltersKeepPriority": True,
+        "hiddenWarmupYieldsToVisibleDemand": True,
+        "acceptedTopArrivalsAreOneShot": True,
+        "transientRetriesAutomatically": True,
+        "retryKeepsPriorFailure": True,
+        "localReadFailureDoesNotPost": True,
+        "setupUsesQuietProbe": True,
+        "focusCoalesces": True,
+        "parkAndResume": True,
+        "rateResetWake": True,
+        "reloadCoalesces": True,
+        "abortedTailKeepsWake": True,
     }
 
 
@@ -551,6 +577,8 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
         "observedRoot": 1,
         "gapStartsAt": None,
         "viewportHeight": 3000,
+        "oneVisibleFlash": True,
+        "retainedReadingPlace": True,
     }
 
 
@@ -561,7 +589,7 @@ def test_setup_guidance_retains_cached_content_and_failure_distinctions() -> Non
         "nullMessageFallbacks": True,
         "backendTextPreserved": True,
         "cachedRecordPreserved": True,
-        "explicit401Preserved": True,
+        "authUsesNormalizedGuidance": True,
         "otherFailureKindsPreserved": True,
     }
 
@@ -588,6 +616,7 @@ def test_native_stack_navigation_and_cold_page_skeleton_preserve_cached_content(
         "cachedRefreshRetained": True,
         "authoritativeStack": True,
         "orderedNeighbors": True,
+        "stackActivationFocus": True,
         "tabPreserved": True,
         "fileCleared": True,
         "explicitReaderIntent": True,
@@ -660,6 +689,13 @@ def test_recording_optional_stack_metadata_answers_real_routes(
                 }
             ],
         )
+        # Native membership has no titles; the cache-only projection reads the
+        # already-discovered repository catalog without additional provider calls.
+        seed_catalog(
+            repository,
+            [generated_item(n) | {"title": f"Stack change {n}"} for n in (6, 7, 8)],
+            fetched_at=utc_stamp(clock[0]),
+        )
         install()
         refresh()
         present = read("current")
@@ -712,4 +748,24 @@ def test_real_page_history_owns_file_selection_separately_from_retained_cursor()
         "readerExpansionRetained": True,
         "rovingAnchorRetained": True,
         "disposed": 0,
+    }
+
+
+def test_background_core_warming_covers_viewport_and_catalog_without_stranding_reconnect() -> None:
+    """Transport batches never cap coverage, and recovery keeps the settled cursor."""
+
+    assert run_session("github-pr-prefetch-behavior.js") == {
+        "catalogRows": 24,
+        "settledOwnershipReleases": 3,
+        "hiddenBatches": [8, 8, 8],
+        "busyAttemptsMs": [0, 1000, 3000, 7000],
+        "allVisibleReadyMs": 12000,
+        "recoveredAfterLongBusyMs": 91000,
+        "cachedAfterColdStart": 24,
+        "recoveredRaceAndRevision": [24, 25],
+        "recoveredTransientAndPartial": [24, 24],
+        "cachedPastPartialCohort": 24,
+        "cachedAfterReconnect": 24,
+        "completedBeforeDisconnect": 8,
+        "backgroundRequestsAfterCompletion": 17,
     }

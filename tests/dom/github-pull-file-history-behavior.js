@@ -111,6 +111,8 @@ async function run() {
           icons: { toggle: "" },
         },
       );
+      // This session supplies the commit boundary instead of the production mounter.
+      handle.activate();
       return handle;
     },
     mountList: async () => null,

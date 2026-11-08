@@ -4,38 +4,15 @@
    tokens. Colors are design tokens. */
 
 .github-pull {
-  /* How far a card's text sits inside its border. A card's border box is the measure plus
-     two of these, as `.kpress-long-text`'s is, so its text box is a Markdown file's. */
   --github-pull-text-inset: var(--pane-header-padding-x);
   --github-pull-gap: 12px;
-  /* A pull request's texts are messages, not committed documents, so they read in the
-     interface sans whatever the reading font, at that face's width for the same "Max text
-     width" (docs/design-system.md, "Serif Is for Documents"). */
+  /* The column includes the pane gutter on each side. */
+  --page-reading-gutter: var(--content-padding-x);
   --kpress-host-font-prose: var(--prose-sans-font);
-  --message-measure: calc(
-    var(--document-body-font-size) *
-    var(--doc-max-chars) *
-    var(--message-char-advance, var(--sans-char-advance))
-  );
-  --doc-measure: var(--message-measure);
   display: flex;
   flex-direction: column;
   padding: 0;
   color: var(--text);
-}
-/* The header, tabs, and conversation share the reading column at every width. A wider
-   pane centers it, as a Markdown file's card and Overview's stack are. Files changed keeps
-   the full pane for its diff. */
-.github-pull-column {
-  width: 100%;
-  max-width: calc(
-    var(--doc-measure) +
-    2 *
-    var(--github-pull-text-inset) +
-    2 *
-    var(--content-padding-x)
-  );
-  margin-inline: auto;
 }
 .github-pull-header {
   display: flex;
@@ -43,11 +20,10 @@
   gap: 6px;
   padding: var(--content-padding-y) var(--content-padding-x);
 }
-.github-pull-title {
-  font-size: var(--page-title-font-size);
-  font-weight: var(--weight-bold);
-  line-height: 1.25;
-  overflow-wrap: anywhere;
+.github-pull-title-with-state {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 0.35em;
 }
 .github-pull-number {
   color: var(--text);
@@ -70,18 +46,21 @@
 }
 .github-pull-header a,
 .github-pull-card-head a,
+.github-pull-commit-id,
 .github-pull-checks a {
   color: var(--link);
   text-decoration: none;
 }
 .github-pull-header a:hover,
 .github-pull-card-head a:hover,
+.github-pull-commit-id:hover,
 .github-pull-checks a:hover,
 .github-pull-text-action:hover {
   text-decoration: underline;
 }
 .github-pull-header a:focus-visible,
 .github-pull-card-head a:focus-visible,
+.github-pull-commit-id:focus-visible,
 .github-pull-checks a:focus-visible,
 .github-pull-text-action:focus-visible {
   outline: 2px solid var(--link);
@@ -148,6 +127,14 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
+.github-pull-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.github-pull-progress > .spinner {
+  flex: none;
+}
 .github-pull-failure {
   color: var(--status-warning-strong);
 }
@@ -157,20 +144,41 @@
   gap: var(--github-pull-gap);
   padding: var(--content-padding-y) var(--content-padding-x);
 }
-.github-pull-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-chrome);
-  overflow: hidden;
-}
 .github-pull-card-head {
   min-height: var(--ui-row-height);
   padding: 3px var(--github-pull-text-inset);
   border-bottom: 1px solid var(--border);
   background: var(--sidebar-bg);
-  font-size: var(--ui-small-font-size);
+  font-size: var(--body-font-size);
+}
+.github-pull-card-head .github-pull-age {
+  font-size: var(--body-font-size);
+  line-height: inherit;
 }
 .github-pull-card-head:last-child {
   border-bottom: 0;
+}
+.github-pull-timeline-loading {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-inline-start: 0.5em;
+}
+.github-pull-commit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  padding-inline: var(--github-pull-text-inset);
+  min-height: var(--ui-row-height);
+  font-size: var(--ui-small-font-size);
+}
+.github-pull-commit-subject {
+  flex: 1 1 12em;
+  overflow-wrap: anywhere;
+  font-weight: var(--weight-bold);
+}
+.github-pull-commit-id {
+  white-space: nowrap;
 }
 .github-pull-reply {
   margin-left: var(--content-padding-x);
@@ -363,6 +371,15 @@
   width: var(--icon-glyph);
   height: var(--icon-glyph);
 }
+/* Center the title-size glyph in the first line even when the title wraps. */
+.github-pull-title > .github-pull-state-icon {
+  width: 1em;
+  height: 1lh;
+}
+.github-pull-title > .github-pull-state-icon svg {
+  width: 1em;
+  height: 1em;
+}
 
 /* ── The Pulls tab ───────────────────────────────────────────────
    docs/design-system.md, "The Pulls Tab". Its controls, notices, and ages are the shell's
@@ -374,7 +391,15 @@
   padding: 6px var(--pane-header-padding-x);
   background: var(--sidebar-bg);
 }
+.github-pulls-filters .chip-group {
+  max-width: 100%;
+}
+.github-pulls-filters .chip {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 .github-pulls-status,
+.github-pulls-connection,
 .github-pulls-empty {
   margin: 0;
   padding: 0 var(--pane-header-padding-x) 6px;
@@ -384,29 +409,36 @@
 .github-pulls-status > span {
   display: block;
 }
+.github-pulls-connection:not([hidden]),
+.github-pulls-connection-text {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.github-pulls-connection:not([hidden]) {
+  flex-wrap: wrap;
+}
+.github-pulls-connection-spinner:not([hidden]) {
+  display: inline-flex;
+  flex: none;
+}
+.github-pulls-connection-spinner.mb-delayed-loading {
+  order: 1;
+}
+.github-pulls-reload[aria-disabled="true"] {
+  color: var(--muted);
+  border-color: var(--border);
+  cursor: default;
+}
 .github-pulls-total-line {
   color: var(--text);
-}
-.github-pulls-progress {
-  display: block;
 }
 .github-pulls-total {
   color: var(--text);
   font-weight: var(--weight-bold);
 }
-.github-pulls-window {
-  display: block;
-}
 .github-pulls-empty {
   padding-block-start: 6px;
-}
-.github-pulls-notice {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin: 0 var(--pane-header-padding-x) 6px;
-  padding: 4px 8px;
 }
 .github-pulls-list {
   margin: 0;
@@ -476,9 +508,6 @@
 .github-pull-author {
   color: var(--muted);
   font-weight: var(--weight-bold);
-}
-.github-pull-card-head .github-pull-author {
-  font-size: var(--body-font-size);
 }
 .github-pulls-refs {
   color: var(--git-ref-remote);
@@ -576,6 +605,14 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
+.github-pull-files-line:not([hidden]) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.github-pull-files-line > .mb-delayed-loading:not([hidden]) {
+  display: inline-flex;
+}
 .github-pull-files-notice {
   display: flex;
   flex-wrap: wrap;
@@ -583,10 +620,6 @@
   gap: 6px;
   margin: 2px 12px 4px calc(10px + var(--tree-indent));
   padding: 4px 8px;
-}
-.github-pull-files-loading {
-  height: calc(var(--ui-row-height) * 3);
-  margin-inline-start: calc(10px + var(--tree-indent) + 22px);
 }
 .github-pulls-foot {
   display: flex;
@@ -617,34 +650,63 @@
 .github-pull-stacks[hidden] {
   display: none;
 }
-.github-pull-stack {
+.github-pull-stacks:not([hidden]) {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
+  gap: var(--chip-cluster-gap);
   padding-block-end: 6px;
 }
-.github-pull-stack-disclosure > summary {
-  cursor: pointer;
-  color: var(--muted);
+.github-pull-stack-disclosure {
+  position: relative;
 }
-.github-pull-stack-members {
-  margin-block: 6px;
-  padding-inline-start: 24px;
+.github-pull-stack-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  font-variant-numeric: var(--tabular-numerals);
 }
-.github-pull-stack a {
-  color: var(--link);
+.github-pull-stack-trigger::-webkit-details-marker {
+  display: none;
+}
+.github-pull-stack-icon,
+.github-pull-stack-icon svg {
+  display: block;
+  width: var(--icon-glyph);
+  height: var(--icon-glyph);
+}
+.github-pull-stack-menu {
+  position: absolute;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-start: 0;
+  width: 32rem;
+  max-width: calc(100cqw - 2 * var(--content-padding-x));
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+}
+.github-pull-stack-member {
+  align-items: start;
+  color: var(--text);
+  white-space: normal;
   text-decoration: none;
 }
-.github-pull-stack a:hover {
-  text-decoration: underline;
+.github-pull-stack-current {
+  flex: none;
+  width: var(--icon-glyph);
 }
-.github-pull-stack a:focus-visible,
-.github-pull-stack-disclosure > summary:focus-visible {
-  outline: 2px solid var(--link);
-  outline-offset: 1px;
+.github-pull-stack-member-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
 }
-.github-pull-stack-members [aria-current="page"] {
+.github-pull-stack-member-title {
+  overflow-wrap: anywhere;
+}
+.github-pull-stack-member[aria-current="page"] {
+  background: var(--hover-bg);
+}
+.github-pull-stack-member[aria-current="page"] .github-pull-stack-member-title {
   font-weight: var(--weight-bold);
 }
 .github-pull-loading {
@@ -653,13 +715,14 @@
 
 .github-pull-identity {
   display: inline-flex;
-  align-items: center;
+  align-items: baseline;
   gap: 4px;
-  vertical-align: middle;
+  vertical-align: baseline;
 }
 .github-pull-avatar {
   display: inline-block;
   flex: none;
+  align-self: center;
   width: 18px;
   height: 18px;
   border-radius: 50%;

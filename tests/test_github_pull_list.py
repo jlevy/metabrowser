@@ -9,6 +9,7 @@ import shlex
 import sqlite3
 import subprocess
 import threading
+from dataclasses import replace
 from datetime import timedelta
 from functools import partial
 from pathlib import Path
@@ -19,6 +20,7 @@ import pytest
 from metabrowser.builtin_plugins.github import (
     gh,
     gh_lists,
+    pull_catalog,
     pull_list,
     pull_list_refresh,
     pull_list_route,
@@ -29,6 +31,7 @@ from metabrowser.builtin_plugins.github.pull_catalog import (
     CATALOG_PROJECTION,
     CatalogState,
     catalog_row,
+    catalog_search,
     catalog_window,
     publish_page,
     read_catalog,
@@ -53,9 +56,10 @@ from metabrowser.builtin_plugins.github.pull_list_route import (
     pull_list_envelope,
     refresh_request,
     refresh_wanted,
+    search_query,
 )
 from metabrowser.cache.locks import run_lock_section, source_alias_lock
-from metabrowser.cache.paths import PullListName
+from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, PullListName
 from metabrowser.home import ensure_private_directory, write_private_file_atomic
 from metabrowser.mirror_refresh import RefreshCoordinator
 from tests.cache_home_fixture import (  # pyright: ignore[reportPrivateUsage]
@@ -154,6 +158,98 @@ def test_backfill_all_beyond_old_cap_with_small_indexed_windows(
     assert not refresh_wanted(ListView(repository, None, False), RefreshRequest("open", 2000))
     assert asyncio.run(refresh_pull_list(repository, "open", target=2000)).cached == state.cached
     assert calls == []
+
+
+def test_pull_search_respects_title_budget_and_indexes_exact_numbers(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    items = [generated_item(number) for number in range(1, 16)]
+    items[0].update(title="Straße: 100% _ready", draft=True)
+    _seed(repository, items, complete=False)
+    before = _fingerprint(repository.home)
+
+    title = catalog_search(repository, "STRASSE _READY 100%")
+    assert catalog_search(repository, "#  STRASSE _READY 100%") == title
+    assert title == {
+        "rows": [{"number": 1, "title": "Straße: 100% _ready", "state": "draft"}],
+        "complete": False,
+        "limited": False,
+        "truncated": False,
+    }
+    assert not catalog_search(repository, "100_")["rows"]
+    common = catalog_search(repository, "item")
+    assert [row["number"] for row in common["rows"]] == list(range(15, 3, -1))
+    assert common["truncated"] and not common["limited"]
+
+    monkeypatch.setattr(pull_catalog, "_SEARCH_TITLE_ROWS", 3)
+    assert catalog_search(repository, "Straße") == {
+        "rows": [],
+        "complete": False,
+        "limited": True,
+        "truncated": False,
+    }
+    exact = catalog_search(repository, "1")
+    assert exact["rows"][0]["number"] == 1 and not exact["limited"] and not exact["truncated"]
+    assert not catalog_search(repository, "#0")["rows"]
+    assert not catalog_search(repository, "#999999999999")["rows"]
+    assert catalog_search(replace(repository, repo="other"), "#1") == {
+        "rows": [],
+        "complete": False,
+        "limited": False,
+        "truncated": False,
+    }
+    assert _fingerprint(repository.home) == before
+
+
+def test_pull_search_recent_and_numeric_prefixes_use_cached_numbers(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert catalog_search(repository, "#") == {
+        "rows": [],
+        "complete": False,
+        "limited": False,
+        "truncated": False,
+    }
+    newest = MAX_PULL_REQUEST_NUMBER
+    merged = dict(generated_item(12), state="closed", merged_at=STAMP)
+    closed = dict(generated_item(1290), state="closed")
+    draft = dict(generated_item(1280), draft=True)
+    _seed(
+        repository,
+        [
+            dict(generated_item(99), number=newest),
+            generated_item(1300),
+            closed,
+            draft,
+            *(generated_item(number) for number in range(120, 130)),
+            merged,
+        ],
+        complete=False,
+    )
+    # Both indexed modes stay independent of the title-scan budget and filter.
+    monkeypatch.setattr(pull_catalog, "_SEARCH_TITLE_ROWS", 3)
+    before = _fingerprint(repository.home)
+    recent = catalog_search(repository, "#")
+    assert [row["number"] for row in recent["rows"]] == [
+        newest,
+        1300,
+        1290,
+        1280,
+        *range(129, 121, -1),
+    ]
+    assert recent["truncated"] and not recent["limited"] and not recent["complete"]
+
+    prefix = catalog_search(repository, "#12")
+    assert [row["number"] for row in prefix["rows"]] == [12, 1290, 1280, *range(129, 120, -1)]
+    assert [row["state"] for row in prefix["rows"][:4]] == ["merged", "closed", "draft", "open"]
+    assert prefix["truncated"] and not prefix["limited"] and not prefix["complete"]
+    assert [row["number"] for row in catalog_search(repository, "#13")["rows"]] == [1300]
+    for query in ("12", "0012", "#0012"):
+        assert [row["number"] for row in catalog_search(repository, query)["rows"]] == [12]
+    for query in ("#9", f"#{newest}", str(newest)):
+        assert [row["number"] for row in catalog_search(repository, query)["rows"]] == [newest]
+    assert not catalog_search(repository, f"#{newest + 1}")["rows"]
+    assert _fingerprint(repository.home) == before
 
 
 def test_actual_gh_transport_keeps_only_lightweight_metadata(
@@ -378,6 +474,12 @@ def test_untrusted_catalog_reads_are_bounded_and_never_modify(
         path.chmod(0o644)
     before = _fingerprint(repository.home)
     assert catalog_window(repository.home, repository.slug, "all", limit=100) == (None, [], None)
+    assert catalog_search(repository, "#1") == {
+        "rows": [],
+        "complete": False,
+        "limited": False,
+        "truncated": False,
+    }
     assert _fingerprint(repository.home) == before
 
 
@@ -477,6 +579,12 @@ def test_late_demand_joins_and_cancel_cleans_coordinator_state(
             pull_list_route.start_refresh(view, RefreshRequest("closed", 1500, True), wanted=True)
             == "joined"
         )
+        assert (
+            pull_list_route.start_refresh(view, refresh_request({"background": True}), wanted=True)
+            == "joined"
+        )
+        reconnect = refresh_request({"reconnect": True, "target": 900})
+        assert pull_list_route.start_refresh(view, reconnect, wanted="reconnect") == "joined"
         release.set()
         await coordinator.drain(timeout_s=2)
         assert observed == [("closed", 1500), True, False]
@@ -496,11 +604,27 @@ def test_invalid_window_is_refused(params: dict[str, str]) -> None:
 
 
 @pytest.mark.parametrize(
-    "body", [{"more": True}, {"target": True}, {"target": 0}, {"retry": 1}, {"state": "merged"}]
+    "body",
+    [
+        {"more": True},
+        {"target": True},
+        {"target": 0},
+        {"retry": 1},
+        {"background": 1},
+        {"reconnect": 1},
+        {"reconnect": True, "retry": True},
+        {"state": "merged"},
+    ],
 )
 def test_invalid_refresh_is_refused(body: dict[str, Any]) -> None:
     with pytest.raises(ListRequestError):
         refresh_request(body)
+
+
+@pytest.mark.parametrize("query", ["", "  ", "a" * 257])
+def test_invalid_search_query_is_refused(query: str) -> None:
+    with pytest.raises(ListRequestError):
+        search_query(query)
 
 
 def test_default_open_and_unbounded_display_target() -> None:
@@ -625,12 +749,128 @@ def test_an_automatic_refresh_waits_a_window_and_for_a_reset(
     assert refresh_is_due(kept, now=FETCHED_AT + timedelta(seconds=seconds)) is due
 
 
+def test_catalog_reconnect_retries_an_early_network_failure_only_once(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_list_refresh(
+        repository.home, repository.slug, "all", PullRefreshStamp(outcome="network_error", at=STAMP)
+    )
+    now = 100.0
+    attempts: list[bool] = []
+    monkeypatch.setattr(pull_list_route, "monotonic", lambda: now)
+
+    async def refresh(*args: Any, **kwargs: Any) -> None:
+        attempts.append(kwargs["take_retry"]())
+
+    monkeypatch.setattr(pull_list_refresh, "refresh_pull_list", refresh)
+
+    async def exercise() -> None:
+        nonlocal now
+        coordinator = RefreshCoordinator()
+        view = ListView(repository, coordinator, False)
+        ask = refresh_request({"reconnect": True})
+        assert not refresh_wanted(view, RefreshRequest("open"))
+        wanted = refresh_wanted(view, ask)
+        assert wanted == "reconnect"
+        assert pull_list_route.start_refresh(view, ask, wanted=wanted) == "started"
+        await coordinator.drain(timeout_s=2)
+        assert pull_list_route.start_refresh(view, ask, wanted=wanted) == "not_due"
+        now += 60
+        assert pull_list_route.start_refresh(view, ask, wanted=wanted) == "started"
+        await coordinator.drain(timeout_s=2)
+        await coordinator.aclose()
+
+    asyncio.run(exercise())
+    assert attempts == [True, True]
+
+
+@pytest.mark.parametrize(
+    "outcome", ["gh_missing", "not_logged_in", "not_found_or_private", "rate_limited"]
+)
+def test_catalog_reconnect_cannot_bypass_a_non_network_failure(
+    repository: ListedRepository, outcome: str
+) -> None:
+    write_list_refresh(
+        repository.home, repository.slug, "all", PullRefreshStamp(outcome=outcome, at=STAMP)
+    )
+    view = ListView(repository, None, False)
+    assert refresh_wanted(view, refresh_request({"reconnect": True})) is False
+    if outcome == "rate_limited":
+        assert refresh_wanted(view, refresh_request({"retry": True})) is False
+
+
+@pytest.mark.parametrize("status", [502, 503])
+def test_catalog_server_outage_keeps_cached_rows_without_an_early_reconnect(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    items = [generated_item(1)]
+    seeded = _seed(repository, items)
+    _provider(monkeypatch, items)
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", gh.gh_graphql)
+
+    async def run(args: Any, **kwargs: Any) -> Any:
+        return subprocess.CompletedProcess(
+            args,
+            1,
+            f"HTTP/2.0 {status}\r\n\r\n".encode() + b'{"message":"private upstream detail"}',
+            b"",
+        )
+
+    monkeypatch.setattr(gh, "_run", run)
+    with pytest.raises(PullDataError) as failure:
+        asyncio.run(refresh_pull_list(repository, "open", retry=True))
+    assert failure.value.state == "github_unavailable"
+    stamp = read_list_refresh(repository.home, repository.slug, "all")
+    assert stamp is not None and stamp.outcome == "github_unavailable"
+    assert stamp.message == f"GitHub answered HTTP {status}"
+    assert read_catalog(repository.home, repository.slug) == seeded
+    view = ListView(repository, None, False)
+    assert not refresh_wanted(view, refresh_request({"reconnect": True}))
+
+
+def test_catalog_retries_back_off_when_github_omits_a_rate_reset(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = FETCHED_AT
+    items = [generated_item(1)]
+    _seed(repository, items)
+    _provider(monkeypatch, items)
+    monkeypatch.setattr(pull_list, "utc_now", lambda: now)
+
+    async def limited(*args: Any, **kwargs: Any) -> Any:
+        raise GhError("GitHub's API rate limit is exhausted", state="rate_limited")
+
+    monkeypatch.setattr(pull_list_refresh, "gh_graphql", limited)
+    view = ListView(repository, None, False)
+    for seconds in (60, 120):
+        with pytest.raises(PullDataError) as failure:
+            asyncio.run(refresh_pull_list(repository, "open", retry=True))
+        assert failure.value.state == "rate_limited"
+        until = now + timedelta(seconds=seconds)
+        stamp = read_list_refresh(repository.home, repository.slug, "all")
+        assert stamp is not None and stamp.reset_at == utc_stamp(until)
+        assert not refresh_wanted(view, refresh_request({"retry": True}))
+        assert not refresh_wanted(view, refresh_request({"reconnect": True}))
+        now = until
+
+    _provider(monkeypatch, items)
+    assert refresh_wanted(view, refresh_request({"retry": True})) is True
+    asyncio.run(refresh_pull_list(repository, "open", retry=True))
+    stamp = read_list_refresh(repository.home, repository.slug, "all")
+    assert stamp is not None and stamp.outcome == "succeeded"
+
+
 @pytest.mark.parametrize(
     ("errors", "state", "error_type"),
     [
         ([{"type": "RATE_LIMITED", "message": "rate limit exhausted"}], "rate_limited", GhError),
         (
             [{"type": "NOT_FOUND", "message": "secret repository name"}],
+            "not_found_or_private",
+            GhError,
+        ),
+        (
+            [{"type": "FORBIDDEN", "message": "arbitrary private upstream detail"}],
             "not_found_or_private",
             GhError,
         ),

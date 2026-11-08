@@ -1438,21 +1438,26 @@ async def index(
     if pulls_tab:
         pulls_container = (
             '\n        <div id="tab-pulls" data-tab-content="pulls">'
-            '<div class="recent-loading mb-delayed-loading" role="status"'
-            ' aria-label="Loading pull requests"></div></div>'
+            '<div class="loading mb-delayed-loading" role="status">'
+            '<div class="spinner spinner-sm" aria-hidden="true"></div>'
+            '<span class="sr-only">Fetching pull requests…</span></div></div>'
             if pulls_in_front
             else '\n        <div id="tab-pulls" data-tab-content="pulls"'
             ' style="display: none"></div>'
         )
-    # The PR route knows it will show text. Its cold shell uses the same row skeleton
-    # as the plugin, while unrelated previews keep their indeterminate placeholder.
-    preview_loading = (
-        '<div class="pull-request-placeholder mb-delayed-loading" role="status" aria-label="Loading pull request">'
-        '<div class="recent-loading" aria-hidden="true"></div></div>'
-        if pull_page
-        else '<div class="loading mb-delayed-loading"><div class="spinner"></div>'
-        '<span class="sr-only">Loading preview…</span></div>'
-    )
+    # The Pulls landing has no selection to load. Its spinner belongs in the sidebar.
+    if pull_list and pulls_in_front:
+        preview_loading = '<div class="preview-empty">Select a pull request.</div>'
+    elif pull_page:
+        preview_loading = (
+            '<div class="pull-request-placeholder mb-delayed-loading" role="status" aria-label="Loading pull request">'
+            '<div class="recent-loading" aria-hidden="true"></div></div>'
+        )
+    else:
+        preview_loading = (
+            '<div class="loading mb-delayed-loading"><div class="spinner"></div>'
+            '<span class="sr-only">Loading preview…</span></div>'
+        )
     source_kind_json = _json.dumps("git_revision" if git_pin else "filesystem")
     # The tree's first rows, inlined. Without this the reader waits for a round
     # trip the server did not have to make them take: time to first row is
@@ -1582,7 +1587,10 @@ async def index(
     # eager loading measured ~374 ms of every document's load event whether or
     # not that view was ever opened. See docs/development.md "Asset Loading
     # Tiers" and the load-time plan for the measurement.
+    main_tabs_asset = {"src": _static_asset_url("main-tabs.js"), "provides": "MetabrowserMainTabs"}
     on_demand_script_bundles = {
+        # A main tab click can arrive before the initial tree request settles.
+        "main-tabs": [main_tabs_asset],
         # Navigation, search, Help, and Git controls are application-lifetime
         # tools, but none is needed to paint or fetch the first tree. Keeping
         # their ordered classic scripts behind that usable-state boundary
@@ -1590,6 +1598,7 @@ async def index(
         # begin immediately after loadTree settles, before inventory delivery
         # continues in the background.
         "shell-tools": [
+            main_tabs_asset,
             {"src": known_file_catalog_url},
             {"src": catalog_feed_url},
             {"src": file_fuzzy_match_url},
@@ -1946,7 +1955,7 @@ async def commit_shell(request: Request) -> Response:
 
 
 async def pull_shell(request: Request) -> Response:
-    """Serve the SPA shell for ``/pull/<n>[/files[/<path>]]``, a pull request's page.
+    """Serve the SPA shell for a pull request page and its subroutes.
 
     A pull request is its own address space, like a commit: the page is not a path in
     the served tree, and a changed file's path is one in its comparison, never on disk.

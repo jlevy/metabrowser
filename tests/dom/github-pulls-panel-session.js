@@ -72,15 +72,14 @@ function summarize(model) {
   return present({
     filter: model.filter,
     status: model.status,
-    skeleton: model.skeleton || null,
     listName: model.listName,
-    origin: model.origin,
-    count: model.count,
+    summary:
+      model.countNumber === null
+        ? model.repository
+        : model.countNumber + model.countSuffix + model.repository,
     window: model.window,
-    progress: model.progress,
-    freshness: model.freshness,
+    connection: model.connection,
     empty: model.empty,
-    notice: model.notice,
     loadMore: model.loadMore,
     github: model.github,
     live: model.live || null,
@@ -227,11 +226,22 @@ function createPage() {
       assert(waiting.length > index, "no request is waiting for an answer");
       const [request] = waiting.splice(index, 1);
       assert(request.route.startsWith("/api/plugin/github/pull?"), "not a read of a record");
-      request.resolve({ status: 200, etag: '"record"', body: { state: "current" } });
+      const number = Number(new URL(request.route, "http://localhost").searchParams.get("number"));
+      const current = pageRecorded.current.body;
+      request.resolve({
+        status: 200,
+        etag: '"record"',
+        body: {
+          ...current,
+          number,
+          record: { ...current.record, number, pull: { ...current.record.pull, number } },
+        },
+      });
       await settle();
     },
     waitingCount: () => waiting.length,
     rowsVersion: () => model?.rowsVersion,
+    filterTotals: () => model?.filterTotals,
     /** Run the timer with this delay, or the only one. */
     async fire(delayMs) {
       const match = [...timers.entries()].filter(
@@ -275,6 +285,30 @@ async function run() {
     return { selection: await paintStory(panel, true) };
   }
   const steps = [];
+
+  // Restoring the tab's saved scroll should not jump to an older row when its
+  // cached window arrives. A new ordinary address still reveals its selected row.
+  {
+    const page = createPage();
+    const top = recorded.large_0;
+    const next = recorded.large_1;
+    const older = next.body.rows[0].number;
+    const controller = panel.createPullsController(page.deps, { filter: "all", current: null });
+    void controller.start({ shown: true });
+    await page.answer({ ...top, body: { ...top.body, list: "all" } });
+    assert(page.waitingCount() === 1, "the older window is held");
+    controller.setCurrent(older, { preserveScroll: true });
+    controller.setCurrent(older); // A duplicate route notification leaves the policy in place.
+    await page.answer({ ...next, body: { ...next.body, list: "all" } });
+    assert(page.holds(older), "the restored PR arrived in the held window");
+    const restored = page.observe("restored", controller, { paint: false });
+    assert(!restored.reveals, "a late cached page cannot scroll the restored tab");
+    const ordinary = top.body.rows[0].number;
+    controller.setCurrent(ordinary);
+    const selected = page.observe("selected", controller, { paint: false });
+    assert(selected.reveals?.[0] === ordinary, "an ordinary address still reveals its row");
+    controller.dispose();
+  }
   let page = createPage();
   let controller = panel.createPullsController(page.deps, { filter: "all", current: null });
   void controller.start({ shown: false });
@@ -303,6 +337,11 @@ async function run() {
   steps.push(page.observe("reopening reads one tagged cache window", controller, { paint: false }));
   controller.setFilter("open");
   await settle();
+  assert(page.waitingCount() === 1, "switching filters does not read separate counts");
+  assert(
+    page.filterTotals() === recorded.current.body.filter_totals,
+    "counts stay while switching",
+  );
   await page.answer(recorded.open_current);
   steps.push(page.observe("Open has its exact matching count", controller));
   controller.setFilter("closed");
@@ -324,6 +363,7 @@ async function run() {
     await page.answer(recorded[`large_${index}`]);
   }
   assert(controller.snapshot().rows === 500, "initial display must stop at 500");
+  assert(page.filterTotals()?.open === 0, "a known empty filter retains its zero");
   steps.push(page.observe("500 shown while the catalog continues in the background", controller));
   await page.answer(recorded.large_resume_started);
   const beforeProgress = page.rowsVersion();
@@ -339,9 +379,23 @@ async function run() {
     await page.answer(recorded[`large_${index}`]);
   }
   assert(controller.snapshot().rows === 1000, "Fetch more grows display by 500");
-  steps.push(
-    page.observe("Fetch more displays another 500 cached rows without provider work", controller),
+  assert(page.filterTotals()?.all === 6000, "an older append cannot roll back newer tallies");
+  const moreCached = page.observe(
+    "Fetch more displays another 500 cached rows without provider work",
+    controller,
   );
+  assert(
+    moreCached.paint.listName.endsWith("6,000 pull requests"),
+    "the selected total stays current",
+  );
+  assert(moreCached.paint.window === "Showing last 1,000", "the display remains a partial window");
+  assert(moreCached.paint.connection.state === "working", "the refresh still runs");
+  assert(moreCached.timer === "fast", "the append does not slow the refresh poll");
+  assert(
+    moreCached.requests.every((request) => request.startsWith("GET ")),
+    "cached append makes only local reads",
+  );
+  steps.push(moreCached);
   controller.onVisibilityChange();
   await settle();
   await page.answer(recorded.moved_0);
@@ -353,6 +407,30 @@ async function run() {
   steps.push(
     page.observe("a new PR revalidates the display through ten bounded cache pages", controller),
   );
+  controller.dispose();
+
+  // A cached page can arrive with an older successful refresh stamp.
+  page = createPage();
+  controller = panel.createPullsController(page.deps, { filter: "all", current: null });
+  void controller.start({ shown: true });
+  await settle();
+  await page.answer({
+    ...recorded.current,
+    body: {
+      ...recorded.current.body,
+      last_refresh: recorded["failed gh_failed"].body.last_refresh,
+    },
+  });
+  const failedTop = page.observe("provider failed before the cached append", controller);
+  await page.answer(recorded.more_window);
+  const failedMore = page.observe("cached rows append despite the provider failure", controller);
+  assert(failedMore.paint.rowsHeld === 102, "cached rows append after provider failure");
+  assert(failedTop.paint.connection.state === "paused", "the failed refresh is visible");
+  assert(
+    failedMore.paint.connection.text === failedTop.paint.connection.text,
+    "the append cannot clear the newer failure",
+  );
+  assert(failedMore.requests.length === 0, "a cached append should not ask the provider");
   controller.dispose();
 
   // Holding a key marks only the two changed rows, with one cache-only detail read at rest.
@@ -411,13 +489,11 @@ async function run() {
       nowMs: Date.parse(answer.body.fetched_at) + 30_000,
       formatTime: (iso) => new Date(iso).toISOString(),
       more: false,
-      waitedMs: 0,
       error: null,
     });
     failures[name.slice("failed ".length)] = {
       status: model.status,
-      freshness: model.freshness,
-      notice: model.notice,
+      connection: model.connection,
     };
   }
   for (const [name, context] of [
@@ -466,129 +542,20 @@ async function run() {
     { number: 8, state: "open", base_ref: "main", head_ref: "topic", head_repository: "OCTO/demo" },
     "octo/demo",
   ).refs;
-  const formatTime = (iso) => new Date(iso).toISOString();
-  const landing = {
-    "a server with no repository": panel.describeLanding(recorded.not_github.body, formatTime),
-    "a checkout whose origin cannot be listed": panel.describeLanding(
-      recorded.not_github.body,
-      formatTime,
-      true,
-    ),
-    "a mirror": panel.describeLanding(recorded.current.body, formatTime),
-    "a list with no rows, and no gh": panel.describeLanding(
-      recorded.open_gh_missing.body,
-      formatTime,
-    ),
-  };
-
-  // The list's address on a first visit lands before the tab's refresh has run, so it reads
-  // the list again while there is nothing to say yet, and stops once there is.
-  page = createPage();
-  const said = [];
-  const following = panel.followLanding({
-    request: page.deps.request,
-    schedule: page.deps.schedule,
-    cancel: page.deps.cancel,
-    isVisible: page.deps.isVisible,
-    formatTime,
-    say: (line) => said.push(line),
-  });
-  await settle();
-  const firstVisit = [];
-  const look = (step) =>
-    firstVisit.push({
-      step,
-      requests: page.requests(),
-      said: said.splice(0),
-      timers: page.timerDelays(),
-    });
-  look("it mounts and reads the list");
-  await page.answer(recorded.landing_absent);
-  look("nothing cached, and the refresh not yet asked: it reads again soon");
-  await page.fire();
-  await page.answer(recorded.landing_pending);
-  look("the refresh is running: again at the fast poll");
-  await page.fire();
-  await page.answer(recorded.landing_gh_missing);
-  look("the refresh failed: it says why, and reads no more");
-  following.dispose();
-
-  // The polling landing carries the checkout's context through its eventual refusal.
-  page = createPage();
-  const checkoutSaid = [];
-  const checkoutLanding = panel.followLanding({
-    request: page.deps.request,
-    schedule: page.deps.schedule,
-    cancel: page.deps.cancel,
-    isVisible: page.deps.isVisible,
-    formatTime,
-    checkout: true,
-    say: (line) => checkoutSaid.push(line),
-  });
-  await settle();
-  await page.answer(recorded.not_github);
-  landing["a polling checkout landing preserves its origin refusal"] = {
-    said: checkoutSaid,
-    requests: page.requests(),
-    timers: page.timerDelays(),
-  };
-  checkoutLanding.dispose();
-
-  const landingRecovery = [];
-  for (const failure of ["connection", "non-envelope", "pin changed", "empty refreshing"]) {
-    page = createPage();
-    const recoverySaid = [];
-    const recovery = panel.followLanding({
-      request: page.deps.request,
-      schedule: page.deps.schedule,
-      cancel: page.deps.cancel,
-      isVisible: page.deps.isVisible,
-      formatTime,
-      say: (line) => recoverySaid.push(line),
-    });
-    await settle();
-    if (failure === "connection") {
-      await page.reject();
-    } else if (failure === "non-envelope") {
-      await page.answer({ status: 503, etag: null, body: { error: "unavailable" } });
-    } else {
-      await page.answer(
-        failure === "pin changed" ? recorded.pin_changed : recorded.landing_empty_refreshing,
-      );
-    }
-    const before = { said: recoverySaid.splice(0), timers: page.timerDelays() };
-    if (failure !== "pin changed") {
-      await page.fire();
-      await page.answer(
-        failure === "empty refreshing" ? recorded.landing_found_rows : recorded.landing_gh_missing,
-      );
-    }
-    landingRecovery.push({
-      step: failure,
-      before,
-      after: { said: recoverySaid.splice(0), timers: page.timerDelays() },
-      requests: page.requests(),
-    });
-    recovery.dispose();
-  }
-
   return {
     steps,
     provider_calls: recorded.provider_calls,
     failures,
     hostile,
     spelled,
-    landing,
-    "the list's address, on a first visit": firstVisit,
-    "the list's address recovers": landingRecovery,
     reader: await readerStory(),
     paint: await paintStory(panel),
   };
 }
 
 /**
- * The page a reader's selection opens: it is the selection that adds a record, as a press of
- * Fetch is, so only such a page asks, and past the bound on jobs it says why.
+ * How a visible cold direct page or a reader's row selection fills the record cache,
+ * and what the page says when it reaches the job limit.
  */
 async function readerStory() {
   const page = await import(pathToFileURL(pagePath).href);
@@ -658,7 +625,10 @@ async function readerStory() {
     controller.dispose();
   }
   const { absent, refresh_started: started, too_many: tooMany, current } = pageRecorded;
-  await opened("an address alone fetches nothing", null, { pull: absent });
+  await opened("a visible cold direct link fills the cache", null, {
+    pull: absent,
+    refresh: started,
+  });
   await opened(
     "a click on a row with no record fetches it at once",
     { fetchAfterMs: 0, initial: null },
@@ -725,6 +695,26 @@ async function paintStory(panel, selection = false) {
   // The work an append could spend on rows already painted: ages told, and rows keyed.
   let aged = 0;
   let keyed = 0;
+  let filterOptions = [];
+  class PanelElement extends FakeElement {
+    set innerHTML(markup) {
+      super.innerHTML = markup;
+      if (this.classList.contains("github-pulls-filters")) {
+        for (const option of filterOptions) {
+          const chip = new FakeElement("button");
+          chip.dataset.chipValue = option.value;
+          chip.append(option.label);
+          this.append(chip);
+        }
+      }
+    }
+    querySelectorAll(selector) {
+      if (selector === "button" && this.classList.contains("github-pulls-filters")) {
+        return this.childNodes;
+      }
+      return super.querySelectorAll();
+    }
+  }
   const document = {
     activeElement: null,
     visibilityState: "visible",
@@ -733,7 +723,7 @@ async function paintStory(panel, selection = false) {
       if (tag === "li") {
         built += 1;
       }
-      return new FakeElement(tag);
+      return new PanelElement(tag);
     },
     createDocumentFragment: () => new FakeNode("#fragment"),
     importNode: (node) => new FakeElement(node.localName),
@@ -743,6 +733,7 @@ async function paintStory(panel, selection = false) {
   const globals = {
     document,
     window: {
+      addEventListener() {},
       setTimeout(callback, delayMs) {
         timers.set(nextTimer, { callback, delayMs });
         nextTimer += 1;
@@ -760,6 +751,7 @@ async function paintStory(panel, selection = false) {
       }
     },
     IntersectionObserver: class {
+      takeRecords() {}
       observe() {}
       disconnect() {}
     },
@@ -780,8 +772,8 @@ async function paintStory(panel, selection = false) {
   }
   const realNow = Date.now;
   Date.now = () => now;
-  async function answer(recording) {
-    const { resolve } = answers.shift();
+  async function answer(recording, index = 0) {
+    const [{ resolve }] = answers.splice(index, 1);
     resolve({
       status: recording.status,
       headers: { get: () => recording.etag },
@@ -793,7 +785,13 @@ async function paintStory(panel, selection = false) {
     const mb = {
       ...require("./sdk-ref-fixture.js").refHelpers(document),
       perf: { measure: (_label, work) => work(), measureAsync: (_label, work) => work() },
-      filterControls: { groupHtml: () => "<div></div>", bind: () => () => {} },
+      filterControls: {
+        groupHtml({ options }) {
+          filterOptions = options;
+          return "<div></div>";
+        },
+        bind: () => () => {},
+      },
       formatAge(seconds) {
         aged += 1;
         const minutes = Math.round((now / 1000 - seconds) / 60);
@@ -835,7 +833,7 @@ async function paintStory(panel, selection = false) {
           refreshAhead: false,
           scrollRoot: selection ? container : null,
           open: (route) => opened.push(route.number),
-          file: null,
+          file: selection ? "src/app.txt" : null,
           fileHref: (number, path) => `/pull/${number}/files/${path}`,
           pageFor: (number) => pageHost?.pageFor(number) ?? null,
           onPageChange: (listener) => {
@@ -848,14 +846,87 @@ async function paintStory(panel, selection = false) {
       mb,
     );
     await settle();
+    const connection = container.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-connection"),
+    );
+    const [connectionText, , reload] = connection.childNodes;
+    const [spinner, message] = connectionText.childNodes;
+    assert(
+      !connection.hidden && message.textContent === "Fetching pull requests…",
+      "one fetch line",
+    );
+    assert(
+      !spinner.hidden &&
+        spinner.firstElementChild.classList.contains("spinner") &&
+        connectionText.classList.contains("mb-delayed-loading") &&
+        !spinner.classList.contains("mb-delayed-loading"),
+      "one shared spinner and delay for the first loading message",
+    );
+    assert(
+      reload.textContent === "Reload" && reload.getAttribute("aria-disabled") === "true",
+      "the same reload control waits while loading",
+    );
+    const live = container.childNodes.filter((node) => node.getAttribute("aria-live") === "polite");
+    assert(live.length === 1 && live[0].textContent === message.textContent, "one announcement");
+    const loading = message.textContent;
+    const pane = new FakeElement("div");
+    const beforeLanding = answers.length;
+    panel.mountPullsLanding(pane);
+    await settle();
+    assert(
+      pane.textContent === "Select a pull request." && answers.length === beforeLanding,
+      "the neutral landing uses no independent status read",
+    );
+    const filters = container.childNodes.find((node) =>
+      node.classList?.contains("github-pulls-filters"),
+    );
+    const filterChips = [...filters.querySelectorAll("button")];
+    assert(filterChips.length === 3, "all filter chips have a tally");
+    for (const chip of filterChips) {
+      const tally = chip.childNodes.at(-1);
+      assert(tally.classList.contains("tally-pending"), "unknown tally uses the shared pulse");
+      assert(tally.textContent === "", "unknown count is never zero");
+      assert(
+        chip.getAttribute("aria-label").endsWith("count pending"),
+        "unknown count is announced",
+      );
+    }
+    filterChips.at(-1).focus();
     await answer(first);
-    // The row of the page shown opens its changed files, read from the cache: the tree's
-    // session holds what they are, and this one where they hang.
-    const filesRead = answers[0].route;
-    await answer({ status: 200, etag: null, body: filesRecorded.comparison });
+    assert(spinner.hidden && message.textContent.startsWith("Updated "), "the same row settles");
+    assert(
+      connection.childNodes.at(-1) === reload && reload.getAttribute("aria-disabled") === "false",
+      "the stable Reload becomes available when settled",
+    );
+    assert(document.activeElement === filterChips.at(-1), "tallies leave the focused chip mounted");
+    const filterTallies = filterChips.map((chip) => chip.textContent);
+    assert(
+      filterTallies.join("|") === "Open 100|Closed 2|All 102",
+      "each filter uses its provider total from the first envelope",
+    );
+    assert(
+      filterChips[1].getAttribute("aria-label") === "Closed, 2 pull requests",
+      "tally is named",
+    );
     const list = container.childNodes.find((node) => node.localName === "ul");
     const [hostile, shown] = list.childNodes;
     const row = (item) => item.firstElementChild;
+    const fileWindow = () => answers.findIndex((request) => request.route.includes("/pull-files?"));
+    const previewDisclosure = row(shown).getAttribute("aria-expanded");
+    if (!selection) {
+      assert(previewDisclosure === "false", "a PR preview stays collapsed");
+      assert(fileWindow() === -1, "a PR preview reads no changed-file metadata");
+      mounted.expand();
+      await settle();
+      const group = shown.childNodes.find((node) => node.classList?.contains("github-pull-files"));
+      const [progress] = group.firstElementChild.childNodes;
+      assert(!progress.hidden && progress.firstElementChild.classList.contains("spinner"));
+    }
+    const fileRead = fileWindow();
+    assert(fileRead >= 0, "expansion reads the file list");
+    const filesRead = answers[fileRead].route;
+    await answer({ status: 200, etag: null, body: filesRecorded.comparison }, fileRead);
+    assert(!answers.some((request) => request.route.includes("/pull-files-refresh")));
     if (selection) {
       if (answers[0]?.route.includes("/pulls?")) {
         await answer(recorded.more_window);
@@ -978,6 +1049,7 @@ async function paintStory(panel, selection = false) {
       const opening = pageHost.open({
         number: other,
         tab: "files",
+        file: "src/app.txt",
         reader: { fetchAfterMs: 0, initial: null },
       });
       await settle();
@@ -1097,15 +1169,22 @@ async function paintStory(panel, selection = false) {
     const total = status.firstElementChild;
     assert(
       total.childNodes[0].localName === "strong" && total.childNodes[0].textContent === "102",
-      "only the exact repository number is strong",
+      "the exact repository number is strong",
     );
     assert(
       total.childNodes[1].nodeName === "#text" &&
-        total.childNodes[1].textContent === " PRs on octo/demo",
-      "repository and label must remain plain text",
+        total.childNodes[1].textContent === " PRs on " &&
+        total.childNodes[2].localName === "strong" &&
+        total.childNodes[2].textContent === "octo/demo",
+      "only the repository name is bold in the label",
     );
+    assert(status.textContent.match(/octo\/demo/g)?.length === 1, "names the repository once");
     const story = {
-      "only the exact number is bold": total.childNodes.map((node) => ({
+      "loading status": loading,
+      "ready action": reload.textContent,
+      landing: pane.textContent,
+      "filter tallies": filterTallies,
+      "the count and repository name are bold": total.childNodes.map((node) => ({
         node: node.nodeName,
         text: node.textContent,
       })),
@@ -1113,7 +1192,8 @@ async function paintStory(panel, selection = false) {
       "a row": [described(hostile), described(row(hostile))],
       "the row whose page is shown": described(row(shown)),
       "its parts": row(shown).childNodes.map(described),
-      "its changed files, read from the cache": filesRead,
+      "a PR preview leaves its files expanded": previewDisclosure === "true",
+      "Right opens its cached changed files": filesRead,
       "they hang under it as a group it owns": shown.childNodes.map(described),
       "a title written as markup is one text node": row(hostile).childNodes[2].childNodes.map(
         (node) => ({ node: node.nodeName, data: node.data }),
@@ -1158,6 +1238,38 @@ async function paintStory(panel, selection = false) {
     await settle();
     story["an age, two hours on"] = age();
     story["rows built to tell it"] = built;
+    const due = [...timers.entries()].find(([, timer]) => timer.delayMs === SLOW_POLL_MS);
+    timers.delete(due[0]);
+    due[1].callback();
+    await settle();
+    const outage = {
+      ...first.body,
+      last_refresh: {
+        ...recorded["failed network_error"].body.last_refresh,
+        at: new Date(now - 61_000).toISOString(),
+      },
+    };
+    await answer({ status: 200, etag: null, body: outage });
+    assert(answers[0].init.method === "POST", "watch starts a passive retry");
+    const retryMessage = "GitHub could not be reached. Showing cached pull requests.";
+    const assertRetry = () => {
+      assert(message.textContent === retryMessage, "the outage text stays visible");
+      assert(live[0].textContent === retryMessage, "the polite announcement stays steady");
+      assert(!connectionText.classList.contains("mb-delayed-loading"), "only the spinner waits");
+      assert(
+        !spinner.hidden && spinner.classList.contains("mb-delayed-loading"),
+        "delayed spinner",
+      );
+      assert(reload.getAttribute("aria-disabled") === "true", "Reload waits for the retry");
+    };
+    assertRetry();
+    await answer({
+      status: 202,
+      etag: null,
+      body: { pulls: { ...outage, refreshing: true, rows: [] } },
+    });
+    assertRetry();
+    story["a passive retry keeps the announced outage beside its spinner"] = retryMessage;
     // Reader-opened trees can all be expanded together. Closing them must apply the bound
     // immediately, without waiting for another tree to be created.
     const many = list.childNodes

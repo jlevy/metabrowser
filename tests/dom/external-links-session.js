@@ -74,6 +74,8 @@ for (const [href, expected] of [
   ["https://api.github.com/repos/octo/demo", "github"],
   ["https://github.com/octo/demo/issues/7#comment", "issue"],
   ["https://github.com/octo/demo/pull/7/files?x=1#L2", "pull"],
+  ["https://github.com/octo/demo/pull/7/commits", "pull"],
+  [`https://github.com/octo/demo/pull/7/commits/${"a".repeat(40)}`, "github"],
   ["https://github.com/octo/demo/issues/0", "github"],
   ["https://github.com/octo/demo/pull/no", "github"],
   ["https://github.com/octo/demo/pull/7evil", "github"],

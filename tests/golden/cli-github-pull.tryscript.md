@@ -246,7 +246,8 @@ status: 200
       "text": false
     },
     "unavailable": {}
-  }
+  },
+  "core_preview": null
 }
 ? 0
 ```
@@ -628,7 +629,8 @@ status: 200
       "text": false
     },
     "unavailable": {}
-  }
+  },
+  "core_preview": null
 }
 ? 0
 ```
@@ -691,7 +693,8 @@ status: 200
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 ? 0
 ```
@@ -742,7 +745,8 @@ status: 200
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 ? 0
 ```
@@ -812,7 +816,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 ? 0
 ```
@@ -842,7 +847,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 ? 0
 ```
@@ -872,7 +878,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 ? 0
 ```
@@ -994,7 +1001,8 @@ status: 202
       "at": "[TIMESTAMP]"
     },
     "comparison_route": null,
-    "record": null
+    "record": null,
+    "core_preview": null
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1018,7 +1026,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 Error: the refresh ended with gh_failed
 ? 1
@@ -1051,7 +1060,8 @@ status: 202
       "at": "[TIMESTAMP]"
     },
     "comparison_route": null,
-    "record": null
+    "record": null,
+    "core_preview": null
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1075,7 +1085,8 @@ status: 200
     "at": "[TIMESTAMP]"
   },
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 Error: the refresh ended with gh_failed
 ? 1
@@ -1109,7 +1120,8 @@ status: 200
       "at": "[TIMESTAMP]"
     },
     "comparison_route": null,
-    "record": null
+    "record": null,
+    "core_preview": null
   },
   "status_route": "/api/plugin/github/pull?number=14"
 }
@@ -1144,10 +1156,9 @@ Error: /api/plugin/github/pull-refresh returned HTTP 405
 
 ## Test: the pull-request page is the pull request’s record
 
-`/pull/<n>` is the page a pull-request URL opens at, and `/pull/<n>/files` its Files
-changed, the comparison the record names.
-`--show` reports the kind and view the shell mounts there and summarizes the record the
-page renders.
+`/pull/<n>` opens Conversation, `/pull/<n>/files` opens Changes, and `/pull/<n>/checks`
+opens Checks. `--show` reports the kind and view the shell mounts there and summarizes
+the record the page renders.
 
 ```console
 $ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab https://github.com/octo/demo/pull/7 --show /pull/7
@@ -1172,6 +1183,20 @@ route: /pull/9/files
 kind: pull-request
 views: pull-request (default)
 model: pull envelope; state=stale pull_state=closed fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=0 reviews=0 review_comments=0 check_runs=2 statuses=1 tab=files comparison_route=/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=[BUILD]&store=[STORE]
+? 0
+```
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab 'https://github.com/octo/demo/pull/7/checks?check_run_id=987' --show /pull/7/checks
+selection: pull_request
+pin: 85fcb2fa9e77eb5db485ffef445cbbc645d6db4a (pull request 7 head)
+tab: checks
+pull_request: 7 (open; fetched 2026-09-17T12:00:00Z by gh:octo-reader)
+show: /pull/7/checks
+route: /pull/7/checks
+kind: pull-request
+views: pull-request (default)
+model: pull envelope; state=stale pull_state=open fetched_at=2026-09-17T12:00:00Z reader=gh:octo-reader issue_comments=1 reviews=2 review_comments=2 check_runs=2 statuses=1 tab=checks
 ? 0
 ```
 

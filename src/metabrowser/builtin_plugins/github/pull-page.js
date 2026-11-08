@@ -113,8 +113,11 @@ const PREFETCH_IDLE_TIMEOUT_MS = 300;
 const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
 const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
+const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
+// Give a transient queue or provider failure one chance to clear while the reader stays.
+export const TIMELINE_RETRY_MS = 1000;
 const PIN_ROUTE = "/api/source/pin";
-export const TABS = Object.freeze(["", "files"]);
+export const TABS = Object.freeze(["", "files", "checks"]);
 
 /** @type {Readonly<Record<string, string>>} */
 const ABSENCE = Object.freeze({
@@ -154,7 +157,7 @@ const MERGEABLE = Object.freeze({
 const UNAVAILABLE = Object.freeze({
   check_runs: "Check runs",
   status: "Commit statuses",
-  comparison: "Files changed",
+  comparison: "Changes",
 });
 
 /** @type {Readonly<Record<string, string>>} */
@@ -180,13 +183,15 @@ const TRUNCATED = Object.freeze({
  *   last_refresh: {outcome: string, message: string | null, reset_at: string | null, at: string} | null,
  *   comparison_route: string | null,
  *   record: Record<string, any> | null,
+ *   core_preview: {source: string, number: number, reader: string, observed_at: string,
+ *     revision: string, pull: Record<string, any>, comparison_state: "pending" | "no_store" | "not_started"} | null,
  * }} PullEnvelope
  */
 
 /**
  * @typedef {{
  *   kind: "comment" | "review",
- *   id: number,
+ *   id: string,
  *   part: string,
  *   author: string,
  *   avatar: string | null,
@@ -195,6 +200,12 @@ const TRUNCATED = Object.freeze({
  *   truncated: boolean,
  *   review: {state: string, label: string} | null,
  * }} TimelineItem
+ */
+
+/**
+ * @typedef {{kind: "commit", oid: string, subject: string, committed_at: string | null}} TimelineCommit
+ * @typedef {{kind: "comment" | "review", id: string} | TimelineCommit} TimelineEvent
+ * @typedef {{state: "complete" | "partial" | "unavailable", events: TimelineEvent[], retryable: boolean}} TimelineProjection
  */
 
 /**
@@ -238,6 +249,8 @@ const TRUNCATED = Object.freeze({
  *   tab: string,
  *   status: "loading" | "absent" | "pending" | "current" | "stale" | "unavailable",
  *   recordRevision: string | null,
+ *   corePreview: boolean,
+ *   contentReady: boolean,
  *   message: string | null,
  *   refreshing: boolean,
  *   canRefresh: boolean,
@@ -256,10 +269,12 @@ const TRUNCATED = Object.freeze({
  *   timeline: TimelineItem[],
  *   reviewComments: ReviewCommentItem[],
  *   checks: {counts: Record<string, number>, items: CheckItem[]} | null,
+ *   checkNotes: string[],
  *   notes: string[],
  *   comparison: {left: string, right: string, route?: string, headMoved: boolean} | null,
  *   browse: BrowseCode | null,
  *   filesUnavailable: string,
+ *   changesPending: boolean,
  *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
  *   checkoutAtHead: string | null,
  * }} PullModel
@@ -394,10 +409,11 @@ function timeline(record) {
   /** @type {TimelineItem[]} */
   const items = [];
   for (const comment of list(record.issue_comments)) {
+    const id = text(comment.timeline_id) || String(comment.id);
     items.push({
       kind: "comment",
-      id: comment.id,
-      part: `issue_comment/${comment.id}`,
+      id,
+      part: `issue_comment/${id}`,
       author: who(comment.author),
       avatar: avatarUrl(comment.author_avatar_url),
       at: text(comment.created_at) || null,
@@ -408,10 +424,11 @@ function timeline(record) {
   }
   for (const review of list(record.reviews)) {
     const state = text(review.state);
+    const id = text(review.timeline_id) || String(review.id);
     items.push({
       kind: "review",
-      id: review.id,
-      part: `review/${review.id}`,
+      id,
+      part: `review/${id}`,
       author: who(review.author),
       avatar: avatarUrl(review.author_avatar_url),
       at: typeof review.submitted_at === "string" ? review.submitted_at : null,
@@ -425,8 +442,58 @@ function timeline(record) {
   return items.sort(
     (left, right) =>
       (left.at ?? "￿").localeCompare(right.at ?? "￿") ||
-      (left.kind === right.kind ? left.id - right.id : left.kind === "comment" ? -1 : 1),
+      (left.kind === right.kind
+        ? left.id.length - right.id.length || left.id.localeCompare(right.id)
+        : left.kind === "comment"
+          ? -1
+          : 1),
   );
+}
+
+/** @param {unknown} value @param {string} revision @returns {TimelineProjection | null} */
+function readTimelineProjection(value, revision) {
+  if (value === null || typeof value !== "object") {
+    return null;
+  }
+  const answer = /** @type {Record<string, unknown>} */ (value);
+  const state = answer.state;
+  if (
+    answer.record_revision !== revision ||
+    (state !== "complete" && state !== "partial" && state !== "unavailable") ||
+    !Array.isArray(answer.events)
+  ) {
+    return null;
+  }
+  /** @type {TimelineEvent[]} */
+  const events = [];
+  for (const event of answer.events) {
+    if (
+      event?.kind === "commit" &&
+      typeof event.oid === "string" &&
+      /^[a-f0-9]{40}$/.test(event.oid)
+    ) {
+      events.push({
+        kind: "commit",
+        oid: event.oid,
+        subject: text(event.subject),
+        committed_at: typeof event.committed_at === "string" ? event.committed_at : null,
+      });
+    } else if (
+      (event?.kind === "comment" || event?.kind === "review") &&
+      typeof event.id === "string" &&
+      /^[1-9][0-9]*$/.test(event.id)
+    ) {
+      events.push({ kind: event.kind, id: event.id });
+    }
+  }
+  return { state, events, retryable: state !== "complete" && answer.retryable === true };
+}
+
+/** The exact PR's GitHub commit page, built from the held record's source. @param {string} source @param {number} number @param {string} oid */
+function timelineCommitHref(source, number, oid) {
+  return /^https:\/\/github\.com\/[a-z0-9-]+\/[a-z0-9_.-]+$/i.test(source)
+    ? `${source}/pull/${number}/commits/${oid}`
+    : null;
 }
 
 /**
@@ -618,21 +685,28 @@ function checks(record) {
   return { counts, items };
 }
 
-/** @param {Record<string, any>} record */
-function notes(record) {
+/** @param {Record<string, any>} record @param {boolean} forChecks */
+function notes(record, forChecks) {
   /** @type {string[]} */
   const said = [];
   const truncated = record.truncated ?? {};
-  const cut = Object.keys(TRUNCATED).filter((name) => truncated[name] === true);
+  const checkPart = (/** @type {string} */ name) =>
+    name === "check_runs" || name === "status" || name === "statuses";
+  const cut = Object.keys(TRUNCATED).filter(
+    (name) => checkPart(name) === forChecks && truncated[name] === true,
+  );
   if (cut.length > 0) {
     said.push(
       `Only some ${cut.map((name) => TRUNCATED[name]).join(", ")} are shown: the list was longer than what is kept.`,
     );
   }
-  if (truncated.text === true) {
+  if (!forChecks && truncated.text === true) {
     said.push("Some text was cut to keep this pull request's data within its size limit.");
   }
   for (const [part, why] of Object.entries(record.unavailable ?? {})) {
+    if (checkPart(part) !== forChecks) {
+      continue;
+    }
     said.push(
       `${UNAVAILABLE[part] ?? part} could not be read (${String(why).replaceAll("_", " ")}).`,
     );
@@ -652,112 +726,34 @@ function notes(record) {
  */
 export function filesUnavailableText(why) {
   if (why === "base_uncertain") {
-    return "Files changed is not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
+    return "Changes are not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
   }
   if (why === "no_store") {
-    return "Files changed has not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged.";
+    return "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged.";
   }
   if (why === "comparison_timeout") {
-    return "Files changed is unavailable: checking this pull request's history took too long. Refresh to try again.";
+    return "Changes are unavailable: checking this pull request's history took too long. Refresh to try again.";
   }
   if (why === "comparison_too_large") {
-    return "Files changed is unavailable: checking this pull request's history exceeded the comparison limit.";
+    return "Changes are unavailable: checking this pull request's history exceeded the comparison limit.";
   }
   if (why === "commits_unavailable") {
-    return "Files changed is unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
+    return "Changes are unavailable: a commit of this pull request's history is not readable here. On a mirror borrowing from a checkout, the checkout no longer holds it.";
   }
-  return "Files changed is unavailable: the pull request's base could not be compared with its head.";
+  return "Changes are unavailable: the pull request's base could not be compared with its head.";
 }
 
-/**
- * What the page shows for one answer of the pull route. Pure.
- *
- * @param {PullEnvelope | null} envelope
- * *checkoutHead* is the served checkout's `HEAD`, on a folder, which has no pin.
- *
- * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, checkoutHead?: string | null}} page
- * @returns {PullModel}
+/** Header and description fields shared by a full record and a validated core preview.
+ * @param {Record<string, any>} pull
+ * @returns {NonNullable<PullModel["pull"]>}
  */
-export function describePull(envelope, page) {
-  /** @type {PullModel} */
-  const model = {
-    number: page.number,
-    tab: page.tab,
-    status: "unavailable",
-    recordRevision: null,
-    message: page.error ?? null,
-    refreshing: false,
-    canRefresh: false,
-    canFetchComparison: false,
-    freshness: null,
-    failure: null,
-    pull: null,
-    timeline: [],
-    reviewComments: [],
-    checks: null,
-    notes: [],
-    comparison: null,
-    browse: null,
-    filesUnavailable: filesUnavailableText(null),
-    headOffer: null,
-    checkoutAtHead: null,
-  };
-  if (envelope === null) {
-    // Nothing read yet: the page shows a skeleton, and an error once a read failed.
-    model.status = page.error ? "unavailable" : "loading";
-    return model;
-  }
-  model.status = envelope.state;
-  model.refreshing = envelope.refreshing;
-  const last = envelope.last_refresh;
-  if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
-    model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? last.outcome.replaceAll("_", " ")}`;
-    if (["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome)) {
-      model.failure += `${model.failure.endsWith(".") ? "" : "."} You can still browse local files and any cached pull requests.`;
-      if (last.outcome === "gh_missing") {
-        model.failureHelp = "install";
-      } else if (last.outcome === "gh_too_old") {
-        model.failureHelp = "update";
-      }
-    }
-  }
-  const record = envelope.record;
-  if (envelope.state === "absent" || envelope.state === "pending" || record === null) {
-    const fetching = envelope.state === "pending" || page.fetching === true;
-    model.message = fetching
-      ? "Fetching the pull request…"
-      : (page.error ?? ABSENCE[envelope.reason ?? ""] ?? ABSENCE.not_cached);
-    model.canRefresh =
-      !fetching &&
-      envelope.state === "absent" &&
-      envelope.reason !== "not_github" &&
-      !envelope.refreshing;
-    return model;
-  }
-  model.recordRevision = envelope.record_revision;
-  model.message = page.error ?? null;
-  model.canRefresh =
-    !envelope.refreshing &&
-    (envelope.state === "stale" ||
-      model.failure !== null ||
-      (page.tab === "files" &&
-        typeof record.comparison?.base === "string" &&
-        typeof record.comparison?.head === "string") ||
-      (typeof record.unavailable?.comparison === "string" &&
-        record.unavailable.comparison !== "no_store"));
-  const age = relativeAge(record.fetched_at ?? null, page.nowMs);
-  // The account the record was read as, without the tool that read it.
-  const reader = text(record.reader).replace(/^gh:/, "");
-  model.freshness = envelope.refreshing
-    ? `Refreshing… · fetched ${age} by ${reader}`
-    : `Fetched ${age} by ${reader}${envelope.state === "stale" ? " · may be out of date" : ""}`;
-  const pull = record.pull ?? {};
+function describeCore(pull) {
   const crossRepository = pull.head?.repository !== pull.base?.repository;
   const state = displayState(pull);
   const merge = state === "open" || state === "draft" ? text(pull.mergeable) || "unknown" : null;
   const commits = typeof pull.commits === "number" ? pull.commits : null;
   const count = commits === null ? "" : ` ${commits} commit${commits === 1 ? "" : "s"}`;
-  model.pull = {
+  return {
     title: text(pull.title),
     number: pull.number,
     state,
@@ -790,10 +786,129 @@ export function describePull(envelope, page) {
     text: text(pull.body),
     truncated: pull.body_truncated === true,
   };
+}
+
+/**
+ * What the page shows for one answer of the pull route. Pure.
+ *
+ * @param {PullEnvelope | null} envelope
+ * *checkoutHead* is the served checkout's `HEAD`, on a folder, which has no pin.
+ *
+ * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, refreshPending?: boolean, comparisonPending?: boolean, waitForReader?: boolean, checkoutHead?: string | null}} page
+ * @returns {PullModel}
+ */
+export function describePull(envelope, page) {
+  /** @type {PullModel} */
+  const model = {
+    number: page.number,
+    tab: page.tab,
+    status: "unavailable",
+    recordRevision: null,
+    corePreview: false,
+    contentReady: Boolean(page.error),
+    message: page.error ?? null,
+    refreshing: false,
+    canRefresh: false,
+    canFetchComparison: false,
+    freshness: null,
+    failure: null,
+    pull: null,
+    timeline: [],
+    reviewComments: [],
+    checks: null,
+    checkNotes: [],
+    notes: [],
+    comparison: null,
+    browse: null,
+    filesUnavailable: filesUnavailableText(null),
+    changesPending: false,
+    headOffer: null,
+    checkoutAtHead: null,
+  };
+  if (envelope === null) {
+    // Nothing read yet: the page shows a skeleton, and an error once a read failed.
+    model.status = page.error ? "unavailable" : "loading";
+    return model;
+  }
+  model.status = envelope.state;
+  model.refreshing = envelope.refreshing || page.refreshPending === true;
+  const last = envelope.last_refresh;
+  if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
+    model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? last.outcome.replaceAll("_", " ")}`;
+    if (["gh_missing", "gh_too_old", "not_logged_in"].includes(last.outcome)) {
+      model.failure += `${model.failure.endsWith(".") ? "" : "."} You can still browse local files and any cached pull requests.`;
+      if (last.outcome === "gh_missing") {
+        model.failureHelp = "install";
+      } else if (last.outcome === "gh_too_old") {
+        model.failureHelp = "update";
+      }
+    }
+  }
+  const record = envelope.record;
+  if (record === null && envelope.core_preview !== null) {
+    const preview = envelope.core_preview;
+    model.pull = describeCore(preview.pull);
+    model.corePreview = true;
+    model.contentReady = true;
+    model.message = page.error ?? null;
+    const age = relativeAge(preview.observed_at, page.nowMs);
+    model.freshness = model.refreshing
+      ? `Loading details… · description fetched ${age} via GitHub CLI`
+      : `Description fetched ${age} via GitHub CLI`;
+    model.canRefresh =
+      envelope.state === "absent" &&
+      envelope.reason !== "not_github" &&
+      !envelope.refreshing &&
+      !page.fetching;
+    model.changesPending =
+      envelope.refreshing &&
+      (preview.comparison_state === "pending" || preview.comparison_state === "not_started");
+    model.filesUnavailable = model.changesPending
+      ? "Changes are still being prepared."
+      : preview.comparison_state === "no_store" && model.refreshing
+        ? "Changes have not been fetched. The description is available while the remaining pull-request details load."
+        : "Changes have not been fetched.";
+    return model;
+  }
+  if (record === null) {
+    const fetching = envelope.state === "pending" || page.fetching === true;
+    if (fetching) {
+      model.status = "pending";
+    }
+    model.message = fetching
+      ? "Fetching the pull request…"
+      : (page.error ?? ABSENCE[envelope.reason ?? ""] ?? ABSENCE.not_cached);
+    model.contentReady = Boolean(page.error) || (!fetching && !page.waitForReader);
+    model.canRefresh =
+      !fetching &&
+      envelope.state === "absent" &&
+      envelope.reason !== "not_github" &&
+      !envelope.refreshing;
+    return model;
+  }
+  model.recordRevision = envelope.record_revision;
+  model.contentReady = true;
+  model.message = page.error ?? null;
+  model.canRefresh =
+    !envelope.refreshing &&
+    (envelope.state === "stale" ||
+      model.failure !== null ||
+      (page.tab === "files" &&
+        typeof record.comparison?.base === "string" &&
+        typeof record.comparison?.head === "string") ||
+      (typeof record.unavailable?.comparison === "string" &&
+        record.unavailable.comparison !== "no_store"));
+  const age = relativeAge(record.fetched_at ?? null, page.nowMs);
+  model.freshness = model.refreshing
+    ? `Refreshing… · fetched ${age} via GitHub CLI`
+    : `Fetched ${age} via GitHub CLI${envelope.state === "stale" ? " · may be out of date" : ""}`;
+  const pull = record.pull ?? {};
+  model.pull = describeCore(pull);
   model.timeline = timeline(record);
   model.reviewComments = reviewComments(record);
   model.checks = checks(record);
-  model.notes = notes(record);
+  model.checkNotes = notes(record, true);
+  model.notes = notes(record, false);
   const head = text(pull.head?.sha);
   const headRef = `refs/pull/${pull.number}/head`;
   if (envelope.pin !== null && head !== "") {
@@ -819,8 +934,12 @@ export function describePull(envelope, page) {
     // code. When its HEAD is this pull request's head, that much is so, and the page says it.
     model.checkoutAtHead = "This checkout's HEAD is this pull request's head.";
   }
-  model.filesUnavailable = filesUnavailableText(record.unavailable?.comparison ?? null);
-  model.canFetchComparison = record.unavailable?.comparison === "no_store" && !envelope.refreshing;
+  const withoutStore = record.unavailable?.comparison === "no_store";
+  model.changesPending = withoutStore && page.comparisonPending === true;
+  model.filesUnavailable = model.changesPending
+    ? "Fetching changes…"
+    : filesUnavailableText(record.unavailable?.comparison ?? null);
+  model.canFetchComparison = withoutStore && !envelope.refreshing;
   const comparison = record.comparison;
   if (comparison && typeof comparison.base === "string" && typeof comparison.head === "string") {
     model.comparison = {
@@ -852,11 +971,34 @@ function pinChanged(response) {
   return response.status === 409 && body?.code === "pin_changed";
 }
 
+/** @param {unknown} value @param {Record<string, unknown>} envelope */
+function isCorePreview(value, envelope) {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  const preview = /** @type {Record<string, any>} */ (value);
+  return (
+    preview.source === envelope.source &&
+    preview.number === envelope.number &&
+    typeof preview.reader === "string" &&
+    preview.reader.startsWith("gh:") &&
+    typeof preview.observed_at === "string" &&
+    typeof preview.revision === "string" &&
+    /^[a-f0-9]{64}$/.test(preview.revision) &&
+    preview.pull !== null &&
+    typeof preview.pull === "object" &&
+    preview.pull.number === envelope.number &&
+    (preview.comparison_state === "pending" ||
+      preview.comparison_state === "no_store" ||
+      preview.comparison_state === "not_started")
+  );
+}
+
 /**
  * @param {unknown} value
  * @returns {value is PullEnvelope}
  */
-function isEnvelope(value) {
+export function isEnvelope(value) {
   if (value === null || typeof value !== "object") {
     return false;
   }
@@ -867,6 +1009,7 @@ function isEnvelope(value) {
     Number.isInteger(envelope.number) &&
     Number(envelope.number) > 0 &&
     (envelope.record === null || typeof envelope.record === "object") &&
+    (envelope.core_preview === null || isCorePreview(envelope.core_preview, envelope)) &&
     (envelope.record === null
       ? envelope.record_revision === null
       : typeof envelope.record_revision === "string" &&
@@ -884,6 +1027,7 @@ function isEnvelope(value) {
  *   isVisible(): boolean,
  *   render(model: PullModel, identity: import("./pull-stacks.js").StackIdentity | null): void,
  *   renderMarkdown(part: string, rendered: Record<string, any>): void,
+ *   timelineStateChanged?(): void,
  *   reload(): void,
  *   navigate(href: string): void,
  * }} PullDependencies
@@ -914,6 +1058,8 @@ export function createPullController(deps, options) {
   /** @type {unknown} */
   let timer = null;
   let polling = false;
+  let hasPolled = false;
+  let inFlightRefreshes = 0;
   let disposed = false;
   // One refresh asked for by itself per visible period: a stale page whose refresh cannot
   // run must not ask again on every poll.
@@ -929,7 +1075,11 @@ export function createPullController(deps, options) {
   let readerAsked = false;
   /** Asked for by a reader's selection, and the ask is on its way. */
   let fetching = false;
-  let refreshPending = false;
+  /** @type {"metadata" | "comparison" | null} */
+  let refreshPending = null;
+  let comparisonAdmitted = false;
+  // Only this page's acknowledged selected refresh can opt in to a settlement read.
+  let waitForFull = false;
   /** Markdown by part, for the record content revision `markdownFor`. @type {Map<string, Record<string, any>>} */
   const markdown = new Map();
   /** @type {string | null} */
@@ -939,17 +1089,36 @@ export function createPullController(deps, options) {
   const asked = new Set();
   let inFlight = 0;
 
+  function directColdMiss() {
+    return (
+      reader === null &&
+      deps.isVisible() &&
+      error === null &&
+      envelope?.state === "absent" &&
+      envelope.reason === "not_cached" &&
+      envelope.last_refresh === null &&
+      !envelope.refreshing
+    );
+  }
+
   function model() {
     const next = describePull(envelope, {
       number: options.number,
       tab,
       nowMs: deps.now(),
       error,
-      fetching,
+      fetching: fetching || refreshPending !== null,
+      refreshPending: refreshPending !== null,
+      comparisonPending: refreshPending === "comparison" || comparisonAdmitted,
+      waitForReader: reader !== null && !readerAsked && envelope?.reason !== "not_github",
       checkoutHead: options.checkoutHead ?? null,
     });
     if (refreshPending) {
-      next.refreshing = true;
+      // The selected refresh has not acknowledged a core yet. Its POST being in flight
+      // must not turn the still-absent envelope into a ready replacement surface.
+      if (!next.pull) {
+        next.contentReady = false;
+      }
       next.canRefresh = false;
       next.canFetchComparison = false;
     }
@@ -958,10 +1127,11 @@ export function createPullController(deps, options) {
 
   function render() {
     const next = model();
-    const identity = envelope?.record
+    const owner = envelope?.record ?? envelope?.core_preview;
+    const identity = owner
       ? {
-          source: typeof envelope.record.source === "string" ? envelope.record.source : null,
-          reader: typeof envelope.record.reader === "string" ? envelope.record.reader : null,
+          source: typeof owner.source === "string" ? owner.source : null,
+          reader: typeof owner.reader === "string" ? owner.reader : null,
         }
       : null;
     const key = JSON.stringify([next, identity]);
@@ -1003,7 +1173,7 @@ export function createPullController(deps, options) {
     }, delayMs);
   }
 
-  function scheduleNext() {
+  function scheduleNext(fastDelay = FAST_POLL_MS) {
     clearTimer();
     if (disposed || !deps.isVisible()) {
       return;
@@ -1014,7 +1184,7 @@ export function createPullController(deps, options) {
         timer = null;
         void poll();
       },
-      fast ? FAST_POLL_MS : SLOW_POLL_MS,
+      fast ? fastDelay : SLOW_POLL_MS,
     );
   }
 
@@ -1030,11 +1200,17 @@ export function createPullController(deps, options) {
    * @returns {boolean} Whether the page now shows it.
    */
   function accept(next, request) {
-    if (request < shownRequest) {
+    if (next.number !== options.number || request < shownRequest) {
       return false;
     }
     shownRequest = request;
     envelope = next;
+    if (!next.refreshing) {
+      comparisonAdmitted = false;
+    }
+    if (next.record !== null || !next.refreshing) {
+      waitForFull = false;
+    }
     const revision = next.record === null ? null : next.record_revision;
     if (revision !== markdownFor) {
       // Another record: its texts may differ, so nothing rendered from the last one
@@ -1061,8 +1237,15 @@ export function createPullController(deps, options) {
     }
     polling = true;
     const request = ++sent;
+    const coreRevision =
+      !first && waitForFull && envelope?.refreshing && envelope.record === null
+        ? envelope.core_preview?.revision
+        : undefined;
+    const route =
+      coreRevision === undefined ? pullRoute : `${pullRoute}&wait_full_after=${coreRevision}`;
+    const waitStarted = coreRevision === undefined ? null : deps.now();
     try {
-      const response = await deps.request("GET", pullRoute, { etag });
+      const response = await deps.request("GET", route, { etag });
       if (disposed) {
         return;
       }
@@ -1080,31 +1263,38 @@ export function createPullController(deps, options) {
       error = "The server did not answer.";
     } finally {
       polling = false;
+      hasPolled = true;
     }
     if (disposed) {
       return;
     }
-    render();
-    scheduleNext();
+    // A waiting read spent part (or all) of the interval already.
+    scheduleNext(
+      waitStarted === null
+        ? FAST_POLL_MS
+        : Math.max(0, FAST_POLL_MS - Math.max(0, deps.now() - waitStarted)),
+    );
     fetchForReader();
+    render();
     if (
       deps.isVisible() &&
       envelope?.state === "stale" &&
       !envelope.refreshing &&
+      !fetching &&
       !refreshAskedWhileVisible
     ) {
       refreshAskedWhileVisible = true;
       askAfter(() => void askForRefresh({ number: options.number }), REFRESH_ASK_MS);
     }
+    deps.timelineStateChanged?.();
   }
 
   /**
-   * A reader chose this page's row in the Pulls tab, and the cache has no record of it: that
-   * is the action that adds one, as a press of Fetch is. A row a key stopped on waits a
-   * moment, so that a reader tapping past it spends nothing.
+   * The selected PR can fill its cache once. A direct link waits for a visible cold miss,
+   * and a row reached by keyboard waits for the reader to stop there.
    */
   function fetchForReader() {
-    if (readerAsked || reader === null || envelope === null) {
+    if (readerAsked || envelope === null || (reader === null && !directColdMiss())) {
       return;
     }
     readerAsked = true;
@@ -1115,8 +1305,13 @@ export function createPullController(deps, options) {
     render();
     askAfter(() => {
       fetching = false;
-      void askForRefresh({ number: options.number, retry: true });
-    }, reader.fetchAfterMs);
+      if (reader === null && !directColdMiss()) {
+        readerAsked = false;
+        render();
+        return;
+      }
+      void askForRefresh({ number: options.number, retry: true, wait_core: true });
+    }, reader?.fetchAfterMs ?? 0);
   }
 
   /**
@@ -1124,15 +1319,18 @@ export function createPullController(deps, options) {
    * page's own request says nothing to the reader, whose page still shows what it did and
    * still offers Refresh.
    *
-   * @param {{number: number, retry?: boolean, comparison?: boolean, recovery?: {base: string, head: string}}} ask
+   * @param {{number: number, retry?: boolean, wait_core?: boolean, comparison?: boolean, recovery?: {base: string, head: string}}} ask
    */
   async function askForRefresh(ask) {
+    inFlightRefreshes += 1;
     if (ask.retry) {
-      refreshPending = true;
+      refreshPending = ask.comparison ? "comparison" : "metadata";
       render();
     }
     cancelAsk();
     const request = ++sent;
+    // A bounded core wait must not shift the first ordinary poll by its response time.
+    const fastSince = ask.wait_core === true ? deps.now() : null;
     try {
       const response = await deps.request("POST", REFRESH_ROUTE, { body: ask });
       const body = /** @type {{pull?: unknown, error?: unknown} | null} */ (response.body);
@@ -1141,7 +1339,16 @@ export function createPullController(deps, options) {
         body !== null &&
         isEnvelope(body.pull)
       ) {
-        accept(body.pull, request);
+        if (accept(body.pull, request)) {
+          if (ask.comparison) {
+            comparisonAdmitted = response.status === 202 && body.pull.refreshing;
+          }
+          waitForFull =
+            response.status === 202 &&
+            ask.wait_core === true &&
+            body.pull.record === null &&
+            body.pull.refreshing;
+        }
         if (response.status === 202) {
           // The answer changed; the next poll must not be answered by a 304.
           etag = null;
@@ -1156,12 +1363,18 @@ export function createPullController(deps, options) {
         error = "The refresh request failed.";
       }
     }
+    inFlightRefreshes -= 1;
     if (ask.retry) {
-      refreshPending = false;
+      refreshPending = null;
     }
     if (!disposed) {
       render();
-      scheduleNext();
+      scheduleNext(
+        fastSince === null
+          ? FAST_POLL_MS
+          : FAST_POLL_MS - (Math.max(0, deps.now() - fastSince) % FAST_POLL_MS),
+      );
+      deps.timelineStateChanged?.();
     }
   }
 
@@ -1175,7 +1388,11 @@ export function createPullController(deps, options) {
       await askForRefresh({
         number: options.number,
         retry: true,
-        ...(recovery === undefined ? {} : { recovery }),
+        ...(recovery === undefined
+          ? envelope?.record === null
+            ? { wait_core: true }
+            : {}
+          : { recovery }),
       });
     }
   }
@@ -1347,6 +1564,8 @@ export function createPullController(deps, options) {
       return poll(true);
     },
     poll: () => poll(),
+    timelineAllowed: () =>
+      hasPolled && askTimer === null && inFlightRefreshes === 0 && envelope?.refreshing === false,
     requestRefresh,
     requestComparison,
     switchToHead,
@@ -1610,9 +1829,8 @@ export function safeLink(href, base) {
 }
 
 /**
- * Whether *pathname* is this page's entry on *tab*: `/pull/<n>` or `/pull/<n>/files`, and
- * for Files changed one changed file's address, `/pull/<n>/files/<path>`, too, since that
- * is the same tab at a file. Pure.
+ * Whether *pathname* is this page's entry on *tab*. A selected file beneath
+ * `/pull/<n>/files/<path>` also belongs to Changes. Pure.
  *
  * @param {string} pathname
  * @param {number} number
@@ -1655,10 +1873,11 @@ export function filesAction(mounted, comparison) {
  */
 export function conversationKey(model) {
   return JSON.stringify([
-    model.pull,
+    model.pull === null ? null : { ...model.pull, merge: null },
+    model.corePreview,
+    ...(model.corePreview ? [model.refreshing] : []),
     model.timeline,
     model.reviewComments,
-    model.checks,
     model.notes,
     // A review comment's file is a link or a button by this.
     model.browse?.kind ?? null,
@@ -1834,6 +2053,271 @@ function outside(mb, href, base, children, className = "") {
   );
 }
 
+let stackMenuSerial = 0;
+
+/**
+ * The native stack's compact trigger and lazy, keyboard-navigable member menu.
+ * @param {import("./pull-stacks.js").NativeStack} initial
+ * @param {number} number
+ * @param {{link(number: number): HTMLElement, icon: Element | null, currentTitle: string, onOpen(): void}} deps
+ */
+export function createStackMenu(initial, number, deps) {
+  let stack = initial;
+  let currentTitle = deps.currentTitle;
+  const position = stack.pulls.indexOf(number);
+  const count = h("span", { class: "github-pull-stack-position" }, [
+    `${position + 1}/${stack.pulls.length}`,
+  ]);
+  const menuId = `github-pull-stack-menu-${++stackMenuSerial}`;
+  const root = /** @type {HTMLDetailsElement} */ (
+    h("details", { class: "github-pull-stack-disclosure" })
+  );
+  const trigger = h(
+    "summary",
+    {
+      class: "btn github-pull-stack-trigger",
+      "aria-label": `Navigate Stack #${stack.number}, position ${position + 1} of ${stack.pulls.length}`,
+      "aria-haspopup": "menu",
+      "aria-controls": menuId,
+      "aria-expanded": "false",
+    },
+    [
+      deps.icon === null
+        ? null
+        : h("span", { class: "github-pull-stack-icon", "aria-hidden": "true" }, [deps.icon]),
+      count,
+    ],
+  );
+  const menu = h("div", {
+    class: "menu github-pull-stack-menu",
+    id: menuId,
+    role: "menu",
+    "aria-label": `Stack #${stack.number}`,
+  });
+  root.append(trigger);
+  const listening = new AbortController();
+  const signal = listening.signal;
+  /** @type {HTMLElement[]} */
+  const links = [];
+  /** @type {Map<number, {link: HTMLElement, title: HTMLElement, identity: HTMLElement}>} */
+  const rows = new Map();
+  const label = h("div", { class: "menu-section-label" }, [`Stack #${stack.number}`]);
+  let populated = false;
+
+  function updateTitles() {
+    for (let at = 0; at < stack.pulls.length; at += 1) {
+      const target = stack.pulls[at];
+      const row = rows.get(target);
+      if (row) {
+        row.title.textContent =
+          stack.titles?.[at] || (target === number ? currentTitle : `Pull request #${target}`);
+        row.identity.textContent = `${at + 1}/${stack.pulls.length} · #${target}`;
+      }
+    }
+  }
+
+  /** @param {boolean} [reorder] */
+  function populate(reorder = false) {
+    if (populated && !reorder) {
+      return;
+    }
+    const focused = document.activeElement;
+    const restore = focused instanceof HTMLElement && menu.contains(focused);
+    const scroll = menu.scrollTop;
+    const retained = new Set(stack.pulls);
+    for (const target of rows.keys()) {
+      if (!retained.has(target)) {
+        rows.delete(target);
+      }
+    }
+    links.length = 0;
+    for (let at = stack.pulls.length - 1; at >= 0; at -= 1) {
+      const target = stack.pulls[at];
+      let row = rows.get(target);
+      if (!row) {
+        const link = deps.link(target);
+        link.setAttribute("class", "menu-item github-pull-stack-member");
+        link.setAttribute("role", "menuitem");
+        link.setAttribute("tabindex", "-1");
+        if (target === number) {
+          link.setAttribute("aria-current", "page");
+        }
+        const title = h("span", { class: "github-pull-stack-member-title" });
+        const identity = h("span", { class: "github-pull-quiet" });
+        link.append(
+          h("span", { class: "github-pull-stack-current", "aria-hidden": "true" }, [
+            target === number ? "✓" : "",
+          ]),
+          h("span", { class: "github-pull-stack-member-copy" }, [title, identity]),
+        );
+        row = { link, title, identity };
+        rows.set(target, row);
+      }
+      links.push(row.link);
+    }
+    updateTitles();
+    menu.replaceChildren(label, ...links);
+    if (!populated) {
+      root.append(menu);
+      populated = true;
+    }
+    if (restore) {
+      const target = links.includes(focused)
+        ? focused
+        : links.find((link) => link.getAttribute("aria-current") === "page");
+      target?.focus({ preventScroll: true });
+    }
+    menu.scrollTop = scroll;
+  }
+
+  /** @param {boolean} [focus] */
+  function close(focus = false) {
+    root.open = false;
+    trigger.setAttribute("aria-expanded", "false");
+    if (focus && trigger.isConnected) {
+      trigger.focus({ preventScroll: true });
+    }
+  }
+
+  root.addEventListener(
+    "toggle",
+    () => {
+      trigger.setAttribute("aria-expanded", String(root.open));
+      if (root.open && !signal.aborted) {
+        populate();
+        deps.onOpen();
+      }
+    },
+    { signal },
+  );
+  root.addEventListener(
+    "keydown",
+    (event) => {
+      const key = event.key;
+      if (event.target === trigger && (key === "Enter" || key === " ")) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (root.open) {
+          close();
+        } else {
+          root.open = true;
+          trigger.setAttribute("aria-expanded", "true");
+          populate();
+          deps.onOpen();
+          links[0]?.focus({ preventScroll: true });
+        }
+        return;
+      }
+      if (key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        close(true);
+        return;
+      }
+      if (key === "Tab" && root.open) {
+        close(true);
+        return;
+      }
+      if (key === " " && links.includes(/** @type {HTMLElement} */ (document.activeElement))) {
+        event.preventDefault();
+        event.stopPropagation();
+        /** @type {HTMLElement} */ (document.activeElement).click();
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(key)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      root.open = true;
+      trigger.setAttribute("aria-expanded", "true");
+      populate();
+      deps.onOpen();
+      const at = links.indexOf(/** @type {HTMLElement} */ (document.activeElement));
+      const next =
+        key === "Home"
+          ? 0
+          : key === "End"
+            ? links.length - 1
+            : at < 0
+              ? key === "ArrowUp"
+                ? links.length - 1
+                : 0
+              : (at + (key === "ArrowUp" ? -1 : 1) + links.length) % links.length;
+      links[next]?.focus({ preventScroll: true });
+      links[next]?.scrollIntoView({ block: "nearest" });
+    },
+    { signal },
+  );
+  // Run before the member link navigates and can replace this page. Only move
+  // focus when it would otherwise remain inside the closed disclosure.
+  menu.addEventListener("click", () => close(menu.contains(document.activeElement)), {
+    capture: true,
+    signal,
+  });
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      if (root.open && event.target instanceof Node && !root.contains(event.target)) {
+        close();
+      }
+    },
+    { signal },
+  );
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (root.open && event.key === "Escape") {
+        event.preventDefault();
+        close(true);
+      }
+    },
+    { signal },
+  );
+  root.addEventListener(
+    "focusout",
+    (event) => {
+      if (event.relatedTarget instanceof Node && !root.contains(event.relatedTarget)) {
+        close();
+      }
+    },
+    { signal },
+  );
+  return Object.freeze({
+    element: root,
+    close,
+    /** A title or membership update keeps the menu open and retains surviving link focus.
+     * @param {import("./pull-stacks.js").NativeStack} next
+     * @param {string} title
+     */
+    update(next, title) {
+      if (next === stack && title === currentTitle) {
+        return;
+      }
+      const reordered =
+        stack.pulls.length !== next.pulls.length ||
+        stack.pulls.some((target, index) => target !== next.pulls[index]);
+      stack = next;
+      currentTitle = title;
+      const at = stack.pulls.indexOf(number) + 1;
+      count.textContent = `${at}/${stack.pulls.length}`;
+      trigger.setAttribute(
+        "aria-label",
+        `Navigate Stack #${stack.number}, position ${at} of ${stack.pulls.length}`,
+      );
+      if (populated && reordered) {
+        populate(true);
+      } else {
+        updateTitles();
+      }
+    },
+    dispose() {
+      listening.abort();
+      close();
+    },
+  });
+}
+
 /**
  * Mount the page into *container*. Browser only.
  *
@@ -1845,26 +2329,42 @@ export function mountPullPage(container, ctx, mb) {
   const number = typeof ctx.number === "number" ? ctx.number : 0;
   const open = typeof ctx.open === "function" ? ctx.open : () => {};
   container.classList.add("github-pull");
-  const header = h("div", { class: "github-pull-header github-pull-column" });
+  const header = h("div", { class: "github-pull-header page-reading-column" });
   const body = h("div", { class: "github-pull-body" });
-  const stackColumn = h("div", { class: "github-pull-column github-pull-stacks", hidden: "" });
+  const stackColumn = h("div", { class: "page-reading-column github-pull-stacks", hidden: "" });
   let stackIndex = createStackIndex(null);
   /** @type {import("./pull-stacks.js").StackIdentity | null} */
   let stackIdentity = null;
   let stackKey = "";
+  let preferredStack = 0;
+  /** @type {Map<number, ReturnType<typeof createStackMenu>>} */
+  const stackMenus = new Map();
   const live = h("span", { class: "sr-only", "aria-live": "polite" });
   // Follow the reading column at every width; Files changed keeps the full pane.
   const tabBar = h("div", { class: "tab-bar", role: "tablist", "aria-label": "Pull request" });
-  const tabColumn = h("div", { class: "github-pull-column" }, [tabBar]);
+  const tabColumn = h("div", { class: "page-reading-column" }, [tabBar]);
   container.replaceChildren(header, stackColumn, body, live);
 
   /** @type {PullModel | null} */
   let shown = null;
   let bodyKey = "";
+  /** @type {() => void} */
+  let resolveReady = () => {};
+  const ready = new Promise((resolve) => {
+    resolveReady = () => resolve(undefined);
+  });
   /** The record the conversation last asked for Markdown from. @type {string | null} */
   let markdownRevision = null;
   /** @type {Map<string, HTMLElement>} */
   const texts = new Map();
+  /** @type {{description: HTMLElement, cards: Map<string, {node: HTMLElement, pending: boolean}>,
+   *   inserts: Map<string, HTMLElement>, projection: TimelineProjection | null} | null} */
+  let discussion = null;
+  let active = false;
+  /** @type {{revision: string, source: string, projection: TimelineProjection | null,
+   *   settled: boolean, cacheMiss: boolean, retryPending: boolean,
+   *   read: {cachedOnly: boolean, abort: AbortController} | null} | null} */
+  let commitTimeline = null;
   // The allowlist a text's Markdown passes through before it is inserted; a text stays
   // plain if it cannot load.
   /** @type {Promise<MetabrowserInertHtmlRuntime | null>} */
@@ -1874,7 +2374,7 @@ export function mountPullPage(container, ctx, mb) {
     .catch(() => null);
   /** @type {{left: string, right: string, route?: string} | null} */
   let diffFor = null;
-  /** @type {{dispose?: () => void} | null} */
+  /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */
   let diffHandle = null;
   /** @type {HTMLElement | null} */
   let diffHost = null;
@@ -2010,7 +2510,11 @@ export function mountPullPage(container, ctx, mb) {
       return h("span", {}, [iso]);
     }
     const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
-    return h("span", { class: className, "data-tip-text": mb.formatTimestamp(at / 1000) }, [label]);
+    return h(
+      "span",
+      { class: `github-pull-age ${className}`, "data-tip-text": mb.formatTimestamp(at / 1000) },
+      [label],
+    );
   };
 
   /**
@@ -2019,8 +2523,9 @@ export function mountPullPage(container, ctx, mb) {
    * @param {string} part
    * @param {string} value
    * @param {boolean} truncated
+   * @param {boolean} [renderMarkdown]
    */
-  function textBlock(part, value, truncated) {
+  function textBlock(part, value, truncated, renderMarkdown = true) {
     const element = h("div", { class: "github-pull-text", "data-part": part });
     if (value.trim() === "") {
       element.append(
@@ -2033,6 +2538,9 @@ export function mountPullPage(container, ctx, mb) {
     element.append(h("div", { class: "github-pull-plain" }, [value]));
     if (truncated) {
       element.append(notice("warning", ["This text was cut; the rest is on GitHub."]));
+    }
+    if (!renderMarkdown) {
+      return element;
     }
     texts.set(part, element);
     if (part === "body" || observer === null) {
@@ -2197,22 +2705,6 @@ export function mountPullPage(container, ctx, mb) {
     );
 
   /**
-   * The pull request's state: the same icon as its row, beside the word it is named by.
-   *
-   * @param {string} state
-   * @param {string} label
-   */
-  const stateBadge = (state, label) => {
-    const shown = badge(state, label);
-    shown.prepend(
-      pullStateIcon(/** @type {import("./pull-state.js").PullState} */ (state), {
-        named: false,
-      }),
-    );
-    return shown;
-  };
-
-  /**
    * A box about the content, on the shell's primitive; its severity is its border.
    *
    * @param {"warning" | "error" | null} severity
@@ -2228,9 +2720,20 @@ export function mountPullPage(container, ctx, mb) {
       children,
     );
 
-  /** The registry's disclosure chevron, parsed once: a constant, not the pull request's text. */
-  const chevronSvg = new DOMParser().parseFromString(mb.icons.toggle || "", "text/html").body
-    .firstElementChild;
+  /** @param {string} text */
+  const progress = (text) =>
+    h("span", { class: "github-pull-progress", role: "status" }, [
+      h("span", { class: "spinner spinner-sm", "aria-hidden": "true" }),
+      text,
+    ]);
+
+  /** Only shell-owned icon constants enter this parser, never pull-request content.
+   * @param {"toggle" | "layers"} name
+   */
+  const registryIcon = (name) =>
+    new DOMParser().parseFromString(mb.icons[name] || "", "text/html").body.firstElementChild;
+  const chevronSvg = registryIcon("toggle");
+  const stackSvg = registryIcon("layers");
   function chevron() {
     return chevronSvg === null
       ? null
@@ -2242,7 +2745,8 @@ export function mountPullPage(container, ctx, mb) {
   /** One link per tab, kept across paints so a poll does not take focus from one. */
   const tabLinks = [
     { id: "", label: "Conversation" },
-    { id: "files", label: "Files changed" },
+    { id: "files", label: "Changes" },
+    { id: "checks", label: "Checks" },
   ].map(({ id, label }) => {
     const link = pageLink({ number, tab: id }, "tab-btn", [label]);
     link.setAttribute("role", "tab");
@@ -2256,50 +2760,71 @@ export function mountPullPage(container, ctx, mb) {
   function paintStacks(model) {
     const memberships =
       model.pull === null ? [] : stackMembership(stackIndex, stackIdentity, number);
-    const key = JSON.stringify([stackIdentity, memberships, model.tab]);
-    if (key === stackKey) {
-      return;
+    const key = JSON.stringify([stackIdentity, model.tab]);
+    if (key !== stackKey) {
+      for (const menu of stackMenus.values()) {
+        menu.dispose();
+      }
+      stackMenus.clear();
+      stackKey = key;
     }
-    stackKey = key;
-    stackColumn.hidden = memberships.length === 0;
-    stackColumn.replaceChildren(
-      ...memberships.map((stack) => {
-        const position = stack.pulls.indexOf(number);
-        const member = (/** @type {number} */ target, /** @type {string} */ label) =>
-          pageLink(memberRoute(target, model.tab), "github-pull-stack-member", [label]);
-        const disclosure = /** @type {HTMLDetailsElement} */ (
-          h("details", { class: "github-pull-stack-disclosure" }, [
-            h("summary", {}, [`Stack #${stack.number}`]),
-          ])
-        );
-        let listed = false;
-        disclosure.addEventListener("toggle", () => {
-          if (listed || !disclosure.open || listening.signal.aborted) {
-            return;
+    const retained = new Set(memberships.map((stack) => stack.number));
+    for (const [id, menu] of stackMenus) {
+      if (!retained.has(id)) {
+        menu.dispose();
+        stackMenus.delete(id);
+      }
+    }
+    const nodes = memberships.map((stack) => {
+      let menu = stackMenus.get(stack.number);
+      if (menu) {
+        menu.update(stack, model.pull?.title ?? "");
+        return menu.element;
+      }
+      menu = createStackMenu(stack, number, {
+        link: (target) => pageLink(memberRoute(target, model.tab), "", []),
+        icon: stackSvg === null ? null : document.importNode(stackSvg, true),
+        currentTitle: model.pull?.title ?? "",
+        onOpen() {
+          preferredStack = stack.number;
+          for (const [other, view] of stackMenus) {
+            if (other !== stack.number) {
+              view.close();
+            }
           }
-          listed = true;
-          disclosure.append(
-            h(
-              "ol",
-              { class: "github-pull-stack-members" },
-              stack.pulls.map((target) => {
-                const link = member(target, `#${target}`);
-                if (target === number) {
-                  link.setAttribute("aria-current", "page");
-                }
-                return h("li", {}, [link]);
-              }),
-            ),
-          );
-        });
-        return h("nav", { class: "github-pull-stack", "aria-label": `Stack #${stack.number}` }, [
-          disclosure,
-          h("span", { class: "github-pull-quiet" }, [`${position + 1} of ${stack.pulls.length}`]),
-          position > 0 ? member(stack.pulls[position - 1], "Previous PR") : null,
-          position + 1 < stack.pulls.length ? member(stack.pulls[position + 1], "Next PR") : null,
-        ]);
-      }),
-    );
+        },
+      });
+      stackMenus.set(stack.number, menu);
+      return menu.element;
+    });
+    stackColumn.hidden = nodes.length === 0;
+    if (
+      nodes.length !== stackColumn.children.length ||
+      nodes.some((node, at) => node !== stackColumn.children[at])
+    ) {
+      const focused = document.activeElement;
+      const restore = focused instanceof HTMLElement && stackColumn.contains(focused);
+      stackColumn.replaceChildren(...nodes);
+      if (restore && focused.isConnected) {
+        focused.focus({ preventScroll: true });
+      }
+    }
+  }
+
+  /** The menu most recently used chooses a stack when a PR has several memberships. */
+  function currentStack() {
+    if (
+      !active ||
+      listening.signal.aborted ||
+      shown === null ||
+      shown.pull === null ||
+      document.visibilityState !== "visible" ||
+      !onPageRoute(window.location.pathname, number, controller.snapshot().tab)
+    ) {
+      return null;
+    }
+    const memberships = stackMembership(stackIndex, stackIdentity, number);
+    return memberships.find((stack) => stack.number === preferredStack) ?? memberships[0] ?? null;
   }
 
   /** @param {PullModel} model */
@@ -2308,13 +2833,16 @@ export function mountPullPage(container, ctx, mb) {
     const pull = model.pull;
     if (pull !== null) {
       children.push(
-        h("h1", { class: "github-pull-title" }, [
-          pull.title,
-          " ",
-          h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
+        h("h1", { class: "page-heading github-pull-title github-pull-title-with-state" }, [
+          pullStateIcon(pull.state, { named: false }),
+          h("span", {}, [
+            pull.title,
+            " ",
+            h("span", { class: "github-pull-number" }, [`#${pull.number}`]),
+          ]),
         ]),
         h("div", { class: "github-pull-meta" }, [
-          stateBadge(pull.state, pull.stateLabel),
+          badge(pull.state, pull.stateLabel),
           h("span", {}, [
             pull.actor === null ? null : authorLabel(pull.actor, pull.actorAvatar),
             `${pull.actor === null ? "" : " "}${pull.action} `,
@@ -2345,10 +2873,13 @@ export function mountPullPage(container, ctx, mb) {
         );
       }
     } else {
-      children.push(h("h1", { class: "github-pull-title" }, [`Pull request #${model.number}`]));
+      children.push(
+        h("h1", { class: "page-heading github-pull-title" }, [`Pull request #${model.number}`]),
+      );
     }
+    const freshness = model.freshness;
     const status = h("div", { class: "github-pull-status", "data-status": model.status }, [
-      model.freshness,
+      model.refreshing && freshness !== null ? progress(freshness) : freshness,
     ]);
     if (model.message !== null) {
       status.append(h("span", { class: "github-pull-message" }, [model.message]));
@@ -2418,21 +2949,122 @@ export function mountPullPage(container, ctx, mb) {
       ),
     );
 
+  /**
+   * Install the provider order around the existing cards. Keep the focused card in
+   * place and move its neighbors around it, so even a reordered review keeps focus.
+   *
+   * @param {TimelineProjection | null} projection
+   * @param {string} source
+   */
+  function paintTimeline(projection, source) {
+    if (discussion === null || discussion.projection === projection) {
+      return;
+    }
+    const { description, cards, inserts: previousInserts } = discussion;
+    /** @type {Map<string, HTMLElement>} */
+    const inserts = new Map();
+    discussion.projection = projection;
+    discussion.inserts = inserts;
+    const unmatched = new Map(cards);
+    /** @type {HTMLElement[]} */
+    const ordered = [];
+    if (projection !== null && projection.state !== "unavailable") {
+      for (const event of projection.events) {
+        if (event.kind !== "commit") {
+          const key = `${event.kind}/${event.id}`;
+          const card = unmatched.get(key);
+          if (card !== undefined && !card.pending) {
+            ordered.push(card.node);
+            unmatched.delete(key);
+          }
+          continue;
+        }
+        if (inserts.has(event.oid)) {
+          continue;
+        }
+        const href = timelineCommitHref(source, number, event.oid);
+        if (href === null) {
+          continue;
+        }
+        const row =
+          previousInserts.get(event.oid) ??
+          h("div", { class: "github-pull-commit" }, [
+            h("span", { class: "github-pull-commit-subject" }, [event.subject || "Commit"]),
+            event.committed_at !== null && Number.isFinite(Date.parse(event.committed_at))
+              ? h("span", { class: "github-pull-quiet" }, ["committed ", age(event.committed_at)])
+              : null,
+            outside(mb, href, "", [event.oid.slice(0, 7)], "github-pull-commit-id git-commit-sha"),
+          ]);
+        ordered.push(row);
+        inserts.set(event.oid, row);
+      }
+    }
+    for (const { node } of unmatched.values()) {
+      ordered.push(node);
+    }
+    if (projection?.state === "partial") {
+      const note =
+        previousInserts.get("partial") ??
+        h("p", { class: "github-pull-quiet" }, ["Some commits may be missing."]);
+      ordered.push(note);
+      inserts.set("partial", note);
+    }
+    for (const [key, node] of previousInserts) {
+      if (!inserts.has(key)) {
+        node.remove();
+      }
+    }
+
+    const focused = ordered.findIndex((node) => node.contains(document.activeElement));
+    let next = ordered[focused];
+    for (let index = focused - 1; index >= 0; index -= 1) {
+      const node = ordered[index];
+      if (next.previousElementSibling !== node) {
+        body.insertBefore(node, next);
+      }
+      next = node;
+    }
+    let previous = ordered[focused] ?? description;
+    for (let index = focused + 1; index < ordered.length; index += 1) {
+      const node = ordered[index];
+      if (previous.nextElementSibling !== node) {
+        body.insertBefore(node, previous.nextElementSibling);
+      }
+      previous = node;
+    }
+  }
+
   /** @param {PullModel} model */
   function paintConversation(model) {
     const pull = /** @type {NonNullable<PullModel["pull"]>} */ (model.pull);
     texts.clear();
     observer?.disconnect();
-    const sections = [
-      h("section", { class: "github-pull-card" }, [
-        h("div", { class: "github-pull-card-head" }, [
-          authorLabel(pull.author, pull.avatar),
-          " opened ",
-          age(pull.created),
-        ]),
-        textBlock("body", pull.text, pull.truncated),
+    const description = h("section", { class: "page-card github-pull-card" }, [
+      h("div", { class: "github-pull-card-head" }, [
+        authorLabel(pull.author, pull.avatar),
+        " opened ",
+        age(pull.created),
       ]),
-    ];
+      textBlock("body", pull.text, pull.truncated, !model.corePreview),
+    ]);
+    const sections = [description];
+    discussion = model.corePreview
+      ? null
+      : { description, cards: new Map(), inserts: new Map(), projection: null };
+    if (model.corePreview) {
+      sections.push(
+        h("section", { class: "github-pull-section" }, [
+          h("h2", { class: "section-heading" }, ["Discussion"]),
+          h("p", { class: "github-pull-quiet" }, [
+            model.refreshing
+              ? progress("Comments and reviews are still loading.")
+              : "Comments and reviews have not been fetched.",
+          ]),
+        ]),
+      );
+      body.replaceChildren(...sections);
+      return;
+    }
     for (const item of model.timeline) {
       const head = h("div", { class: "github-pull-card-head" }, [
         authorLabel(item.author, item.avatar),
@@ -2443,11 +3075,17 @@ export function mountPullPage(container, ctx, mb) {
         head.append(" commented");
       }
       head.append(" ", item.at === null ? "(pending)" : age(item.at));
-      const card = h("section", { class: `github-pull-card github-pull-${item.kind}` }, [head]);
+      const card = h("section", { class: `page-card github-pull-card github-pull-${item.kind}` }, [
+        head,
+      ]);
       if (item.text.trim() !== "" || item.kind === "comment") {
         card.append(textBlock(item.part, item.text, item.truncated));
       }
       sections.push(card);
+      discussion?.cards.set(`${item.kind}/${item.id}`, {
+        node: card,
+        pending: item.kind === "review" && (item.at === null || item.review?.state === "PENDING"),
+      });
     }
     if (model.reviewComments.length > 0) {
       const threads = h("section", { class: "github-pull-section" }, [
@@ -2465,7 +3103,7 @@ export function mountPullPage(container, ctx, mb) {
         ]);
         const card = h(
           "div",
-          { class: `github-pull-card${comment.reply ? " github-pull-reply" : ""}` },
+          { class: `page-card github-pull-card${comment.reply ? " github-pull-reply" : ""}` },
           [head],
         );
         if (!comment.reply && comment.hunk !== null) {
@@ -2500,15 +3138,27 @@ export function mountPullPage(container, ctx, mb) {
       }
       sections.push(threads);
     }
+    for (const note of model.notes) {
+      sections.push(notice("warning", [note]));
+    }
+    body.replaceChildren(...sections);
+  }
+
+  /** @param {PullModel} model @param {NonNullable<PullModel["pull"]>} pull */
+  function paintChecks(model, pull) {
     const summary = model.checks;
     const checksSection = h("section", { class: "github-pull-section" }, [
       h("h2", { class: "section-heading" }, ["Checks"]),
     ]);
-    if (summary === null) {
+    if (model.corePreview) {
       checksSection.append(
-        h("p", { class: "github-pull-quiet" }, ["No checks or statuses reported."]),
+        h("p", { class: "github-pull-quiet" }, [
+          model.refreshing
+            ? progress("Checks and statuses are still loading.")
+            : "Checks and statuses have not been fetched.",
+        ]),
       );
-    } else {
+    } else if (summary !== null) {
       checksSection.append(
         h("p", { class: "github-pull-quiet" }, [
           Object.entries(summary.counts)
@@ -2528,17 +3178,20 @@ export function mountPullPage(container, ctx, mb) {
         );
       }
       checksSection.append(rows);
+    } else if (model.checkNotes.length === 0) {
+      checksSection.append(
+        h("p", { class: "github-pull-quiet" }, ["No checks or statuses reported."]),
+      );
     }
-    if (pull.merge !== null) {
+    if (!model.corePreview && pull.merge !== null) {
       checksSection.append(
         h("p", { class: "github-pull-merge", "data-state": pull.merge.state }, [pull.merge.label]),
       );
     }
-    sections.push(checksSection);
-    for (const note of model.notes) {
-      sections.push(notice("warning", [note]));
-    }
-    body.replaceChildren(...sections);
+    body.replaceChildren(
+      checksSection,
+      ...model.checkNotes.map((note) => notice("warning", [note])),
+    );
   }
 
   /** Settles when the diff last asked for has mounted, or was replaced. */
@@ -2564,6 +3217,7 @@ export function mountPullPage(container, ctx, mb) {
     // one, byte for byte, and the browser's cache answers a Back from it.
     async load(comparison, signal) {
       await mb.ensureKindAssets("diff");
+      signal.throwIfAborted();
       const view =
         /** @type {{prefetch?: (comparison: object, signal: AbortSignal) => Promise<unknown>} | null} */ (
           mb.getRegisteredView("diff", "diff")
@@ -2600,24 +3254,38 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {{left: string, right: string, route?: string}} comparison */
   async function mountDiff(comparison) {
+    if (listening.signal.aborted) {
+      return;
+    }
     disposeDiff();
     const host = h("div", { class: "github-pull-diff metabrowser-diff-host" });
     diffHost = host;
     diffFor = comparison;
-    body.replaceChildren(host);
+    const owns = () => !listening.signal.aborted && diffHost === host;
+    const loading = h(
+      "div",
+      {
+        class: "loading mb-delayed-loading github-pull-diff-loading",
+        role: "status",
+        "aria-label": "Loading changes",
+      },
+      [h("span", { class: "spinner", "aria-hidden": "true" })],
+    );
+    // Keep progress below the host so it cannot move the diff’s first row.
+    body.replaceChildren(host, loading);
     try {
       const raw = prefetch.take(comparison);
       await mb.ensureKindAssets("diff");
-      const view = mb.getRegisteredView("diff", "diff");
-      if (diffHost !== host) {
+      if (!owns()) {
         return;
       }
+      const view = mb.getRegisteredView("diff", "diff");
       if (!view) {
         host.textContent = "The diff plugin is unavailable.";
         return;
       }
       const prefetched = await raw;
-      if (diffHost !== host) {
+      if (!owns()) {
         return;
       }
       const handle = /** @type {{dispose?: () => void, currentFile?: () => unknown} | null} */ (
@@ -2625,6 +3293,7 @@ export function mountPullPage(container, ctx, mb) {
           "githubPull:filesRender",
           async () =>
             view.render(host, {
+              comparisonSignal: listening.signal,
               comparison: {
                 left: comparison.left,
                 right: comparison.right,
@@ -2636,7 +3305,8 @@ export function mountPullPage(container, ctx, mb) {
           { number },
         )
       );
-      if (diffHost !== host) {
+      loading.remove();
+      if (!owns()) {
         handle?.dispose?.();
         return;
       }
@@ -2645,20 +3315,22 @@ export function mountPullPage(container, ctx, mb) {
       landFile();
       // Failed diff loads resolve to a disposable notice without the public file API.
       // Do not report that surface, or a replaced mount, as useful Files readiness.
-      if (diffHost === host && typeof handle?.currentFile === "function") {
+      if (owns() && typeof handle?.currentFile === "function") {
         mb.perf.measure("githubPull:filesReady", () => {}, { number });
       }
     } catch {
-      if (diffHost !== host) {
+      if (!owns()) {
         return;
       }
       const retry = h("button", { type: "button", class: "btn" }, ["Retry"]);
       retry.addEventListener("click", () => {
-        if (diffHost === host) {
+        if (owns()) {
           diffMounted = mountDiff(comparison);
         }
       });
-      host.replaceChildren(notice("error", ["Files changed could not load. ", retry]));
+      host.replaceChildren(notice("error", ["Changes could not load. ", retry]));
+    } finally {
+      loading.remove();
     }
   }
 
@@ -2719,7 +3391,7 @@ export function mountPullPage(container, ctx, mb) {
           place?.keeper.flush();
         }
         diffMounted = mountDiff(displayed).then(() => {
-          if (shown?.tab === "files" && diffFor === displayed) {
+          if (!listening.signal.aborted && shown?.tab === "files" && diffFor === displayed) {
             paintFiles(shown);
             place?.keeper.land();
           }
@@ -2733,7 +3405,9 @@ export function mountPullPage(container, ctx, mb) {
     const action = filesAction(diffFor, comparison);
     if (comparison === null || action === "unavailable") {
       disposeDiff();
-      const message = notice("error", [model.filesUnavailable]);
+      const message = notice(model.corePreview || model.changesPending ? null : "error", [
+        model.changesPending ? progress(model.filesUnavailable) : model.filesUnavailable,
+      ]);
       if (model.canFetchComparison) {
         const fetchChanges = h(
           "button",
@@ -2772,16 +3446,18 @@ export function mountPullPage(container, ctx, mb) {
 
   /** @param {PullModel} model */
   function paint(model) {
+    container.dataset.corePreview = String(model.corePreview);
     shown = model;
     if (model.tab !== "files") {
       wantedFile = null;
     }
     paintHeader(model);
     paintStacks(model);
-    // The conversation reads in the column; a diff takes the pane.
-    body.classList.toggle("github-pull-column", model.pull === null || model.tab !== "files");
+    // Conversation and Checks use the reading column. Changes uses the full pane.
+    body.classList.toggle("page-reading-column", model.pull === null || model.tab !== "files");
     if (model.pull === null) {
       disposeDiff();
+      discussion = null;
       texts.clear();
       // A known text layout uses the shell's neutral pulse. The reveal wrapper has its
       // own node so its animation does not replace the skeleton's pulse/reduced motion.
@@ -2805,11 +3481,31 @@ export function mountPullPage(container, ctx, mb) {
     }
     if (model.tab === "files") {
       bodyKey = "";
+      discussion = null;
       texts.clear();
       paintFiles(model);
       return;
     }
     disposeDiff();
+    if (model.tab === "checks") {
+      const key = JSON.stringify([
+        "checks",
+        model.corePreview,
+        model.corePreview && model.refreshing,
+        model.checks,
+        model.checkNotes,
+        model.pull.merge,
+        model.pull.htmlUrl,
+      ]);
+      if (key !== bodyKey) {
+        bodyKey = key;
+        discussion = null;
+        texts.clear();
+        observer?.disconnect();
+        paintChecks(model, model.pull);
+      }
+      return;
+    }
     if (model.comparison !== null) {
       prefetch.want(model.comparison);
     }
@@ -2834,6 +3530,164 @@ export function mountPullPage(container, ctx, mb) {
       }
     }
     markdownRevision = model.recordRevision;
+  }
+
+  function cancelTimeline() {
+    if (commitTimeline?.read) {
+      const { abort } = commitTimeline.read;
+      commitTimeline.read = null;
+      abort.abort();
+    }
+  }
+
+  /** Timeline work follows an active Conversation with a full record. */
+  function followTimeline() {
+    const revision = shown?.recordRevision ?? null;
+    const source = stackIdentity?.source ?? null;
+    if (commitTimeline?.revision !== revision || commitTimeline.source !== source) {
+      cancelTimeline();
+      commitTimeline =
+        revision !== null && source !== null
+          ? {
+              revision,
+              source,
+              projection: null,
+              settled: false,
+              cacheMiss: false,
+              retryPending: false,
+              read: null,
+            }
+          : null;
+    }
+    const held = commitTimeline;
+    paintTimeline(held?.projection ?? null, source ?? "");
+    if (
+      !active ||
+      listening.signal.aborted ||
+      discussion === null ||
+      held === null ||
+      document.visibilityState !== "visible" ||
+      !onPageRoute(window.location.pathname, number, "")
+    ) {
+      cancelTimeline();
+      return;
+    }
+    const providerAllowed = controller.timelineAllowed();
+    if (held.read && (held.read.cachedOnly || providerAllowed)) {
+      return;
+    }
+    cancelTimeline();
+    const retrying = held.retryPending;
+    if (held.settled || (retrying && !providerAllowed)) {
+      return;
+    }
+    // A held projection can paint during a stale metadata refresh. A cache miss waits
+    // for settlement before it asks the provider.
+    const cachedOnly = !providerAllowed;
+    if (cachedOnly && (held.cacheMiss || (shown?.status !== "stale" && !shown?.refreshing))) {
+      return;
+    }
+    const read = { cachedOnly, abort: new AbortController() };
+    held.read = read;
+    const owns = () =>
+      commitTimeline === held &&
+      held.read === read &&
+      onPageRoute(window.location.pathname, number, "");
+    const load = async () => {
+      if (!owns()) {
+        return;
+      }
+      if (!cachedOnly && !controller.timelineAllowed()) {
+        followTimeline();
+        return;
+      }
+      if (retrying) {
+        // The retry budget is spent when the provider request starts, even if it is aborted.
+        held.retryPending = false;
+        held.settled = true;
+      }
+      const spinner = cachedOnly
+        ? null
+        : h(
+            "span",
+            {
+              class: "github-pull-timeline-loading mb-delayed-loading",
+              role: "status",
+              "aria-label": "Loading commits…",
+            },
+            [h("span", { class: "spinner spinner-sm", "aria-hidden": "true" })],
+          );
+      if (spinner !== null) {
+        discussion?.description.querySelector(".github-pull-card-head")?.append(spinner);
+        read.abort.signal.addEventListener("abort", () => spinner.remove(), { once: true });
+      }
+      /** @type {TimelineProjection | null} */
+      let projection = null;
+      try {
+        const response = await fetch(TIMELINE_ROUTE, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            number,
+            record_revision: held.revision,
+            ...(cachedOnly ? { cached_only: true } : {}),
+          }),
+          signal: read.abort.signal,
+        });
+        if (response.status === 200 && owns()) {
+          projection = readTimelineProjection(await response.json(), held.revision);
+        }
+      } catch {
+        // The held discussion is already readable when the optional projection fails.
+      } finally {
+        spinner?.remove();
+      }
+      if (!owns()) {
+        return;
+      }
+      held.read = null;
+      if (
+        projection !== null &&
+        projection.state !== "unavailable" &&
+        (held.projection === null ||
+          projection.state === "complete" ||
+          projection.events.length > held.projection.events.length)
+      ) {
+        const first = held.projection === null;
+        const next = projection;
+        held.projection = next;
+        mb.perf.measure("githubPull:timelinePaint", () => paintTimeline(next, held.source), {
+          number,
+        });
+        if (first) {
+          mb.perf.measure("githubPull:timelineReady", () => {}, { number });
+        }
+      }
+      if (cachedOnly && held.projection === null) {
+        held.cacheMiss = true;
+        followTimeline();
+      } else if (!cachedOnly && !retrying && projection?.retryable) {
+        held.retryPending = true;
+        followTimeline();
+      } else {
+        held.settled = true;
+      }
+    };
+    if (retrying) {
+      const timer = window.setTimeout(() => void load(), TIMELINE_RETRY_MS);
+      read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
+    } else if (typeof window.requestAnimationFrame === "function") {
+      let frame = window.requestAnimationFrame(() => {
+        frame = window.requestAnimationFrame(() => void load());
+      });
+      read.abort.signal.addEventListener("abort", () => window.cancelAnimationFrame(frame), {
+        once: true,
+      });
+    } else {
+      const timer = window.setTimeout(() => void load(), 0);
+      read.abort.signal.addEventListener("abort", () => window.clearTimeout(timer), { once: true });
+    }
   }
 
   // Disposing a page ends its work: a superseded page's requests are cancelled, whatever
@@ -2876,19 +3730,30 @@ export function mountPullPage(container, ctx, mb) {
       render(model, identity) {
         stackIdentity = identity;
         mb.perf.measure("githubPull:render", () => paint(model), { number });
+        if (model.contentReady) {
+          resolveReady();
+        }
         if (
           !listening.signal.aborted &&
           shown === model &&
           model.pull !== null &&
-          model.tab !== "files"
+          model.tab === ""
         ) {
-          // Useful conversation DOM is ready before optional Markdown upgrades, not painted.
-          mb.perf.measure("githubPull:conversationReady", () => {}, { number });
+          // DOM readiness is not a painted milestone; the browser probe observes that boundary.
+          mb.perf.measure("githubPull:descriptionReady", () => {}, {
+            number,
+            preview: model.corePreview,
+          });
+          if (!model.corePreview) {
+            mb.perf.measure("githubPull:conversationReady", () => {}, { number });
+          }
         }
+        followTimeline();
       },
       reload: () => window.location.reload(),
       navigate: (href) => window.location.assign(href),
       renderMarkdown,
+      timelineStateChanged: followTimeline,
     },
     {
       number,
@@ -2901,9 +3766,10 @@ export function mountPullPage(container, ctx, mb) {
     "visibilitychange",
     () => {
       controller.onVisibilityChange();
+      followTimeline();
       // A page opened behind another tab is not prefetched until it is looked at: the
       // wish is not recorded while hidden, so it is asked again when shown.
-      if (document.visibilityState === "visible" && shown?.tab !== "files") {
+      if (document.visibilityState === "visible" && shown?.tab === "") {
         const comparison = shown?.comparison ?? null;
         if (comparison !== null) {
           prefetch.want(comparison);
@@ -2919,9 +3785,65 @@ export function mountPullPage(container, ctx, mb) {
     }
   });
   void controller.start();
-  const place = pane === null ? null : keepPlace(pane, body, () => shown?.tab ?? "", number);
-  place?.keeper.land();
+  /** @type {ReturnType<typeof keepPlace> | null} */
+  let place = null;
+  function activate() {
+    if (listening.signal.aborted || active) {
+      return;
+    }
+    active = true;
+    followTimeline();
+    if (pane === null) {
+      return;
+    }
+    place = keepPlace(pane, body, () => shown?.tab ?? "", number);
+    place.keeper.land();
+  }
+
+  /** Stop ownership-bound work while preserving this page's inert handoff DOM. */
+  function cancelPending() {
+    resolveReady();
+    filesRefresh = null;
+    wantedFile = null;
+    listening.abort();
+    cancelTimeline();
+    body.querySelector(".github-pull-diff-loading")?.remove();
+    observer?.disconnect();
+    place?.dispose();
+    controller.dispose();
+    prefetch.dispose();
+    stacks.dispose();
+    for (const menu of stackMenus.values()) {
+      menu.dispose();
+    }
+    stackMenus.clear();
+    cancelCurrentFileBridge();
+    unwatchCurrentFile?.();
+    unwatchCurrentFile = null;
+    diffHandle?.cancelPending?.();
+    currentFileListeners.clear();
+  }
   return Object.freeze({
+    ready,
+    activate,
+    cancelPending,
+    /** Whether the displayed PR has authoritative membership for stack navigation. */
+    hasStack: () => currentStack() !== null,
+    /** Move toward the base (-1) or top (+1), preserving the active PR tab.
+     * Endpoints consume the command without navigating to an unrelated row.
+     * @param {-1 | 1} delta
+     */
+    moveStack(delta) {
+      const stack = currentStack();
+      if (stack === null) {
+        return false;
+      }
+      const at = stack.pulls.indexOf(number) + delta;
+      if (at >= 0 && at < stack.pulls.length) {
+        void open(memberRoute(stack.pulls[at], controller.snapshot().tab));
+      }
+      return true;
+    },
     /**
      * Show a tab. A tab owns the address (Browser URL Grammar), so a call from beside the
      * page goes through the route, which moves the address and calls back here, and Back
@@ -3011,16 +3933,8 @@ export function mountPullPage(container, ctx, mb) {
       return () => currentFileListeners.delete(listener);
     },
     dispose() {
-      filesRefresh = null;
-      wantedFile = null;
-      listening.abort();
-      observer?.disconnect();
-      place?.dispose();
-      controller.dispose();
-      prefetch.dispose();
-      stacks.dispose();
+      cancelPending();
       disposeDiff();
-      currentFileListeners.clear();
     },
   });
 }

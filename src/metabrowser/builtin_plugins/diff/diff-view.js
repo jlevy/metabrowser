@@ -48,11 +48,9 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {() => void} notifyCurrentFile Queue a current-file report for subscribers.
  * @property {AbortController} controller
  * @property {Map<string, DeferredFile>} deferred Files asked for when they are reached, by id.
- * @property {number} deferredLeft Files of this comparison not here yet.
  * @property {number} deferredFailed Files of this comparison that could not be loaded.
  * @property {Map<HTMLElement, string>} deferredBySection
  * @property {boolean} disposed
- * @property {number} fileTotal
  * @property {FileViewState[]} files
  * @property {number} generation
  * @property {ReturnType<typeof createHydrationScheduler>} hydration
@@ -65,7 +63,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {number} layoutGeneration
  * @property {boolean} listTruncated The comparison's own list stopped at its bound.
  * @property {boolean} narrow The diff is too narrow for Split.
- * @property {HTMLElement | null} partialNote
+ * @property {HTMLElement} hydrationFailure
  * @property {HTMLElement | null} pinned The file a jump put at the top, until the reader moves.
  * @property {number} pinnedAt When the pin was set, on the event clock, so the key that
  *   caused a jump does not also release it.
@@ -187,6 +185,10 @@ const INTRALINE_WORK_BUDGET = 1_000_000;
 // A load this slow is worth a console record even when it eventually
 // succeeds: a reader watching a spinner deserves a diagnosable stall.
 const SLOW_LOAD_MS = 4000;
+
+// Match the Pulls list's short forward lookahead. Only one nearby file is worked on,
+// and extending the bottom edge keeps on-screen files ahead of off-screen files.
+const HYDRATION_AHEAD_PX = 240;
 
 /**
  * The app's standard progress box: hidden until --loading-state-delay,
@@ -1357,43 +1359,10 @@ function renderDiffToolbar(totals, view, showSummary) {
   return { toolbar, unbind };
 }
 
-/**
- * What the reader is told while a comparison's files are not all here. A deferred file looks
- * like a collapsed one until it comes near, so a page that does not say so reads as complete,
- * and a file that could not be loaded is not counted as loaded. Null once nothing is deferred
- * and nothing failed. Pure.
- *
- * @param {number} deferred
- * @param {number} total
- * @param {number} [failed]
- * @returns {string | null}
- */
-export function partialNote(deferred, total, failed = 0) {
-  if (deferred <= 0 && failed <= 0) {
-    return null;
-  }
-  const count = (/** @type {number} */ n) => n.toLocaleString("en-US");
-  const loaded = `${count(total - deferred - failed)} of ${count(total)} files loaded`;
-  const rest = deferred > 0 ? "; the rest load as you reach them" : "";
-  const lost = failed > 0 ? `; ${count(failed)} could not be loaded` : "";
-  return `${loaded}${lost}${rest}`;
-}
-
-/** @param {MountedDiffState} view */
-function renderPartialNote(view) {
-  const note = view.partialNote;
-  if (note === null) {
-    return;
-  }
-  const text = partialNote(view.deferredLeft, view.fileTotal, view.deferredFailed);
-  note.textContent = text ?? "";
-  note.hidden = text === null;
-}
-
 // ── Which deferred file is asked for next ───────────────────────
 //
-// A large comparison's files past its first page are bars with no lines until a reader reaches
-// them. This decides when each is requested and rendered, and owns no DOM, so
+// A large comparison's remaining files are bars until a reader approaches them.
+// This decides when each is requested and rendered, and owns no DOM, so
 // tests/dom/diff-file-jump-session.js runs it with a scripted clock. It is here and not in a
 // module of its own because a served folder's first diff requests the modules v0.11.0 did,
 // which tests/test_diff_view_file_session.py holds.
@@ -1406,8 +1375,8 @@ function renderPartialNote(view) {
 // - At most one file rendered per frame: the next request starts only after the frame
 //   that rendered the last, so input is never waiting behind rendering it caused.
 // - The file a reader jumped to is first, ahead of anything else, and latest wins: a jump
-//   cancels the request for anything else, and a request for a file that left the viewport
-//   is cancelled too, because the reader did not ask for the files they passed.
+//   cancels the request for anything else. Scrolling cancels a request outside the
+//   lookahead or puts an earlier file first. An answer already in hand can still draw.
 // - A jump after a quiet moment asks at once. A jump during a burst, which is a held key, waits
 //   until the burst stops, so a key held through ninety files asks for the one it rests on.
 
@@ -1442,8 +1411,8 @@ export const JUMP_QUIET_MS = 50;
 export function createHydrationScheduler(deps) {
   /** @type {Map<string, HydrationEntry>} */
   const entries = new Map();
-  /** The pending entries the viewport shows. @type {Set<HydrationEntry>} */
-  const visible = new Set();
+  /** Files in or immediately below the viewport. @type {Set<HydrationEntry>} */
+  const nearby = new Set();
   /**
    * The request in flight. A request, not its file: an abandoned request's rejection
    * arrives after its file may have been asked for again, and must not answer for the
@@ -1454,6 +1423,8 @@ export function createHydrationScheduler(deps) {
   let active = null;
   /** A request that answered, waiting for its frame. @type {{entry: HydrationEntry, frame: unknown} | null} */
   let arrived = null;
+  /** A passive continuation waiting one frame for updated observations. @type {unknown} */
+  let continuation = null;
   /** @type {{entry: HydrationEntry, settle: (outcome: JumpOutcome) => void} | null} */
   let target = null;
   /** @type {unknown} */
@@ -1495,6 +1466,38 @@ export function createHydrationScheduler(deps) {
     }
   }
 
+  /**
+   * Paint either answer in a frame, then let the new layout update nearby candidates
+   * before starting a passive request. An explicit jump can still take the slot now.
+   * @param {HydrationEntry} entry
+   * @param {() => JumpOutcome} paint
+   */
+  function paintAnswer(entry, paint) {
+    arrived = {
+      entry,
+      frame: deps.frame(() => {
+        arrived = null;
+        entry.state = "done";
+        nearby.delete(entry);
+        /** @type {JumpOutcome} */
+        let outcome = "failed";
+        try {
+          outcome = paint();
+        } finally {
+          if (target?.entry === entry) {
+            settleTarget(outcome);
+          }
+          if (nearby.size > 0 && continuation === null) {
+            continuation = deps.frame(() => {
+              continuation = null;
+              pump();
+            });
+          }
+        }
+      }),
+    };
+  }
+
   /** @param {HydrationEntry} entry */
   function begin(entry) {
     const controller = new AbortController();
@@ -1508,27 +1511,14 @@ export function createHydrationScheduler(deps) {
           return;
         }
         active = null;
-        arrived = {
-          entry,
-          frame: deps.frame(() => {
-            arrived = null;
-            entry.state = "done";
-            visible.delete(entry);
-            /** @type {JumpOutcome} */
-            let outcome = "failed";
-            try {
-              outcome = deps.render(entry.id, payload);
-            } catch (error) {
-              // One file's render is one file's: the next is still asked for.
-              deps.fail(entry.id, error);
-            } finally {
-              if (target?.entry === entry) {
-                settleTarget(outcome);
-              }
-              pump();
-            }
-          }),
-        };
+        paintAnswer(entry, () => {
+          try {
+            return deps.render(entry.id, payload);
+          } catch (error) {
+            deps.fail(entry.id, error);
+            return "failed";
+          }
+        });
       },
       (error) => {
         if (active !== ticket) {
@@ -1541,22 +1531,19 @@ export function createHydrationScheduler(deps) {
           pump();
           return;
         }
-        entry.state = "done";
-        visible.delete(entry);
-        deps.fail(entry.id, error);
-        if (target?.entry === entry) {
-          settleTarget("failed");
-        }
-        pump();
+        paintAnswer(entry, () => {
+          deps.fail(entry.id, error);
+          return "failed";
+        });
       },
     );
   }
 
-  /** The topmost file the viewport shows. @returns {HydrationEntry | null} */
-  function nextVisible() {
+  /** The first pending file in or below the viewport. @returns {HydrationEntry | null} */
+  function nextNearby() {
     /** @type {HydrationEntry | null} */
     let best = null;
-    for (const entry of visible) {
+    for (const entry of nearby) {
       if (entry.state === "pending" && (best === null || entry.index < best.index)) {
         best = entry;
       }
@@ -1572,6 +1559,9 @@ export function createHydrationScheduler(deps) {
       begin(target.entry);
       return;
     }
+    if (continuation !== null) {
+      return;
+    }
     const quietLeft = lastJumpAt + JUMP_QUIET_MS - deps.now();
     if (quietLeft > 0) {
       quietTimer = deps.after(quietLeft, () => {
@@ -1580,7 +1570,7 @@ export function createHydrationScheduler(deps) {
       });
       return;
     }
-    const entry = nextVisible();
+    const entry = nextNearby();
     if (entry !== null) {
       begin(entry);
     }
@@ -1595,23 +1585,28 @@ export function createHydrationScheduler(deps) {
       entries.set(id, { id, index, state: "pending" });
     },
     /**
-     * The viewport began or stopped showing a file.
-     *
-     * @param {string} id
-     * @param {boolean} shown
+     * Apply one observation batch before picking a file, so a stale candidate that also
+     * left in this batch cannot start a request.
+     * @param {[id: string, inRange: boolean][]} changes
      */
-    setVisible(id, shown) {
-      const entry = entries.get(id);
-      if (disposed || entry === undefined || entry.state === "done") {
+    setNearby(changes) {
+      if (disposed) {
         return;
       }
-      if (shown) {
-        visible.add(entry);
-      } else {
-        visible.delete(entry);
-        // A request for a file that left is cancelled; an answer already in hand is
-        // rendered, since fetching it again would cost more than its one frame.
-        if (active?.entry === entry && target?.entry !== entry) {
+      for (const [id, inRange] of changes) {
+        const entry = entries.get(id);
+        if (entry === undefined || entry.state === "done") {
+          continue;
+        }
+        if (inRange) {
+          nearby.add(entry);
+        } else {
+          nearby.delete(entry);
+        }
+      }
+      if (active !== null && target === null) {
+        const first = nextNearby();
+        if (!nearby.has(active.entry) || (first !== null && first.index < active.entry.index)) {
           abandonWork();
         }
       }
@@ -1660,15 +1655,19 @@ export function createHydrationScheduler(deps) {
     dispose() {
       disposed = true;
       clearQuiet();
+      if (continuation !== null) {
+        deps.cancelFrame(continuation);
+        continuation = null;
+      }
       abandonWork();
       settleTarget("superseded");
-      visible.clear();
+      nearby.clear();
     },
     snapshot: () => ({
       asking: active?.entry.id ?? null,
       rendering: arrived?.entry.id ?? null,
       target: target?.entry.id ?? null,
-      visible: [...visible].map((entry) => entry.id),
+      nearby: [...nearby].map((entry) => entry.id),
       requests,
     }),
   });
@@ -1898,8 +1897,7 @@ function stopLoading(file) {
 }
 
 /**
- * A deferred file is no longer waited for: it arrived or it failed. A file whose answer was in
- * hand was loaded all along, so it was never counted as one still to load.
+ * A deferred file arrived or failed. Release its progress, reservation, and observation.
  *
  * @param {DeferredFile} file
  * @param {MountedDiffState} view
@@ -1907,10 +1905,6 @@ function stopLoading(file) {
 function settleDeferred(file, view) {
   stopLoading(file);
   unreserveBody(file.body);
-  if (file.held === null) {
-    view.deferredLeft -= 1;
-  }
-  renderPartialNote(view);
   view.hydrationObserver?.unobserve(file.section);
   view.deferred.delete(String(file.change.id));
   view.deferredBySection.delete(file.section);
@@ -1930,7 +1924,7 @@ function settleDeferred(file, view) {
  * @returns {JumpOutcome}
  */
 function renderDeferred(file, loaded, view) {
-  const anchor = view.pinned === null ? placeOfTopFile(view) : null;
+  const anchor = view.pinned === null ? placeOfTopFile(view, true) : null;
   settleDeferred(file, view);
   /** @type {JumpOutcome} */
   let outcome;
@@ -1986,15 +1980,13 @@ function spliceDeferred(file, loaded, view) {
 /**
  * @param {DeferredFile} file
  * @param {unknown} error
- * @param {MountedDiffState} [view] Counts the failure apart from the loads, when the file
- *   was settled by `settleDeferred` and not by `renderDeferred`.
+ * @param {MountedDiffState} view
  * @returns {JumpOutcome}
  */
 function failDeferred(file, error, view) {
-  if (view !== undefined) {
-    view.deferredFailed += 1;
-    renderPartialNote(view);
-  }
+  const count = ++view.deferredFailed;
+  view.hydrationFailure.textContent = `Could not load changes for ${count.toLocaleString("en-US")} ${count === 1 ? "file" : "files"}.`;
+  view.hydrationFailure.hidden = false;
   reportLoad(
     "file hydration",
     {
@@ -2010,9 +2002,9 @@ function failDeferred(file, error, view) {
 }
 
 /**
- * Defer one file request until its section reaches the visible scroll area.
- * The comparison payload already hydrates the leading files; observing the
- * remainder prevents a large commit from launching an unbounded request fanout.
+ * Defer one file request until its section approaches the visible scroll area.
+ * The comparison payload already hydrates the leading files. The rest are queued
+ * by their place and observed once the diff is in its scroll pane.
  *
  * A ready file past the first screen takes the same path with its answer in *held*: it is
  * drawn when it is reached or gone to, one file a frame like the rest, and never asked for.
@@ -2039,17 +2031,37 @@ function queueDeferredHydration(section, body, change, revision, view, held = nu
   view.deferredBySection.set(section, id);
   view.hydration.add(id, view.deferred.size);
   reserveFileBody(/** @type {DeferredFile} */ (view.deferred.get(id)), view.layout);
-  if (view.hydrationObserver === null) {
-    view.hydrationObserver = new IntersectionObserver((entries) => {
+}
+
+/** @param {MountedDiffState} view */
+function observeHydration(view) {
+  if (view.deferred.size === 0) {
+    return;
+  }
+  const pane = scrollerOf(view);
+  // Expand the inner pane's own clipping edge. Use the implicit viewport for
+  // document scrolling, where the document element's box moves with scroll.
+  const root = pane === view.root.ownerDocument?.scrollingElement ? null : pane;
+  view.hydrationObserver = new IntersectionObserver(
+    (entries) => {
+      if (view.disposed || view.controller.signal.aborted) {
+        return;
+      }
+      /** @type {[string, boolean][]} */
+      const changes = [];
       for (const entry of entries) {
-        const shown = view.deferredBySection.get(/** @type {HTMLElement} */ (entry.target));
-        if (shown !== undefined && !view.disposed && !view.controller.signal.aborted) {
-          view.hydration.setVisible(shown, entry.isIntersecting);
+        const id = view.deferredBySection.get(/** @type {HTMLElement} */ (entry.target));
+        if (id !== undefined) {
+          changes.push([id, entry.isIntersecting]);
         }
       }
-    });
+      view.hydration.setNearby(changes);
+    },
+    { root, rootMargin: `0px 0px ${HYDRATION_AHEAD_PX}px 0px` },
+  );
+  for (const section of view.deferredBySection.keys()) {
+    view.hydrationObserver.observe(section);
   }
-  view.hydrationObserver.observe(section);
 }
 
 /**
@@ -2078,8 +2090,14 @@ function hydrationHost(view) {
         reportLoad("file hydration", { fileId: id, hook: "diff/comparison" }, error);
         return;
       }
+      const anchor = view.pinned === null ? placeOfTopFile(view, true) : null;
       settleDeferred(file, view);
-      failDeferred(file, error, view);
+      try {
+        failDeferred(file, error, view);
+      } finally {
+        holdPlace(view, anchor);
+        view.notifyCurrentFile();
+      }
     },
     abandon: (id) => stopLoading(fileOf(id)),
     frame: (callback) =>
@@ -2157,9 +2175,10 @@ function placeAtTop(view, section) {
  * Found by bisection, since the sections are in order: ten reads at 1,183 files.
  *
  * @param {MountedDiffState} view
+ * @param {boolean} [mustCoverPaneTop] Preserve an offset above the diff when its heading is visible.
  * @returns {{section: HTMLElement, top: number} | null}
  */
-function placeOfTopFile(view) {
+function placeOfTopFile(view, mustCoverPaneTop = false) {
   const pane = scrollerOf(view);
   if (pane === null || view.sections.length === 0) {
     return null;
@@ -2176,7 +2195,11 @@ function placeOfTopFile(view) {
     }
   }
   const section = view.sections[low];
-  return { section, top: section.getBoundingClientRect().top };
+  const { top, bottom } = section.getBoundingClientRect();
+  if (mustCoverPaneTop && (top > paneTop || bottom <= paneTop)) {
+    return null;
+  }
+  return { section, top };
 }
 
 /**
@@ -2540,9 +2563,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     deferred: new Map(),
     deferredBySection: new Map(),
     deferredFailed: 0,
-    deferredLeft: 0,
     disposed: false,
-    fileTotal: 0,
     files: [],
     generation: 1,
     hydration: /** @type {MountedDiffState["hydration"]} */ (/** @type {unknown} */ (null)),
@@ -2553,7 +2574,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     layoutGeneration: 0,
     listTruncated: false,
     narrow,
-    partialNote: null,
+    hydrationFailure: el("div", "diff-availability diff-hydration-failure"),
     pinListeners: null,
     pinned: null,
     pinnedAt: Number.NEGATIVE_INFINITY,
@@ -2594,15 +2615,8 @@ export function mountDiffView(container, document_, api, options = {}) {
     root.append(el("div", "diff-availability diff-warning", warning));
   }
   const context = { revision: String(document_.__revision ?? "") };
-  view.fileTotal = manifest.files.length;
-  if (context.revision) {
-    view.deferredLeft = manifest.files.filter((f) => f.availability === "deferred").length;
-  }
-  if (view.deferredLeft > 0) {
-    view.partialNote = el("div", "diff-availability diff-partial-note");
-    root.append(view.partialNote);
-    renderPartialNote(view);
-  }
+  view.hydrationFailure.hidden = true;
+  root.append(view.hydrationFailure);
   // Rows are drawn for the files whose estimated top is within the first screen and one more;
   // every later ready file is held, with its answer, and drawn when it is reached. The bars
   // are all here, and each held file reserves its code rows and chrome before drawing.
@@ -2636,6 +2650,7 @@ export function mountDiffView(container, document_, api, options = {}) {
   measureProjection(api, "diffMount:attach", () => container.append(root), {
     file_count: manifest.files.length,
   });
+  observeHydration(view);
   // Drawing changes the root's height, which this also reports, so it waits for a task of its
   // own: done in the callback, it would be a ResizeObserver loop error. A width is one frame
   // late at the moment it crosses the limit, and the first draw above is not late at all.

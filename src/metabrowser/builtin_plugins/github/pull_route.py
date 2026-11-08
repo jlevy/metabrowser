@@ -23,7 +23,7 @@ for the page to offer rather than switching under a reader.
 A read never starts a fetch. Only ``POST pull-refresh`` does, and :func:`start_refresh`
 holds what it starts to the rule: a request that is not a reader's own action refreshes
 only a pull request with a record, and only when that record is stale and not tried within
-the window. So nothing a link can do adds to the cache.
+the window. A visible cold page can request the selected fetch with a separate POST.
 
 Which pull requests a server has is :func:`pull_host`'s to say, and nothing else here
 knows whether it is a mirror or a checkout. A checkout with no attached store answers a
@@ -34,6 +34,7 @@ store to a checkout's pull records.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -53,12 +54,15 @@ from metabrowser.builtin_plugins.github.checkout import (
     served_checkout,
     start_pull_refresh,
 )
+from metabrowser.builtin_plugins.github.pull_core_cache import read_cached_core
+from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreWindow, preparation_key
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     RecordAbsence,
     read_pull_record,
 )
 from metabrowser.builtin_plugins.github.served_pull import (
+    PullCorePreview,
     PullRefreshOutcome,
     ServedPull,
     ServedPulls,
@@ -71,6 +75,7 @@ from metabrowser.http_caching import BUILD_TAG, build_scoped_etag, store_tag
 from metabrowser.mirror_refresh import (
     FRESHNESS_WINDOW_S,
     PullJobStart,
+    RefreshCoordinator,
     mirror_session,
     refresh_coordinator,
 )
@@ -78,7 +83,7 @@ from metabrowser.source import RepositorySubject
 from metabrowser.view_routes import parse_pull_number
 
 PULL_ROUTE: Final = "/api/plugin/github/pull"
-_REFRESH_FIELDS: Final = frozenset({"number", "retry", "comparison", "recovery"})
+_REFRESH_FIELDS: Final = frozenset({"number", "retry", "comparison", "recovery", "wait_core"})
 NUMBER_REQUIRED: Final = '"number" is a pull-request number'
 
 type PullState = Literal["absent", "pending", "current", "stale"]
@@ -106,6 +111,7 @@ class PullEnvelope(TypedDict):
     last_refresh: PullRefreshOutcome | None
     comparison_route: str | None
     record: dict[str, Any] | None
+    core_preview: PullCorePreview | None
 
 
 def _parse_stamp(stamp: str) -> datetime:
@@ -210,6 +216,11 @@ def cached_pull_record(
         return record, None, None
     dumped = record.model_dump(mode="json")
     revision = _record_revision(dumped)
+    # JSON numbers above JavaScript's safe integer range still need exact part IDs.
+    for kind in ("issue_comments", "reviews"):
+        for item in dumped[kind]:
+            if abs(item["id"]) > (1 << 53) - 1:
+                item["timeline_id"] = str(item["id"])
     if stamp is not None:
         with _PARSED_LOCK:
             if key not in _PARSED and len(_PARSED) >= _MAX_PARSED:
@@ -230,6 +241,7 @@ class PullHost:
     running: Callable[[int], bool]
     start: Callable[[int], PullJobStart]
     start_comparison: Callable[[int], PullJobStart] | None = None
+    coordinator: RefreshCoordinator | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
@@ -251,11 +263,17 @@ def pull_host(app: Any) -> PullHost | None:
             lambda number: coordinator.running(checkout_job_key(checkout, number)),
             partial(start_pull_refresh, coordinator, checkout),
             partial(start_pull_refresh, coordinator, checkout, comparison=True),
+            coordinator,
         )
     served = session.pull_requests
     if not isinstance(served, ServedPulls):
         return None
-    return PullHost(served, session.pull_refreshing, session.request_pull_refresh)
+    return PullHost(
+        served,
+        session.pull_refreshing,
+        session.request_pull_refresh,
+        coordinator=refresh_coordinator(app),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,19 +291,34 @@ class PullView:
     pin_ref: str | None
     refreshing: bool
     kept: ServedPull | None
+    core_preview: PullCorePreview | None = None
+    core_window: CoreWindow | None = None
+    core_admission: CoreAdmission | None = None
 
 
 def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) -> PullView:
     """Pull request *number*'s in-memory state. Reads nothing, so a read adds nothing."""
 
     revision = subject if isinstance(subject, GitRevisionSubject) else None
+    kept = None if host is None else host.pulls.held(number)
+    refreshing = host is not None and host.running(number)
+    live = kept.core_preview if kept is not None and refreshing else None
+    adopted = kept.display_core if kept is not None and refreshing and live is None else None
+    window = host.pulls.core_window if host is not None and not refreshing else None
+    prepared = window.preview(number) if window is not None else None
+    admission = window.admission if prepared is not None and window is not None else None
+    if adopted is not None:
+        live, admission = adopted
     return PullView(
         number=number,
         host=host,
         pin=None if revision is None else revision.commit_oid,
         pin_ref=None if revision is None else revision.ref,
-        refreshing=host is not None and host.running(number),
-        kept=None if host is None else host.pulls.held(number),
+        refreshing=refreshing,
+        kept=kept,
+        core_preview=live or prepared,
+        core_window=window if prepared is not None else None,
+        core_admission=admission,
     )
 
 
@@ -308,6 +341,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
             last_refresh=None,
             comparison_route=None,
             record=None,
+            core_preview=None,
         )
     served = host.pulls
     record, dumped, revision = cached_pull_record(served.home, served.slug, view.number)
@@ -324,6 +358,17 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         if isinstance(record, PullRecord) and served.git_dir is not None
         else None
     )
+    preview = view.core_preview
+    if view.core_admission is not None and not view.core_admission.catalog_matches(view.number):
+        preview = None
+    if preview is None and not isinstance(record, PullRecord):
+        preview = read_cached_core(
+            served.home,
+            served.slug,
+            view.number,
+            reader=served.observed_reader,
+            reader_identity=served.core_catalog_identity,
+        )
     return PullEnvelope(
         state=state,
         reason=absence,
@@ -338,7 +383,58 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         last_refresh=view.kept.last if view.kept is not None else served.last_refresh(view.number),
         comparison_route=route,
         record=dumped if isinstance(record, PullRecord) else None,
+        core_preview=preview if not isinstance(record, PullRecord) else None,
     )
+
+
+def note_full_record(view: PullView) -> None:
+    window = view.core_window
+    if (
+        view.host is not None
+        and window is not None
+        and view.host.pulls.core_window is window
+        and window.previews is not None
+    ):
+        window.previews.pop(view.number, None)
+
+
+def core_preview_current(view: PullView, preview: PullCorePreview | None) -> bool:
+    """Reject an observation revoked while the envelope was built off the loop."""
+    if preview is None:
+        return True
+    if view.host is None:
+        return False
+    if preview is not view.core_preview:
+        # Disk validation runs separately off the loop; this path has no mutable
+        # prepared-window ownership to inspect.
+        return True
+    if view.core_window is not None:
+        return (
+            view.host.pulls.core_window is view.core_window
+            and not view.host.running(view.number)
+            and view.core_window.preview(view.number) is preview
+        )
+    kept = view.kept
+    if kept is None or not view.host.running(view.number):
+        return False
+    if kept.core_preview is not None:
+        return kept.core_preview is preview
+    adopted = kept.display_core
+    return adopted is not None and adopted[0] is preview and adopted[1] is view.core_admission
+
+
+def cached_core_preview_current(view: PullView, preview: PullCorePreview) -> bool:
+    """Revalidate only a disk-sourced preview; called off the owning event loop."""
+    if view.host is None:
+        return False
+    cached = read_cached_core(
+        view.host.pulls.home,
+        view.host.pulls.slug,
+        view.number,
+        reader=view.host.pulls.observed_reader,
+        reader_identity=view.host.pulls.core_catalog_identity,
+    )
+    return cached is not None and cached == preview
 
 
 def record_stamp(view: PullView) -> tuple[int, int, int] | None:
@@ -359,7 +455,13 @@ def envelope_etag(envelope: PullEnvelope, stamp: tuple[int, int, int] | None) ->
     request no longer matches, and is sent again rather than taken as unchanged.
     """
 
-    fields: dict[str, Any] = {name: value for name, value in envelope.items() if name != "record"}
+    fields: dict[str, Any] = {
+        name: value for name, value in envelope.items() if name not in {"record", "core_preview"}
+    }
+    preview = envelope["core_preview"]
+    fields["core_preview"] = (
+        None if preview is None else (preview["revision"], preview["observed_at"])
+    )
     fields["record_stamp"] = list(stamp) if stamp is not None else None
     digest = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
     return build_scoped_etag(f"pull-{digest[:32]}")
@@ -382,6 +484,7 @@ class RefreshRequest:
     retry: bool
     comparison: bool = False
     recovery: tuple[str, str] | None = None
+    wait_core: bool = False
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
@@ -389,7 +492,7 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
 
     if set(body) - _REFRESH_FIELDS:
         raise PullRequestError(
-            'a refresh request names only "number", "retry", "comparison", and "recovery"'
+            'a refresh request names only "number", "retry", "comparison", "recovery", and "wait_core"'
         )
     number = body.get("number")
     if (
@@ -425,10 +528,44 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
         ):
             raise PullRequestError('"recovery" requires two full commit IDs')
         pair = (base, head)
-    return RefreshRequest(number, retry, comparison, pair)
+    wait_core = body.get("wait_core", False)
+    if not isinstance(wait_core, bool) or (
+        wait_core and (not retry or comparison or pair is not None)
+    ):
+        raise PullRequestError('"wait_core" is true or false and requires only "retry": true')
+    return RefreshRequest(number, retry, comparison, pair, wait_core)
 
 
 async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart:
+    if not ask.retry and not ask.comparison:
+        return await _start_refresh(host, ask)
+    served = host.pulls
+    served.foreground_intents += 1
+    try:
+        window = served.core_window
+        prepared = None
+        if window is None or window.previews is None:
+            served.core_window = None
+            coordinator = host.coordinator
+            if coordinator is not None:
+                job = coordinator.cancel(preparation_key(served.source))
+                if job is not None:
+                    await asyncio.shield(asyncio.gather(job, return_exceptions=True))
+        elif ask.wait_core:
+            preview = window.preview(ask.number)
+            if preview is not None:
+                prepared = (window, preview)
+        started = await _start_refresh(host, ask, prepared)
+        if started in {"started", "joined"} and window is not None and window.previews is not None:
+            window.previews.pop(ask.number, None)
+        return started
+    finally:
+        served.foreground_intents -= 1
+
+
+async def _start_refresh(
+    host: PullHost, ask: RefreshRequest, prepared: tuple[CoreWindow, PullCorePreview] | None = None
+) -> PullRefreshStart:
     """Start the refresh *ask* names, join the one running, or say why it starts nothing.
 
     A reader's own action always may start one. An automatic request may only for a
@@ -437,6 +574,7 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
     """
 
     queued: ServedPull | None = None
+    adopt = None
     if ask.retry and not ask.comparison:
         served = await host.pulls.companion(ask.number)
         queued = served
@@ -444,6 +582,20 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
             raise PullRequestError("this pull request did not issue the requested comparison")
         if not served.request_recovery(ask.recovery):
             return "too_many"
+        if ask.wait_core:
+            cached, _dumped, _revision = await asyncio.to_thread(
+                cached_pull_record, host.pulls.home, host.pulls.slug, ask.number
+            )
+            if isinstance(cached, PullRecord):
+                served.saw_record(cached.fetched_at, without_store=written_without_store(cached))
+            else:
+                served.request_core_preview()
+                if (
+                    cached == "not_cached"
+                    and prepared is not None
+                    and prepared[0].publication is served.published
+                ):
+                    adopt = prepared
     if ask.comparison and host.start_comparison is not None:
         return host.start_comparison(ask.number)
     if host.running(ask.number):
@@ -454,9 +606,28 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
             return "not_cached"
         if not served.is_stale(pulls.utc_now(), window_s=FRESHNESS_WINDOW_S):
             return "not_due"
+    if adopt is not None:
+        window, preview = adopt
+        # This is the last worker read. Start and adoption below are synchronous.
+        catalog_matches = await asyncio.to_thread(window.catalog_matches, ask.number)
+        if (
+            not catalog_matches
+            or host.pulls.published is not window.publication
+            or host.pulls.core_window is not window
+            or window.preview(ask.number) is not preview
+        ):
+            adopt = None
+    if host.running(ask.number):
+        return "joined"
     started = host.start(ask.number)
-    if started == "too_many" and queued is not None:
-        queued.discard_recovery(ask.recovery)
+    if queued is not None:
+        if started == "too_many":
+            queued.discard_recovery(ask.recovery)
+        elif started == "started" and adopt is not None:
+            window, preview = adopt
+            admission = window.admission
+            if admission is not None:
+                queued.display_core = (preview, admission)
     return started
 
 

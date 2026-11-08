@@ -16,6 +16,7 @@ status: 200
   "last_refresh": null,
   "total": null,
   "repository_total": null,
+  "filter_totals": null,
   "count_at": null,
   "catalog_fetched": 0,
   "generation": null,
@@ -46,7 +47,8 @@ status: 200
   "refreshing": false,
   "last_refresh": null,
   "comparison_route": null,
-  "record": null
+  "record": null,
+  "core_preview": null
 }
 --- stderr ---
 --- gh ---
@@ -101,6 +103,7 @@ status: 202
     "last_refresh": null,
     "total": null,
     "repository_total": null,
+    "filter_totals": null,
     "count_at": null,
     "catalog_fetched": 0,
     "generation": null,
@@ -132,6 +135,11 @@ status: 200
   },
   "total": 100,
   "repository_total": 102,
+  "filter_totals": {
+    "all": 102,
+    "open": 100,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
   "generation": "<CATALOG_EPOCH>:0",
@@ -197,7 +205,8 @@ status: 202
     "refreshing": true,
     "last_refresh": null,
     "comparison_route": null,
-    "record": null
+    "record": null,
+    "core_preview": null
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -288,7 +297,8 @@ status: 200
     "unavailable": {
       "comparison": "no_store"
     }
-  }
+  },
+  "core_preview": null
 }
 --- stderr ---
 --- body ---
@@ -495,6 +505,11 @@ status: 200
   },
   "total": 100,
   "repository_total": 102,
+  "filter_totals": {
+    "all": 102,
+    "open": 100,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
   "generation": "<CATALOG_EPOCH>:0",
@@ -529,6 +544,11 @@ status: 200
   },
   "total": 100,
   "repository_total": 102,
+  "filter_totals": {
+    "all": 102,
+    "open": 100,
+    "closed": 2
+  },
   "count_at": "2026-09-17T12:00:00Z",
   "catalog_fetched": 102,
   "generation": "<CATALOG_EPOCH>:0",
@@ -559,6 +579,7 @@ status: 200
   "last_refresh": null,
   "total": null,
   "repository_total": null,
+  "filter_totals": null,
   "count_at": null,
   "catalog_fetched": 0,
   "generation": null,
@@ -590,6 +611,7 @@ status: 202
     "last_refresh": null,
     "total": null,
     "repository_total": null,
+    "filter_totals": null,
     "count_at": null,
     "catalog_fetched": 0,
     "generation": null,
@@ -615,12 +637,13 @@ status: 200
   "refreshing": false,
   "last_refresh": {
     "outcome": "not_found_or_private",
-    "message": "GitHub has no such pull request, or it is private and the gh account cannot read it",
+    "message": "GitHub has no readable repository here",
     "reset_at": null,
     "at": "2026-09-17T12:00:00Z"
   },
   "total": null,
   "repository_total": null,
+  "filter_totals": null,
   "count_at": null,
   "catalog_fetched": 0,
   "generation": null,
@@ -656,6 +679,7 @@ status: 200
   "last_refresh": null,
   "total": null,
   "repository_total": null,
+  "filter_totals": null,
   "count_at": null,
   "catalog_fetched": 0,
   "generation": null,
@@ -699,6 +723,7 @@ status: 200
   "last_refresh": null,
   "total": null,
   "repository_total": null,
+  "filter_totals": null,
   "count_at": null,
   "catalog_fetched": 0,
   "generation": null,
@@ -816,7 +841,8 @@ status: 200
     "unavailable": {
       "comparison": "no_store"
     }
-  }
+  },
+  "core_preview": null
 }
 --- stderr ---
 cloning https://github.com/octo/demo into <HOME>
@@ -970,7 +996,8 @@ status: 202
       "unavailable": {
         "comparison": "no_store"
       }
-    }
+    },
+    "core_preview": null
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -1064,7 +1091,8 @@ status: 200
       "text": false
     },
     "unavailable": {}
-  }
+  },
+  "core_preview": null
 }
 --- stderr ---
 --- body ---
@@ -1169,7 +1197,8 @@ status: 200
     "unavailable": {
       "comparison": "no_store"
     }
-  }
+  },
+  "core_preview": null
 }
 --- stderr ---
 --- gh ---
@@ -1266,7 +1295,8 @@ status: 202
       "unavailable": {
         "comparison": "no_store"
       }
-    }
+    },
+    "core_preview": null
   },
   "status_route": "/api/plugin/github/pull?number=10"
 }
@@ -1360,7 +1390,8 @@ status: 200
       "text": false
     },
     "unavailable": {}
-  }
+  },
+  "core_preview": null
 }
 --- stderr ---
 --- body ---

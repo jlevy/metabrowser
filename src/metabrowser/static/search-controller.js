@@ -1,7 +1,16 @@
-// DOM-independent search orchestration and the browser-local filename provider.
+// DOM-independent search orchestration for files and cached pull requests.
 
 (() => {
   const LOCAL_FILE_PROVIDER_ID = "local-known-files";
+  const PULL_PROVIDER_ID = "cached-pull-requests";
+  const PULL_PROVIDER_PRIORITY = 15;
+  const PULL_QUERY_DELAY_MS = 120;
+  const PULL_WARM_COOLDOWN_MS = 60_000;
+  const PULL_WARM_TIMEOUT_MS = 6_000;
+  // Catalog backfill can publish several pages while a query stays open.
+  const PULL_RECHECK_DELAYS_MS = [180, 400, 800, 1_600, 3_000];
+  const MAX_PULL_QUERY_LENGTH = 256;
+  const PULL_STATES = /** @type {const} */ (["open", "draft", "closed", "merged"]);
   const PROVIDER_ACTIVATION_FALLBACK = "fallback";
   const PROVIDER_ACTIVATION_IMMEDIATE = "immediate";
   /** Default bounds for local result retention and cooperative scanning. */
@@ -73,7 +82,7 @@
    * @typedef {object} MetabrowserSearchRequest
    * @property {"fuzzy"} match
    * @property {string} query
-   * @property {"file"} target
+   * @property {"all" | "file"} target
    */
 
   /**
@@ -90,18 +99,39 @@
    * @property {number} score
    */
 
+  /** @typedef {(typeof PULL_STATES)[number]} MetabrowserSearchPullState */
+
+  /**
+   * @typedef {object} MetabrowserSearchPullResult
+   * @property {string} id
+   * @property {"pull"} kind
+   * @property {string} label
+   * @property {readonly Readonly<{start: number, end: number}>[]} matchRanges
+   * @property {number} number
+   * @property {string} providerId
+   * @property {number} score
+   * @property {MetabrowserSearchPullState} state
+   */
+
+  /** @typedef {MetabrowserSearchFileResult | MetabrowserSearchPullResult} MetabrowserSearchResult */
+
   /**
    * @typedef {object} MetabrowserSearchBatch
    * @property {number} [candidateCount]
    * @property {boolean} complete
    * @property {string} providerId
-   * @property {readonly MetabrowserSearchFileResult[]} results
+   * @property {readonly MetabrowserSearchResult[]} results
    * @property {number} [revision]
    * @property {string} [statusMessage]
    * @property {boolean} truncated
    */
 
-  /** @typedef {Readonly<{requestId: number}>} MetabrowserSearchContext */
+  /**
+   * @typedef {Readonly<{
+   *   requestId: number,
+   *   publishBatch?: (batch: MetabrowserSearchBatch) => void,
+   * }>} MetabrowserSearchContext
+   */
 
   /**
    * @typedef {object} MetabrowserSearchProvider
@@ -131,7 +161,7 @@
    * @property {"idle" | "searching" | "complete"} phase
    * @property {Readonly<MetabrowserSearchRequest> | null} request
    * @property {number} requestId
-   * @property {readonly MetabrowserSearchFileResult[]} results
+   * @property {readonly MetabrowserSearchResult[]} results
    * @property {string} statusMessage
    * @property {boolean} truncated
    */
@@ -160,8 +190,8 @@
     }
   }
 
-  /** @param {AbortSignal} signal */
-  function defaultYieldControl(signal) {
+  /** @param {AbortSignal} signal @param {number} [delayMs] */
+  function defaultYieldControl(signal, delayMs = 0) {
     if (signal.aborted) {
       return Promise.reject(abortError());
     }
@@ -169,13 +199,18 @@
       const timer = setTimeout(() => {
         signal.removeEventListener("abort", onAbort);
         resolve(undefined);
-      }, 0);
+      }, delayMs);
       function onAbort() {
         clearTimeout(timer);
         reject(abortError());
       }
       signal.addEventListener("abort", onAbort, { once: true });
     });
+  }
+
+  /** @param {string} query */
+  function isExplicitPullQuery(query) {
+    return query.trimStart().startsWith("#");
   }
 
   /** @param {number | undefined} value @param {number} fallback */
@@ -224,7 +259,11 @@
 
     /** @param {MetabrowserSearchRequest} request */
     function supports(request) {
-      return request.target === "file" && request.match === "fuzzy";
+      return (
+        request.match === "fuzzy" &&
+        (request.target === "file" ||
+          (request.target === "all" && !isExplicitPullQuery(request.query)))
+      );
     }
 
     /**
@@ -282,7 +321,7 @@
           path: file.path,
           providerId: LOCAL_FILE_PROVIDER_ID,
           rank: match.rank,
-          score: ordered.length - index,
+          score: (request.target === "all" ? maxResults : ordered.length) - index,
         });
       });
       const searchScope = fileCount(snapshot.observedCount, snapshot.complete ? "" : "indexed");
@@ -293,12 +332,16 @@
         : snapshot.truncated
           ? " Indexing stopped at the file limit."
           : " Scanning continues.";
+      const matching =
+        request.target === "all"
+          ? fileCount(matchCount, "matching")
+          : formattedMatchCount(matchCount);
       const statusMessage =
         results.length === 0
           ? `No matches in ${searchScope}.${coverage}`
           : snapshot.complete
-            ? `${formattedMatchCount(matchCount)}.`
-            : `${formattedMatchCount(matchCount)} in ${searchScope}.${coverage}`;
+            ? `${matching}.`
+            : `${matching} in ${searchScope}.${coverage}`;
       return Object.freeze({
         candidateCount: snapshot.observedCount,
         complete: snapshot.complete,
@@ -319,12 +362,202 @@
     });
   }
 
-  /** @param {MetabrowserSearchFileResult} result @param {string} providerId */
+  /**
+   * The catalog matches literal title terms. Highlight those terms in the
+   * original string so ranges remain valid even with astral characters.
+   * @param {string} query
+   */
+  function pullTitlePattern(query) {
+    const title = isExplicitPullQuery(query) ? query.slice(1).trim() : query;
+    if (title === "" || /^[0-9]+$/u.test(title)) {
+      return null;
+    }
+    const terms = title
+      .split(/\s+/u)
+      .sort((left, right) => right.length - left.length)
+      .map((term) => term.replace(/[.*+?^$(){}|[\]\\]/gu, "\\$&"));
+    return new RegExp(terms.join("|"), "giu");
+  }
+
+  /** @param {{fetch?: typeof fetch, maxResults?: number}} [options] */
+  function createPullProvider(options = {}) {
+    const read = options.fetch ?? ((resource, init) => window.fetch(resource, init));
+    const maxResults = positiveInteger(options.maxResults, LOCAL_SEARCH_DEFAULTS.maxResults);
+    /** @type {Promise<void> | null} */
+    let warmRequest = null;
+    /** @type {number | null} */
+    let warmStatus = null;
+    let warmAfter = 0;
+
+    function warmCatalog() {
+      const now = Date.now();
+      if (warmRequest !== null || now < warmAfter) {
+        return false;
+      }
+      warmAfter = now + PULL_WARM_COOLDOWN_MS;
+      warmStatus = null;
+      // Catalog work is shared with Pulls and outlives the query that asked
+      // for it. Retyping or closing the palette only cancels local reads.
+      warmRequest = Promise.resolve()
+        .then(() =>
+          read("/api/plugin/github/pulls-refresh", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ background: true }),
+            signal: AbortSignal.timeout(PULL_WARM_TIMEOUT_MS),
+          }),
+        )
+        .then(
+          (response) => {
+            warmStatus = response.status;
+          },
+          () => {
+            warmStatus = 0;
+          },
+        )
+        .finally(() => {
+          warmRequest = null;
+        });
+      return true;
+    }
+
+    /** @param {MetabrowserSearchRequest} request */
+    function supports(request) {
+      const query = request.query.trim();
+      return (
+        request.target === "all" &&
+        query.length > 0 &&
+        query.length <= MAX_PULL_QUERY_LENGTH * 2 &&
+        Array.from(query).length <= MAX_PULL_QUERY_LENGTH
+      );
+    }
+
+    /**
+     * @param {MetabrowserSearchRequest} request
+     * @param {MetabrowserSearchContext} context
+     * @param {AbortSignal} signal
+     * @returns {Promise<MetabrowserSearchBatch>}
+     */
+    async function search(request, context, signal) {
+      // Let file results paint as the reader types. Superseded queries never
+      // reach the server if they change again before this short pause.
+      await defaultYieldControl(signal, PULL_QUERY_DELAY_MS);
+      throwIfAborted(signal);
+      const query = request.query.trim();
+      const params = new URLSearchParams({ q: query });
+
+      /** @returns {Promise<{
+       *   rows: Array<{number: number, title: string, state: MetabrowserSearchPullState}>,
+       *   complete: boolean,
+       *   limited: boolean,
+       *   refreshing: boolean,
+       *   truncated: boolean,
+       * }>} */
+      async function lookup() {
+        const response = await read(`/api/plugin/github/pulls?${params}`, { signal });
+        if (!response.ok) {
+          throw new Error("Could not search cached pull requests.");
+        }
+        return response.json();
+      }
+
+      const exactNumber = /^[0-9]+$/u.test(query);
+      const titlePattern = pullTitlePattern(query);
+
+      /** @param {Awaited<ReturnType<typeof lookup>>} body @returns {MetabrowserSearchBatch} */
+      function toBatch(body) {
+        /** @type {MetabrowserSearchPullResult[]} */
+        const results = body.rows.slice(0, maxResults).flatMap((row, index) => {
+          if (
+            !Number.isSafeInteger(row.number) ||
+            row.number <= 0 ||
+            typeof row.title !== "string" ||
+            !PULL_STATES.includes(row.state)
+          ) {
+            return [];
+          }
+          return [
+            {
+              id: `pull:${row.number}`,
+              kind: "pull",
+              label: row.title,
+              matchRanges: titlePattern
+                ? Array.from(row.title.matchAll(titlePattern), (match) => ({
+                    start: match.index,
+                    end: match.index + match[0].length,
+                  }))
+                : [],
+              number: row.number,
+              providerId: PULL_PROVIDER_ID,
+              score: maxResults - index,
+              state: row.state,
+            },
+          ];
+        });
+        const statusMessage =
+          results.length > 0
+            ? `${results.length} pull ${results.length === 1 ? "request" : "requests"} shown.`
+            : body.refreshing
+              ? "The pull request catalog is still incomplete. Try again shortly."
+              : "No matching cached pull requests.";
+        const coverage = body.limited ? " Search by number for older pull requests." : "";
+        return {
+          complete: body.complete,
+          providerId: PULL_PROVIDER_ID,
+          results,
+          statusMessage: statusMessage + coverage,
+          truncated: body.truncated || body.rows.length > maxResults,
+        };
+      }
+
+      let body = await lookup();
+      throwIfAborted(signal);
+      if (
+        (!exactNumber || body.rows.length === 0) &&
+        (body.refreshing || !body.complete || (body.rows.length === 0 && !body.limited))
+      ) {
+        const asked = !body.refreshing && warmCatalog();
+        let mayHaveNewRows =
+          body.refreshing || asked || (warmRequest !== null && warmStatus === null);
+        let lastProgress = "";
+        for (const delayMs of PULL_RECHECK_DELAYS_MS) {
+          if (!mayHaveNewRows || (exactNumber && body.rows.length > 0)) {
+            break;
+          }
+          if (context.publishBatch && body.rows.length > 0) {
+            const progress = JSON.stringify(body);
+            if (progress !== lastProgress) {
+              lastProgress = progress;
+              context.publishBatch(toBatch(body));
+            }
+          }
+          await defaultYieldControl(signal, delayMs);
+          if (!body.refreshing && warmStatus !== null && warmStatus !== 202) {
+            break;
+          }
+          body = await lookup();
+          throwIfAborted(signal);
+          mayHaveNewRows = body.refreshing || (warmRequest !== null && warmStatus === null);
+        }
+      }
+      return toBatch(body);
+    }
+
+    return Object.freeze({
+      id: PULL_PROVIDER_ID,
+      priority: PULL_PROVIDER_PRIORITY,
+      search,
+      supports,
+    });
+  }
+
+  /** @param {MetabrowserSearchResult} result @param {string} providerId */
   function freezeResult(result, providerId) {
     const ranges = Array.isArray(result.matchRanges)
       ? result.matchRanges.map((range) => Object.freeze({ end: range.end, start: range.start }))
       : [];
-    const rank = result.rank ? Object.freeze({ ...result.rank }) : undefined;
+    const rank =
+      result.kind === "file" && result.rank ? Object.freeze({ ...result.rank }) : undefined;
     return Object.freeze({
       ...result,
       matchRanges: Object.freeze(ranges),
@@ -344,18 +577,24 @@
    * @param {number} maxResults
    */
   function composeResults(batches, registrations, maxResults) {
-    /** @type {Map<string, MetabrowserSearchFileResult>} */
-    const byPath = new Map();
+    /** @type {Map<string, MetabrowserSearchResult>} */
+    const byIdentity = new Map();
     for (const [providerId, batch] of batches) {
       const priority = registrations.get(providerId)?.priority ?? Number.MAX_SAFE_INTEGER;
       for (const rawResult of batch.results) {
-        if (rawResult?.kind !== "file" || typeof rawResult.path !== "string") {
+        if (
+          !rawResult ||
+          (rawResult.kind === "file"
+            ? typeof rawResult.path !== "string"
+            : rawResult.kind !== "pull")
+        ) {
           continue;
         }
         const result = freezeResult(rawResult, providerId);
-        const previous = byPath.get(result.path);
+        const identity = result.kind === "file" ? `file:${result.path}` : `pull:${result.number}`;
+        const previous = byIdentity.get(identity);
         if (!previous) {
-          byPath.set(result.path, result);
+          byIdentity.set(identity, result);
           continue;
         }
         const previousPriority =
@@ -367,18 +606,21 @@
             priority === previousPriority &&
             codeUnitCompare(result.providerId, previous.providerId) < 0)
         ) {
-          byPath.set(result.path, result);
+          byIdentity.set(identity, result);
         }
       }
     }
-    const allResults = Array.from(byPath.values()).sort((left, right) => {
+    const allResults = Array.from(byIdentity.values()).sort((left, right) => {
       const leftPriority = registrations.get(left.providerId)?.priority ?? Number.MAX_SAFE_INTEGER;
       const rightPriority =
         registrations.get(right.providerId)?.priority ?? Number.MAX_SAFE_INTEGER;
       return (
         right.score - left.score ||
         leftPriority - rightPriority ||
-        codeUnitCompare(left.path, right.path) ||
+        codeUnitCompare(
+          left.kind === "file" ? left.path : left.id,
+          right.kind === "file" ? right.path : right.id,
+        ) ||
         codeUnitCompare(left.providerId, right.providerId)
       );
     });
@@ -563,13 +805,12 @@
         publishComposition("searching");
         await Promise.all(
           providers.map(async ({ provider }) => {
-            try {
-              const batch = await provider.search(
-                request,
-                Object.freeze({ requestId }),
-                controller.signal,
-              );
-              if (controller.signal.aborted || active?.requestId !== requestId) {
+            let acceptingProgress = true;
+            const isCurrent = () => !controller.signal.aborted && active?.requestId === requestId;
+
+            /** @param {MetabrowserSearchBatch} batch */
+            function publishBatch(batch) {
+              if (!isCurrent()) {
                 return;
               }
               batches.set(
@@ -582,16 +823,29 @@
                   truncated: batch.truncated === true,
                 }),
               );
+              publishComposition("searching");
+            }
+
+            try {
+              const context = Object.freeze({
+                requestId,
+                /** @param {MetabrowserSearchBatch} batch */
+                publishBatch: (batch) => {
+                  if (acceptingProgress) {
+                    publishBatch(batch);
+                  }
+                },
+              });
+              const batch = await provider.search(request, context, controller.signal);
+              publishBatch(batch);
             } catch (error) {
-              if (controller.signal.aborted || active?.requestId !== requestId) {
-                return;
-              }
-              const detail = error instanceof Error ? error.message : String(error);
-              errors.set(provider.id, `${provider.id}: ${detail}`);
-            } finally {
-              if (!controller.signal.aborted && active?.requestId === requestId) {
+              if (isCurrent()) {
+                const detail = error instanceof Error ? error.message : String(error);
+                errors.set(provider.id, `${provider.id}: ${detail}`);
                 publishComposition("searching");
               }
+            } finally {
+              acceptingProgress = false;
             }
           }),
         );
@@ -649,5 +903,10 @@
     return Object.freeze({ cancel, dispose, registerProvider, search, state, subscribe });
   }
 
-  window.MetabrowserSearch = Object.freeze({ createController, createLocalFileProvider });
+  window.MetabrowserSearch = Object.freeze({
+    createController,
+    createLocalFileProvider,
+    createPullProvider,
+    isExplicitPullQuery,
+  });
 })();

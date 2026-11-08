@@ -51,6 +51,7 @@ type PullDataState = Literal[
     "rate_limited",
     "not_found_or_private",
     "network_error",
+    "github_unavailable",
     "gh_failed",
     "account_changed",
     "head_mismatch",

@@ -10,6 +10,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+const assert = require("node:assert/strict");
 
 const repoRoot = path.resolve(__dirname, "../..");
 const staticDir = path.join(repoRoot, "src/metabrowser/static");
@@ -140,6 +141,7 @@ function createShell(
     },
     container: () => ({}),
     scrollRoot: () => ({}),
+    pageFor: (number) => shell.pages?.get(number) ?? null,
     openPull(route) {
       log.push(`opened pull request ${route.number}`);
       return Promise.resolve({ status: "opened" });
@@ -214,19 +216,22 @@ async function run() {
   host.dispose();
   log.push({ "the page goes: it is disposed": page.take(), snapshot: host.snapshot() });
 
-  // Elsewhere on a checkout: nothing is read ahead, so the cache and gh wait for the reader.
+  // A checkout uses the same post-startup metadata warmup as a managed repository.
   page = createShell("/view/README.md", { checkout: true });
   host = nav.createPullsNav(page.deps);
   log = story("a checkout's page at a file");
   host.start();
-  log.push({ "the shell starts it: no read ahead": page.take(), snapshot: host.snapshot() });
+  log.push({
+    "the shell starts it: idle warmup scheduled": page.take(),
+    snapshot: host.snapshot(),
+  });
   page.runPrefetch();
   await settle();
-  log.push({ "so nothing mounts while the tab is not shown": page.take() });
+  log.push({ "the idle read mounts it, hidden": page.take() });
   page.deps.activate("pulls");
   await settle();
   log.push({
-    "the tab opens: the view mounts, shown": page.take(),
+    "the tab opens: the warmed view is shown": page.take(),
     "what it is handed": {
       refreshAhead: page.shell.host.refreshAhead,
       checkout: page.shell.host.checkout,
@@ -371,6 +376,7 @@ async function run() {
   return {
     "the page's host": await pageHostStory(),
     "the two trees": await twoTreesStory(),
+    "stack keys": await stackKeysStory(),
     addresses,
     stories,
     keys,
@@ -385,6 +391,139 @@ async function run() {
     },
     "keys when no row has focus": outsideRows,
     "groups once unregistered": rebuilt,
+  };
+}
+
+/** Stack commands use the active page capability and the real registry's global guards. */
+async function stackKeysStory() {
+  const { nav, shortcuts } = modules;
+  const page = createShell("/pull/7/checks", { active: "pulls" });
+  let known = true,
+    endpoint = false;
+  const moves = [];
+  const renderer = {
+    hasStack: () => known,
+    moveStack(delta) {
+      if (!known) {
+        return false;
+      }
+      moves.push(endpoint ? "endpoint" : delta);
+      return true;
+    },
+  };
+  page.shell.pages = new Map([[7, renderer]]);
+  const host = nav.createPullsNav(page.deps);
+  host.start();
+  await settle();
+  page.take();
+  let dispatch;
+  const registry = shortcuts.create({
+    document: {
+      addEventListener: (_type, listener) => {
+        dispatch = listener;
+      },
+      removeEventListener() {},
+    },
+  });
+  const unregister = nav.registerKeys(host, registry);
+  const press = (key, values = {}) => {
+    const event = {
+      key,
+      shiftKey: true,
+      repeat: false,
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      isComposing: false,
+      defaultPrevented: false,
+      target: { tagName: "DIV" },
+      preventDefault() {
+        this.defaultPrevented = true;
+      },
+      ...values,
+    };
+    dispatch(event);
+    return event.defaultPrevented;
+  };
+  assert(press("J"));
+  assert(press("K"));
+  assert.deepEqual(moves, [-1, 1], "global direction reaches the active subtab without row focus");
+  const rowScope = registry.activateScope("pull-rows");
+  const plainJ = press("j", { shiftKey: false });
+  assert(plainJ);
+  assert.deepEqual(page.take(), ["view told: move 1"]);
+  assert.equal(press("J", { repeat: true }), false);
+  assert.equal(press("J", { target: { tagName: "INPUT" } }), false);
+  assert.equal(press("J", { target: { tagName: "DIV", isContentEditable: true } }), false);
+  const closeHelp = registry.activateScope("help", { exclusive: true });
+  assert.equal(press("J"), false);
+  closeHelp();
+  const closeModal = registry.activateScope("dialog", { exclusive: true });
+  assert.equal(press("K"), false);
+  closeModal();
+  assert.deepEqual(moves, [-1, 1], "repeat, editor, Help and modal never navigate");
+  endpoint = true;
+  assert(press("J"));
+  assert.equal(moves.at(-1), "endpoint", "endpoint is consumed without a row fallback");
+  assert.deepEqual(page.take(), []);
+  endpoint = false;
+  known = false;
+  assert.equal(press("K"), false);
+  known = true;
+  assert(press("K"), "newly known membership becomes available without re-registration");
+  page.shell.pages.set(7, {});
+  assert.equal(press("J"), false, "custom PR pages may omit stack navigation");
+  page.shell.pages.set(7, { hasStack: () => true });
+  assert.equal(press("J"), false, "a partial capability cannot consume navigation");
+  page.shell.pages.set(7, renderer);
+  page.deps.activate("files");
+  assert.equal(press("J"), false, "a hidden Pulls panel does not own a global command");
+  page.deps.activate("pulls");
+  page.shell.address = new URL("/pulls", "http://x");
+  assert.equal(press("J"), false, "the list has no active PR stack");
+  page.shell.address = new URL("/view/README.md", "http://x");
+  assert.equal(press("K"), false, "another preview does not reuse an old PR capability");
+  page.shell.address = new URL("/pull/7/checks", "http://x");
+  const help = registry
+    .snapshot("help", { includeInactive: true })
+    .find((group) => group.id === "pull-stack");
+  const copy = help.commands.map((command) => ({
+    keys: command.bindings.spoken,
+    action: command.copy.action,
+  }));
+  assert.deepEqual(
+    Array.from(copy, (entry) => entry.keys),
+    ["Shift plus J", "Shift plus K"],
+  );
+  const visible = registry.present("pulls.stack.base").bindings.visible[0].keys;
+  assert.deepEqual(Array.from(visible), ["⇧", "J"]);
+  host.dispose();
+  assert.equal(press("J"), false, "disposed pages cannot navigate even before registry cleanup");
+  rowScope();
+  for (const remove of unregister) {
+    remove();
+  }
+  assert.equal(registry.present("pulls.stack.base"), null);
+  registry.dispose();
+  return {
+    directions: moves.slice(0, 2),
+    endpointConsumed: true,
+    plainJRemainsRowNavigation: plainJ,
+    guards: [
+      "repeat",
+      "input",
+      "contenteditable",
+      "Help",
+      "modal",
+      "unknown membership",
+      "custom renderer",
+      "hidden tab",
+      "list",
+      "other preview",
+      "disposed",
+    ],
+    help: copy,
+    cleanup: true,
   };
 }
 
@@ -426,6 +565,7 @@ async function pageHostStory() {
   Object.assign(context, {
     MetabrowserAssets: { ensureAsset: async () => {} },
     MetabrowserShell: {
+      rememberMainTabAddress() {},
       registerNavPanel(registered) {
         panel = registered;
       },
@@ -804,6 +944,7 @@ function twoTreesPage() {
     MetabrowserKeyboardHelp: { create: () => ({ dispose() {} }) },
     MetabrowserAssets: { ensureAsset: async () => {} },
     MetabrowserShell: {
+      rememberMainTabAddress() {},
       registerNavPanel(panel) {
         shell.panel = panel;
       },
@@ -934,6 +1075,7 @@ function twoTreesPage() {
   const shellSource = [
     ...[
       "shortcutRegistry",
+      "mainTabs",
       "keyboardHelp",
       "treeKeyboard",
       "applicationFocusRegion",

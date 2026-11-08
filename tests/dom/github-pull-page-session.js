@@ -285,6 +285,7 @@ function createPage(runtime, options) {
     },
   };
   const controller = runtime.createPullController(deps, options);
+  const isAskDelay = (delayMs) => delayMs === 0 || delayMs === runtime.REFRESH_ASK_MS;
 
   async function settle() {
     for (let turn = 0; turn < 20; turn += 1) {
@@ -313,9 +314,7 @@ function createPage(runtime, options) {
       navigations = [];
       await action();
       await settle();
-      const [timer] = [...timers.values()].filter(
-        (each) => each.delayMs !== runtime.REFRESH_ASK_MS,
-      );
+      const timer = [...timers.values()].find((each) => !isAskDelay(each.delayMs));
       const snapshot = controller.snapshot();
       const entry = {
         step: name,
@@ -356,17 +355,13 @@ function createPage(runtime, options) {
     },
     /** The poll that is due. */
     fire() {
-      const [[id, timer]] = [...timers.entries()].filter(
-        ([, each]) => each.delayMs !== runtime.REFRESH_ASK_MS,
-      );
+      const [id, timer] = [...timers.entries()].find(([, each]) => !isAskDelay(each.delayMs));
       timers.delete(id);
       timer.callback();
     },
-    /** The ask a stale page has waiting: the reader stayed. */
-    fireAsk() {
-      const [[id, timer]] = [...timers.entries()].filter(
-        ([, each]) => each.delayMs === runtime.REFRESH_ASK_MS,
-      );
+    /** A cold page asks immediately; a stale page waits for the reader to stay. */
+    fireAsk(delayMs = runtime.REFRESH_ASK_MS) {
+      const [[id, timer]] = [...timers.entries()].filter(([, each]) => each.delayMs === delayMs);
       timers.delete(id);
       timer.callback();
     },
@@ -774,15 +769,34 @@ async function main() {
 
   server.pull = recorded.absent;
   steps.push(await page.step("open with nothing cached", () => controller.start()));
-  steps.push(await page.step("an unchanged answer is a 304", async () => page.fire()));
-
   server.refresh.push(recorded.refresh_started);
-  steps.push(await page.step("fetch it", () => controller.requestRefresh()));
+  steps.push(await page.step("a visible cold page fetches itself", async () => page.fireAsk(0)));
   server.pull = recorded.pending;
   steps.push(await page.step("still fetching", async () => page.fire()));
 
   server.pull = recorded.current;
   steps.push(await page.step("the record arrives", async () => page.fire()));
+  steps.push(await page.step("an unchanged answer is a 304", async () => page.fire()));
+
+  const hiddenCold = createPage(runtime, { number: 7, tab: "", brief: true });
+  hiddenCold.setVisible(false);
+  hiddenCold.server.pull = recorded.absent;
+  const hiddenOpen = await hiddenCold.step("open a cold page in the background", () =>
+    hiddenCold.controller.start(),
+  );
+  assert(hiddenOpen.requests.length === 1 && hiddenOpen.requests[0].startsWith("GET "));
+  assert(hiddenCold.timersLeft() === 0, "a hidden cold page schedules no network work");
+  hiddenCold.setVisible(true);
+  hiddenCold.server.refresh.push(recorded.refresh_started);
+  await hiddenCold.step("show it", () => hiddenCold.controller.onVisibilityChange());
+  const hiddenFetch = await hiddenCold.step("it fetches now", async () => hiddenCold.fireAsk(0));
+  assert(
+    hiddenFetch.requests.includes(
+      'POST /api/plugin/github/pull-refresh {"number":7,"retry":true,"wait_core":true}',
+    ),
+    "a newly visible cold page fills its cache",
+  );
+  hiddenCold.controller.dispose();
 
   server.markdown.set("body", recorded["markdown body"]);
   server.markdown.set(`issue_comment/${comment}`, recorded["markdown issue_comment"]);
@@ -836,7 +850,7 @@ async function main() {
     ),
   );
 
-  steps.push(await page.step("open Files changed", async () => controller.setTab("files")));
+  steps.push(await page.step("open Changes", async () => controller.setTab("files")));
   steps.push(await page.step("back to the conversation", async () => controller.setTab("")));
 
   page.clock.now = Date.parse("2026-09-17T12:05:30Z");
@@ -983,13 +997,21 @@ async function main() {
   behind.server.pin.push(recorded.switch_to_head);
   steps.push(await behind.step("taking the offer reloads", () => behind.controller.switchToHead()));
 
-  // A pull request with no record is fetched only by a reader's press: however often the
-  // page is read and shown, nothing else asks. Past the bound on jobs the press is refused,
-  // and the page says why and still offers it.
+  // A previous failed attempt leaves a manual Fetch. Reopening or showing the page
+  // does not keep retrying, and a refused manual request explains why it stopped.
   const absent = createPage(runtime, { number: 14, tab: "", brief: true });
-  absent.server.pull = recorded.absent_14;
+  absent.clock.now = failing.clock.now;
+  absent.server.pull = {
+    ...recorded.absent_14,
+    body: {
+      ...recorded.absent_14.body,
+      last_refresh: recorded.failed.body.last_refresh,
+    },
+  };
   steps.push(
-    await absent.step("an address alone reads what is cached", () => absent.controller.start()),
+    await absent.step("a cold page with an earlier failure leaves Fetch available", () =>
+      absent.controller.start(),
+    ),
   );
   steps.push(await absent.step("polling it asks for no fetch", async () => absent.fire()));
   absent.setVisible(false);
@@ -1000,6 +1022,7 @@ async function main() {
       absent.controller.onVisibilityChange(),
     ),
   );
+  assert(absent.timersLeft() === 1, "an earlier failure leaves only the normal poll");
   absent.server.refresh.push(recorded.too_many);
   steps.push(
     await absent.step("a press past the bound is refused and says why", () =>
@@ -1022,6 +1045,8 @@ async function main() {
       unknownTab.controller.setTab("commits"),
     ),
   );
+
+  unknownTab.controller.dispose();
 
   // What the header says, and how the checks are counted, for an open, a merged, and a
   // closed pull request, each as the served server answered it.
@@ -1208,6 +1233,9 @@ async function main() {
     ["/pull/7/files", 7, "files"],
     ["/pull/7/files/src/app.py", 7, "files"],
     ["/pull/7/files/src/app.py", 7, ""],
+    ["/pull/7/checks", 7, "checks"],
+    ["/pull/7/checks", 7, ""],
+    ["/pull/7/checks/src/app.py", 7, "checks"],
     ["/pull/70/files", 7, "files"],
     ["/pull/7/filesx", 7, "files"],
     ["/pull/8/files/src/app.py", 7, "files"],

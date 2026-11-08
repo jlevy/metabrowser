@@ -15,7 +15,8 @@
       "refreshing": false,
       "last_refresh": null,
       "comparison_route": null,
-      "record": null
+      "record": null,
+      "core_preview": null
     }
   },
   "refresh_started": {
@@ -36,7 +37,8 @@
         "refreshing": true,
         "last_refresh": null,
         "comparison_route": null,
-        "record": null
+        "record": null,
+        "core_preview": null
       },
       "status_route": "/api/plugin/github/pull?number=7"
     }
@@ -57,7 +59,8 @@
       "refreshing": true,
       "last_refresh": null,
       "comparison_route": null,
-      "record": null
+      "record": null,
+      "core_preview": null
     }
   },
   "current": {
@@ -251,7 +254,8 @@
           "text": false
         },
         "unavailable": {}
-      }
+      },
+      "core_preview": null
     }
   },
   "markdown body": {
@@ -349,7 +353,8 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "record": {
         "same_as": "current"
-      }
+      },
+      "core_preview": null
     }
   },
   "stale": {
@@ -375,7 +380,8 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "record": {
         "same_as": "current"
-      }
+      },
+      "core_preview": null
     }
   },
   "refresh_again": {
@@ -403,7 +409,8 @@
         "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
         "record": {
           "same_as": "current"
-        }
+        },
+        "core_preview": null
       },
       "status_route": "/api/plugin/github/pull?number=7"
     }
@@ -431,7 +438,8 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=85fcb2fa9e77eb5db485ffef445cbbc645d6db4a&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "record": {
         "same_as": "current"
-      }
+      },
+      "core_preview": null
     }
   },
   "refreshed_unchanged": {
@@ -625,7 +633,8 @@
           "text": false
         },
         "unavailable": {}
-      }
+      },
+      "core_preview": null
     }
   },
   "refreshed": {
@@ -828,7 +837,8 @@
           "text": false
         },
         "unavailable": {}
-      }
+      },
+      "core_preview": null
     }
   },
   "markdown added": {
@@ -1202,7 +1212,8 @@
           "text": false
         },
         "unavailable": {}
-      }
+      },
+      "core_preview": null
     }
   },
   "closed": {
@@ -1322,7 +1333,8 @@
           "text": false
         },
         "unavailable": {}
-      }
+      },
+      "core_preview": null
     }
   },
   "merged_unattributed": {
@@ -1440,7 +1452,8 @@
           "text": false
         },
         "unavailable": {}
-      }
+      },
+      "core_preview": null
     }
   },
   "failed": {
@@ -1466,7 +1479,8 @@
       "comparison_route": "/api/plugin/github/pull-comparison?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base&build=<BUILD>&store=<STORE>",
       "record": {
         "same_as": "merged_unattributed"
-      }
+      },
+      "core_preview": null
     }
   },
   "not_due": {
@@ -1494,7 +1508,8 @@
         "comparison_route": "/api/plugin/github/pull-comparison?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base&build=<BUILD>&store=<STORE>",
         "record": {
           "same_as": "merged_unattributed"
-        }
+        },
+        "core_preview": null
       },
       "status_route": "/api/plugin/github/pull?number=8"
     }
@@ -1524,7 +1539,8 @@
         "comparison_route": "/api/plugin/github/pull-comparison?number=8&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=8ae27617c9c475851b67ee69433d008836d112ba&base_policy=merge_base&build=<BUILD>&store=<STORE>",
         "record": {
           "same_as": "merged_unattributed"
-        }
+        },
+        "core_preview": null
       },
       "status_route": "/api/plugin/github/pull?number=8"
     }
@@ -1705,7 +1721,8 @@
           "text": false
         },
         "unavailable": {}
-      }
+      },
+      "core_preview": null
     }
   },
   "absent_14": {
@@ -1724,7 +1741,8 @@
       "refreshing": false,
       "last_refresh": null,
       "comparison_route": null,
-      "record": null
+      "record": null,
+      "core_preview": null
     }
   },
   "too_many": {
@@ -1745,7 +1763,8 @@
         "refreshing": false,
         "last_refresh": null,
         "comparison_route": null,
-        "record": null
+        "record": null,
+        "core_preview": null
       },
       "status_route": "/api/plugin/github/pull?number=14",
       "error": "too many pull requests are being fetched; try again when one has finished",
@@ -1768,7 +1787,8 @@
       "refreshing": false,
       "last_refresh": null,
       "comparison_route": null,
-      "record": null
+      "record": null,
+      "core_preview": null
     }
   }
 }

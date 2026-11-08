@@ -158,6 +158,9 @@
   /** @type {Promise<void> | null} */
   let rangeLoadPromise = null;
   let historyGeneration = 0;
+  let landingGeneration = 0;
+  /** @type {{generation: number, pending: ReturnType<typeof readRepoInfo>} | null} */
+  let repoInfoRead = null;
   let historyAbortController = new AbortController();
   /** @type {HTMLElement | null} */
   let scrollOwner = null;
@@ -285,11 +288,12 @@
     const compact = options.compact === true;
     const summaryClass = compact
       ? "git-commit-summary git-commit-summary-compact"
-      : "git-commit-summary";
+      : "git-commit-summary page-reading-column";
     const subjectTag = compact ? "div" : "h1";
+    const subjectClass = compact ? "git-commit-subject" : "git-commit-subject page-heading";
     let html = `<section class="${summaryClass}" aria-label="Commit summary">`;
     html += '<div class="git-commit-header">';
-    html += `<${subjectTag} class="git-commit-subject">${escapeHtml(commit.subject)}</${subjectTag}>`;
+    html += `<${subjectTag} class="${subjectClass}">${escapeHtml(commit.subject)}</${subjectTag}>`;
     html += '<div class="git-commit-meta">';
     html += '<span class="git-commit-identity">';
     html += '<span class="git-commit-revision">';
@@ -318,7 +322,7 @@
     html += renderCommitChangeStats(stats);
     html += "</div>";
     if (!compact && detail.body) {
-      html += `<pre class="git-commit-body">${escapeHtml(detail.body)}</pre>`;
+      html += `<pre class="git-commit-body page-card">${escapeHtml(detail.body)}</pre>`;
     }
     html += "</section>";
     return html;
@@ -389,7 +393,21 @@
    *
    * @returns {Promise<MetabrowserGitRepoInfo | null>}
    */
-  async function fetchRepoInfo() {
+  function fetchRepoInfo() {
+    const generation = historyGeneration;
+    if (repoInfoRead?.generation === generation) {
+      return repoInfoRead.pending;
+    }
+    const pending = readRepoInfo().finally(() => {
+      if (repoInfoRead?.pending === pending) {
+        repoInfoRead = null;
+      }
+    });
+    repoInfoRead = { generation, pending };
+    return pending;
+  }
+
+  async function readRepoInfo() {
     try {
       const response = await apiFetch("/api/git/repo");
       if (!response.ok) {
@@ -1365,7 +1383,7 @@
     }
 
     if (state.rowCount === 0 && (state.loading || viewHelpersPending !== null)) {
-      // The first paint of the Git tab: the row geometry is known before
+      // The first paint of the Commits tab: the row geometry is known before
       // the data, so it is drawn as skeleton rows rather than announced.
       const skeleton = document.createElement("div");
       skeleton.className = "git-history-skeleton git-history-skeleton-first mb-delayed-loading";
@@ -1413,7 +1431,7 @@
   }
 
   /**
-   * The header tally above the graph — the Git tab's counterpart of the
+   * The header tally above the graph — the Commits tab's counterpart of the
    * file tree's summary row, deliberately under its own class names:
    * app.js live-patches the document's first `.tree-summary`, so this
    * row must not present itself as one. Pending until the summary
@@ -1660,7 +1678,14 @@
     // the history compete with the commit the reader actually selected.
     hoverTimer = setTimeout(async () => {
       hoverTimer = null;
-      const preparation = prepareRevision(revision, true);
+      // Hover still reads detail for the tooltip, but the current selection
+      // already owns this comparison. Another preview owner invalidates the
+      // claim, so returning to the same row can prepare it again.
+      const selectedHere =
+        state.selectedId === revision &&
+        lastSelection?.revision === revision &&
+        shell()?.isPreviewClaimCurrent(lastSelection.claim);
+      const preparation = selectedHere ? null : prepareRevision(revision, true);
       const detail = await (preparation?.detail ?? fetchCommitDetail(revision));
       if (!detail) {
         return;
@@ -1701,6 +1726,16 @@
       shell()?.endPreviewNavigation(pendingPreviewClaim);
       pendingPreviewClaim = null;
     }
+  }
+
+  /** Stop work relinquished to another preview owner, retaining the useful DOM and history. */
+  function cancelPending() {
+    landingGeneration += 1;
+    clearPendingState();
+    cancelHover();
+    abortPreparation(preparationSlot);
+    preparationSlot = null;
+    commitDiffHandle?.cancelPending?.();
   }
 
   /** @returns {Promise<void>} */
@@ -1861,7 +1896,7 @@
 
   /**
    * @param {string} revision
-   * @param {{fromRoute?: boolean, rowElement?: HTMLElement}} [options]
+   * @param {{fromRoute?: boolean, cachedOnly?: boolean, rowElement?: HTMLElement}} [options]
    *   `fromRoute` when the URL is already this commit (restore on load), so
    *   the route is not rewritten. Pointer and keyboard paths pass their row
    *   so immediate feedback does not search the mounted history.
@@ -1875,6 +1910,8 @@
     let selectionClaim = null;
     /** @type {HTMLElement | null} */
     let selectedRowForAnchor = null;
+    /** @type {RevisionPreparation | null} */
+    let selectedPreparation = null;
     return measureAsync(
       "gitRevision:selectToReady",
       async () => {
@@ -1910,6 +1947,7 @@
                   typeof window.history?.replaceState === "function"
                 ) {
                   window.history.replaceState(null, "", routes.commitHref(revision));
+                  bridge.rememberMainTabAddress();
                 }
                 state.selectedId = revision;
               },
@@ -1961,6 +1999,7 @@
         }
 
         const preparation = prepareRevision(revision, false);
+        selectedPreparation = preparation;
         if (!preparation) {
           clearPendingState();
           return;
@@ -1990,7 +2029,20 @@
         }
         if (!detail) {
           disposeCommitDiff();
-          if (missingRevisions.has(revision)) {
+          if (missingRevisions.has(revision) && options.cachedOnly) {
+            bridge.renderPreviewNode(
+              missingCommitNode(
+                {
+                  state: "not_found",
+                  title: "Commit not found",
+                  detail: "This commit is not available in the local repository.",
+                  retry: false,
+                },
+                null,
+              ),
+              previewClaim,
+            );
+          } else if (missingRevisions.has(revision)) {
             // Waits for the first state only, so the pane stays busy until it shows
             // one; a mirror's fetch from the origin continues after it.
             await showMissingCommit(revision, previewClaim);
@@ -2033,7 +2085,7 @@
       if (selectionClaim !== null && pendingPreviewClaim === selectionClaim) {
         clearPendingState();
       }
-      if (preparationSlot?.revision === revision && !preparationSlot.speculative) {
+      if (preparationSlot === selectedPreparation && !preparationSlot?.speculative) {
         preparationSlot = null;
       }
     });
@@ -2095,21 +2147,32 @@
     const diffPreparation = preparation ?? {
       ...beginDiffPreparation(commit.id, null),
     };
-    const nextHandle = await mountCommitDiff(stage, commit.id, diffPreparation);
-    if (state.selectedId !== commit.id || !bridge.isPreviewClaimCurrent(previewClaim)) {
-      nextHandle?.dispose?.();
+    // Keep the previous view visible while the diff measures a connected,
+    // inert stage. A detached mount has no viewport geometry and draws every
+    // hydrated file when its first width arrives.
+    const unstage = bridge.stagePreviewNode(stage, previewClaim);
+    if (!unstage) {
       return;
     }
+    try {
+      const nextHandle = await mountCommitDiff(stage, commit.id, diffPreparation, previewClaim);
+      if (state.selectedId !== commit.id || !bridge.isPreviewClaimCurrent(previewClaim)) {
+        nextHandle?.dispose?.();
+        return;
+      }
 
-    wireCommitFileNavigation(stage);
-    const preview = bridge.renderPreviewNode(stage, previewClaim);
-    if (!preview) {
-      nextHandle?.dispose?.();
-      return;
+      wireCommitFileNavigation(stage);
+      const preview = bridge.renderPreviewNode(stage, previewClaim);
+      if (!preview) {
+        nextHandle?.dispose?.();
+        return;
+      }
+      const previousHandle = commitDiffHandle;
+      commitDiffHandle = nextHandle || null;
+      previousHandle?.dispose?.();
+    } finally {
+      unstage();
     }
-    const previousHandle = commitDiffHandle;
-    commitDiffHandle = nextHandle || null;
-    previousHandle?.dispose?.();
   }
 
   /** @param {HTMLElement} root */
@@ -2133,9 +2196,10 @@
    * @param {HTMLElement} preview
    * @param {string} revision
    * @param {{assets: Promise<void>, comparison?: Promise<unknown>}} preparation
+   * @param {MetabrowserPreviewClaim} claim
    * @returns {Promise<{cancelPending?: () => void, dispose?: () => void} | null>}
    */
-  async function mountCommitDiff(preview, revision, preparation) {
+  async function mountCommitDiff(preview, revision, preparation, claim) {
     const host = preview.querySelector(".git-commit-diff");
     const bridge = shell();
     if (!(host instanceof HTMLElement) || !bridge) {
@@ -2146,8 +2210,15 @@
       host.remove();
       return null;
     }
+    // Another owner removes the staged node immediately. Never invoke the
+    // renderer on that detached tree when its earlier preparation resolves.
+    const current = () =>
+      state.selectedId === revision && bridge.isPreviewClaimCurrent(claim) && host.isConnected;
     try {
       await preparation.assets;
+      if (!current()) {
+        return null;
+      }
       const view = pluginSdk.getRegisteredView("diff", "diff");
       if (!view) {
         // The diff plugin is absent: the file list above still stands on
@@ -2155,12 +2226,17 @@
         host.remove();
         return null;
       }
-      return measureAsync(
+      return await measureAsync(
         "gitRevision:diffMount",
-        async () =>
-          /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */ (
-            await view.render(host, { revision, raw: preparation.comparison })
-          ),
+        async () => {
+          const raw = await preparation.comparison;
+          if (!current()) {
+            return null;
+          }
+          return /** @type {{cancelPending?: () => void, dispose?: () => void} | null} */ (
+            await view.render(host, { revision, raw })
+          );
+        },
         { revision },
       );
     } catch (_error) {
@@ -2415,6 +2491,9 @@
     // activation is what catches that; the response is TTL-cached
     // server-side, so a tab switch that changes nothing costs nothing.
     const info = await fetchRepoInfo();
+    if (generation !== historyGeneration) {
+      return;
+    }
     if (!info) {
       // The served root stopped being a repository under us.
       teardown();
@@ -2485,9 +2564,11 @@
    * @returns {Promise<void>}
    */
   async function restoreCommitLanding() {
+    const landing = ++landingGeneration;
     const routes = window.MetabrowserNavigationRoute;
     const bridge = shell();
-    const wanted = routes?.parseCommit?.(window.location?.pathname ?? "")?.revision;
+    const pathname = window.location?.pathname ?? "";
+    const wanted = routes?.parseCommit?.(pathname)?.revision;
     if (!wanted || !bridge) {
       return;
     }
@@ -2504,9 +2585,14 @@
       if (
         started &&
         viewHelpersReady &&
-        routes.parseCommit(window.location.pathname)?.revision === wanted
+        landing === landingGeneration &&
+        window.location.pathname === pathname &&
+        !(lastSelection?.revision === wanted && bridge.isPreviewClaimCurrent(lastSelection.claim))
       ) {
-        await selectCommit(wanted, { fromRoute: true });
+        await selectCommit(wanted, {
+          fromRoute: true,
+          cachedOnly: window.history.state?.cachedCommit === true,
+        });
       }
     } catch (error) {
       console.error(
@@ -2518,7 +2604,7 @@
   }
 
   /**
-   * Register the Git tab if the served root is a repository.
+   * Register the Commits tab if the served root is a repository.
    *
    * The deferred shell awaits registration. The required view helpers load when
    * Git is shown (including a commit landing), with an in-panel retry on failure.
@@ -2550,7 +2636,7 @@
 
     bridge.registerNavPanel({
       id: "git",
-      label: "Git",
+      label: "Commits",
       onFirstShow: null,
       onShow: () => {
         void ensureHistory();
@@ -2568,6 +2654,8 @@
 
   window.MetabrowserGitPanel = Object.freeze({
     init,
+    cancelPending,
+    restoreCommitLanding,
     // Exposed for tests, which drive the panel without a network.
     _internals: {
       appendPage,

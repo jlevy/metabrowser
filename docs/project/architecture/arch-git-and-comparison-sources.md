@@ -392,7 +392,7 @@ the first screen. The routes also appear in the
 Four rules hold across all of them:
 
 - **`/api/git/repo` is the gate.** When it reports `is_repo: false` the browser never
-  renders the Git tab, and every other route returns the same negative envelope with
+  renders the Commits tab, and every other route returns the same negative envelope with
   **HTTP 200**. “Not a repository” and “git is not installed” are ordinary states of the
   world; a 4xx would route them into the browser’s error path.
 - **Revisions are validated before reaching an argument vector.** `is_full_revision`

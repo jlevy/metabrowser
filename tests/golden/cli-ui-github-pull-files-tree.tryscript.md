@@ -161,7 +161,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "after.js"
       ]
     },
-    "only automatic row expansions close when the page moves": [
+    "only file-address expansions close when the page moves": [
       {
         "expand": [
           7
@@ -342,7 +342,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "not_found_or_private",
-        "says": "The repository was not found, or the signed-in account cannot read its pull requests."
+        "says": "The pull request was not found, or the signed-in account cannot read its files."
       },
       "network_error": {
         "status": "stale",
@@ -351,7 +351,7 @@ $ node tests/dom/github-pull-files-tree-session.js
         "capped": false,
         "truncated": false,
         "failure": "network_error",
-        "says": "Offline, or GitHub could not be reached. The list is as it was last fetched."
+        "says": "Offline, or GitHub could not be reached. The files are as they were last listed."
       },
       "gh_failed": {
         "status": "stale",
@@ -419,20 +419,9 @@ $ node tests/dom/github-pull-files-tree-session.js
       ]
     },
     {
-      "step": "Retry reads the cache; an address alone fetches nothing",
+      "step": "Retry reads the cache and automatically lists missing files",
       "requests": [
-        "GET /api/plugin/github/pull-files?number=106&offset=0"
-      ],
-      "held": 0,
-      "current": null,
-      "notice": "Its changed files have not been listed yet.",
-      "timers": [
-        60000
-      ]
-    },
-    {
-      "step": "a reader's expansion asks for an uncached list",
-      "requests": [
+        "GET /api/plugin/github/pull-files?number=106&offset=0",
         "POST /api/plugin/github/pull-files-refresh {\"number\":106,\"retry\":false}"
       ],
       "held": 0,

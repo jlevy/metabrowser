@@ -123,6 +123,7 @@ def test_a_pull_request_it_cannot_open_serves_the_default_branch_and_says_why(
         ("", "/pull/7", "Selection: pull_request\n"),
         ("/files", "/pull/7/files", "Selection: pull_request files\n"),
         ("/files/", "/pull/7/files", "Selection: pull_request files\n"),
+        ("/checks?check_run_id=987", "/pull/7/checks", "Selection: pull_request checks\n"),
         # The page has no Commits tab, so GitHub's opens the page itself.
         ("/commits", "/pull/7", "Selection: pull_request\n"),
         (f"/commits/{SECOND_COMMIT[:7]}", "/view/", "Selection: commit\n"),

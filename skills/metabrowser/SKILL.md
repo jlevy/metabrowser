@@ -73,12 +73,19 @@ resolves one.
 Open a GitHub repository URL, a pull-request URL, or an existing checkout.
 A recognized main or linked worktree, including a served subdirectory, has a **Pulls**
 tab. The catalog starts with Open PRs; Closed includes merged PRs.
-Metadata loads incrementally in the background, while **Fetch more** expands the
-displayed window.
+Metadata loads incrementally and stays current while Pulls or a PR page is visible.
+During a disconnection, the Pulls connection status keeps cached rows available and
+offers **Reload**. The catalog resumes updates automatically when GitHub is reachable.
+Scrolling near the end or choosing **Fetch more** extends the displayed window.
+Press `T` or `/` to open **Quick Search**. Type `#` for recent PRs, then add a number
+prefix or title words to narrow the list.
+After initial Files work is idle, both repository modes prepare catalog metadata and
+lightweight descriptions in the background; the local cache keeps them across restarts.
+Full discussion and checks remain selection-driven.
 
 A folder server keeps its filesystem root and does not fetch Git objects merely because
 a pull request is opened.
-If Files changed has no comparison store, **Fetch changes** explicitly opens a healthy
+If **Changes** has no comparison store, **Fetch changes** explicitly opens a healthy
 published store, including an existing full store, or acquires an overlay that borrows
 the checkout’s objects without writing to it.
 Borrowing refusal does not silently start a full clone.
@@ -99,7 +106,7 @@ For an agent, these read everything without a browser or a port, where `<url>` i
 - See the kind and counts: `<invocation> <url> --show /pull/<n>`
 - Read the description, comments, reviews, review comments, and checks:
   `<invocation> <url> --api '/api/plugin/github/pull?number=<n>'`. Its
-  `comparison_route` is Files changed
+  `comparison_route` serves the **Changes** diff
 - Read the diff: `<invocation> <url> --api '<comparison_route>'`
 - Read a file at the head: `git -C <location> show <pin>:<path>`, with `location` and
   `pin` from `<invocation> <url> --api /api/source/status`. Expand a leading `~` in
@@ -107,12 +114,13 @@ For an agent, these read everything without a browser or a port, where `<url>` i
 
 To give a person the page, run `<invocation> <url> --no-open` in the background and
 report the address on its `Serving … at` line.
-Each server takes its own port and pins one head; it opens any other pull request of the
-repository at `/pull/<n>`. **Refresh** retries metadata or an unavailable comparison;
-**Show the newer changes** selects a newly reported head.
+Each server takes its own port and pins one head.
+Open another pull request at `/pull/<n>`, its **Changes** at `/pull/<n>/files`, or its
+**Checks** at `/pull/<n>/checks`. **Refresh** retries metadata or an unavailable
+comparison; **Show the newer changes** selects a newly reported head.
 A refresh keeps the displayed immutable comparison until the reader chooses to move.
-Optional `gh-stack` support adds authoritative stack membership and navigation; its
-absence does not block ordinary PR reading.
+Optional `gh-stack` support adds an authoritative stack-position menu.
+Use ⇧J toward its base and ⇧K toward its top; missing tooling does not block PR reading.
 Metabrowser only reads: to comment, approve, or merge, use GitHub.
 It opens github.com only.
 The

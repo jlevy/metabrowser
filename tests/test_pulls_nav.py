@@ -37,6 +37,7 @@ from tests.github_pull_fixture import (
     install_fake_gh,
     scenario,
 )
+from tests.golden_harness import run_session
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git
 
@@ -174,17 +175,25 @@ def test_a_mirror_of_github_draws_the_tab_and_puts_it_in_front_at_its_addresses(
             )
             assert 'id="nav-filter-bar"></div>' in elsewhere
 
-            for route in ("/pull/7", "/pull/7/files", "/pulls", "/pulls?state=closed"):
+            for route in (
+                "/pull/7",
+                "/pull/7/files",
+                "/pull/7/checks",
+                "/pulls",
+                "/pulls?state=closed",
+            ):
                 html = client.get(route).text
                 assert _tabs(html) == {"files": False, "pulls": True}, route
-                # The Files tree and its filters are behind it from the first paint, and the
-                # tab's place is held in the shape of rows until the list arrives.
+                # The Files tree and its filters are behind the Pulls tab from first paint.
                 assert 'id="tab-files" data-tab-content="files" style="display: none"' in html
                 assert 'id="nav-filter-bar" style="display: none"' in html
-                assert (
-                    '<div id="tab-pulls" data-tab-content="pulls"><div class="recent-loading'
-                    in (html)
-                )
+                sidebar = html.split('id="tab-pulls"', 1)[1].split('id="preview-pane"', 1)[0]
+                assert sidebar.count('class="spinner spinner-sm"') == 1
+                assert sidebar.count("Fetching pull requests…") == 1
+                if route.startswith("/pulls"):
+                    preview = html.split('id="preview-pane"', 1)[1].split("</main>", 1)[0]
+                    assert "Select a pull request." in preview
+                    assert 'class="spinner"' not in preview
             # The list's address adds no startup script a page elsewhere does not have.
             assert _startup_scripts(client.get("/pulls").text) == _startup_scripts(elsewhere)
     finally:
@@ -287,3 +296,13 @@ def test_a_rows_text_is_only_ever_text() -> None:
     style_lines = re.findall(r"^.*\.style\..*$", source, re.MULTILINE)
     assert [line.strip() for line in style_lines] == ["gap.style.height = `${part.height}px`;"]
     assert "cssText" not in source
+
+
+def test_stack_shortcuts_follow_active_pr_and_preserve_registry_guards() -> None:
+    """Public page capability owns stack direction; shared scopes retain native input."""
+
+    result = run_session("pulls-nav-session.js")["stack keys"]
+    assert result["directions"] == [-1, 1]
+    assert result["endpointConsumed"] is True
+    assert result["plainJRemainsRowNavigation"] is True
+    assert result["cleanup"] is True

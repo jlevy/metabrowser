@@ -62,8 +62,8 @@
   const MODIFIER_DEFINITIONS = Object.freeze({
     alt: Object.freeze({ aria: "Alt", spoken: "Alt", visible: "Alt" }),
     control: Object.freeze({ aria: "Control", spoken: "Control", visible: "Ctrl" }),
-    meta: Object.freeze({ aria: "Meta", spoken: "Meta", visible: "Meta" }),
-    shift: Object.freeze({ aria: "Shift", spoken: "Shift", visible: "Shift" }),
+    meta: Object.freeze({ aria: "Meta", spoken: "Command", visible: "⌘" }),
+    shift: Object.freeze({ aria: "Shift", spoken: "Shift", visible: "⇧" }),
   });
 
   /** @type {Readonly<Record<string, Readonly<{aria: string, spoken: string, visible: string}>>>} */
@@ -90,6 +90,11 @@
       label: "Anywhere",
       order: 10,
     }),
+    "main-tabs": Object.freeze({
+      context: "Use the number alone if your browser reserves Command and numbers.",
+      label: "Main tabs",
+      order: 15,
+    }),
     navigation: Object.freeze({
       context: "Available while a file-tree row has focus.",
       label: "Navigation",
@@ -100,9 +105,14 @@
       label: "Pull requests",
       order: 25,
     }),
+    "pull-stack": Object.freeze({
+      context: "Available while a pull request in a stack is open.",
+      label: "Pull request stack",
+      order: 27,
+    }),
     "quick-file": Object.freeze({
-      context: "Available while Quick File is open.",
-      label: "Quick File",
+      context: "Available while Quick Search is open.",
+      label: "Quick Search",
       order: 30,
     }),
     help: Object.freeze({
@@ -118,9 +128,9 @@
     if (known) {
       return known;
     }
-    if (/^[a-z]$/i.test(key)) {
-      const letter = key.toUpperCase();
-      return Object.freeze({ aria: letter, spoken: letter, visible: letter });
+    if (/^[a-z0-9]$/i.test(key)) {
+      const label = key.toUpperCase();
+      return Object.freeze({ aria: label, spoken: label, visible: label });
     }
     throw new TypeError(`Unsupported shortcut key: ${key}`);
   }

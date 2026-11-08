@@ -817,6 +817,52 @@ def fresh_checkout_state(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.usefixtures("fresh_checkout_state")
+def test_visible_core_preparation_leaves_checkout_git_and_full_records_untouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    from tests.github_pull_fixture import catalog_entries, graph_core_data, pull_bodies, scenario
+    from tests.golden_harness import isolate_cli
+    from tests.test_cli_github_checkout_golden import _after  # pyright: ignore[reportPrivateUsage]
+
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    entry = pull_bodies(pull_origin)[7]["pull"]
+    data = graph_core_data(entry)
+    data["repository"]["p0"] = data["repository"].pop("pull")
+    key = "graphql:visible-cores:7"
+    answers = scenario(pull_origin)
+    answers["api"].update(catalog_entries([entry]))
+    answers["api"][key] = ok(key, {"data": data})
+    for name, value in install_fake_gh(tmp_path, answers).items():
+        monkeypatch.setenv(name, value)
+    request = tmp_path / "request.json"
+    listing = _api(checkout, "/api/plugin/github/pulls-refresh", {"retry": True}, request)
+    assert listing.exit_code == 0, listing.stdout
+    catalog = _after(listing)
+    before = fingerprint(checkout)
+    git_log = _logging_tool(tmp_path / "no-git", "git", then=None)
+    monkeypatch.setenv("PATH", f"{git_log.parent}{os.pathsep}{os.environ['PATH']}")
+
+    result = _api(
+        checkout,
+        "/api/plugin/github/pull-cores-prepare",
+        {
+            "state": catalog["list"],
+            "window": {"id": "checkout-7", "generation": catalog["generation"]},
+            "numbers": [7],
+        },
+        request,
+    )
+    assert result.exit_code == 0, result.stdout
+    answer = _after(result)
+    assert answer["record"] is None and answer["refreshing"] is False
+    assert answer["core_preview"]["comparison_state"] == "not_started"
+    assert answer["core_preview"]["pull"]["body"] == entry["body"]
+    assert _calls(git_log) == [] and fingerprint(checkout) == before
+    assert not list(home.glob("sources/*/pulls/7.json"))
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
 def test_publication_rebinds_checkout_records_to_the_claimed_slug(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:

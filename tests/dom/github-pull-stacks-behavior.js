@@ -18,8 +18,14 @@ const { pathToFileURL } = require("node:url");
     last_refresh: null,
     complete: true,
     stacks: [
-      { number: 286, base_ref: "main", open: true, pulls: [7, 8, 9] },
-      { number: 900, base_ref: "topic", open: true, pulls: [9, 10] },
+      {
+        number: 286,
+        base_ref: "main",
+        open: true,
+        pulls: [7, 8, 9],
+        titles: ["Base", "Middle", "Top"],
+      },
+      { number: 900, base_ref: "topic", open: true, pulls: [9, 10], titles: ["Top", "Next"] },
     ],
   };
   const index = createStackIndex(cached);
@@ -40,6 +46,11 @@ const { pathToFileURL } = require("node:url");
   assert.deepEqual(memberRoute(9, "files"), {
     number: 9,
     tab: "files",
+    reader: { fetchAfterMs: 0, initial: null },
+  });
+  assert.deepEqual(memberRoute(9, "checks"), {
+    number: 9,
+    tab: "checks",
     reader: { fetchAfterMs: 0, initial: null },
   });
   let clock = Date.parse("2026-09-17T12:00:00Z");

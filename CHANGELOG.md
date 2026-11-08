@@ -11,6 +11,54 @@ All notable changes to Metabrowser are documented here.
   `METABROWSER_HOME` and the old home layout are no longer read; existing files are left
   untouched. Cache initialization preserves configuration.
 
+PR and Git navigation:
+
+- Document and Source use the same outer gutter.
+  Markdown card borders align with display tabs while retaining KPress’s normal padding
+  inside the card.
+- Files, Commits, and Pulls appear in that order and open with `⌘1`, `⌘2`, and `⌘3`.
+  Help lists plain digits for browsers that reserve the Command chords.
+- Pulls resumes incremental GitHub updates after reconnect and shows one connection
+  status with a **Reload** action.
+- Pulls loads older rows automatically as you approach the end of the list.
+- Comparisons load nearby patches ahead of scrolling and show a notice for a failed
+  patch or truncated result.
+- Pull request check runs and status contexts have their own **Checks** tab with a
+  direct link.
+- **Quick Search** finds files and cached GitHub pull requests.
+  Type `#` for recent PRs, then add digits or title words to narrow the PR completions.
+- A visible direct PR link fetches and caches its record on the first visit.
+- The PR page shows when GitHub CLI fetched the description or complete record.
+- Treemap and its file totals load for folders in Git-backed repositories.
+- Conversation interleaves clickable commit summaries with comments and reviews in
+  GitHub’s order. Cached timelines are available offline.
+- The PR diff tab is called **Changes**. A PR that already shows content uses the shared
+  gray spinner for active refreshes and pending sections.
+- Files, Commits, and Pulls each restore their own selection when switching tabs.
+  The Open, Closed, and All filters show their exact totals from the Pulls catalog.
+- The Pulls tab names the repository once in bold and uses a single spinner line for
+  loading and refresh.
+- Pull request metadata warms after idle startup in both checkouts and managed
+  repositories. Visible rows take priority as the reader scrolls, and background
+  preparation continues through the cached catalog.
+  Lightweight descriptions persist locally across batches and server restarts.
+  Selection takes priority; discussion, checks, and Git objects load when needed.
+- PR stacks open from a compact position menu with titles, ordinals, and PR numbers.
+  Use ⇧J toward the stack base and ⇧K toward its top.
+- PR author, action, and age share one metadata size and baseline.
+  Commit descriptions share PR cards’ neutral surface and sans prose typography.
+- A selected PR can show its verified header and description before discussion, checks
+  and comparison preparation finish.
+  Pending sections stay explicit, cached full records take precedence, and a superseded
+  page stops its work while retaining inert content until the next page is ready.
+- Git diffs mount in a connected hidden stage, so initial rendering can use the pane’s
+  viewport. Hovering the currently displayed revision reuses its detail without fetching
+  its comparison again.
+- Once a selected PR shows its description, a waiting cache read can show the full
+  Conversation as soon as the refresh settles, without waiting for the next poll.
+- The pull envelope gains nullable `core_preview`; an explicit missing-record refresh
+  may set `wait_core: true` to await that stage for up to two seconds.
+
 Page lifecycle:
 
 - A folder page kept for Back releases its inventory and live-log event streams,
@@ -114,7 +162,7 @@ Reviewing beside a checkout:
 - A folder served from a GitHub checkout can show a pull request’s Files changed.
   Its explicit **Fetch changes** attaches a cached store, borrowing the checkout’s
   objects when one is needed.
-  The folder and its Git tab stay on the checkout; Git and writes run only in the
+  The folder and its Commits tab stay on the checkout; Git and writes run only in the
   managed store. Reading a cached comparison starts no network work.
   `POST /api/plugin/github/pull-refresh` accepts
   `{"number": n, "retry": true, "comparison": true}` for the same action, and the pull

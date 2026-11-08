@@ -35,7 +35,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
@@ -45,7 +45,7 @@ from pydantic import BaseModel, ValidationError
 
 from metabrowser.builtin_plugins.github.avatars import avatar_of
 from metabrowser.builtin_plugins.github.checkout import claim_source
-from metabrowser.builtin_plugins.github.gh import GhResponse
+from metabrowser.builtin_plugins.github.gh import GhError, GhResponse, gh_graphql
 from metabrowser.builtin_plugins.github.gh_lists import (
     READ_FAILURES,
     ListRead,
@@ -131,6 +131,28 @@ _SHORT_BYTES: Final = 1024
 _MAX_URL_CHARS: Final = 4096
 _MAX_PATH_CHARS: Final = 4096
 _SHA = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+
+
+# Selected, initially missing records use a core whose response names its viewer.
+# Existing full-record refreshes keep conditional REST and their original two checks.
+_CORE_FIELDS: Final = """
+      number url title body state isDraft merged createdAt updatedAt closedAt mergedAt
+      author { login avatar_url:avatarUrl(size:40) }
+      mergedBy { login avatar_url:avatarUrl(size:40) }
+      baseRefName baseRefOid baseRepository { nameWithOwner }
+      headRefName headRefOid headRepository { nameWithOwner }
+      mergeable mergeCommit { oid } potentialMergeCommit { oid }
+      commits(first:1) { totalCount }
+      labels(first:100) { nodes { name } }"""
+_CORE_QUERY: Final = (
+    """query PullCore($owner:String!,$name:String!,$number:Int!) {
+  viewer { login }
+  repository(owner:$owner,name:$name) {
+    id nameWithOwner
+    pull:pullRequest(number:$number) {"""
+    + _CORE_FIELDS
+    + "\n    }\n  }\n}"
+)
 
 
 def utc_now() -> datetime:
@@ -420,8 +442,106 @@ class _Unavailable:
     state: PullDataState
 
 
+def _graph_pull(value: object, number: int) -> PullRequest:
+    """Project the fixed GraphQL core through the same validated core model."""
+    item = as_dict(value)
+    if type(item.get("number")) is not int or item["number"] != number:
+        raise UnreadableItemError
+
+    def side(prefix: str) -> dict[str, Any]:
+        repository = item[f"{prefix}Repository"]
+        return {
+            "ref": item[f"{prefix}RefName"],
+            "sha": item[f"{prefix}RefOid"],
+            "repo": None
+            if repository is None
+            else {"full_name": as_dict(repository)["nameWithOwner"]},
+        }
+
+    merged_commit = item["mergeCommit"] if item["merged"] is True else item["potentialMergeCommit"]
+    return _pull(
+        {
+            "number": item["number"],
+            "title": item["title"],
+            "body": item["body"],
+            "state": {"OPEN": "open", "CLOSED": "closed", "MERGED": "closed"}[item["state"]],
+            "draft": item["isDraft"],
+            "merged": item["merged"],
+            "merged_by": item["mergedBy"],
+            "commits": as_dict(item["commits"])["totalCount"],
+            "merge_commit_sha": None if merged_commit is None else as_dict(merged_commit)["oid"],
+            "mergeable": {"MERGEABLE": True, "CONFLICTING": False, "UNKNOWN": None}[
+                item["mergeable"]
+            ],
+            "labels": as_dict(item["labels"])["nodes"],
+            "user": item["author"],
+            "created_at": item["createdAt"],
+            "updated_at": item["updatedAt"],
+            "closed_at": item["closedAt"],
+            "merged_at": item["mergedAt"],
+            "base": side("base"),
+            "head": side("head"),
+            "html_url": item["url"],
+        },
+        number,
+    )
+
+
+async def _read_graph_core(
+    owner: str,
+    repo: str,
+    number: int,
+    reader: str,
+    *,
+    observe_reader: Callable[[str], None] | None = None,
+) -> PullRequest:
+    """Attribute a selected core to the actual query viewer before staging it."""
+    try:
+        data = await gh_graphql(
+            _CORE_QUERY, {"owner": owner, "name": repo, "number": number}, now=utc_now()
+        )
+    except GhError as exc:
+        raise PullDataError(exc.state, str(exc), reset_at=exc.reset_at) from exc
+    try:
+        viewer = login_of(as_dict(data["viewer"]))
+        if viewer is None:
+            raise UnreadableItemError
+        observed = f"gh:{viewer}"
+        if observe_reader is not None:
+            observe_reader(observed)
+        if reader != observed:
+            raise PullDataError(
+                "account_changed",
+                "the query viewer changed during the read, so the provisional core was discarded",
+            )
+        raw_repository = data["repository"]
+        if raw_repository is None:
+            raise PullDataError("not_found_or_private", "GitHub has no readable pull request here")
+        repository = as_dict(raw_repository)
+        identity, name = repository["id"], repository["nameWithOwner"]
+        if (
+            not isinstance(identity, str)
+            or not 1 <= len(identity) <= 256
+            or not isinstance(name, str)
+            or name.casefold() != f"{owner}/{repo}".casefold()
+        ):
+            raise UnreadableItemError
+        if repository["pull"] is None:
+            raise PullDataError("not_found_or_private", "GitHub has no readable pull request here")
+        return _graph_pull(repository["pull"], number)
+    except READ_FAILURES as exc:
+        raise _unreadable_pull() from exc
+
+
 async def _read_api(
-    owner: str, repo: str, number: int, *, previous: PullRecord | None, reader: str
+    owner: str,
+    repo: str,
+    number: int,
+    *,
+    previous: PullRecord | None,
+    reader: str,
+    on_core: Callable[[PullRequest], Awaitable[None]] | None = None,
+    observe_reader: Callable[[str], None] | None = None,
 ) -> PullRecord:
     """Read every part of the pull request into a record with no comparison yet.
 
@@ -439,22 +559,28 @@ async def _read_api(
     unavailable: dict[UnavailablePart, str] = {}
     pull_path = f"{base}/pulls/{number}"
     pull_etag = previous.etags.get(pull_path) if previous is not None else None
-    try:
-        response = await _get(pull_path, etag=pull_etag)
-    except PageTooLargeError as exc:
-        raise _unreadable_pull() from exc
-    if response.status == 304:
-        if previous is None or pull_etag is None:
-            raise unconditional_304()
-        pull = previous.pull
-        etags[pull_path] = pull_etag
+    if on_core is not None:
+        # _refresh enables this only when no full record was cached. The actual
+        # response viewer replaces a third local account subprocess; no REST ETag
+        # is invented for this GraphQL representation.
+        pull = await _read_graph_core(owner, repo, number, reader, observe_reader=observe_reader)
     else:
         try:
-            pull = _pull(response_json(response), number)
-        except READ_FAILURES as exc:
+            response = await _get(pull_path, etag=pull_etag)
+        except PageTooLargeError as exc:
             raise _unreadable_pull() from exc
-        if response.etag is not None:
-            etags[pull_path] = response.etag
+        if response.status == 304:
+            if previous is None or pull_etag is None:
+                raise unconditional_304()
+            pull = previous.pull
+            etags[pull_path] = pull_etag
+        else:
+            try:
+                pull = _pull(response_json(response), number)
+            except READ_FAILURES as exc:
+                raise _unreadable_pull() from exc
+            if response.etag is not None:
+                etags[pull_path] = response.etag
 
     head = pull.head.sha
     status_path = _first_page(f"{base}/commits/{head}/status")
@@ -544,15 +670,24 @@ async def _read_api(
     )
     reading_runs = asyncio.ensure_future(read_check_runs(part_etags[3]))
     reading_status = asyncio.ensure_future(read_status(part_etags[4]))
-    # A cancellation of this read cancels all five. Whether each answered is read below.
-    await asyncio.gather(
+    reading = (
         reading_comments,
         reading_reviews,
         reading_review_comments,
         reading_runs,
         reading_status,
-        return_exceptions=True,
     )
+    try:
+        # The selected core already named its actual query viewer. Stage that verified
+        # core while the existing five reads start; callback failure drains them.
+        if on_core is not None:
+            await on_core(pull)
+        await asyncio.gather(*reading, return_exceptions=True)
+    except BaseException:
+        for task in reading:
+            task.cancel()
+        await asyncio.gather(*reading, return_exceptions=True)
+        raise
     comments = reading_comments.result()
     reviews = reading_reviews.result()
     review_comments = reading_review_comments.result()
@@ -725,15 +860,43 @@ async def _with_comparison(published: PublishedSource, record: PullRecord) -> Pu
     )
 
 
-async def _refresh(published: PublishedSource | ListedRepository, number: int) -> PullRecord:
+async def _refresh(
+    published: PublishedSource | ListedRepository,
+    number: int,
+    *,
+    on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
+    observe_reader: Callable[[str], None] | None = None,
+) -> PullRecord:
     owner, repo = _owner_and_repo(published)
     cached = await asyncio.to_thread(read_pull_record, published.home, published.slug, number)
+    # An existing full record always retains the original two-check refresh path.
+    progress = on_core if not isinstance(cached, PullRecord) else None
     for attempt in range(_READ_ATTEMPTS):
+        if progress is not None:
+            await progress(None, None)
         login = await active_account()
         reader = f"gh:{login}"
+        if observe_reader is not None:
+            observe_reader(reader)
         previous = cached if isinstance(cached, PullRecord) and cached.reader == reader else None
-        record = await _read_api(owner, repo, number, previous=previous, reader=reader)
-        if await active_account() != login:
+
+        async def core_ready(pull: PullRequest, selected_reader: str = reader) -> None:
+            if progress is not None:
+                await progress(pull, selected_reader)
+
+        record = await _read_api(
+            owner,
+            repo,
+            number,
+            previous=previous,
+            reader=reader,
+            on_core=core_ready if progress is not None else None,
+            observe_reader=observe_reader,
+        )
+        final_login = await active_account()
+        if observe_reader is not None:
+            observe_reader(f"gh:{final_login}")
+        if final_login != login:
             raise PullDataError(
                 "account_changed",
                 "the active gh account changed during the read, so what was read is "
@@ -752,6 +915,8 @@ async def _refresh(published: PublishedSource | ListedRepository, number: int) -
             raise _fetch_failure(exc) from exc
         if fetched != pull.head.sha:
             if attempt + 1 < _READ_ATTEMPTS:
+                if progress is not None:
+                    await progress(None, None)
                 continue
             raise PullDataError(
                 "head_mismatch", "its head kept moving while it was read; open it again"
@@ -814,6 +979,8 @@ async def refresh_pull_request(
     *,
     recover: bool = False,
     recovery_pair: tuple[str, str] | None = None,
+    on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
+    observe_reader: Callable[[str], None] | None = None,
 ) -> PullRecord:
     """Read pull request *number* of *published* from GitHub and cache it; see the module.
 
@@ -831,10 +998,15 @@ async def refresh_pull_request(
                 published = await claim_source(published)
             elif recover:
                 await _recover_comparison(published, number, recovery_pair)
-            record = await _refresh(published, number)
+            record = await _refresh(
+                published, number, on_core=on_core, observe_reader=observe_reader
+            )
         except GitError as exc:
             raise _git_failure(number, exc) from exc
     except PullDataError as exc:
+        # A failed attempt cannot serve a provisional core while its stamp is written.
+        if on_core is not None:
+            await on_core(None, None)
         stamp = {
             "outcome": exc.state,
             "message": str(exc)[:1000],

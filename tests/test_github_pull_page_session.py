@@ -524,7 +524,7 @@ def test_what_the_session_would_insert_is_inside_the_allowlist() -> None:
         "comparison_too_large",
     }
     for state, said in unavailable.items():
-        assert said["files"].startswith("Files changed "), state
+        assert said["files"].startswith("Changes "), state
     assert "does not guess" in unavailable["base_uncertain"]["files"]
     assert "not readable here" in unavailable["commits_unavailable"]["files"]
     # A checkout's page offers nothing that serves or switches code: it has no pin.
@@ -544,6 +544,7 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
 
     result = run_session("github-pull-page-mount-behavior.js")
     assert result == {
+        "titleStateAndTextBadge": True,
         "failedAssetsRecover": True,
         "failedRenderRecovers": True,
         "staleRetryIsInert": True,
@@ -579,4 +580,20 @@ def test_pending_file_selection_belongs_to_one_files_visit() -> None:
         "abandonedJump": False,
         "unavailableRetainsSelection": True,
         "replacementRetainsSelection": True,
+    }
+
+
+def test_selected_core_preview_waits_for_description_and_keeps_parts_pending() -> None:
+    """A cold selected page retains prior content until its honest core is ready."""
+
+    assert run_session("github-pull-core-preview-behavior.js") == {
+        "description": "plain preview before full conversation",
+        "pendingParts": ["discussion", "checks"],
+        "checkResults": {"route": "/pull/7/checks", "links": 2, "empty": True, "pending": True},
+        "waitCorePost": {"number": 7, "retry": True, "wait_core": True},
+        "previewMarkdownRequests": 0,
+        "fullMarkdownRequests": 1,
+        "fullRecordWins": True,
+        "crossOwnerRetirement": True,
+        "stagedReplacement": "A retained through B cancellation until C commits",
     }

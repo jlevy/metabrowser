@@ -309,9 +309,7 @@
   /* The interface sans's advance, which a message reads in under either reading
      font (docs/design-system.md, "Serif Is for Documents"). */
   --sans-char-advance: 0.4039;
-  /* The resolved reading width, as a length. THE single source of truth for
-     how wide documents read. PR messages own their face-specific measure on
-     .github-pull, so ordinary document widths stay independent.
+  /* The resolved reading width, as a length, for documents and messages.
 
      A Metabrowser-owned name on purpose. The obvious move is to set
      --kpress-measure here and let everything read that, but KPress declares
@@ -626,9 +624,9 @@
      ``fs.change`` op arrives on /api/events. */
   --tally-skeleton-bg: oklch(90.8% 0 89.9);
 
-  /* Live-update row flash. Applied by app.js when the SPA inserts
-     a freshly-created row (`.tree-item-flash-in`) or starts the
-     animated removal of a deleted row (`.tree-item-flash-out`).
+  /* Live-update row flash. Files and Pulls use `.tree-item-flash-in` for
+     a newly created visible row. Files use `.tree-item-flash-out` for
+     the animated removal of a deleted row.
      Pale yellow that fades to transparent — visible enough to
      draw the eye, calm enough not to flicker on a burst of
      changes. */
@@ -3770,6 +3768,25 @@ a.tab-btn {
   --kpress-code-radius: var(--radius-document);
 }
 
+/* A preview's reading column starts at the pane gutter. The cap includes the
+   card's text inset and any outer gutter the caller keeps inside the column. */
+.page-reading-column,
+.pull-request-placeholder {
+  width: 100%;
+  max-width: calc(
+    var(--doc-measure) +
+    2 *
+    (var(--pane-header-padding-x) + var(--page-reading-gutter, 0px))
+  );
+  margin-inline-end: auto;
+}
+.page-heading {
+  font-size: var(--page-title-font-size);
+  font-weight: var(--weight-bold);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 /* Reading width: the one bridge from --doc-measure (the app's resolved reading
    width, converted from characters at :root) onto KPress's token.
 
@@ -3962,6 +3979,15 @@ a.tab-btn {
    the toggle, and the drawer. The doc <h1> header is suppressed at the source
    via show_doc_header=False (the path shows in metabrowser's file header), so
    no host CSS override is needed. */
+/* Shared content frame; consumers own their padding and prose or code type. */
+.page-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chrome);
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
 /* ── Notices ─────────────────────────────────────────────────
    One box for anything the app says *about* the content it is showing: a
    partial load, a render failure. See docs/design-system.md, "Notices";
@@ -4044,9 +4070,8 @@ pre code.hljs {
 code.hljs {
   padding: 3px 5px;
 }
-/* Padding + background live on <pre class="code-block"> (block-level)
-   so source/raw views align horizontally with other content-body
-   views at var(--content-padding-x). */
+/* Code blocks own their background and inner padding. Full-file Source
+   uses the shared card inset below, inside the content-body pane gutter. */
 .code-block {
   margin: 0;
   overflow: auto;
@@ -4668,7 +4693,7 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--ui-small-font-size);
 }
 
-/* ── Quick-file palette ─────────────────────────────────────────
+/* ── Quick Search palette ─────────────────────────────────────────
    A body-level modal surface so tree and preview replacement cannot
    discard its state. Search work and selection state stay in the
    injected controller; this block owns only the bounded result DOM. */
@@ -4726,6 +4751,10 @@ pre.code-block.metabrowser-source-lines > code {
   cursor: pointer;
   user-select: var(--toggle-user-select);
 }
+.search-palette-option-pull {
+  grid-template-columns: minmax(0, 1fr);
+  padding-inline-start: 36px;
+}
 .search-palette-option:hover,
 .search-palette-option.active,
 .search-palette-option[aria-selected="true"] {
@@ -4768,6 +4797,9 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--nav-font-size);
   font-weight: var(--weight-normal);
 }
+.search-palette-pull-number {
+  color: var(--text);
+}
 .search-palette-option mark {
   color: inherit;
   background: var(--highlight-bg);
@@ -4780,7 +4812,13 @@ pre.code-block.metabrowser-source-lines > code {
   font-size: var(--ui-small-font-size);
 }
 .search-palette-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-height: 28px;
+}
+.search-palette-status .spinner {
+  flex: none;
 }
 /* Keys render through .kbd; the connecting words are ordinary chrome
    text, so the row reads as a sentence rather than a legend. */
@@ -4841,20 +4879,9 @@ pre.code-block.metabrowser-source-lines > code {
   animation: tally-pending-pulse 1.6s ease-in-out infinite;
 }
 
-/* A cold pull-request route has a known text layout before plugin styles load. Match
-   the plugin's sans reading column using the same measure and host inset tokens. */
+/* A cold pull-request route uses the same reading column before plugin styles load. */
 .pull-request-placeholder {
-  width: 100%;
-  max-width: calc(
-    var(--document-body-font-size) *
-    var(--doc-max-chars) *
-    var(--sans-char-advance) +
-    2 *
-    var(--pane-header-padding-x) +
-    2 *
-    var(--content-padding-x)
-  );
-  margin-inline: auto;
+  --page-reading-gutter: var(--content-padding-x);
   padding: var(--content-padding-y) var(--content-padding-x);
 }
 .pull-request-placeholder > .recent-loading {
@@ -5214,11 +5241,8 @@ pre.code-block.metabrowser-source-lines > code {
   }
 }
 
-/* Live-update row flash. Both the .tree-item AND its sibling
-   .tree-children (for folders) get the class so the whole insert
-   reads as a coherent visual event. The animations are scoped to
-   the .tree-item itself for the bg flash; the .tree-children
-   variant handles smooth height collapse on remove. */
+/* Files and Pulls flash the arriving row itself. Files also animate
+   the row and its child container together during removal. */
 .tree-item-flash-in {
   animation: tree-row-flash-in 900ms ease-out;
 }
@@ -5705,9 +5729,6 @@ pre.code-block.metabrowser-source-lines > code {
 
 .git-commit-subject {
   margin: 0 0 8px;
-  font-size: var(--body-font-size);
-  font-weight: var(--weight-bold);
-  line-height: 1.35;
 }
 
 .git-commit-meta {
@@ -5811,6 +5832,8 @@ pre.code-block.metabrowser-source-lines > code {
   margin: 0 0 6px;
   overflow: hidden;
   font-size: var(--body-font-size);
+  font-weight: var(--weight-bold);
+  line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   line-clamp: 2;
@@ -5839,13 +5862,14 @@ pre.code-block.metabrowser-source-lines > code {
 
 .git-commit-body {
   margin: 16px 0;
-  padding: 12px;
-  border-radius: var(--radius-document);
-  background: var(--code-bg);
+  padding: var(--pane-header-padding-y) var(--pane-header-padding-x);
   white-space: pre-wrap;
+  overflow-wrap: break-word;
   overflow-x: auto;
-  font-family: var(--font-sans);
-  font-size: var(--body-font-size);
+  font-family: var(--prose-sans-font);
+  font-size: var(--document-body-font-size);
+  font-weight: var(--weight-normal);
+  line-height: var(--kpress-line-height-normal);
 }
 
 .git-commit-files {

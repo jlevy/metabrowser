@@ -87,7 +87,8 @@
         "unavailable": {
           "comparison": "no_store"
         }
-      }
+      },
+      "core_preview": null
     }
   },
   "started": {
@@ -180,7 +181,8 @@
           "unavailable": {
             "comparison": "no_store"
           }
-        }
+        },
+        "core_preview": null
       },
       "status_route": "/api/plugin/github/pull?number=10"
     }
@@ -276,7 +278,8 @@
           "text": false
         },
         "unavailable": {}
-      }
+      },
+      "core_preview": null
     }
   }
 }

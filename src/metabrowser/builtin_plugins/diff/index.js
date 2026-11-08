@@ -186,6 +186,10 @@ function renderFailure(container, message) {
 
 mb.registerView("diff", "diff", {
   render: async (container, ctx) => {
+    const signal = ctx.comparisonSignal;
+    if (signal?.aborted) {
+      return null;
+    }
     // Two ctx shapes reach the same renderer: a path (a patch file, or
     // one entry inside it) and a revision (the history view asking for
     // a commit's comparison). Both resolve to one ChangeSetDocument,
@@ -201,14 +205,22 @@ mb.registerView("diff", "diff", {
     let payload;
     try {
       payload = revision
-        ? await (ctx.raw === undefined ? fetchComparison(revision) : ctx.raw)
+        ? await (ctx.raw === undefined
+            ? fetchComparison(revision, signal === undefined ? undefined : { signal })
+            : ctx.raw)
         : await mb.fetchPluginData("diff", "document", { path: ctx.path || "" });
+      if (signal?.aborted) {
+        return null;
+      }
       if (revision && payload && typeof payload === "object") {
         // The document is source-agnostic by design, so the revision
         // rides beside it for the deferred loader rather than inside it.
         Object.defineProperty(payload, "__revision", { value: revision, enumerable: false });
       }
     } catch (error) {
+      if (signal?.aborted) {
+        return null;
+      }
       // The SDK preserves the hook's JSON on the error for exactly this
       // moment: the server's message ("unknown revision …", "not the
       // root of a Git repository") beats generic advice, and "refresh"
@@ -243,6 +255,9 @@ mb.registerView("diff", "diff", {
     try {
       viewFile = await opener;
     } catch (error) {
+      if (signal?.aborted) {
+        return null;
+      }
       console.error(
         "metabrowser diff: view load failed",
         {
@@ -254,6 +269,9 @@ mb.registerView("diff", "diff", {
         error,
       );
       return renderFailure(container, "Could not load this diff. Refresh the page to try again.");
+    }
+    if (signal?.aborted) {
+      return null;
     }
     // A commit comparison already carries these totals beside its revision,
     // author, and age. Direct diff documents and two-endpoint comparisons own

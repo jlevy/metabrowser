@@ -19,13 +19,15 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from metabrowser.builtin_plugins.github import gh, pull_list
+from metabrowser.builtin_plugins.github import gh, pull_list, pulls
 from metabrowser.builtin_plugins.github.pull_catalog import read_catalog
 from metabrowser.cache.urls import GitSource
 from tests.github_pull_fixture import (
@@ -36,9 +38,11 @@ from tests.github_pull_fixture import (
     account,
     catalog_entries,
     generated_item,
+    graph_core_data,
     install_fake_gh,
     list_item,
     logged_gh_calls,
+    ok,
     pull_bodies,
     scenario,
 )
@@ -61,6 +65,7 @@ pytestmark = [
 
 PULLS = "/api/plugin/github/pulls"
 REFRESH = "/api/plugin/github/pulls-refresh"
+PREPARE = "/api/plugin/github/pull-cores-prepare"
 
 
 class _Session:
@@ -95,15 +100,18 @@ class _Session:
         self.now += timedelta(seconds=seconds)
         self.say(f"The clock moves on {seconds:g} s, to {self.now:%Y-%m-%dT%H:%M:%SZ}.")
 
-    def _run(self, *args: str, **sections: list[str]) -> Invocation:
+    def _run(
+        self, *args: str, project: Callable[[Invocation], str] | None = None, **sections: list[str]
+    ) -> Invocation:
         result = run_metab(args)
         catalog = read_catalog(self.home, origin_identity(CANONICAL).slug)
         if catalog is not None and catalog.epoch not in self.epochs:
             self.epochs.add(catalog.epoch)
             self.labels.add(catalog.epoch, f"<CATALOG_EPOCH_{len(self.epochs)}>")
         shown = [arg.removeprefix(f"{self.tmp_path}/") for arg in args]
+        shown_result = replace(result, stdout=project(result)) if project is not None else result
         self.blocks.append(
-            result.block(
+            shown_result.block(
                 " ".join(quoted(arg) for arg in shown),
                 **sections,
                 gh=logged_gh_calls(self.tmp_path),
@@ -111,14 +119,26 @@ class _Session:
         )
         return result
 
-    def get(self, query: str = "") -> Invocation:
-        return self._run(CANONICAL, "--api", f"{PULLS}{query}")
+    def get(
+        self, query: str = "", *, project: Callable[[Invocation], str] | None = None
+    ) -> Invocation:
+        return self._run(CANONICAL, "--api", f"{PULLS}{query}", project=project)
 
-    def post(self, body: dict[str, Any]) -> Invocation:
+    def post(
+        self, body: dict[str, Any], *, route: str = REFRESH, summarize: bool = False
+    ) -> Invocation:
         path = self.tmp_path / "request.json"
         text = json.dumps(body)
         path.write_text(text + "\n", encoding="utf-8")
-        return self._run(CANONICAL, "--api", REFRESH, "--data", str(path), body=[text])
+        return self._run(
+            CANONICAL,
+            "--api",
+            route,
+            "--data",
+            str(path),
+            project=_watch_summary if summarize else None,
+            body=[text],
+        )
 
     def local(self, route: str) -> Invocation:
         """A route read from a local root, which opens no source and asks gh nothing."""
@@ -134,6 +154,28 @@ def _after(result: Invocation) -> dict[str, Any]:
     return json.loads(
         result.stdout[result.stdout.rindex("status: 200\n{") + len("status: 200\n") :]
     )
+
+
+def _watch_summary(result: Invocation) -> str:
+    """Project a watch transition without repeating the catalog envelope."""
+    _, status, rest = result.stdout.partition("status: 202\n")
+    assert status
+    ack, _ = json.JSONDecoder().raw_decode(rest)
+    envelope = _after(result)
+    return (
+        f"status: 202 {ack['refresh']}\n"
+        f"status: 200 {envelope['last_refresh']['outcome']}, "
+        f"{envelope['fetched']} cached PRs\n"
+    )
+
+
+def _search_summary(result: Invocation) -> str:
+    """Keep the ordered result numbers, states, and catalog flags in the transcript."""
+    envelope = result.payload()
+    envelope["rows"] = [[row["number"], row["state"]] for row in envelope["rows"]]
+    header = result.stdout[: result.stdout.index("{")]
+    assert header.endswith("status: 200\n")
+    return header + json.dumps(envelope) + "\n"
 
 
 def _with(answers: dict[str, Any], **changes: Any) -> dict[str, Any]:
@@ -203,6 +245,35 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
     ] == [(9, False), (8, True)]
     assert session.get("?state=all&limit=0").payload()["total"] == 600
 
+    # Search reaches the cached PRs beyond the first list window, without calling gh.
+    for query, row in (
+        ("9", {"number": 9, "title": "spam", "state": "closed"}),
+        ("%23++GUIDE+say", {"number": 8, "title": "Say more in the guide", "state": "merged"}),
+    ):
+        assert session.get(f"?q={query}").payload() == {
+            "rows": [row],
+            "complete": True,
+            "limited": False,
+            "truncated": False,
+            "refreshing": False,
+        }
+        assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
+
+    recent = session.get("?q=%23", project=_search_summary)
+    assert _numbers(recent) == list(range(606, 594, -1))
+    assert recent.payload()["truncated"] and not recent.payload()["limited"]
+    assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
+
+    prefix = session.get("?state=open&q=%239", project=_search_summary)
+    assert _numbers(prefix) == [9, *range(99, 89, -1)]
+    assert prefix.payload()["rows"][0]["state"] == "closed"
+    assert prefix.payload()["complete"] and not prefix.payload()["truncated"]
+    assert not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
+
+    broad = session.get("?q=work+item+5").payload()
+    assert len(broad["rows"]) == 12 and broad["truncated"] and not broad["limited"]
+    assert broad["complete"] and not session.blocks[-1].rsplit("--- gh ---\n", 1)[1].strip()
+
     # A changed PR is merged through UPDATED_AT without rescanning the old creation pages.
     session.advance(61)
     changed = dict(
@@ -256,6 +327,89 @@ def test_golden_pull_lists_fetch_extend_refresh_and_refuse(
         100,
     )
     assert replaced["generation"].split(":")[0] != generation.split(":")[0]
+
+    session.say("A visible pull request prepares its description from one GraphQL batch.")
+    entry = pull_bodies(session.origin)[7]["pull"]
+    data = graph_core_data(entry, reader=ANOTHER_READER)
+    data["repository"]["p0"] = data["repository"].pop("pull")
+    key = "graphql:visible-cores:7"
+    session.answer(_api(replacement, key, ok(key, {"data": data})))
+    monkeypatch.setattr(pulls, "utc_now", lambda: session.now)
+
+    prepared = session.post(
+        {
+            "state": replaced["list"],
+            "window": {"id": "visible-7", "generation": replaced["generation"]},
+            "numbers": [7],
+        },
+        route=PREPARE,
+    )
+    assert prepared.exit_code == 0, prepared.stderr
+    _, accepted, body = prepared.stdout.partition("status: 202\n")
+    assert accepted
+    ack, _ = json.JSONDecoder().raw_decode(body)
+    assert ack == {"preparation": "started", "status_route": "/api/plugin/github/pull?number=7"}
+    final = _after(prepared)
+    preview = final["core_preview"]
+    assert final["record"] is None and final["refreshing"] is False
+    assert (preview["source"], preview["reader"], preview["number"]) == (
+        replaced["source"],
+        f"gh:{ANOTHER_READER}",
+        7,
+    )
+    assert preview["observed_at"] == session.now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    assert preview["comparison_state"] == "not_started"
+    assert preview["pull"]["body"] == entry["body"]
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+        "gh api graphql visible-cores numbers=7"
+    ]
+
+    session.advance(61)
+    session.say("A new command reopens the prepared description from disk without GitHub.")
+    reopened = session._run(CANONICAL, "--api", "/api/plugin/github/pull?number=7")
+    assert reopened.exit_code == 0, reopened.stderr
+    assert reopened.payload()["core_preview"] == preview
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
+    replayed = session.post(
+        {
+            "state": replaced["list"],
+            "window": {"id": "reopened-7", "generation": replaced["generation"]},
+            "numbers": [7],
+        },
+        route=PREPARE,
+    )
+    assert replayed.exit_code == 0
+    assert replayed.payload() == {
+        "preparation": "ready",
+        "ready_numbers": [7],
+        "skipped_numbers": [],
+    }
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
+
+    session.say("A leased member remains unfinished while cached siblings retain coverage.")
+    from metabrowser.builtin_plugins.github import pull_cores
+
+    current_catalog = read_catalog(session.home, origin_identity(CANONICAL).slug)
+    assert current_catalog is not None
+    with monkeypatch.context() as lease:
+        lease.setattr(pull_cores, "_attemptable", lambda *_args: {})
+        partial = session.post(
+            {
+                "state": "all",
+                "window": {"id": "leased-8", "generation": current_catalog.generation("all")},
+                "numbers": [7, 8],
+            },
+            route=PREPARE,
+        )
+    assert partial.exit_code == 0
+    assert partial.payload() == {
+        "preparation": "partial",
+        "ready_numbers": [7],
+        "skipped_numbers": [],
+        "retry_numbers": [8],
+        "retry_at": (session.now + timedelta(seconds=60)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == []
 
     cached = session.local(f"/api/cache/source/{origin_identity(CANONICAL).slug}")
     assert cached.exit_code == 0, cached.stderr
@@ -344,6 +498,32 @@ def test_golden_pull_list_failures(
     assert _after(unwritable)["last_refresh"]["outcome"] == "cache_unwritable"
     session.answer(online)
     assert _after(session.post({"retry": True}))["last_refresh"]["outcome"] == "succeeded"
+
+    session.say("An environment token cannot resolve its login while offline.")
+    offline_account = {
+        "active": True,
+        "login": "",
+        "state": "error",
+        "error": "dial tcp: lookup api.github.com: no such host",
+    }
+    auth = {"stdout": json.dumps({"hosts": {"github.com": [offline_account]}}), "exit": 0}
+    session.answer(_with(online, auth=auth))
+    refused = session.post({"retry": True}, summarize=True)
+    assert refused.exit_code == 1
+    refused_catalog = _after(refused)
+    assert refused_catalog["last_refresh"]["outcome"] == "network_error"
+    assert refused_catalog["fetched"] == baseline["fetched"]
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == ["gh auth status"]
+
+    session.say("A reconnect can refresh metadata immediately once GitHub is reachable.")
+    session.answer(online)
+    recovered = session.post({"reconnect": True}, summarize=True)
+    assert recovered.exit_code == 0
+    assert _after(recovered)["last_refresh"]["outcome"] == "succeeded"
+    assert session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines() == [
+        "gh auth status",
+        "gh api graphql catalog state=updated cursor=start",
+    ]
 
     rendered = label_home(session.labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered

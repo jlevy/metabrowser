@@ -19,6 +19,11 @@
    },
    "total": 6001,
    "repository_total": 6001,
+   "filter_totals": {
+    "all": 6001,
+    "open": 0,
+    "closed": 6001
+   },
    "count_at": "2026-10-01T12:01:00Z",
    "catalog_fetched": 6001,
    "generation": "catalog-4",
@@ -151,6 +156,11 @@
    },
    "total": 6001,
    "repository_total": 6001,
+   "filter_totals": {
+    "all": 6001,
+    "open": 0,
+    "closed": 6001
+   },
    "count_at": "2026-10-01T12:01:00Z",
    "catalog_fetched": 6001,
    "generation": "catalog-4",
@@ -283,6 +293,11 @@
    },
    "total": 6001,
    "repository_total": 6001,
+   "filter_totals": {
+    "all": 6001,
+    "open": 0,
+    "closed": 6001
+   },
    "count_at": "2026-10-01T12:01:00Z",
    "catalog_fetched": 6001,
    "generation": "catalog-4",
@@ -415,6 +430,11 @@
    },
    "total": 6001,
    "repository_total": 6001,
+   "filter_totals": {
+    "all": 6001,
+    "open": 0,
+    "closed": 6001
+   },
    "count_at": "2026-10-01T12:01:00Z",
    "catalog_fetched": 6001,
    "generation": "catalog-4",
@@ -547,6 +567,11 @@
    },
    "total": 6001,
    "repository_total": 6001,
+   "filter_totals": {
+    "all": 6001,
+    "open": 0,
+    "closed": 6001
+   },
    "count_at": "2026-10-01T12:01:00Z",
    "catalog_fetched": 6001,
    "generation": "catalog-4",
@@ -679,6 +704,11 @@
    },
    "total": 6001,
    "repository_total": 6001,
+   "filter_totals": {
+    "all": 6001,
+    "open": 0,
+    "closed": 6001
+   },
    "count_at": "2026-10-01T12:01:00Z",
    "catalog_fetched": 6001,
    "generation": "catalog-4",
@@ -811,6 +841,11 @@
    },
    "total": 6001,
    "repository_total": 6001,
+   "filter_totals": {
+    "all": 6001,
+    "open": 0,
+    "closed": 6001
+   },
    "count_at": "2026-10-01T12:01:00Z",
    "catalog_fetched": 6001,
    "generation": "catalog-4",
@@ -943,6 +978,11 @@
    },
    "total": 6001,
    "repository_total": 6001,
+   "filter_totals": {
+    "all": 6001,
+    "open": 0,
+    "closed": 6001
+   },
    "count_at": "2026-10-01T12:01:00Z",
    "catalog_fetched": 6001,
    "generation": "catalog-4",
@@ -1075,6 +1115,11 @@
    },
    "total": 6001,
    "repository_total": 6001,
+   "filter_totals": {
+    "all": 6001,
+    "open": 0,
+    "closed": 6001
+   },
    "count_at": "2026-10-01T12:01:00Z",
    "catalog_fetched": 6001,
    "generation": "catalog-4",
@@ -1207,6 +1252,11 @@
    },
    "total": 6001,
    "repository_total": 6001,
+   "filter_totals": {
+    "all": 6001,
+    "open": 0,
+    "closed": 6001
+   },
    "count_at": "2026-10-01T12:01:00Z",
    "catalog_fetched": 6001,
    "generation": "catalog-4",

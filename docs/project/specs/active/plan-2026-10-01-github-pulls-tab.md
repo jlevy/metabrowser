@@ -20,16 +20,120 @@ which predate the thin mirror (beads `mb-lnkl`, `mb-iw1v`, `mb-cbak`; this plan 
 Owner testing on 2026-11-03 supersedes the original list-paging design below (bead
 `mb-m13a`). The current design uses one lightweight catalog, automatically backfilled
 and incrementally refreshed, with exact totals and resumable page cursors.
-The displayed list starts at 500 matching PRs and grows through **Fetch more**; that
-display window does not cap the catalog.
+The displayed list starts at 500 matching PRs and grows as the reader nears its tail;
+that display window does not cap the catalog.
 Filters are **Open**, **Closed**, and **All**, with Open selected initially.
 Heavy PR records and Git comparisons remain separate from catalog metadata.
-The Conversation and Files changed tabs align with the reading column.
+The PR tab bar aligns with the reading column.
 
 The earlier page caps, All default, whole-list files, and `more` request fields below
 record the original design.
 The current route and storage contracts are in
 [Views, Models, and Routes](../../architecture/arch-views-models-routes.md).
+
+## Repository Watch
+
+Visible Pulls and PR pages follow catalog updates and recover from temporary GitHub CLI
+or connection failures.
+The [PR watch plan](plan-2026-11-06-pr-watch-and-reconnect.md) defines when the watch
+runs, how Reload and the shared status work, and what recovery the tests cover.
+
+## Changed-File Disclosure
+
+`mb-6lnm` separates PR selection from changed-file disclosure.
+Up, Down, J, and K move the selection.
+The PR preview follows while each tree keeps its expansion state.
+Clicking the PR row opens the PR and toggles its tree.
+Right expands or enters the tree, and Left collapses it.
+Enter and Space open the PR without changing disclosure.
+An explicit changed-file link opens its tree so the selected file is visible.
+
+`mb-neq0` makes intentional expansion cache-first.
+Render cached changed files as soon as the local list read answers.
+A missing or stale list starts the existing bounded changed-file job automatically.
+Its published pages fill the expanded tree in place.
+Use the shared delayed gray spinner while the read or refresh is active.
+Show the count and any actual truncation alongside the rows.
+Reserve recovery copy and Retry for failures or setup requirements.
+
+The browserless Pulls and changed-files sessions check keyboard walks without opening
+trees or reading their file lists.
+They also exercise click and Right against warm and cold caches.
+Check that a current cached tree paints on the first read.
+A cold expansion starts one bounded list job and paints its published pages.
+Check the shared spinner during work.
+Exercise an actual provider failure and recovery.
+Repeat cached and cold expansion in a checkout and a managed repository in the built-in
+browser.
+
+## Shared Content Layout
+
+`mb-7if6` tracks the shared reading column and heading style.
+Commit and PR headers start at the pane’s content gutter and use the same title scale.
+Markdown card borders and source surfaces align with the first display tab’s outer edge;
+the document retains KPress’s normal inner inset.
+A wide document puts its contents rail on the right, and a narrow pane keeps the
+standard contents icon and drawer.
+PR descriptions, comments, reviews, and commit descriptions share the rendered README’s
+configurable document measure.
+Messages use sans prose with one neutral bordered `.page-card` surface; source and diffs
+retain their own code typography.
+PR author, action, and age share a metadata size and baseline.
+Conversation and Checks share the header and tab alignment.
+Changes uses the full pane.
+Check wrapping, metadata, and the first tab’s alignment in narrow and wide panes, and
+measure a PR description and comment against the rendered README with the same settings.
+
+## Progressive Metadata Preparation
+
+Idle startup mounts the lightweight Pulls controller in both managed repositories and
+existing checkouts after initial Files work.
+It primes the current Open page, prioritizes the measured viewport as it changes, and
+continues through the cached All catalog.
+Transport batches do not cap total coverage.
+Visible demand retries after shared-provider contention, while hidden or disconnected
+browsers pause their work and resume the unfinished cursor.
+Selected actions keep priority.
+
+Lightweight description records persist in the private file cache, scoped to source,
+repository, authenticated reader, and catalog epoch.
+Later batches, ordinary freshness expiry, and server restart retain useful metadata; a
+changed summary revokes exact readiness while stale text remains explicitly stale.
+Full records supersede lightweight cores.
+Discussion, checks, files, and Git acquisition remain separate demand-driven work.
+The
+[progressive preparation experiment](../../../../explorations/performance-loop/experiments/exp-055-progressive-pr-metadata-warming.md)
+records controller evidence and the separate browser performance acceptance status.
+
+## Search From the Catalog
+
+The same repository catalog supplies Quick Search on a checkout or managed mirror
+(`mb-s3fi`). `GET /api/plugin/github/pulls?q=<query>` reads a bounded completion list
+across all cached PR states and returns each matching number, title, and state.
+`complete` reports whether the catalog has finished backfilling.
+`limited` reports whether the title scan hit its work limit.
+A bare number uses the number index for an exact match.
+A `#123` lookup returns the exact PR first and uses bounded number ranges for prefix
+matches across the entire cache.
+A lone `#` returns the newest PR numbers, and `#` followed by words uses the same
+bounded title scan as unprefixed text.
+The query window is independent of the Pulls display window and its Open, Closed, or All
+filter.
+
+Search reads catalog summaries without invoking Git or `gh`. An incomplete catalog can
+grow through the same Pulls refresh job.
+Quick Search shares a running job without changing the Pulls tab’s priority and waits
+between refresh requests.
+The query route itself only reads.
+PR detail is opened through the normal Conversation address after the reader selects a
+result. See the
+[Quick Search plan](plan-2026-07-17-scalable-file-search.md#pull-request-completions)
+for result presentation and selection.
+
+The cache-only route golden covers exact number and title matches, empty and incomplete
+coverage, and an older PR outside the first display window.
+Check result selection and opening in the Quick Search browserless session, then
+exercise the same flow on both source modes with a built-in browser.
 
 ## Optional Stacks and Presentation Revision
 
@@ -43,8 +147,13 @@ Separate private snapshots, conditional pages, account/source checks and bounded
 background jobs keep ordinary PR reading independent of optional tooling or API
 failures.
 
-A known member shows its stack number and ordered member navigation, preserving the
-selected tab while clearing a preceding file selection.
+A known member opens a Layers icon and position/total menu.
+Member rows show their ordinal, title from the matching local catalog, and PR number,
+with the current member marked.
+Native membership is authoritative; a missing title falls back to the PR number.
+Selection and ⇧J/⇧K navigation preserve the selected tab while clearing a preceding file
+selection. ⇧J moves toward the base and ⇧K toward the top.
+The shared shortcut registry owns editor, dialog, endpoint, and disposal behavior.
 Unknown membership in a partial or unavailable snapshot is not an assertion that the PR
 has no stack. Cold PR pages use the existing gray pulse in their reading column; cached
 refreshes keep content visible.
@@ -54,10 +163,149 @@ The
 [focused QA session](../../../qa-v012-repository-library.md#57b-optional-stacks-and-pr-presentation)
 records the final artifact and cache conditions without a new testing framework.
 
+## Extend Pulls on Scroll
+
+Bead `mb-axa7` uses Git history’s near-end paging for Pulls.
+A filter starts with up to 500 matching summaries.
+When the reader approaches the end of the visible prefix, the list admits one more
+bounded window from the local catalog.
+If the catalog still needs rows, the shared refresh job fills the missing metadata.
+**Fetch more** remains available for an explicit larger request and recovery.
+
+Keep the active row, its scroll position, and the selected filter while rows append.
+Preserve the server’s page cursor across partial windows and stop at the filter’s real
+end. The list’s initial render and the catalog’s background crawl stay independent of
+scrolling.
+
+## Pull Request Checks
+
+Bead `mb-xnuc` gives checks their own tab beside Conversation and Changes.
+Checks uses the existing PR record and refresh, showing check runs, status contexts,
+merge status, and check-specific notices in the reading column.
+Its address is `/pull/<n>/checks`. Direct links, browser history, and stack navigation
+restore the selected tab.
+A complete cached record with no checks shows an empty state.
+A pending checks section uses the small spinner after the PR header is visible.
+
+## Conversation Commit Timeline
+
+**Tracked in `mb-c3vw`.** Conversation keeps the description first.
+Add compact commit rows among top-level comments and submitted reviews, in GitHub’s
+timeline order when it reports the events together.
+Each row has a plain-text subject and a link labelled with the short commit ID. The full
+ID identifies the destination.
+Show a commit age only when there is a timestamp for it, and distinguish the commit date
+from a push date. Keep inline review threads in Conversation.
+
+Use GitHub’s
+[pull request timeline connection](https://docs.github.com/en/graphql/reference/pulls#pullrequest)
+with commit, issue comment, and pull request review event types.
+Request a compact commit summary and only the identifiers needed to match cached
+comments and reviews.
+The provider’s order matters when a commit was created before a comment and added to the
+PR after it. A read of
+[Metabrowser pull request 301](https://github.com/jlevy/metabrowser/pull/301) returned
+three commits, then comments and a review, then the follow-up commit and its
+disposition. Preserve that ordering without duplicating discussion bodies.
+The compact response held 8 events in 1.8 kB.
+[Metabrowser pull request 283](https://github.com/jlevy/metabrowser/pull/283) held 74
+events in 17.1 kB, and
+[Metabrowser pull request 303](https://github.com/jlevy/metabrowser/pull/303) held 5
+events in 1.4 kB. The connection’s total count also included events filtered out of the
+returned page, so use the pagination flags to decide whether more matched events remain.
+Five alternating pairs on the 74-event PR took 710–882 ms at 50 events and 830–947 ms at
+100\. The smaller request left a second page to read, while the larger one held all 74
+matched events. These are standalone `gh` timings, so use 100 as a candidate for the
+integrated trial and measure the selected page before choosing a production bound.
+Join discussion by event kind and a shared identifier.
+Use a lossless database ID or carry the GraphQL node ID on both sides.
+Deduplicate events at page boundaries.
+Keep unmatched discussion visible and use its existing time order when provider ordering
+is unavailable.
+
+Bind the projection to the canonical repository, PR number, actual response viewer,
+target branch name, head commit, and the discussion revision it orders.
+An advance of the same target branch leaves the recorded conversation order usable.
+A PR retarget or head change requires a new projection.
+A checkout without a comparison store can verify against provider metadata and the held
+PR record.
+Cache the bounded projection independently of the PR record so a late timeline
+can leave held discussion, its text budget, and rendered Markdown intact.
+Represent partial and unavailable results separately from a known empty timeline.
+A failed, superseded, or mismatched read leaves the last compatible published data
+available. This is a selected-PR read.
+The catalog and visible-row description preparation continue to use their existing
+lightweight projections.
+Timeline reads request no patches or Git objects.
+
+Use the validated PR-scoped GitHub commit address.
+It covers forks and commits absent locally while GitHub still serves the object.
+Local commit links are tracked in `mb-g47g`. They need a cache-only address that
+survives reload and modified clicks, plus read-only enforcement through commit detail
+and diff hydration.
+
+Conversation paints from the held PR record.
+The selected page then asks for its timeline.
+A held projection can appear during metadata refresh.
+Provider work starts after that refresh settles and uses one independent slot per app.
+Fetch up to two pages of 100 events.
+Keep the verified first page visible if the second page encounters a transient provider
+failure. The active page can retry once.
+Cache the projection by viewer, repository, PR, target branch, head commit, and
+discussion identity.
+
+In the paired built-in browser runs, provider reads of the two public timelines took
+846–1,010 ms from identical fresh records, beginning 20–53 ms after the existing
+Conversation readiness mark.
+The responses transferred 985 and 3,211 encoded body bytes.
+Held responses took 4–25 ms with fresh metadata.
+With stale metadata, the held commit rows were ready 80–108 ms after Conversation while
+its metadata refresh continued.
+A synthetic 200-commit timeline took 6 ms to insert in the same browser.
+These local samples measure the optional work and its ordering relative to the
+foreground render.
+
+Reuse the browserless Pull page session for ordering, 64-bit discussion IDs, pending
+reviews, duplicate events, partial and failed reads, and an in-flight result overtaken
+by a discussion refresh.
+Include an older cached record and one near the text budget.
+Use a timeline longer than the chosen page size to hold a later page, bound requests and
+bytes, and check cancellation when the reader moves to another PR. Use the built-in
+browser to check both source modes, including a fork or missing commit and a partial
+checkout. Check exact commit addresses for ordinary and modified clicks and observe that
+local navigation issues no acquisition or refresh requests.
+
+## Main Tab Destinations and Progress
+
+A deliberate switch between Files, Commits, and Pulls restores the destination that tab
+last showed in this browser page.
+On first visit, Files opens the served root, Pulls opens the Open list, and Commits
+shows history with a prompt to select a commit.
+Opening Commits without a selection does not read a commit or its diff.
+Store each tab’s route, including any selected file, PR tab, PR file, commit, or
+fragment. Keep each tab’s filter and scroll position with its own panel.
+A direct address or Back and Forward selects the tab that owns the address.
+Restoring an address activates its panel through the existing navigation owner.
+That activation must not launch a second navigation or let an older request overwrite
+the active preview. See `mb-1c0a`. The tab controller loads with the deferred shell
+tools. A deliberate click before that point can load the same controller on demand.
+
+Use small, muted exact totals beside **Open**, **Closed**, and **All**. Read all three
+from the existing cached catalog response, independent of the display window.
+A known zero is visible; an unknown count does not imply zero.
+The tally introduces no provider requests.
+See `mb-z8mj`.
+
+Use **Changes** as the user-facing tab label and keep `/pull/<n>/files` as its address.
+Keep the pulsing blocks for an empty PR page, and use the shared gray spinner when a
+rendered PR or one of its sections is actively fetching.
+Static notices explain failures and work that has not started.
+See `mb-ykyl` and `mb-rofh`.
+
 ## Goal
 
 Open a GitHub repository and find its pull requests in a **Pulls** tab beside Files and
-Git. The tab lists every pull request, newest first, each with a state icon like
+Commits. The tab lists every pull request, newest first, each with a state icon like
 GitHub’s. Expand a pull request in place to see its changed files as a tree, the way a
 folder expands in the Files tab.
 Select one and read it in the same page: description, conversation, reviews, checks, and
@@ -153,7 +401,7 @@ in `static/app.js` are the tab registry.
 They are published on `window.MetabrowserShell`, which that file describes as an
 internal boundary for core modules and not the plugin SDK. `static/git-panel.js` is its
 one user outside `app.js`: it arrives in the `shell-tools` on-demand bundle after the
-first tree settles, asks `/api/git/repo`, and registers the Git tab if the root is a
+first tree settles, asks `/api/git/repo`, and registers the Commits tab if the root is a
 repository.
 
 Three facts shape the design:
@@ -344,11 +592,12 @@ existing `RefreshCoordinator`, under a key of its own per source and state.
 
 **Another reader.** The file names its reader, `gh:<login>`.
 
-- A list fetched by another account is shown as it is, labelled with that reader, and
-  treated as stale, as is a list whose last refresh ended `account_changed`, whichever
-  account that stamp names.
-  This matches the thin-mirror rule that cached private content stays viewable after a
-  logout or an account switch; the cache is owner-only.
+- The browser keeps a list fetched by another account visible.
+  The cache retains the reader for account checks and diagnostics.
+  The catalog treats a different reader or an `account_changed` refresh outcome as
+  stale. This matches the thin-mirror rule that cached private content stays viewable
+  after a logout or an account switch.
+  The cache is owner-only.
 - The next successful refresh replaces the whole file.
   Pages from two readers are never joined, and ETags are reused only for the same
   reader, so **Load more** under a new account starts again from the first page.
@@ -417,13 +666,12 @@ bounded set, plus a direct start of any number’s refresh by the plugin’s `PO
 
 **What starts a fetch.**
 
-- A pull request with no record is fetched only by a reader’s action in the shell’s own
-  chrome: selecting a row in the Pulls tab, pressing **Fetch** on its page, or opening a
-  file from an expanded row.
-  Expanding a row fetches that pull request’s file list and not its record.
-  An address alone shows what is cached, whether it was typed, followed from rendered
-  content, or reached by Back.
-  So nothing a link can do adds to the cache.
+- A visible PR page fills a cold record cache once after its initial cache read.
+  A selected row or changed file can start the same fetch.
+  Intentional expansion reads that PR’s file list through the
+  [changed-file disclosure flow](#changed-file-disclosure).
+  After a failed fetch, **Fetch** offers a retry.
+  A checkout can acquire a comparison store through **Fetch changes**.
 - A pull request with a record refreshes in the background when its page is visible and
   the record is stale, as a stale mirror does.
   The page’s controller asks for it, once a reader has stayed on the page
@@ -457,6 +705,9 @@ bounded set, plus a direct start of any number’s refresh by the plugin’s `PO
 - `/api/source/status`: `pull_request` is the attended number; `stale` and `refreshing`
   cover the mirror and that pull request, as now.
 - The freshness row links the attended pull request, as now.
+- The PR header reports the age of a cached description or full record and names GitHub
+  CLI as the fetch mechanism (mb-bv9o). An active load or refresh includes the shared
+  spinner. The cache and diagnostic CLI retain the reader.
 - The ref selector shows “Pull request #n” while the pin is that head, as now.
   It still lists only branches and tags; the Pulls tab is how a pull request’s code is
   reached.
@@ -516,8 +767,8 @@ github.com and whose `HEAD` names a commit.
   `gh`.
 - A plain folder has no context and gets no tab.
 - On a checkout served from a subdirectory the tab still appears, because pull requests
-  belong to the repository; the Git tab’s rule, that the served root must be the working
-  tree’s root, does not apply.
+  belong to the repository; the Commits tab’s rule, that the served root must be the
+  working tree’s root, does not apply.
 - `discover_repository_context` admits owner and repository spellings the GitHub
   plugin’s URL grammar refuses.
   The list route validates with the plugin’s grammar, and the tab then says the remote
@@ -538,14 +789,15 @@ pull-request page.
 
 **Which tab shows.** The Files tab stays for code at the pin.
 At a pull request’s address the navigation pane shows the Pulls tab, with that pull
-request’s row current and expanded, including on the page `metab <pull-request-url>`
-opens with. Today that page leaves the Files tree showing, which is what this corrects.
+request’s row current, including on the page `metab <pull-request-url>` opens with.
+The [changed-file disclosure](#changed-file-disclosure) separates the current row from
+its expansion state.
 
 **The list’s address.** `/pulls`, with `?state=` for a filter, is the list with no pull
 request selected, as on GitHub.
 
-- The shell shows the Pulls tab at `/pulls` and at `/pull/<n>`, as it shows the Git tab
-  at a commit’s address.
+- The shell shows the Pulls tab at `/pulls` and at `/pull/<n>`, as it shows the Commits
+  tab at a commit’s address.
   Selecting the tab by hand does not change the address, as with the other tabs.
 - `--show /pulls` prints `kind: pull-request-list` and a summary of the list envelope,
   which is the kind’s evidence for the parity gate.
@@ -627,8 +879,8 @@ The state icons get a line in that document.
 **Loading tier and the startup budget.**
 
 - Nothing is added to the startup scripts.
-  The host is in `shell-tools`, which loads after the first tree settles; the Git tab
-  appears at the same moment.
+  The host is in `shell-tools`, which loads after the first tree settles; the Commits
+  tab appears at the same moment.
 - The view’s code is on demand, fetched on first show.
 - `devtools/check_startup_scripts.py` proves it on every `make lint-check`: it fails on
   any script requested before `DOMContentLoaded`, and it reports the current totals
@@ -637,26 +889,25 @@ The state icons get a line in that document.
 **Large lists.** The tab appends plain rows a page at a time, as the ref selector does.
 Step 3 measures in a real browser what the row cap costs to render and to keep, by the
 method in [rendering large content](../../../large-content-rendering.md).
-If the cap’s worth of rows is past the budget, the panel uses the Git tab’s windowing
-module.
+If the cap’s worth of rows is past the budget, the panel uses the Commits tab’s
+windowing module.
 
 **What is prefetched.**
 
-- On a mirror, after the first tree settles: the view’s code and the cached list
-  envelope. Both are local.
-- On a checkout: nothing until the tab is opened.
-  Even the cached read would load the cache into a folder’s server.
-- A cached record is read when its row takes focus or the pointer, which is a local
-  `GET` that runs no `gh`.
-- The network refresh starts when the tab is first opened on a checkout.
-  On a mirror it starts with that read ahead, once the first tree has settled, which is
-  what “prefetch by default” asks for.
-  Step 3 measured it by [Performance](#performance)’s rule, nine back-to-back pairs on
-  pallets/click: first row 1.001x and the mirror’s own refresh 0.998x. Started as the
-  page starts it was 1.09x to 1.14x on the first row, past the rule, so it does not
-  start there.
-- No spinner appears before the `--loading-state-delay` token, through the existing
-  `mb-delayed-loading` class.
+The current policy is
+[Progressive Metadata Preparation](#progressive-metadata-preparation).
+In both repository modes, idle startup loads the view code and cached catalog, starts a
+due metadata refresh, and progressively prepares lightweight descriptions.
+A plain folder starts no GitHub work.
+Full discussion, checks, and Git acquisition remain selection-driven; changed-file
+metadata follows deliberate disclosure.
+
+The original Step 3 experiment measured the catalog warm-up on nine back-to-back pairs
+on pallets/click: first row 1.001x and the mirror’s own refresh 0.998x. Starting it with
+the initial page work cost 1.09x to 1.14x on the first row.
+These historical results explain the idle boundary; they do not establish the cost of
+the current progressive description pass.
+No spinner appears before the shared loading-state delay.
 
 ### Changed Files in a Row
 
@@ -722,8 +973,9 @@ request and toggles its files.
 The keyboard splits them: Enter opens, Right expands, and Left collapses, as
 `static/tree-keyboard-navigation.js` does for the Files tree, and the host hands the
 view that module, so the plugin reaches no private global.
-The row of the pull request the page shows is expanded automatically, and the file it
-shows is marked current.
+The initial implementation expanded the shown PR’s row automatically.
+The [changed-file disclosure](#changed-file-disclosure) gives expansion its own gesture.
+A file shown in the page is marked current in its tree.
 
 **Walking files with the keyboard.** The user: “It may require rapid scrolling up the
 diff view to the relevant file when we navigate between particular files in a diff.”
@@ -811,10 +1063,9 @@ Reading a cached list starts no Git or network.
 The refresh coordinator holds repeated attempts to its freshness window; conditional
 GitHub page reads reuse unchanged rows.
 
-**What starts a fetch.** Expanding a row is a reader’s action in the shell’s chrome,
-behind the same `POST` rule.
-The pointer or focus on a row reads the cached list only, so a cached tree opens with no
-wait.
+**What starts a fetch.** Intentional expansion uses the
+[cache-first disclosure flow](#changed-file-disclosure) and the existing `POST` rule.
+Pointer or focus prefetch reads the cached list only.
 
 **Opening a file.** A file row is a link to `/pull/<n>/files/<path>`, extending the
 container’s address the way `/commit/<rev>/<path>` does
@@ -872,8 +1123,8 @@ Jobs run on the server’s `RefreshCoordinator`, keyed by the slug.
 
 - Identity is read from files.
 - Conversation, reviews, and checks need no Git objects.
-- Every Git command run in the checkout is a read under `READ_POLICY`, as the Git tab’s
-  are.
+- Every Git command run in the checkout is a read under `READ_POLICY`, as the Commits
+  tab’s are.
 - No fetch, no ref, no configuration write.
 
 **The page on a checkout.** The page works from the record alone.
@@ -947,13 +1198,13 @@ profile by default, and a pull request’s text is written by anyone.
   the written files.
 - **What leaves the machine, and when.**
   - On a plain folder: nothing.
-  - On a checkout: nothing until the Pulls tab is opened.
-    Then `gh` asks api.github.com for the list of the repository named by `origin`, and
-    for each pull request the reader opens.
-  - On a mirror: `gh` asks api.github.com for the list of the mirrored repository as the
-    page opens, once the first tree has settled, whether or not the Pulls tab is opened,
-    and at most once per freshness window ([What is prefetched](#the-tab)); then for
-    each pull request the reader opens, with the Git fetch of `refs/pull/<n>/head`.
+  - On a checkout or mirror: after the first tree work settles, `gh` can ask
+    api.github.com for the repository’s catalog and lightweight PR descriptions even
+    while Files remains selected, as defined by
+    [Progressive Metadata Preparation](#progressive-metadata-preparation).
+    The browser pauses unfinished background work while hidden or offline.
+    Full discussion, checks, changed files, and Git objects are requested when needed;
+    selected comparison preparation fetches `refs/pull/<n>/head`.
   - The requests name the repository and the pull request, and carry `gh`’s own
     authentication. Nothing about local files, paths, or branches is sent.
 - **Route safety.** Every route that starts network work is a `POST` with a JSON body
@@ -1076,7 +1327,7 @@ acquisition. Each updates
 | --- | --- | --- | --- |
 | 1. List data | The model, file, bounds with measurements, the job, both list routes, and the fake `gh` pages | `--api /api/plugin/github/pulls-refresh --data …` then `--api '/api/plugin/github/pulls?state=all'` lists pull requests, and the second works offline, since a read never fetches | Yes |
 | 2. On-demand open | Numbered routes, the provider’s set, the attended pull request, the job bound, the Browse code cases, and View file under any head ref | On a server opened from a repository URL, `/pull/<n>` for any number offers **Fetch** and then shows the page | Yes |
-| 3. The tab on a mirror | The panel host, which tab an address shows, the view and its `/pulls` address, state icons, filters, states, keyboard, prefetch, and the sessions | Paste a repository URL, see Pulls beside Files and Git with every pull request and its icon, select one, and read it | Needs 1 and 2 |
+| 3. The tab on a mirror | The panel host, which tab an address shows, the view and its `/pulls` address, state icons, filters, states, keyboard, prefetch, and the sessions | Paste a repository URL, see Pulls beside Files and Commits with every pull request and its icon, select one, and read it | Needs 1 and 2 |
 | 4. Changed files in a row | The file-list job, model, and routes, the tree, the gesture, `/pull/<n>/files/<path>`, and its session | Expand a pull request in the list, expand a folder, and open a file | Needs 3 |
 | 5. The tab and pages on a checkout | Identity, the source without a store, records without a comparison, network on use, and both profiles | Open a checkout, open Pulls, expand a pull request, and read a conversation, with nothing written to the repository | Needs 4 |
 | 6. Files changed on a checkout | An overlay of the served checkout, acquired from a running folder server when Files changed opens, the comparison from its store, and the typed states on the page | Open a checkout, open a pull request whose commits are not local, and read Files changed from the overlay | Needs 5 |

@@ -219,6 +219,7 @@ class InProcessClient:
             query = f"{query}&{encoded}" if query else encoded
 
         request_available = True
+        response_finished = asyncio.Event()
         status_code: int | None = None
         body_parts: list[bytes] = []
         headers: dict[str, str] = {}
@@ -229,6 +230,7 @@ class InProcessClient:
             if request_available:
                 request_available = False
                 return {"type": "http.request", "body": body, "more_body": False}
+            await response_finished.wait()
             return {"type": "http.disconnect"}
 
         async def send(message: Message) -> None:
@@ -237,8 +239,12 @@ class InProcessClient:
                 status_code = message["status"]
                 for raw_name, raw_value in message.get("headers", []):
                     headers[raw_name.decode("latin-1").lower()] = raw_value.decode("latin-1")
+                if headers.get("content-type", "").startswith("text/event-stream"):
+                    response_finished.set()
             elif message["type"] == "http.response.body":
                 body_parts.append(message.get("body", b""))
+                if not message.get("more_body", False):
+                    response_finished.set()
 
         request_headers: list[tuple[bytes, bytes]] = [(b"host", b"testserver")]
         if body:
@@ -290,10 +296,8 @@ class InProcessClient:
             )
         if status_code is None:
             raise CLIError(f"{self._label} returned no response for {route}")
-        # A stream ends here only because the client hung up on the second
-        # receive(), not because the response finished. Reporting the prefix
-        # that happened to arrive as a complete answer would be a lie, and the
-        # bytes are arbitrary -- they depend on when the disconnect landed.
+        # An event stream is disconnected as soon as its headers arrive.
+        # The CLI has no complete response to print.
         if headers.get("content-type", "").startswith("text/event-stream"):
             raise CLIError(
                 f"{self._label} route {route} is a server-sent-event stream; "

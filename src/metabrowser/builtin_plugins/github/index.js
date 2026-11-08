@@ -1,12 +1,11 @@
 // GitHub built-in plugin.
 //
 // Owns two views. ("pull-request", "pull-request") is a pull request's page at
-// /pull/<n>[/files], which the shell mounts for that route; pull-page.js holds it.
+// /pull/<n> and its tab routes, which the shell mounts; pull-page.js holds it.
 // ("pull-request-list", "pull-request-list") is the list of them: the shell mounts it in the
 // Pulls tab, with its host, and in the pane at /pulls; pulls-panel.js holds it.
 // The URL reducer, the gh credential helper, and the records are Python.
 
-import { watchMessageMeasure } from "./message-measure.js";
 import { mountPullPage } from "./pull-page.js";
 import { mountPullsLanding, mountPullsPanel } from "./pulls-panel.js";
 
@@ -16,22 +15,10 @@ if (!mb) {
 }
 
 mb.registerView("pull-request", "pull-request", {
-  render(container, ctx) {
-    const page = mountPullPage(container, ctx, mb);
-    const stopMeasuring = watchMessageMeasure(container);
-    return {
-      ...page,
-      dispose() {
-        stopMeasuring();
-        page.dispose();
-      },
-    };
-  },
+  render: (container, ctx) => mountPullPage(container, ctx, mb),
 });
 
 mb.registerView("pull-request-list", "pull-request-list", {
   render: (container, ctx) =>
-    ctx.pullsNav === undefined
-      ? mountPullsLanding(container, ctx, mb)
-      : mountPullsPanel(container, ctx, mb),
+    ctx.pullsNav === undefined ? mountPullsLanding(container) : mountPullsPanel(container, ctx, mb),
 });
