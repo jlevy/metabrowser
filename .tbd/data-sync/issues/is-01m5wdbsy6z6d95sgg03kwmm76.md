@@ -5,7 +5,7 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: in_progress
 priority: 1
-version: 14
+version: 15
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -16,10 +16,11 @@ child_order_hints:
   - is-01m6wdjwawp9g1bvnefz2hxze3
   - is-01m6wpgzn59yqd9ba9d3kae44m
   - is-01m6wq6jdpw2gshn84zxcr8ewd
+  - is-01m6xa4ytymbe41wm6ta709yt9
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-08T09:27:04.867Z
+updated_at: 2026-11-08T10:09:33.021Z
 started_at: 2026-11-08T01:58:21.485Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
