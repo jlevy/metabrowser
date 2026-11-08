@@ -2042,7 +2042,9 @@
               previewClaim,
             );
           }
-          clearPendingState();
+          if (pendingPreviewClaim === previewClaim) {
+            clearPendingState();
+          }
           return;
         }
         await renderCommitDetail(detail, previewClaim, preparation);

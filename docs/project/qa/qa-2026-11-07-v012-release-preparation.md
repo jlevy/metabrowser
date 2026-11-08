@@ -1,6 +1,6 @@
 # Metabrowser 0.12.0 Release Preparation
 
-**Status:** In progress on November 7, 2026. The product stacks are merged and the
+**Status:** In progress; updated November 8, 2026. The product stacks are merged and the
 reviewed build is installed locally.
 Release acceptance remains incomplete; no tag or publication is authorized until the
 owner approves the exact candidate and notes.
@@ -71,8 +71,8 @@ The earlier intermittent PR-to-Commits loading stall recurred on installed `e204
 the URL selected merged main, but the preview retained only its loading placeholder.
 A deterministic production-JavaScript session confirmed that a delayed loading callback
 could remove the connected diff stage or overwrite ready content while paint callbacks
-were deferred. Independent review also reproduced an older selection’s paint completion
-clearing a newer selection’s pending indicator.
+were deferred. Independent review also reproduced an older selection’s paint or
+missing-commit completion clearing a newer selection’s pending indicator.
 The focused fix installs the shared CSS-delayed spinner before staging and restricts
 cleanup to its owning selection.
 The source preview opens the previously stalled commit and renders its sixteen changed
@@ -149,12 +149,18 @@ The branch/worktree chooser is future workflow `mb-itzy`, explicitly paused by t
 It tracks the design of live working-tree and cached branch-snapshot browsing and does
 not expand this stabilization or release scope.
 
+Conversation commit summaries currently use validated GitHub destinations.
+Local commit navigation without Git acquisition is a separate tracked enhancement,
+`mb-g47g`; the current timeline does not claim that local destination behavior.
+
 ## Remaining Acceptance
 
 | Gate | State | Tracking |
 | --- | --- | --- |
 | Post-landing browser smoke and current documentation | Documentation [#332](https://github.com/jlevy/metabrowser/pull/332) is merged and installed; the reproduced commit-loading race still blocks completion | `mb-5k2w`, `mb-4mfc`; `mb-ucc1` closed |
 | Previous-release performance comparison | [Exp-056](../../../explorations/performance-loop/experiments/exp-056-previous-release-rehearsal.md) stopped after a valid 444 ms candidate first-row result exceeded the 350 ms hard gate. A quiet final-candidate exp-057 comparison remains required | `mb-cf6y` |
+| PR and Commit navigation performance | Delivered prefetch layers retain their recorded evidence; cold-asset attribution, natural intent/request joining and the initial PR-core scheduling diagnostic remain open. The regular-folder release comparison does not cover these interactions | `mb-4ifm`, `mb-5rm1`, `mb-97ex`, `mb-b0aq` |
+| Large-PR performance qualifications | Quiet public comparisons and the measured render-window follow-up remain separate from regular-folder acceptance | `mb-jwfx`, `mb-mwuz` |
 | Linked dependency roots in the benchmark corpus | Behavioral regression test and corpus correction merged in stack 331 | `mb-lsm5` closed |
 | Regular-folder data, test-evidence and browser differentials | Audit Parts A and B complete at `519c33239`; classified Part C accepted at `e204ce9b5`; intermediate data run stopped cleanly; all three final-candidate differentials remain pending | `mb-2g6f` |
 | Plain-folder comparison above 50 files | Control and installed `519c33239` have identical 55-file CLI payloads, clean apply oracles and both browser layouts; final release-head and owner sign-off remain | `mb-8pyc` |

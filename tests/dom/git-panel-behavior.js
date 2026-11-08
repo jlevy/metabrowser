@@ -1936,6 +1936,7 @@ async function run() {
     const originalTimeout = sandbox.setTimeout;
     const originalClearTimeout = sandbox.clearTimeout;
     const originalAssets = sandbox.metabrowser.ensureKindAssets;
+    const originalFreshness = sandbox.MetabrowserShell.sourceFreshness;
     const timers = new Map();
     const frames = [];
     let clock = 0;
@@ -2108,11 +2109,72 @@ async function run() {
         pane.getAttribute("aria-busy"),
         null,
       );
+      // A missing commit can wait for freshness assets after another selection starts.
+      const missing = "27".repeat(20);
+      const found = "28".repeat(20);
+      let releaseFreshness;
+      let releaseFound;
+      sandbox.MetabrowserShell.sourceFreshness = () =>
+        new Promise((resolve) => {
+          releaseFreshness = resolve;
+        });
+      responses.set(`/api/git/commit/${missing}`, {
+        httpStatus: 404,
+        body: { error: "unknown revision", code: "commit_not_found" },
+      });
+      responses.set(
+        `/api/git/commit/${found}`,
+        () =>
+          new Promise((resolve) => {
+            releaseFound = resolve;
+          }),
+      );
+      const selectingMissing = internals.selectCommit(missing);
+      await until(() => releaseFreshness !== undefined, "missing commit freshness assets");
+      const selectingFound = internals.selectCommit(found);
+      await until(() => releaseFound !== undefined, "found commit detail");
+      const foundClaim = pane.getAttribute("data-preview-pending-claim");
+      releaseFreshness(null);
+      await selectingMissing;
+      assertEqual(
+        "loading: missing completion preserves newer busy state",
+        pane.getAttribute("aria-busy"),
+        "true",
+      );
+      assertEqual(
+        "loading: missing completion preserves newer claim",
+        pane.getAttribute("data-preview-pending-claim"),
+        foundClaim,
+      );
+      checkpoints.missing = { newerBusyAfterMissing: pane.getAttribute("aria-busy") === "true" };
+      releaseFound({
+        is_repo: true,
+        commit: commit(found, [], "found after missing"),
+        body: "",
+        stats: { files_changed: 0, additions: 0, deletions: 0 },
+        files: [],
+        files_truncated: false,
+      });
+      await until(() => frames.length > 0, "found commit paint");
+      frames.shift()();
+      frames.shift()();
+      await selectingFound;
+      assertContains(
+        "loading: missing crossing ends on newer commit",
+        previewHtml,
+        "found after missing",
+      );
+      assertEqual(
+        "loading: found commit paint clears its busy state",
+        pane.getAttribute("aria-busy"),
+        null,
+      );
       commitLoadingSession = checkpoints;
     } finally {
       sandbox.setTimeout = originalTimeout;
       sandbox.clearTimeout = originalClearTimeout;
       sandbox.metabrowser.ensureKindAssets = originalAssets;
+      sandbox.MetabrowserShell.sourceFreshness = originalFreshness;
       delete sandbox.requestAnimationFrame;
     }
   }

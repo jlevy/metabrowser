@@ -20,7 +20,7 @@ panel listening.
 The panel’s loading session holds paint callbacks and diff assets independently.
 Its initial spinner preserves the connected diff stage, and deferred paint preserves the
 ready commit. An older selection’s paint callback preserves the newer selection’s busy
-state.
+state. A missing commit’s delayed freshness lookup preserves it too.
 
 ```console
 $ node tests/dom/git-commit-history-session.js
@@ -262,7 +262,7 @@ $ node tests/dom/git-commit-history-session.js
 ```console
 $ node tests/dom/git-panel-behavior.js
 OK git panel behavior
-commit loading session {"paint":{"readyConnected":true,"loading":false},"assets":{"stageConnected":true,"spinner":true},"crossing":{"newerBusyAfterOlderPaint":true}}
+commit loading session {"paint":{"readyConnected":true,"loading":false},"assets":{"stageConnected":true,"spinner":true},"crossing":{"newerBusyAfterOlderPaint":true},"missing":{"newerBusyAfterMissing":true}}
 ? 0
 ```
 
