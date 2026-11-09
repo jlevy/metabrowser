@@ -75,6 +75,8 @@ type MetabrowserPullsPanelHandle = Readonly<{
   move(delta: -1 | 1, how?: { repeat?: boolean }): boolean;
   released(): void;
   activateAnchor(): boolean;
+  /** Space on a pull request's row toggles its changed files in place. */
+  toggleFiles(number: number): boolean;
   /** Right and Left on a pull request's row: its changed files open, or close. */
   expand(): boolean;
   collapse(): boolean;

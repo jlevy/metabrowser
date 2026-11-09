@@ -890,11 +890,12 @@ function twoTreesPage() {
       "data-number": String(number),
     });
   const pulls = [3900, 3899, 3898].map(pullRow);
+  const copyRef = make("button", { "aria-label": "Copy ref main" });
   const pullsTab = make("div", { id: "tab-pulls", "data-tab-content": "pulls" }, [
     make(
       "ul",
       { class: "github-pulls-list", role: "tree" },
-      pulls.map((row) => make("li", { role: "none" }, [row])),
+      pulls.map((row, index) => make("li", { role: "none" }, index === 0 ? [row, copyRef] : [row])),
     ),
   ]);
   document.body.append(
@@ -1003,6 +1004,14 @@ function twoTreesPage() {
             collapse() {
               return true;
             },
+            toggleFiles(number) {
+              const row = rows().find((item) => Number(item.dataset.number) === number);
+              assert.ok(row, "Space identifies the actual focused pull request");
+              const expanded = row.getAttribute("aria-expanded") !== "true";
+              row.setAttribute("aria-expanded", String(expanded));
+              log.push(expanded ? "expanded changed files" : "collapsed changed files");
+              return true;
+            },
             moveFile(delta) {
               const at = changedFiles.indexOf(document.activeElement);
               const next = changedFiles[Math.max(0, Math.min(changedFiles.length - 1, at + delta))];
@@ -1104,14 +1113,15 @@ function twoTreesPage() {
     files,
     pulls,
     changedFiles,
+    copyRef,
     shell,
     take: () => log.splice(0),
     /** A key pressed where focus is, and its release. */
-    press(key) {
+    press(key, { repeat = false } = {}) {
       const target = document.activeElement;
       const event = dispatch(target, "keydown", {
         key,
-        repeat: false,
+        repeat,
         altKey: false,
         ctrlKey: false,
         metaKey: false,
@@ -1148,6 +1158,34 @@ async function twoTreesStory() {
   await settle();
   page.pulls[0].focus();
   story["a Pulls row takes focus: each tree keeps its own Tab stop"] = page.tabStops();
+  const beforeSpace = page.shell.address;
+  const [firstPull, nextPull] = page.pulls;
+  // A catalog refresh can move the roving tab stop without stealing DOM focus.
+  firstPull.setAttribute("tabindex", "-1");
+  nextPull.setAttribute("tabindex", "0");
+  story["Space expands changed files in place"] = page.press(" ");
+  assert.equal(firstPull.getAttribute("aria-expanded"), "true", "Space expands the focused PR");
+  story["holding Space leaves the tree open"] = page.press(" ", { repeat: true });
+  assert.equal(firstPull.getAttribute("aria-expanded"), "true", "a held Space does not toggle");
+  story["Space again collapses changed files in place"] = page.press(" ");
+  assert.equal(firstPull.getAttribute("aria-expanded"), "false", "Space collapses the focused PR");
+  for (const action of [
+    story["Space expands changed files in place"],
+    story["holding Space leaves the tree open"],
+    story["Space again collapses changed files in place"],
+  ]) {
+    assert.equal(action.handled, true, "Space cannot scroll the page");
+    assert.equal(action.address, beforeSpace, "Space keeps the current page");
+    assert.equal(action["focus on"], page.named(firstPull), "Space keeps focus on the PR");
+  }
+  assert.equal(nextPull.getAttribute("aria-expanded"), null, "Space ignores the new tab stop");
+  page.copyRef.focus();
+  const copySpace = page.press(" ");
+  assert.equal(copySpace.handled, false, "Space on a copy button retains its native behavior");
+  assert.deepEqual(copySpace.did, []);
+  firstPull.focus();
+  firstPull.setAttribute("tabindex", "0");
+  nextPull.setAttribute("tabindex", "-1");
   story["J on it is the list's"] = page.press("j");
   story["ArrowDown too"] = page.press("ArrowDown");
   story["Enter opens the row"] = page.press("Enter");

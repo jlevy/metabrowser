@@ -12,8 +12,8 @@
 // role of its own, and its changed files hang off the item (pull-files-view.js): a chevron
 // box before the state icon, a `.tree-children[role="group"]` after the anchor, which the
 // anchor owns, and `aria-expanded` on it. A click opens the pull request and toggles its
-// files, as a folder's does in the Files tab; Right and Left split the two. The walk goes by
-// `rows`, not by the DOM, so it reads the same however a row is drawn.
+// files. Space toggles the files in place. Right expands or enters and Left collapses.
+// The walk goes by `rows`, not by the DOM, so it reads the same however a row is drawn.
 //
 // What starts a fetch (plan-2026-10-01-github-pulls-tab.md, "What starts a fetch"): a list's
 // `GET` never does. Idle startup may warm the catalog and lightweight PR metadata in both
@@ -2161,7 +2161,7 @@ export function createPullsController(deps, options = {}) {
       }
       void openRow(number, 0, false);
     },
-    /** Open the row that holds focus, for Enter and Space. */
+    /** Open the anchor row on Enter. */
     activateAnchor() {
       if (disposed || anchor === null) {
         return false;
@@ -2576,6 +2576,11 @@ export function mountPullsPanel(container, ctx, mb) {
         focusedTree = null;
       }
     }
+  }
+
+  /** @param {number} number */
+  function toggleRowFiles(number) {
+    setExpanded(number, expansion.toggle(number));
   }
 
   /**
@@ -3315,7 +3320,7 @@ export function mountPullsPanel(container, ctx, mb) {
         const number = Number(row.dataset.number);
         // One gesture, as a folder's in the Files tab: it opens the pull request and toggles
         // its files.
-        setExpanded(number, expansion.toggle(number));
+        toggleRowFiles(number);
         controller.activate(number);
       }
     },
@@ -3502,6 +3507,14 @@ export function mountPullsPanel(container, ctx, mb) {
       focused()?.released();
     },
     activateAnchor: controller.activateAnchor,
+    /** Space toggles the focused pull request's files in place. @param {number} number */
+    toggleFiles(number) {
+      if (!painted.has(number)) {
+        return false;
+      }
+      toggleRowFiles(number);
+      return true;
+    },
     /** Right on a pull request's row: its files open, or focus goes to the first. */
     expand() {
       const number = controller.snapshot().anchor;

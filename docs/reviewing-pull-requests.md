@@ -73,9 +73,9 @@ Right expands the tree, and Left collapses it.
 The tree shows cached files immediately when available and automatically lists them when
 needed. Selecting a file opens **Changes** at that file.
 Use J, K, or the up and down arrows to walk rows without changing which trees are
-expanded.
-Enter or Space opens the selected PR. Keyboard walks keep focus in the tree and
-replace one browser history entry, so Back leaves the walk in one step.
+expanded. Enter opens the focused PR. Space expands or collapses its changed files in
+place. Keyboard walks keep focus in the tree and replace one browser history entry, so
+Back leaves the walk in one step.
 The selected file follows the diff as you scroll; Back and Forward restore the selected
 file and reading position.
 

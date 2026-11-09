@@ -1260,9 +1260,8 @@ can cost a fetch where a file cannot: each move changes two rows, a press opens 
 and a key held down opens only the row it stops on.
 History follows the rule all three collections share: a key’s open replaces the entry,
 as the file tree’s arrow keys and Git’s K and J do.
-A click, Enter, or Space on a row that is not the one open pushes one, as a click in the
-file tree does; what each collection does with a click and Enter is in
-[Navigational Row Collections](#navigational-row-collections).
+Clicking a different row or pressing Enter on it pushes a history entry.
+Space toggles the focused pull request’s changed files in place.
 Help reads the `pull-requests` group of the shortcut registry, and no surface here names
 a key.
 
@@ -1314,11 +1313,13 @@ it passed. The collections differ in the rest:
   In Commits it replaces the entry, as every selection there does that does not come
   from the address: a commit is a selection that holds the address while it is shown
   (`static/git-panel.js`, `selectCommit`).
-- **Enter and Space** open only in the Pulls tab, and push an entry only for a row that
-  is not the one open.
-  On a file tree row they are action keys, which toggle a folder or a container file or
-  show the next page, and leave history alone.
-  On a commit they select it again, replacing the entry.
+- **Enter** in the Pulls tab opens the focused pull request and pushes an entry if it
+  opens a different row.
+  **Space** toggles the focused pull request’s changed files and keeps the current
+  preview, focus, and history.
+  On a file tree row, both keys toggle a folder or container file or show the next page
+  and leave history alone.
+  On a commit row, both keys select it again, replacing the entry.
 
 The file tree and Git do here what they did in `v0.11.0`, so a change that makes one
 conform to another changes a plain folder’s Back.

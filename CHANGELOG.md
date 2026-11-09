@@ -38,6 +38,7 @@ PR and Git navigation:
 - Pulls resumes incremental GitHub updates after reconnect and shows one connection
   status with a **Reload** action.
 - Pulls loads older rows automatically as you approach the end of the list.
+- Space on a focused pull request expands or collapses its changed files in place.
 - Comparisons load nearby patches ahead of scrolling and show a notice for a failed
   patch or truncated result.
 - Pull request check runs and status contexts have their own **Checks** tab with a

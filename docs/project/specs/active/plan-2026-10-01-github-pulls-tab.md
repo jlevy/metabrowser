@@ -44,7 +44,8 @@ Up, Down, J, and K move the selection.
 The PR preview follows while each tree keeps its expansion state.
 Clicking the PR row opens the PR and toggles its tree.
 Right expands or enters the tree, and Left collapses it.
-Enter and Space open the PR without changing disclosure.
+Enter opens the PR without changing disclosure.
+Space toggles the focused PR’s changed files without changing focus or the current page.
 An explicit changed-file link opens its tree so the selected file is visible.
 
 `mb-neq0` makes intentional expansion cache-first.
