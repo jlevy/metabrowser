@@ -5,7 +5,7 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: in_progress
 priority: 1
-version: 23
+version: 24
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-09T01:24:53.856Z
+updated_at: 2026-11-09T01:49:12.354Z
 started_at: 2026-11-08T01:58:21.485Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
@@ -159,3 +159,5 @@ The 30-second quiet-host preflight deferred after sustained 21.65–55.49 MB/s d
 Pending exact merge, merged-main CI, remaining QA and owner approval of the final release commit and complete public notes. No tag or release.
 
 Evidence: release-followups-r3-20261108/stack345-merge-readiness.json, installed-iab-receipt.json and qualified-55-receipt.json. Quiet preflight evidence: host-a539-20261109T011536Z-decision.json.
+
+Merged-main checkpoint: the owner-approved stack #345 landed at 87b8ec812774bb12a4d9f5f29901719b8b66d323 with the qualified wheel tree. All 9 main CI jobs passed (42546224251). The valid previous-release performance comparison and remaining manual acceptance are still pending. The post-merge host preflight deferred before capture. No release tag or publication.
