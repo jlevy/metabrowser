@@ -5,7 +5,7 @@ title: Run the 0.12 release rehearsal against published 0.11.0
 kind: task
 status: in_progress
 priority: 1
-version: 16
+version: 17
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T20:29:17.780Z
-updated_at: 2026-11-09T01:24:53.312Z
+updated_at: 2026-11-09T01:37:57.994Z
 started_at: 2026-10-01T20:29:25.524Z
 ---
 Run the standard release checklist stability rehearsal against published 0.11.0 on the reviewed current application candidate: complete make verify, previous-release performance comparison with committed experiment/report, exact-head CI and release-note/version review. Version 0.12.0 is already decided. All candidate captures must satisfy committed hard responsiveness/correctness gates; repeatable regressions block until fixed or explicitly accepted. Review backend semantic equivalence before timings. User authorization now includes merging reviewed green work; no tag, release or publication is authorized without approval of the exact final commit and notes. Preserve historical runs and rerun on the final candidate rather than relabeling old evidence. Related final data/browser/test-evidence gate is mb-2g6f; PR-specific navigation diagnostics are separate in mb-4ifm.
@@ -74,3 +74,5 @@ The normal R3 full gate and atomic two-ref push passed in 1,444.45 seconds, with
 The 30-second quiet-host preflight deferred after sustained 21.65–55.49 MB/s disk traffic and active Spotlight. It launched no captures, added no pairs and wrote no canonical ledger rows. Exp-056's 444 ms result still exceeds the 350 ms first-row gate. Quiet qualification remains open.
 
 Evidence: release-followups-r3-20261108/stack345-merge-readiness.json, installed-iab-receipt.json and qualified-55-receipt.json. Quiet preflight evidence: host-a539-20261109T011536Z-decision.json.
+
+Post-merge: stack #345 merged into main at 87b8ec812774bb12a4d9f5f29901719b8b66d323 with the exact qualified a53907948 source tree. A fresh 30-second host sample again showed sustained disk I/O and Spotlight at 72.3% CPU at the end. Exp-057 was held before capture. Evidence: performance-final-stabilization-preparation-20261108/binding-a53907948-20261109/host-after-merge-20261109T013425Z.txt.
