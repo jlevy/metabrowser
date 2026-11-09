@@ -3,9 +3,9 @@ type: is
 id: is-01m6wdjwawp9g1bvnefz2hxze3
 title: Prepare the next Metabrowser release candidate without publishing
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 19
+version: 21
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -20,12 +20,18 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-08T01:50:20.508Z
-updated_at: 2026-11-09T01:24:54.398Z
+updated_at: 2026-11-09T16:23:51.028Z
 started_at: 2026-11-08T01:55:06.900Z
+closed_at: 2026-11-09T16:23:51.028Z
+close_reason: null
+resolution: null
+duplicate_of: null
 ---
 Prepare Metabrowser 0.12.0 under release coordinator mb-4bd2. All product and release-command layers through PR #335 are merged, independently reviewed and CI-green; exact gated 426 is installed. Complete final data/audit/browser differentials mb-2g6f, the above-50-file comparison mb-8pyc, quiet previous-release rehearsal mb-cf6y, navigation and large-PR qualification mb-4ifm, the installed-wheel runbook mb-m20f and owner matrix mb-etqi. Keep docs, plans, skill identity, changelog and the behavior-change record current, and prepare complete 0.11.0-to-0.12.0 notes and a concrete artifact/checklist packet. Preserve failed, interrupted and nonfinal evidence at its original identity. No tag, GitHub release, PyPI publication or post-publication claim before the owner approves the exact final commit and notes. Future Files live-worktree/branch browsing mb-itzy remains paused and outside scope.
 
 ## Notes
+
+November 9: maintainer approved the complete v0.12.0 notes and exact verified main 87b8ec812774bb12a4d9f5f29901719b8b66d323. Published GitHub notes match the approved bytes, SHA-256 63a444249e169927d93c3ee3dc10e4f6119043af1a6cab4979fac4a660a4e3f8. The release-preparation documentation landed in #335 and #336. Registry verification is tracked in mb-4bd2.
 
 November 8, 17:33 UTC: current release qualification
 
