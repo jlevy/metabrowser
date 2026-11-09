@@ -13,6 +13,7 @@ patterns:
   STORE_KEY: '[0-9a-f]{64}'
 before: >-
   unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX GIT_NAMESPACE GIT_CEILING_DIRECTORIES &&
+  METABROWSER_CONFIG_DIR="$PWD/config"
   uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
   --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../source_mirror_fixture.py" .
   --hold-fetch-lock > fixture.log 2>&1
