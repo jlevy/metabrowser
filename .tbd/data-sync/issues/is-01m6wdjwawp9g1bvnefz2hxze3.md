@@ -5,7 +5,7 @@ title: Prepare the next Metabrowser release candidate without publishing
 kind: task
 status: in_progress
 priority: 1
-version: 17
+version: 18
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -20,7 +20,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-08T01:50:20.508Z
-updated_at: 2026-11-08T23:44:45.978Z
+updated_at: 2026-11-09T00:08:27.773Z
 started_at: 2026-11-08T01:55:06.900Z
 ---
 Prepare Metabrowser 0.12.0 under release coordinator mb-4bd2. All product and release-command layers through PR #335 are merged, independently reviewed and CI-green; exact gated 426 is installed. Complete final data/audit/browser differentials mb-2g6f, the above-50-file comparison mb-8pyc, quiet previous-release rehearsal mb-cf6y, navigation and large-PR qualification mb-4ifm, the installed-wheel runbook mb-m20f and owner matrix mb-etqi. Keep docs, plans, skill identity, changelog and the behavior-change record current, and prepare complete 0.11.0-to-0.12.0 notes and a concrete artifact/checklist packet. Preserve failed, interrupted and nonfinal evidence at its original identity. No tag, GitHub release, PyPI publication or post-publication claim before the owner approves the exact final commit and notes. Future Files live-worktree/branch browsing mb-itzy remains paused and outside scope.
@@ -78,3 +78,5 @@ The user explicitly separated macOS spike #341: another agent owns its reviews/f
 November 8 actual delivery. Native stack #339 atomically merged PRs #337, #336, #340 and #342 into main a2677882a2281a1e5b622acf4788ded9e5516331 from 23:27:15 to 23:27:18 UTC. Its tree 8d69ce06a4054c4a394248c36ba05e12ddd38fcc matches qualified installed b2fb exactly. All four PRs and merged main passed nine CI contexts. https://github.com/jlevy/metabrowser/actions/runs/42535251691
 
 The dated QA refresh is merged. Before any release tag, finish the config/cache successor, account upgrade proof, quiet performance, complete installed QA and owner matrix. Reconcile README release/version pins, installation-guide commands and shipped Agent Skill content/pin to the same release identity. Prepare the exact final main commit and immutable release notes/comparison for owner approval before tagging or publishing. Recheck these pins against the actual final release candidate after mb-9e1t and later changes. Release remains unpublished.
+
+Release-document preflight clarification: current README, installation guide and shipped Agent Skill deliberately use versionless `metabrowser@latest` commands with the operator’s uv cool-off. Checked the actual three documents and the publish workflow: no stale numeric pins and no pin bump planned. Keep the public-hygiene rule, verify version derivation from the approved exact release tag, and prepare the final changelog/notes and immutable commit approval before publication.
