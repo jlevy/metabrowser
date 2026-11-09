@@ -630,6 +630,39 @@ handlers in `sidekick.py` that import the rest only when called:
 | `GET /api/plugin/github/pull-files?number=<n>` | One pull request’s changed files, from the cache alone, with the same state fields. See [Changed Files in a Row](#changed-files-in-a-row) |
 | `POST /api/plugin/github/pull-files-refresh` with `{"number": n}` | Starts or joins that list’s refresh |
 
+### Coalescing GitHub Reads
+
+**Status:** Planned.
+Refresh jobs already coalesce many same-resource calls.
+Measure remaining overlapping `gh` reads before adding a private in-flight wrapper to
+the validated REST and read-only GraphQL methods.
+The key identifies the exact invocation and response contract.
+Include the GitHub host, proven effective credential scope, method, path and query or
+GraphQL operation and typed variables, pagination, API version, conditional headers, and
+response limits.
+A conditional request can return `304` and must have a separate key from
+an unconditional read.
+Bypass sharing when equivalent authorization cannot be established.
+A login name alone is insufficient.
+Keep credentials and in-flight keys out of logs, disk, and browser responses.
+
+Register the producer before starting the subprocess.
+Identical requests share immutable output and parse it per caller.
+Distinct keys can overlap under the existing provider concurrency and rate-limit budget.
+Take that budget once per admitted producer.
+Cancellation detaches a waiter.
+If the last waiter cancels the producer, retain the key through subprocess teardown so
+its replacement cannot overlap.
+Clear a finished entry only while it still owns that key.
+
+Keep generic commands, mutations, and independent account checks outside the wrapper.
+A post-read account check must run after the read.
+Existing resource locks and generation checks guard durable publication across
+processes. Coalescing the transport does not make an older observation safe to publish.
+Test same-key overlap, distinct keys running concurrently, ETags and cursors, credential
+changes, cancellation during spawn and teardown, typed failure and retry, and an older
+response completing late.
+
 ### Opening Any Pull Request from a Repository Server
 
 This is the riskiest step.
@@ -753,11 +786,15 @@ what moves the pin is never a link that a modified click would open without movi
 A button is a real `<button>` for keyboards and screen readers and looks the same as the
 link, as the [design system](../../../design-system.md#control-families) says.
 
-**View file.** View file switches the pin by commit ID. `resolve_pin` then serves a
-commit under a pull request’s head ref when it is that ref’s tip, for any pull request
-the mirror holds and not only the attended one, and the switch makes that pull request
-the attended one. The lookup is one `for-each-ref --points-at` over `refs/pull/`, whose
-cost step 2 measures on a mirror with many fetched heads.
+**Current View file behavior.** View file on a managed server can switch the pin by
+commit ID. `resolve_pin` then serves a commit under a pull request’s head ref when it is
+that ref’s tip, for any pull request the mirror holds and not only the attended one, and
+the switch makes that pull request the attended one.
+The lookup is one `for-each-ref --points-at` over `refs/pull/`, whose cost step 2
+measures on a mirror with many fetched heads.
+For the planned PR review path,
+[revision-scoped file links](plan-2026-08-17-general-diff-rendering.md#full-file-at-the-reviewed-revision)
+will read the displayed snapshot without switching that pin.
 
 **Back and Forward.**
 

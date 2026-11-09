@@ -362,6 +362,65 @@ metab ~/src/repo --api '/api/plugin/github/pull?number=123'
 metab ~/src/repo --api '/api/plugin/github/pulls?state=open'
 ```
 
+### Shared Loading Contract for PR Review
+
+**Status:** Planned.
+The automatic Changes request can land independently.
+The checkout’s **Files** tab continues to read live files and **Commits** continues to
+read local refs, including unpushed commits.
+In both source modes, PR comparisons and file views at a revision read through the same
+managed Git cache. A URL-backed session already has a managed store.
+A checkout can reuse a healthy store or attach a lightweight store that borrows its
+eligible local objects and persists any missing remote objects it fetches.
+This does not copy the working tree, move the served pin, or change the borrowing-only
+policy of a folder server.
+
+A caller asks the cache for an authorized value by key.
+The cache returns a usable value, joins the current load, or registers the one load
+before starting I/O. Opening Changes supplies foreground demand.
+Idle preparation uses the same path at lower priority, after the initial Files work and
+only for likely next selections.
+Foreground demand promotes a queued load for that key.
+Cap concurrency and measure startup and selection before expanding idle work.
+A cache observation can still report pending without starting I/O. Browser reads stay
+side-effect free, and validated preparation requests submit work to the loader.
+[Guava LoadingCache](https://guava.dev/releases/33.4.8-jre/api/docs/com/google/common/cache/LoadingCache.html)
+
+| Value | Identity and lifetime |
+| --- | --- |
+| Store and Git objects | Admitted repository and store identity, object format, and full object ID. Use the checkout as a lender, with validation and explicit repair when its identity or availability changes. |
+| Snapshot and comparison | Store binding, resolved immutable revisions, comparison policy, and exact path bytes where applicable. Bind the displayed comparison until the reader selects a newer one. |
+| Rendered projection | Snapshot or comparison identity, file side and path, renderer version, options, and trust profile. A bounded, recomputable projection can expire independently of Git objects. |
+| GitHub observations | Repository and provider authorization context, resource, and request variant. Refresh mutable metadata independently of immutable content. See [Coalescing GitHub Reads](plan-2026-10-01-github-pulls-tab.md#coalescing-github-reads). |
+
+Reuse the refresh coordinator for in-process ownership and the existing source, store,
+and fetch locks for durable writes.
+Check for a usable result again under the relevant lock.
+Follow the existing lock order when publishing a store or fetching its objects.
+A producer must not recursively join its own key or await a load that would reacquire a
+lock it already holds.
+Validate the result before atomic publication, and keep the last usable value when
+loading fails. A late mutable refresh can publish only if its generation is still
+current.
+An immutable load can finish after its reader leaves and fill its own cache key.
+It can paint only the active route, selected file, and comparison that requested it.
+Detach individual waiters without interrupting other readers.
+If abandoned work is cancelled, keep its in-flight entry until teardown and remove it
+only if it still owns the slot.
+
+A real absent path in a verified tree differs from an object that could not be read.
+Preserve typed failures, give retryable errors bounded backoff and a clear manual retry,
+and keep offline reads available from previously validated content.
+If a lender moves or loses an object, use the existing repair policy without writing to
+the checkout or substituting the latest branch.
+Tests should interleave cold opens across tabs and processes, a cancelled reader while
+another still waits, a killed producer, a force-push during load, and a stale refresh
+that finishes after a newer one.
+
+The
+[rendered file design](plan-2026-08-17-general-diff-rendering.md#rendered-diffs-and-revision-file-links)
+defines what the comparison’s immutable sides expose.
+
 ### Storage Modes
 
 For URL acquisition with `--checkout`, the following mode/fallback rules apply.
@@ -542,14 +601,14 @@ The same rules in both scenarios, and one boundary the review sharpened.
 - **Pull-request text is inert under both profiles.** Unchanged from the Pulls tab plan:
   the server allowlist and the page’s inert rebuild, with no branch on the profile, and
   the hostile corpus run under both.
-- **A pull request’s code is served only as a pin, under the forced untrusted profile.**
-  An overlay store is a `RepositoryStoreTarget` like a full one, read under
-  `STORE_READ_POLICY` with `GIT_NO_LAZY_FETCH=1`, and served with the untrusted
-  profile’s policy. On a trusted folder server (`metab <checkout>`), Files changed is the
-  diff plugin’s text over the overlay, and View file of a pull-request blob is a link to
-  the pin server, as the Pulls tab plan’s page on a checkout already has no pin.
-  No blob of a pull request is ever served as a page under the trusted profile.
-  A test asserts it over every route of a folder server with an overlay beside it.
+- **A pull request’s code always uses an immutable revision and the untrusted profile.**
+  Today the managed server opens a file by serving its pin.
+  On a folder server, Changes renders the diff over the overlay, and View file controls
+  are absent. An overlay is a `RepositoryStoreTarget` like a full store, read under
+  `STORE_READ_POLICY` with `GIT_NO_LAZY_FETCH=1`. The planned
+  [revision-scoped document view](plan-2026-08-17-general-diff-rendering.md#full-file-at-the-reviewed-revision)
+  keeps those same restrictions on either server, without switching its source.
+  Test this restriction over every entry point to PR content on a trusted folder server.
 - **The checkout’s configuration is never read.** Reading a borrowed object is a file
   read of the checkout’s packs and loose objects; Git consults only the borrower’s
   configuration. The replica set `diff.external`, `core.fsmonitor`, `core.hooksPath`, and
