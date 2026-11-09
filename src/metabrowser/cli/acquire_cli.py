@@ -20,7 +20,12 @@ import typer
 
 from metabrowser.cache.acquire import AcquisitionError, PublishedSource, acquire_source
 from metabrowser.cache.atomic import RecordError
-from metabrowser.cache.layout import FutureLayoutFormatError, LayoutError
+from metabrowser.cache.layout import (
+    ConfigurationError,
+    ConfigurationIOError,
+    FutureLayoutFormatError,
+    LayoutError,
+)
 from metabrowser.cache.lender import CheckoutRefusedError, show_path
 from metabrowser.cache.locks import LockBusyError
 from metabrowser.cache.urls import GitSource
@@ -144,6 +149,21 @@ async def acquire_for_cli(
                     on_note=report.note,
                     inspecting=inspecting,
                 )
+    except ConfigurationIOError as exc:
+        remedy = (
+            "Check that the configuration directory is writable and has free space, then try again."
+            if exc.operation == "create"
+            else "Check that the file and its directory are readable, then try again."
+        )
+        raise CLIError(
+            f"Could not {exc.operation} configuration at {show_path(exc.path)}: {exc}. {remedy}"
+        ) from exc
+    except ConfigurationError as exc:
+        raise CLIError(
+            f"Could not read configuration at {show_path(exc.path)}: {exc}. "
+            "Move this config file aside or remove it, then restart Metabrowser to create "
+            "a fresh config. Cached repositories will be kept."
+        ) from exc
     except _ACQUIRE_CLI_ERRORS as exc:
         raise CLIError(str(exc)) from exc
     except RecordError as exc:

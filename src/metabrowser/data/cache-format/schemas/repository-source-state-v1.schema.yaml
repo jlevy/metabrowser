@@ -15,5 +15,5 @@ required:
 title: RepositorySourceState
 type: object
 x-softschema:
-  contract: com.github.jlevy.metabrowser.cache:RepositorySourceState/v1
-  schema_sha256: 0a2fda2f24f8f8e70fc47f90af67ac2b6352f875074962f74a050cd350cd3d6d
+  contract: metabrowser.cache:RepositorySourceState/v1
+  schema_sha256: c143aae22106c796c8d046984fa17f467db03f618a5f43d6f041636dbd4bd472

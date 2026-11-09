@@ -12,6 +12,7 @@ patterns:
   TIMESTAMP: '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z'
   APP_HOME: '[^\s"]+/home[a-z-]*'
 before: >-
+  METABROWSER_CONFIG_DIR="$PWD/config"
   PYTHONPATH="$TRYSCRIPT_TEST_DIR/../.." uv --config-file "$TRYSCRIPT_TEST_DIR/../../uv.toml" run --frozen --no-sync
   --project "$TRYSCRIPT_TEST_DIR/../.." python "$TRYSCRIPT_TEST_DIR/../checkout_replica.py" .
   > fixture.log 2>&1

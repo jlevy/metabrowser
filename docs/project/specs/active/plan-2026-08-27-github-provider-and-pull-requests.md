@@ -375,7 +375,7 @@ work:
 ```markdown
 ---
 softschema:
-  contract: com.github.jlevy.metabrowser.review:ChangeRequest/v1
+  contract: metabrowser.review:ChangeRequest/v1
   envelope: change_request
   status: enforced
 change_request:

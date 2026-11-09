@@ -28,5 +28,5 @@ required:
 title: RepositoryStoreAlias
 type: object
 x-softschema:
-  contract: com.github.jlevy.metabrowser.cache:RepositoryStoreAlias/v1
-  schema_sha256: e4208bb5f4b37bac9f7e7840a78ece45f2d2e6d258cf514925a98a6fe52840ab
+  contract: metabrowser.cache:RepositoryStoreAlias/v1
+  schema_sha256: 0a2719e091b5de33907f98c19eead8cae09d019b55053efb48def9a362c3a7b8

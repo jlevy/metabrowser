@@ -330,7 +330,7 @@ def test_an_oversized_record_is_refused_before_it_is_parsed(home: Path) -> None:
     [
         b"softschema: [unclosed\n",
         b"!!python/object:os.system {}\n",
-        b"softschema:\n  contract: com.github.jlevy.metabrowser.cache:CacheLayout/v1\n"
+        b"softschema:\n  contract: metabrowser.cache:CacheLayout/v1\n"
         b"  envelope: layout\n  status: enforced\nlayout: &a\n  format: f01\n"
         b"  created_by: 0.11.0\nother: *a\n",
     ],

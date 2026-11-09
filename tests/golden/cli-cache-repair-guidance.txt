@@ -51,6 +51,34 @@ revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
 --- stderr ---
 cloning <ORIGIN-B> into <HOME>
 cloned <ORIGIN-B> in 0.0 s
+## A broken config names the file and how to recreate it without changing the cache.
+# metab <ORIGIN-A> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Could not read configuration at <CONFIG>/config.yml: config.yml is not portable YAML. Move this config file aside or remove it, then restart Metabrowser to create a fresh config. Cached repositories will be kept.
+## A full configuration disk names the file and leaves the cached repository intact.
+# metab <ORIGIN-A> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: Could not create configuration at <CONFIG>/config.yml: No space left on device. Check that the configuration directory is writable and has free space, then try again.
+## The next start recreates the config and reuses the cached repository.
+# metab <ORIGIN-A> --no-serve
+exit: 0
+--- stdout ---
+acquired: <ORIGIN-A>
+slug: <SLUG-A>
+store: <STORE-A>
+revision: 8f05aafe23bbeade03ef581868a59e3c944ac5c4
+--- stderr ---
+using the clone of <ORIGIN-A> cached in <HOME>, fetched less than a minute ago
+## A valid config from a newer format instead asks for an upgrade and stays unchanged.
+# metab <ORIGIN-A> --no-serve
+exit: 1
+--- stdout ---
+--- stderr ---
+Error: This Metabrowser configuration directory uses format f02, and this release reads formats up to f01. Upgrade Metabrowser, or set METABROWSER_CONFIG_DIR to a different directory.
 ## A home written by a newer release is refused before anything is written.
 # metab <ORIGIN-A> --no-serve
 exit: 1

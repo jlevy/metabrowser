@@ -21,5 +21,5 @@ required:
 title: CacheLayout
 type: object
 x-softschema:
-  contract: com.github.jlevy.metabrowser.cache:CacheLayout/v1
-  schema_sha256: d8531b37c9b676858aa69299129faba6c856467f802da0ea1aad152ea545eeb8
+  contract: metabrowser.cache:CacheLayout/v1
+  schema_sha256: 53d68e6fe5237d6990b45c0c6be8ee68995beacad41ed00f4aa993cc4c8deb70

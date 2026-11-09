@@ -4,6 +4,11 @@ All notable changes to Metabrowser are documented here.
 
 ## 0.12.0 (unreleased)
 
+- Configuration and repository-cache contract names use `metabrowser.config` and
+  `metabrowser.cache`, independent of their hosting location.
+  An unreadable config names its location and explains how to recreate it without
+  discarding cached repositories.
+
 - Plugin template rendering waits for its shared library before plugin code runs, so a
   directly opened custom view works before idle asset prefetch finishes.
 
@@ -33,6 +38,7 @@ PR and Git navigation:
 - Pulls resumes incremental GitHub updates after reconnect and shows one connection
   status with a **Reload** action.
 - Pulls loads older rows automatically as you approach the end of the list.
+- Space on a focused pull request expands or collapses its changed files in place.
 - Comparisons load nearby patches ahead of scrolling and show a notice for a failed
   patch or truncated result.
 - Pull request check runs and status contexts have their own **Checks** tab with a

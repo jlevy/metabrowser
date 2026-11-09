@@ -305,6 +305,8 @@
         handle?.released();
       },
       activateAnchor: () => handle?.activateAnchor() ?? false,
+      /** @param {number} number */
+      toggleFiles: (number) => handle?.toggleFiles(number) ?? false,
       hasStack: () => stackPage() !== null,
       /** @param {-1 | 1} delta */
       moveStack: (delta) => stackPage()?.moveStack(delta) ?? false,
@@ -401,7 +403,7 @@
         surfaces: { help: "always" },
       }),
       shortcuts.register({
-        bindings: [{ key: "Enter" }, { key: " " }],
+        bindings: [{ key: "Enter" }],
         copy: {
           action: "Open pull request",
           description: "Open the focused pull request.",
@@ -411,6 +413,31 @@
         handler: () => nav.activateAnchor(),
         id: "pulls.open",
         order: 30,
+        scope: KEY_SCOPE,
+        surfaces: { help: "always" },
+      }),
+      shortcuts.register({
+        bindings: [{ key: " " }],
+        copy: {
+          action: "Toggle changed files",
+          description: "Expand or collapse the focused pull request's changed files.",
+          hint: "Changes",
+        },
+        group: "pull-requests",
+        handler(context) {
+          const event = /** @type {{event?: KeyboardEvent}} */ (context).event;
+          const target = event?.target;
+          // Consume held Space without toggling again. The row's actual focus can
+          // outlast a catalog update that changes the tab stop.
+          return (
+            target instanceof HTMLElement &&
+            target.matches("a.github-pulls-row") &&
+            (event?.repeat === true || nav.toggleFiles(Number(target.dataset.number)))
+          );
+        },
+        id: "pulls.toggle-files",
+        order: 35,
+        repeat: true,
         scope: KEY_SCOPE,
         surfaces: { help: "always" },
       }),
