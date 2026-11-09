@@ -12,8 +12,8 @@ grammar refuses is not one the routes list: they answer ``not_github``. On a for
 Reading creates nothing. The routes read the records under the slug the source has, or
 would have once published, and answer ``absent`` while there is no source directory. A
 job's first write claims the slug and publishes the source with no store, the cache's
-``unattached`` state (:func:`claim_source`). A reader's explicit comparison Fetch may
-attach a store that borrows the checkout's objects; its lender path stays internal to the
+``unattached`` state (:func:`claim_source`). Opening Changes may attach a store that
+borrows the checkout's objects; its lender path stays internal to the
 cache. A healthy existing store is reused without acquisition. Nothing is written to the
 checkout, no Git runs in it, and the served folder stays the same.
 
@@ -182,8 +182,8 @@ def _cached_store(source: GitSource, home: Path) -> PublishedSource | None:
         StorageDirectoryError,
         OSError,
     ):
-        # A record remains readable without a usable store. An explicit comparison
-        # refresh reports the acquisition failure, and may repair a moved lender.
+        # A record remains readable without a usable store. A comparison refresh
+        # reports the acquisition failure, and may repair a moved lender.
         return None
 
 

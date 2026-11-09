@@ -28,8 +28,8 @@ the window. A visible cold page can request the selected fetch with a separate P
 Which pull requests a server has is :func:`pull_host`'s to say, and nothing else here
 knows whether it is a mirror or a checkout. A checkout with no attached store answers a
 record with no comparison, ``no_store``, whoever wrote it. A server with a store answers
-a record written that way as ``stale``. Only an explicit comparison Fetch may attach a
-store to a checkout's pull records.
+a record written that way as ``stale``. A comparison refresh request may attach a store
+to a checkout's pull records.
 """
 
 from __future__ import annotations

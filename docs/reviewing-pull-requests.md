@@ -79,13 +79,12 @@ Back leaves the walk in one step.
 The selected file follows the diff as you scroll; Back and Forward restore the selected
 file and reading position.
 
-For a served folder, reading the list and conversation does not require a second Git
-copy. If **Changes** has no cached store yet, it offers **Fetch changes**. That action
-uses a healthy existing store or creates one borrowing the named checkout’s objects,
-fetching what it lacks into the cache.
-It leaves the served folder and Commits tab on your checkout and runs no Git or writes
-in the checkout. If the checkout cannot lend, the action reports why instead of silently
-cloning a full repository.
+A served folder can show Pulls and Conversation without a comparison store.
+Opening **Changes** prepares a missing comparison automatically.
+Metabrowser reuses a healthy cached store or creates one that borrows the checkout’s
+objects and fetches what it lacks into the cache.
+Git runs in the store and leaves the served folder and Commits tab on your checkout.
+If preparation fails, **Changes** reports the reason and offers a retry.
 See [Beside a Checkout](#beside-a-checkout) for the URL-based borrowing workflow.
 
 ## Keep Pulls Up to Date
@@ -256,8 +255,6 @@ opening a PR URL, a pull request that cannot be read does not: `metab` serves th
 default branch, exits 0 in the one-shot modes, and says why on the `Pull request:` line.
 The page gives the reason and offers **Fetch** to retry the missing record.
 Once the cause is fixed, use that action or run the command again.
-This is separate from **Fetch changes**, which obtains the store needed for a folder’s
-comparison.
 
 | Name | What it means | What to do |
 | --- | --- | --- |
@@ -273,7 +270,7 @@ The conversation can remain available when the comparison cannot be read:
 
 | Name | What it means | What to do |
 | --- | --- | --- |
-| `no_store` | A served folder has a PR record but no store for its comparison | Choose **Fetch changes** |
+| `no_store` | A served folder has a PR record but no store for its comparison | Open **Changes** to prepare the comparison |
 | `base_uncertain` | Shallow history does not establish the merge base | **Refresh** with the network available to fetch more history |
 | `commits_unavailable`, `object_unavailable` | A commit or object needed for the comparison is missing or unreadable | **Refresh** can try to recover missing objects; it may still fail if the origin no longer serves them |
 | `object_corrupt` | Read bytes do not match their Git object ID | Repair the damaged cache or use a healthy lender, then **Refresh**; Metabrowser does not overwrite the checkout’s objects |
@@ -283,10 +280,10 @@ The conversation can remain available when the comparison cannot be read:
 Reattach a moved lender with `--checkout <new path>`, or name another healthy checkout
 of the repository. An unreadable lender must be made readable or replaced before the
 store can use it again.
-**Fetch changes** does not fall back to a full clone when borrowing is refused,
-including for a partial clone or a checkout that itself borrows objects.
-The URL-based `--checkout` command has its own
-[documented fallback cases](command-line.md#beside-a-checkout).
+Beside a served folder, comparison preparation reuses a healthy store or borrows from
+the checkout. Partial clones and checkouts that borrow objects themselves cannot lend.
+Metabrowser reports a borrowing refusal in **Changes**. The URL-based `--checkout`
+command has its own [documented fallback cases](command-line.md#beside-a-checkout).
 
 A managed source whose cached pinned tree is missing can fail before the server starts.
 It reports an error without a traceback or automatic replacement clone; the page’s

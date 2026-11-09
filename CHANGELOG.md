@@ -2,7 +2,14 @@
 
 All notable changes to Metabrowser are documented here.
 
-## 0.12.0 (unreleased)
+## Unreleased
+
+- Opening a pull request’s **Changes** tab fetches a missing comparison automatically.
+  A served checkout reuses a healthy cached store or borrows Git objects without
+  changing the checkout.
+  If preparation fails, the tab reports the reason and offers a retry.
+
+## 0.12.0
 
 - Configuration and repository-cache contract names use `metabrowser.config` and
   `metabrowser.cache`, independent of their hosting location.

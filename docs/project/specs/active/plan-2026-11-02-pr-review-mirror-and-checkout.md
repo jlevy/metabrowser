@@ -335,7 +335,7 @@ The borrowed directory is the common directory’s `objects`, which every worktr
 the store records that directory, not the worktree.
 
 **Several pull requests.** Any numbered PR is a page of the same server.
-Explicit metadata refresh and comparison acquisition are independent of list discovery:
+Metadata refresh and comparison acquisition are independent of list discovery.
 
 ```shell
 metab https://github.com/owner/repo --checkout ~/src/repo
@@ -349,12 +349,13 @@ The browser starts the appropriate background action.
 
 **`metab <checkout>` and finding a pull request from there.** The Pulls tab plan’s steps
 4 and 5: the folder server lists and opens pull requests from the shared records.
-Its step 5 changes with this plan
-([Fit with the Pulls Tab Plan](#fit-with-the-pulls-tab-plan)): Files changed is read
-from a store opened or acquired by explicit **Fetch changes**, borrowing the served
-checkout without writing to it.
-Opening Files alone does not acquire a store, and a borrowing refusal does not fall back
-to a full clone. The CLI form is the plan’s own:
+Its step 5 uses the store described in
+[Fit with the Pulls Tab Plan](#fit-with-the-pulls-tab-plan).
+Opening **Changes** prepares a missing comparison automatically by reusing a healthy
+store or borrowing from the served checkout without writing to it.
+Opening Conversation can read metadata without acquiring a store.
+A borrowing refusal leaves the comparison unavailable and offers a retry.
+The CLI form is the plan’s own:
 
 ```shell
 metab ~/src/repo --api '/api/plugin/github/pull?number=123'
@@ -364,8 +365,8 @@ metab ~/src/repo --api '/api/plugin/github/pulls?state=open'
 ### Storage Modes
 
 For URL acquisition with `--checkout`, the following mode/fallback rules apply.
-The folder server’s **Fetch changes** path is borrowing-only when no healthy managed
-store exists; it reports refusal instead of cloning when lending is ineligible:
+The folder server prepares comparisons by borrowing when no healthy managed store
+exists. It reports a refusal when lending is ineligible.
 
 | Situation | Mode | What the reader is told |
 | --- | --- | --- |
@@ -690,7 +691,7 @@ does not complete those steps or publish a release.
 | 1. Overlay acquisition | Explicit URL borrowing, lender admission, shallow certainty, safe ref sweep, and typed refusal | [#283](https://github.com/jlevy/metabrowser/pull/283) |
 | 2. Healing and verification | Explicit retry of observed missing/corrupt objects; complete bounded blob verification; partial windows keep their limits; immutable displayed pairs remain selected | [#283](https://github.com/jlevy/metabrowser/pull/283), [#288](https://github.com/jlevy/metabrowser/pull/288) |
 | 3. Conversions | Full-store/overlay repack routes are not implemented | [Conversions](#conversions), future work |
-| 4. Overlay inside the folder server | Recognized main/linked/subdirectory checkouts read shared metadata; Fetch changes acquires explicitly without changing the folder root or its checkout | [#288](https://github.com/jlevy/metabrowser/pull/288) |
+| 4. Overlay inside the folder server | Recognized main, linked, and subdirectory checkouts read shared metadata. Changes prepares a missing comparison without changing the folder root or its checkout | [#288](https://github.com/jlevy/metabrowser/pull/288) |
 | 5. Broader deepening | Unshallowing as an independent measured background feature remains outside the bounded certainty recovery path | `mb-dqvj`, future work |
 
 Repair can still be unavailable: the origin may no longer serve an old object, missing

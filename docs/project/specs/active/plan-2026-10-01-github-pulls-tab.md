@@ -686,7 +686,9 @@ bounded set, plus a direct start of any number’s refresh by the plugin’s `PO
   Intentional expansion reads that PR’s file list through the
   [changed-file disclosure flow](#changed-file-disclosure).
   After a failed fetch, **Fetch** offers a retry.
-  A checkout can acquire a comparison store through **Fetch changes**.
+  Opening **Changes** starts preparing a missing comparison once metadata settles.
+  A served checkout reuses a healthy store or borrows its objects without writing to the
+  checkout. If preparation fails, **Changes** reports why and offers a retry.
 - A pull request with a record refreshes in the background when its page is visible and
   the record is stale, as a stale mirror does.
   The page’s controller asks for it, once a reader has stayed on the page

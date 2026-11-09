@@ -113,21 +113,21 @@ async function run() {
   };
   const retained = [];
   const changes = new Element("main");
+  window.location.pathname = "/pull/7/files/docs/new.md";
   const waiting = mount(unavailable, Promise.resolve(), retained, changes);
   const changesBody = () => changes.querySelector(".github-pull-body");
-  assert.equal(
+  waiting.land({ tab: "files", file: "docs/new.md" });
+  assert.ok(
     changesBody().querySelector(".spinner"),
-    null,
-    "a metadata refresh cannot acquire changes",
+    "Changes shows progress while metadata settles",
   );
+  assert.equal(asked, undefined, "comparison waits for the existing metadata request");
   await settle();
-  assert.equal(waiting.showFile("docs/new.md").kind, "no_diff");
-  changesBody().querySelector(".github-pull-fetch-changes").events.get("click")();
   assert.deepEqual(asked, { number: 7, retry: true, comparison: true });
   const assertAcquiring = () => {
     assert.match(changesBody().textContent, /Fetching changes/);
     assert.ok(changesBody().querySelector(".spinner"));
-    assert.equal(changesBody().querySelector(".github-pull-fetch-changes"), null);
+    assert.equal(changesBody().querySelector(".github-pull-retry-changes"), null);
   };
   assertAcquiring();
   current = unavailable.body;

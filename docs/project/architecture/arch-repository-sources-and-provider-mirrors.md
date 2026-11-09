@@ -953,7 +953,10 @@ Metadata reads create nothing, and metadata refreshes can publish an unattached 
 A healthy store already attached to that source is reused without acquisition or a cache
 timestamp write.
 
-An explicit Files changed Fetch may acquire a store with the checkout as its lender.
+Selecting **Changes** starts one comparison attempt after the metadata settles if its
+record lacks a store.
+The browser sends `retry: true` and `comparison: true` to the PR refresh route.
+The server acquires the store with the checkout as its lender.
 The pull record then uses the same store API and comparison service as a managed URL.
 The served folder root and Commits tab stay unchanged; no Git process runs in the
 checkout, and the checkout is never written.
@@ -965,13 +968,13 @@ acquire the store. Jobs take their turn at the store before consuming a network 
 An acquisition failure preserves the last pull record and reports a typed refresh
 outcome. `GET` routes never acquire or fetch.
 
-Files changed offers Refresh even while its record is fresh.
+**Changes** offers Refresh for a displayed comparison even while its record is fresh.
 The reader’s action sends `retry: true` and `recovery: {base, head}` for the comparison
-still displayed. Automatic refresh remains stale-only.
+still displayed. Automatic metadata refresh remains stale-only.
 Metadata updates do not replace displayed changes: a successful repair remounts that
 same comparison once and restores its scroll position; a failed or waiting job leaves it
 in place. The existing newer-changes action remains the way to select a newer head.
-A checkout with `no_store` instead offers Fetch changes.
+The browser offers a retry after comparison preparation fails.
 
 The server validates complete object IDs and a pair issued by that PR in this session
 before permitting repair.
