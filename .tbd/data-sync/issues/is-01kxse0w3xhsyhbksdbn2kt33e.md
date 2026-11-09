@@ -5,7 +5,7 @@ title: "Diff P2: comparison presets, history browsing, and content-at-revision"
 kind: feature
 status: open
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 labels:
   - diff
@@ -15,8 +15,9 @@ dependencies:
 parent_id: is-01kxse0d3sm8h0p1yh1mjwgbxz
 child_order_hints:
   - is-01m715sfem46c801k52wr03qt6
+  - is-01m718rgbk80mnnjb8d4b1r4xz
 created_at: 2026-07-18T01:38:59.325Z
-updated_at: 2026-11-09T22:10:20.243Z
+updated_at: 2026-11-09T23:02:14.117Z
 extensions:
   linear:
     id: fedfa275-330a-4a89-a928-512efc3ff45d
