@@ -3,9 +3,9 @@ type: is
 id: is-01m5wdbsy6z6d95sgg03kwmm76
 title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 26
+version: 28
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,8 +21,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-09T16:23:50.732Z
+updated_at: 2026-11-09T16:37:43.286Z
 started_at: 2026-11-08T01:58:21.485Z
+closed_at: 2026-11-09T16:37:43.285Z
+close_reason: null
+resolution: null
+duplicate_of: null
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
 
@@ -62,6 +66,8 @@ The full list with how each was checked is docs/project/reviews/review-2026-10-0
 PRACTICAL CONSTRAINT: on 2026-10-26 the data volume was 94 percent full, 403 GiB used of 460 GiB with 26 GiB free (read /System/Volumes/Data, not /, which is the sealed system volume and reports misleadingly). Worktrees are NOT the cause: 40 of the 49 worktree records are stale pointers to directories that no longer exist, so `git worktree prune` cleans records and reclaims nothing, and every metabrowser checkout together is under 2 GiB. The differentials need rebuilt corpora plus two installed builds, which 26 GiB should carry; the 300,000-file flat-stress pass from exp-036 is what disk blocked before, so check free space before attempting that one specifically.
 
 ## Notes
+
+November 9: Metabrowser 0.12.0 published on GitHub and PyPI from the owner-approved main 87b8ec812774bb12a4d9f5f29901719b8b66d323. The tag and exact notes were verified. Tagged full verify, PyPI trusted publication, and workflow smoke passed in https://github.com/jlevy/metabrowser/actions/runs/42653937221. Verified registry version, AGPL license, Python support, repository links and both file hashes. Wheel SHA-256 5f080045c5416c82b007996f86e3bfd9f8309c98e0331c833379b7cd584332bc, sdist SHA-256 c69959e38157ac3737af3ee8e3ce2411b60363250fdfb193d57976c384e34fbc. Isolated pinned help and doctor passed, and both CLI aliases reported 0.12.0. Fresh project-local skills@1.7.4 installation matched the approved source byte for byte. Timed previous-release comparison and remaining owner QA were deferred by the owner and retain separate open beads.
 
 November 9: maintainer approved v0.12.0 from exact main 87b8ec812774bb12a4d9f5f29901719b8b66d323 and the complete notes with the timed comparison and remaining owner QA open. GitHub release and tag verified at that SHA: https://github.com/jlevy/metabrowser/releases/tag/v0.12.0. Trusted publication workflow is in progress: https://github.com/jlevy/metabrowser/actions/runs/42653937221. Fresh project-local public skill install from the exact commit passed with locked skills@1.7.4 and byte equality. Keep this bead open through PyPI and pinned package verification. Remaining QA and performance evidence retain their own tracking.
 
