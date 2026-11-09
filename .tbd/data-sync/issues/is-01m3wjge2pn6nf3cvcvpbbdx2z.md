@@ -5,7 +5,7 @@ title: Run the 0.12 release rehearsal against published 0.11.0
 kind: task
 status: in_progress
 priority: 1
-version: 18
+version: 19
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,12 +21,14 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T20:29:17.780Z
-updated_at: 2026-11-09T06:35:35.677Z
+updated_at: 2026-11-09T06:46:58.609Z
 started_at: 2026-10-01T20:29:25.524Z
 ---
 Run the standard release checklist stability rehearsal against published 0.11.0 on the reviewed current application candidate: complete make verify, previous-release performance comparison with committed experiment/report, exact-head CI and release-note/version review. Version 0.12.0 is already decided. All candidate captures must satisfy committed hard responsiveness/correctness gates; repeatable regressions block until fixed or explicitly accepted. Review backend semantic equivalence before timings. User authorization now includes merging reviewed green work; no tag, release or publication is authorized without approval of the exact final commit and notes. Preserve historical runs and rerun on the final candidate rather than relabeling old evidence. Related final data/browser/test-evidence gate is mb-2g6f; PR-specific navigation diagnostics are separate in mb-4ifm.
 
 ## Notes
+
+November 8, 10:46 p.m. Pacific: checked ordinary Files separately from Pulls on exact qualified a539 vs published 0.11.0. Matched four-file inventory bytes and tree/Markdown API bodies, successful Markdown render and folder disclosure, zero GitHub script tags and zero console warnings/errors on both sides. The two added shared script tags are main-tabs and plugin-sdk-views. Evidence: plain-files-sanity-20261109T064354Z/receipt.json. Preview test origins 8543/8544 are closed and below the benchmark range. The second host sample after teardown varied from 54–82% idle with internal disk bursts to 63.74 MB/s. No Exp-057 capture or ledger write. Functional checks support the separation of Files from Pulls and supply no wall-clock comparison.
 
 November 8, 10:32 p.m. Pacific: resumed Exp-057. The exact qualified a53907948 wheel matches the installed build and merged main 87b8ec812 tree; all three reserved CPython 3.14.7 environments match the same 45 dependency pins. Candidate manifest, 348-port seed, collector diff and provenance hashes are frozen in binding-a53907948-20261109/frozen-20261109T063223Z. Two preflights were busy; in the saved 30-second interval idle was 42–55% and external disk activity 6.81–28.91 MB/s. No collection launched or ledger entry written. Refresh host and port exclusions before collection. Exp-056’s valid hard miss remains.
 
