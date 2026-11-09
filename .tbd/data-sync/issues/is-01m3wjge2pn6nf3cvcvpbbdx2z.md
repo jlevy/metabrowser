@@ -5,7 +5,7 @@ title: Run the 0.12 release rehearsal against published 0.11.0
 kind: task
 status: in_progress
 priority: 1
-version: 15
+version: 16
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-01T20:29:17.780Z
-updated_at: 2026-11-08T16:08:34.547Z
+updated_at: 2026-11-09T01:24:53.312Z
 started_at: 2026-10-01T20:29:25.524Z
 ---
 Run the standard release checklist stability rehearsal against published 0.11.0 on the reviewed current application candidate: complete make verify, previous-release performance comparison with committed experiment/report, exact-head CI and release-note/version review. Version 0.12.0 is already decided. All candidate captures must satisfy committed hard responsiveness/correctness gates; repeatable regressions block until fixed or explicitly accepted. Review backend semantic equivalence before timings. User authorization now includes merging reviewed green work; no tag, release or publication is authorized without approval of the exact final commit and notes. Preserve historical runs and rerun on the final candidate rather than relabeling old evidence. Related final data/browser/test-evidence gate is mb-2g6f; PR-specific navigation diagnostics are separate in mb-4ifm.
@@ -66,3 +66,11 @@ November 7 release-preparation checkpoint: Release preparation is now on merged,
 2026-10-02: still owed: release checklist step 3 on a quiet machine with no agents running, on the final head (5 headed pairs passing the hard gates, 5 compare_builds pairs read for first_row), recorded as exp-039. Steps 1, 2, 4, 5 passed in exp-038 (#265). make verify passed on 8879c4de.
 
 2026-10-01 rehearsal on c16912f8 (draft PR #265, exp-038, verdict unresolved). Steps 1, 2, 4, 5 pass: make verify exit 0 (3,877 passed, 8 tier skips; 38 goldens; audits clean; distribution checks pass; installed wheel works); CI 9 of 9 on the exact commit; proposed version 0.12.0. Step 3: equivalence passes (four compare_builds runs, 0 row and 0 tally differences; --walk output byte-identical, 46,721,591 bytes); every responsiveness and correctness gate passes in 32 headed captures; load-independent numbers fine (startup scripts 173 vs 171 KB; DOM, repaints, shift, heap equal; instructions within 1.04x except --doctor 1.78x). Wall-clock gates failed for BOTH builds under load (first_row gate 350 ms: control missed 6 of 11 cached captures, candidate 5 of 11; every candidate miss had load above 30; ratios scatter 0.25x-3.5x). Backend first_row leans against the candidate in 5 of 10 pairs under load (1.07x and 1.00x when both answer under 20 ms; 1.03x by instructions): open until a quiet run. Owed before landing: (1) on a quiet host (the machine was at load 12 when no agents ran), on the final tip, with bytecode in both environments: 5 headed pairs with every candidate capture passing the hard gates, and 5 compare_builds pairs read for first_row; rerun with 'EXP=exp-039 <scratchpad>/release-check/rerun.sh <ref> all' (harness worktree metabrowser-v012-release-check; corpus .bench/project-10 there); (2) the user's acceptance of --doctor at 1.78x; (3) fix probe.js frame_missing_px (the stand-in shares the new .preview-frame column: 450 px vs 900 px); (4) CHANGELOG corrections: lines about --allow-edits on a file:// pin (refused in cli/git_pin_cli.py); add --diff refused on a Git source, URL modes need POSIX (home.py) while pyproject says OS Independent, typed 404 for unrelated histories; (5) the 300,000-file flat-stress pass from exp-036 was not run (disk). Not measurable by the loop: a Git source (no control), repeated loads in one tab (mb-tdmd).
+
+November 9 pre-merge checkpoint.
+
+The normal R3 full gate and atomic two-ref push passed in 1,444.45 seconds, with 4,931 Python passes, nine expected skips, 388 goldens, clean audits and packaged-wheel checks. Both CLI aliases now run 0.11.1.dev1308+a53907948, tree cdb95f003ddddceb9d231e194b88658962551a1f, wheel SHA-256 2aa96c7924e4bd4c52836a0b91086f12d2b076b1cb5d8b5045ab30821dc6684e.
+
+The 30-second quiet-host preflight deferred after sustained 21.65–55.49 MB/s disk traffic and active Spotlight. It launched no captures, added no pairs and wrote no canonical ledger rows. Exp-056's 444 ms result still exceeds the 350 ms first-row gate. Quiet qualification remains open.
+
+Evidence: release-followups-r3-20261108/stack345-merge-readiness.json, installed-iab-receipt.json and qualified-55-receipt.json. Quiet preflight evidence: host-a539-20261109T011536Z-decision.json.

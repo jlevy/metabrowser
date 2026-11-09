@@ -5,7 +5,7 @@ title: Re-run the folder comparison after this branch merges
 kind: task
 status: in_progress
 priority: 1
-version: 11
+version: 12
 delegate: codex@spud10
 labels:
   - release:v0.12.0
@@ -16,7 +16,7 @@ parent_id: is-01m6f3n89kn7ztmfhrzswxnsgz
 hold: null
 hold_until: null
 created_at: 2026-11-02T21:46:57.084Z
-updated_at: 2026-11-08T17:21:17.831Z
+updated_at: 2026-11-09T01:24:52.767Z
 started_at: 2026-11-03T09:32:28.834Z
 ---
 This branch changes plain-folder narrow diffs, and possibly toggles. Extends mb-2g6f's re-run on the head to be tagged; the sign-off record must then name this branch's changes too.
@@ -44,3 +44,11 @@ Review A of PR #284 (A6): include a commit of more than 50 files in the plain-fo
 2026-11-04 final landing update: all 23 PRs in this delivery (21 feature PRs plus #297 and #298) are merged on main https://github.com/jlevy/metabrowser/commit/db52ec09cf839269da3a56fd396e44f3092995a9. Postlanding Review E: https://github.com/jlevy/metabrowser/pull/298#pullrequestreview-5772391263. Final-main CI passed all nine jobs: https://github.com/jlevy/metabrowser/actions/runs/41868009781. The verified global CLI is 0.11.1.dev1154+db52ec09; final installed-wheel, browser, coordinator manual and production-cache acceptance are complete. Current feature landing is fully accepted. Earlier pending-gate or no-merge statements are historical; preserve each original build, test and measurement provenance. This does not claim a v0.12.0 release, a quiet-host performance result or completion of separate future work.
 
 PR #284 and its reviewed follow-ups are merged. This feature-landing acceptance does not discharge the explicit greater-than-50-file plain-folder comparison or the comparison/sign-off on the eventual head to be tagged. Preserve the prior diagnostic as NONFINAL and keep this release-comparison task open.
+
+November 9 pre-merge checkpoint.
+
+The normal R3 full gate and atomic two-ref push passed in 1,444.45 seconds, with 4,931 Python passes, nine expected skips, 388 goldens, clean audits and packaged-wheel checks. Both CLI aliases now run 0.11.1.dev1308+a53907948, tree cdb95f003ddddceb9d231e194b88658962551a1f, wheel SHA-256 2aa96c7924e4bd4c52836a0b91086f12d2b076b1cb5d8b5045ab30821dc6684e.
+
+The qualified 55-file fixture matched the published v0.11.0 control byte-for-byte for all 55 CLI patches and the apply oracle. Both Unified and Split reached the actual final-file addition with no warning or error. The literal-SHA attempt differed only in the symbolic input label, so the byte match uses equivalent HEAD commands. Final release commit attribution and owner acceptance remain open.
+
+Evidence: release-followups-r3-20261108/stack345-merge-readiness.json, installed-iab-receipt.json and qualified-55-receipt.json. Quiet preflight evidence: host-a539-20261109T011536Z-decision.json.

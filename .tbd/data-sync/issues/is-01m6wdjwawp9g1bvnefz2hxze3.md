@@ -5,7 +5,7 @@ title: Prepare the next Metabrowser release candidate without publishing
 kind: task
 status: in_progress
 priority: 1
-version: 18
+version: 19
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
 delegate: codex@spud10
 labels: []
@@ -20,7 +20,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-08T01:50:20.508Z
-updated_at: 2026-11-09T00:08:27.773Z
+updated_at: 2026-11-09T01:24:54.398Z
 started_at: 2026-11-08T01:55:06.900Z
 ---
 Prepare Metabrowser 0.12.0 under release coordinator mb-4bd2. All product and release-command layers through PR #335 are merged, independently reviewed and CI-green; exact gated 426 is installed. Complete final data/audit/browser differentials mb-2g6f, the above-50-file comparison mb-8pyc, quiet previous-release rehearsal mb-cf6y, navigation and large-PR qualification mb-4ifm, the installed-wheel runbook mb-m20f and owner matrix mb-etqi. Keep docs, plans, skill identity, changelog and the behavior-change record current, and prepare complete 0.11.0-to-0.12.0 notes and a concrete artifact/checklist packet. Preserve failed, interrupted and nonfinal evidence at its original identity. No tag, GitHub release, PyPI publication or post-publication claim before the owner approves the exact final commit and notes. Future Files live-worktree/branch browsing mb-itzy remains paused and outside scope.
@@ -80,3 +80,13 @@ November 8 actual delivery. Native stack #339 atomically merged PRs #337, #336, 
 The dated QA refresh is merged. Before any release tag, finish the config/cache successor, account upgrade proof, quiet performance, complete installed QA and owner matrix. Reconcile README release/version pins, installation-guide commands and shipped Agent Skill content/pin to the same release identity. Prepare the exact final main commit and immutable release notes/comparison for owner approval before tagging or publishing. Recheck these pins against the actual final release candidate after mb-9e1t and later changes. Release remains unpublished.
 
 Release-document preflight clarification: current README, installation guide and shipped Agent Skill deliberately use versionless `metabrowser@latest` commands with the operator’s uv cool-off. Checked the actual three documents and the publish workflow: no stale numeric pins and no pin bump planned. Keep the public-hygiene rule, verify version derivation from the approved exact release tag, and prepare the final changelog/notes and immutable commit approval before publication.
+
+November 9 pre-merge checkpoint.
+
+Stack #345 is ready for the exact forward atomic merge into main a2677882. PR #343 at a1f8393b04a378e5ba25d8dabefd4f4020fa03a3 has nine green CI jobs in 42543688913. PR #344 at a53907948f348345ea0c6cbafbfe138c6513ba70 has nine green jobs in 42543714994. Independent reviews are verified and no threads remain unresolved. Automatic review rejected the merge command because the retained owner handoff requires approval for this exact stack. Both PRs remain open and owner merge approval is pending.
+
+The normal R3 full gate and atomic two-ref push passed in 1,444.45 seconds, with 4,931 Python passes, nine expected skips, 388 goldens, clean audits and packaged-wheel checks. Both CLI aliases now run 0.11.1.dev1308+a53907948, tree cdb95f003ddddceb9d231e194b88658962551a1f, wheel SHA-256 2aa96c7924e4bd4c52836a0b91086f12d2b076b1cb5d8b5045ab30821dc6684e.
+
+The 0.12.0 draft is prepared. Complete remaining QA and quiet performance, then bind the public notes and approval to the exact final main commit. The versionless installation guidance stays in place. No tag or publication.
+
+Evidence: release-followups-r3-20261108/stack345-merge-readiness.json, installed-iab-receipt.json and qualified-55-receipt.json. Quiet preflight evidence: host-a539-20261109T011536Z-decision.json.

@@ -5,7 +5,7 @@ title: "Coordinate the 0.12.0 release: tag and publish from main"
 kind: task
 status: in_progress
 priority: 1
-version: 22
+version: 23
 spec_path: docs/project/specs/active/plan-2026-09-23-v012-thin-mirror.md
 delegate: codex@spud10
 labels:
@@ -21,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-10-26T15:30:46.852Z
-updated_at: 2026-11-08T23:44:45.459Z
+updated_at: 2026-11-09T01:24:53.856Z
 started_at: 2026-11-08T01:58:21.485Z
 ---
 Coordinate tagging and publishing 0.12.0 from main. This replaces mb-n2ro, which coordinated the LANDING and is closed: the stack merged at 0b016e4b (PR #268, 2026-10-04) with CI 9 of 9 green. PyPI is 0.11.0 and there is no v0.12.0 tag.
@@ -141,3 +141,21 @@ November 8 actual delivery. Native stack #339 atomically merged PRs #337, #336, 
 The installed b2fb browser showed Open 2, Closed 325 and All 327 without Reload, fresh foreground #336 Merged with 18 successful checks from two nine-context CI runs, then restored Files. The prior a177 593 ms background prepare-receipt warning remains under mb-4ifm and supplies no CPU attribution or timing qualification.
 
 The first frozen 23-file patch (+167/−54) is based on merged main a267. Its focused gate passed 218 Python tests, 17 cache API cases, artifact schema/parity and targeted types. Review A1 found a fresh-config ENOSPC traceback. Typed read/create I/O handling now passes its focused 80-test rerun and awaits independent re-pin. Private journal review B1 found a block-scalar comment copying risk. The revised journal passes four fixtures including the new comment boundary check. The account work remains read-only and the 17-header delta upgrade still awaits review and a qualified artifact. mb-9e1t continues to block release. Before any release tag, finish the config/cache successor, account upgrade proof, quiet performance, complete installed QA and owner matrix. Reconcile README release/version pins, installation-guide commands and shipped Agent Skill content/pin to the same release identity. Prepare the exact final main commit and immutable release notes/comparison for owner approval before tagging or publishing. The macOS #341 spike and standing-grant owner disposition are separate.
+
+November 9 pre-merge checkpoint.
+
+Stack #345 is ready for the exact forward atomic merge into main a2677882. PR #343 at a1f8393b04a378e5ba25d8dabefd4f4020fa03a3 has nine green CI jobs in 42543688913. PR #344 at a53907948f348345ea0c6cbafbfe138c6513ba70 has nine green jobs in 42543714994. Independent reviews are verified and no threads remain unresolved. Automatic review rejected the merge command because the retained owner handoff requires approval for this exact stack. Both PRs remain open and owner merge approval is pending.
+
+The normal R3 full gate and atomic two-ref push passed in 1,444.45 seconds, with 4,931 Python passes, nine expected skips, 388 goldens, clean audits and packaged-wheel checks. Both CLI aliases now run 0.11.1.dev1308+a53907948, tree cdb95f003ddddceb9d231e194b88658962551a1f, wheel SHA-256 2aa96c7924e4bd4c52836a0b91086f12d2b076b1cb5d8b5045ab30821dc6684e.
+
+The authorized private one-account upgrade changed exactly 17 headers in place and preserved settings, record bodies, modes, cache identity and nine Git-directory fingerprints. Five healthy previews were verified. The full release and merged-main checks remain separate.
+
+The installed in-app browser confirmed Space disclosure false → true → false in both checkout PR #337 and managed PR #336, retaining focus, the address and Checks. The default preview rendered Treemap folder totals.
+
+The qualified 55-file fixture matched the published v0.11.0 control byte-for-byte for all 55 CLI patches and the apply oracle. Both Unified and Split reached the actual final-file addition with no warning or error. The literal-SHA attempt differed only in the symbolic input label, so the byte match uses equivalent HEAD commands. Final release commit attribution and owner acceptance remain open.
+
+The 30-second quiet-host preflight deferred after sustained 21.65–55.49 MB/s disk traffic and active Spotlight. It launched no captures, added no pairs and wrote no canonical ledger rows. Exp-056's 444 ms result still exceeds the 350 ms first-row gate. Quiet qualification remains open.
+
+Pending exact merge, merged-main CI, remaining QA and owner approval of the final release commit and complete public notes. No tag or release.
+
+Evidence: release-followups-r3-20261108/stack345-merge-readiness.json, installed-iab-receipt.json and qualified-55-receipt.json. Quiet preflight evidence: host-a539-20261109T011536Z-decision.json.
