@@ -505,6 +505,8 @@ def write_pull_record(
     Raises :class:`RecordTooLargeError`, or the home's ``PrivateStorageError`` or an
     ``OSError`` when the cache cannot take it, a slug no source holds among them.
     """
+    from metabrowser.builtin_plugins.github.pull_snapshot_cache import retain_snapshot_binding
+
     data = serialize_pull_record(record)
     # Do not create a lock or any source path for an unclaimed source. Check again
     # under the lock before creating the pulls directory or publishing the record.
@@ -521,10 +523,6 @@ def write_pull_record(
             record = fit_record(_metadata_record(record, current))
             data = serialize_pull_record(record)
         if store_id is not None and record.comparison is not None:
-            from metabrowser.builtin_plugins.github.pull_snapshot_cache import (
-                retain_snapshot_binding,
-            )
-
             # The current record still authorizes its exact pair if history cannot be saved.
             with suppress(PrivateStorageError, OSError):
                 if isinstance(current, PullRecord) and current.reader == record.reader:
