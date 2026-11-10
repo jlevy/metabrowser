@@ -155,10 +155,10 @@ async def pull_rendered_diff_handler(request: Request) -> JSONResponse:
         answer = await cache.get(key, lambda: _project(published, snapshot, file_id, namespace))
     except LoadingCacheBusyError:
         return JSONResponse({"code": "rendered_diff_busy"}, status_code=429, headers=_NO_STORE)
-    except GitError:
+    except (DiffSourceError, GitError):
         return JSONResponse(
             {"code": "rendered_objects_unavailable"}, status_code=409, headers=_NO_STORE
         )
-    except (DiffSourceError, GitPathError):
+    except GitPathError:
         answer = _fallback()
     return JSONResponse(answer, headers=_NO_STORE)

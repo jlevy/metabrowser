@@ -88,8 +88,12 @@ def test_document_references_are_inert_and_use_the_same_snapshot() -> None:
 
 
 def test_rendered_markdown_uses_the_admitted_comparison_and_exact_hunks(
-    pinned_pull: tuple[_Stand, TestClient],
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+    from metabrowser.diff.adapters.base import DiffSourceError
+    from metabrowser.git.process import GitError
+
     stand, client = pinned_pull
     stand.refresh(8)
     envelope = client.get("/api/plugin/github/pull", params={"number": 8}).json()
@@ -99,7 +103,18 @@ def test_rendered_markdown_uses_the_admitted_comparison_and_exact_hunks(
         change for change in source["manifest"]["files"] if change["new"]["path"] == "docs/guide.md"
     )
     stand.calls()
-    rendered = client.get(f"{route}&rendered_file={file['id']}")
+    address = f"{route}&rendered_file={file['id']}"
+
+    async def missing_object(*_args: object) -> None:
+        raise DiffSourceError("unresolved revision") from GitError("object unavailable")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(pull_rendered_diff, "_project", missing_object)
+        temporary = client.get(address)
+    assert temporary.status_code == 409
+    assert temporary.json()["code"] == "rendered_objects_unavailable"
+
+    rendered = client.get(address)
     assert rendered.status_code == 200, rendered.text
     answer = rendered.json()
     assert answer["status"] == "ready", answer
