@@ -783,9 +783,6 @@
 .pull-snapshot nav [aria-current="page"] {
   font-weight: var(--weight-bold);
 }
-.pull-snapshot h1 {
-  overflow-wrap: anywhere;
-}
 .pull-snapshot pre {
   overflow: auto;
 }
