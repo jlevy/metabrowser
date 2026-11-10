@@ -33,6 +33,8 @@ def test_revision_file_link_stays_on_its_side_after_the_record_advances(
     assert envelope["pin"] in head.text
     assert "default-src 'none'" in head.headers["content-security-policy"]
     assert head.headers["cache-control"] == "no-store"
+    assert "/plugin-static/github/pull-snapshot.css" in head.text
+    assert client.get("/plugin-static/github/pull-snapshot.css").status_code == 200
     latest = stand.refresh(7)
     assert latest.comparison is not None
     from metabrowser.builtin_plugins.github.pull_snapshot_cache import (

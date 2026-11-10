@@ -117,7 +117,7 @@ function sanitizeBlock(html, inert, template, scratch) {
       const marker = `mb-snapshot-target-${targets.size}`;
       targets.set(marker, value);
       element.setAttribute(attribute, marker);
-    } else if (image || (!value.startsWith("#user-content-") && !outsideLink(value))) {
+    } else if (image || (!value.startsWith(`#${inert.ANCHOR_PREFIX}`) && !outsideLink(value))) {
       element.removeAttribute(attribute);
     }
   }
