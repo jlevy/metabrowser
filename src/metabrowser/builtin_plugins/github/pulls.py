@@ -88,6 +88,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PullRefreshStamp,
     PullRequest,
     PullSide,
+    RecordAbsence,
     RecordTooLargeError,
     Review,
     ReviewComment,
@@ -784,7 +785,12 @@ def _comparison_of(endpoints: PullEndpoints) -> Comparison:
     )
 
 
-async def _write(published: PublishedSource | ListedRepository, record: PullRecord) -> PullRecord:
+async def _write(
+    published: PublishedSource | ListedRepository,
+    record: PullRecord,
+    *,
+    expected: PullRecord | RecordAbsence,
+) -> PullRecord:
     try:
         final = fit_record(record)
         if not isinstance(published, ListedRepository):
@@ -796,6 +802,8 @@ async def _write(published: PublishedSource | ListedRepository, record: PullReco
                 published.slug,
                 final,
                 metadata_only=isinstance(published, ListedRepository),
+                store_id=None if isinstance(published, ListedRepository) else published.store_id,
+                expected=expected,
             )
         )
     except RecordTooLargeError as exc:
@@ -807,7 +815,9 @@ async def _write(published: PublishedSource | ListedRepository, record: PullReco
         ) from exc
 
 
-async def _with_comparison(published: PublishedSource, record: PullRecord) -> PullRecord:
+async def _with_comparison(
+    published: PublishedSource, record: PullRecord, *, expected: PullRecord | RecordAbsence
+) -> PullRecord:
     """Compute Files changed and write the record.
 
     A comparison that cannot be computed is left out and named in the record's
@@ -835,7 +845,10 @@ async def _with_comparison(published: PublishedSource, record: PullRecord) -> Pu
         )
     except BaseUncertainError as uncertain:
         log.debug("pull request %s has an uncertain merge base; deepening", pull.number)
-        await _write(published, without(uncertain.state))
+        pending = without(uncertain.state)
+        expected = await _write(published, pending, expected=expected)
+        if expected != pending:
+            return expected
         try:
             endpoints = await deepen_until_certain(
                 published,
@@ -848,16 +861,45 @@ async def _with_comparison(published: PublishedSource, record: PullRecord) -> Pu
             # Why it could not be settled goes to the log. What the reader needs is that
             # the base is uncertain, whatever stopped the deepening.
             log.debug("deepening pull request %s stopped: %s (%s)", pull.number, exc, exc.state)
-            return await _write(published, without(uncertain.state))
+            return await _write(published, without(uncertain.state), expected=expected)
     except PullRefError as exc:
         log.debug("pull request %s has no comparison: %s", pull.number, exc)
-        return await _write(published, without(exc.state))
+        return await _write(published, without(exc.state), expected=expected)
     return await _write(
         published,
         record.model_copy(
-            update={"comparison": _comparison_of(endpoints), "unavailable": unavailable}
+            update={
+                "comparison": _comparison_of(endpoints),
+                "unavailable": {
+                    part: state for part, state in unavailable.items() if part != "comparison"
+                },
+            }
         ),
+        expected=expected,
     )
+
+
+async def prepare_pull_comparison(
+    published: PublishedSource, record: PullRecord
+) -> PullRecord | None:
+    """Prepare the cached observation without repeating its GitHub metadata reads."""
+    if record.comparison is not None:
+        return record
+    try:
+        pull = record.pull
+        if not await has_commit(published, pull.head.sha):
+            fetched = await fetch_pull_head(
+                published,
+                record.number,
+                base_branch=pull.base.ref if pull.state == "open" else None,
+            )
+            if fetched != pull.head.sha:
+                return None
+        return await _with_comparison(published, record, expected=record)
+    except PullRefError as exc:
+        raise _fetch_failure(exc) from exc
+    except GitError as exc:
+        raise _git_failure(record.number, exc) from exc
 
 
 async def _refresh(
@@ -905,7 +947,7 @@ async def _refresh(
         if isinstance(published, ListedRepository):
             # Merge against the latest shared comparison inside the publication lock,
             # not the cache snapshot taken before the network read.
-            return await _write(published, record)
+            return await _write(published, record, expected=cached)
         pull = record.pull
         try:
             fetched = await fetch_pull_head(
@@ -921,7 +963,7 @@ async def _refresh(
             raise PullDataError(
                 "head_mismatch", "its head kept moving while it was read; open it again"
             )
-        return await _with_comparison(published, record)
+        return await _with_comparison(published, record, expected=cached)
     raise AssertionError("unreachable")
 
 

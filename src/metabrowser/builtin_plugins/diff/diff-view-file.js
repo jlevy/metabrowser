@@ -36,7 +36,7 @@
  * @property {"base" | "head"} side
  * @property {string} commit
  * @property {string} path
- * @property {string} href The file's `/view/` address on a pin.
+ * @property {string} href The file address at the requested revision.
  * @property {"link" | "switch"} mode A link opens an address the page already has; a
  *   switch changes the served pin first.
  * @property {string} label The control's text.
@@ -49,6 +49,7 @@
  *
  * @typedef {object} ViewFileHost
  * @property {string} pin The full ID of the commit the page shows.
+ * @property {(side: ViewFileSide) => string | null} [snapshotHref] A PR comparison's immutable file address.
  * @property {(path: string | Uint8Array) => string | null} href The `/view/` address of
  *   a path on a pin; null for a path no tree entry has.
  * @property {(body: {oid: string, view: string}) => Promise<{status: number, body: unknown}>} switchPin
@@ -236,9 +237,20 @@ export function createViewFileOpener(host, options = {}) {
     /** @type {ViewFileAction[]} */
     const found = [];
     for (const side of viewFileSides(change, resolved)) {
-      const href = host.href(side.address);
-      if (href !== null) {
-        found.push(describeViewFile(side, href, host));
+      if (host.snapshotHref !== undefined) {
+        const href = host.snapshotHref(side);
+        if (href !== null) {
+          const action = describeViewFile(side, href, { pin: side.commit });
+          found.push({
+            ...action,
+            detail: `Open ${side.path} at ${short(side.commit)}`,
+          });
+        }
+      } else {
+        const href = host.href(side.address);
+        if (href !== null) {
+          found.push(describeViewFile(side, href, host));
+        }
       }
     }
     return found;

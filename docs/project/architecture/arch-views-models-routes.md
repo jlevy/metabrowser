@@ -167,15 +167,15 @@ reservation and its invariants, is in
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
 `folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
 `github/pull-refresh`, `github/pull-markdown`, `github/pull-timeline`,
-`github/pull-comparison`, `github/pulls`, `github/pulls-refresh`,
-`github/pull-cores-prepare`, `github/stacks`, `github/stacks-refresh`,
-`github/pull-files`, `github/pull-files-refresh`. On a `GitRevisionSubject`,
-`diff/comparison` honors the pin through `GitLocation` and `GitDiffSource.content` reads
-blobs through the shared cat-file pool; patch `document`/`children`, `binary/chunk`,
-`structured/parsed`, and `agent-log/charts` honor `GitPath` and follow in-tree relative
-symlink blobs.
-`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or
-`merge_base`, and reports it in the document.
+`github/pull-comparison`, `github/pull-snapshot`, `github/pulls`,
+`github/pulls-refresh`, `github/pull-cores-prepare`, `github/stacks`,
+`github/stacks-refresh`, `github/pull-files`, `github/pull-files-refresh`. On a
+`GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
+`GitDiffSource.content` reads blobs through the shared cat-file pool; patch
+`document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
+`GitPath` and follow in-tree relative symlink blobs.
+`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
+and reports it in the document.
 
 On a page that shows a pinned revision, the diff view’s file bars offer **View file** at
 each side of a change that exists, for a commit’s diff and a pull request’s Files
@@ -282,6 +282,13 @@ The envelope’s `comparison_route` names `GET github/pull-comparison` with the 
 number, immutable endpoints, and build and store tokens.
 This route reads only the managed store and uses the diff plugin’s comparison service;
 it never acquires one.
+`GET github/pull-snapshot` opens a full file from the exact displayed base or head
+without changing the served pin or checkout.
+It checks the comparison against the local PR record or its bounded retained comparison
+history.
+A Markdown document is inert and its relative links and supported images stay in
+the same Git tree. Source opens in bounded windows.
+An expired binding or missing object has its own error.
 A request with `"retry": true` is a reader’s own action, a press of **Fetch** or
 **Refresh**, and only that can add a pull request to the cache.
 Any other is the page’s own, sent when it is visible and its record is stale: with no
@@ -546,6 +553,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pull-timeline` | covered | `--api --data` | `cli-github-pull-timeline.txt` |
+| `/api/plugin/github/pull-snapshot` | exempt | — | full-page HTML and scoped image responses, exercised in `tests/test_github_pull_snapshot.py` |
 | `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-checkout.txt` |
 | `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt` |
 | `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |

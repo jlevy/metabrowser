@@ -163,9 +163,49 @@ function viewFileHost() {
  * arrive with the mount. A failed import is the view's to report: render says the diff did
  * not load, and logs which request failed.
  *
+ * @param {string} revision
  * @returns {Promise<import("./diff-view-file.js").ViewFileOpenerFactory | null>}
  */
-async function viewFileOpener() {
+async function viewFileOpener(revision) {
+  if (revision.startsWith("/")) {
+    const { plugin, hook, params } = pluginComparisonRoute(revision);
+    if (plugin === "github" && hook === "pull-comparison") {
+      if (!window.MetabrowserGitPath) {
+        const codec = "/static/git-path.js";
+        await import(codec);
+      }
+      const { createViewFileOpener } = await import("./diff-view-file.js");
+      return (options) =>
+        createViewFileOpener(
+          {
+            pin: "",
+            href: () => null,
+            snapshotHref(side) {
+              if (side.commit !== (side.side === "base" ? params.left : params.right)) {
+                return null;
+              }
+              const path = window.MetabrowserGitPath?.wire(side.address);
+              if (!path) {
+                return null;
+              }
+              const query = new URLSearchParams({
+                number: params.number,
+                left: params.left,
+                right: params.right,
+                store: params.store,
+                side: side.side,
+                path,
+              });
+              return `/api/plugin/github/pull-snapshot?${query}`;
+            },
+            onRestored: () => () => {},
+            switchPin: () => Promise.resolve({ status: 400, body: null }),
+            navigate: () => {},
+          },
+          options,
+        );
+    }
+  }
   const host = viewFileHost();
   if (host === null) {
     return null;
@@ -200,7 +240,7 @@ mb.registerView("diff", "diff", {
     // Asked for now, so its request overlaps the diff's own instead of following it. Its
     // failure waits for the mount below, and may never reach it: a diff that fails first
     // answers for itself, and the rejection still needs a handler.
-    const opener = viewFileOpener();
+    const opener = viewFileOpener(revision);
     void opener.catch(() => {});
     let payload;
     try {

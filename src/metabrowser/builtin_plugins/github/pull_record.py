@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal
@@ -486,7 +487,13 @@ def _metadata_record(record: PullRecord, current: PullRecord | RecordAbsence) ->
 
 
 def write_pull_record(
-    home: Path, slug: str, record: PullRecord, *, metadata_only: bool = False
+    home: Path,
+    slug: str,
+    record: PullRecord,
+    *,
+    metadata_only: bool = False,
+    store_id: str | None = None,
+    expected: PullRecord | RecordAbsence | None = None,
 ) -> PullRecord:
     """Publish and return *record* under its source's alias lock. Blocking.
 
@@ -504,11 +511,26 @@ def write_pull_record(
     _require_published_source(home, slug)
     with source_alias_lock(home, slug):
         ensure_pulls_directory(home, slug)
-        if metadata_only:
+        if expected is not None or metadata_only or store_id is not None:
             current = read_pull_record(home, slug, record.number)
+            if expected is not None and isinstance(current, PullRecord) and current != expected:
+                return current
+        else:
+            current = "not_cached"
+        if metadata_only:
             record = fit_record(_metadata_record(record, current))
             data = serialize_pull_record(record)
         write_private_file_atomic(home, source_pull_record(slug, record.number), data)
+        if store_id is not None and record.comparison is not None:
+            from metabrowser.builtin_plugins.github.pull_snapshot_cache import (
+                retain_snapshot_binding,
+            )
+
+            # The current record still authorizes its exact pair if history cannot be saved.
+            with suppress(PrivateStorageError, OSError):
+                if isinstance(current, PullRecord) and current.reader == record.reader:
+                    retain_snapshot_binding(home, slug, store_id, current)
+                retain_snapshot_binding(home, slug, store_id, record)
     return record
 
 

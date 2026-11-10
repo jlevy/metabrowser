@@ -180,6 +180,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_diff_comparison_cache.py \
 	tests/test_github_pull_manifests.py \
 	tests/test_github_comparison_recovery.py \
+	tests/test_github_pull_snapshot.py \
 	tests/test_admitted_git_gate.py
 
 test-admitted-git:
