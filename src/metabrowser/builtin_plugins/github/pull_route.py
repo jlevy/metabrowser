@@ -694,8 +694,9 @@ async def _start_refresh(
     if ask.comparison and host.start_comparison is not None:
         return host.start_comparison(ask.number)
     if host.running(ask.number):
-        # The same producer retains any queued recovery and can become foreground.
-        return host.start(ask.number) if ask.retry else "joined"
+        # Only checkout jobs can be promoted from idle preparation. The other
+        # hosts are already running the requested refresh.
+        return host.start(ask.number) if ask.retry and host.prepare is not None else "joined"
     if not ask.retry:
         served = await host.pulls.companion(ask.number)
         if served.fetched_at is None:
