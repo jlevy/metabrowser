@@ -179,6 +179,9 @@ The page has three tabs.
   Cached timelines are readable offline.
   **Review comments** lists inline review comments with their files and diff hunks.
 - **Changes** shows the comparison from the merge base to the head, split or unified.
+  Markdown changes open in **Rendered** when Metabrowser can map the Git hunks to the
+  document. **Source** keeps the exact patch and is used automatically for files beyond
+  the rendered view’s limits.
   The changed-files tree in Pulls navigates this comparison.
 - **Checks** summarizes check runs and status contexts, with links to their details.
   Open or share it directly at `/pull/<n>/checks`.

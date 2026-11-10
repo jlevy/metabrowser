@@ -61,6 +61,23 @@ function pluginComparisonRoute(route) {
   return { plugin: match[1], hook: match[2], params: Object.fromEntries(url.searchParams) };
 }
 
+/** @param {string} key */
+function pullComparison(key) {
+  if (!key.startsWith("/")) {
+    return null;
+  }
+  const target = pluginComparisonRoute(key);
+  const fullOid = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+  return target.plugin === "github" &&
+    target.hook === "pull-comparison" &&
+    fullOid.test(target.params.left) &&
+    fullOid.test(target.params.right) &&
+    /^[0-9a-f]{16}$/.test(target.params.store) &&
+    /^[1-9][0-9]*$/.test(target.params.number)
+    ? target
+    : null;
+}
+
 /** @param {string} key @param {{signal?: AbortSignal}} [options] @param {string} [file] */
 function fetchComparison(key, options, file) {
   const target = key.startsWith("/")
@@ -167,44 +184,43 @@ function viewFileHost() {
  * @returns {Promise<import("./diff-view-file.js").ViewFileOpenerFactory | null>}
  */
 async function viewFileOpener(revision) {
-  if (revision.startsWith("/")) {
-    const { plugin, hook, params } = pluginComparisonRoute(revision);
-    if (plugin === "github" && hook === "pull-comparison") {
-      if (!window.MetabrowserGitPath) {
-        const codec = "/static/git-path.js";
-        await import(codec);
-      }
-      const { createViewFileOpener } = await import("./diff-view-file.js");
-      return (options) =>
-        createViewFileOpener(
-          {
-            pin: "",
-            href: () => null,
-            snapshotHref(side) {
-              if (side.commit !== (side.side === "base" ? params.left : params.right)) {
-                return null;
-              }
-              const path = window.MetabrowserGitPath?.wire(side.address);
-              if (!path) {
-                return null;
-              }
-              const query = new URLSearchParams({
-                number: params.number,
-                left: params.left,
-                right: params.right,
-                store: params.store,
-                side: side.side,
-                path,
-              });
-              return `/api/plugin/github/pull-snapshot?${query}`;
-            },
-            onRestored: () => () => {},
-            switchPin: () => Promise.resolve({ status: 400, body: null }),
-            navigate: () => {},
-          },
-          options,
-        );
+  const pull = pullComparison(revision);
+  if (pull !== null) {
+    const { params } = pull;
+    if (!window.MetabrowserGitPath) {
+      const codec = "/static/git-path.js";
+      await import(codec);
     }
+    const { createViewFileOpener } = await import("./diff-view-file.js");
+    return (options) =>
+      createViewFileOpener(
+        {
+          pin: "",
+          href: () => null,
+          snapshotHref(side) {
+            if (side.commit !== (side.side === "base" ? params.left : params.right)) {
+              return null;
+            }
+            const path = window.MetabrowserGitPath?.wire(side.address);
+            if (!path) {
+              return null;
+            }
+            const query = new URLSearchParams({
+              number: params.number,
+              left: params.left,
+              right: params.right,
+              store: params.store,
+              side: side.side,
+              path,
+            });
+            return `/api/plugin/github/pull-snapshot?${query}`;
+          },
+          onRestored: () => () => {},
+          switchPin: () => Promise.resolve({ status: 400, body: null }),
+          navigate: () => {},
+        },
+        options,
+      );
   }
   const host = viewFileHost();
   if (host === null) {
@@ -313,12 +329,42 @@ mb.registerView("diff", "diff", {
     if (signal?.aborted) {
       return null;
     }
+    const pull = pullComparison(revision);
+    const manifest = /** @type {{files: {old?: {path?: string}, new?: {path?: string}}[]}} */ (
+      result.document.manifest
+    );
+    const hasMarkdown =
+      pull !== null &&
+      manifest.files.some((file) =>
+        /\.(?:md|markdown|mdown|mkd)$/i.test(file.new?.path ?? file.old?.path ?? ""),
+      );
+    const markdownViews = !hasMarkdown
+      ? null
+      : await import("./diff-markdown.js").catch((error) => {
+          console.error("metabrowser diff: Markdown view unavailable", error);
+          return null;
+        });
+    if (signal?.aborted) {
+      return null;
+    }
     // A commit comparison already carries these totals beside its revision,
     // author, and age. Direct diff documents and two-endpoint comparisons own
     // their aggregate summary.
     return mountDiffView(container, result.document, mb, {
       showSummary: !ctx.revision,
       viewFile,
+      ...(pull === null || markdownViews === null
+        ? {}
+        : {
+            markdownViews,
+            renderMarkdown: (fileId, signal) =>
+              mb.fetchPluginData(
+                pull.plugin,
+                pull.hook,
+                { ...pull.params, rendered_file: fileId },
+                { signal },
+              ),
+          }),
     });
   },
   /**

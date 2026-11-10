@@ -94,3 +94,7 @@ def test_diff_view_file_decides_sides_addresses_and_switches() -> None:
 
 def test_comparison_routes_are_shared_by_mount_prefetch_and_deferred_files() -> None:
     _run("diff-comparison-route-behavior.js", "diff comparison routes OK")
+
+
+def test_markdown_diff_observes_nearby_files_and_preserves_the_selected_mode() -> None:
+    _run("diff-markdown-behavior.js", "diff Markdown view OK")

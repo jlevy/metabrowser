@@ -44,6 +44,7 @@ dependencies = [
     "json5>=0.15.0",
     "jsonschema>=4.26.0",
     "kpress==0.3.5",
+    "markdown-it-py==4.2.0",
     "pathspec>=1.1.1",
     "prettyfmt>=0.4.1",
     "psutil>=7.2.2",

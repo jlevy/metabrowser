@@ -445,6 +445,13 @@ View phasing for a changed text file, all tabs from one diff layout:
 
 ### Rendered Diffs and Revision File Links
 
+The implementation links directly to each admitted revision file and keeps the server’s
+current subject in place.
+The first projection supports ordinary Markdown blocks when the parser’s source ranges
+agree with KPress’s complete render.
+Raw HTML, footnotes, unsupported mappings, and over-budget documents remain readable in
+Source.
+
 **Status:** Planned for PR Changes in checkout and managed sessions.
 The rendered and source views follow GitHub’s prose-review pattern.
 Markdown is the first eligible format.

@@ -75,3 +75,25 @@ def test_document_references_are_inert_and_use_the_same_snapshot() -> None:
     assert 'href="/api/file"' not in html
     assert "<script" not in html
     assert 'href="https://example.org"' in html
+
+
+def test_rendered_markdown_uses_the_admitted_comparison_and_exact_hunks(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    stand, client = pinned_pull
+    stand.refresh(8)
+    envelope = client.get("/api/plugin/github/pull", params={"number": 8}).json()
+    route = envelope["comparison_route"]
+    source = client.get(route).json()
+    file = next(
+        change for change in source["manifest"]["files"] if change["new"]["path"] == "docs/guide.md"
+    )
+    stand.calls()
+    rendered = client.get(f"{route}&rendered_file={file['id']}")
+    assert rendered.status_code == 200, rendered.text
+    answer = rendered.json()
+    assert answer["status"] == "ready", answer
+    assert answer["version"] == "markdown-diff-v1"
+    assert any(block["kind"] == "added" and "More." in block["html"] for block in answer["blocks"])
+    assert answer["assets"]["assets"]
+    assert stand.calls() == []

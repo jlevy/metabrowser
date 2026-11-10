@@ -226,6 +226,11 @@ async def pull_snapshot_handler(request: Request) -> Response:
 async def pull_comparison_handler(request: Request) -> Response:
     """Read a checkout's pinned PR comparison from its store; never acquire on GET."""
 
+    if "rendered_file" in request.query_params:
+        from metabrowser.builtin_plugins.github.pull_rendered_diff import pull_rendered_diff_handler
+
+        return await pull_rendered_diff_handler(request)
+
     from metabrowser.builtin_plugins.diff.sidekick import comparison_at
     from metabrowser.builtin_plugins.github.pull_manifest import (
         invalidate_pull_manifest,

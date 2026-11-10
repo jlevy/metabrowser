@@ -282,6 +282,11 @@ The envelope’s `comparison_route` names `GET github/pull-comparison` with the 
 number, immutable endpoints, and build and store tokens.
 This route reads only the managed store and uses the diff plugin’s comparison service;
 it never acquires one.
+The optional `rendered_file` query returns a bounded Markdown projection for one
+manifest file ID after the same snapshot admission check as the full-file route.
+The projection reuses the authoritative Git patch and exact blobs.
+Its transient cache joins simultaneous requests for the same file, and the browser falls
+back to the regular source diff when a projection is unsupported or over budget.
 `GET github/pull-snapshot` opens a full file from the exact displayed base or head
 without changing the served pin or checkout.
 It checks the comparison against the local PR record or its bounded retained comparison
