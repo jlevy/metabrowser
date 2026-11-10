@@ -520,7 +520,6 @@ def write_pull_record(
         if metadata_only:
             record = fit_record(_metadata_record(record, current))
             data = serialize_pull_record(record)
-        write_private_file_atomic(home, source_pull_record(slug, record.number), data)
         if store_id is not None and record.comparison is not None:
             from metabrowser.builtin_plugins.github.pull_snapshot_cache import (
                 retain_snapshot_binding,
@@ -530,6 +529,9 @@ def write_pull_record(
             with suppress(PrivateStorageError, OSError):
                 if isinstance(current, PullRecord) and current.reader == record.reader:
                     retain_snapshot_binding(home, slug, store_id, current)
+        write_private_file_atomic(home, source_pull_record(slug, record.number), data)
+        if store_id is not None and record.comparison is not None:
+            with suppress(PrivateStorageError, OSError):
                 retain_snapshot_binding(home, slug, store_id, record)
     return record
 

@@ -22,6 +22,8 @@ from metabrowser.builtin_plugins.github.pull_route import (
 from metabrowser.builtin_plugins.github.pull_snapshot_cache import read_snapshot_bindings
 from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.repository_store import open_revision
+from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
+from metabrowser.file_extensions import BROWSER_TEXT_EXTS
 from metabrowser.git.process import GitError
 from metabrowser.git.tree_source import GitPath, display_segment
 from metabrowser.git.wire import is_full_revision
@@ -51,7 +53,7 @@ _IMAGE_TYPES: Final = {
 _DOCUMENT_BYTES: Final = 256 * 1024
 _SOURCE_BYTES: Final = 64 * 1024
 _IMAGE_BYTES: Final = 8 * 1024 * 1024
-type ViewMode = Literal["document", "source", "image"]
+type ViewMode = Literal["document", "source", "image", "download"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,7 +253,7 @@ async def pull_snapshot_handler(request: Request) -> Response:
             not is_full_revision(base)
             or not is_full_revision(head)
             or side not in {"base", "head"}
-            or mode not in {"document", "source", "image"}
+            or mode not in {"document", "source", "image", "download"}
             or not raw_offset.isascii()
             or not raw_offset.isdecimal()
             or len(raw_offset) > 10
@@ -301,6 +303,26 @@ async def pull_snapshot_handler(request: Request) -> Response:
                 return Response(
                     await tree.read_blob(path), media_type=_IMAGE_TYPES[ext], headers=_HEADERS
                 )
+            if mode == "download":
+                if size > tree.max_blob_bytes:
+                    return _error(
+                        request, "download_too_large", "This file exceeds the download limit.", 413
+                    )
+                return Response(
+                    await tree.read_blob(path),
+                    media_type="application/octet-stream",
+                    headers={**_HEADERS, "Content-Disposition": "attachment"},
+                )
+            if mode == "document" and ext in _IMAGE_TYPES and size <= _IMAGE_BYTES:
+                src = escape(snapshot.href(path, "image"))
+                name = escape(display_segment(path.segments[-1]))
+                return _page(
+                    snapshot,
+                    path,
+                    f'<img src="{src}" alt="{name}">',
+                    markdown=False,
+                    document=False,
+                )
             markdown = ext in _MARKDOWN and size <= _DOCUMENT_BYTES
             if mode == "document" and markdown:
                 try:
@@ -311,11 +333,35 @@ async def pull_snapshot_handler(request: Request) -> Response:
                     pass
                 else:
                     return _page(snapshot, path, document, markdown=True, document=True)
-            if offset >= size and offset:
+            preview_size = min(size, tree.max_blob_bytes)
+            if offset >= preview_size and offset:
                 return _error(
-                    request, "invalid_offset", "This source window is outside the file.", 416
+                    request,
+                    "invalid_offset",
+                    "This source window is outside the preview limit.",
+                    416,
                 )
-            body, _ = await tree.read_blob_window(entry.oid, offset=offset, max_bytes=_SOURCE_BYTES)
+            body, _ = await tree.read_blob_window(
+                entry.oid, offset=offset, max_bytes=min(_SOURCE_BYTES, tree.max_blob_bytes - offset)
+            )
+            if offset == 0:
+                content = classify_prefix(body[:SNIFF_PREFIX_BYTES])
+                if content is ContentClass.BINARY or (
+                    ext not in BROWSER_TEXT_EXTS and content is not ContentClass.TEXT and size
+                ):
+                    download = escape(snapshot.href(path, "download"))
+                    link = (
+                        f' <a href="{download}">Download file</a>'
+                        if size <= tree.max_blob_bytes
+                        else ""
+                    )
+                    return _page(
+                        snapshot,
+                        path,
+                        f"<p>Binary file.{link}</p>",
+                        markdown=False,
+                        document=False,
+                    )
         finally:
             await subject.aclose()
     except GitError:
@@ -334,5 +380,5 @@ async def pull_snapshot_handler(request: Request) -> Response:
         markdown=markdown,
         document=False,
         offset=offset,
-        next_offset=next_offset if next_offset < size else None,
+        next_offset=next_offset if next_offset < preview_size else None,
     )

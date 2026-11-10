@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import subprocess
+
 from starlette.testclient import TestClient
 
 from metabrowser.builtin_plugins.github.pull_record import write_pull_record
 from metabrowser.builtin_plugins.github.pull_snapshot import Snapshot, _render_markdown
 from metabrowser.git.tree_source import GitPath
+from tests.git_pin_harness import git_env
 from tests.test_github_pulls import _Stand
 from tests.test_github_pulls import pinned_pull as pinned_pull
 from tests.test_github_pulls import stand as stand
@@ -75,3 +78,65 @@ def test_document_references_are_inert_and_use_the_same_snapshot() -> None:
     assert 'href="/api/file"' not in html
     assert "<script" not in html
     assert 'href="https://example.org"' in html
+
+
+def test_snapshot_images_and_binary_files_keep_their_type(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    stand, client = pinned_pull
+    record = stand.refresh(7)
+    assert record.comparison is not None
+    store = stand.published.git_dir
+
+    def git(*args: str, data: bytes = b"") -> str:
+        result = subprocess.run(
+            ["git", "--git-dir", str(store), *args],
+            env=git_env(stand.tmp_path),
+            input=data,
+            capture_output=True,
+            check=True,
+        )
+        return result.stdout.decode().strip()
+
+    image = b"\x89PNG\r\n\x1a\nfixture"
+    binary = b"\0\xffbytes"
+    png_oid = git("hash-object", "-w", "--stdin", data=image)
+    binary_oid = git("hash-object", "-w", "--stdin", data=binary)
+    tree = git(
+        "mktree",
+        data=f"100644 blob {png_oid}\timage.png\n100644 blob {binary_oid}\tpayload.bin\n".encode(),
+    )
+    head = git(
+        "-c",
+        "user.name=Fixture",
+        "-c",
+        "user.email=fixture@example.com",
+        "commit-tree",
+        tree,
+        "-p",
+        record.comparison.head,
+        data=b"Snapshot images\n",
+    )
+    write_pull_record(
+        stand.published.home,
+        stand.published.slug,
+        record.model_copy(
+            update={"comparison": record.comparison.model_copy(update={"head": head})}
+        ),
+    )
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
+    address = "/api/plugin/github/pull-snapshot?" + route.split("?", 1)[1] + "&side=head&path="
+    picture = address + GitPath.from_display("image.png").to_wire()
+    source = address + GitPath.from_display("payload.bin").to_wire()
+    preview = client.get(picture)
+    assert preview.status_code == 200 and "<img src=" in preview.text
+    asset = client.get(picture + "&mode=image")
+    assert asset.headers["content-type"] == "image/png" and asset.content == image
+    assert "Binary file." in client.get(source).text
+    download = client.get(source + "&mode=download")
+    assert download.headers["content-disposition"] == "attachment"
+    assert download.content == binary
+    outside = client.get(
+        source + "&mode=source&offset=100000000", headers={"accept": "application/json"}
+    )
+    assert outside.status_code == 416

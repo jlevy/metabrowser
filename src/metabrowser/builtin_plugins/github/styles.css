@@ -789,3 +789,8 @@
 .pull-snapshot pre {
   overflow: auto;
 }
+
+.pull-snapshot-content img {
+  max-width: 100%;
+  height: auto;
+}
