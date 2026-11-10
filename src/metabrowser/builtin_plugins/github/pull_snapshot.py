@@ -259,7 +259,7 @@ def _page(
         '<link rel="stylesheet" href="/static/styles.css">'
         '<link rel="stylesheet" href="/plugin-static/github/styles.css">'
         f'{styles}<body class="pull-snapshot-page"><main class="pull-snapshot"><header><nav aria-label="Revision file">'
-        f"{' '.join(links)}</nav><h1>{escape(name)}</h1><code>{snapshot.commit}</code></header>"
+        f'{" ".join(links)}</nav><h1 class="page-heading">{escape(name)}</h1><code>{snapshot.commit}</code></header>'
         f'<article class="pull-snapshot-content">{content}</article></main></body></html>',
         headers=_HEADERS,
     )
