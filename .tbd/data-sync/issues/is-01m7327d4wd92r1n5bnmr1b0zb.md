@@ -5,7 +5,7 @@ title: Implement cache-first PR review and rendered Markdown
 kind: epic
 status: in_progress
 priority: 2
-version: 12
+version: 13
 spec_path: docs/project/specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md
 delegate: codex@spud10.local
 labels: []
@@ -21,7 +21,7 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-10T15:46:31.195Z
-updated_at: 2026-11-10T18:14:11.874Z
+updated_at: 2026-11-10T18:29:36.998Z
 started_at: 2026-11-10T16:27:59.682Z
 ---
 Implement the reviewed designs in #346 in dependency order. Stack after #346: exact immutable revision views; bounded eager comparison preparation and keyed GitHub reads; Markdown rendered diffs. Keep checkout and managed modes on the same snapshot path and verify cold, warm, offline and concurrent sessions.
@@ -33,3 +33,5 @@ Built three forward-only branches above #346: codex/pr-review-snapshots, codex/p
 GitHub stack #350 is published: #346 → #347 exact revision links → #348 cache preparation and concurrent loads → #349 Markdown redlines. The three follow-ups are draft PRs. Focused local lint, automated checks, and built-in browser fixtures passed. The full local run hit external scratch limits; standard GitHub CI is running. Keep the implementation beads open through merge.
 
 The first GitHub CI run caught three omitted snapshot-route inventory expectations. Corrected in #347 at 8dd80d0cf and merged forward into #348 at e147395f5 and #349 at 705d85a1c. All 25 cases in the two corrected CLI golden files passed locally. Fresh CI is running.
+
+Final CI: nine successful checks per PR on all four layers of stack #350, including full stack integration against main for #347–#349. Final draft heads: #347 8dd80d0cf, #348 e147395f5, #349 705d85a1c. The local full suite remains incomplete after external scratch exhaustion. The implementation beads remain open until merge, and paired browser timing is tracked on mb-5rth.
