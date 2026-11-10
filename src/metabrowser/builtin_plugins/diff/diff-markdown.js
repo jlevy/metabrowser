@@ -11,7 +11,7 @@ const MARKDOWN = /\.(?:md|markdown|mdown|mkd)$/i;
 /** @typedef {{kind: "context" | "removed" | "added", html: string}} Block */
 /** @typedef {{
  *   section: HTMLElement, source: HTMLElement, rendered: HTMLElement,
- *   progress: HTMLElement, fallback: HTMLElement, chips: HTMLButtonElement[],
+ *   progress: HTMLElement, fallback: HTMLElement, control: HTMLElement,
  *   id: string, mode: Mode, pending: boolean, expanded: boolean,
  *   state: "idle" | "ready" | "unavailable"
  * }} FileView */
@@ -193,6 +193,7 @@ function stylesOnly(assets) {
  * switches to Source detaches, and a replacement waits for teardown.
  * @param {{
  *   load: (fileId: string, signal: AbortSignal) => Promise<unknown>,
+ *   controls: NonNullable<MetabrowserPublicSdk["filterControls"]>,
  *   ensureInert: () => Promise<MetabrowserInertHtmlRuntime | undefined>,
  *   loadStyles: (assets: KpressAssetManifest) => Promise<void>,
  *   mutate: (change: () => void) => void
@@ -201,6 +202,8 @@ function stylesOnly(assets) {
 export function createMarkdownViews(deps) {
   /** @type {Map<HTMLElement, FileView>} */
   const files = new Map();
+  /** @type {Map<string, FileView>} */
+  const controls = new Map();
   /** @type {Set<FileView>} */
   const nearby = new Set();
   /** @type {{file: FileView, controller: AbortController} | null} */
@@ -213,6 +216,8 @@ export function createMarkdownViews(deps) {
   let stylesReady;
   let disposed = false;
   let observed = false;
+  /** @type {(() => void) | undefined} */
+  let unbind;
 
   /** @param {FileView} file */
   function draw(file) {
@@ -221,10 +226,30 @@ export function createMarkdownViews(deps) {
     file.rendered.hidden = !file.expanded || !rich;
     file.fallback.hidden = !file.expanded || !file.fallback.textContent;
     drawProgress(file);
-    for (const chip of file.chips) {
-      const selected = chip.value === file.mode;
-      chip.tabIndex = selected ? 0 : -1;
-      chip.setAttribute("aria-checked", String(selected));
+  }
+
+  /** @param {FileView} file */
+  function drawControl(file) {
+    const restoreFocus = file.control.contains(document.activeElement);
+    file.control.innerHTML = deps.controls.groupHtml({
+      key: file.source.id,
+      label: "Markdown diff format",
+      layout: "joined",
+      options: [
+        { label: "Rendered", value: "rendered" },
+        { label: "Source", value: "source" },
+      ],
+      select: "one",
+      value: file.mode,
+    });
+    for (const chip of file.control.querySelectorAll("button[data-chip-value]")) {
+      const button = /** @type {HTMLButtonElement} */ (chip);
+      const mode = button.dataset.chipValue;
+      button.setAttribute("aria-controls", mode === "rendered" ? file.rendered.id : file.source.id);
+      button.disabled = mode === "rendered" && file.state === "unavailable";
+      if (restoreFocus && mode === file.mode) {
+        button.focus();
+      }
     }
   }
 
@@ -333,13 +358,10 @@ export function createMarkdownViews(deps) {
     deps.mutate(() => {
       file.state = unsupported ? "unavailable" : "idle";
       file.mode = "source";
-      file.chips[0].disabled = unsupported;
       file.fallback.textContent = unsupported
         ? "Rendered diff unavailable. Showing source."
         : "Could not render Markdown. Select Rendered to retry.";
-      if (document.activeElement === file.chips[0]) {
-        file.chips[1].focus();
-      }
+      drawControl(file);
       draw(file);
     });
   }
@@ -354,6 +376,7 @@ export function createMarkdownViews(deps) {
       if (mode === "rendered") {
         file.fallback.textContent = "";
       }
+      drawControl(file);
       draw(file);
     });
     pump();
@@ -362,12 +385,8 @@ export function createMarkdownViews(deps) {
   return {
     /** @param {{section: HTMLElement, bar: HTMLElement, source: HTMLElement, id: string}} input */
     add({ section, bar, source, id }) {
-      const group = document.createElement("div");
-      group.className = "chip-group diff-markdown-control";
-      group.dataset.layout = "joined";
-      group.dataset.select = "one";
-      group.setAttribute("role", "radiogroup");
-      group.setAttribute("aria-label", "Markdown diff format");
+      const control = document.createElement("div");
+      control.className = "diff-markdown-control";
       const rendered = document.createElement("article");
       rendered.className = "kpress kpress-inert diff-markdown";
       rendered.id = `${source.id}-rendered`;
@@ -390,50 +409,18 @@ export function createMarkdownViews(deps) {
         progress: loading,
         fallback,
         id,
-        chips: [],
+        control,
         mode: "rendered",
         expanded: true,
         pending: false,
         state: "idle",
       };
-      for (const mode of /** @type {const} */ (["rendered", "source"])) {
-        const chip = document.createElement("button");
-        chip.className = "chip";
-        chip.type = "button";
-        chip.value = mode;
-        chip.textContent = mode === "rendered" ? "Rendered" : "Source";
-        chip.setAttribute("role", "radio");
-        chip.setAttribute("aria-controls", mode === "rendered" ? rendered.id : source.id);
-        chip.addEventListener("click", (event) => {
-          event.stopPropagation();
-          select(file, mode);
-        });
-        file.chips.push(chip);
-        group.append(chip);
-      }
-      group.addEventListener("keydown", (event) => {
-        if (
-          !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)
-        ) {
-          return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        const mode =
-          event.key === "Home"
-            ? "rendered"
-            : event.key === "End"
-              ? "source"
-              : file.mode === "rendered"
-                ? "source"
-                : "rendered";
-        select(file, mode);
-        file.chips[file.mode === "rendered" ? 0 : 1].focus();
-      });
-      bar.firstElementChild?.after(group);
+      bar.firstElementChild?.after(control);
       bar.classList.add("diff-file-bar-markdown");
       source.before(loading, fallback, rendered);
       files.set(section, file);
+      controls.set(source.id, file);
+      drawControl(file);
       draw(file);
       return {
         /** @param {boolean} expanded */
@@ -444,12 +431,26 @@ export function createMarkdownViews(deps) {
         },
       };
     },
-    /** @param {Element | null} root @param {number} ahead */
-    observe(root, ahead) {
+    /** @param {HTMLElement} container @param {Element | null} root @param {number} ahead */
+    observe(container, root, ahead) {
       observed = true;
       if (files.size === 0) {
         return;
       }
+      unbind = deps.controls.bind(container, {
+        onChange(key, value, selectType) {
+          const file = controls.get(key);
+          if (
+            file !== undefined &&
+            selectType === "one" &&
+            (value === "source" || value === "rendered")
+          ) {
+            // The shared handler moves focus first. Repaint once that handler
+            // returns so its focus recovery cannot find another file's chips.
+            queueMicrotask(() => select(file, value));
+          }
+        },
+      });
       observer = new IntersectionObserver(
         (entries) => {
           if (disposed) {
@@ -480,7 +481,10 @@ export function createMarkdownViews(deps) {
       if (active !== null) {
         active.file.progress.hidden = true;
       }
+      unbind?.();
+      unbind = undefined;
       files.clear();
+      controls.clear();
       nearby.clear();
     },
   };

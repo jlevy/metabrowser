@@ -56,19 +56,40 @@ class Element {
   }
 
   click() {
-    this.listeners.get("click")({ stopPropagation() {} });
+    this.focus();
+    this.listeners.get("click")();
+    return Promise.resolve();
+  }
+
+  contains(node) {
+    return this === node || this.children.some((child) => child.contains?.(node));
+  }
+
+  set innerHTML(spec) {
+    if (typeof spec === "string") {
+      return;
+    }
+    // Stand in for parsing the shared chip family's groupHtml output.
+    this.children = spec.options.map(({ value }) => {
+      const chip = make("button");
+      chip.dataset.chipValue = value;
+      chip.setAttribute("aria-checked", String(spec.value === value));
+      chip.addEventListener("click", () => sharedChange(spec.key, value, spec.select));
+      return chip;
+    });
   }
 
   focus() {
     document.activeElement = this;
   }
 
-  querySelectorAll() {
-    return [];
+  querySelectorAll(selector) {
+    return selector === "button[data-chip-value]" ? this.children : [];
   }
 }
 
 const make = (tag) => new Element(tag);
+let sharedChange;
 globalThis.document = {
   createElement: make,
   createTextNode: (textContent) => ({ textContent }),
@@ -131,7 +152,18 @@ async function main() {
     sanitizeNodes: () => [],
     kpressProse: () => make("div"),
   };
+  const root = make("div");
   const view = createMarkdownViews({
+    controls: {
+      groupHtml: (spec) => spec,
+      bind(container, { onChange }) {
+        assert.equal(container, root);
+        sharedChange = onChange;
+        return () => {
+          sharedChange = undefined;
+        };
+      },
+    },
     load(id, signal) {
       return new Promise((resolve, reject) => calls.push({ id, signal, resolve, reject }));
     },
@@ -146,21 +178,34 @@ async function main() {
   });
   function file(id) {
     const section = make("section");
+    root.append(section);
     const bar = make("div");
     const source = make("div");
     source.id = id;
     section.append(bar, source);
     bar.append(make("button"));
     const state = view.add({ section, bar, source, id });
-    const [renderedChoice, sourceChoice] = bar.children[1].children;
     const [, progress, fallback, rendered] = section.children;
-    return { section, source, rendered, progress, fallback, renderedChoice, sourceChoice, state };
+    return {
+      section,
+      source,
+      rendered,
+      progress,
+      fallback,
+      state,
+      get renderedChoice() {
+        return bar.children[1].children[0];
+      },
+      get sourceChoice() {
+        return bar.children[1].children[1];
+      },
+    };
   }
 
   const a = file("a");
   const b = file("b");
   const c = file("c");
-  view.observe(null, 240);
+  view.observe(root, null, 240);
   assert.equal(calls.length, 0);
   assert.equal(a.renderedChoice.attributes.get("aria-checked"), "true");
   const arrival = (file) => ({ target: file.section, isIntersecting: true });
@@ -170,9 +215,10 @@ async function main() {
     ["a"],
   );
   assert.equal(a.progress.hidden, false);
-  a.sourceChoice.click();
+  await a.sourceChoice.click();
   assert.equal(a.progress.hidden, true);
   assert.equal(a.source.hidden, false);
+  assert.equal(document.activeElement, a.sourceChoice);
   assert.equal(calls[0].signal.aborted, true);
   assert.equal(calls.length, 1, "the next file waits for the first request to settle");
   const ready = {
@@ -200,13 +246,15 @@ async function main() {
     calls.map(({ id }) => id),
     ["a", "b", "c"],
   );
+  c.renderedChoice.focus();
   calls[2].resolve({ status: "too_large" });
   await new Promise(setImmediate);
   assert.equal(c.sourceChoice.attributes.get("aria-checked"), "true");
   assert.equal(c.renderedChoice.disabled, true);
+  assert.equal(document.activeElement, c.sourceChoice);
   assert.equal(c.fallback.hidden, false);
 
-  a.renderedChoice.click();
+  await a.renderedChoice.click();
   assert.deepEqual(
     calls.map(({ id }) => id),
     ["a", "b", "c", "a"],
@@ -217,9 +265,9 @@ async function main() {
   assert.equal(a.source.hidden, true);
   assert.equal(a.rendered.children.length, 1);
   assert.equal(assets, 1);
-  a.sourceChoice.click();
+  await a.sourceChoice.click();
   assert.equal(a.source.hidden, false);
-  a.renderedChoice.click();
+  await a.renderedChoice.click();
   assert.equal(a.rendered.hidden, false);
   assert.equal(calls.length, 4, "switching back reuses rendered content");
   b.state.setExpanded(true);
@@ -229,12 +277,13 @@ async function main() {
   assert.equal(b.sourceChoice.attributes.get("aria-checked"), "true");
   assert.equal(b.renderedChoice.disabled, false, "a transport error allows another attempt");
   assert.match(b.fallback.textContent, /retry/);
-  b.renderedChoice.click();
+  await b.renderedChoice.click();
   assert.equal(calls.length, 6);
   assert.equal(b.fallback.hidden, true);
   view.dispose();
   assert.equal(calls[5].signal.aborted, true);
   assert.equal(observer.observed.size, 0);
+  assert.equal(sharedChange, undefined);
   calls[5].resolve(ready);
   await new Promise(setImmediate);
   assert.equal(b.rendered.hidden, true);

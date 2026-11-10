@@ -418,6 +418,7 @@
 }
 
 .metabrowser-diff-host .diff-markdown-control {
+  display: flex;
   flex: none;
   margin-block: 2px;
 }
