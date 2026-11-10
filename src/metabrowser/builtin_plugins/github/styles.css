@@ -761,33 +761,3 @@
   flex-shrink: 1;
   font-size: var(--ui-small-font-size);
 }
-
-.pull-snapshot-page {
-  display: block;
-  height: auto;
-  overflow: auto;
-}
-.pull-snapshot {
-  padding: var(--content-padding-y) var(--content-padding-x);
-}
-.pull-snapshot header,
-.pull-snapshot-content {
-  margin-bottom: var(--content-padding-y);
-}
-.pull-snapshot nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: var(--content-padding-y);
-}
-.pull-snapshot nav [aria-current="page"] {
-  font-weight: var(--weight-bold);
-}
-.pull-snapshot pre {
-  overflow: auto;
-}
-
-.pull-snapshot-content img {
-  max-width: 100%;
-  height: auto;
-}
