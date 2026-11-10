@@ -5,7 +5,7 @@ title: Implement cache-first PR review and rendered Markdown
 kind: epic
 status: in_progress
 priority: 2
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md
 delegate: codex@spud10.local
 labels: []
@@ -21,7 +21,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-10T15:46:31.195Z
-updated_at: 2026-11-10T16:34:12.124Z
+updated_at: 2026-11-10T16:38:22.014Z
 started_at: 2026-11-10T16:27:59.682Z
 ---
 Implement the reviewed designs in #346 in dependency order. Stack after #346: exact immutable revision views; bounded eager comparison preparation and keyed GitHub reads; Markdown rendered diffs. Keep checkout and managed modes on the same snapshot path and verify cold, warm, offline and concurrent sessions.
+
+## Notes
+
+Built three forward-only branches above #346: codex/pr-review-snapshots, codex/pr-review-cache-loads, codex/pr-rendered-markdown-diffs. Complete local verification and formal GitHub stack publication are in progress. Leave the epic and implementation beads open until the layers land. Paired documentation-heavy browser timing is tracked separately on mb-5rth.
