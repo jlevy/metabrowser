@@ -524,6 +524,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-snapshot",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-timeline",
       "methods": [
         "POST"
@@ -732,7 +740,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 58
+  "count": 59
 }
 ? 0
 ```
