@@ -430,10 +430,9 @@ async def _comparison_outcome(
     outcome = "succeeded" if error is None else error.state
     message = None if error is None else str(error)[:1000]
     reset_at = None if error is None else error.reset_at
-    companion.last = PullRefreshOutcome(outcome=outcome, message=message, reset_at=reset_at, at=at)
     try:
         claimed = await claim_source(repository)
-        await run_lock_section(
+        kept = await run_lock_section(
             partial(
                 write_pull_refresh,
                 claimed.home,
@@ -445,6 +444,10 @@ async def _comparison_outcome(
         )
     except (PullDataError, PrivateStorageError, OSError):
         log.debug("could not record checkout comparison outcome", exc_info=True)
+    else:
+        if not kept:
+            return
+    companion.last = PullRefreshOutcome(outcome=outcome, message=message, reset_at=reset_at, at=at)
 
 
 async def _prepare_comparison(
@@ -505,6 +508,12 @@ async def _prepare_comparison(
                         await _comparison_outcome(companion, repository, expected=prepared)
                 if not companion.without_store:
                     return not companion.recovery_pending
+    except pulls.PullObservationSuperseded as exc:
+        companion.fetched_at = exc.current.fetched_at
+        companion.without_store = written_without_store(exc.current)
+        if exc.current.comparison is not None:
+            companion.note_comparison((exc.current.comparison.base, exc.current.comparison.head))
+            return not companion.recovery_pending
     except PullDataError as exc:
         await _comparison_outcome(companion, repository, exc, expected=record)
         return not companion.recovery_pending

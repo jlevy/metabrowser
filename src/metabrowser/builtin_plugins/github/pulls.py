@@ -84,6 +84,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     CommitStatus,
     Comparison,
     IssueComment,
+    PullObservationSuperseded,
     PullRecord,
     PullRefreshStamp,
     PullRequest,
@@ -849,10 +850,7 @@ async def _with_comparison(
         )
     except BaseUncertainError as uncertain:
         log.debug("pull request %s has an uncertain merge base; deepening", pull.number)
-        pending = without(uncertain.state)
-        expected = await _write(published, pending, expected=expected)
-        if expected != pending:
-            return expected
+        expected = await _write(published, without(uncertain.state), expected=expected)
         try:
             endpoints = await deepen_until_certain(
                 published,
@@ -1034,7 +1032,8 @@ async def refresh_pull_request(
     source is published first if it has never been (:func:`~.checkout.claim_source`).
     A checkout preserves a shared comparison only for the same reader and unchanged
     comparison inputs; otherwise its record has no comparison, ``no_store``. Raises only
-    :class:`PullDataError`. A failure leaves any previous record in place. How it ended is
+    :class:`PullDataError`, or :class:`PullObservationSuperseded` if another writer won.
+    A failure leaves any previous record in place. How it ended is
     kept beside the record either way; see :func:`last_refresh`.
     """
 
@@ -1134,6 +1133,15 @@ async def open_pull_request(
         return _pin(number, record)
     try:
         fresh = await refresh_pull_request(published, number)
+    except PullObservationSuperseded as exc:
+        try:
+            if await has_commit(published, exc.current.pull.head.sha):
+                return _pin(number, exc.current)
+        except GitError as error:
+            raise _git_failure(number, error) from error
+        if usable and isinstance(record, PullRecord):
+            return _pin(number, record)
+        raise PullDataError("head_mismatch", "the cached head changed during this open") from exc
     except PullDataError as exc:
         if not usable or not isinstance(record, PullRecord):
             raise
