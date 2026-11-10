@@ -3,15 +3,19 @@ type: is
 id: is-01m715y0nv4hwkwvkvfze1m4r1
 title: Coalesce identical GitHub CLI reads without blocking distinct requests
 kind: feature
-status: open
+status: in_progress
 priority: 2
-version: 2
+version: 4
 spec_path: docs/project/specs/active/plan-2026-10-01-github-pulls-tab.md
+delegate: codex@spud10.local
 labels: []
 dependencies: []
-parent_id: is-01m715sezspp55zz5v346nrv9n
+parent_id: is-01m7327d4wd92r1n5bnmr1b0zb
+hold: null
+hold_until: null
 created_at: 2026-11-09T22:12:48.953Z
-updated_at: 2026-11-09T23:32:17.803Z
+updated_at: 2026-11-10T15:46:57.652Z
+started_at: 2026-11-10T15:46:31.773Z
 ---
 Add per-key single-flight for validated REST and read-only GraphQL requests. Scope by effective authorization, host, request variant, query/cursor, ETag, and response limits. Different keys run concurrently under the provider budget. Cancellation detaches a waiter; failures clear the flight safely. Reuse resource-specific locks and generation checks for durable publication across processes. Test distinct accounts, conditional responses, timeout, cancellation and out-of-order updates.
 
