@@ -789,7 +789,7 @@ async def _write(
     published: PublishedSource | ListedRepository,
     record: PullRecord,
     *,
-    expected: PullRecord | RecordAbsence,
+    expected: PullRecord | RecordAbsence | None = None,
 ) -> PullRecord:
     try:
         final = fit_record(record)

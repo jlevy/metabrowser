@@ -633,7 +633,12 @@ against the base branch as it is now.
 A closed or merged pull request compares from the API’s `base.sha`, fetched by ID when
 no mirrored ref reaches it.
 The fetched head must be the head the API reported; one full re-read covers a push
-between the two, and a second mismatch is `head_mismatch`.
+between the two, and a second mismatch is `head_mismatch`. Preparation from cached PR
+metadata can reuse the exact head commit already in the store.
+When that head or the API’s base commit is missing, the fetch rechecks for the object
+under the store’s fetch lock before reaching the origin.
+A head fetch for this preparation captures the ref while it still holds the lock.
+Explicit refreshes still fetch the moving refs.
 
 The record lives at `sources/<slug>/pulls/<n>.json`
 (`cache/paths.py: source_pull_record`), written by the home’s private atomic file write
@@ -1215,10 +1220,22 @@ The fixed lock order is:
 
 Network work and long-running Git processes hold none of these locks, and a local
 checkout is never a lock target.
-A refresh instead holds its store’s fetch side lock,
-`locks/stores/<store-key>.fetch.lock`, across the fetch.
-It is only tried without blocking: a refresh that finds it busy reports that another
-refresh is running and does not wait.
+A cold open takes a source acquisition reservation at
+`locks/sources/<source-key>.acquire.lock` after the provider’s first-clone admission.
+The key is the digest of the normalized source identity, so opens for other sources can
+run concurrently.
+A same-source waiter retries without blocking the event loop and checks
+for the published alias after taking the reservation.
+The owner holds the reservation through alias publication.
+Staging Git writers inherit both the reservation and the staging liveness descriptor, so
+another process cannot start a competing fetch or sweep the staging directory while
+those writers are alive.
+A warm open reads the published store without taking the reservation.
+
+A refresh holds its store’s fetch side lock, `locks/stores/<store-key>.fetch.lock`,
+across the fetch.
+It is only tried without blocking: a refresh that finds it busy reports
+that another refresh is running and does not wait.
 The Git processes that write the store inherit the lock’s descriptor, so it stays held
 for as long as any of them runs, even when the server that took it was killed; Ctrl-C’s
 immediate exit kills those process groups first, and a graceful shutdown cancels them
@@ -1275,7 +1292,9 @@ The recoveries are in [After a crash](#after-a-crash).
 
 #### Acquisition
 
-Staging holds only its own liveness lock, the network work holds no hierarchy lock, and
+The table shows staging and publication locks.
+The source acquisition reservation described above wraps these transitions for a cold
+open. Staging holds its liveness lock, network work holds no hierarchy lock, and
 publication holds the alias lock and the store lock together.
 
 | From | Event | To | Locks held | Network | Effect |
