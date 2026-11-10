@@ -91,6 +91,7 @@ from metabrowser.mirror_refresh import (
 from metabrowser.server import app
 from metabrowser.source import attach_subject
 from metabrowser.source_routes import PIN_CHANGED_HEADER, PIN_HEADER
+from tests.diff_fixture_repo import git
 from tests.git_pin_harness import git_env
 from tests.github_pull_fixture import (
     CANONICAL,
@@ -4924,3 +4925,24 @@ def test_obsolete_observation_cannot_replace_the_current_record_or_stamp(stand: 
     failed = original.model_copy(update={"outcome": "network_error"})
     write_pull_refresh(published.home, published.slug, 7, failed, expected=record)
     assert read_pull_refresh(published.home, published.slug, 7) == original
+
+
+def test_cached_comparison_uses_observed_base_instead_of_a_stale_mirror(stand: _Stand) -> None:
+    record = stand.refresh(7)
+    published = stand.published
+    base = git(published.git_dir, "rev-parse", record.pull.head.sha + "^").decode().strip()
+    assert record.comparison is not None and record.comparison.base != base
+    observed = record.model_copy(
+        update={
+            "pull": record.pull.model_copy(
+                update={"base": record.pull.base.model_copy(update={"sha": base})}
+            ),
+            "comparison": None,
+        }
+    )
+    write_pull_record(published.home, published.slug, observed)
+    stand.calls()
+    prepared = asyncio.run(pulls.prepare_pull_comparison(published, observed))
+    assert prepared is not None and prepared.comparison is not None
+    assert prepared.comparison.base == prepared.comparison.base_commit == base
+    assert stand.calls() == []

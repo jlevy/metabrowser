@@ -14,7 +14,9 @@ import contextlib
 import hashlib
 import logging
 import secrets
+from threading import Lock
 from typing import TYPE_CHECKING, Any, Final, Literal
+from weakref import WeakKeyDictionary
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -25,6 +27,7 @@ from metabrowser.builtin_plugins.diff.sidekick import (
 )
 from metabrowser.builtin_plugins.github.pull_record import MAX_PULL_RECORD_BYTES, PullRecord
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
+from metabrowser.cache.loading import LoadingCache
 from metabrowser.cache.paths import store_directory
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import MAX_MANIFEST_FILES, GitDiffSource
@@ -47,6 +50,10 @@ log = logging.getLogger(__name__)
 # uses the existing PR-record read bound; a larger result is still served in full.
 MANIFEST_SLOTS: Final = 16
 MAX_MANIFEST_RECORD_BYTES: Final = MAX_PULL_RECORD_BYTES
+_FLIGHTS: WeakKeyDictionary[
+    asyncio.AbstractEventLoop, LoadingCache[tuple[str, ...], ResolvedManifest]
+] = WeakKeyDictionary()
+_FLIGHTS_LOCK = Lock()
 
 
 class _ManifestRecord(BaseModel):
@@ -202,15 +209,32 @@ async def load_pull_manifest(
 ) -> ResolvedManifest:
     """Reuse one matching manifest, or compute and heal it. Never fetch the network.
 
-    Called inside the comparison cache's shared task, so concurrent page and
-    deferred-file requests share a miss or repair. The inexpensive resolution
-    prevents a disk entry from answering for objects this store no longer has.
+    Preparation and readers join the active disk load. Only the read path keeps a
+    ready result in the comparison's memory cache.
     """
-    resolved = await source.resolve(intent)
     try:
         epoch = await asyncio.to_thread(_current_epoch, published, key)
     except (OSError, RecordError, PrivateStorageError):
         epoch = None
+    loop = asyncio.get_running_loop()
+    with _FLIGHTS_LOCK:
+        flights = _FLIGHTS.get(loop)
+        if flights is None:
+            flights = _FLIGHTS[loop] = LoadingCache(max_values=0)
+    return await flights.get(
+        (*key, epoch or ""), lambda: _load(published, source, intent, key, epoch)
+    )
+
+
+async def _load(
+    published: PublishedSource,
+    source: GitDiffSource,
+    intent: dict[str, Any],
+    key: tuple[str, ...],
+    epoch: str | None,
+) -> ResolvedManifest:
+    # Check the store before using a persisted result.
+    resolved = await source.resolve(intent)
     kept = None if epoch is None else await asyncio.to_thread(_read, published, key, epoch=epoch)
     if kept is not None and kept.resolved == resolved:
         return kept
@@ -227,7 +251,7 @@ async def load_pull_manifest(
 
 
 async def shared_pull_manifest(
-    published: PublishedSource, base: str, head: str
+    published: PublishedSource, base: str, head: str, *, retain_memory: bool = True
 ) -> ResolvedManifest:
     location = GitLocation.revision(
         RepositoryStoreTarget(published.git_dir, published.object_format), head
@@ -239,7 +263,7 @@ async def shared_pull_manifest(
     async def load() -> ResolvedManifest:
         return await load_pull_manifest(published, GitDiffSource(location), intent, key)
 
-    return await shared_comparison_manifest(key, load)
+    return await shared_comparison_manifest(key, load) if retain_memory else await load()
 
 
 async def prepare_pull_manifest(published: PublishedSource, record: PullRecord) -> None:
@@ -248,6 +272,6 @@ async def prepare_pull_manifest(published: PublishedSource, record: PullRecord) 
     if comparison is None:
         return
     try:
-        await shared_pull_manifest(published, comparison.base, comparison.head)
+        await shared_pull_manifest(published, comparison.base, comparison.head, retain_memory=False)
     except (DiffSourceError, GitError):
         log.debug("could not prepare pull-request %s's manifest", record.number)

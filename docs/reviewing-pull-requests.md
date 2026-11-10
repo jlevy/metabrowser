@@ -81,6 +81,9 @@ file and reading position.
 
 A served folder can show Pulls and Conversation without a comparison store.
 Opening **Changes** prepares a missing comparison automatically.
+When a checkout’s Conversation has a current PR record, Metabrowser can start the same
+work in the background.
+It uses the record’s exact head and base and reuses Git objects already in the store.
 Metabrowser reuses a healthy cached store or creates one that borrows the checkout’s
 objects and fetches what it lacks into the cache.
 Git runs in the store and leaves the served folder and Commits tab on your checkout.
@@ -184,12 +187,15 @@ The code controls depend on how the repository was opened:
 
 | Opened with | Code controls |
 | --- | --- |
-| A repository or pull-request URL, with or without `--checkout` | **Browse code** opens the pinned code; if another branch or PR is pinned, it first switches to the selected PR’s head. A newer head is selected separately with **Switch to the head** when offered. A changed file offers **View file** at the head and **View at base** at the merge base where that side exists. |
-| A checkout or subdirectory path | Files and Commits continue to show the local checkout. The PR page has no **Browse code**, **View file**, or **View at base** controls: the working files may differ from the PR commits. |
+| A repository or pull-request URL, with or without `--checkout` | **Browse code** opens the pinned code; if another branch or PR is pinned, it first switches to the selected PR’s head. A newer head is selected separately with **Switch to the head** when offered. A changed file offers **View file** at the head and **View at base** at the merge base where that side exists. These links leave the served pin in place. |
+| A checkout or subdirectory path | Files and Commits continue to show the local checkout. The PR page offers **View file** and **View at base** from the comparison store while Files and Commits stay on the local checkout. |
 
-On a managed source, **View at base** moves the server’s pin to the merge-base commit.
-**Browse code** returns to the PR head, or **Switch to the head** does so when the page
-shows that offer. A pin is shared by the pages of that server.
+Each file link opens an immutable revision page.
+Relative Markdown links and supported images stay at that revision.
+Previously opened comparisons can be reopened offline while their snapshots and Git
+objects are retained.
+On a managed source, **Browse code** and **Switch to the head** still select a pin
+shared by the server’s pages.
 
 ## Beside a Checkout
 

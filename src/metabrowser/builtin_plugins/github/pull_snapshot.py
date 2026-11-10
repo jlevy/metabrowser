@@ -21,9 +21,10 @@ from metabrowser.builtin_plugins.github.pull_route import (
 )
 from metabrowser.builtin_plugins.github.pull_snapshot_cache import read_snapshot_bindings
 from metabrowser.cache.acquire import PublishedSource
+from metabrowser.cache.loading import LoadingCache, LoadingCacheBusyError
 from metabrowser.cache.repository_store import open_revision
-from metabrowser.git.process import GitError
-from metabrowser.git.tree_source import GitPath, display_segment
+from metabrowser.git.process import GitError, RepositoryStoreTarget
+from metabrowser.git.tree_source import GitPath, display_segment, read_store_blob
 from metabrowser.git.wire import is_full_revision
 from metabrowser.http_caching import store_tag
 from metabrowser.view_routes import format_pull_href
@@ -49,6 +50,7 @@ _IMAGE_TYPES: Final = {
 }
 # Keep the Source view windowed and cap renderer inputs before reading their bodies.
 _DOCUMENT_BYTES: Final = 256 * 1024
+_DOCUMENT_HTML_BYTES: Final = 1024 * 1024
 _SOURCE_BYTES: Final = 64 * 1024
 _IMAGE_BYTES: Final = 8 * 1024 * 1024
 type ViewMode = Literal["document", "source", "image"]
@@ -155,6 +157,20 @@ def _error(request: Request, code: str, message: str, status: int) -> Response:
     )
 
 
+def _markdown_link_work_is_bounded(body: bytes) -> bool:
+    # Blank lines split inline parsing work. See the nested-bracket measurement
+    # in diff/markdown_projection.py for the 256-opener bound per block.
+    openers = 0
+    for line in body.splitlines():
+        if not line.strip():
+            openers = 0
+            continue
+        openers += line.count(b"[")
+        if openers > 256:
+            return False
+    return True
+
+
 def _render_markdown(body: bytes, path: GitPath, oid: str, snapshot: Snapshot) -> str:
     rendered = kpress_adapter.render_kpress_view(
         source_text=body.decode("utf-8", "replace"),
@@ -171,6 +187,32 @@ def _render_markdown(body: bytes, path: GitPath, oid: str, snapshot: Snapshot) -
             rendered, rewrite_local=lambda href, image: snapshot.reference(path, href, image)
         )["html"]
     )
+
+
+async def _document(
+    request: Request, published: PublishedSource, snapshot: Snapshot, path: GitPath, oid: str
+) -> str | None:
+    state = request.app.state
+    cache = getattr(state, "pull_snapshot_documents", None)
+    if cache is None:
+        cache = state.pull_snapshot_documents = LoadingCache(max_values=16, max_loads=2)
+    cache = cast("LoadingCache[tuple[str, Snapshot, GitPath, str], str | None]", cache)
+
+    async def load() -> str | None:
+        target = RepositoryStoreTarget(published.git_dir, published.object_format)
+        body = await read_store_blob(target, oid, max_blob_bytes=_DOCUMENT_BYTES)
+        if not _markdown_link_work_is_bounded(body):
+            return None
+        try:
+            rendered = await asyncio.to_thread(_render_markdown, body, path, oid, snapshot)
+        except (kpress_adapter.KPressRenderError, kpress_adapter.KPressInvalidRequestError):
+            return None
+        return rendered if len(rendered.encode()) <= _DOCUMENT_HTML_BYTES else None
+
+    try:
+        return await cache.get((published.store_id, snapshot, path, oid), load)
+    except LoadingCacheBusyError:
+        return None
 
 
 def _page(
@@ -306,13 +348,8 @@ async def pull_snapshot_handler(request: Request) -> Response:
                 )
             markdown = ext in _MARKDOWN and size <= _DOCUMENT_BYTES
             if mode == "document" and markdown:
-                try:
-                    document = await asyncio.to_thread(
-                        _render_markdown, await tree.read_blob(path), path, entry.oid, snapshot
-                    )
-                except (kpress_adapter.KPressRenderError, kpress_adapter.KPressInvalidRequestError):
-                    pass
-                else:
+                document = await _document(request, published, snapshot, path, entry.oid)
+                if document is not None:
                     return _page(snapshot, path, document, markdown=True, document=True)
             if offset >= size and offset:
                 return _error(

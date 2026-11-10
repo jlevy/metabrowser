@@ -364,6 +364,13 @@ metab ~/src/repo --api '/api/plugin/github/pulls?state=open'
 
 ### Shared Loading Contract for PR Review
 
+The implementation uses the existing refresh coordinator for checkout preparation and a
+source-keyed lease for cold acquisition across processes.
+Checkout idle preparation starts from a current record’s exact base and head.
+It does no GitHub metadata read and the same key serves foreground demand.
+Disk manifest misses share an active load; readers still validate the persisted entry
+against its epoch after restart.
+
 **Status:** Planned.
 The automatic Changes request can land independently.
 The checkout’s **Files** tab continues to read live files and **Commits** continues to

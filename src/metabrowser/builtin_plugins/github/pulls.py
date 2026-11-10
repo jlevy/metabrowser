@@ -816,7 +816,11 @@ async def _write(
 
 
 async def _with_comparison(
-    published: PublishedSource, record: PullRecord, *, expected: PullRecord | RecordAbsence
+    published: PublishedSource,
+    record: PullRecord,
+    *,
+    expected: PullRecord | RecordAbsence,
+    exact_base: bool = False,
 ) -> PullRecord:
     """Compute Files changed and write the record.
 
@@ -841,7 +845,7 @@ async def _with_comparison(
             head=pull.head.sha,
             base_sha=pull.base.sha,
             base_branch=pull.base.ref,
-            open_pull=pull.state == "open",
+            open_pull=pull.state == "open" and not exact_base,
         )
     except BaseUncertainError as uncertain:
         log.debug("pull request %s has an uncertain merge base; deepening", pull.number)
@@ -891,12 +895,11 @@ async def prepare_pull_comparison(
             fetched = await fetch_pull_head(
                 published,
                 record.number,
-                base_branch=pull.base.ref if pull.state == "open" else None,
                 expected_head=pull.head.sha,
             )
             if fetched != pull.head.sha:
                 return None
-        return await _with_comparison(published, record, expected=record)
+        return await _with_comparison(published, record, expected=record, exact_base=True)
     except PullRefError as exc:
         raise _fetch_failure(exc) from exc
     except GitError as exc:
