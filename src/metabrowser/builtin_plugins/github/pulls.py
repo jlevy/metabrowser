@@ -1025,6 +1025,7 @@ async def refresh_pull_request(
     recovery_pair: tuple[str, str] | None = None,
     on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
     observe_reader: Callable[[str], None] | None = None,
+    adopt_current: bool = True,
 ) -> PullRecord:
     """Read pull request *number* of *published* from GitHub and cache it; see the module.
 
@@ -1032,7 +1033,9 @@ async def refresh_pull_request(
     source is published first if it has never been (:func:`~.checkout.claim_source`).
     A checkout preserves a shared comparison only for the same reader and unchanged
     comparison inputs; otherwise its record has no comparison, ``no_store``. Raises only
-    :class:`PullDataError`, or :class:`PullObservationSuperseded` if another writer won.
+    :class:`PullDataError` on failure. If another writer won, return its record without
+    stamping success. Callers that manage their own outcome can set *adopt_current* to
+    false to receive :class:`PullObservationSuperseded`.
     A failure leaves any previous record in place. How it ended is
     kept beside the record either way; see :func:`last_refresh`.
     """
@@ -1052,6 +1055,12 @@ async def refresh_pull_request(
             )
         except GitError as exc:
             raise _git_failure(number, exc) from exc
+    except PullObservationSuperseded as exc:
+        if on_core is not None:
+            await on_core(None, None)
+        if adopt_current:
+            return exc.current
+        raise
     except PullDataError as exc:
         # A failed attempt cannot serve a provisional core while its stamp is written.
         if on_core is not None:
@@ -1132,7 +1141,7 @@ async def open_pull_request(
     if usable and isinstance(record, PullRecord) and fetch == "if_missing":
         return _pin(number, record)
     try:
-        fresh = await refresh_pull_request(published, number)
+        fresh = await refresh_pull_request(published, number, adopt_current=False)
     except PullObservationSuperseded as exc:
         try:
             if await has_commit(published, exc.current.pull.head.sha):

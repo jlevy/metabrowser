@@ -375,6 +375,7 @@ class ServedPull:
                             recovery_pair=pair,
                             on_core=progress,
                             observe_reader=observe_reader,
+                            adopt_current=False,
                         )
                     else:
                         record = (
