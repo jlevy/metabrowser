@@ -215,6 +215,14 @@ async def pull_markdown_handler(request: Request) -> JSONResponse:
     return JSONResponse(body, status_code=status_code, headers=_NO_STORE)
 
 
+async def pull_snapshot_handler(request: Request) -> Response:
+    from metabrowser.builtin_plugins.github.pull_snapshot import (
+        pull_snapshot_handler as read_snapshot,
+    )
+
+    return await read_snapshot(request)
+
+
 async def pull_comparison_handler(request: Request) -> Response:
     """Read a checkout's pinned PR comparison from its store; never acquire on GET."""
 
