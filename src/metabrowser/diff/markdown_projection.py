@@ -181,10 +181,11 @@ def _blocks(source: str) -> tuple[list[_Block], int]:
             raise _Unsupported("unmapped Markdown block")
         ranges.append((span[0], span[1]))
     witness = _Html(harden(parser.renderer.render(tokens, parser.options, env)))
+    document_title = ""
     rendered = _Html(
         harden(
             parse_markdown(
-                source, title="", trust_mode="sanitized", diagrams="off", math="off"
+                source, title=document_title, trust_mode="sanitized", diagrams="off", math="off"
             ).html
         )
     )
