@@ -169,7 +169,15 @@ function viewFileHost() {
 async function viewFileOpener(revision) {
   if (revision.startsWith("/")) {
     const { plugin, hook, params } = pluginComparisonRoute(revision);
-    if (plugin === "github" && hook === "pull-comparison") {
+    const fullOid = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+    if (
+      plugin === "github" &&
+      hook === "pull-comparison" &&
+      fullOid.test(params.left) &&
+      fullOid.test(params.right) &&
+      /^[0-9a-f]{16}$/.test(params.store) &&
+      /^[1-9][0-9]*$/.test(params.number)
+    ) {
       if (!window.MetabrowserGitPath) {
         const codec = "/static/git-path.js";
         await import(codec);
