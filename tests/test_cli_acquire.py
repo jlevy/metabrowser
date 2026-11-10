@@ -535,11 +535,14 @@ def test_git_failures_during_acquisition_are_distinct_path_free_cli_errors(
             cwd: Path | None = None,
             git_dir: Path | None = None,
             timeout_s: float | None = None,
+            pass_fds: tuple[int, ...] = (),
             kind: str = kind,
         ) -> bytes:
             if args[0] == "init":
                 raise _git_failure(kind, args)
-            return await real_run(args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s)
+            return await real_run(
+                args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s, pass_fds=pass_fds
+            )
 
         monkeypatch.setattr(acquire_module, "_run", fail_init)
         result = runner.invoke(_app, [url, "--no-serve"])
