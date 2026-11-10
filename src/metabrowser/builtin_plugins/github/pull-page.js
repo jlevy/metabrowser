@@ -178,8 +178,10 @@ const TRUNCATED = Object.freeze({
  *   pin: string | null,
  *   pin_ref: string | null,
  *   fetched_at: string | null,
+ *   fresh_for_s: number,
  *   record_revision: string | null,
  *   refreshing: boolean,
+ *   preparing_comparison?: true,
  *   last_refresh: {outcome: string, message: string | null, reset_at: string | null, at: string} | null,
  *   comparison_route: string | null,
  *   record: Record<string, any> | null,
@@ -831,7 +833,9 @@ export function describePull(envelope, page) {
     return model;
   }
   model.status = envelope.state;
-  model.refreshing = envelope.refreshing || page.refreshPending === true;
+  model.refreshing =
+    (envelope.refreshing && (page.tab === "files" || !envelope.preparing_comparison)) ||
+    page.refreshPending === true;
   const last = envelope.last_refresh;
   if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
     model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? last.outcome.replaceAll("_", " ")}`;
@@ -1030,6 +1034,8 @@ export function isEnvelope(value) {
  *   now(): number,
  *   isVisible(): boolean,
  *   ownsChanges?(): boolean,
+ *   ownsConversation?(): boolean,
+ *   scheduleComparison?(callback: () => void): () => void,
  *   render(model: PullModel, identity: import("./pull-stacks.js").StackIdentity | null): void,
  *   renderMarkdown(part: string, rendered: Record<string, any>): void,
  *   timelineStateChanged?(): void,
@@ -1083,6 +1089,10 @@ export function createPullController(deps, options) {
   let refreshPending = false;
   // A refused automatic comparison stays a retry, even when later GETs clear the error.
   let comparisonAttempted = false;
+  /** @type {string | null} */
+  let idleAttemptedRevision = null;
+  /** @type {(() => void) | null} */
+  let cancelComparison = null;
   // Only this page's acknowledged selected refresh can opt in to a settlement read.
   let waitForFull = false;
   /** Markdown by part, for the record content revision `markdownFor`. @type {Map<string, Record<string, any>>} */
@@ -1144,6 +1154,11 @@ export function createPullController(deps, options) {
       painted = key;
       deps.render(next, identity);
     }
+  }
+
+  function cancelIdleComparison() {
+    cancelComparison?.();
+    cancelComparison = null;
   }
 
   function clearTimer() {
@@ -1215,6 +1230,7 @@ export function createPullController(deps, options) {
     }
     const revision = next.record === null ? null : next.record_revision;
     if (revision !== markdownFor) {
+      cancelIdleComparison();
       // Another record: its texts may differ, so nothing rendered from the last one
       // is shown again. The page asks again for the parts a reader sees.
       markdownFor = revision;
@@ -1282,7 +1298,11 @@ export function createPullController(deps, options) {
     if (
       deps.isVisible() &&
       envelope?.state === "stale" &&
-      !(tab === "files" && envelope.record?.unavailable?.comparison === "no_store") &&
+      !(
+        envelope.record?.unavailable?.comparison === "no_store" &&
+        (tab === "files" ||
+          (tab === "" && deps.ownsConversation?.() === true && hasFreshComparisonMetadata()))
+      ) &&
       !envelope.refreshing &&
       !fetching &&
       !refreshAskedWhileVisible
@@ -1291,6 +1311,7 @@ export function createPullController(deps, options) {
       askAfter(() => void askForRefresh({ number: options.number }), REFRESH_ASK_MS);
     }
     deps.timelineStateChanged?.();
+    fetchIdleChanges();
   }
 
   /**
@@ -1323,15 +1344,20 @@ export function createPullController(deps, options) {
    * page's own request says nothing to the reader, whose page still shows what it did and
    * still offers Refresh.
    *
-   * @param {{number: number, retry?: boolean, wait_core?: boolean, comparison?: boolean, recovery?: {base: string, head: string}}} ask
+   * @param {{number: number, retry?: boolean, wait_core?: boolean, comparison?: boolean, prepare_comparison?: string, recovery?: {base: string, head: string}}} ask
    */
   async function askForRefresh(ask) {
-    inFlightRefreshes += 1;
+    const idle = ask.prepare_comparison !== undefined;
+    if (!idle) {
+      inFlightRefreshes += 1;
+    }
     if (ask.retry) {
       refreshPending = true;
       render();
     }
-    cancelAsk();
+    if (!idle) {
+      cancelAsk();
+    }
     const request = ++sent;
     // A bounded core wait must not shift the first ordinary poll by its response time.
     const fastSince = ask.wait_core === true ? deps.now() : null;
@@ -1354,7 +1380,9 @@ export function createPullController(deps, options) {
           // The answer changed; the next poll must not be answered by a 304.
           etag = null;
         }
-        error = null;
+        if (!idle) {
+          error = null;
+        }
       } else if (ask.retry) {
         const said = body !== null && typeof body.error === "string" ? body.error : null;
         error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
@@ -1364,7 +1392,9 @@ export function createPullController(deps, options) {
         error = "The refresh request failed.";
       }
     }
-    inFlightRefreshes -= 1;
+    if (!idle) {
+      inFlightRefreshes -= 1;
+    }
     if (ask.retry) {
       refreshPending = false;
     }
@@ -1377,6 +1407,7 @@ export function createPullController(deps, options) {
           : FAST_POLL_MS - (Math.max(0, deps.now() - fastSince) % FAST_POLL_MS),
       );
       deps.timelineStateChanged?.();
+      fetchIdleChanges();
     }
   }
 
@@ -1418,11 +1449,57 @@ export function createPullController(deps, options) {
       inFlightRefreshes === 0 &&
       !comparisonAttempted &&
       error === null &&
-      envelope?.refreshing === false &&
-      envelope.record?.unavailable?.comparison === "no_store"
+      envelope !== null &&
+      (envelope.preparing_comparison === true ||
+        (!envelope.refreshing && envelope.record?.unavailable?.comparison === "no_store"))
     ) {
       void fetchComparison();
     }
+  }
+
+  function hasFreshComparisonMetadata() {
+    return (
+      envelope?.fetched_at != null &&
+      deps.now() - Date.parse(envelope.fetched_at) <= envelope.fresh_for_s * 1000
+    );
+  }
+
+  function idleCandidate() {
+    if (
+      disposed ||
+      tab !== "" ||
+      !deps.isVisible() ||
+      deps.ownsConversation?.() !== true ||
+      !hasPolled ||
+      polling ||
+      fetching ||
+      askTimer !== null ||
+      inFlightRefreshes > 0 ||
+      error !== null ||
+      envelope === null ||
+      envelope.refreshing ||
+      envelope.record?.unavailable?.comparison !== "no_store" ||
+      envelope.record_revision === idleAttemptedRevision ||
+      !hasFreshComparisonMetadata()
+    ) {
+      return null;
+    }
+    return envelope.record_revision;
+  }
+
+  /** Only the activated Conversation page can name one idle candidate. */
+  function fetchIdleChanges() {
+    const revision = idleCandidate();
+    if (revision === null || cancelComparison !== null || !deps.scheduleComparison) {
+      return;
+    }
+    cancelComparison = deps.scheduleComparison(() => {
+      cancelComparison = null;
+      if (idleCandidate() === revision) {
+        idleAttemptedRevision = revision;
+        void askForRefresh({ number: options.number, prepare_comparison: revision });
+      }
+    });
   }
 
   async function requestComparison() {
@@ -1495,8 +1572,10 @@ export function createPullController(deps, options) {
       return;
     }
     tab = next;
+    cancelIdleComparison();
     fetchSelectedChanges();
     render();
+    fetchIdleChanges();
   }
 
   function pump() {
@@ -1563,6 +1642,7 @@ export function createPullController(deps, options) {
     if (!deps.isVisible()) {
       clearTimer();
       cancelAsk();
+      cancelIdleComparison();
       refreshAskedWhileVisible = false;
       if (fetching) {
         fetching = false;
@@ -1577,6 +1657,7 @@ export function createPullController(deps, options) {
     disposed = true;
     clearTimer();
     cancelAsk();
+    cancelIdleComparison();
     queue.length = 0;
   }
 
@@ -1593,7 +1674,11 @@ export function createPullController(deps, options) {
     },
     poll: () => poll(),
     timelineAllowed: () =>
-      hasPolled && askTimer === null && inFlightRefreshes === 0 && envelope?.refreshing === false,
+      hasPolled &&
+      askTimer === null &&
+      inFlightRefreshes === 0 &&
+      (envelope?.refreshing === false || envelope?.preparing_comparison === true),
+    fetchIdleChanges,
     requestRefresh,
     requestComparison,
     switchToHead,
@@ -3798,6 +3883,28 @@ export function mountPullPage(container, ctx, mb) {
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
       ownsChanges: () => onPageRoute(window.location.pathname, number, "files"),
+      ownsConversation: () =>
+        active &&
+        mb.sourceKind() === "filesystem" &&
+        onPageRoute(window.location.pathname, number, ""),
+      scheduleComparison(callback) {
+        /** @type {number | undefined} */
+        let idle;
+        // Wait until the reader stops on this page, as with a stale metadata refresh.
+        const timer = window.setTimeout(() => {
+          if (typeof window.requestIdleCallback === "function") {
+            idle = window.requestIdleCallback(callback);
+          } else {
+            callback();
+          }
+        }, REFRESH_ASK_MS);
+        return () => {
+          window.clearTimeout(timer);
+          if (idle !== undefined) {
+            window.cancelIdleCallback(idle);
+          }
+        };
+      },
       render(model, identity) {
         stackIdentity = identity;
         mb.perf.measure("githubPull:render", () => paint(model), { number });
@@ -3864,6 +3971,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     active = true;
     followTimeline();
+    controller.fetchIdleChanges();
     if (pane === null) {
       return;
     }

@@ -19,7 +19,10 @@ from typing import TYPE_CHECKING, Any, Final, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from metabrowser.builtin_plugins.diff.comparison_cache import ResolvedManifest
-from metabrowser.builtin_plugins.diff.sidekick import comparison_cache_key
+from metabrowser.builtin_plugins.diff.sidekick import (
+    comparison_cache_key,
+    shared_comparison_manifest,
+)
 from metabrowser.builtin_plugins.github.pull_record import MAX_PULL_RECORD_BYTES, PullRecord
 from metabrowser.cache.atomic import RecordError, read_bytes_bounded
 from metabrowser.cache.paths import store_directory
@@ -223,18 +226,28 @@ async def load_pull_manifest(
     return answer
 
 
+async def shared_pull_manifest(
+    published: PublishedSource, base: str, head: str
+) -> ResolvedManifest:
+    location = GitLocation.revision(
+        RepositoryStoreTarget(published.git_dir, published.object_format), head
+    )
+    intent = {"left": base, "right": head, "base_policy": "merge_base"}
+    key = comparison_cache_key(location, intent, store_tag(published.git_dir))
+    assert key is not None
+
+    async def load() -> ResolvedManifest:
+        return await load_pull_manifest(published, GitDiffSource(location), intent, key)
+
+    return await shared_comparison_manifest(key, load)
+
+
 async def prepare_pull_manifest(published: PublishedSource, record: PullRecord) -> None:
     """Prepare the record's manifest after fetch; a failure never loses its record."""
     comparison = record.comparison
     if comparison is None:
         return
-    location = GitLocation.revision(
-        RepositoryStoreTarget(published.git_dir, published.object_format), comparison.head
-    )
-    intent = {"left": comparison.base, "right": comparison.head, "base_policy": "merge_base"}
-    key = comparison_cache_key(location, intent, store_tag(published.git_dir))
-    assert key is not None
     try:
-        await load_pull_manifest(published, GitDiffSource(location), intent, key)
+        await shared_pull_manifest(published, comparison.base, comparison.head)
     except (DiffSourceError, GitError):
         log.debug("could not prepare pull-request %s's manifest", record.number)

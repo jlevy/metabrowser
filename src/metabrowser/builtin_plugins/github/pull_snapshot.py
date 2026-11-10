@@ -232,8 +232,11 @@ async def admitted_snapshot(request: Request, snapshot: Snapshot) -> PublishedSo
         host is None
         or not isinstance(published, PublishedSource)
         or snapshot.store != store_tag(published.git_dir)
-        or not await asyncio.to_thread(_allowed, published, snapshot, host.pulls.observed_reader)
     ):
+        return None
+    reader = host.pulls.observed_reader
+    allowed = await asyncio.to_thread(_allowed, published, snapshot, reader)
+    if not allowed or host.pulls.published is not published or host.pulls.observed_reader != reader:
         return None
     return published
 

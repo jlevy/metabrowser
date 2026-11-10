@@ -619,10 +619,19 @@ def read_refresh_stamp(home: Path, relative: str) -> PullRefreshStamp | None:
         return None
 
 
-def write_pull_refresh(home: Path, slug: str, number: int, stamp: PullRefreshStamp) -> None:
-    """Publish *stamp* atomically beside the record. Blocking; run it off the event loop."""
-
-    write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
+def write_pull_refresh(
+    home: Path,
+    slug: str,
+    number: int,
+    stamp: PullRefreshStamp,
+    *,
+    expected: PullRecord | RecordAbsence | None = None,
+) -> None:
+    """Keep the outcome only while the observation it describes is current."""
+    _require_published_source(home, slug)
+    with source_alias_lock(home, slug):
+        if expected is None or read_pull_record(home, slug, number) == expected:
+            write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
 
 
 def read_pull_refresh(home: Path, slug: str, number: int) -> PullRefreshStamp | None:

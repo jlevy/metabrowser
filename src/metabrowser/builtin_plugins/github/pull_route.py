@@ -24,6 +24,8 @@ A read never starts a fetch. Only ``POST pull-refresh`` does, and :func:`start_r
 holds what it starts to the rule: a request that is not a reader's own action refreshes
 only a pull request with a record, and only when that record is stale and not tried within
 the window. A visible cold page can request the selected fetch with a separate POST.
+Idle checkout comparison preparation instead names a fresh record revision and joins the
+same comparison job that foreground Changes requests use.
 
 Which pull requests a server has is :func:`pull_host`'s to say, and nothing else here
 knows whether it is a mirror or a checkout. A checkout with no attached store answers a
@@ -45,17 +47,19 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
-from typing import Any, Final, Literal, TypedDict
+from typing import Any, Final, Literal, NotRequired, TypedDict
 
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.checkout import (
     checkout_job_key,
     checkout_pulls,
+    comparison_preparing,
     served_checkout,
     start_pull_refresh,
 )
 from metabrowser.builtin_plugins.github.pull_core_cache import read_cached_core
 from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreWindow, preparation_key
+from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     RecordAbsence,
@@ -68,6 +72,7 @@ from metabrowser.builtin_plugins.github.served_pull import (
     ServedPulls,
     written_without_store,
 )
+from metabrowser.cache.acquire import PublishedSource
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_record
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.git.wire import is_full_revision
@@ -83,7 +88,9 @@ from metabrowser.source import RepositorySubject
 from metabrowser.view_routes import parse_pull_number
 
 PULL_ROUTE: Final = "/api/plugin/github/pull"
-_REFRESH_FIELDS: Final = frozenset({"number", "retry", "comparison", "recovery", "wait_core"})
+_REFRESH_FIELDS: Final = frozenset(
+    {"number", "retry", "comparison", "recovery", "wait_core", "prepare_comparison"}
+)
 NUMBER_REQUIRED: Final = '"number" is a pull-request number'
 
 type PullState = Literal["absent", "pending", "current", "stale"]
@@ -108,6 +115,7 @@ class PullEnvelope(TypedDict):
     record_revision: str | None
     fresh_for_s: float
     refreshing: bool
+    preparing_comparison: NotRequired[Literal[True]]
     last_refresh: PullRefreshOutcome | None
     comparison_route: str | None
     record: dict[str, Any] | None
@@ -242,6 +250,8 @@ class PullHost:
     start: Callable[[int], PullJobStart]
     start_comparison: Callable[[int], PullJobStart] | None = None
     coordinator: RefreshCoordinator | None = None
+    prepare: Callable[[int, str], PullRefreshStart] | None = None
+    preparing: Callable[[int], bool] | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
@@ -264,6 +274,10 @@ def pull_host(app: Any) -> PullHost | None:
             partial(start_pull_refresh, coordinator, checkout),
             partial(start_pull_refresh, coordinator, checkout, comparison=True),
             coordinator,
+            lambda number, revision: start_pull_refresh(
+                coordinator, checkout, number, comparison=True, eager_revision=revision
+            ),
+            partial(comparison_preparing, coordinator, checkout),
         )
     served = session.pull_requests
     if not isinstance(served, ServedPulls):
@@ -294,6 +308,7 @@ class PullView:
     core_preview: PullCorePreview | None = None
     core_window: CoreWindow | None = None
     core_admission: CoreAdmission | None = None
+    preparing_comparison: bool = False
 
 
 def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) -> PullView:
@@ -319,6 +334,9 @@ def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) ->
         core_preview=live or prepared,
         core_window=window if prepared is not None else None,
         core_admission=admission,
+        preparing_comparison=host is not None
+        and host.preparing is not None
+        and host.preparing(number),
     )
 
 
@@ -369,7 +387,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
             reader=served.observed_reader,
             reader_identity=served.core_catalog_identity,
         )
-    return PullEnvelope(
+    envelope = PullEnvelope(
         state=state,
         reason=absence,
         source=served.source,
@@ -385,6 +403,9 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         record=dumped if isinstance(record, PullRecord) else None,
         core_preview=preview if not isinstance(record, PullRecord) else None,
     )
+    if view.preparing_comparison:
+        envelope["preparing_comparison"] = True
+    return envelope
 
 
 def note_full_record(view: PullView) -> None:
@@ -485,6 +506,7 @@ class RefreshRequest:
     comparison: bool = False
     recovery: tuple[str, str] | None = None
     wait_core: bool = False
+    prepare_comparison: str | None = None
 
 
 def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
@@ -492,7 +514,8 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
 
     if set(body) - _REFRESH_FIELDS:
         raise PullRequestError(
-            'a refresh request names only "number", "retry", "comparison", "recovery", and "wait_core"'
+            'a refresh request names only "number", "retry", "comparison", "recovery", '
+            '"wait_core", and "prepare_comparison"'
         )
     number = body.get("number")
     if (
@@ -533,10 +556,82 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
         wait_core and (not retry or comparison or pair is not None)
     ):
         raise PullRequestError('"wait_core" is true or false and requires only "retry": true')
-    return RefreshRequest(number, retry, comparison, pair, wait_core)
+    preparation = None
+    if "prepare_comparison" in body:
+        revision = body["prepare_comparison"]
+        if (
+            not isinstance(revision, str)
+            or len(revision) != 64
+            or not is_full_revision(revision)
+            or retry
+            or comparison
+            or pair is not None
+            or wait_core
+        ):
+            raise PullRequestError('"prepare_comparison" is a record revision and stands alone')
+        preparation = revision
+    return RefreshRequest(number, retry, comparison, pair, wait_core, preparation)
+
+
+def comparison_preparation_record(
+    published: PublishedSource | ListedRepository,
+    reader: str | None,
+    number: int,
+    revision: str,
+) -> PullRecord | None:
+    """Recheck the exact fresh candidate before any optional Git or network work."""
+    record, _dumped, current = cached_pull_record(published.home, published.slug, number)
+    unattached = isinstance(published, ListedRepository)
+    source = published.source if unattached else published.source.normalized
+    if (
+        not isinstance(record, PullRecord)
+        or current != revision
+        or record.source != source
+        or (reader is not None and reader != record.reader)
+        or (not unattached and not written_without_store(record))
+    ):
+        return None
+    now = pulls.utc_now()
+    if pull_state(record, now=now, has_store=False)[0] != "current":
+        return None
+    last = pulls.last_refresh(published, number)
+    if (
+        last is not None
+        and last.outcome != "succeeded"
+        and (
+            now - _parse_stamp(last.at) <= timedelta(seconds=FRESHNESS_WINDOW_S)
+            or (last.reset_at is not None and now < _parse_stamp(last.reset_at))
+        )
+    ):
+        return None
+    return record
 
 
 async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart:
+    if ask.prepare_comparison is not None:
+        served = host.pulls
+
+        def foreground_waiting() -> bool:
+            return served.foreground_pending(host.running) or (
+                host.coordinator is not None
+                and host.coordinator.running(preparation_key(served.source))
+            )
+
+        if host.prepare is None or foreground_waiting():
+            return "not_due"
+        publication = served.published
+        reader = served.observed_reader
+        record = await asyncio.to_thread(
+            comparison_preparation_record, publication, reader, ask.number, ask.prepare_comparison
+        )
+        if (
+            record is None
+            or served.published is not publication
+            or served.observed_reader != reader
+            or foreground_waiting()
+        ):
+            return "not_due"
+        return host.prepare(ask.number, ask.prepare_comparison)
     if not ask.retry and not ask.comparison:
         return await _start_refresh(host, ask)
     served = host.pulls
@@ -599,7 +694,8 @@ async def _start_refresh(
     if ask.comparison and host.start_comparison is not None:
         return host.start_comparison(ask.number)
     if host.running(ask.number):
-        return "joined"
+        # The same producer retains any queued recovery and can become foreground.
+        return host.start(ask.number) if ask.retry else "joined"
     if not ask.retry:
         served = await host.pulls.companion(ask.number)
         if served.fetched_at is None:

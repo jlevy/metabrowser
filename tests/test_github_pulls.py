@@ -1297,6 +1297,10 @@ def test_the_refresh_route_refuses_what_is_not_a_refresh_request(
         (b'{"number": 10000000000}', 400),
         (b'{"number": 7, "retry": "yes"}', 400),
         (b'{"number": 7, "comparison": true}', 400),
+        (b'{"number": 7, "prepare_comparison": null}', 400),
+        (b'{"number": 7, "prepare_comparison": true}', 400),
+        (b'{"number": 7, "prepare_comparison": "abc"}', 400),
+        (b'{"number": 7, "retry": true, "prepare_comparison": "' + b"a" * 64 + b'"}', 400),
         (b'{"number": 7, "retry": true, "comparison": "yes"}', 400),
         (b'{"number": 7, "state": "open"}', 400),
     ):
@@ -3749,11 +3753,11 @@ def test_visible_core_revokes_staged_reader_while_failure_stamp_is_held(
     async def graph(_query: str, _variables: Any, **_kwargs: Any) -> dict[str, Any]:
         return graph_core_data(rest[8])
 
-    def held_stamp(published: Any, number: int, fields: dict[str, Any]) -> None:
+    def held_stamp(published: Any, number: int, fields: dict[str, Any], expected: Any) -> None:
         if number == 8 and fields["outcome"] == "account_changed":
             stamp_entered.set()
             assert stamp_release.wait(5)
-        actual_keep_stamp(published, number, fields)
+        actual_keep_stamp(published, number, fields, expected)
 
     monkeypatch.setattr(pulls, "active_account", account)
     monkeypatch.setattr(pulls, "gh_graphql", graph)
@@ -4906,3 +4910,17 @@ def test_same_window_admitted_during_preflight_is_joined_without_revocation(
         waiting.join(5)
     _drain_visible_cores(client)
     assert client.post(_PREPARE_CORES, json=ask).json()["preparation"] == "ready"
+
+
+def test_obsolete_observation_cannot_replace_the_current_record_or_stamp(stand: _Stand) -> None:
+    record = stand.refresh(7)
+    published = stand.published
+    newer = record.model_copy(update={"fetched_at": "2026-09-17T12:00:01Z"})
+    write_pull_record(published.home, published.slug, newer, expected=record)
+    rejected = write_pull_record(published.home, published.slug, record, expected=record)
+    assert rejected == newer == stand.record(7)
+    original = read_pull_refresh(published.home, published.slug, 7)
+    assert original is not None
+    failed = original.model_copy(update={"outcome": "network_error"})
+    write_pull_refresh(published.home, published.slug, 7, failed, expected=record)
+    assert read_pull_refresh(published.home, published.slug, 7) == original

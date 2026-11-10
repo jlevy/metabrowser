@@ -37,7 +37,7 @@ methods = ["GET"]
 # Open an admitted comparison side without changing the served pin.
 [[data_hook]]
 route = "pull-snapshot"
-sidekick = "metabrowser.builtin_plugins.github.pull_snapshot:pull_snapshot_handler"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_snapshot_handler"
 methods = ["GET"]
 
 # A selected PR's bounded Conversation projection, held separately from discussion.

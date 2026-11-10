@@ -8,14 +8,17 @@ import shutil
 import stat
 import subprocess
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from metabrowser.cache import acquire as acquire_module
+from metabrowser.cache import pull_refs
 from metabrowser.cache.acquire import (
     AcquisitionError,
     PartialCloneSourceError,
     ProgressReporter,
+    PublishedSource,
     RemoteUnavailableError,
     ValidationFailedError,
     acquire_into_staging,
@@ -24,7 +27,7 @@ from metabrowser.cache.acquire import (
 from metabrowser.cache.atomic import read_record
 from metabrowser.cache.identity import source_identity
 from metabrowser.cache.layout import FutureLayoutFormatError
-from metabrowser.cache.locks import LockBusyError, LockKind, held_locks
+from metabrowser.cache.locks import CacheLock, LockBusyError, LockKind, LockOrder, held_locks
 from metabrowser.cache.paths import source_record
 from metabrowser.cache.reclaim import sweep_staging
 from metabrowser.cache.records import REPOSITORY_SOURCE_STATE_CONTRACT_ID, RepositorySourceState
@@ -177,6 +180,61 @@ def test_racing_acquisitions_return_the_selected_stores_revision(
 
 
 @posix_only
+def test_exact_pull_fetch_waiter_reuses_the_commit_under_the_fetch_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _allow_installed_git(monkeypatch)
+    origin = _origin(tmp_path)
+    work = tmp_path / "work"
+    home = tmp_path / "home"
+    published = asyncio.run(acquire_source(_file_source(origin), home=home))
+    (work / "README").write_text("PR head\n")
+    _git(work, "add", "README")
+    _git(work, "commit", "-qm", "pull")
+    _git(work, "push", str(origin), "HEAD:refs/pull/7/head")
+    head = subprocess.check_output(
+        ["git", "-C", str(work), "rev-parse", "HEAD"],
+        env=_git_env(work),
+        text=True,
+    ).strip()
+
+    async def scenario() -> None:
+        loop = asyncio.get_running_loop()
+        fetching, busy, finish = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        real_git = pull_refs.run_git
+        real_claim = pull_refs._claim_fetch_lock
+        fetches = 0
+
+        async def delayed_fetch(args: list[str], **kwargs: Any) -> bytes:
+            nonlocal fetches
+            if "fetch" in args:
+                fetches += 1
+                fetching.set()
+                await asyncio.wait_for(finish.wait(), 10)
+            return await real_git(args, **kwargs)
+
+        def observed_claim(source: PublishedSource, owner: LockOrder) -> CacheLock:
+            try:
+                return real_claim(source, owner)
+            except LockBusyError:
+                loop.call_soon_threadsafe(busy.set)
+                raise
+
+        monkeypatch.setattr(pull_refs, "run_git", delayed_fetch)
+        monkeypatch.setattr(pull_refs, "_claim_fetch_lock", observed_claim)
+        async with asyncio.TaskGroup() as tasks:
+            leader = tasks.create_task(pull_refs.fetch_pull_head(published, 7, expected_head=head))
+            await asyncio.wait_for(fetching.wait(), 10)
+            waiter = tasks.create_task(pull_refs.fetch_pull_head(published, 7, expected_head=head))
+            await asyncio.wait_for(busy.wait(), 10)
+            finish.set()
+        assert leader.result() == waiter.result() == head
+        assert fetches == 1
+
+    asyncio.run(scenario())
+
+
+@posix_only
 def test_an_ordinary_non_bare_clone_acquires_through_its_own_head(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -252,9 +310,15 @@ def test_a_default_branch_that_does_not_resolve_to_the_observed_head_is_refused(
         git_dir: Path | None = None,
         timeout_s: float | None = None,
         on_progress: ProgressReporter | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> bytes:
         result = await real_run(
-            args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s, on_progress=on_progress
+            args,
+            cwd=cwd,
+            git_dir=git_dir,
+            timeout_s=timeout_s,
+            on_progress=on_progress,
+            pass_fds=pass_fds,
         )
         if "ls-remote" in args:
             _git(work, "commit", "-q", "--allow-empty", "-m", "moved")

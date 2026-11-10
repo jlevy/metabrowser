@@ -892,6 +892,7 @@ async def prepare_pull_comparison(
                 published,
                 record.number,
                 base_branch=pull.base.ref if pull.state == "open" else None,
+                expected_head=pull.head.sha,
             )
             if fetched != pull.head.sha:
                 return None
@@ -906,11 +907,11 @@ async def _refresh(
     published: PublishedSource | ListedRepository,
     number: int,
     *,
+    cached: PullRecord | RecordAbsence,
     on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
     observe_reader: Callable[[str], None] | None = None,
 ) -> PullRecord:
     owner, repo = _owner_and_repo(published)
-    cached = await asyncio.to_thread(read_pull_record, published.home, published.slug, number)
     # An existing full record always retains the original two-check refresh path.
     progress = on_core if not isinstance(cached, PullRecord) else None
     for attempt in range(_READ_ATTEMPTS):
@@ -1034,14 +1035,18 @@ async def refresh_pull_request(
     kept beside the record either way; see :func:`last_refresh`.
     """
 
+    cached: PullRecord | RecordAbsence = "not_cached"
     try:
         try:
             if isinstance(published, ListedRepository):
                 published = await claim_source(published)
-            elif recover:
+            cached = await asyncio.to_thread(
+                read_pull_record, published.home, published.slug, number
+            )
+            if recover and not isinstance(published, ListedRepository):
                 await _recover_comparison(published, number, recovery_pair)
             record = await _refresh(
-                published, number, on_core=on_core, observe_reader=observe_reader
+                published, number, cached=cached, on_core=on_core, observe_reader=observe_reader
             )
         except GitError as exc:
             raise _git_failure(number, exc) from exc
@@ -1055,19 +1060,22 @@ async def refresh_pull_request(
             "reset_at": exc.reset_at,
             "at": utc_stamp(utc_now()),
         }
-        await asyncio.to_thread(_keep_stamp, published, number, stamp)
+        await run_lock_section(partial(_keep_stamp, published, number, stamp, cached))
         raise
     succeeded = {"outcome": "succeeded", "at": record.fetched_at}
-    await asyncio.to_thread(_keep_stamp, published, number, succeeded)
+    await run_lock_section(partial(_keep_stamp, published, number, succeeded, record))
     return record
 
 
 def _keep_stamp(
-    published: PublishedSource | ListedRepository, number: int, fields: dict[str, Any]
+    published: PublishedSource | ListedRepository,
+    number: int,
+    fields: dict[str, Any],
+    expected: PullRecord | RecordAbsence,
 ) -> None:
     try:
         stamp = PullRefreshStamp.model_validate(fields)
-        write_pull_refresh(published.home, published.slug, number, stamp)
+        write_pull_refresh(published.home, published.slug, number, stamp, expected=expected)
     except (PrivateStorageError, OSError, ValidationError) as exc:
         # Only the report of the refresh is lost; the record, if any, is written.
         log.debug("could not keep how pull request %s's refresh ended: %s", number, exc)

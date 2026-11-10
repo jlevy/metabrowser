@@ -79,6 +79,16 @@ $ node tests/dom/github-checkout-comparison-session.js
 ? 0
 ```
 
+An idle, visible Conversation can prepare the comparison from its cached record.
+A reader opening Changes promotes that job.
+An idle refusal leaves Changes free to start its own request.
+
+```console
+$ node tests/dom/github-pull-idle-comparison-behavior.js
+{"changesBeforeIdle":["foreground"],"hiddenUntilVisible":["idle","foreground"],"afterLateIdleReply":"Changes ready","afterIdleRefusal":["idle","foreground"],"disposed":[]}
+? 0
+```
+
 <!-- This document follows common-doc-guidelines.md.
 See github.com/jlevy/practical-prose and review guidelines before editing.
 -->

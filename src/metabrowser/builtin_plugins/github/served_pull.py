@@ -192,6 +192,11 @@ class ServedPull:
         self._recoveries[pair] = None
         return True
 
+    @property
+    def recovery_pending(self) -> bool:
+        """Whether an explicit refresh joined another producer and still needs work."""
+        return bool(self._recoveries)
+
     def discard_recovery(self, pair: tuple[str, str] | None) -> None:
         """A refused job must not leave new network work for a later automatic refresh."""
         self._recoveries.pop(pair, None)

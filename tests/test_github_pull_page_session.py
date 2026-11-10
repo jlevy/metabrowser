@@ -557,6 +557,16 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
     }
 
 
+def test_idle_comparison_is_route_owned_and_promotes_on_changes() -> None:
+    assert run_session("github-pull-idle-comparison-behavior.js") == {
+        "changesBeforeIdle": ["foreground"],
+        "hiddenUntilVisible": ["idle", "foreground"],
+        "afterLateIdleReply": "Changes ready",
+        "afterIdleRefusal": ["idle", "foreground"],
+        "disposed": [],
+    }
+
+
 def test_file_history_restores_place_and_fresh_selection_wins() -> None:
     """The real route and page distinguish a history landing from a live file jump."""
 

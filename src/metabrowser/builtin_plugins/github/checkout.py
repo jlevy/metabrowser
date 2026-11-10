@@ -34,7 +34,7 @@ import threading
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, Literal, overload
 
 from metabrowser.builtin_plugins.github.gh_lists import PullDataError
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
@@ -42,7 +42,8 @@ from metabrowser.mirror_refresh import MAX_PULL_JOBS, PullJobStart, StoreTurn, m
 from metabrowser.source import get_source_session
 
 if TYPE_CHECKING:
-    from metabrowser.builtin_plugins.github.served_pull import ServedPulls
+    from metabrowser.builtin_plugins.github.pull_record import PullRecord, RecordAbsence
+    from metabrowser.builtin_plugins.github.served_pull import ServedPull, ServedPulls
     from metabrowser.cache.acquire import PublishedSource
     from metabrowser.cache.urls import GitSource
     from metabrowser.mirror_refresh import RefreshCoordinator
@@ -67,10 +68,18 @@ class CheckoutRepository(ListedRepository):
 _RESOLVED: dict[tuple[str, str], CheckoutRepository | None] = {}
 
 
+@dataclass(slots=True)
+class _EagerComparison:
+    number: int
+    revision: str
+    foreground: bool = False
+
+
 @dataclass
 class _CheckoutPulls:
     pulls: ServedPulls
     turn: StoreTurn = field(default_factory=StoreTurn)
+    eager: _EagerComparison | None = None
 
 
 _PULLS: dict[tuple[str, str, str], _CheckoutPulls] = {}
@@ -285,24 +294,71 @@ _PULL_JOBS: set[str] = set()
 _COMPARISON_WANTED: set[str] = set()
 
 
+def comparison_preparing(
+    coordinator: RefreshCoordinator, repository: CheckoutRepository, number: int
+) -> bool:
+    """An optional comparison job, still unclaimed by a foreground reader."""
+    eager = _checkout_state(repository).eager
+    return (
+        eager is not None
+        and eager.number == number
+        and not eager.foreground
+        and coordinator.running(checkout_job_key(repository, number))
+    )
+
+
+@overload
 def start_pull_refresh(
     coordinator: RefreshCoordinator,
     repository: CheckoutRepository,
     number: int,
     *,
     comparison: bool = False,
-) -> PullJobStart:
+    eager_revision: None = None,
+) -> PullJobStart: ...
+
+
+@overload
+def start_pull_refresh(
+    coordinator: RefreshCoordinator,
+    repository: CheckoutRepository,
+    number: int,
+    *,
+    comparison: Literal[True],
+    eager_revision: str,
+) -> PullJobStart | Literal["not_due"]: ...
+
+
+def start_pull_refresh(
+    coordinator: RefreshCoordinator,
+    repository: CheckoutRepository,
+    number: int,
+    *,
+    comparison: bool = False,
+    eager_revision: str | None = None,
+) -> PullJobStart | Literal["not_due"]:
     """Start or join a checkout's pull refresh; only *comparison* may acquire a store."""
 
     key = checkout_job_key(repository, number)
+    state = _checkout_state(repository)
+    eager = state.eager
+    if eager is not None and not coordinator.running(checkout_job_key(repository, eager.number)):
+        state.eager = eager = None
     if coordinator.running(key):
-        if comparison:
-            _COMPARISON_WANTED.add(key)
+        if eager_revision is None:
+            if comparison:
+                _COMPARISON_WANTED.add(key)
+            if eager is not None and eager.number == number:
+                eager.foreground = True
         return "joined"
+    if eager_revision is not None and eager is not None:
+        return "not_due"
     _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
     if len(_PULL_JOBS) >= MAX_PULL_JOBS:
         return "too_many"
     _PULL_JOBS.add(key)
+    if eager_revision is not None:
+        state.eager = _EagerComparison(number, eager_revision)
     if comparison:
         _COMPARISON_WANTED.add(key)
     return coordinator.start(
@@ -356,53 +412,127 @@ async def _acquire_comparison(repository: CheckoutRepository) -> PublishedSource
         raise PullDataError("fetch_failed", "the comparison store could not be prepared") from exc
 
 
-async def _pull_job(
-    coordinator: RefreshCoordinator, repository: CheckoutRepository, number: int, key: str
+async def _comparison_outcome(
+    companion: ServedPull,
+    repository: CheckoutRepository,
+    error: PullDataError | None = None,
+    *,
+    expected: PullRecord | RecordAbsence,
 ) -> None:
     from metabrowser.builtin_plugins.github import pulls
     from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
     from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp, write_pull_refresh
     from metabrowser.builtin_plugins.github.served_pull import PullRefreshOutcome
+    from metabrowser.cache.locks import run_lock_section
     from metabrowser.home import PrivateStorageError
 
-    state = _checkout_state(repository)
+    at = utc_stamp(pulls.utc_now())
+    outcome = "succeeded" if error is None else error.state
+    message = None if error is None else str(error)[:1000]
+    reset_at = None if error is None else error.reset_at
+    companion.last = PullRefreshOutcome(outcome=outcome, message=message, reset_at=reset_at, at=at)
     try:
-        # Waiting at the store keeps no network slot, matching mirror refresh jobs.
-        async with state.turn(lambda: True), coordinator.slot():
+        claimed = await claim_source(repository)
+        await run_lock_section(
+            partial(
+                write_pull_refresh,
+                claimed.home,
+                claimed.slug,
+                companion.number,
+                PullRefreshStamp(outcome=outcome, message=message, reset_at=reset_at, at=at),
+                expected=expected,
+            )
+        )
+    except (PullDataError, PrivateStorageError, OSError):
+        log.debug("could not record checkout comparison outcome", exc_info=True)
+
+
+async def _prepare_comparison(
+    state: _CheckoutPulls,
+    repository: CheckoutRepository,
+    companion: ServedPull,
+    eager: _EagerComparison | None,
+) -> bool:
+    """Return whether the current request was handled without a full PR refresh."""
+    from metabrowser.builtin_plugins.github import pulls
+    from metabrowser.builtin_plugins.github.pull_record import PullRecord, read_pull_record
+    from metabrowser.builtin_plugins.github.pull_route import comparison_preparation_record
+    from metabrowser.builtin_plugins.github.served_pull import written_without_store
+
+    publication = state.pulls.published
+    acquiring = isinstance(publication, ListedRepository)
+    record = None
+    if eager is not None and not eager.foreground:
+        reader = state.pulls.observed_reader
+        record = await asyncio.to_thread(
+            comparison_preparation_record, publication, reader, companion.number, eager.revision
+        )
+        if (
+            record is None
+            or state.pulls.published is not publication
+            or state.pulls.observed_reader != reader
+        ):
+            if not eager.foreground:
+                return not companion.recovery_pending
+            record = None
+    if record is None:
+        record = await asyncio.to_thread(
+            read_pull_record, state.pulls.home, state.pulls.slug, companion.number
+        )
+    try:
+        if acquiring:
+            state.pulls.bind(await _acquire_comparison(repository))
+        published = state.pulls.published
+        if (
+            isinstance(record, PullRecord)
+            and record.source == state.pulls.source
+            and state.pulls.observed_reader in (None, record.reader)
+            and not isinstance(published, ListedRepository)
+        ):
+            # The click may have raced the idle producer's final publication.
+            if not acquiring and record.comparison is not None:
+                return not companion.recovery_pending
+            prepared = await pulls.prepare_pull_comparison(published, record)
+            if prepared is not None:
+                companion.fetched_at = prepared.fetched_at
+                companion.without_store = written_without_store(prepared)
+                if prepared.comparison is not None:
+                    companion.note_comparison((prepared.comparison.base, prepared.comparison.head))
+                    if (
+                        prepared.fetched_at == record.fetched_at
+                        and prepared.reader == record.reader
+                    ):
+                        await _comparison_outcome(companion, repository, expected=prepared)
+                if not companion.without_store:
+                    return not companion.recovery_pending
+    except PullDataError as exc:
+        await _comparison_outcome(companion, repository, exc, expected=record)
+        return not companion.recovery_pending
+    # A changed head can invalidate a cached observation. Idle work ends there. A
+    # foreground reader can refresh the metadata to select the new head.
+    return eager is not None and not eager.foreground and not companion.recovery_pending
+
+
+async def _pull_job(
+    coordinator: RefreshCoordinator, repository: CheckoutRepository, number: int, key: str
+) -> None:
+    state = _checkout_state(repository)
+    eager = state.eager if state.eager is not None and state.eager.number == number else None
+    try:
+        # Waiting at the store keeps no network slot. Foreground demand can promote the
+        # existing key in the store queue without starting another producer.
+        async with (
+            state.turn(lambda: eager is None or eager.foreground),
+            coordinator.slot(),
+        ):
             companion = await state.pulls.companion(number)
             state.pulls.active = companion
             try:
                 while True:
-                    comparison = key in _COMPARISON_WANTED
-                    _COMPARISON_WANTED.discard(key)
-                    if comparison and state.pulls.git_dir is None:
-                        try:
-                            published = await _acquire_comparison(repository)
-                        except PullDataError as exc:
-                            at = utc_stamp(pulls.utc_now())
-                            companion.last = PullRefreshOutcome(
-                                outcome=exc.state, message=str(exc), reset_at=exc.reset_at, at=at
-                            )
-                            try:
-                                claimed = await claim_source(repository)
-                                await asyncio.to_thread(
-                                    write_pull_refresh,
-                                    claimed.home,
-                                    claimed.slug,
-                                    number,
-                                    PullRefreshStamp(
-                                        outcome=exc.state,
-                                        message=str(exc),
-                                        reset_at=exc.reset_at,
-                                        at=at,
-                                    ),
-                                )
-                            except (PullDataError, PrivateStorageError, OSError):
-                                log.debug(
-                                    "could not record checkout comparison failure", exc_info=True
-                                )
+                    if key in _COMPARISON_WANTED:
+                        _COMPARISON_WANTED.discard(key)
+                        if await _prepare_comparison(state, repository, companion, eager):
                             return
-                        state.pulls.bind(published)
                     await companion.refresh()
                     if key not in _COMPARISON_WANTED or state.pulls.git_dir is not None:
                         return
@@ -410,6 +540,8 @@ async def _pull_job(
                 state.pulls.active = None
     finally:
         _COMPARISON_WANTED.discard(key)
+        if eager is not None and state.eager is eager:
+            state.eager = None
 
 
 __all__ = [
@@ -417,6 +549,7 @@ __all__ = [
     "checkout_pulls",
     "checkout_job_key",
     "claim_source",
+    "comparison_preparing",
     "ensure_resolved",
     "resolve_served_checkout",
     "served_checkout",

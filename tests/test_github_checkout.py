@@ -492,6 +492,118 @@ def test_checkout_comparison_fetch_uses_only_the_overlay(
     assert all(str(tmp_path / "checkout") not in call for call in _calls(git_log))
 
 
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_idle_comparison_reuses_the_fresh_checkout_record_without_gh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    from tests.github_pull_fixture import logged_gh_calls
+    from tests.golden_harness import isolate_cli
+    from tests.test_cli_github_checkout_golden import _after  # pyright: ignore[reportPrivateUsage]
+
+    home = isolate_cli(tmp_path, monkeypatch).home
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", lambda _source: pull_origin.url)
+    monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT)
+    before = fingerprint(checkout)
+    request = tmp_path / "request.json"
+    route = "/api/plugin/github/pull-refresh"
+    fetched = _api(checkout, route, {"number": 10, "retry": True}, request)
+    assert fetched.exit_code == 0, fetched.stderr
+    record = _after(fetched)
+    assert record["record"]["unavailable"]["comparison"] == "no_store"
+    calls = logged_gh_calls(tmp_path)
+    assert calls
+
+    stale = _api(checkout, route, {"number": 10, "prepare_comparison": "a" * 64}, request)
+    assert stale.payload()["refresh"] == "not_due"
+    assert not list((home / "repository-stores").iterdir())
+
+    ready = _api(
+        checkout,
+        route,
+        {"number": 10, "prepare_comparison": record["record_revision"]},
+        request,
+    )
+    assert ready.exit_code == 0, ready.stderr
+    after = _after(ready)
+    assert after["comparison_route"] is not None, after
+    assert after["fetched_at"] == record["fetched_at"]
+    assert _api(checkout, after["comparison_route"], None, request).payload()["manifest"]["files"]
+    assert logged_gh_calls(tmp_path) == []
+    assert fingerprint(checkout) == before
+
+    already = _api(
+        checkout,
+        route,
+        {"number": 10, "prepare_comparison": after["record_revision"]},
+        request,
+    )
+    assert already.payload()["refresh"] == "not_due"
+    clicked = _api(checkout, route, {"number": 10, "retry": True, "comparison": True}, request)
+    assert _after(clicked)["comparison_route"] == after["comparison_route"]
+    assert logged_gh_calls(tmp_path) == []
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
+def test_foreground_promotes_the_reserved_idle_comparison_without_a_second_producer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.gh_lists import PullDataError
+    from metabrowser.builtin_plugins.github.served_pull import ServedPull
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    repository = checkout_module._resolve(checkout, tmp_path / "home")  # pyright: ignore[reportPrivateUsage]
+    assert repository is not None
+    events: list[str] = []
+
+    async def refuse(_repository: checkout_module.CheckoutRepository) -> Any:
+        events.append("acquire")
+        raise PullDataError("network_error", "the origin is unavailable")
+
+    async def refresh(companion: ServedPull) -> None:
+        events.append(f"pull {companion.number}")
+
+    monkeypatch.setattr(checkout_module, "_acquire_comparison", refuse)
+    monkeypatch.setattr(ServedPull, "refresh", refresh)
+
+    async def run() -> None:
+        coordinator = RefreshCoordinator()
+        turn = checkout_module._checkout_state(repository).turn  # pyright: ignore[reportPrivateUsage]
+        try:
+            async with turn(lambda: True):
+                assert (
+                    checkout_module.start_pull_refresh(
+                        coordinator, repository, 10, comparison=True, eager_revision="a" * 64
+                    )
+                    == "started"
+                )
+                await asyncio.sleep(0)
+                assert checkout_module.comparison_preparing(coordinator, repository, 10)
+                assert (
+                    checkout_module.start_pull_refresh(
+                        coordinator, repository, 11, comparison=True, eager_revision="b" * 64
+                    )
+                    == "not_due"
+                )
+                assert checkout_module.start_pull_refresh(coordinator, repository, 12) == "started"
+                await asyncio.sleep(0)
+                assert (
+                    checkout_module.start_pull_refresh(coordinator, repository, 10, comparison=True)
+                    == "joined"
+                )
+                assert not checkout_module.comparison_preparing(coordinator, repository, 10)
+            await coordinator.drain(timeout_s=5)
+        finally:
+            await coordinator.aclose()
+
+    asyncio.run(run())
+    assert events == ["acquire", "pull 12"]
+
+
 def test_comparison_fetch_joining_metadata_refresh_is_not_lost(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:

@@ -215,6 +215,14 @@ async def pull_markdown_handler(request: Request) -> JSONResponse:
     return JSONResponse(body, status_code=status_code, headers=_NO_STORE)
 
 
+async def pull_snapshot_handler(request: Request) -> Response:
+    from metabrowser.builtin_plugins.github.pull_snapshot import (
+        pull_snapshot_handler as read_snapshot,
+    )
+
+    return await read_snapshot(request)
+
+
 async def pull_comparison_handler(request: Request) -> Response:
     """Read a checkout's pinned PR comparison from its store; never acquire on GET."""
 
@@ -345,6 +353,8 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     jobs it is refused, ``too_many``, answered ``429``, and nothing starts. ``pull`` is the
     envelope as of that moment: with a job running, ``refreshing`` is true, and it is
     ``pending`` while no record is cached yet.
+    With ``prepare_comparison``, a checkout may prepare the named cached record revision
+    at idle priority. Its envelope adds ``preparing_comparison`` while it remains optional.
     """
 
     from metabrowser.builtin_plugins.github.pull_route import (
