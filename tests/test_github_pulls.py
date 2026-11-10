@@ -4918,8 +4918,9 @@ def test_obsolete_observation_cannot_replace_the_current_record_or_stamp(stand: 
     published = stand.published
     newer = record.model_copy(update={"fetched_at": "2026-09-17T12:00:01Z"})
     write_pull_record(published.home, published.slug, newer, expected=record)
-    rejected = write_pull_record(published.home, published.slug, record, expected=record)
-    assert rejected == newer == stand.record(7)
+    with pytest.raises(pulls.PullObservationSuperseded) as rejected:
+        write_pull_record(published.home, published.slug, record, expected=record)
+    assert rejected.value.current == newer == stand.record(7)
     original = read_pull_refresh(published.home, published.slug, 7)
     assert original is not None
     failed = original.model_copy(update={"outcome": "network_error"})

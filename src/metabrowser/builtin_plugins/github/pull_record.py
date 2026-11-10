@@ -293,6 +293,14 @@ class PullRecord(_Model):
 type RecordAbsence = Literal["not_cached", "schema_mismatch", "unreadable"]
 
 
+class PullObservationSuperseded(Exception):
+    """A different process published the record first."""
+
+    def __init__(self, current: PullRecord) -> None:
+        super().__init__("a newer pull-request observation is already cached")
+        self.current = current
+
+
 class RecordTooLargeError(Exception):
     """A record would be larger than :data:`MAX_PULL_RECORD_BYTES`; nothing was written."""
 
@@ -505,6 +513,8 @@ def write_pull_record(
     Raises :class:`RecordTooLargeError`, or the home's ``PrivateStorageError`` or an
     ``OSError`` when the cache cannot take it, a slug no source holds among them.
     """
+    from metabrowser.builtin_plugins.github.pull_snapshot_cache import retain_snapshot_binding
+
     data = serialize_pull_record(record)
     # Do not create a lock or any source path for an unclaimed source. Check again
     # under the lock before creating the pulls directory or publishing the record.
@@ -514,22 +524,20 @@ def write_pull_record(
         if expected is not None or metadata_only or store_id is not None:
             current = read_pull_record(home, slug, record.number)
             if expected is not None and isinstance(current, PullRecord) and current != expected:
-                return current
+                raise PullObservationSuperseded(current)
         else:
             current = "not_cached"
         if metadata_only:
             record = fit_record(_metadata_record(record, current))
             data = serialize_pull_record(record)
-        write_private_file_atomic(home, source_pull_record(slug, record.number), data)
         if store_id is not None and record.comparison is not None:
-            from metabrowser.builtin_plugins.github.pull_snapshot_cache import (
-                retain_snapshot_binding,
-            )
-
             # The current record still authorizes its exact pair if history cannot be saved.
             with suppress(PrivateStorageError, OSError):
                 if isinstance(current, PullRecord) and current.reader == record.reader:
                     retain_snapshot_binding(home, slug, store_id, current)
+        write_private_file_atomic(home, source_pull_record(slug, record.number), data)
+        if store_id is not None and record.comparison is not None:
+            with suppress(PrivateStorageError, OSError):
                 retain_snapshot_binding(home, slug, store_id, record)
     return record
 
@@ -626,12 +634,14 @@ def write_pull_refresh(
     stamp: PullRefreshStamp,
     *,
     expected: PullRecord | RecordAbsence | None = None,
-) -> None:
+) -> bool:
     """Keep the outcome only while the observation it describes is current."""
     _require_published_source(home, slug)
     with source_alias_lock(home, slug):
-        if expected is None or read_pull_record(home, slug, number) == expected:
-            write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
+        if expected is not None and read_pull_record(home, slug, number) != expected:
+            return False
+        write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
+        return True
 
 
 def read_pull_refresh(home: Path, slug: str, number: int) -> PullRefreshStamp | None:
