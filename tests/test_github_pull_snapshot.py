@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 
+import pytest
 from starlette.testclient import TestClient
 
 from metabrowser.builtin_plugins.github.pull_record import write_pull_record
@@ -34,10 +35,16 @@ def test_revision_file_link_stays_on_its_side_after_the_record_advances(
     assert head.headers["cache-control"] == "no-store"
     latest = stand.refresh(7)
     assert latest.comparison is not None
+    from metabrowser.builtin_plugins.github.pull_snapshot_cache import (
+        _path,  # pyright: ignore[reportPrivateUsage]
+    )
+
+    (stand.published.home / _path(stand.published.slug, 7)).unlink()
     write_pull_record(
         stand.published.home,
         stand.published.slug,
         latest.model_copy(update={"comparison": None}),
+        store_id=stand.published.store_id,
     )
     stand.calls()
     assert client.get(f"{address}&side=head&path={path}").text == head.text
@@ -140,3 +147,20 @@ def test_snapshot_images_and_binary_files_keep_their_type(
         source + "&mode=source&offset=100000000", headers={"accept": "application/json"}
     )
     assert outside.status_code == 416
+
+
+def test_revision_source_offset_is_bounded_below_eof(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.git.tree_source import GitTreeSource
+
+    _, client = pinned_pull
+    route = client.get("/api/plugin/github/pull?number=7").json()["comparison_route"]
+    query = route.split("?", 1)[1]
+    path = GitPath.from_display("src/app.txt").to_wire()
+    address = f"/api/plugin/github/pull-snapshot?{query}&side=head&mode=source&path={path}"
+    monkeypatch.setattr(GitTreeSource, "max_blob_bytes", property(lambda _source: 4))
+    preview = client.get(address)
+    assert preview.status_code == 200 and "Next bytes" not in preview.text
+    refused = client.get(address + "&offset=5", headers={"accept": "application/json"})
+    assert refused.status_code == 416 and refused.json()["code"] == "invalid_offset"

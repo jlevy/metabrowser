@@ -530,7 +530,7 @@ def write_pull_record(
         if metadata_only:
             record = fit_record(_metadata_record(record, current))
             data = serialize_pull_record(record)
-        if store_id is not None and record.comparison is not None:
+        if store_id is not None:
             # The current record still authorizes its exact pair if history cannot be saved.
             with suppress(PrivateStorageError, OSError):
                 if isinstance(current, PullRecord) and current.reader == record.reader:
