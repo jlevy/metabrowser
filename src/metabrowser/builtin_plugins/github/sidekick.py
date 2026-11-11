@@ -338,10 +338,11 @@ async def _json_body(request: Request) -> dict[str, Any] | tuple[str, int]:
 async def pull_refresh_handler(request: Request) -> JSONResponse:
     """``POST /api/plugin/github/pull-refresh`` — start or join one pull request's refresh.
 
-    The body names ``number``, and may name ``retry``, a reader's own click. ``refresh``
-    says whether this request ``started`` the job or ``joined`` one that was running,
-    answered ``202``, or why an automatic request started nothing: the record is not due
-    (``not_due``), or there is none (``not_cached``), answered ``200``. Past the bound on
+    The body names ``number``, and may name ``retry``: a reader's own click, or the one
+    comparison request a page on Changes sends by itself for a record without a store.
+    ``refresh`` says whether this request ``started`` the job or ``joined`` one that was
+    running, answered ``202``, or why an automatic request started nothing: the record is
+    not due (``not_due``), or there is none (``not_cached``), answered ``200``. Past the bound on
     jobs it is refused, ``too_many``, answered ``429``, and nothing starts. ``pull`` is the
     envelope as of that moment: with a job running, ``refreshing`` is true, and it is
     ``pending`` while no record is cached yet.

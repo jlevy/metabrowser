@@ -234,7 +234,13 @@ it failed; it is a POST with a JSON object body for the same reason
 `/api/source/refresh` is, and plugin data routes are one path segment, hence the name.
 On a served checkout, `{"number": n, "retry": true, "comparison": true}` also acquires
 the store its Files changed needs.
-`comparison: true` without `retry: true` is refused.
+The page sends it once when **Changes** opens at its own address on a record without a
+store, and shows progress only while that request is on its way or still to be sent.
+Because `retry` bypasses the server’s window, the page itself holds that request after a
+recorded store-acquisition failure newer than the record, or before a rate limit’s
+`reset_at`, and leaves it to **Retry changes**. Changes shown while the address names
+another tab sends nothing and offers **Fetch changes**. `comparison: true` without
+`retry: true` is refused.
 Acquisition leaves the source folder and its pin unchanged, and a request joining a
 metadata refresh retains the comparison action for that job.
 For an explicitly selected missing record, `retry: true` may include `wait_core: true`,
@@ -282,8 +288,10 @@ The envelope’s `comparison_route` names `GET github/pull-comparison` with the 
 number, immutable endpoints, and build and store tokens.
 This route reads only the managed store and uses the diff plugin’s comparison service;
 it never acquires one.
-A request with `"retry": true` is a reader’s own action, a press of **Fetch** or
-**Refresh**, and only that can add a pull request to the cache.
+A request with `"retry": true` is a reader’s own action, a press of **Fetch**,
+**Refresh**, **Retry changes**, or **Fetch changes**, or the one comparison request a
+page on **Changes** sends by itself for a record without a store.
+Only those can add a pull request to the cache.
 Any other is the page’s own, sent when it is visible and its record is stale: with no
 record it answers `200` with `refresh: "not_cached"`, inside the window or before a rate
 limit’s `reset_at` it answers `200` with `not_due`, and each starts nothing.
