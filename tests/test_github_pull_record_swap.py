@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
+from functools import partial
 from typing import Any
 
 import pytest
@@ -21,9 +22,11 @@ from metabrowser.builtin_plugins.github.pull_list import ListedRepository
 from metabrowser.builtin_plugins.github.pull_record import (
     PullObservationSuperseded,
     PullRecord,
+    PullRefreshStamp,
     read_pull_record,
     read_pull_refresh,
     write_pull_record,
+    write_pull_refresh,
 )
 from metabrowser.cache.pull_refs import BaseUncertainError, has_commit
 from tests.golden_harness import settle
@@ -109,41 +112,53 @@ def test_a_mirror_refresh_that_loses_adopts_the_winner_without_a_success_stamp(
 
     monkeypatch.setattr(pulls, "fetch_pull_head", fetch_then_another_writer)
     winner = winners[0]
-    assert asyncio.run(pulls.refresh_pull_request(stand.published, 7)) == winner
+    adopted = asyncio.run(pulls.refresh_pull_request(stand.published, 7, adopt_current=True))
+    assert adopted == winner
     assert _record(stand) == winner
-    # Nothing claims this refresh succeeded, at the winner's time or this one's; a served
-    # refresh reports the same (test_a_served_refresh_that_loses_reports_the_stamp_on_disk).
+    # This refresh stamps nothing; a served refresh then reports the stamp on disk
+    # (test_a_served_refresh_that_loses_shows_the_winners_own_stamp).
     assert read_pull_refresh(home, slug, 7) == stamp
-    # A caller that keeps its own outcome is told instead.
+    # By default, as every caller in production asks, the caller is told instead.
     with pytest.raises(PullObservationSuperseded) as superseded:
-        asyncio.run(pulls.refresh_pull_request(stand.published, 7, adopt_current=False))
+        asyncio.run(pulls.refresh_pull_request(stand.published, 7))
     assert superseded.value.current.pull.title == "another winner"
 
 
-def test_a_served_refresh_that_loses_reports_the_stamp_on_disk_not_a_new_success(
-    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Review D3: a reader's Refresh that another writer beat claims no success of its own.
+def _lost_served_refresh(
+    stand: _Stand,
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    winner_stamps: bool,
+    earlier: PullRefreshStamp | None = None,
+) -> tuple[PullRecord, dict[str, Any]]:
+    """A reader's Refresh on this server that another server's refresh beat.
 
-    The page shows the winner's record, and how a refresh last ended is what the disk
-    says, not ``succeeded`` at the winner's read time or at this one's.
+    The other refresh publishes its record during this one's fetch, and, as a refresh
+    does, then stamps its own success, unless *winner_stamps* is false, when this job
+    reads the disk first. *earlier* is how the refresh before it ended. Returns the
+    winner and the envelope once this job is done.
     """
-    stand, client = pinned_pull
     home, slug = stand.published.home, stand.published.slug
     first = stand.refresh(7)
-    stamp = read_pull_refresh(home, slug, 7)
-    assert stamp is not None and stamp.at == first.fetched_at == "2026-09-17T12:00:00Z"
+    if earlier is not None:
+        write_pull_refresh(home, slug, 7, earlier, expected=first)
     later = pulls.utc_now() + timedelta(hours=2)
     monkeypatch.setattr(pulls, "utc_now", lambda: later)
     winner = _titled(first, "winner").model_copy(update={"fetched_at": "2026-09-17T13:00:00Z"})
     fetch = pulls.fetch_pull_head
 
-    async def fetch_then_another_writer(*args: Any, **kwargs: Any) -> str | None:
+    async def fetch_then_another_server(*args: Any, **kwargs: Any) -> str | None:
         fetched = await fetch(*args, **kwargs)
         await asyncio.to_thread(write_pull_record, home, slug, winner)
+        if winner_stamps:
+            succeeded = PullRefreshStamp(outcome="succeeded", at=winner.fetched_at)
+            await asyncio.to_thread(
+                partial(write_pull_refresh, home, slug, 7, succeeded, expected=winner)
+            )
         return fetched
 
-    monkeypatch.setattr(pulls, "fetch_pull_head", fetch_then_another_writer)
+    monkeypatch.setattr(pulls, "fetch_pull_head", fetch_then_another_server)
     started = client.post(
         "/api/plugin/github/pull-refresh",
         json={"number": 7, "retry": True},
@@ -154,12 +169,53 @@ def test_a_served_refresh_that_loses_reports_the_stamp_on_disk_not_a_new_success
     envelope = client.get("/api/plugin/github/pull", params={"number": 7}).json()
     while envelope["refreshing"]:
         envelope = client.get("/api/plugin/github/pull", params={"number": 7}).json()
-    assert envelope["record"]["pull"]["title"] == "winner"
-    assert envelope["fetched_at"] == "2026-09-17T13:00:00Z"
-    assert envelope["last_refresh"] == stamp.model_dump(
-        include={"outcome", "message", "reset_at", "at"}
+    return winner, envelope
+
+
+def _shown(stamp: PullRefreshStamp | None) -> dict[str, Any] | None:
+    return (
+        None
+        if stamp is None
+        else stamp.model_dump(include={"outcome", "message", "reset_at", "at"})
     )
-    assert read_pull_refresh(home, slug, 7) == stamp
+
+
+def test_a_served_refresh_that_loses_shows_the_winners_own_stamp(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reviews D3 and E3: the job reports the shared stamp, never a success of its own.
+
+    The other server's refresh stamps its success at its own read time, so that is how
+    the pull request's last refresh ended; this job published nothing and claims nothing.
+    """
+    stand, client = pinned_pull
+    home, slug = stand.published.home, stand.published.slug
+    winner, envelope = _lost_served_refresh(stand, client, monkeypatch, winner_stamps=True)
+    assert envelope["record"]["pull"]["title"] == "winner"
+    assert envelope["fetched_at"] == winner.fetched_at
+    assert envelope["last_refresh"] == _shown(read_pull_refresh(home, slug, 7))
+    assert envelope["last_refresh"]["at"] == winner.fetched_at
+
+
+def test_a_served_refresh_that_reads_before_the_winner_stamps_follows_the_disk(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review E3's race: an earlier failure on disk is not kept once the winner stamps."""
+    stand, client = pinned_pull
+    home, slug = stand.published.home, stand.published.slug
+    failure = PullRefreshStamp(
+        outcome="head_mismatch", message="earlier failure", at="2026-09-17T12:30:00Z"
+    )
+    winner, envelope = _lost_served_refresh(
+        stand, client, monkeypatch, winner_stamps=False, earlier=failure
+    )
+    assert envelope["fetched_at"] == winner.fetched_at
+    # The winner has not stamped yet: the disk still says how the last refresh ended.
+    assert envelope["last_refresh"] == _shown(failure)
+    succeeded = PullRefreshStamp(outcome="succeeded", at=winner.fetched_at)
+    write_pull_refresh(home, slug, 7, succeeded, expected=winner)
+    again = client.get("/api/plugin/github/pull", params={"number": 7}).json()
+    assert again["last_refresh"] == _shown(succeeded)
 
 
 def test_a_failed_pre_read_does_not_turn_a_refresh_into_a_no_op(

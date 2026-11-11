@@ -335,8 +335,13 @@ tree and the rest as links; otherwise, and for Source, it opens in 2 MiB windows
 end on a line or a character.
 The page applies the reader’s theme, interface font, reading font, and reading width
 with the shell’s own first-paint scripts and the width default they read, allowed by
-hash, and runs no other script; a Markdown document sits in the in-app inert render’s
-KPress frame, which carries the width and reading font to its text.
+hash, and runs no other script.
+A Markdown document sits in the in-app inert render’s KPress frame, which carries the
+width and reading font to its text, and gets its prose classes on the server
+(`inert_html.kpress_prose`, the browser’s `kpressProse`), so tables and code blocks are
+styled as in the app.
+A `<details>` chevron is the shell’s glyph served from this origin, since the page
+admits no `data:` image.
 Each outcome has its own code: `snapshot_expired` (410) for a pair not admitted,
 `snapshot_unavailable` (409) when admission cannot be decided now,
 `snapshot_objects_unavailable` (409) and `snapshot_objects_expired` (410) for objects

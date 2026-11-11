@@ -57,7 +57,7 @@ def test_a_refresh_that_loses_publication_returns_the_winner_and_its_stamp(
 ) -> None:
     stand.refresh(7)
     winners = _lose_the_next_write(stand, monkeypatch, 7)
-    returned = stand.refresh(7)
+    returned = asyncio.run(pulls.refresh_pull_request(stand.published, 7, adopt_current=True))
     assert winners and returned == winners[0] == stand.record(7)
     published = stand.published
     assert read_pull_refresh(published.home, published.slug, 7) == _WINNER_STAMP
@@ -89,7 +89,7 @@ def test_the_served_pull_request_adopts_the_winner_and_its_stamp(
 
     companion = asyncio.run(run())
     assert companion.fetched_at == winners[0].fetched_at
-    assert companion.last == {
+    assert companion.outcome() == {
         "outcome": _WINNER_STAMP.outcome,
         "message": _WINNER_STAMP.message,
         "reset_at": _WINNER_STAMP.reset_at,
