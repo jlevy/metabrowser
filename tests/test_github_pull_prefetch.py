@@ -71,7 +71,6 @@ class _Host:
         self.coordinator = RefreshCoordinator()
         self.started: list[int] = []
         self.gates: dict[int, asyncio.Event] = {}
-        self.busy = False
         self.on_refresh: dict[int, Any] = {}
 
     def job_key(self, number: int) -> str:
@@ -79,9 +78,6 @@ class _Host:
 
     def running(self, number: int) -> bool:
         return self.coordinator.running(self.job_key(number))
-
-    def foreground_busy(self) -> bool:
-        return self.busy
 
     def start_background(self, number: int) -> str:
         async def work() -> None:
@@ -261,15 +257,6 @@ def test_a_rate_limit_hold_defers_everything(
     verdicts[7] = "changed"
     gh_budget.hold(_stamp(NOW + timedelta(minutes=5)), now=NOW)
     assert _run(host, PrefetchRequest(records=(7,))) == ("deferred", "rate_hold", 0)
-
-
-def test_a_readers_work_stops_the_lane(stand: tuple[_Host, dict[int, str], list[int]]) -> None:
-    host, verdicts, _revision = stand
-    verdicts.update({7: "changed", 8: "changed"})
-    host.busy = True
-    _run(host, PrefetchRequest(records=(7, 8)))
-    assert host.started == []
-    assert _recent(host) == [("record", 7, "deferred:foreground_busy")]
 
 
 def test_a_preempted_job_is_said_so_and_a_new_request_replaces_the_queue(

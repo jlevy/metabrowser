@@ -117,6 +117,10 @@ const PREFETCH_IDLE_TIMEOUT_MS = 300;
 
 const PULL_ROUTE = "/api/plugin/github/pull";
 const REFRESH_ROUTE = "/api/plugin/github/pull-refresh";
+// The repository's list of pull requests, whose scan says which records GitHub changed.
+const CATALOG_REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
+// How the server says, on a 200 and a 304 alike, when the record was last checked and how.
+const VERIFIED_HEADER = "x-metabrowser-verified";
 const MARKDOWN_ROUTE = "/api/plugin/github/pull-markdown";
 const TIMELINE_ROUTE = "/api/plugin/github/pull-timeline";
 // Give a transient queue or provider failure one chance to clear while the reader stays.
@@ -183,6 +187,10 @@ const TRUNCATED = Object.freeze({
  *   pin: string | null,
  *   pin_ref: string | null,
  *   fetched_at: string | null,
+ *   verified_at?: string | null,
+ *   verified_by?: "catalog" | "fetch" | null,
+ *   head_moved?: boolean,
+ *   checks_pending?: boolean,
  *   fresh_for_s: number,
  *   record_revision: string | null,
  *   refreshing: boolean,
@@ -297,6 +305,7 @@ const TRUNCATED = Object.freeze({
  *   changesPending: boolean,
  *   headOffer: {ref: string, head: string, pin: string, text: string} | null,
  *   checkoutAtHead: string | null,
+ *   newCommits: string | null,
  * }} PullModel
  */
 
@@ -972,6 +981,7 @@ export function describePull(envelope, page) {
     changesPending: false,
     headOffer: null,
     checkoutAtHead: null,
+    newCommits: null,
   };
   if (envelope === null) {
     // Nothing read yet: the page shows a skeleton, and an error once a read failed.
@@ -1067,10 +1077,25 @@ export function describePull(envelope, page) {
   // The plain age while a refresh runs or is due: the page breathes it, and says nothing
   // about being out of date. Offline is the one stale state named here, since no refresh
   // can run; a hold or a failure is named by `failure`.
+  // "Checked" is the repository's list of pull requests saying, since the record was read,
+  // that GitHub has not changed it; "Fetched" is the record itself. Each says its own age.
+  const checked =
+    envelope.verified_by === "catalog" &&
+    typeof envelope.verified_at === "string" &&
+    envelope.verified_at > (record.fetched_at ?? "")
+      ? relativeAge(envelope.verified_at, page.nowMs)
+      : null;
+  const fetched = checked === null ? `Fetched ${age}` : `Checked ${checked} · fetched ${age}`;
   model.freshness =
     offline && envelope.state === "stale" && !model.revalidating
       ? `Offline · fetched ${age} via GitHub CLI`
-      : `Fetched ${age} via GitHub CLI`;
+      : `${fetched} via GitHub CLI`;
+  if (envelope.head_moved === true) {
+    // The diff on screen stays until the reader takes the newer one, which a refresh offers.
+    model.newCommits = model.revalidating
+      ? "New commits were pushed; updating."
+      : "New commits were pushed to this pull request.";
+  }
   const pull = record.pull ?? {};
   model.pull = describeCore(pull);
   model.timeline = timeline(record);
@@ -1209,7 +1234,7 @@ export function isEnvelope(value) {
 }
 
 /**
- * @typedef {{status: number, etag: string | null, body: unknown}} PullResponse
+ * @typedef {{status: number, etag: string | null, body: unknown, verified?: string | null}} PullResponse
  * @typedef {{
  *   request(method: "GET" | "POST", route: string, options: {etag?: string | null, body?: unknown}): Promise<PullResponse>,
  *   schedule(callback: () => void, delayMs: number): unknown,
@@ -1268,6 +1293,12 @@ export function createPullController(deps, options) {
   /** That ask: none, scheduled (waiting in `askTimer`), or sent and not yet answered. */
   /** @type {"none" | "scheduled" | "sent"} */
   let autoAsk = "none";
+  // Once the repository's list of pull requests has vouched for this record, the page keeps
+  // that list scanned while it is visible, so the record stays current without being read
+  // again: when the check lapses it asks for the next scan, once a window, before it reads.
+  let catalogBacked = false;
+  /** When the page last asked for the catalog's scan, by `deps.now()`. @type {number | null} */
+  let catalogAskedAt = null;
   /** The ask that waits for `REFRESH_ASK_MS`. @type {unknown} */
   let askTimer = null;
   /** @type {string | null} */
@@ -1403,6 +1434,40 @@ export function createPullController(deps, options) {
         render();
       }
     }, delayMs);
+  }
+
+  /**
+   * Whether the page asks for the catalog's next scan before it reads: the catalog vouched
+   * for this record before, its check is a window old, and none was asked within a window.
+   * The server starts it only once a window, and a record it is scanning for stays current.
+   */
+  function catalogScanDue() {
+    if (disposed || !catalogBacked || envelope === null || !deps.isVisible() || !online()) {
+      return false;
+    }
+    const windowMs = envelope.fresh_for_s * 1000;
+    const checked = Date.parse(envelope.verified_at ?? "");
+    return (
+      Number.isFinite(checked) &&
+      deps.now() - checked >= windowMs &&
+      (catalogAskedAt === null || deps.now() - catalogAskedAt >= windowMs)
+    );
+  }
+
+  /**
+   * Take the verdict a 304 carried in its header, `<verified_by> <verified_at>`: the
+   * catalog's scans move it once a window and nothing else the page shows.
+   *
+   * @param {string | null | undefined} value
+   */
+  function adoptVerified(value) {
+    const found = /^(catalog|fetch) (\S+)$/u.exec(value ?? "");
+    if (envelope === null || envelope.record === null || found === null) {
+      return;
+    }
+    const by = /** @type {"catalog" | "fetch"} */ (found[1]);
+    envelope = { ...envelope, verified_by: by, verified_at: found[2] };
+    catalogBacked = catalogBacked || by === "catalog";
   }
 
   /** What `describePull` and `comparisonQueued` read of this page. */
@@ -1557,6 +1622,7 @@ export function createPullController(deps, options) {
     }
     shownRequest = request;
     envelope = next;
+    catalogBacked = catalogBacked || next.verified_by === "catalog";
     if (next.record !== null || !next.refreshing) {
       waitForFull = false;
     }
@@ -1586,6 +1652,19 @@ export function createPullController(deps, options) {
       return;
     }
     polling = true;
+    if (!first && catalogScanDue()) {
+      // Asked first, so the read below already sees the scan running and the record current.
+      catalogAskedAt = deps.now();
+      try {
+        await deps.request("POST", CATALOG_REFRESH_ROUTE, { body: { background: true } });
+      } catch {
+        // The read below still answers; the next window asks again.
+      }
+      if (disposed) {
+        polling = false;
+        return;
+      }
+    }
     const request = ++sent;
     const coreRevision =
       !first && waitForFull && envelope?.refreshing && envelope.record === null
@@ -1605,6 +1684,9 @@ export function createPullController(deps, options) {
         }
         error = null;
       } else if (response.status === 304 || pinChanged(response)) {
+        if (response.status === 304) {
+          adoptVerified(response.verified);
+        }
         error = null;
       } else {
         error = `The pull request is unavailable (HTTP ${response.status}).`;
@@ -4140,6 +4222,14 @@ export function mountPullPage(container, ctx, mb) {
       said.classList.add("github-pull-newer-offer");
       body.prepend(said);
     }
+    // The repository's list says the head moved before the record was read again: the diff
+    // shown stays, and the offer above replaces this once the refresh brings the newer one.
+    body.querySelector(".github-pull-new-commits")?.remove();
+    if (model.newCommits !== null && action !== "offer") {
+      const said = notice(null, [model.newCommits]);
+      said.classList.add("github-pull-new-commits");
+      body.prepend(said);
+    }
   }
 
   /** @param {PullModel} model */
@@ -4419,7 +4509,12 @@ export function mountPullPage(container, ctx, mb) {
             decoded = null;
           }
         }
-        return { status: response.status, etag: response.headers.get("etag"), body: decoded };
+        return {
+          status: response.status,
+          etag: response.headers.get("etag"),
+          body: decoded,
+          verified: response.headers.get(VERIFIED_HEADER),
+        };
       },
       schedule: (callback, delayMs) => window.setTimeout(callback, delayMs),
       cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),

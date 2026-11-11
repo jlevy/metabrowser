@@ -19,13 +19,13 @@ Each served repository has one lane, a coordinator job that runs one item at a t
 Before each item it reads again, off the event loop, whether the item is still due, which
 another process's refresh may have made it not, then whether the rate-limit governor
 admits it (:mod:`.gh_budget`) and the caps have room. It stops, dropping the rest, when
-the governor refuses, a cap is reached, or a reader's pull-request job of the repository is
-queued or running; the page asks again later. A job is started under the pull request's own
-key, so a reader's request for it joins and promotes it, and as a background job it takes
-no network slot and yields any store turn to a reader's job (:mod:`.checkout`,
-:mod:`metabrowser.mirror_refresh`).
+the governor refuses or a cap is reached; the page asks again later. A job is started under
+the pull request's own key, so a reader's request for it joins and promotes it, and as a
+background job it takes no network slot, waits at a store turn behind a reader's job, and
+is cancelled when one starts waiting (:mod:`.checkout`, :mod:`metabrowser.mirror_refresh`):
+the lane never stops for a reader's work, which it cannot delay.
 
-The caps, measured against the fake ``gh`` in ``tests/test_github_pull_prefetch.py``: a
+The caps, measured against the fake ``gh`` in ``tests/golden/cli-github-pulls-prefetch.txt``: a
 background record refresh asks for at most 8 core points (two account checks, the pull,
 and five parts of a page each; a ``304`` is free and an account check is not), and a
 one-page files list for 3 (two account checks and the page). So :data:`RECORDS_PER_HOUR`
@@ -77,7 +77,7 @@ _FIELDS: Final = frozenset({"records", "files", "changed"})
 
 type ItemKind = Literal["record", "files"]
 type PrefetchStart = Literal["started", "joined", "not_due", "deferred"]
-type DeferReason = Literal["below_floor", "rate_hold", "hourly_cap", "scan_cap", "foreground_busy"]
+type DeferReason = Literal["below_floor", "rate_hold", "hourly_cap", "scan_cap"]
 # An item's end: refreshed or failed, or why it started nothing, or why the lane stopped.
 type ItemOutcome = str
 
@@ -250,7 +250,7 @@ _STOPS: Final = frozenset(
     {
         *(
             f"deferred:{reason}"
-            for reason in ("below_floor", "rate_hold", "hourly_cap", "scan_cap", "foreground_busy")
+            for reason in ("below_floor", "rate_hold", "hourly_cap", "scan_cap")
         ),
         "failed:rate_limited",
         "failed:network_error",
@@ -296,12 +296,10 @@ async def _record(host: PullHost, lane: Lane, item: Item) -> ItemOutcome:
     from metabrowser.builtin_plugins.github.pull_route import record_and_freshness
     from metabrowser.builtin_plugins.github.served_pull import written_without_store
 
-    if host.start_background is None or host.foreground_busy is None or host.job_key is None:
+    if host.start_background is None or host.job_key is None:
         return "skipped:unsupported"
     if host.running(item.number):
         return "joined"
-    if host.foreground_busy():
-        return "deferred:foreground_busy"
     served = host.pulls
     held, freshness = await asyncio.to_thread(record_and_freshness, served, item.number)
     if held is None:
@@ -356,8 +354,6 @@ async def _files(app: Any, host: PullHost, lane: Lane, item: Item) -> ItemOutcom
     )
     from metabrowser.builtin_plugins.github.pull_list import read_files_refresh
 
-    if host.foreground_busy is not None and host.foreground_busy():
-        return "deferred:foreground_busy"
     view = files_view(app, item.number)
     if view.repository is None or view.coordinator is None:
         return "skipped:not_github"

@@ -325,12 +325,6 @@ def _checkout_busy(coordinator: RefreshCoordinator, repository: CheckoutReposito
     return any(job.startswith(prefix) and coordinator.running(job) for job in jobs)
 
 
-def foreground_busy(coordinator: RefreshCoordinator, repository: CheckoutRepository) -> bool:
-    """Whether a reader's pull job of this checkout, or its optional comparison, is queued or running."""
-    prefix = _job_prefix(repository)
-    return any(job.startswith(prefix) and coordinator.running(job) for job in _PULL_JOBS)
-
-
 def comparison_preparing(
     coordinator: RefreshCoordinator, repository: CheckoutRepository, number: int
 ) -> bool:
@@ -827,7 +821,6 @@ __all__ = [
     "claim_source",
     "comparison_preparing",
     "ensure_resolved",
-    "foreground_busy",
     "resolve_served_checkout",
     "served_checkout",
     "start_pull_refresh",

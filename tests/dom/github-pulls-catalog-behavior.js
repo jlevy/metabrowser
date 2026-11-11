@@ -26,6 +26,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
     tailNear: false,
   };
   const requests = [];
+  const prefetches = [];
   const waiting = [];
   const timers = new Map();
   const flashes = [];
@@ -83,6 +84,11 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   const controller = panel.createPullsController(
     {
       request(method, route, options) {
+        if (route === "/api/plugin/github/pulls-prefetch") {
+          // Background prefetch is the prefetch behavior's subject, not this one's.
+          prefetches.push(options.body);
+          return Promise.resolve({ status: 202, etag: null, body: { prefetch: "started" } });
+        }
         const request = { method, route, body: options.body, signal: options.signal };
         requests.push(request);
         if (method === "GET") {

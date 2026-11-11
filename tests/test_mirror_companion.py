@@ -930,7 +930,7 @@ def test_a_background_job_yields_the_store_to_a_readers_job_at_once() -> None:
         session = stand.session
         assert session.request_pull_refresh(8, background=True) == "started"
         await _spin()
-        assert stand.events == ["pull 8"] and not session.pull_jobs_busy()
+        assert stand.events == ["pull 8"] and not session._pull_jobs  # pyright: ignore[reportPrivateUsage]
         assert session.request_pull_refresh(9) == "started"
         await _spin()
         assert not session.pull_refreshing(8)
@@ -950,7 +950,7 @@ def test_a_readers_request_promotes_the_background_job_it_joins() -> None:
         assert session.request_pull_refresh(8, background=True) == "started"
         await _spin()
         assert session.request_pull_refresh(8) == "joined"
-        assert session.pull_jobs_busy()
+        assert session._pull_jobs == {"store:pull/8"}  # pyright: ignore[reportPrivateUsage]
         assert session.request_pull_refresh(9) == "started"
         await _spin()
         assert session.pull_refreshing(8)

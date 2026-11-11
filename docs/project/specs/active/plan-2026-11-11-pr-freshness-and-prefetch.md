@@ -78,7 +78,7 @@ The catalog is usable only when its `source` and `reader` equal the record’s.
 | Catalog | Row | Result | `verified_by` | `verified_at` |
 | --- | --- | --- | --- | --- |
 | usable, any age | `updated_at` newer than the record’s `pull.updated_at` | `stale`: changed on GitHub; `head_moved` when the row’s `head_oid` differs from the record’s head | `fetch` | the record’s `fetched_at` |
-| usable, scan within the window | not newer, and no pending checks | `current` | `catalog` | the newer of the scan’s `fetched_at` and the record’s |
+| usable, scan within the window or the next one running | not newer, and no pending checks | `current` | `catalog` | the newer of the scan’s `fetched_at` and the record’s |
 | otherwise | — | the 60-second clock, as before | `fetch` | the record’s `fetched_at` |
 
 A record written with no store stays stale on a server that has one, as before.
@@ -134,10 +134,10 @@ Nothing on the server starts background work by itself.
 
 | Tier | What | Asked by | Due when | Budget | Core points each |
 | --- | --- | --- | --- | --- | --- |
-| T0 | Catalog delta scan | Pulls panel and PR page on start, show, visibility, focus, online, page show, and at `fetched_at` + 60 s | the window passed | one per window: at most 60 an hour | 1 account check, plus 1 GraphQL point per page |
+| T0 | Catalog delta scan | the Pulls panel on start, show, visibility, focus, online, page show, and at `fetched_at` + 60 s; a PR page whose record the catalog vouched for, when that check is a window old, before it reads | the window passed | one per window: at most 60 an hour | 1 account check, plus 1 GraphQL point per page |
 | T1 | Changed records this server recently served | the panel, after a scan publishes | catalog says changed | shares T2’s caps | at most 8 |
 | T2 | The anchored row, its J/K neighbours, the top open PRs, the visible rows | the panel, after a walk settles | missing, or changed | 8 per catalog revision, 40 an hour, T1 and T2 together | at most 8 |
-| T3 | Changed-files lists of the selected and T2 pull requests | the panel and PR page | missing, incomplete, or head or base moved | 20 an hour | 1 account check, then a page and an account check per page: 3 for one page |
+| T3 | Changed-files lists of the selected row and its neighbours | the panel, with T1 and T2 | missing, incomplete, or head or base moved | 20 an hour | 1 account check, then a page and an account check per page: 3 for one page |
 | T4 | Changes | the existing idle prefetch only | — | — | — |
 | T5 | Pending checks | the visible PR page | the record’s own window | foreground: visible page only | at most 8 |
 
@@ -167,11 +167,14 @@ when the files route would start an automatic refresh.
 An item another process has refreshed meanwhile is no longer due, because the record and
 the list on disk are what is read.
 
-The lane stops, dropping the rest of its queue, when the governor refuses, a cap is
-reached, or a reader’s pull-request job of the repository is queued or running.
-The page asks again later.
+The lane stops, dropping the rest of its queue, when the governor refuses or a cap is
+reached. The page asks again later.
 A job is started under the item’s ordinary key, so a reader’s request for the same pull
-request joins it.
+request joins it. The lane does not stop for a reader’s work, since it cannot delay it:
+its record jobs wait at the store turn behind a reader’s and are cancelled when one
+starts waiting, and no background job holds a network slot.
+(Stopping instead dropped every prefetch a reader’s landing asked for, because the
+page’s own refresh of the row was running.)
 
 `GET /api/plugin/github/pulls-prefetch` reports the lane from memory: the running item,
 the queue, the caps and their use (`scan`, the catalog revision the per-scan count
@@ -181,9 +184,9 @@ as its `status_route`, or `200` with `"not_due"` (nothing named) or `"deferred"`
 `reason`, `below_floor` or `rate_hold`, when the governor admits nothing.
 An item the lane does not run says why in the report: `skipped:current`,
 `skipped:unverified`, `skipped:not_cached`, or `skipped:not_due`, or the stop,
-`deferred:` and one of `below_floor`, `rate_hold`, `hourly_cap`, `scan_cap`, or
-`foreground_busy`; one a reader preempted is `preempted`. A one-shot `--api` waits for
-the lane and prints that report.
+`deferred:` and one of `below_floor`, `rate_hold`, `hourly_cap`, or `scan_cap`; one a
+reader preempted is `preempted`. A one-shot `--api` waits for the lane and prints that
+report.
 
 ### The Rate-Limit Governor
 
@@ -244,7 +247,10 @@ GitHub’s account-wide `remaining`, so several servers stop together.
 
 - `GET pulls`: each row adds `head_oid`.
 - `GET pull`: adds `verified_at`, `verified_by` (`catalog`, `fetch`, or `null` with no
-  record), `head_moved`, and `checks_pending`. All four are in its entity tag.
+  record), `head_moved`, and `checks_pending`. The entity tag covers `head_moved`,
+  `checks_pending`, and `state` but not `verified_at` or `verified_by`, which move with
+  every scan: `x-metabrowser-verified: <verified_by> <verified_at>` carries them on a
+  `200` and a `304` alike, so a polled page is not sent its record again each window.
 - `GET pull-files` and its refresh answer: `head` is set for a GitHub list too, and
   `base_ref` is added.
 - New `POST` and `GET pulls-prefetch`, as above, with a parity row and goldens.
@@ -258,10 +264,15 @@ One phase, one pull request, in this order:
 2. Server: catalog `head_oid`; the record verdict and its envelope fields; the files
    head check; the governor; the background lane, store-turn priority, preemption, and
    promotion; their unit tests and `--api` goldens, measured against the fake `gh`.
-3. Browser, on top of the presentation pull request: T0 on the PR page, T2 and T3 from
-   the Pulls panel and the PR page, the list revalidated on show, visibility, focus,
-   online, and at the window, T5 through the existing staleness re-ask, “Checked” and
-   “Fetched” ages, and the head-moved notice on Changes; browserless sessions.
+3. Browser, on top of the presentation pull request: T0 on the PR page, T1 to T3 from
+   the Pulls panel after each scan and each landing, the list revalidated on show,
+   visibility, focus, online, and at the window as before, T5 through the existing
+   staleness re-ask, “Checked” and “Fetched” ages, and the head-moved notice on Changes;
+   a browserless behavior session.
+
+The PR page sends no prefetch of its own: the request replaces the lane’s queue, so it
+would drop the panel’s, and the changed-files list it would warm is the tree under the
+panel’s row, which the panel already names.
 
 ## Testing Strategy
 
@@ -294,6 +305,7 @@ Filled in as each budget lands, beside its constant.
 | Files list from GitHub | 1 account check, then a page and an account check per page | `cli-github-pull-files-refresh.txt` |
 | `catalog_member` on every `GET pull` | median 1.09 ms, at most 1.94 ms (200 runs, load 23) | the fixture’s 102-row catalog |
 | A reader’s refresh behind a running prefetch | 0.46–0.47 s, against 0.63–0.72 s alone (4 runs); 4.61–4.71 s without preemption (3 runs) | `test_a_readers_refresh_is_never_queued_behind_a_prefetch`, 2 s per prefetch request, load 16–23 |
+| A polled page’s bytes a minute, one scan a minute | none (two 304s, the verdict in `x-metabrowser-verified`), against 3,836 with the verdict’s time in the entity tag | `test_a_catalog_scan_does_not_send_a_polled_record_again`, pull request 8’s 3,834-byte envelope; `served_pull.py` measures a 295 KB record (pallets/click#3030) |
 
 ## Risks
 
@@ -303,8 +315,6 @@ Filled in as each budget lands, beside its constant.
 - The rate budget is shared with other clients; the floor keeps a reserve, and holds
   stop everything.
 - Cancelling a background job wastes up to one refresh’s requests.
-- `verified_at` changes with every scan, so a polled page receives its record again
-  about once a window instead of `304`; the browser phase measures that parse cost.
 
 ## References
 

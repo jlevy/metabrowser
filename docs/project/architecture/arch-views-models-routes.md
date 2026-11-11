@@ -228,13 +228,16 @@ yet, and a refresh is running), `current`, or `stale`, plus the pin and the ref 
 from (`pin_ref`), `refreshing`, how its last refresh ended (`last_refresh`), and
 `comparison_route`, the `github/pull-comparison` of the record’s merge-base endpoints.
 The record is checked against the catalog’s row of its number, by the same source and
-reader: it is `current` while a scan within the window has not seen it change, and
-`stale` when the row is newer, with `head_moved` when the row names another head;
-otherwise the one-minute window decides.
+reader: it is `current` while a scan within the window, or the next one still running,
+has not seen it change, and `stale` when the row is newer, with `head_moved` when the
+row names another head; otherwise the one-minute window decides.
 `verified_at` is the newest moment it was known to describe GitHub’s pull request and
 `verified_by` says how (`catalog` or `fetch`); `checks_pending` says its checks,
 statuses, or mergeability are still settling, which keeps it on its own fetch age.
 `cli-github-pulls-prefetch.txt` pins each verdict.
+The entity tag leaves out `verified_at` and `verified_by`, which move with every scan;
+`x-metabrowser-verified: <verified_by> <verified_at>` carries them on a `200` and a
+`304` alike.
 That route names a cached pull request and requires two full commit IDs with
 `merge_base`, then forwards to the diff comparison implementation with the PR’s prepared
 manifest. It acquires nothing; its build and store parameters identify the same answer
@@ -583,16 +586,16 @@ with `prefetch: "started"` or `"joined"` and `github/pulls-prefetch` as its
 background work. The lane runs one item at a time and reads each again before it runs: a
 record that is missing (named only) or that the catalog says changed, and a files list
 the files route would refresh automatically.
-It stops at the governor, at 8 record refreshes per catalog revision or 40 an hour, at
-20 GitHub file lists an hour, or when a reader’s pull-request job of the repository is
-queued or running. `GET github/pulls-prefetch` reports the lane from server memory:
-`running`, `queued`, the `records` and `files` caps with their use, the `governor`
-(`floor`, `admits`, `reason`, `held_until`, and each resource `observed` from GitHub’s
-rate-limit headers), and the outcomes of the last 16 items (`recent`). A background job
-takes no network slot, waits at a store turn behind every other job and is cancelled
-when one starts waiting, and a reader’s request for its pull request joins and promotes
-it. `cli-github-pulls-prefetch.txt` pins a run that refreshes, skips, and defers, with
-the `gh` calls each made.
+It stops at the governor, at 8 record refreshes per catalog revision or 40 an hour, or
+at 20 GitHub file lists an hour, and never for a reader’s work, which it cannot delay.
+`GET github/pulls-prefetch` reports the lane from server memory: `running`, `queued`,
+the `records` and `files` caps with their use, the `governor` (`floor`, `admits`,
+`reason`, `held_until`, and each resource `observed` from GitHub’s rate-limit headers),
+and the outcomes of the last 16 items (`recent`). A background job takes no network
+slot, waits at a store turn behind every other job and is cancelled when one starts
+waiting, and a reader’s request for its pull request joins and promotes it.
+`cli-github-pulls-prefetch.txt` pins a run that refreshes, skips, and defers, with the
+`gh` calls each made.
 See
 [Background prefetch](arch-repository-sources-and-provider-mirrors.md#background-prefetch-and-the-rate-limit-governor).
 
@@ -866,6 +869,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `github.pulls-tab-host` | interaction | `static/pulls-nav.js#createPullsNav`, `static/pulls-nav.js#tabForAddress`, `static/pulls-nav.js#pullAddress`, `static/pulls-nav.js#registerKeys` | `local-only` | `node tests/dom/pulls-nav-session.js` | `cli-ui-pulls-nav.tryscript.md` |
 | `github.pulls-panel` | interaction | `builtin_plugins/github/pulls-panel.js#describePulls`, `builtin_plugins/github/pulls-panel.js#describeRow`, `builtin_plugins/github/pulls-panel.js#refreshFailure`, `builtin_plugins/github/pulls-panel.js#createPullsController`, `builtin_plugins/github/pull-state.js#displayState` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-refresh`, `/api/plugin/github/pull` | `node tests/dom/github-pulls-panel-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.pulls-watch` | interaction | `builtin_plugins/github/pulls-panel.js#createPullsController` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-refresh` | `node tests/dom/github-pulls-catalog-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
+| `github.background-freshness` | interaction | `builtin_plugins/github/pulls-panel.js#createPullsController`, `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-prefetch`, `/api/plugin/github/pulls-refresh`, `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pulls-prefetch-behavior.js` | `cli-ui-github-pulls-prefetch.tryscript.md` |
 | `github.visible-core-window` | interaction | `builtin_plugins/github/pulls-panel.js#mountPullsPanel` | `/api/plugin/github/pulls`, `/api/plugin/github/pull-cores-prepare`, `/api/plugin/github/pull` | `node tests/dom/github-pulls-viewport-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.pulls-file-selection` | interaction | `builtin_plugins/github/pulls-panel.js#mountPullsPanel` | `/api/plugin/github/pulls`, `/api/plugin/github/pull-files` | `node tests/dom/github-pulls-file-selection-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.native-stack-ui` | interaction | `builtin_plugins/github/pull-stacks.js#createStackController`, `builtin_plugins/github/pull-stacks.js#createStackIndex`, `builtin_plugins/github/pull-stacks.js#stackMembership`, `builtin_plugins/github/pull-stacks.js#memberRoute` | `/api/plugin/github/stacks`, `/api/plugin/github/stacks-refresh` | `node tests/dom/github-pull-stacks-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |

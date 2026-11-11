@@ -421,7 +421,16 @@ repository above and about 7 s on `pallets/click`, and one already cached about 
 The page shows when GitHub CLI fetched the record, for example
 `Fetched 3 min ago via GitHub CLI`. A description preview reports when GitHub CLI
 fetched the description while discussion and checks load.
-A record is current for a minute.
+A record is current for a minute, and for as long after that as the repository’s list of
+pull requests, which Metabrowser rescans about once a minute while its Pulls tab or the
+page is visible, says GitHub has not changed it: the page then says
+`Checked just now · fetched 3 h ago via GitHub CLI`. Checks that are still running, and
+a mergeability GitHub is still working out, keep the record on its own fetch age, so it
+is read again each minute until they settle.
+The Pulls tab also asks Metabrowser to read, behind you and within hourly limits, the
+pull requests you are likely to open next: the rows around the one you opened and the
+top of the list, when they are missing or changed, and their changed files.
+It stops while less than a quarter of your GitHub rate limit remains.
 A managed PR URL refreshes a stale record when the server starts.
 A visible stale PR page refreshes it too: at once when you clicked its row, after a
 short pause when you reached it by a key or an address, and again each time it goes
@@ -438,6 +447,8 @@ A managed source’s row at the foot of the navigation pane separately reports w
 Git store was fetched and can refresh it.
 
 A refresh does not select a newer comparison for you.
+When the list of pull requests shows the head moved, **Changes** says
+`New commits were pushed; updating.` over the diff it keeps.
 When the PR head advances, the conversation and checks update while the displayed diff
 stays on its original commits.
 Choose **Show the newer changes** to move the diff.

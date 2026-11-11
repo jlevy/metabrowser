@@ -50,6 +50,11 @@ const PULLS_ROUTE = "/api/plugin/github/pulls";
 const REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
 const PULL_ROUTE = "/api/plugin/github/pull";
 const CORE_PREPARE_ROUTE = "/api/plugin/github/pull-cores-prepare";
+const PREFETCH_ROUTE = "/api/plugin/github/pulls-prefetch";
+// The list's first rows a prefetch names beside the anchored row's neighbours: the top open
+// pull requests a reader most often opens next. With the two neighbours that is seven, under
+// the server's eight record refreshes a scan, so one scan's changes do not crowd them out.
+export const PREFETCH_TOP_ROWS = 5;
 // Existing measured GraphQL transport bound (exp-048); queues cover the whole viewport/catalog.
 const CORE_BATCH_SIZE = 8;
 const CORE_CONTROL_TIMEOUT_MS = 2000;
@@ -665,6 +670,11 @@ export function createPullsController(deps, options = {}) {
   // Counts describe the repository, so switching filters keeps the last accepted tallies.
   /** @type {PullFilterTotals | null} */
   let filterTotals = null;
+  // Background prefetch (`PREFETCH_ROUTE`): the scan it last asked after, by the list's
+  // `fetched_at`, and whether a request is on its way, which a second ask then skips.
+  /** @type {string | null} */
+  let prefetchedScan = null;
+  let prefetching = false;
 
   /** @returns {HeldList} */
   function held() {
@@ -1601,6 +1611,7 @@ export function createPullsController(deps, options = {}) {
     }
     scheduleNext();
     askIfDue();
+    prefetchAfterScan();
     if (
       warmPaused &&
       list.envelope !== null &&
@@ -1740,6 +1751,65 @@ export function createPullsController(deps, options = {}) {
       if (warming) {
         queueCores();
       }
+    }
+  }
+
+  /**
+   * Ask the server to refresh, behind the reader, what they are likely to open next: the
+   * anchored row's neighbours and the top of the list, and the changed files of the open
+   * row and its neighbours. *changed* adds what the server answered most recently that the
+   * scan just found changed. Only while shown, visible, and online; the server reads each
+   * again, admits what is due within its caps, and waits behind any reader's work.
+   *
+   * @param {boolean} changed
+   * @returns {boolean} Whether a request was sent.
+   */
+  function prefetch(changed) {
+    const list = held();
+    if (
+      !live() ||
+      !online() ||
+      prefetching ||
+      list.envelope === null ||
+      list.envelope.reason === "not_github" ||
+      // GitHub refused the list's own refresh, and would refuse the prefetch too.
+      (list.envelope.last_refresh !== null && list.envelope.last_refresh.outcome !== "succeeded") ||
+      list.rows.length === 0
+    ) {
+      return false;
+    }
+    const at = anchor === null ? -1 : (list.keys.get(anchor) ?? -1);
+    const near = [at - 1, at + 1]
+      .filter((index) => index >= 0 && index < list.rows.length)
+      .map((index) => list.rows[index].number);
+    const top = list.rows.slice(0, PREFETCH_TOP_ROWS).map((row) => row.number);
+    // The open row's record is the page's own refresh; its files are the tree under its row.
+    const records = [...new Set([...near, ...top])].filter((number) => number !== current);
+    const files = [...new Set([...(current === null ? [] : [current]), ...near])];
+    prefetching = true;
+    void deps
+      .request("POST", PREFETCH_ROUTE, { body: { records, files, changed } })
+      .catch(() => null)
+      .finally(() => {
+        prefetching = false;
+      });
+    return true;
+  }
+
+  /** After a scan the server finished, once per scan: ask for what it found changed. */
+  function prefetchAfterScan() {
+    const envelope = held().envelope;
+    if (
+      envelope === null ||
+      envelope.state !== "current" ||
+      envelope.refreshing ||
+      envelope.fetched_at === null ||
+      envelope.fetched_at === prefetchedScan
+    ) {
+      return;
+    }
+    if (prefetch(true)) {
+      prefetchedScan = envelope.fetched_at;
     }
   }
 
@@ -2013,6 +2083,8 @@ export function createPullsController(deps, options = {}) {
     // held past it would otherwise fetch the row the walk left long ago.
     const walking = () => !disposed && walkingTo !== null;
     deps.open({ number, tab: "", replace, reader: { fetchAfterMs, initial, walking } });
+    // A row opens once the reader stops on it, a walk included, so its neighbours are next.
+    prefetch(false);
   }
 
   function cancelReads() {

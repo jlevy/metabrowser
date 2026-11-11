@@ -988,11 +988,6 @@ class MirrorSession:
         pulls = self.pull_requests
         return pulls is not None and self._coordinator.running(pulls.key(number))
 
-    def pull_jobs_busy(self) -> bool:
-        """Whether a reader's pull-request job is queued or running, with no read."""
-
-        return any(self._coordinator.running(job) for job in self._pull_jobs)
-
     async def _pull_job(self, number: int) -> None:
         pulls = self.pull_requests
         assert pulls is not None

@@ -48,6 +48,7 @@ for (const envelope of Object.values(filesRecorded)) {
   envelope.rows = envelope.rows.map((row) => JSON.parse(row));
 }
 const pagePath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pull-page.js");
+const PREFETCH_ROUTE = "/api/plugin/github/pulls-prefetch";
 // What the server answers of a record, for a page a reader's selection opens.
 const pageRecorded = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-responses.json"), "utf8"),
@@ -122,6 +123,11 @@ function createPage() {
       const etag = options.etag ? ` if-none-match ${options.etag}` : "";
       const line = `${method} ${route}${body}${etag}`;
       log.push(line);
+      if (route === PREFETCH_ROUTE) {
+        // Background work the server admits on its own terms; the panel reads nothing from
+        // the answer, so the session answers at once and only the request counts.
+        return Promise.resolve({ status: 202, etag: null, body: { prefetch: "started" } });
+      }
       return new Promise((resolve, reject) => {
         const request = { route, method, etag: options.etag, resolve, reject };
         waiting.push(request);
@@ -807,9 +813,15 @@ async function paintStory(panel, selection = false) {
             headers: { get: () => optionalStacks.missing.etag },
             json: async () => optionalStacks.missing.body,
           })
-        : new Promise((resolve) => {
-            answers.push({ route, init, resolve });
-          }),
+        : route === PREFETCH_ROUTE
+          ? Promise.resolve({
+              status: 202,
+              headers: { get: () => null },
+              json: async () => ({ prefetch: "started" }),
+            })
+          : new Promise((resolve) => {
+              answers.push({ route, init, resolve });
+            }),
   };
   for (const [name, value] of Object.entries(globals)) {
     saved[name] = Object.getOwnPropertyDescriptor(globalThis, name);
