@@ -1295,8 +1295,10 @@ What it adds to this brief:
   A cookie ignores the port and `SameSite` treats two ports on one host as the same
   site, so a page can send it to every server on `127.0.0.1`. A separate web data store
   does not help, because it belongs to the requesting page.
-  The later brief has host mode give every client, the app’s web views included, a
-  credential bound to its origin rather than a host-wide cookie.
+  Nor does a host name per server, since a host-only cookie still goes to every port on
+  that host. The later brief has host mode give every client, the app’s web views
+  included, a token in the `Authorization` header that it sends only to its own origin,
+  in place of any cookie.
 
 ## References
 

@@ -271,8 +271,9 @@ private call), plus Apple documentation and Apple DTS forum posts.
   A per-server name, by port or boot id, only keeps two servers’ cookies from colliding.
   It isolates nothing, and `HttpOnly` hides a cookie from scripts, not from the server
   it is sent to. A separate jar does not isolate a token either, because a jar belongs to
-  the page that sends a request, not to the server that receives it; see Tokens across
-  ports under Where This Breaks.
+  the page that sends a request, not to the server that receives it, and nor does a host
+  name per server, because a host-only cookie still goes to every port on that host; see
+  Tokens across ports under Where This Breaks.
 - **Window tabs are free.** With `tabbingMode` automatic and one shared
   `tabbingIdentifier`, macOS supplies the tab bar, Merge All Windows, Move Tab to New
   Window, tab dragging, and the system “prefer tabs” setting.
@@ -500,8 +501,8 @@ extended).
   OS chooses), a JSON ready line after bind, a token on stdin, exit on stdin EOF,
   `--idle-exit`, and the control verbs only (identity, present, clients, close) on an
   owner-only Unix socket, whose path must fit macOS’s 104-byte limit.
-  Content routes stay on loopback behind a page credential bound to its origin in every
-  client, the app’s web views included (see Tokens across ports under Where This
+  Content routes stay on loopback behind a header token that every client, the app’s web
+  views included, sends only to its own origin (see Tokens across ports under Where This
   Breaks).
 - **Routes:** identity and health; `present`, which pushes a `navigate` event to the
   most recently visible of the root’s connected pages; `clients`; and `close`.
@@ -555,10 +556,11 @@ than replaced. A persisted index follows if re-walks remain common.
 3. After Phase 1, `--present` returns in under 1 s when the root is live, which requires
    the client mode not to import the server (`metab --version` alone took 0.36–0.52 s
    here), and no CLI-started server outlives its idle timeout.
-4. After Phase 1, a page from one server that loads a subresource from, is redirected
-   to, or navigates to another server’s port sends none of the first server’s
-   credentials there, as a listener on that port records, in the app’s `WKWebView`,
-   Safari, and Chrome.
+4. After Phase 1, a page from one server sends none of its credentials to any other
+   port, in the app’s `WKWebView`, Safari, and Chrome.
+   The check covers a subresource, a redirect, a navigation, and a `fetch`, each both to
+   the page’s own host name on another port and to a sibling host name, and a listener
+   that records request headers whatever `Host` it receives.
 5. After Phase 3’s first step, a cold root paints in under 300 ms.
 
 ### CLI Parity
@@ -589,8 +591,8 @@ it.
    the app if needed. The app queues the request until its runtime is ready, finds the
    root’s live server (attaching to one it does not own, and showing its owner) or
    starts one as its own child (so privacy prompts name the app, with a stable
-   identity), presents the target with only that server’s origin-bound credential,
-   fronts its tab, and replies with the root, URL, owner, and where it was delivered.
+   identity), presents the target with only that server’s header token, fronts its tab,
+   and replies with the root, URL, owner, and where it was delivered.
    A root that already has a live server, the app’s own or one it attaches to, needs no
    confirmation; for any other root the app starts a server only after the user confirms
    that root in the app, and otherwise replies that the user declined.
@@ -601,8 +603,7 @@ it.
 5. **Nothing running, no app:** `metab` starts a server detached in its own session with
    an idle exit (charged to the agent’s host, so privacy prompts may recur), waits for
    the ready line, opens the browser through a one-time login URL that hands the page
-   its origin-bound credential (see Tokens across ports), prints the plain URL, and
-   exits.
+   its header token (see Tokens across ports), prints the plain URL, and exits.
 6. **Blocked:** with the app installed, `metab` prints a `metabrowser://` link that
    opens a registered root directly and a new root only after an in-app confirmation;
    without the app, it prints the command for the user to run outside the sandbox.
@@ -634,7 +635,9 @@ one command that opens the native app whenever it is installed, but that command
   its jar makes to that host, whatever the port, so a page can send it to any listener
   there, Metabrowser or not, including a sibling server serving untrusted content; and a
   page on any of those ports can set a cookie the others receive.
-  Neither a per-server cookie name nor a separate data store changes that.
+  No cookie name, data store, or host name changes that: a host-only cookie for
+  `root-a.localhost` still goes to `root-a.localhost` on every port, because host-only
+  matching excludes other host names, not other ports (RFC 6265 §§5.4 and 8.5).
   - **A data store belongs to the requesting web view.** A page from port 8411 that
     loads an image from port 8412, or is redirected there, sends its own store’s cookies
     with that request, whatever store the app gives 8412’s windows; a top-level
@@ -643,18 +646,23 @@ one command that opens the native app whenever it is installed, but that command
     render’s HTML directly (`builtin_plugins/markdown/place-rendered.js`), so one image
     in a browsed document is enough.
     A policy would narrow this without closing it, since none governs navigations.
-  - **So every client’s credential, the app’s web views included, is bound to its
-    origin.** The candidates are a distinct loopback host name per server with host-only
-    cookies, so a cookie goes only to its own host whichever store sends it (each engine
-    must resolve such names to loopback, the Host allowlist must admit them, and a probe
-    must show that a sibling cannot set a cookie for a parent domain they share), or a
-    non-cookie token sent in a request header.
-    That token is held in origin-scoped storage (`sessionStorage` is keyed by scheme,
-    host, and port), or in the app handed only to a frame whose security origin matches
-    (`WKFrameInfo.securityOrigin`). Neither a navigation nor `EventSource` can send such
-    a header, so that candidate needs another gate for the first page load and the event
-    stream. Host mode chooses one before it issues tokens, and falsifiable claim 4 is its
-    check.
+  - **So no client’s credential is a cookie, the app’s web views included.** It is a
+    token in the `Authorization` header, which the client sends only to its own origin.
+    The page holds it in origin-scoped storage (`sessionStorage` is keyed by scheme,
+    host, and port), or the app hands it only to a frame whose security origin matches
+    (`WKFrameInfo.securityOrigin`). Neither choice limits where a request goes, so one
+    shell helper adds the header, only to a request whose URL has the page’s own origin,
+    and sends it with redirects refused (`redirect: "error"`), relying on no engine’s
+    redirect handling. The header is `Authorization` rather than a custom one because
+    Fetch also drops `Authorization`, and no arbitrary custom header, on a cross-origin
+    redirect.
+  - **Subresources, navigations, and `EventSource` carry no header,** so they carry no
+    credential, and what they load must need none.
+    The first page load and the event stream still need their own gate, such as a shell
+    that carries no root data and fetches it with the header, at the cost of the up to
+    200 root rows `/view/` inlines today, and an event stream read through a streamed
+    `fetch`. Host mode settles both before it issues tokens, and falsifiable claim 4 is
+    its check.
   - **A data store per trust profile is still worth having** to keep preferences and
     storage apart, but it is not the credential boundary.
 - **A browser cannot be fronted:** `present` can navigate a hidden browser tab; only the

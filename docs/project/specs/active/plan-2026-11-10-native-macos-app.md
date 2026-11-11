@@ -269,10 +269,12 @@ confirms that root in the app.
 
 - [ ] Host mode: a ready line after bind, sticky ports, a stdin token, stdin-EOF exit,
   and idle exit (`mb-qzny`), generalizing the VS Code host design (`mb-x4y5`). No
-  client’s credential, the app’s web views included, is a host-wide cookie, since a page
-  can send one to every port on the host whichever data store it uses.
-  Host mode picks an origin-bound credential from the topology brief’s candidates
-  (Tokens across ports) and passes the cross-port check under Testing Strategy.
+  client’s credential, the app’s web views included, is a cookie, since a page can send
+  a cookie to every port on its host whatever its data store or host name.
+  The credential is a token in the `Authorization` header that one shell helper adds
+  only to requests for the page’s own origin, with redirects refused; host mode also
+  gates the first page load and the event stream (the topology brief’s Tokens across
+  ports) and passes the cross-port check under Testing Strategy.
 - [ ] The live-server registry with a per-root find-or-start lock (`mb-5xi4`).
 - [ ] Control verbs on an owner-only socket: identity, present, clients, close
   (`mb-1zyp`).
@@ -341,10 +343,11 @@ The two standard setup flows come first; see the
 - **Core:** unit tests for identity derivation; golden transcripts through `metab --api`
   for every new route; browserless golden sessions for page behavior such as following
   `navigate`; `devtools/check_parity.py` for parity rows.
-- **Credentials:** a page from one server that loads a subresource from, is redirected
-  to, or navigates to another server’s port sends none of its server’s credentials
-  there, as a listener on that port records, in the app’s `WKWebView`, Safari, and
-  Chrome.
+- **Credentials:** a page from one server sends none of its credentials to any other
+  port, in the app’s `WKWebView`, Safari, and Chrome.
+  The check covers a subresource, a redirect, a navigation, and a `fetch`, each both to
+  the page’s own host name on another port and to a sibling host name, and a listener
+  that records request headers whatever `Host` it receives.
 - **Shell:** `ShellCore` unit tests for every model and policy (titles, warm budgets,
   restore order), live tests against a real `metab`, and fresh-launch runs: a first
   launch with settings cleared, a second folder through `open -a`, reopening a folder,
