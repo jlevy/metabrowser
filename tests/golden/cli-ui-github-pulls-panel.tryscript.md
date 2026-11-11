@@ -21,11 +21,14 @@ A changed generation stages the displayed range in bounded cache pages and accep
 only when every page has the same source, reader, and generation.
 Changing filters or hiding the panel aborts presentation reads, with late responses
 unable to replace the next request’s ownership.
-One connection row shows progress or recovery, with a Reload action.
-A failed refresh keeps cached rows.
+One connection row shows progress while no rows are shown, and otherwise the rows’ age,
+breathing while a refresh runs, or recovery, with a Reload action; nothing spins over
+rows. A failed refresh keeps cached rows.
 
 Holding a key changes two row marks per step and reads no detail until the walk stops.
 Opening a PR can reuse the one cache-only record read made by a click, focus, or hover.
+A row whose record is stale opens painted refreshing and refreshes it at once for a
+click, after a wait for a key, and not until a held key is let go.
 The production row mount keeps current and focused rows, text-only titles, absolute
 accessibility positions, and bounded retained changed-file trees.
 A variable-height spacer window bounds mounted rows as the displayed list grows.
@@ -136,7 +139,9 @@ $ node tests/dom/github-pulls-panel-session.js
     },
     {
       "step": "cached windows fill only the display budget",
-      "requests": [],
+      "requests": [
+        "POST /api/plugin/github/pulls-prefetch {\"records\":[105,106,104,103,102],\"files\":[105],\"changed\":true}"
+      ],
       "timer": "slow",
       "painted": 1,
       "paint": {
@@ -233,7 +238,8 @@ $ node tests/dom/github-pulls-panel-session.js
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5801",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5701",
         "GET /api/plugin/github/pulls?state=closed&limit=100&after=5601",
-        "POST /api/plugin/github/pulls-refresh {\"state\":\"closed\",\"target\":500,\"background\":true}"
+        "POST /api/plugin/github/pulls-refresh {\"state\":\"closed\",\"target\":500,\"background\":true}",
+        "POST /api/plugin/github/pulls-prefetch {\"records\":[5999,6000,5998,5997,5996],\"files\":[5999],\"changed\":true}"
       ],
       "timer": "slow",
       "marks": [
@@ -247,12 +253,13 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "1,000 PRs on octo/demo",
         "window": "Showing last 500",
         "connection": {
-          "state": "working",
-          "text": "Fetching pull requests…",
-          "reload": false
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": false,
+          "refreshing": true
         },
         "loadMore": "ready",
-        "live": "Fetching pull requests…",
+        "live": "Pull requests of octo/demo: 1,000 pull requests",
         "rowsHeld": 500,
         "rows": [
           "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
@@ -277,12 +284,13 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "6,000 PRs on octo/demo",
         "window": "Showing last 500",
         "connection": {
-          "state": "working",
-          "text": "Fetching pull requests…",
-          "reload": false
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": false,
+          "refreshing": true
         },
         "loadMore": "ready",
-        "live": "Fetching pull requests…",
+        "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 500,
         "rows": [
           "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
@@ -311,12 +319,13 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "6,000 PRs on octo/demo",
         "window": "Showing last 1,000",
         "connection": {
-          "state": "working",
-          "text": "Fetching pull requests…",
-          "reload": false
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": false,
+          "refreshing": true
         },
         "loadMore": "ready",
-        "live": "Fetching pull requests…",
+        "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 1000,
         "rows": [
           "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
@@ -350,12 +359,13 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "6,001 PRs on octo/demo",
         "window": "Showing last 1,000",
         "connection": {
-          "state": "working",
-          "text": "Fetching pull requests…",
-          "reload": false
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": false,
+          "refreshing": true
         },
         "loadMore": "ready",
-        "live": "Fetching pull requests…",
+        "live": "Pull requests of octo/demo: 6,001 pull requests",
         "rowsHeld": 1000,
         "rows": [
           "[Closed] Work item 6001 | #6001 · contributor · topic ← work-6001 | /pull/6001",
@@ -375,7 +385,8 @@ $ node tests/dom/github-pulls-panel-session.js
     {
       "step": "one press opens with its cached record",
       "requests": [
-        "GET /api/plugin/github/pull?number=105"
+        "GET /api/plugin/github/pull?number=105",
+        "POST /api/plugin/github/pulls-prefetch {\"records\":[106,104,103,102],\"files\":[105,106,104],\"changed\":false}"
       ],
       "timer": "slow",
       "marks": [
@@ -410,7 +421,9 @@ $ node tests/dom/github-pulls-panel-session.js
     },
     {
       "step": "the row it stopped on opens",
-      "requests": [],
+      "requests": [
+        "POST /api/plugin/github/pulls-prefetch {\"records\":[66,64,106,105,104,103,102],\"files\":[65,66,64],\"changed\":false}"
+      ],
       "timer": "slow",
       "opened": [
         {
@@ -443,7 +456,8 @@ $ node tests/dom/github-pulls-panel-session.js
     {
       "step": "a repeated hover and click reuse one cached record",
       "requests": [
-        "GET /api/plugin/github/pull?number=80"
+        "GET /api/plugin/github/pull?number=80",
+        "POST /api/plugin/github/pulls-prefetch {\"records\":[81,79,106,105,104,103,102],\"files\":[80,81,79],\"changed\":false}"
       ],
       "timer": "slow",
       "marks": [
@@ -637,11 +651,13 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "after": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       }
     },
     {
@@ -656,11 +672,13 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "after": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       }
     },
     {
@@ -675,11 +693,13 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "after": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       }
     },
     {
@@ -693,17 +713,20 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "after": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "once let go": {
         "asked": [
           "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"wait_core\":true}"
         ],
-        "message": "Fetching the pull request…"
+        "message": "Fetching the pull request…",
+        "revalidating": false
       }
     },
     {
@@ -718,11 +741,13 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "after": {
         "message": "The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
-        "canRefresh": true
+        "canRefresh": true,
+        "revalidating": false
       }
     },
     {
@@ -735,11 +760,82 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": null,
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "after": {
         "message": null,
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
+      }
+    },
+    {
+      "name": "a click on a row whose record is stale refreshes it at once",
+      "asked": [
+        "GET /api/plugin/github/pull?number=7",
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "waits": [
+        0,
+        30000
+      ],
+      "before": {
+        "message": null,
+        "canRefresh": false,
+        "revalidating": true
+      },
+      "after": {
+        "message": null,
+        "canRefresh": false,
+        "revalidating": true
+      }
+    },
+    {
+      "name": "a key stopping on a stale row refreshes it after the wait",
+      "asked": [
+        "GET /api/plugin/github/pull?number=7",
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "waits": [
+        500,
+        30000
+      ],
+      "before": {
+        "message": null,
+        "canRefresh": false,
+        "revalidating": true
+      },
+      "after": {
+        "message": null,
+        "canRefresh": false,
+        "revalidating": true
+      }
+    },
+    {
+      "name": "a key still held over a stale row refreshes nothing until it is let go",
+      "asked": [
+        "GET /api/plugin/github/pull?number=7"
+      ],
+      "waits": [
+        500,
+        30000
+      ],
+      "before": {
+        "message": null,
+        "canRefresh": false,
+        "revalidating": true
+      },
+      "after": {
+        "message": null,
+        "canRefresh": false,
+        "revalidating": true
+      },
+      "once let go": {
+        "asked": [
+          "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        ],
+        "message": null,
+        "revalidating": true
       }
     }
   ],
@@ -801,7 +897,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "an age, before": "2h",
     "an age, two hours on": "4h",
     "rows built to tell it": 0,
-    "a passive retry keeps the announced outage beside its spinner": "GitHub could not be reached. Showing cached pull requests.",
+    "a passive retry over cached rows breathes the announced outage, with no spinner": "GitHub could not be reached. Showing cached pull requests.",
     "closing twelve expanded trees enforces retention immediately": {
       "whileExpanded": 10,
       "afterClosingAll": 9
@@ -892,11 +988,13 @@ $ node tests/dom/github-pulls-file-selection-session.js
 
 The mounted panel requests preparation for visible rows and releases its window when it
 hides. The session checks that a prepared description keeps its reader and observation
-time.
+time. `titleBreathing` is which rows’ titles breathe: those of an admitted batch GitHub
+is being read for, until a settled receipt, a new window, or going offline ends it; no
+row is marked busy, and `beat` is the one start time the breaths are aligned to.
 
 ```console
 $ node tests/dom/github-pulls-viewport-behavior.js
-{"case":"viewport-height-increase","before":43,"after":113,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000,"oneVisibleFlash":true,"retainedReadingPlace":true}
+{"case":"viewport-height-increase","before":43,"after":113,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000,"oneVisibleFlash":true,"retainedReadingPlace":true,"titleBreathing":{"admitted":{"asked":[407,406,405],"breathing":[407,406,405],"busyRows":0},"settled":[],"moved":{"asked":[311,310,309,308],"breathing":[311,310,309,308]},"offline":[],"beat":[100,100,50,100]}}
 ? 0
 ```
 

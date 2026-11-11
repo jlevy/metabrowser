@@ -736,6 +736,7 @@ status: 200
       "head_ref": "work-106",
       "head_repository": "octo/demo",
       "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     }
   ]

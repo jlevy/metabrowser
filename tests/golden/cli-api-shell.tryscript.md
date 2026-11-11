@@ -555,6 +555,15 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pulls-prefetch",
+      "methods": [
+        "GET",
+        "HEAD",
+        "POST"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pulls-refresh",
       "methods": [
         "POST"
@@ -748,7 +757,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 60
+  "count": 61
 }
 ? 0
 ```

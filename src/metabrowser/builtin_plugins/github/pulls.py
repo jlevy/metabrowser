@@ -437,6 +437,36 @@ def _degrade(exc: PullDataError) -> bool:
     return exc.state in _PART_FAILURES
 
 
+def _conversation_kept(pull: PullRequest, previous: PullRecord | None) -> bool:
+    """Whether *pull* names the head, base, and update time of *previous*'s pull request.
+
+    ``updated_at`` moves with a comment, a review, a review comment, an edit, and a push, so
+    these parts of *previous* are still GitHub's. A base GitHub reports moved takes the
+    full read, which fetches it and computes Files changed again.
+    """
+
+    if previous is None or previous.projection_version < PULL_RECORD_PROJECTION:
+        return False
+    was = previous.pull
+    return (
+        pull.updated_at == was.updated_at
+        and pull.head.sha == was.head.sha
+        and pull.base.sha == was.base.sha
+        and pull.base.ref == was.base.ref
+    )
+
+
+async def _kept_list(
+    previous: PullRecord, name: _ListName, path: str, etags: dict[str, str]
+) -> _ListParts[Any]:
+    """*previous*'s list *name*, unread, with the ETag that keeps the next read conditional."""
+
+    etag = previous.etags.get(_first_page(path))
+    if etag is not None:
+        etags[_first_page(path)] = etag
+    return _ListParts(getattr(previous, name), getattr(previous.truncated, name), True)
+
+
 @dataclass(frozen=True, slots=True)
 class _Unavailable:
     """A part of the pull request that could not be read, and the record stands without."""
@@ -544,12 +574,18 @@ async def _read_api(
     reader: str,
     on_core: Callable[[PullRequest], Awaitable[None]] | None = None,
     observe_reader: Callable[[str], None] | None = None,
+    checks_only: bool = False,
 ) -> PullRecord:
     """Read every part of the pull request into a record with no comparison yet.
 
     *previous* is the cached record by the same reader, whose ETags make each request
     conditional; a ``304`` reuses its part. An ETag names one request path, and the
     check-run and status paths name the head commit, so a moved head asks afresh.
+
+    With *checks_only*, when the pull itself names the head, base, and ``updated_at`` of
+    *previous* (:func:`_conversation_kept`), its comments, reviews, and review comments are
+    *previous*'s, unread: ``updated_at`` covers them, and the catalog said it had not moved.
+    Only the pull, its check runs, and its status are asked for.
     """
 
     # A provider ETag identifies its representation, not the fields our older cache
@@ -585,6 +621,7 @@ async def _read_api(
                 etags[pull_path] = response.etag
 
     head = pull.head.sha
+    kept = previous if checks_only and _conversation_kept(pull, previous) else None
     status_path = _first_page(f"{base}/commits/{head}/status")
     status_etag = previous.etags.get(status_path) if previous is not None else None
 
@@ -638,7 +675,9 @@ async def _read_api(
     # record and a refusal read as they did in sequence.
     part_etags: tuple[dict[str, str], ...] = ({}, {}, {}, {}, {})
     reading_comments = asyncio.ensure_future(
-        _read_list_of(
+        _kept_list(kept, "issue_comments", f"{base}/issues/{number}/comments", part_etags[0])
+        if kept is not None
+        else _read_list_of(
             f"{base}/issues/{number}/comments",
             key=None,
             cap=MAX_ISSUE_COMMENTS,
@@ -649,7 +688,9 @@ async def _read_api(
         )
     )
     reading_reviews = asyncio.ensure_future(
-        _read_list_of(
+        _kept_list(kept, "reviews", f"{base}/pulls/{number}/reviews", part_etags[1])
+        if kept is not None
+        else _read_list_of(
             f"{base}/pulls/{number}/reviews",
             key=None,
             cap=MAX_REVIEWS,
@@ -660,7 +701,9 @@ async def _read_api(
         )
     )
     reading_review_comments = asyncio.ensure_future(
-        _read_list_of(
+        _kept_list(kept, "review_comments", f"{base}/pulls/{number}/comments", part_etags[2])
+        if kept is not None
+        else _read_list_of(
             f"{base}/pulls/{number}/comments",
             key=None,
             cap=MAX_REVIEW_COMMENTS,
@@ -947,6 +990,7 @@ async def _refresh(
     on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
     observe_reader: Callable[[str], None] | None = None,
     published_records: list[PullRecord] | None = None,
+    checks_only: bool = False,
 ) -> PullRecord:
     owner, repo = _owner_and_repo(published)
     # An existing full record always retains the original two-check refresh path.
@@ -972,6 +1016,7 @@ async def _refresh(
             reader=reader,
             on_core=core_ready if progress is not None else None,
             observe_reader=observe_reader,
+            checks_only=checks_only,
         )
         final_login = await active_account()
         if observe_reader is not None:
@@ -988,6 +1033,19 @@ async def _refresh(
             # the newest metadata, and the merge keeps a mirror's comparison that fits it.
             return await _write(published, record)
         pull = record.pull
+        if (
+            checks_only
+            and previous is not None
+            and previous.comparison is not None
+            and _conversation_kept(pull, previous)
+        ):
+            # The head and base are the ones its comparison was computed for, so Files
+            # changed stands and the store needs no fetch.
+            return await _write(
+                published,
+                record.model_copy(update={"comparison": previous.comparison}),
+                expected=cached,
+            )
         try:
             fetched = await fetch_pull_head(
                 published, number, base_branch=pull.base.ref if pull.state == "open" else None
@@ -1065,6 +1123,7 @@ async def refresh_pull_request(
     on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
     observe_reader: Callable[[str], None] | None = None,
     adopt_current: bool = False,
+    checks_only: bool = False,
 ) -> PullRecord:
     """Read pull request *number* of *published* from GitHub and cache it; see the module.
 
@@ -1077,6 +1136,12 @@ async def refresh_pull_request(
     with *adopt_current* it returns that record instead.
     A failure leaves any previous record in place. How it ended is
     kept beside the record either way; see :func:`last_refresh`.
+
+    *checks_only* is for a record the catalog says is GitHub's but whose checks, statuses,
+    and ``mergeable``, which ``updated_at`` does not track, are a window old: while the pull
+    names the cached head, base, and update time, only it, its check runs, and its status
+    are read, and a mirror keeps its comparison (:func:`_read_api`). Otherwise it is the
+    full read.
     """
 
     cached: PullRecord | RecordAbsence = "not_cached"
@@ -1099,6 +1164,7 @@ async def refresh_pull_request(
                 on_core=on_core,
                 observe_reader=observe_reader,
                 published_records=published_records,
+                checks_only=checks_only,
             )
         except GitError as exc:
             raise _git_failure(number, exc) from exc

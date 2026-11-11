@@ -737,6 +737,84 @@ def test_github_list_freshness_stays_with_provider_updates_and_account(
     assert pull_files_envelope(view, window)["state"] == "stale"
 
 
+def test_github_list_names_the_head_it_was_read_for_and_follows_it(
+    tmp_path: Path, home: Path, repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A comment leaves a list current; a push or a retargeted base makes it stale.
+
+    The head is observed before the first page, so a push during the read can only make a
+    list look older than it is. A list or a source that names no head falls back to the
+    provider's ``updated_at``.
+    """
+
+    _answer(tmp_path, monkeypatch, file_pages(TREE_PULL, tree_files()[:2]))
+    observed: list[str] = []
+
+    def known() -> tuple[str | None, str | None]:
+        observed.append("asked")
+        return "c" * 40, "topic"
+
+    listed = asyncio.run(
+        refresh_pull_files(repository, TREE_PULL, local=None, slot=_free, known_head=known)
+    )
+    assert observed == ["asked"]
+    assert (listed.head, listed.base_ref, listed.base) == ("c" * 40, "topic", None)
+    facts = SimpleNamespace(
+        updated_at="2026-09-17T13:00:00Z", record=None, head="c" * 40, base_ref="topic"
+    )
+    monkeypatch.setattr(
+        "metabrowser.builtin_plugins.github.pull_files_route._facts", lambda *_: facts
+    )
+    view, window = FilesView(TREE_PULL, repository, None, False, home), FilesWindow(TREE_PULL)
+    envelope = pull_files_envelope(view, window)
+    # Updated an hour after the read, by a comment, and still current.
+    assert (envelope["state"], envelope["head"], envelope["base_ref"]) == (
+        "current",
+        "c" * 40,
+        "topic",
+    )
+    assert files_refresh_wanted(view, FilesRefreshRequest(TREE_PULL, False))[0] is False
+    facts.head = "d" * 40
+    assert pull_files_envelope(view, window)["state"] == "stale"
+    assert files_refresh_wanted(view, FilesRefreshRequest(TREE_PULL, False))[0] is True
+    facts.head, facts.base_ref = "c" * 40, "main"
+    assert pull_files_envelope(view, window)["state"] == "stale"
+    # A newest source that names no head leaves the provider's update time to decide.
+    facts.head = facts.base_ref = None
+    assert pull_files_envelope(view, window)["state"] == "stale"
+    facts.updated_at = "2026-09-17T11:59:59Z"
+    assert pull_files_envelope(view, window)["state"] == "current"
+
+
+def test_the_newest_of_record_and_row_names_the_head(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_files_route
+
+    record = SimpleNamespace(
+        pull=SimpleNamespace(
+            updated_at="2026-09-17T12:00:00Z",
+            head=SimpleNamespace(sha="a" * 40),
+            base=SimpleNamespace(ref="topic"),
+        )
+    )
+    row = SimpleNamespace(updated_at="2026-09-17T12:00:00Z", head_oid=None, base_ref="topic")
+    monkeypatch.setattr(pull_files_route, "PullRecord", SimpleNamespace)
+    monkeypatch.setattr(pull_files_route, "cached_pull_record", lambda *_: (record, None, None))
+    monkeypatch.setattr(pull_files_route, "cached_list_row", lambda *_: row)
+    # A tie keeps the record, which names its head, unless the row names another
+    # (review A5): a push within the record's second leaves the times equal.
+    assert pull_files_route.known_head(home, SOURCE.slug, 7) == ("a" * 40, "topic")
+    row.head_oid = "a" * 40
+    assert pull_files_route.known_head(home, SOURCE.slug, 7) == ("a" * 40, "topic")
+    row.head_oid = "b" * 40
+    assert pull_files_route.known_head(home, SOURCE.slug, 7) == ("b" * 40, "topic")
+    row.updated_at = "2026-09-17T12:05:00Z"
+    assert pull_files_route.known_head(home, SOURCE.slug, 7) == ("b" * 40, "topic")
+    row.head_oid = None
+    assert pull_files_route.known_head(home, SOURCE.slug, 7) == (None, "topic")
+
+
 # ── Requests ────────────────────────────────────────────────────
 
 

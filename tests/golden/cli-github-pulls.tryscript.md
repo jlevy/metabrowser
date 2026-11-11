@@ -98,6 +98,7 @@ status: 200
       "head_ref": "work-106",
       "head_repository": "octo/demo",
       "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     },
     {
@@ -115,6 +116,7 @@ status: 200
       "head_ref": "work-105",
       "head_repository": "octo/demo",
       "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     }
   ]
@@ -174,6 +176,7 @@ status: 200
       "head_ref": "work-104",
       "head_repository": "octo/demo",
       "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     },
     {
@@ -191,6 +194,7 @@ status: 200
       "head_ref": "work-103",
       "head_repository": "octo/demo",
       "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     }
   ]
@@ -255,6 +259,7 @@ status: 200
       "head_ref": "wip",
       "head_repository": "octo/demo",
       "labels": [],
+      "head_oid": "7a7d6596e515735d244dc1d942463c95851e139c",
       "merged": false
     },
     {
@@ -274,6 +279,7 @@ status: 200
       "labels": [
         "enhancement"
       ],
+      "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "merged": false
     },
     {
@@ -291,6 +297,7 @@ status: 200
       "head_ref": "work-6",
       "head_repository": "octo/demo",
       "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     },
     {
@@ -308,6 +315,7 @@ status: 200
       "head_ref": "work-5",
       "head_repository": "octo/demo",
       "labels": [],
+      "head_oid": "0000000000000000000000000000000000000000",
       "merged": false
     }
   ]
@@ -408,6 +416,7 @@ status: 200
       "head_ref": "wip",
       "head_repository": "octo/demo",
       "labels": [],
+      "head_oid": "7a7d6596e515735d244dc1d942463c95851e139c",
       "merged": false
     },
     {
@@ -427,6 +436,7 @@ status: 200
       "labels": [
         "enhancement"
       ],
+      "head_oid": "85fcb2fa9e77eb5db485ffef445cbbc645d6db4a",
       "merged": false
     }
   ]
@@ -488,6 +498,7 @@ status: 200
       "labels": [
         "invalid"
       ],
+      "head_oid": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
       "merged": false
     },
     {
@@ -505,6 +516,7 @@ status: 200
       "head_ref": "guide-more",
       "head_repository": "octo/demo",
       "labels": [],
+      "head_oid": "8ae27617c9c475851b67ee69433d008836d112ba",
       "merged": true
     }
   ]

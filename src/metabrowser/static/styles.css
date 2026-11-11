@@ -462,6 +462,26 @@
      so revealing it later cannot move ready content. Nothing announces
      loading inside this window; see "Motion" in docs/design-system.md. */
   --loading-state-delay: 50ms;
+  /* Refreshing content: text whose data a background refresh is checking
+     breathes, once a period, after the same quiet period. Primary ink eases
+     to --refreshing-text-dim-opacity and back: 9.2:1 on --bg at its dimmest
+     in light and 9.8:1 in dark. Muted ink cannot dim and keep 4.5:1 (4.62:1
+     at rest in light), so a muted line is drawn in --text at the opacity that
+     reproduces --muted (OKLab difference 0.016 light, 0.011 dark, under a
+     just-noticeable difference) and lifts toward full ink instead. Opacity
+     only, so the compositor runs it. Measured 2026-11-11 in headless Chrome 152
+     with these stylesheets, light and dark alike: no compositing failure, and
+     for 2.7 s after the class went on no style, layout, pre-paint, or paint on
+     the main thread while the compositor drew 165 frames. Starting it is one
+     style recalculation per breathing element: 2.5 ms for 120 (the 111 rows a
+     changed-files tree draws of 3,000 files, 8 Pulls titles, the age line) and
+     51 ms for 3,009 had all 3,000 rows been drawn; 11 layers became 131. With
+     prefers-reduced-motion: reduce, no animation runs. See "Refreshing Content"
+     in docs/design-system.md. */
+  --refreshing-text-period: 2.4s;
+  --refreshing-text-dim-opacity: 0.8;
+  --refreshing-muted-rest-opacity: 0.605;
+  --refreshing-muted-lift-opacity: 0.755;
   /* Theme crossfade — applied to the major page surfaces so flipping
      light↔dark glides instead of snapping. Gated behind html.theme-anim
      (added by app.js one frame after first paint) so it never fires on
@@ -1076,6 +1096,9 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
+  /* --text at --refreshing-muted-rest-opacity over --bg reads as --muted here too. */
+  --refreshing-muted-rest-opacity: 0.7;
+  --refreshing-muted-lift-opacity: 0.85;
   --bg: oklch(20.6% 0.014 270.6);
   --text: oklch(93.7% 0.007 247.9);
   --border: oklch(35.9% 0.021 264.3);
@@ -4941,6 +4964,36 @@ pre.code-block.metabrowser-source-lines > code {
 @keyframes mb-delayed-loading-reveal {
   to {
     visibility: visible;
+  }
+}
+
+/* Refreshing content (docs/design-system.md, "Refreshing Content"): text that is already
+   shown while a refresh checks it. `.mb-refreshing` breathes the element it is on;
+   `.mb-refreshing-group` breathes the `.mb-refreshing-text` inside it, so a list toggles one
+   container and a row drawn into it later joins. Primary ink only, or `.mb-refreshing-muted`
+   for a muted line. A state that resolves inside --loading-state-delay shows nothing. */
+.mb-refreshing,
+.mb-refreshing-group .mb-refreshing-text {
+  --mb-refreshing-to: var(--refreshing-text-dim-opacity);
+  animation: mb-refreshing-text var(--refreshing-text-period) ease-in-out var(--loading-state-delay)
+    infinite;
+}
+.mb-refreshing.mb-refreshing-muted {
+  --mb-refreshing-to: var(--refreshing-muted-lift-opacity);
+  color: var(--text);
+  opacity: var(--refreshing-muted-rest-opacity);
+}
+/* Only the midpoint is named, so each element eases from and back to its own opacity. */
+@keyframes mb-refreshing-text {
+  50% {
+    opacity: var(--mb-refreshing-to);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* The text stays as it is at rest; a status text's aria-busy still says a refresh runs. */
+  .mb-refreshing,
+  .mb-refreshing-group .mb-refreshing-text {
+    animation: none;
   }
 }
 

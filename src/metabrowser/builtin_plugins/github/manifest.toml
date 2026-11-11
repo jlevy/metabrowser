@@ -100,6 +100,14 @@ route = "pull-files-refresh"
 sidekick = "metabrowser.builtin_plugins.github.sidekick:pull_files_refresh_handler"
 methods = ["POST"]
 
+# Background prefetch: a visible page names what the reader is likely to open next, and
+# one lane per repository refreshes it behind every reader's request, within caps and the
+# rate-limit governor. GET reports the lane from memory; POST replaces its queue.
+[[data_hook]]
+route = "pulls-prefetch"
+sidekick = "metabrowser.builtin_plugins.github.sidekick:pulls_prefetch_handler"
+methods = ["GET", "POST"]
+
 # A pull request's page at /pull/<n>[/files]. No file is ever this kind: the
 # shell selects it for the pull-request route and mounts this view there.
 [[view]]

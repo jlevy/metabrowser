@@ -358,6 +358,31 @@ def test_incremental_refresh_visits_updated_prefix_only_and_manual_retry_runs(
     assert updated.generation("open") != old.generation("open")
 
 
+def test_a_delta_scan_of_several_pages_is_published_at_the_time_it_started(
+    repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review A6: what the catalog vouches for is what GitHub had at the first page.
+
+    A row that changes while later pages are read moves to the top, onto a page already
+    read, so the scan's ``fetched_at``, the time a record is said to be checked by, is the
+    time it asked for its first page, not the time it ended.
+    """
+
+    items = [generated_item(n) for n in range(1, 301)]
+    _seed(repository, items)
+    for item in items[:150]:
+        item |= {"updated_at": "2026-10-02T12:00:00Z"}
+    calls = _provider(monkeypatch, items)
+    started = FETCHED_AT + timedelta(days=30)
+    # Each page read takes ten seconds of the clock.
+    monkeypatch.setattr(pull_list, "utc_now", lambda: started + timedelta(seconds=10 * len(calls)))
+    state = asyncio.run(refresh_pull_list(repository, "open", retry=True))
+    assert calls == ["graphql:updated:start", "graphql:updated:updated-100"]
+    assert state.fetched_at == utc_stamp(started) and not state.delta_started
+    assert state.delta_started_at is None
+    assert state.count_at == utc_stamp(started + timedelta(seconds=20))
+
+
 def test_cancelled_backfill_keeps_checkpoint_and_resumes(
     repository: ListedRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:

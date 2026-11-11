@@ -133,7 +133,11 @@ async function run() {
   await settle();
   assert.deepEqual(asked, { number: 7, retry: true, comparison: true });
   const assertAcquiring = () => {
-    assert.match(changesBody().textContent, /Fetching changes/);
+    // The sentence is the delayed spinner's name for a screen reader, not painted text.
+    assert.match(
+      changesBody().querySelector(".github-pull-changes-pending")?.getAttribute("aria-label") ?? "",
+      /Fetching changes/,
+    );
     assert.ok(changesBody().querySelector(".spinner"));
     assert.equal(changesBody().querySelector(".github-pull-retry-changes"), null);
   };
@@ -278,6 +282,7 @@ async function run() {
     const body = () => container.querySelector(".github-pull-body");
     const paint = () => ({
       text: body().textContent,
+      pending: body().querySelector(".github-pull-changes-pending")?.getAttribute("aria-label"),
       spinner: body().querySelector(".spinner") !== null,
       fetch: body().querySelector(".github-pull-fetch-changes") !== null,
       posts: posts.length,
@@ -293,7 +298,7 @@ async function run() {
     handle.showFile("src/app.txt", { settling: true });
     await settle();
     const during = paint();
-    assert.match(during.text, /Fetching changes/, "the walk will settle on Changes");
+    assert.match(during.pending ?? "", /Fetching changes/, "the walk will settle on Changes");
     assert.equal(during.spinner, true);
     assert.equal(during.fetch, false, "no Fetch changes the settled address makes needless");
     assert.equal(during.posts, 0, "the request waits for the address");

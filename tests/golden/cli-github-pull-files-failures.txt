@@ -16,6 +16,7 @@ status: 202
     "reader": null,
     "head": null,
     "base": null,
+    "base_ref": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": null,
@@ -44,6 +45,7 @@ status: 200
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
+  "base_ref": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -94,6 +96,7 @@ status: 202
     "reader": "gh:octo-reader",
     "head": null,
     "base": null,
+    "base_ref": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -127,6 +130,7 @@ status: 200
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
+  "base_ref": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -169,6 +173,7 @@ status: 202
     "reader": "gh:octo-reader",
     "head": null,
     "base": null,
+    "base_ref": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -202,6 +207,7 @@ status: 200
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
+  "base_ref": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -244,6 +250,7 @@ status: 202
     "reader": "gh:octo-reader",
     "head": null,
     "base": null,
+    "base_ref": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -277,6 +284,7 @@ status: 200
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
+  "base_ref": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -320,6 +328,7 @@ status: 202
     "reader": "gh:octo-reader",
     "head": null,
     "base": null,
+    "base_ref": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -353,6 +362,7 @@ status: 200
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
+  "base_ref": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -396,6 +406,7 @@ status: 202
     "reader": "gh:octo-reader",
     "head": null,
     "base": null,
+    "base_ref": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -429,6 +440,7 @@ status: 200
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
+  "base_ref": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -472,6 +484,7 @@ status: 202
     "reader": "gh:octo-reader",
     "head": null,
     "base": null,
+    "base_ref": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -505,6 +518,7 @@ status: 200
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
+  "base_ref": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -551,6 +565,7 @@ status: 202
     "reader": "gh:octo-reader",
     "head": null,
     "base": null,
+    "base_ref": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": {
@@ -584,6 +599,7 @@ status: 200
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
+  "base_ref": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -625,6 +641,7 @@ status: 202
     "reader": null,
     "head": null,
     "base": null,
+    "base_ref": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": null,
@@ -653,6 +670,7 @@ status: 200
   "reader": "gh:octo-reader",
   "head": null,
   "base": null,
+  "base_ref": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {
@@ -700,6 +718,7 @@ status: 200
     "reader": "gh:octo-reader",
     "head": null,
     "base": null,
+    "base_ref": null,
     "fresh_for_s": 60.0,
     "refreshing": false,
     "last_refresh": {
@@ -742,6 +761,7 @@ status: 202
     "reader": null,
     "head": null,
     "base": null,
+    "base_ref": null,
     "fresh_for_s": 60.0,
     "refreshing": true,
     "last_refresh": null,
@@ -770,6 +790,7 @@ status: 200
   "reader": null,
   "head": null,
   "base": null,
+  "base_ref": null,
   "fresh_for_s": 60.0,
   "refreshing": false,
   "last_refresh": {

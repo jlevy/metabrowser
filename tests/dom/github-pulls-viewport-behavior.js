@@ -570,7 +570,92 @@ async function paint() {
   await settle();
   assert.equal(rowFor(preview.number).getAttribute("aria-expanded"), "false");
   assert.deepEqual(fileReads, [], "arrow and route selection read no changed-file metadata");
-  console.log(JSON.stringify({ ...result, oneVisibleFlash: true, retainedReadingPlace: true }));
+
+  // Which titles breathe ("Refreshing Content" in docs/design-system.md): those of the rows
+  // whose cores GitHub is being read for, an admitted batch the panel still follows. A settled
+  // receipt ends it, a replaced window moves it, and so does losing the network (A1 of review
+  // A on #354: offline cancelled the retry but left the titles breathing). Titles are paint
+  // only: no row is marked busy. A title drawn into a breathing window joins its beat.
+  const titleOf = (item) => item.firstElementChild.childNodes[2];
+  const breathingTitles = () =>
+    items()
+      .filter((item) => titleOf(item).classList.contains("mb-refreshing"))
+      .map((item) => Number(item.dataset.number));
+  const busyRows = () =>
+    items().filter((item) => item.firstElementChild.getAttribute("aria-busy") !== null).length;
+  const titleBreathing = {};
+  // The stand-in has no Web Animations API; count the panel's calls to align the beat.
+  let aligned = 0;
+  list.getAnimations = () => {
+    aligned += 1;
+    return [];
+  };
+  refuseAdmission = null;
+  await sampleAt(4000);
+  const admitted = controls.at(-1).numbers;
+  assert(admitted.length > 0, "the window asks for its cores");
+  titleBreathing.admitted = { asked: admitted, breathing: breathingTitles(), busyRows: busyRows() };
+  assert.deepEqual(breathingTitles(), admitted, "the admitted batch's titles breathe");
+  assert.equal(busyRows(), 0, "a breathing row stays a usable link, not busy");
+  assert(aligned > 0, "titles that start breathing are brought to one beat");
+  const settling = retry();
+  assert.ok(settling, "an admitted batch is polled until it settles");
+  refuseAdmission = "ready";
+  timers.delete(settling[0]);
+  settling[1].fn();
+  await settle();
+  await paint();
+  titleBreathing.settled = breathingTitles();
+  assert.deepEqual(breathingTitles(), [], "a settled receipt stops them");
+  await sampleAt(8000);
+  const moved = controls.at(-1).numbers;
+  titleBreathing.moved = { asked: moved, breathing: breathingTitles() };
+  assert.deepEqual(breathingTitles(), moved, "a new window's batch breathes instead");
+  assert(
+    moved.every((number) => !admitted.includes(number)),
+    "and none of the settled rows",
+  );
+  globalThis.window.navigator = { onLine: false };
+  windowEvents.get("offline")();
+  await settle();
+  await paint();
+  titleBreathing.offline = breathingTitles();
+  assert.deepEqual(breathingTitles(), [], "offline, the panel reads nothing, so nothing breathes");
+  for (let round = 0; round < 3; round += 1) {
+    const due = [...timers.entries()].filter(
+      ([, timer]) => timer.delay <= panel.CORE_BUSY_RETRY_MS * 2,
+    );
+    for (const [id, timer] of due) {
+      timers.delete(id);
+      timer.fn();
+    }
+    await settle();
+    await paint();
+  }
+  assert.deepEqual(breathingTitles(), [], "and timers running on cannot restart it offline");
+  globalThis.window.navigator = { onLine: true };
+  windowEvents.get("online")();
+  await settle();
+  await paint();
+  delete list.getAnimations;
+  // The beat is the earliest breath's start; other animations and the beat itself are left be.
+  const breaths = [
+    { animationName: "mb-refreshing-text", startTime: 400 },
+    { animationName: "mb-refreshing-text", startTime: 100 },
+    { animationName: "tree-row-flash-in", startTime: 50 },
+    { animationName: "mb-refreshing-text", startTime: null },
+  ];
+  page.alignRefreshing({ getAnimations: () => breaths });
+  titleBreathing.beat = breaths.map((breath) => breath.startTime);
+  assert.deepEqual(titleBreathing.beat, [100, 100, 50, 100], "one beat, the earliest");
+  console.log(
+    JSON.stringify({
+      ...result,
+      oneVisibleFlash: true,
+      retainedReadingPlace: true,
+      titleBreathing,
+    }),
+  );
   handle.dispose();
   assert.equal(frames.size, 0);
   assert.equal(timers.size, 0);
