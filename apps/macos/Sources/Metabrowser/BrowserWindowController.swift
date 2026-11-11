@@ -16,7 +16,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     private let container: WebContainerView
     private let status = WindowStatus()
     private let textFinder = NSTextFinder()
-    private var titleObservation: NSKeyValueObservation?
+    private let titleAccessory = TitleAccessoryController()
     /// Reveal the page, replacing the status view, once this window's load commits.
     private var revealOnCommit = false
     /// The page to return to when the server comes back on a new port.
@@ -49,9 +49,8 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
             backing: .buffered, defer: false)
         window.contentView = container
         window.minSize = NSSize(width: 480, height: 320)
-        window.title = session.folderName
-        window.subtitle = path
-        window.representedURL = session.root
+        window.titleVisibility = .hidden  // TitleAccessoryController draws the title
+        window.addTitlebarAccessoryViewController(titleAccessory)
         window.tabbingIdentifier = "folder:" + session.root.path(percentEncoded: false)
         window.isReleasedWhenClosed = false
         window.center()
@@ -69,9 +68,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         textFinder.client = webView  // WKWebView adopts NSTextFinderClient
         textFinder.findBarContainer = container
         textFinder.isIncrementalSearchingEnabled = true
-        titleObservation = webView.observe(\.title, options: [.new]) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.updateTitle() }
-        }
+        showTitle(session.title)
         // A window WebKit creates for `target=_blank` shows its page at once.
         container.showsStatus = configuration == nil
     }
@@ -160,13 +157,21 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
         if let url = currentServerURL { resumeURL = url }
     }
 
-    private func updateTitle() {
-        let title = webView.title ?? ""
-        window?.title = title.isEmpty ? (session?.folderName ?? "Metabrowser") : title
+    /// Names the window for everything that reads its title, and draws the visible one.
+    /// The page's own `<title>` is not used: it is "Metabrowser" in every window.
+    func showTitle(_ title: WindowTitle) {
+        guard let window else { return }
+        window.title = title.plain
+        window.subtitle = title.subtitle
+        window.representedURL = title.hasProxyIcon ? session?.root : nil
+        window.tab.title = title.tabTitle
+        window.tab.toolTip = title.tabToolTip
+        titleAccessory.show(title, representing: window.representedURL)
+        let named = "window title \(window.title), tab \(window.tab.title ?? ""), subtitle \(window.subtitle)"
+        AppLog.app.debug("\(named, privacy: .public)")
     }
 
     func windowWillClose(_ notification: Notification) {
-        titleObservation = nil
         textFinder.client = nil
         textFinder.findBarContainer = nil
         webView.stopLoading()

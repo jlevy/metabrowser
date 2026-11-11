@@ -14,10 +14,15 @@ final class FolderSession: ManagedServer {
     private(set) var windows: [BrowserWindowController] = []
     private var endpoint: ServerEndpoint?
     private var failure: ServerFailure?
+    /// What every window of the folder calls itself: from the folder's path until the
+    /// server answers `/api/identity`.
+    private(set) var title: WindowTitle
+    private var identityRequest: Task<Void, Never>?
     var onAllWindowsClosed: ((FolderSession) -> Void)?
 
     init(root: URL, setup: RuntimeSetup, gate: LaunchGate) {
         self.root = root
+        title = WindowTitle(.localFolder(root))
         let logURL = ServerLog.url(for: root)
         self.logURL = logURL
         do {
@@ -60,6 +65,7 @@ final class FolderSession: ManagedServer {
     }
 
     func stop() async {
+        identityRequest?.cancel()
         await supervisor.stop()
     }
 
@@ -116,6 +122,7 @@ final class FolderSession: ManagedServer {
             failure = nil
             let authorization = supervisor.launch.authorization(for: ready)
             windows.forEach { $0.attach(ready, authorization: authorization) }
+            requestIdentity(from: ready, authorization: authorization)
         case .failed(let failed):
             endpoint = nil
             failure = failed
@@ -123,5 +130,35 @@ final class FolderSession: ManagedServer {
         case .stopping, .stopped:
             break
         }
+    }
+
+    /// Asks the ready server which folder it serves and retitles every window. An
+    /// answer from a server that has since restarted is dropped.
+    private func requestIdentity(from ready: ServerEndpoint, authorization: WebAuthorization) {
+        identityRequest?.cancel()
+        identityRequest = Task { [weak self] in
+            let answer = await IdentityClient.fetch(origin: ready.origin, authorization: authorization)
+            guard !Task.isCancelled, let self, self.endpoint == ready else { return }
+            self.adopt(answer)
+        }
+    }
+
+    private func adopt(_ answer: IdentityAnswer) {
+        let next = WindowTitle(answer.identity(or: .localFolder(root)))
+        let name = root.lastPathComponent
+        let titled = "\(name): titled \"\(next.plain)\""
+        switch answer {
+        case .identity:
+            AppLog.app.info("\(titled, privacy: .public) from /api/identity")
+        case .missingRoute:
+            // The fallback named in FolderIdentity.localFolder: a metab older than the route.
+            AppLog.app.info("\(titled, privacy: .public) from the folder's path: this metab has no /api/identity")
+        case .failed(let reason):
+            AppLog.app.error(
+                "\(titled, privacy: .public) from the folder's path: /api/identity failed, \(reason, privacy: .public)")
+        }
+        guard next != title else { return }
+        title = next
+        windows.forEach { $0.showTitle(next) }
     }
 }

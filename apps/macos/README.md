@@ -75,7 +75,7 @@ Where to look while it runs:
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
 | `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, and stopping it. |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
-| `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, and the navigation policy. |
+| `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, folder identity and window titles, and the navigation policy. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children. |
 | `Resources/Info.plist`, `scripts/` | The bundle’s property list, the bundle script, and the icon generator. |
@@ -175,6 +175,15 @@ Terminal launch.
 
 ### The Window
 
+- **Title:** the folder’s short name in bold, then a bullet and “Metabrowser” in a
+  secondary style (`fdu • Metabrowser`), so each window says at a glance which folder it
+  shows. The names come from `GET /api/identity`, asked once the server is ready.
+  Until then, and from a `metab` without the route, the window names the folder from its
+  path as `metab` would (`FolderIdentity.localFolder`). `window.title` holds the plain
+  text, which the Window menu, Mission Control, the Dock, and accessibility read.
+  A tab shows the short name, with the full name as its tooltip, and the title’s tooltip
+  and `window.subtitle` give the full name and kind (`~/wrk/github/fdu · Local folder`).
+  The page’s `<title>` is not used.
 - **Navigation:** the server’s origin (scheme, host, and port) stays in the window.
   A clicked link to another `http`, `https`, or `mailto` URL opens in the default
   browser; the same URL reached by script, redirect, form, or Back and Forward is
@@ -192,6 +201,36 @@ Terminal launch.
   bar container, JavaScript `alert`, `confirm`, and `prompt` as sheets, and file inputs.
   If the web content process dies, the window reloads, at most twice in 30 seconds, and
   then shows the status view.
+
+### Why the Title Is a Title-Bar Accessory
+
+AppKit draws a system title in one font and one color, so the window hides it
+(`titleVisibility = .hidden`) and draws its own in a leading title-bar accessory,
+`TitleAccessoryController`. Measured on macOS 26.5:
+
+- **It sits where the system title sits.** macOS 26 puts a plain window’s title at the
+  leading edge, after the window buttons: the proxy icon at x 82 and the text at x 100,
+  in the 13-point title-bar font.
+  A leading accessory starts at x 78, so the drawn title lands on the same points in the
+  same font, and the title bar stays 32 points tall.
+  AppKit places accessories for tabs, full screen, and right-to-left layouts.
+- **A toolbar was the alternative.** A centered toolbar item makes the title bar 40 to
+  76 points tall, centers the title where macOS 26 no longer puts it, and, with the
+  title hidden, AppKit shows no proxy icon there either.
+- **The accessory draws the proxy icon.** AppKit drops the proxy icon when a leading
+  accessory is present, so the accessory draws one for a local folder, from
+  `representedURL`. Dragging it copies or aliases the folder, never moves it, since a
+  move would pull the folder out from under its server.
+  Command-click or right-click on the icon or the title opens the path menu.
+  A cached mirror has neither.
+- **It behaves like a system title.** It dims when its window is not the main window of
+  the active app (the tertiary label color, which an inactive system title measured
+  close to), follows light and dark mode through label colors, and passes plain clicks
+  to the title bar, which drags and double-clicks the window.
+  In a narrow window, “• Metabrowser” goes first and whole, then the short name
+  truncates (`WindowTitle.segments(fitting:)`).
+- **macOS 15 is unchecked.** There a plain window’s title is centered, and this one
+  stays at the leading edge.
 
 ### Pitfalls Found in the Live Run
 
@@ -243,6 +282,7 @@ Each gap points to the part of the brief that closes it.
 | **Exit on stdin EOF** | The stdin pipe is held open, but today’s server ignores it, so a crashed or force-quit app orphans its servers until they are stopped by hand; an orderly quit does not. An interim option is a pidfile per server and reaping stale groups at the next launch, which needs a start-time check against pid reuse; it is not implemented. | Layering item 1 |
 | **Descendants in other groups** | The group kill reaches only the server’s own process group. Git and `gh` run in their own groups, which the server ends on its graceful path; a server that needs SIGKILL leaves them running. | Layering item 1 (bounded shutdown that ends those groups) |
 | **`/healthz`** | Readiness polls the `/view/` entry page. | Layering item 1 |
+| **Identity from an older `metab`** | metab 0.12.0 has no `/api/identity`. On its 404 the window keeps the name it derives from the folder’s path, because a CLI install updates independently of the app. Remove the fallback once the app requires a `metab` with the route. | Folder identity (`mb-n9p6`) |
 | **Rootless runtime report** | `metab --version` validates; `--doctor` output is shown as text. | Layering item 2 |
 | **Explicit tool paths** | `git` and `gh` are found by their directories on `PATH`. | Layering item 5 |
 | **Privacy-safe I/O** | Usage descriptions are declared; a protected folder prompts in the app’s name with no in-app guidance. | Layering item 6; macOS Platform Rules |
