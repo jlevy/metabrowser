@@ -467,3 +467,43 @@ def test_invalidation_preserves_other_slots_and_their_disk_hits(
 
     monkeypatch.setattr(GitDiffSource, "manifest", forbidden)
     assert client.get(route).json() == expected
+
+
+def test_preparation_and_a_reader_share_one_manifest_computation(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #348 review A7: a fetch's preparation and a reader overlapping it compute once.
+
+    Mutation check: load each without ``_FLIGHTS``, and the two compute twice.
+    """
+    stand, _client = pinned_pull
+    record = stand.record(7)
+    assert isinstance(record, PullRecord) and record.comparison is not None
+    for path in (stand.published.home / pull_manifest._directory(stand.published)).glob("*.json"):  # pyright: ignore[reportPrivateUsage]
+        path.unlink()
+    _fresh(monkeypatch)
+    calls = 0
+    real = GitDiffSource.manifest
+
+    async def counted(source: GitDiffSource, resolved: ResolvedComparison) -> Any:
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.05)
+        return await real(source, resolved)
+
+    monkeypatch.setattr(GitDiffSource, "manifest", counted)
+    comparison = record.comparison
+
+    async def overlap() -> tuple[Any, Any]:
+        preparing = asyncio.create_task(
+            pull_manifest.prepare_pull_manifest(stand.published, record)
+        )
+        await asyncio.sleep(0)
+        reading = asyncio.create_task(
+            pull_manifest.shared_pull_manifest(stand.published, comparison.base, comparison.head)
+        )
+        return await asyncio.gather(preparing, reading)
+
+    _prepared, read = asyncio.run(overlap())
+    assert calls == 1
+    assert read.manifest.files
