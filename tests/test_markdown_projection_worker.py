@@ -19,10 +19,20 @@ from tests.test_markdown_diff_projection import (
     _patch,  # pyright: ignore[reportPrivateUsage]
 )
 
-_needs_gil = pytest.mark.skipif(
-    not worker_module._gil_enabled(),  # pyright: ignore[reportPrivateUsage]
-    reason="a build without the GIL keeps threads",
-)
+
+@pytest.fixture
+def processes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run the child on every build.
+
+    A build without the GIL keeps its projections in a thread by choice
+    (`test_a_build_without_the_gil_keeps_its_thread`), not because a child cannot run
+    there, so the child's own paths are tested on that build too.
+    """
+
+    monkeypatch.setattr(worker_module, "_gil_enabled", lambda: True)
+
+
+_needs_child = pytest.mark.usefixtures("processes")
 
 OLD = b"# Guide\n\nSee [the old page](old.md) today.\n"
 NEW = b"# Guide\n\nSee [the new page](new.md) now.\n"
@@ -63,9 +73,26 @@ def test_a_thread_worker_and_a_single_request_never_start_a_child() -> None:
     asyncio.run(run())
 
 
-@pytest.mark.skipif(
-    not worker_module._gil_enabled(), reason="a build without the GIL keeps threads"
-)  # pyright: ignore[reportPrivateUsage]
+def test_a_build_without_the_gil_keeps_its_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Without the GIL a projection thread does not stall the event loop, so a child
+    # would cost its memory for nothing.
+    monkeypatch.setattr(worker_module, "_gil_enabled", lambda: False)
+
+    async def run() -> None:
+        worker = ProjectionWorker()
+        patch = _patch(OLD, NEW)
+        for _ in range(3):
+            answer = await worker.prepare(old=OLD, new=NEW, patch=patch, namespace="n")
+            assert answer.projection["status"] == "ready"
+        worker.start()
+        assert not await worker.started()
+        assert worker._starting is None  # pyright: ignore[reportPrivateUsage]
+        assert worker._process is None  # pyright: ignore[reportPrivateUsage]
+
+    asyncio.run(run())
+
+
+@_needs_child
 def test_projections_move_to_the_child_once_it_is_ready() -> None:
     async def run() -> None:
         worker = ProjectionWorker()
@@ -89,9 +116,7 @@ def test_projections_move_to_the_child_once_it_is_ready() -> None:
     asyncio.run(run())
 
 
-@pytest.mark.skipif(
-    not worker_module._gil_enabled(), reason="a build without the GIL keeps threads"
-)  # pyright: ignore[reportPrivateUsage]
+@_needs_child
 def test_a_child_that_exits_mid_projection_is_stopped_and_refuses_that_input() -> None:
     # Says it is ready, then exits at the first request without answering.
     script = (
@@ -139,7 +164,7 @@ def _alive(pid: int) -> bool:
     return True
 
 
-@_needs_gil
+@_needs_child
 def test_the_child_runs_only_installed_code_wherever_the_server_started(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -168,7 +193,7 @@ def test_the_child_runs_only_installed_code_wherever_the_server_started(
     assert not marker.exists(), "the child imported a module from the working directory"
 
 
-@_needs_gil
+@_needs_child
 def test_a_child_that_died_while_idle_answers_from_a_thread_and_starts_again() -> None:
     async def run() -> None:
         worker = ProjectionWorker()
@@ -193,6 +218,7 @@ def test_a_child_that_died_while_idle_answers_from_a_thread_and_starts_again() -
     asyncio.run(run())
 
 
+@_needs_child
 def test_a_child_that_cannot_start_is_tried_again_up_to_the_limit(tmp_path: Path) -> None:
     async def run() -> None:
         worker = ProjectionWorker(command=(str(tmp_path / "absent-python"),))
@@ -206,7 +232,7 @@ def test_a_child_that_cannot_start_is_tried_again_up_to_the_limit(tmp_path: Path
     asyncio.run(run())
 
 
-@_needs_gil
+@_needs_child
 def test_an_overrunning_child_is_stopped_and_refuses_that_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -231,7 +257,7 @@ def test_an_overrunning_child_is_stopped_and_refuses_that_input(
     asyncio.run(run())
 
 
-@_needs_gil
+@_needs_child
 def test_a_cancelled_exchange_stops_the_child_so_no_answer_is_left_behind() -> None:
     async def run() -> None:
         worker = ProjectionWorker(command=(sys.executable, "-c", _SILENT))
@@ -256,7 +282,7 @@ def test_a_cancelled_exchange_stops_the_child_so_no_answer_is_left_behind() -> N
     asyncio.run(run())
 
 
-@_needs_gil
+@_needs_child
 def test_a_new_event_loop_replaces_the_child_the_old_loop_started() -> None:
     worker = ProjectionWorker(command=(sys.executable, "-c", _SILENT))
     pids: list[int] = []
@@ -289,7 +315,7 @@ def test_a_new_event_loop_replaces_the_child_the_old_loop_started() -> None:
     assert not _alive(pids[0]), "the old loop's child was stopped"
 
 
-@_needs_gil
+@_needs_child
 def test_an_idle_child_is_stopped_and_the_next_projection_starts_another(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

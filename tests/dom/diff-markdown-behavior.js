@@ -489,7 +489,8 @@ async function main() {
   await new Promise(setImmediate);
   assert.equal(d.rendered.hidden, true);
 
-  // A sanitizer that failed to load is loaded again by the retry its message offers.
+  // A sanitizer that loaded nothing, or whose load failed, is loaded again by the retry
+  // its message offers.
   let attempts = 0;
   const retried = [];
   const root2 = make("div");
@@ -504,6 +505,9 @@ async function main() {
     load: (id) => new Promise((resolve) => retried.push({ id, resolve })),
     async ensureInert() {
       attempts += 1;
+      if (attempts === 2) {
+        throw new Error("offline");
+      }
       return attempts === 1 ? undefined : inert;
     },
     async loadStyles() {},
@@ -531,7 +535,14 @@ async function main() {
   assert.equal(retried.length, 2);
   retried[1].resolve(ready);
   await new Promise(setImmediate);
-  assert.equal(attempts, 2, "the failed load was not kept");
+  assert.equal(attempts, 2, "the empty load was not kept");
+  assert.match(fallback2.textContent, /retry/);
+  assert.equal(rendered2.hidden, true);
+  await control2.children[0].click();
+  assert.equal(retried.length, 3);
+  retried[2].resolve(ready);
+  await new Promise(setImmediate);
+  assert.equal(attempts, 3, "the failed load was not kept");
   assert.equal(rendered2.hidden, false);
   view2.dispose();
   console.log("diff Markdown view OK");
