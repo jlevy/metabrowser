@@ -713,27 +713,34 @@ def test_a_contended_alias_lock_does_not_fail_the_hit(
 def test_staging_writers_inherit_the_entry_lease_and_not_the_reservation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Reviews A7 and A12: which descriptors reach each staging Git command.
+    """Reviews A7, A12, and E7: which descriptors are open in each staging Git process.
 
     The entry's liveness lock keeps a sweep from removing a killed owner's entry while its
     Git still writes. The source reservation is the owner's alone, so a dead owner's
-    orphaned fetch cannot keep other processes' cold opens waiting.
+    orphaned fetch cannot keep other processes' cold opens waiting. A `git` first on the
+    way to the real one lists the descriptors open in it, so this sees what reached the
+    child, not what a caller passed: dropping `pass_fds` anywhere on the way fails it.
     """
     _allow_installed_git(monkeypatch)
     source = _file_source(_origin(tmp_path))
-    real_run = acquire_module._run  # pyright: ignore[reportPrivateUsage]
+    real_git = subprocess.run(
+        ["sh", "-c", "command -v git"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    log = tmp_path / "git-descriptors.log"
+    wrapper = tmp_path / "descriptor-git" / "git"
+    wrapper.parent.mkdir()
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        f'printf "%s\\t%s\\n" "$*" "$(ls /dev/fd | tr "\\n" " ")" >> "{log}"\n'
+        f'exec "{real_git}" "$@"\n',
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setattr("metabrowser.git.process.git_executable", lambda: str(wrapper))
     real_claim = acquire_module._open_and_claim_staging  # pyright: ignore[reportPrivateUsage]
     real_reserve = acquire_module._reserve_acquisition  # pyright: ignore[reportPrivateUsage]
-    runs: list[tuple[str, tuple[int, ...]]] = []
     staging: list[int] = []
     reserved: list[int] = []
-
-    async def recorded(args: list[str], **kwargs: Any) -> bytes:
-        words = list(args)
-        while words[0] == "-c":
-            words = words[2:]
-        runs.append((words[0], kwargs.get("pass_fds", ())))
-        return await real_run(args, **kwargs)
 
     def claimed(*args: Any, **kwargs: Any) -> Any:
         claim = real_claim(*args, **kwargs)
@@ -745,17 +752,22 @@ def test_staging_writers_inherit_the_entry_lease_and_not_the_reservation(
         reserved.append(lock.descriptor)
         return lock
 
-    monkeypatch.setattr(acquire_module, "_run", recorded)
     monkeypatch.setattr(acquire_module, "_open_and_claim_staging", claimed)
     monkeypatch.setattr(acquire_module, "_reserve_acquisition", reserve)
     assert asyncio.run(acquire_source(source, home=tmp_path / "home")).fetched
     (entry,) = staging
     (reservation,) = reserved
-    writers = {name for name, fds in runs if fds}
-    assert {"init", "config", "fetch"} <= writers, runs
-    assert all(fds in {(), (entry,)} for _name, fds in runs), runs
-    assert all(reservation not in fds for _name, fds in runs)
-    assert ("ls-remote", ()) in runs
+    runs: list[tuple[str, set[int]]] = []
+    for line in log.read_text(encoding="utf-8").splitlines():
+        argv, _, listed = line.partition("\t")
+        words = argv.split()
+        while words and words[0].startswith("-"):
+            words = words[2:] if words[0] in {"-c", "-C", "--git-dir"} else words[1:]
+        runs.append((words[0] if words else "", {int(fd) for fd in listed.split()}))
+    for name in ("init", "config", "fetch"):
+        assert any(command == name and entry in fds for command, fds in runs), (name, runs)
+    assert all(reservation not in fds for _command, fds in runs), runs
+    assert any(command == "ls-remote" and entry not in fds for command, fds in runs), runs
 
 
 @posix_only
