@@ -1,16 +1,36 @@
 # Metabrowser App Icon
 
-**Status:** Draft under review.
-Both masters use the `b-over` junction and the citrine and amethyst fills, so the design
-can be seen in the app.
-The other junctions have parameter files for comparison, and the small sizes wait on
-review.
+**Status:** The design is chosen (2026-11-11): both masters use `sym-drop19-gap34` and
+the citrine and amethyst fills.
+Hand-tuned small sizes (16 and 32 px) still wait on review.
+The previous masters’ design is kept as the `b-over` alternate, and the other junctions
+and two refresh families (see [The Refresh](#the-refresh)) keep their parameter files
+for comparison.
 
 The icon is an MB mark on the sister app’s v6 icon: the same squircle, rim, panel,
 sheen, border, and pressed-in letter shadow, with a partial M in a gem tone of
 Metabrowser’s JavaScript color and a B in a gem tone of its Markdown color.
-The B stands where the M’s right stem would, intact, and the partial M stops one glyph
-gap short of it.
+The partial M’s rising diagonal ends in a point 19.337 below the cap line, at a vertical
+face, and the intact B’s stem follows 34 units beyond it, a little more than the M’s
+31.464 stem.
+
+## The Chosen Parameters
+
+`metabrowser-icon.json` (release) and `metabrowser-icon-dev.json` (development) hold the
+final parameters; they differ only in `variant`. These differ from the generator’s
+defaults (see [Parameters](#parameters)):
+
+| Parameter | Value | Effect |
+| --- | --- | --- |
+| `junction` | `gap` | The rising diagonal ends at a vertical face, and the B follows a gap. |
+| `faceTopFlat` | 0 | No flat top: the diagonal ends in a 29° point. |
+| `faceDrop` | 19.337 | The point sits 19.337 below the cap line, halfway between the cap line and the `b-over` point (38.674). |
+| `gap` | 34 | The horizontal space from the face to the B’s stem, a little more than a stem (31.464). |
+
+Every other parameter keeps its default.
+The mark is 241.654 units wide, balanced on `centroidX` 262.598; the face runs from y
+191.360 to 256.261. To change the design, edit both files and run
+`scripts/build-icon.sh`.
 
 ## Files
 
@@ -18,7 +38,8 @@ gap short of it.
 | --- | --- |
 | `metabrowser-icon.json` | Parameters of the release master, for official builds. |
 | `metabrowser-icon-dev.json` | Parameters of the development master. |
-| `metabrowser-icon-<junction>.json` | Parameters of the other junctions (`gap`, `bevel`, `corner-bevel`, `touch`, `overlap`, and a dev `bevel`), for review only. |
+| `metabrowser-icon-<junction>.json` | Parameters of the other junctions (`b-over`, `gap`, `bevel`, `corner-bevel`, `touch`, `overlap`, and a dev `bevel`), for review only. |
+| `metabrowser-icon-sym-*.json`, `metabrowser-icon-norise-*.json` | Parameters of the refresh families, for review only. |
 | `base-release.svg`, `base-dev.svg` | The sister app’s v6 icon structure with an empty glyph group: the release base and the canary scheme, a gold rim and a warm sheen. |
 | `metabrowser-icon*.svg` | The masters, generated from the parameters and the base; edit those, not these. |
 | `make-glyphs.swift` | Builds a master from a parameter file, validates the parameters, and prints the derived dimensions. |
@@ -30,7 +51,7 @@ gap short of it.
 
 ```shell
 scripts/build-icon.sh                   # from apps/macos: every master and both .icns files
-scripts/build-icon.sh --review          # also AppIcon/review/, which git ignores
+scripts/build-icon.sh --review          # also AppIcon/review/ (git ignores it), with a release .icns per variant in review/icns/
 ```
 
 Add `--sister FILE.svg`, the sister app’s v6 release export, to include side-by-side
@@ -41,8 +62,8 @@ byte-identical files on every run.
 To adjust the design, change a value in a parameter file and rerun the script.
 `make-glyphs.swift` prints every derived dimension (stem edges, the M’s axis, the face
 or bevel positions, the mark’s width) for each master, and it refuses parameters that
-are out of order, outside sRGB, or that would leave a flat or a fragment thinner than
-`minSliver`.
+are out of order, outside sRGB, or that would leave a flat, a face, a notch, or a
+fragment thinner than `minSliver`, or put a face into the vertex flat.
 
 ## Parameters
 
@@ -55,11 +76,14 @@ are comments, and any other unknown name is refused.
 | Parameter | Default | Meaning and source |
 | --- | --- | --- |
 | `variant` | `release` | The base: `release` or `dev` (the canary scheme). |
-| `junction` | `gap` | How the M’s rising diagonal meets the B’s stem: `gap`, `bevel`, `touch`, or `overlap` (below). |
-| `gap` | 21.437 | The space between the partial M and the B: face to stem (`gap`) or the channel (`bevel`). The sister app’s least distance between its glyphs. |
+| `junction` | `gap` | How the M’s rising diagonal meets the B’s stem: `gap`, `b-over`, `bevel`, `corner-bevel`, `touch`, `overlap`, or `no-rise`, which drops the rising diagonal (below). |
+| `gap` | 21.437 | The space between the partial M and the B: face to stem (`gap`, `b-over`), the channel (`bevel`), or the end’s rightmost point to stem (`no-rise`). The sister app’s least distance between its glyphs. |
 | `gapMeasure` | `perpendicular` | For the bevels: the channel measured square to the diagonal or `horizontal`. |
 | `cornerCut` | 0.5 | For `corner-bevel`: how far the B’s corner cut runs along the cap line, in B stems; it runs 1/tan(`angle`) times as far down the stem. Below 0.779 the diagonal stops short of the B’s stem. |
-| `faceTopFlat` | 1 | For `gap`: the diagonal’s flat top in stems, which places the vertical face; 1 puts it at the first stem’s outer edge mirrored on the M’s axis. |
+| `faceTopFlat` | 1 | For `gap`: the diagonal’s flat top in stems, which places the vertical face; 1 puts it at the first stem’s outer edge mirrored on the M’s axis, and 0 where the diagonal’s upper edge meets the cap line, so the diagonal ends in a point on the cap line. |
+| `faceDrop` | 0 | For `gap`, with `faceTopFlat` 0: how far below the cap line the face’s top sits. The face moves left tan(`angle`) per unit, and the diagonal ends there in a point as sharp as `angle`. The `b-over` face sits 38.674 down. |
+| `endFace` | `none` | For `no-rise`: the B’s middle-bar line, `barTop`, `barCenter`, or `barBottom`, at which a vertical cut meets the falling diagonal’s upper edge, which places the end’s vertical face; `none` makes no vertical cut. |
+| `endFloor` | `vertex` | For `no-rise`: the horizontal cut under the falling diagonal’s end, on a middle-bar line or at `vertexFlat` (`vertex`). |
 | `stem` | 31.464 | The partial M’s stem: the B’s stem, 277.75 font units. The B keeps the font’s stem. |
 | `diagonal` | 31.464 | The diagonals’ thickness, square to the stroke: the K’s arms, which are stem weight. |
 | `angle` | 28.9993 | The diagonals’ angle from vertical in degrees: the font M’s outer diagonal edge. |
@@ -70,7 +94,7 @@ are comments, and any other unknown name is refused.
 | `centroidX` | 262.598 | The x of the pair’s area centroid: the sister app’s glyph pair, so both marks balance alike. |
 | `bSize` | 232 | The B’s size in px per em: the sister app’s K. |
 | `overlapTopFlat` | 0.697 | For `overlap`: the stem top before the diagonal starts, as a fraction of the stem: the font M’s. |
-| `minSliver` | 6 | The thinnest part a cut may leave: a thinner wedge of the B’s stem is trimmed (`bevel`), and parameters that would leave a thinner flat or a smaller fragment are refused. |
+| `minSliver` | 6 | The thinnest part a cut may leave: a thinner wedge of the B’s stem is trimmed (`bevel`), and parameters that would leave a thinner flat, face, or notch, or a smaller fragment, are refused. |
 | `fills` | `#ECC44B`, `#C896FF` | The partial M’s and the B’s fills, as `#RRGGBB` or `oklch(L% C H)` (see Colors). |
 
 ## The Base
@@ -111,11 +135,13 @@ on the cap line and on the vertex line.
 The first diagonal leaves the stem’s top-right corner, so the stem stays a clean
 rectangle. The `junction` parameter chooses how the second diagonal meets the B’s stem:
 
-- **b-over** (in the masters): the B’s stem stands where the M’s right stem would, and
-  the B is intact. A vertical cut ends the diagonal one gap, 21.437, left of the B’s
-  stem. The cut lies left of where the diagonal meets the cap line, so the diagonal keeps
-  no flat top: it ends 38.674 below the cap line in a 61° point, with a 64.901-unit
-  vertical face, and keeps 15.938 units across right of the M’s axis.
+- **b-over** (the masters until 2026-11-11, now an alternate): the B’s stem stands where
+  the M’s right stem would, and the B is intact.
+  A vertical cut ends the diagonal one gap, 21.437, left of the B’s stem.
+  The cut lies left of where the diagonal meets the cap line, so the diagonal keeps no
+  flat top: it ends 38.674 below the cap line in a 29° point, where the vertical face
+  meets the diagonal’s upper edge, with a 64.901-unit vertical face, and keeps 15.938
+  units across right of the M’s axis.
   The mark is 218 units wide.
 - **corner-bevel**: the diagonal runs to the cap line, and the B’s top-left corner is
   cut parallel to it, one channel away; `cornerCut` sizes the corner and so places the
@@ -127,7 +153,12 @@ rectangle. The `junction` parameter chooses how the second diagonal meets the B�
   on the M’s axis. Its top is then a flat cut one stem wide that meets an 8.137-unit
   vertical face at a right angle, and the partial M is symmetric about its axis but for
   the missing stem. The B’s stem follows 21.437 units beyond the face.
-  The mark is 271 units wide, against the sister app’s 222.
+  The mark is 271 units wide, against the sister app’s 222. A smaller `faceTopFlat`
+  moves the face left; at 0 the diagonal ends in a point on the cap line, and `faceDrop`
+  then lowers the point and the face together.
+  The `b-over` geometry is `faceDrop` 38.674 with the B one gap past the face.
+  The masters use `faceDrop` 19.337 with a 34-unit gap (`sym-drop19-gap34` in The
+  Refresh).
 - **bevel** (the alternate): the B’s stem stands where the M’s right stem would, and the
   diagonal runs at full width over it to the cap line.
   The B is cut by one straight line parallel to the diagonal, a 21.437-unit channel from
@@ -139,6 +170,15 @@ rectangle. The `junction` parameter chooses how the second diagonal meets the B�
   the M; the mark is 218 units wide.
 - **overlap**: it runs into the B’s stem as in the font’s M, whose stem tops are 70% of
   the stem width; the mark is 199 units wide.
+- **no-rise**: there is no second diagonal, so the partial M is a stem and one diagonal,
+  and the mark reads `|\B`. The diagonal ends at cuts lined up with the B’s middle bar,
+  which runs from y 241.775 (the top counter’s floor) to 266.944 (the bottom counter’s
+  ceiling), 25.170 thick.
+  `endFace` places a vertical end face where a bar line meets the diagonal’s upper edge,
+  `endFloor` cuts the end flat on a bar line or the vertex flat, and the B’s stem
+  follows one `gap` beyond the end’s rightmost point.
+  The diagonal’s lower edge leaves the stem at y 236.924, so a floor on the bar’s top
+  would leave a notch only 2.689 wide between the diagonal and the stem, and is refused.
 
 The gap is the sister app’s least distance between its glyphs, from the ❯’s tip to the
 K’s stem, so the vertical face sits as close to the B as that tip does to the K.
@@ -151,6 +191,52 @@ review’s channel sweep shows 15, 18, 21.437, and 26.
 In the `touch` and `overlap` junctions the partial M runs 2 units under the B’s stem, so
 their shared edge has no antialiasing seam.
 In every junction the inner shadow, a filter on the pair, treats them as one shape.
+
+## The Refresh
+
+Two families, for review only, try a cut nearer the M’s upper right and a gap nearer a
+stem’s width. Each keeps the B intact and balances the pair on `centroidX`. The masters
+now use `sym-drop19-gap34`, so the review images’ default is that design and the
+B-on-top design appears as `b-over`. `build-icon.sh --review` sets them beside the
+default in `review/refresh-1024-and-64.png` and `review/refresh-64-px.png`, with a 4x
+close-up and a release `.icns` for each.
+
+The symmetry family, `sym-*`, is the `gap` junction with the face moved up the rising
+diagonal.
+Every point is 29°, the diagonal’s angle from vertical, where the vertical face
+meets its upper edge.
+
+| File | The diagonal’s end | Face, as y | Gap | Width | B’s stem from the M’s, against `b-over` |
+| --- | --- | --- | --- | --- | --- |
+| `b-over` | point 38.674 below the cap line | 210.697 to 275.599 | 21.437 | 218.373 | 0 |
+| `sym-drop19-gap26` | point 19.337 below the cap line | 191.360 to 256.261 | 26 | 233.654 | +15.281 |
+| `sym-drop19-gap31` | point 19.337 below the cap line | 191.360 to 256.261 | 31.464 | 239.118 | +20.745 |
+| `sym-drop19-gap34` (the masters) | point 19.337 below the cap line | 191.360 to 256.261 | 34 | 241.654 | +23.281 |
+| `sym-drop19-gap37` | point 19.337 below the cap line | 191.360 to 256.261 | 37 | 244.654 | +26.281 |
+| `sym-drop19-gap40` | point 19.337 below the cap line | 191.360 to 256.261 | 40 | 247.654 | +29.281 |
+| `sym-drop19-gap43` | point 19.337 below the cap line | 191.360 to 256.261 | 43 | 250.654 | +32.281 |
+| `sym-drop0-gap26` | point on the cap line | 172.023 to 236.924 | 26 | 244.373 | +26 |
+| `sym-drop0-gap31` | point on the cap line | 172.023 to 236.924 | 31.464 | 249.837 | +31.464 |
+| `sym-flat6-gap31` | flat top 6.293 wide | 172.023 to 225.571 | 31.464 | 256.129 | +37.757 |
+
+At `faceDrop` 0 the face mirrors the first stem’s inner edge on the M’s axis, so the
+partial M is symmetric but for its missing stem, and a gap of one stem fills exactly the
+place of the M’s right stem: the B’s stem starts where the first stem’s outer edge falls
+mirrored.
+
+The `|\B` family, `norise-*`, is the `no-rise` junction.
+
+| File | The diagonal’s end | Bottom, as y | Gap | Width | B’s stem from the M’s, against `b-over` |
+| --- | --- | --- | --- | --- | --- |
+| `norise-floor-bottom-gap21` | horizontal cut on the bar’s bottom, its right corner 61° | 266.944 | 21.437 | 217.674 | -0.699 |
+| `norise-bar-gap21` | vertical face across the bar, 241.775 to 266.944, on a floor 22.023 wide | 266.944 | 21.437 | 203.723 | -14.650 |
+| `norise-bar-gap31` | the same | 266.944 | 31.464 | 213.750 | -4.623 |
+| `norise-face-gap21` | vertical face from the bar’s top, 241.775, to the vertex flat, on a floor 12.337 wide | 284.418 | 21.437 | 203.723 | -14.650 |
+| `norise-face-gap31` | the same | 284.418 | 31.464 | 213.750 | -4.623 |
+
+The ends on the bar’s bottom stop 27.493 below the crotch and 17.474 above the vertex
+flat; the face ends stop on the vertex flat, 44.967 below the crotch.
+There is no cut on the bar’s top, which `no-rise` refuses (above).
 
 ## Colors
 
