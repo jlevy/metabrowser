@@ -328,6 +328,7 @@ status: 200
   },
   "comparison_route": null,
   "snapshot_route": null,
+  "rendered_route": null,
   "record": {
     "schema_version": 2,
     "projection_version": 1,

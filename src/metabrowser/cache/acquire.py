@@ -181,6 +181,10 @@ class AcquisitionError(Exception):
     """Acquisition stopped before a validated staging store existed."""
 
 
+class AcquiringElsewhereError(AcquisitionError):
+    """Another process held the source's cold-load reservation past the wait's deadline."""
+
+
 class RemoteUnavailableError(AcquisitionError):
     """``ls-remote`` could not observe HEAD at the classified source."""
 
@@ -1167,7 +1171,7 @@ async def _reserve_acquisition(
             return await run_lock_section(claim, release=CacheLock.release)
         except LockBusyError as exc:
             if loop.time() >= deadline:
-                raise AcquisitionError(
+                raise AcquiringElsewhereError(
                     "another process is still acquiring this repository; it holds "
                     f"{source_acquisition_lock_name(source_id)} in the cache"
                 ) from exc
@@ -1180,6 +1184,23 @@ async def _reserve_acquisition(
                 )
         await asyncio.sleep(delay)
         delay = min(delay * 2, WAIT_RETRY_MAX_S)
+
+
+async def wait_for_source_reservation(source: GitSource, *, home: Path) -> None:
+    """Wait, holding nothing, until no other process is acquiring *source* cold.
+
+    A caller that holds a scarce resource while it acquires, such as a network slot, waits
+    here first, so another process's long cold open keeps that resource from no one. It
+    creates nothing: with no reservation file there is no owner to wait for. Raises
+    :class:`AcquiringElsewhereError` after :data:`RESERVATION_WAIT_S`. A new owner can
+    still appear before the caller's own acquisition, which then waits as usual.
+    """
+
+    source_id = source_identity(source.transport, source.normalized)
+    if not (home / source_acquisition_lock_name(source_id)).exists():
+        return
+    with await _reserve_acquisition(source, home):
+        pass
 
 
 async def _lender_for_miss(
@@ -1385,6 +1406,7 @@ def _publish_and_touch(staged: StagingAcquisition) -> PublishedSource:
 
 
 __all__ = [
+    "AcquiringElsewhereError",
     "AcquisitionError",
     "AliasConflictError",
     "FetchFailedError",
@@ -1408,4 +1430,5 @@ __all__ = [
     "publish_unattached_source",
     "remote_url_for",
     "source_slug",
+    "wait_for_source_reservation",
 ]

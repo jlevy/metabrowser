@@ -544,7 +544,11 @@ def write_pull_record(
         ensure_pulls_directory(home, slug)
         if observed is not None or metadata_only or store_id is not None:
             current = read_pull_record(home, slug, record.number)
-            if observed is not None and isinstance(current, PullRecord) and current != observed:
+            if (
+                observed is not None
+                and isinstance(current, PullRecord)
+                and not same_observation(current, observed)
+            ):
                 raise PullObservationSuperseded(current)
         else:
             current = "not_cached"
@@ -660,6 +664,27 @@ def read_refresh_stamp(home: Path, relative: str) -> PullRefreshStamp | None:
         return None
 
 
+def same_observation(current: PullRecord, observed: PullRecord | RecordAbsence | None) -> bool:
+    """Whether *current* is the *observed* read, only with its comparison changed since.
+
+    A comparison prepared from a cached record, or refused, adds no newer observation, so
+    a refresh that read GitHub after it is not superseded by it, and the refresh's newer
+    read is kept.
+    """
+    if not isinstance(observed, PullRecord):
+        return False
+    if current == observed:
+        return True
+
+    def bare(record: PullRecord) -> PullRecord:
+        unavailable = {
+            part: state for part, state in record.unavailable.items() if part != "comparison"
+        }
+        return record.model_copy(update={"comparison": None, "unavailable": unavailable})
+
+    return bare(current) == bare(observed)
+
+
 def write_pull_refresh(
     home: Path,
     slug: str,
@@ -679,7 +704,7 @@ def write_pull_refresh(
     observed = expected if isinstance(expected, PullRecord) or expected == "not_cached" else None
     with source_alias_lock(home, slug):
         current = read_pull_record(home, slug, number) if observed is not None else None
-        if isinstance(current, PullRecord) and current != observed:
+        if isinstance(current, PullRecord) and not same_observation(current, observed):
             return False
         write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
         return True
@@ -732,6 +757,7 @@ __all__ = [
     "read_pull_record",
     "read_pull_refresh",
     "read_refresh_stamp",
+    "same_observation",
     "serialize_pull_record",
     "write_pull_record",
     "write_pull_refresh",

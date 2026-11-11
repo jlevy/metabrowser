@@ -67,7 +67,15 @@ _MAX_HTML_BYTES = 256 * 1024
 # For this repository one file took 15.7 ± 1.9 ms and sixteen 20.0 ± 1.6 ms (hyperfine,
 # 30 runs), so each later file of the batch answers without a subprocess.
 _PATCH_BATCH = 16
-_PATCH_ENTRIES = 64
+# A later file joins the batch only when the manifest counts its changed lines and they
+# are few enough for a pair the projection could answer: the 434 real pairs of at most
+# 48 KiB change p50 14, p90 75 and at most 722 lines. Without this, fifteen 216 KB
+# rewrites the route would refuse anyway were hydrated beside a 4-line file, which took
+# 1.3 s instead of 18-55 ms and kept 102 MB (review E of #349).
+_BATCH_FILE_LINES = 1_000
+_BATCH_LINES = 2_000
+# What the route keeps of hydrated patches, in patch lines: at most a few dozen pairs.
+_KEPT_LINES = 20_000
 # Loads that wait for the projection slot before more are refused (see _Slot).
 _MAX_WAITING = 4
 
@@ -144,11 +152,25 @@ def _projectable(change: FileChange) -> bool:
     )
 
 
+def _lines_of(patch: FilePatch) -> int:
+    return sum(len(hunk.lines) for hunk in patch.hunks)
+
+
 class _Patches:
-    """Patches of projectable Markdown files, hydrated a batch per `git diff`."""
+    """Patches of projectable Markdown files, hydrated a few small ones per `git diff`."""
 
     def __init__(self) -> None:
         self._kept: OrderedDict[tuple[str, ...], FilePatch] = OrderedDict()
+        self._lines = 0
+
+    def _keep(self, key: tuple[str, ...], patch: FilePatch) -> None:
+        if key in self._kept:
+            return
+        self._kept[key] = patch
+        self._lines += _lines_of(patch)
+        while self._lines > _KEPT_LINES and len(self._kept) > 1:
+            _, dropped = self._kept.popitem(last=False)
+            self._lines -= _lines_of(dropped)
 
     async def get(
         self,
@@ -163,13 +185,25 @@ class _Patches:
             return self._kept[(*key, file_id)]
         files = manifest.files
         at = next(index for index, change in enumerate(files) if change.id == file_id)
-        # The files after this one in the manifest's order, as a reader scrolls to them.
-        later = [
-            change.id
-            for change in files[at + 1 :]
-            if _projectable(change) and (*key, change.id) not in self._kept
-        ]
-        batch = [file_id, *later[: _PATCH_BATCH - 1]]
+        # The small projectable files after this one in the manifest's order, as a reader
+        # scrolls to them.
+        batch, budget = [file_id], _BATCH_LINES
+        for change in files[at + 1 :]:
+            if len(batch) == _PATCH_BATCH:
+                break
+            changed = (
+                None
+                if change.additions is None or change.deletions is None
+                else change.additions + change.deletions
+            )
+            if (
+                changed is not None
+                and changed <= min(_BATCH_FILE_LINES, budget)
+                and _projectable(change)
+                and (*key, change.id) not in self._kept
+            ):
+                batch.append(change.id)
+                budget -= changed
         hydrated = await source.hydrate(comparison, batch, manifest=manifest)
         patches = dict(hydrated.patches)
         if file_id not in patches and len(batch) > 1:
@@ -178,9 +212,7 @@ class _Patches:
             patches.update(alone.patches)
         for each in batch:
             if each in patches:
-                self._kept[(*key, each)] = patches[each]
-        while len(self._kept) > _PATCH_ENTRIES:
-            self._kept.popitem(last=False)
+                self._keep((*key, each), patches[each])
         return patches.get(file_id)
 
 

@@ -1260,7 +1260,9 @@ orphaned fetch, which can never publish, keeps no other process waiting.
 A waiter tells its caller once that it is waiting, and gives up after
 `RESERVATION_WAIT_S` (`cache/acquire.py`), the owner’s worst case of two attempts, with
 an error that names the lock file.
-A warm open reads the published store without taking the reservation.
+A served checkout’s comparison request waits for another process’s reservation before it
+takes a network slot, and reports a wait that gives up as `refreshing_elsewhere`. A warm
+open reads the published store without taking the reservation.
 
 A refresh holds its store’s fetch side lock, `locks/stores/<store-key>.fetch.lock`,
 across the fetch.

@@ -219,10 +219,15 @@ blocks fold. A file’s **Rendered** | **Source** chooser switches between the t
 
 Rendered never presents a change as complete when the source says more.
 **Source shows additional changes** appears above a file whose source changed in a way
-its render does not show: a link or image destination or title, an HTML comment,
-attribute syntax such as `{#name}`, a code fence’s language, or only whitespace and line
-wrapping. A changed block that hides such a change also says **Source shows changes not
-shown here**.
+its render does not show: a link or image destination or title, a link whose label now
+points somewhere else, an image’s alt text, an HTML comment, attribute syntax such as
+`{#name}`, a code fence’s language, or only whitespace and line wrapping.
+A changed or added block that hides such a change also says **Source shows changes not
+shown here**, and so does a block moved past others whose link now points elsewhere.
+An added code block says so unless its fence names exactly one language, such as
+`python` or `mermaid`: an alias of a Pygments lexer, or a language KPress draws as a
+diagram. Any other text on the fence’s opening line, an unknown single word included, is
+shown nowhere.
 
 These files open in **Source**:
 

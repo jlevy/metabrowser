@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 
 from metabrowser import inert_html, kpress_adapter
-from metabrowser.inert_html import harden
+from metabrowser.inert_html import harden, harden_document, kpress_prose
 from tests.github_pull_fixture import HOSTILE_COMMENT, allowlist_violations, html_tree
 from tests.golden_harness import check_recording, run_session
 from tests.required_tools import needs_node
@@ -531,3 +531,68 @@ def test_no_application_name_is_in_the_anchor_namespace() -> None:
         and "user-content" in path.read_text(encoding="utf-8", errors="replace")
     )
     assert set(namers) <= ANCHOR_NAMESPACE_OWNERS, namers
+
+
+def _prose_tree(html: str) -> list[Any]:
+    """*html* as the session's ``proseTree`` prints an element's children."""
+
+    from html.parser import HTMLParser
+
+    class Tree(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__(convert_charrefs=True)
+            self.stack: list[list[Any]] = [[]]
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            css = dict(attrs).get("class")
+            children: list[Any] = []
+            self.stack[-1].append({f"{tag}.{css}" if css else tag: children})
+            self.stack.append(children)
+
+        def handle_endtag(self, tag: str) -> None:
+            self.stack.pop()
+
+        def handle_data(self, data: str) -> None:
+            self.stack[-1].append(data)
+
+    tree = Tree()
+    tree.feed(html)
+    return tree.stack[0]
+
+
+def test_the_server_names_prose_elements_as_the_browser_does() -> None:
+    """Review E2: ``kpress_prose`` is ``kpressProse`` for a page drawn on the server.
+
+    The session builds KPress's two wrappers around a heading, a code block, and a table,
+    and prints what ``kpressProse`` makes of them; the server gives the same HTML the same
+    unwrapping and the same classes.
+    """
+
+    transcript = run_session("inert-html-session.js")
+    browser = transcript["prose"]["div.kpress-prose"]
+    server = kpress_prose(
+        "\n<div><div><h1></h1><pre><code></code></pre><div><table></table></div></div></div>"
+    )
+    assert (
+        _prose_tree(server)
+        == browser
+        == [
+            {"h1": []},
+            {"pre.kpress-code": [{"code": []}]},
+            {"div.kpress-table-wrap": [{"table.kpress-table": []}]},
+        ]
+    )
+    # A real render keeps its text, entities, void elements, and the anchors it was given.
+    rendered = kpress_prose(
+        harden_document(
+            "<article class='kpress'><div class='kpress-doc-layout'><div class='kpress-prose'>"
+            "<h1 id='t'>T &amp; x</h1><p>a<br>b</p><details open><summary>s</summary></details>"
+            "<div class='kpress-table-wrap'><table><tr><td>1</td></tr></table></div>"
+            "<pre><code>if a &lt; b:\n  pass\n</code></pre></div></div></article>"
+        )[0]
+    )
+    assert rendered == (
+        '<h1 id="user-content-t--x">T &amp; x</h1><p>a<br>b</p><details open><summary>s</summary>'
+        '</details><div class="kpress-table-wrap"><table class="kpress-table"><tr><td>1</td>'
+        '</tr></table></div><pre class="kpress-code"><code>if a &lt; b:\n  pass\n</code></pre>'
+    )
