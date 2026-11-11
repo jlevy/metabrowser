@@ -1,6 +1,6 @@
 """A refresh that loses its record's publication adopts the winner, and keeps its stamp.
 
-PR #348 review A6: each caller of a guarded record write handles
+Review A6: each caller of a guarded record write handles
 :class:`~metabrowser.builtin_plugins.github.pull_record.PullObservationSuperseded`. These
 let a second writer publish while the refresh's own write waits, as two servers of one
 source would, and check what each caller then keeps.

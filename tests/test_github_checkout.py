@@ -541,7 +541,7 @@ def _idle_job_stand(
 def test_a_readers_request_never_waits_for_idle_comparison_work(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, reader: str
 ) -> None:
-    """PR #348 review B1: idle work holds no slot, and any reader's request ends it.
+    """Review B1: idle work holds no slot, and any reader's request ends it.
 
     Before, the idle job held the store turn and one of two network slots through a whole
     acquisition, and the reader's job waited for it: 2.1 to 4.3 s in review D's runs.
@@ -594,7 +594,7 @@ def test_a_readers_request_never_waits_for_idle_comparison_work(
 def test_idle_comparison_is_never_queued_with_or_ahead_of_a_readers_job(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
-    """PR #348 review D2: optional work starts only on a quiet checkout.
+    """Review D2: optional work starts only on a quiet checkout.
 
     Before, an idle job queued behind a running job took the turn ahead of the third
     waiting reader's job, through the turn's rule that keeps a mirror refresh from
@@ -1339,7 +1339,7 @@ class _Session:
         changes = self.after({"number": 10, "retry": True, "comparison": True})
         assert changes["comparison_route"] is not None, changes
         # The record is current, so the comparison is prepared from it without reading
-        # GitHub a second time (PR #346 suggestion A8).
+        # GitHub a second time.
         assert self.gh() == []
         self.git()
         return first
@@ -1388,7 +1388,7 @@ def _push_unfetched_branches(origin: Origin, count: int) -> None:
 def test_conversation_alone_never_creates_a_store_or_runs_git(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
-    """Idle preparation needs a store a reader's Changes attached (PR #348 review D1).
+    """Idle preparation needs a store a reader's Changes attached (Review D1).
 
     Before, an idle request acquired an overlay store, fetching every branch and tag the
     checkout lacked, and every later Conversation refresh then fetched into it: 21 Git
@@ -1451,7 +1451,7 @@ def test_idle_comparison_fetches_only_its_pull_request_into_the_attached_store(
 def test_a_failed_idle_comparison_reports_nothing_and_is_not_repeated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
-    """Idle work never writes the refresh stamp (PR #348 review A1).
+    """Idle work never writes the refresh stamp (Review A1).
 
     Before, the failure became ``last_refresh``, and Conversation said the last refresh
     failed for work the reader never asked for.
@@ -1480,7 +1480,7 @@ def test_a_failed_idle_comparison_reports_nothing_and_is_not_repeated(
 def test_a_comparison_from_the_cached_record_keeps_the_metadata_stamp(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
-    """Only a metadata read writes a success stamp (PR #348 review A1).
+    """Only a metadata read writes a success stamp (Review A1).
 
     Before, a comparison prepared from the cached record stamped success at the time of
     the click, though nothing was read from GitHub.
@@ -1505,7 +1505,7 @@ def test_changes_reads_github_first_unless_the_cached_record_is_current(
 ) -> None:
     """A stale record, a failure since it, or another reader's record is refreshed first.
 
-    PR #348 review A2: before, Changes prepared any cached record of the same source with
+    Review A2: before, Changes prepared any cached record of the same source with
     no GitHub read, and a rate limit's stamp was replaced by a success nothing read.
     """
     from metabrowser.builtin_plugins.github.pull_record import (
@@ -1557,7 +1557,7 @@ def test_changes_reads_github_first_unless_the_cached_record_is_current(
 def test_attaching_a_store_keeps_the_observed_reader_for_reader_scoped_checks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
-    """PR #348 review B2: the bind no longer forgets the reader, and no refresh follows it.
+    """Review B2: the bind no longer forgets the reader, and no refresh follows it.
 
     Each check below admits data of any reader when the observed reader is ``None``, as it
     was after the bind before; the last assertions show that for the two that read cores.
@@ -1615,7 +1615,7 @@ def test_attaching_a_store_keeps_the_observed_reader_for_reader_scoped_checks(
 def test_a_comparison_that_loses_publication_adopts_the_winner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, winner_compared: bool
 ) -> None:
-    """PR #348 review A6: the checkout job adopts a record another writer published first.
+    """Review A6: the checkout job adopts a record another writer published first.
 
     A winner with a comparison ends the request; one without it is read from GitHub again.
     """

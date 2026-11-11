@@ -472,7 +472,7 @@ def test_invalidation_preserves_other_slots_and_their_disk_hits(
 def test_preparation_and_a_reader_share_one_manifest_computation(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """PR #348 review A7: a fetch's preparation and a reader overlapping it compute once.
+    """Review A7: a fetch's preparation and a reader overlapping it compute once.
 
     Mutation check: load each without ``_FLIGHTS``, and the two compute twice.
     """

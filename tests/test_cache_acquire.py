@@ -713,7 +713,7 @@ def test_a_contended_alias_lock_does_not_fail_the_hit(
 def test_staging_writers_inherit_the_entry_lease_and_not_the_reservation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """PR #348 reviews A7 and A12: which descriptors reach each staging Git command.
+    """Reviews A7 and A12: which descriptors reach each staging Git command.
 
     The entry's liveness lock keeps a sweep from removing a killed owner's entry while its
     Git still writes. The source reservation is the owner's alone, so a dead owner's
@@ -762,7 +762,7 @@ def test_staging_writers_inherit_the_entry_lease_and_not_the_reservation(
 def test_a_cold_open_waits_out_the_owners_worst_case_and_names_the_lock(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """PR #348 review B4: the wait covers two attempts, and its failure names the lock."""
+    """Review B4: the wait covers two attempts, and its failure names the lock."""
     from metabrowser.cache.locks import source_acquisition_lock, source_acquisition_lock_name
     from metabrowser.cache.origin import REMOTE_PROBE_TIMEOUT_S
     from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S

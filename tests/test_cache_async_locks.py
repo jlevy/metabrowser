@@ -297,7 +297,7 @@ def test_cold_source_waiter_reuses_another_process_publication(
             published = await asyncio.wait_for(waiting, CHILD_TIMEOUT)
             assert not published.fetched
             assert phases == []
-            # PR #348 review A12: the wait is said once, not silent for up to its deadline.
+            # Review A12: the wait is said once, not silent for up to its deadline.
             assert notes == [
                 f"waiting for another Metabrowser process to finish acquiring {source.normalized}"
             ]

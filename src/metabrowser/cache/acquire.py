@@ -168,7 +168,7 @@ _ENTRY_ATTEMPTS: Final = 8
 # owner's worst case. It makes at most two attempts, when a refused borrow falls back to a
 # full clone, each bounded by its origin probe and its fetch deadline; the local validation
 # and publication after each are given a minute. That minute bounds a stuck owner, not its
-# work: review D on PR #348 measured a whole overlay acquisition from a local origin at
+# work: a performance review measured a whole overlay acquisition from a local origin at
 # 0.85 to 2.3 s, under a load average near 7.
 RESERVATION_WAIT_S: Final = 2 * (REMOTE_PROBE_TIMEOUT_S + GIT_ACQUISITION_TIMEOUT_S + 60.0)
 # How a source that is itself a partial clone refuses to send an object it lacks. The
