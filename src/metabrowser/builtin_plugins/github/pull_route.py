@@ -613,14 +613,21 @@ def envelope_etag(envelope: PullEnvelope, stamp: tuple[int, int, int] | None) ->
 
 # The verdict's time and how it was reached, ``<verified_by> <verified_at>``, on a ``200`` and
 # a ``304`` alike, so a page answered ``304`` after a scan still shows when it was checked.
+# `` scanning`` follows a catalog verdict while the catalog's next scan runs, so the page
+# reads again soon and sees a change that scan publishes in a fast poll, not a slow one. A
+# catalog vouches for at most a window and :data:`~.pull_freshness.SCAN_GRACE_S`, so the
+# fast polls stop with the scan or by then. The tag leaves it out.
 VERIFIED_HEADER: Final = "x-metabrowser-verified"
 
 
-def verified_header(envelope: PullEnvelope) -> dict[str, str]:
+def verified_header(envelope: PullEnvelope, *, scanning: bool = False) -> dict[str, str]:
     """The :data:`VERIFIED_HEADER` of *envelope*, or none when it has no record."""
 
     by, at = envelope["verified_by"], envelope["verified_at"]
-    return {} if by is None or at is None else {VERIFIED_HEADER: f"{by} {at}"}
+    if by is None or at is None:
+        return {}
+    flag = " scanning" if scanning and by == "catalog" else ""
+    return {VERIFIED_HEADER: f"{by} {at}{flag}"}
 
 
 def requested_number(params: Mapping[str, str]) -> int:

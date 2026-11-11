@@ -340,8 +340,13 @@ def _facts(home: Path, slug: str, number: int) -> _Facts:
         known.append((held.pull.updated_at, held.pull.head.sha, held.pull.base.ref))
     if row is not None:
         known.append((row.updated_at, row.head_oid, row.base_ref))
-    # On a tie the record, which always names its head, is the one taken.
-    newest = max(known, key=lambda fact: fact[0], default=None)
+    # On a tie the record, which always names its head, is the one taken, unless the row
+    # names another: a push within the second the record was read leaves the times equal.
+    newest = max(
+        known,
+        key=lambda fact: (fact[0], held is not None and fact[1] not in (None, held.pull.head.sha)),
+        default=None,
+    )
     if newest is None:
         return _Facts(updated_at=None, record=held)
     return _Facts(updated_at=newest[0], record=held, head=newest[1], base_ref=newest[2])

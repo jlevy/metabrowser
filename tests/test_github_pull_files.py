@@ -802,9 +802,14 @@ def test_the_newest_of_record_and_row_names_the_head(
     monkeypatch.setattr(pull_files_route, "PullRecord", SimpleNamespace)
     monkeypatch.setattr(pull_files_route, "cached_pull_record", lambda *_: (record, None, None))
     monkeypatch.setattr(pull_files_route, "cached_list_row", lambda *_: row)
-    # A tie keeps the record, which names its head.
+    # A tie keeps the record, which names its head, unless the row names another
+    # (review A5): a push within the record's second leaves the times equal.
     assert pull_files_route.known_head(home, SOURCE.slug, 7) == ("a" * 40, "topic")
-    row.updated_at, row.head_oid = "2026-09-17T12:05:00Z", "b" * 40
+    row.head_oid = "a" * 40
+    assert pull_files_route.known_head(home, SOURCE.slug, 7) == ("a" * 40, "topic")
+    row.head_oid = "b" * 40
+    assert pull_files_route.known_head(home, SOURCE.slug, 7) == ("b" * 40, "topic")
+    row.updated_at = "2026-09-17T12:05:00Z"
     assert pull_files_route.known_head(home, SOURCE.slug, 7) == ("b" * 40, "topic")
     row.head_oid = None
     assert pull_files_route.known_head(home, SOURCE.slug, 7) == (None, "topic")

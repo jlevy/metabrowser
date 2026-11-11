@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import json
 import os
 import signal
@@ -5071,3 +5072,96 @@ def test_a_catalog_scan_does_not_send_a_polled_record_again(
             assert polled.headers["x-metabrowser-verified"] == f"catalog {scanned.strftime(stamp)}"
     print(f"record {record_bytes} bytes; {(sent - record_bytes) / 3:.0f} bytes a minute polled")
     assert sent == record_bytes, "a scan sent the record again"
+
+
+def _api_paths(stand: _Stand) -> list[str]:
+    return sorted(call["args"][-1] for call in stand.calls() if call["args"][:1] == ["api"])
+
+
+def test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review A1: ``updated_at`` covers the conversation, not checks, statuses, or ``mergeable``.
+
+    The three cases a record the catalog vouched for went on showing wrong: no CI
+    registered yet when it was read, a re-run of completed checks, and a conflict a moved
+    base made. Each leaves ``updated_at`` and the head alone, and a checks-only read sees
+    each by asking for the pull, its check runs, and its status, and nothing else: no list
+    of the conversation and no fetch into the store, whose comparison stands.
+    """
+
+    answers = scenario(stand.origin)
+    head = stand.origin["fork_head"]
+    pull_path = "repos/octo/demo/pulls/7"
+    runs_path = page(f"repos/octo/demo/commits/{head}/check-runs")
+    status_path = page(f"repos/octo/demo/commits/{head}/status")
+    recorded_runs = answers["api"][runs_path]["body"]
+    none_yet = {"total_count": 0, "check_runs": []}
+    no_status = {"state": "pending", "total_count": 0, "statuses": []}
+    stand.answer(
+        _api(
+            _api(answers, runs_path, ok(runs_path, none_yet)),
+            status_path,
+            ok(status_path, no_status),
+        )
+    )
+    first = stand.refresh(7)
+    assert first.check_runs == () and first.comparison is not None
+    stand.calls()
+
+    async def no_fetch(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("a checks-only read fetched into the store")
+
+    monkeypatch.setattr(pulls, "fetch_pull_head", no_fetch)
+
+    def checks_only() -> PullRecord:
+        return asyncio.run(pulls.refresh_pull_request(stand.published, 7, checks_only=True))
+
+    # No CI registered when it was read; now it has.
+    stand.answer(answers)
+    registered = checks_only()
+    assert len(registered.check_runs) == len(recorded_runs["check_runs"]) > 0
+    assert registered.comparison == first.comparison
+    assert (registered.issue_comments, registered.reviews, registered.review_comments) == (
+        first.issue_comments,
+        first.reviews,
+        first.review_comments,
+    )
+    assert _api_paths(stand) == sorted([pull_path, runs_path, status_path])
+
+    # Completed checks re-run.
+    rerun = copy.deepcopy(recorded_runs)
+    for run in rerun["check_runs"]:
+        run.update(status="in_progress", conclusion=None, completed_at=None)
+    stand.answer(_api(answers, runs_path, ok(runs_path, rerun)))
+    rerunning = checks_only()
+    assert {run.status for run in rerunning.check_runs} == {"in_progress"}
+    assert _api_paths(stand) == sorted([pull_path, runs_path, status_path])
+
+    # The base moved and the pull request now conflicts: GitHub says so in the pull alone.
+    body = answers["api"][pull_path]["body"]
+    assert registered.pull.mergeable == "mergeable"
+    conflicting = {**body, "mergeable": False, "mergeable_state": "dirty"}
+    stand.answer(_api(answers, pull_path, ok(pull_path, conflicting)))
+    conflict = checks_only()
+    assert conflict.pull.mergeable == "conflicting"
+    assert conflict.comparison == first.comparison
+    assert _api_paths(stand) == sorted([pull_path, runs_path, status_path])
+    assert stand.record(7) == conflict
+
+
+def test_a_checks_only_refresh_reads_everything_when_the_pull_moved(stand: _Stand) -> None:
+    """A pull whose ``updated_at`` moved since the record is the full read, every part."""
+
+    answers = scenario(stand.origin)
+    pull_path = "repos/octo/demo/pulls/7"
+    first = stand.refresh(7)
+    stand.calls()
+    body = answers["api"][pull_path]["body"]
+    edited = {**body, "updated_at": "2026-09-17T11:00:00Z", "title": "Count to three"}
+    stand.answer(_api(answers, pull_path, ok(pull_path, edited)))
+    record = asyncio.run(pulls.refresh_pull_request(stand.published, 7, checks_only=True))
+    assert record.pull.title == "Count to three" and record.comparison == first.comparison
+    read = _api_paths(stand)
+    assert page("repos/octo/demo/issues/7/comments") in read
+    assert page("repos/octo/demo/pulls/7/reviews") in read

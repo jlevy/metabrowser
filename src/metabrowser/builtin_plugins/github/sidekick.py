@@ -199,7 +199,11 @@ async def pull_handler(request: Request) -> Response:
     if claimed_pin is not None and (refusal := pin_changed_response(claimed_pin)) is not None:
         return refusal
     etag = envelope_etag(envelope, stamp)
-    headers = {**_NO_STORE, "etag": etag, **verified_header(envelope)}
+    headers = {
+        **_NO_STORE,
+        "etag": etag,
+        **verified_header(envelope, scanning=view.catalog_scanning),
+    }
     if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=headers)
     return JSONResponse(dict(envelope), headers=headers)
