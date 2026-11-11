@@ -7,9 +7,10 @@ in one transaction, and only when the catalog's ``source`` and ``reader`` are th
 
 - **changed**: the row's ``updated_at`` is newer than the record's ``pull.updated_at``,
   whatever the scan's age. ``head_moved`` says the row names another head commit.
-- **current**: the row is not newer, the scan that published it ran within the window,
-  and the record has no pending checks. ``verified_at`` is then the newer of that scan's
-  ``fetched_at`` and the record's, and ``verified_by`` is ``catalog``.
+- **current**: the row is not newer, the scan that published it ran within the window or
+  the next one is running, and the record has no pending checks. ``verified_at`` is then
+  the newer of that scan's ``fetched_at`` and the record's, and ``verified_by`` is
+  ``catalog``.
 - **unverified**: anything else, which the refresh coordinator's clock decides as before.
 
 GraphQL's ``updatedAt`` and ``headRefOid`` equalled REST's ``updated_at`` and ``head.sha``
@@ -80,8 +81,13 @@ def record_freshness(
     *,
     now: datetime,
     window_s: float = FRESHNESS_WINDOW_S,
+    scanning: bool = False,
 ) -> RecordFreshness:
-    """The verdict on *record* from *catalog* and its *row* of the same number."""
+    """The verdict on *record* from *catalog* and its *row* of the same number.
+
+    *scanning* says the catalog's next scan is running, which decides in a moment what a
+    scan just past the window would: until it ends, the last scan still vouches.
+    """
 
     pending = checks_pending(record)
     usable = (
@@ -97,7 +103,7 @@ def record_freshness(
             return RecordFreshness(
                 "changed", record.fetched_at, "fetch", moved, pending, catalog.count_at
             )
-        recent = now - _parse(catalog.fetched_at) <= timedelta(seconds=window_s)
+        recent = scanning or now - _parse(catalog.fetched_at) <= timedelta(seconds=window_s)
         if recent and not pending:
             verified = max(record.fetched_at, catalog.fetched_at)
             return RecordFreshness("current", verified, "catalog", False, False)

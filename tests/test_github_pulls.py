@@ -5033,3 +5033,41 @@ def test_a_readers_refresh_is_never_queued_behind_a_prefetch(
     assert _read(client, 8).json()["record"] is None
     # Unpreempted, 9 would wait for 8's refresh: at least two slow requests in sequence.
     assert behind < baseline + _SLOW_S, (behind, baseline)
+
+
+def test_a_catalog_scan_does_not_send_a_polled_record_again(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scan moves ``verified_at`` once a window; a polled page gets it in a header on 304.
+
+    A page polls every ``SLOW_POLL_MS`` (30 s) and the catalog is scanned once a window, so
+    with the verdict's time in the entity tag every other poll sent the whole record again.
+    Measured 2026-11-11 on pull request 8's 3,834-byte envelope: 3,836 bytes a minute
+    polled with the time in the tag, and none, two 304s a minute, with it in the header.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+    from tests.github_pull_fixture import seed_catalog
+
+    stand, client = pinned_pull
+    # Merged, so no check of it is still settling, and the catalog can vouch for it.
+    stand.refresh(8)
+    repository = ListedRepository(stand.published.home, stand.published.slug, "octo", "demo")
+    rest = scenario(stand.origin)["api"]["repos/octo/demo/pulls/8"]["body"]
+    stamp = "%Y-%m-%dT%H:%M:%SZ"
+    first = _read(client, 8)
+    etag, sent = first.headers["etag"], len(first.content)
+    record_bytes = sent
+    for minute in range(1, 4):
+        scanned = FETCHED_AT + timedelta(minutes=minute)
+        seed_catalog(repository, [rest], reader=READER, fetched_at=scanned.strftime(stamp))
+        for offset in (0, 30):
+            moment = scanned + timedelta(seconds=offset)
+            monkeypatch.setattr(pulls, "utc_now", lambda moment=moment: moment)
+            polled = _read(client, 8, etag=etag)
+            sent += len(polled.content)
+            if polled.status_code == 200:
+                etag = polled.headers["etag"]
+            assert polled.headers["x-metabrowser-verified"] == f"catalog {scanned.strftime(stamp)}"
+    print(f"record {record_bytes} bytes; {(sent - record_bytes) / 3:.0f} bytes a minute polled")
+    assert sent == record_bytes, "a scan sent the record again"

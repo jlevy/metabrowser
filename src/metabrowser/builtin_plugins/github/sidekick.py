@@ -119,7 +119,8 @@ async def pull_handler(request: Request) -> Response:
     The answer carries an entity tag, and a request whose ``If-None-Match`` names it is
     answered ``304`` without the record, so a page can poll it as cheaply as the status
     route. The tag covers everything but the record, which changes only with
-    ``fetched_at``. A matching ``wait_full_after`` revision may hold the cache read
+    ``fetched_at``, and the verdict's time, which a ``304`` carries in
+    ``x-metabrowser-verified``. A matching ``wait_full_after`` revision may hold the cache read
     briefly until its already-running selected refresh settles or revokes the preview.
     """
 
@@ -133,6 +134,7 @@ async def pull_handler(request: Request) -> Response:
         pull_view,
         record_stamp,
         requested_number,
+        verified_header,
     )
 
     try:
@@ -197,7 +199,7 @@ async def pull_handler(request: Request) -> Response:
     if claimed_pin is not None and (refusal := pin_changed_response(claimed_pin)) is not None:
         return refusal
     etag = envelope_etag(envelope, stamp)
-    headers = {**_NO_STORE, "etag": etag}
+    headers = {**_NO_STORE, "etag": etag, **verified_header(envelope)}
     if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=headers)
     return JSONResponse(dict(envelope), headers=headers)

@@ -62,9 +62,6 @@ from metabrowser.builtin_plugins.github.checkout import (
     served_checkout,
     start_pull_refresh,
 )
-from metabrowser.builtin_plugins.github.checkout import (
-    foreground_busy as checkout_foreground_busy,
-)
 from metabrowser.builtin_plugins.github.pull_catalog import catalog_member
 from metabrowser.builtin_plugins.github.pull_core_cache import read_cached_core
 from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreWindow, preparation_key
@@ -74,6 +71,7 @@ from metabrowser.builtin_plugins.github.pull_freshness import (
     record_freshness,
 )
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
+from metabrowser.builtin_plugins.github.pull_list_route import catalog_job_key
 from metabrowser.builtin_plugins.github.pull_record import (
     PullRecord,
     RecordAbsence,
@@ -287,9 +285,8 @@ class PullHost:
 
     ``pulls`` is the repository's set, ``running`` says whether a number's refresh is
     running, and ``start`` starts or joins it. ``start_background`` starts a prefetch's
-    refresh, which gives way to a reader's (:mod:`.pull_prefetch`), ``job_key`` names a
-    number's job in the coordinator, and ``foreground_busy`` says a reader's pull job of
-    the repository is queued or running.
+    refresh, which gives way to a reader's (:mod:`.pull_prefetch`), and ``job_key`` names a
+    number's job in the coordinator.
     """
 
     pulls: ServedPulls
@@ -301,7 +298,6 @@ class PullHost:
     preparing: Callable[[int], bool] | None = None
     start_background: Callable[[int], PullRefreshStart] | None = None
     job_key: Callable[[int], str] | None = None
-    foreground_busy: Callable[[], bool] | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
@@ -330,7 +326,6 @@ def pull_host(app: Any) -> PullHost | None:
             partial(comparison_preparing, coordinator, checkout),
             partial(start_pull_refresh, coordinator, checkout, background=True),
             partial(checkout_job_key, checkout),
-            partial(checkout_foreground_busy, coordinator, checkout),
         )
     served = session.pull_requests
     if not isinstance(served, ServedPulls):
@@ -342,7 +337,6 @@ def pull_host(app: Any) -> PullHost | None:
         coordinator=refresh_coordinator(app),
         start_background=partial(session.request_pull_refresh, background=True),
         job_key=served.key,
-        foreground_busy=session.pull_jobs_busy,
     )
 
 
@@ -365,6 +359,17 @@ class PullView:
     core_window: CoreWindow | None = None
     core_admission: CoreAdmission | None = None
     preparing_comparison: bool = False
+    catalog_scanning: bool = False
+
+
+def catalog_scanning(host: PullHost | None) -> bool:
+    """Whether the repository's catalog job is running, with no read."""
+
+    return (
+        host is not None
+        and host.coordinator is not None
+        and host.coordinator.running(catalog_job_key(host.pulls.source))
+    )
 
 
 def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) -> PullView:
@@ -393,6 +398,7 @@ def pull_view(host: PullHost | None, subject: RepositorySubject, number: int) ->
         preparing_comparison=host is not None
         and host.preparing is not None
         and host.preparing(number),
+        catalog_scanning=catalog_scanning(host),
     )
 
 
@@ -440,7 +446,12 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
     # Through the module, so records and their age share one clock seam.
     now = pulls.utc_now()
     freshness = (
-        record_freshness(record, *catalog_member(served.home, served.slug, view.number), now=now)
+        record_freshness(
+            record,
+            *catalog_member(served.home, served.slug, view.number),
+            now=now,
+            scanning=view.catalog_scanning,
+        )
         if isinstance(record, PullRecord)
         else None
     )
@@ -499,15 +510,18 @@ def pull_answer(view: PullView) -> tuple[PullEnvelope, RecordFreshness | None]:
 
 
 def record_and_freshness(
-    served: ServedPulls, number: int
+    served: ServedPulls, number: int, *, scanning: bool = False
 ) -> tuple[PullRecord | None, RecordFreshness | None]:
-    """The cached record of *number* and the catalog's verdict on it. Blocking and bounded."""
+    """The cached record of *number* and the catalog's verdict on it. Blocking and bounded.
+
+    *scanning* is :func:`catalog_scanning`, read on the event loop before the call.
+    """
 
     record, _dumped, _revision = cached_pull_record(served.home, served.slug, number)
     if not isinstance(record, PullRecord):
         return None, None
     member = catalog_member(served.home, served.slug, number)
-    return record, record_freshness(record, *member, now=pulls.utc_now())
+    return record, record_freshness(record, *member, now=pulls.utc_now(), scanning=scanning)
 
 
 def note_full_record(view: PullView) -> None:
@@ -571,15 +585,22 @@ def record_stamp(view: PullView) -> tuple[int, int, int] | None:
 def envelope_etag(envelope: PullEnvelope, stamp: tuple[int, int, int] | None) -> str:
     """An entity tag for *envelope* that never serializes the record.
 
-    Every field but the record is in it, and so is *stamp*, the record file's
-    :func:`record_stamp`: a record is replaced atomically, which changes its inode, so
-    two records written within the same second of ``fetched_at`` still differ. Read the
-    stamp before the envelope; a record replaced in between then gets a tag the next
-    request no longer matches, and is sent again rather than taken as unchanged.
+    Every field but the record and the verdict's time is in it, and so is *stamp*, the
+    record file's :func:`record_stamp`: a record is replaced atomically, which changes its
+    inode, so two records written within the same second of ``fetched_at`` still differ.
+    Read the stamp before the envelope; a record replaced in between then gets a tag the
+    next request no longer matches, and is sent again rather than taken as unchanged.
+
+    ``verified_at`` and ``verified_by`` move with every catalog scan, once a window, and
+    change nothing else a page shows, so they are left out: a ``304`` carries them in
+    :data:`VERIFIED_HEADER` instead (:func:`verified_header`). What the verdict changes,
+    ``state``, ``head_moved``, and ``checks_pending``, stays in.
     """
 
     fields: dict[str, Any] = {
-        name: value for name, value in envelope.items() if name not in {"record", "core_preview"}
+        name: value
+        for name, value in envelope.items()
+        if name not in {"record", "core_preview", "verified_at", "verified_by"}
     }
     preview = envelope["core_preview"]
     fields["core_preview"] = (
@@ -588,6 +609,18 @@ def envelope_etag(envelope: PullEnvelope, stamp: tuple[int, int, int] | None) ->
     fields["record_stamp"] = list(stamp) if stamp is not None else None
     digest = hashlib.sha256(json.dumps(fields, sort_keys=True).encode()).hexdigest()
     return build_scoped_etag(f"pull-{digest[:32]}")
+
+
+# The verdict's time and how it was reached, ``<verified_by> <verified_at>``, on a ``200`` and
+# a ``304`` alike, so a page answered ``304`` after a scan still shows when it was checked.
+VERIFIED_HEADER: Final = "x-metabrowser-verified"
+
+
+def verified_header(envelope: PullEnvelope) -> dict[str, str]:
+    """The :data:`VERIFIED_HEADER` of *envelope*, or none when it has no record."""
+
+    by, at = envelope["verified_by"], envelope["verified_at"]
+    return {} if by is None or at is None else {VERIFIED_HEADER: f"{by} {at}"}
 
 
 def requested_number(params: Mapping[str, str]) -> int:
@@ -790,7 +823,9 @@ async def _start_refresh(
         served = await host.pulls.companion(ask.number)
         if served.fetched_at is None:
             return "not_cached"
-        held, freshness = await asyncio.to_thread(record_and_freshness, host.pulls, ask.number)
+        held, freshness = await asyncio.to_thread(
+            partial(record_and_freshness, host.pulls, ask.number, scanning=catalog_scanning(host))
+        )
         if held is not None:
             served.saw_record(
                 held.fetched_at, without_store=written_without_store(held), freshness=freshness
@@ -832,6 +867,7 @@ __all__ = [
     "NUMBER_REQUIRED",
     "PULL_ROUTE",
     "SNAPSHOT_ROUTE",
+    "VERIFIED_HEADER",
     "PullEnvelope",
     "PullHost",
     "PullRefreshStart",
@@ -840,6 +876,7 @@ __all__ = [
     "PullView",
     "RefreshRequest",
     "cached_pull_record",
+    "catalog_scanning",
     "comparison_route",
     "envelope_etag",
     "pull_answer",
@@ -855,4 +892,5 @@ __all__ = [
     "snapshot_route",
     "start_refresh",
     "status_route",
+    "verified_header",
 ]

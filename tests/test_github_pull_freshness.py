@@ -341,3 +341,18 @@ def test_a_cancelled_refresh_forgets_its_attempt(
     asyncio.run(run())
     assert held._last_attempt is None and not held.refreshing  # pyright: ignore[reportPrivateUsage]
     assert held.is_stale(NOW, window_s=FRESHNESS_WINDOW_S)
+
+
+def test_a_running_scan_keeps_the_last_verdict_until_it_ends() -> None:
+    """At the window's end the next scan decides in a moment; a page asks nothing meanwhile."""
+
+    record = _record()
+    old = _catalog(fetched=NOW - WINDOW - timedelta(seconds=5))
+    assert record_freshness(record, old, _row(), now=NOW).verdict == "unverified"
+    verdict = record_freshness(record, old, _row(), now=NOW, scanning=True)
+    assert verdict.verdict == "current" and verdict.verified_at == old.fetched_at
+    # A change the last scan saw, or pending checks, still decide as before.
+    newer = _row(updated=NOW - timedelta(minutes=5))
+    assert record_freshness(record, old, newer, now=NOW, scanning=True).verdict == "changed"
+    pending = _record(runs=("in_progress",))
+    assert record_freshness(pending, old, _row(), now=NOW, scanning=True).verdict == "unverified"
