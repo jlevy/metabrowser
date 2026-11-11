@@ -78,6 +78,7 @@ from metabrowser.cache.locks import (
     require_no_hierarchy_locks,
     run_lock_section,
     source_acquisition_lock,
+    source_acquisition_lock_name,
     source_alias_lock,
     staging_entry_lock,
     store_fetch_lock,
@@ -163,6 +164,13 @@ _OVERLAY_CONFIG: Final[tuple[tuple[str, str], ...]] = (
     ("core.alternateRefsCommand", "true"),
 )
 _ENTRY_ATTEMPTS: Final = 8
+# How long a cold open waits for another process's acquisition of the same source: that
+# owner's worst case. It makes at most two attempts, when a refused borrow falls back to a
+# full clone, each bounded by its origin probe and its fetch deadline; the local validation
+# and publication after each are given a minute. That minute bounds a stuck owner, not its
+# work: review D on PR #348 measured a whole overlay acquisition from a local origin at
+# 0.85 to 2.3 s, under a load average near 7.
+RESERVATION_WAIT_S: Final = 2 * (REMOTE_PROBE_TIMEOUT_S + GIT_ACQUISITION_TIMEOUT_S + 60.0)
 # How a source that is itself a partial clone refuses to send an object it lacks. The
 # fetch's upload-pack inherits GIT_NO_LAZY_FETCH, and acquisition runs Git under
 # LC_ALL=C, so this is Git's own untranslated text (promisor-remote.c).
@@ -436,7 +444,7 @@ async def acquire_into_staging(
     on_progress: ProgressReporter | None = None,
     lender: Lender | None = None,
     on_note: NoteReporter | None = None,
-    _reservation: CacheLock | None = None,
+    _cache_open: bool = False,
 ) -> StagingAcquisition:
     """Fetch *source* into a new staging store and validate it.
 
@@ -459,18 +467,16 @@ async def acquire_into_staging(
     # handshake that never completes. A local origin keeps the acquisition deadline.
     probe_timeout_s = REMOTE_PROBE_TIMEOUT_S if source.transport == "https" else None
     claim = await run_lock_section(
-        functools.partial(
-            _open_and_claim_staging, home, lock_order(), cache_open=_reservation is not None
-        ),
+        functools.partial(_open_and_claim_staging, home, lock_order(), cache_open=_cache_open),
         release=_StagingClaim.abandon,
     )
     home, entry, lock, git_version = claim.home, claim.entry, claim.lock, claim.git_version
-    # A killed owner must not let another caller fetch or sweep while its Git is
-    # still writing. The read-only origin probe below does not inherit the leases.
-    inherited = (
-        (lock.descriptor,) if _reservation is None else (lock.descriptor, _reservation.descriptor)
-    )
-    run_writer = functools.partial(_run, pass_fds=inherited)
+    # A killed owner's Git may still be writing into its staging entry, so each writer
+    # inherits the entry's liveness lock and no sweep removes the entry under it. The
+    # source reservation is not inherited: that writer can never publish, and holding the
+    # reservation would keep every other process's cold open waiting for it, past the
+    # deadline the dead owner enforced. The read-only origin probe below inherits nothing.
+    run_writer = functools.partial(_run, pass_fds=(lock.descriptor,))
     # Commands that run before the store exists start in the claimed staging entry, not
     # the home. Discovery stops at the working directory, and this one is private, new,
     # and never a repository, so neither the home nor anything enclosing it lends config.
@@ -1076,7 +1082,9 @@ async def acquire_source(
     empty directory into an ``f01`` skeleton. A miss that is allowed to fetch then
     opens the cache (and sweeps staging) and fetches, telling *on_phase* each phase
     as it starts and *on_progress* how far the fetch has got. A future layout is refused
-    before any write.
+    before any write. Before it fetches, a miss takes the source's cold-load reservation:
+    while another process holds it, the miss waits, telling *on_note* once, for up to
+    :data:`RESERVATION_WAIT_S`, and then uses what that process published.
 
     *checkout* is what the reader named with ``--checkout``: on a miss it lends its objects
     if it can, and needs no size check, since only what it lacks is fetched; a checkout of
@@ -1105,7 +1113,7 @@ async def acquire_source(
     if lender is None:
         await check_first_clone(source)
     home = (await run_lock_section(functools.partial(open_cache, home))).home
-    with await _reserve_acquisition(source, home) as reservation:
+    with await _reserve_acquisition(source, home, on_note):
         found = await run_lock_section(functools.partial(_find_for_acquisition, source, home))
         if found is not None:
             return await _settled_hit(found, checkout, on_note, inspecting=inspecting)
@@ -1117,7 +1125,7 @@ async def acquire_source(
                 on_progress=on_progress,
                 lender=lender,
                 on_note=on_note,
-                _reservation=reservation,
+                _cache_open=True,
             )
         except _ObjectFormatRefusedError as exc:
             if not allow_clone_fallback:
@@ -1130,7 +1138,7 @@ async def acquire_source(
                 home=home,
                 on_phase=on_phase,
                 on_progress=on_progress,
-                _reservation=reservation,
+                _cache_open=True,
             )
         _report(on_phase, "publishing")
         published = await run_lock_section(functools.partial(_publish_and_touch, staged))
@@ -1138,23 +1146,38 @@ async def acquire_source(
         return dataclasses.replace(published, fetched=True)
 
 
-async def _reserve_acquisition(source: GitSource, home: Path) -> CacheLock:
-    """Wait off the lock hierarchy for this source's one cold-load owner."""
+async def _reserve_acquisition(
+    source: GitSource, home: Path, on_note: NoteReporter | None = None
+) -> CacheLock:
+    """Wait off the lock hierarchy for this source's one cold-load owner.
+
+    *on_note* is told once, when another process holds the reservation, that this open
+    waits for it.
+    """
 
     require_no_hierarchy_locks("waiting for a source acquisition")
     source_id = source_identity(source.transport, source.normalized)
     claim = functools.partial(source_acquisition_lock, home, source_id, order=lock_order())
     loop = asyncio.get_running_loop()
-    deadline = loop.time() + GIT_ACQUISITION_TIMEOUT_S + REMOTE_PROBE_TIMEOUT_S
+    deadline = loop.time() + RESERVATION_WAIT_S
     delay = WAIT_RETRY_FIRST_S
+    waiting = False
     while True:
         try:
             return await run_lock_section(claim, release=CacheLock.release)
         except LockBusyError as exc:
             if loop.time() >= deadline:
                 raise AcquisitionError(
-                    "another process is still acquiring this repository"
+                    "another process is still acquiring this repository; it holds "
+                    f"{source_acquisition_lock_name(source_id)} in the cache"
                 ) from exc
+            if not waiting:
+                waiting = True
+                _note(
+                    on_note,
+                    "waiting for another Metabrowser process to finish acquiring "
+                    f"{source.normalized}",
+                )
         await asyncio.sleep(delay)
         delay = min(delay * 2, WAIT_RETRY_MAX_S)
 

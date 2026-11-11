@@ -707,3 +707,83 @@ def test_a_contended_alias_lock_does_not_fail_the_hit(
     monkeypatch.setattr(acquire_module, "source_alias_lock", busy)
     second = asyncio.run(acquire_source(source, home=home))
     assert second.store_id == first.store_id
+
+
+@posix_only
+def test_staging_writers_inherit_the_entry_lease_and_not_the_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #348 reviews A7 and A12: which descriptors reach each staging Git command.
+
+    The entry's liveness lock keeps a sweep from removing a killed owner's entry while its
+    Git still writes. The source reservation is the owner's alone, so a dead owner's
+    orphaned fetch cannot keep other processes' cold opens waiting.
+    """
+    _allow_installed_git(monkeypatch)
+    source = _file_source(_origin(tmp_path))
+    real_run = acquire_module._run  # pyright: ignore[reportPrivateUsage]
+    real_claim = acquire_module._open_and_claim_staging  # pyright: ignore[reportPrivateUsage]
+    real_reserve = acquire_module._reserve_acquisition  # pyright: ignore[reportPrivateUsage]
+    runs: list[tuple[str, tuple[int, ...]]] = []
+    staging: list[int] = []
+    reserved: list[int] = []
+
+    async def recorded(args: list[str], **kwargs: Any) -> bytes:
+        words = list(args)
+        while words[0] == "-c":
+            words = words[2:]
+        runs.append((words[0], kwargs.get("pass_fds", ())))
+        return await real_run(args, **kwargs)
+
+    def claimed(*args: Any, **kwargs: Any) -> Any:
+        claim = real_claim(*args, **kwargs)
+        staging.append(claim.lock.descriptor)
+        return claim
+
+    async def reserve(*args: Any, **kwargs: Any) -> CacheLock:
+        lock = await real_reserve(*args, **kwargs)
+        reserved.append(lock.descriptor)
+        return lock
+
+    monkeypatch.setattr(acquire_module, "_run", recorded)
+    monkeypatch.setattr(acquire_module, "_open_and_claim_staging", claimed)
+    monkeypatch.setattr(acquire_module, "_reserve_acquisition", reserve)
+    assert asyncio.run(acquire_source(source, home=tmp_path / "home")).fetched
+    (entry,) = staging
+    (reservation,) = reserved
+    writers = {name for name, fds in runs if fds}
+    assert {"init", "config", "fetch"} <= writers, runs
+    assert all(fds in {(), (entry,)} for _name, fds in runs), runs
+    assert all(reservation not in fds for _name, fds in runs)
+    assert ("ls-remote", ()) in runs
+
+
+@posix_only
+def test_a_cold_open_waits_out_the_owners_worst_case_and_names_the_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #348 review B4: the wait covers two attempts, and its failure names the lock."""
+    from metabrowser.cache.locks import source_acquisition_lock, source_acquisition_lock_name
+    from metabrowser.cache.origin import REMOTE_PROBE_TIMEOUT_S
+    from metabrowser.git.process import GIT_ACQUISITION_TIMEOUT_S
+
+    assert acquire_module.RESERVATION_WAIT_S >= 2 * (
+        GIT_ACQUISITION_TIMEOUT_S + REMOTE_PROBE_TIMEOUT_S
+    )
+    _allow_installed_git(monkeypatch)
+    source = _file_source(_origin(tmp_path))
+    home = tmp_path / "home"
+    other = tmp_path / "other"
+    other.mkdir()
+    asyncio.run(acquire_source(_file_source(_origin(other)), home=home))
+    source_id = source_identity(source.transport, source.normalized)
+    held = source_acquisition_lock(home, source_id)
+    monkeypatch.setattr(acquire_module, "RESERVATION_WAIT_S", 0.05)
+    notes: list[str] = []
+    try:
+        with pytest.raises(AcquisitionError) as refused:
+            asyncio.run(acquire_source(source, home=home, on_note=notes.append))
+    finally:
+        held.release()
+    assert source_acquisition_lock_name(source_id) in str(refused.value)
+    assert len(notes) == 1 and notes[0].startswith("waiting for another Metabrowser process")

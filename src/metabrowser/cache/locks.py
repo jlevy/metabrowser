@@ -584,18 +584,24 @@ def staging_entry_lock(home: Path, entry: str, *, order: LockOrder | None = None
     return _entry_lock(home, LockKind.STAGING_ENTRY, "staging", entry, order=order)
 
 
+def source_acquisition_lock_name(source_id: str) -> str:
+    """The cold-load reservation's lock file, relative to the cache home."""
+
+    _require(is_identity(source_id), "source identity")
+    return f"{LOCKS_DIRECTORY}/sources/{store_key(source_id)}.acquire.lock"
+
+
 def source_acquisition_lock(
     home: Path, source_id: str, *, order: LockOrder | None = None
 ) -> CacheLock:
     """Try the cold-load reservation for a canonical source, outside the hierarchy."""
 
-    _require(is_identity(source_id), "source identity")
-    key = store_key(source_id)
+    name = source_acquisition_lock_name(source_id)
     return _acquire(
         home,
         LockKind.SOURCE_ACQUISITION,
-        key,
-        f"{LOCKS_DIRECTORY}/sources/{key}.acquire.lock",
+        store_key(source_id),
+        name,
         blocking=False,
         order=order,
     )
@@ -646,6 +652,7 @@ __all__ = [
     "repository_store_lock",
     "require_no_hierarchy_locks",
     "source_acquisition_lock",
+    "source_acquisition_lock_name",
     "source_alias_lock",
     "staging_entry_lock",
     "store_fetch_lock",
