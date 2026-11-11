@@ -128,11 +128,14 @@ The app icon is a sister of the sister app’s Figma-designed icon, version 6.
   rather than rebuilt from pixels.
 - **Mark:** the first half of an M, drawn as `|\/`, then a clean B. The M’s rising
   diagonal ends in a vertical cut, so the partial M’s right side is a vertical face
-  parallel to the B’s stem, separated from it by a gap matching the sister app’s gap
-  between its two glyphs.
-  The half-M is hand-drawn on Reddit Mono Bold’s construction, the face the sister app’s
-  letters are set in; the B is Reddit Mono Bold’s own B, which that app also used
-  unedited for its letter.
+  parallel to the B’s stem.
+  Chosen on 2026-11-11 after side-by-side review: the cut ends the diagonal in a point
+  19.337 units below the cap line (of a 512-unit master), and a 34-unit gap, a little
+  more than the M’s 31.464 stem, separates the face from the intact B, so the gap reads
+  as the M’s missing right stroke.
+  The mark is 242 units wide, against the sister app’s 222. The half-M is hand-drawn on
+  Reddit Mono Bold’s construction, the face the sister app’s letters are set in; the B
+  is Reddit Mono Bold’s own B, which that app also used unedited for its letter.
 - **Colors:** gem tones with the sister app’s radiance (its fills’ lightness and
   saturation) in the hue families of Metabrowser’s file-overview colors: a citrine or
   old-gold yellow for the JavaScript brownish yellow, and an amethyst purple for the
@@ -148,6 +151,9 @@ The app icon is a sister of the sister app’s Figma-designed icon, version 6.
   or channel width, the stem, diagonal, and vertex dimensions, the cap line and
   baseline, and the fills are named parameters in one checked-in file, so a tweak is a
   one-line change and a rebuild.
+  The chosen values (`junction` gap, `faceTopFlat` 0, `faceDrop` 19.337, `gap` 34) are
+  in the release and development parameter files, which differ only in their base; the
+  earlier designs stay as alternate parameter files for comparison.
   A script renders every size reproducibly with native tools, with small-size masters if
   16 to 64 px need them.
   The sister app’s own files stay out of this repository.
