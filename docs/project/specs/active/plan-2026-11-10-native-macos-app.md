@@ -277,11 +277,12 @@ The two standard setup flows come first; see the
   documented in the installation guide and checked end to end on clean accounts.
   The app gets a required minimum `metab` version (later, the host-protocol version),
   names the exact upgrade command, notices `uv tool upgrade`, offers to restart running
-  servers, and flags a launch from the disk image (beads to be filed).
+  servers (`mb-895s`), and flags a launch from the disk image (`mb-3n79`). The
+  installation guide covers both flows (`mb-2hqz`).
 - [ ] Flow 2, app first with no CLI: copyable commands for only the missing steps,
   continuing by itself when `metab` appears; then an “Install for me” button that runs
-  the user’s uv, or a signed uv inside the app, to make Flow 1’s CLI install (beads to
-  be filed).
+  the user’s uv, or a signed uv inside the app, to make Flow 1’s CLI install (`mb-su30`,
+  then `mb-34oi`).
 - [ ] Narrowed: an optional app-private runtime from a bundled uv and a hash-pinned
   `pylock.toml`, for offline, managed, or hash-pinned setups, built only on demand
   (`mb-lrcd`).
