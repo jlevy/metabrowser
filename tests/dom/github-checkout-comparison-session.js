@@ -59,7 +59,7 @@ const failedAfter = (outcome, message, resetAt = null) => ({
   last_refresh: { outcome, message, reset_at: resetAt, at: "2026-09-17T12:00:20Z" },
 });
 
-function harness(page, { tab, get, post, owns = () => true }) {
+function harness(page, { tab, get, post, owns = () => true, reader = null }) {
   const state = { get, post, visible: true, now: NOW, model: null };
   const requests = [];
   const timers = new Map();
@@ -94,7 +94,7 @@ function harness(page, { tab, get, post, owns = () => true }) {
         throw new Error("a checkout comparison never switches its source");
       },
     },
-    { number: 10, tab },
+    { number: 10, tab, reader },
   );
   return {
     controller,
@@ -104,6 +104,7 @@ function harness(page, { tab, get, post, owns = () => true }) {
       return state.model;
     },
     posts: () => requests.filter((request) => request.startsWith("POST ")),
+    delays: () => [...timers.values()].map((timer) => timer.delay),
     /** Run the asks scheduled with *delay*, as the page's timers would. */
     async fire(delay) {
       for (const [id, timer] of [...timers]) {
@@ -245,10 +246,17 @@ async function run() {
       post: () => recorded.started,
     });
     await run.controller.start();
+    // A walk that will settle on Changes shows what its address will ask for, and the
+    // request waits for that address; any later call that is not the walk's ends it.
+    run.controller.setTab("files", { settling: true });
+    assert.equal(run.model.changesPending, true, "a walk that will settle shows progress");
+    run.controller.walkCancelled();
+    assert.equal(run.model.canFetchComparison, true, "a cancelled walk leaves it to the reader");
+    run.controller.setTab("files", { settling: true });
     run.controller.setTab("files");
     await run.controller.poll();
     assert.equal(run.posts().length, 0);
-    assert.equal(run.model.changesPending, false);
+    assert.equal(run.model.changesPending, false, "the route's own call ends the settling");
     assert.equal(run.model.canFetchComparison, true);
     assert.equal(run.model.canRetryComparison, false, "nothing failed, so nothing is retried");
     snapshot(run, "Changes without its address waits for the reader");
@@ -307,6 +315,13 @@ async function run() {
     assert.equal(run.posts().length, 1);
     assert.equal(run.model.message, null);
     snapshot(run, "Retry changes asks again and clears the reason");
+    run.state.get = () =>
+      answer(failedAfter("lender_missing", "the checkout cannot supply this comparison"));
+    await run.controller.poll();
+    await settle();
+    assert.equal(run.model.message, null, "the earlier refusal is not this attempt's reason");
+    assert.match(run.model.failure, /cannot supply this comparison/);
+    snapshot(run, "a retry that fails shows its own outcome, not the earlier refusal");
     run.controller.dispose();
   }
 
@@ -333,6 +348,44 @@ async function run() {
     run.controller.dispose();
   }
   {
+    const unreadable = failedAfter(
+      "not_found_or_private",
+      "the repository could not be read from its origin",
+    );
+    const run = harness(page, {
+      tab: "files",
+      get: () => answer(unreadable),
+      post: () => recorded.started,
+    });
+    await run.controller.start();
+    await settle();
+    assert.equal(run.posts().length, 0, "nor one whose origin could not be read");
+    assert.equal(run.model.canRetryComparison, true);
+    snapshot(run, "an unreadable origin holds the automatic attempt too");
+    run.controller.dispose();
+  }
+  {
+    const before = {
+      ...full,
+      last_refresh: {
+        outcome: "lender_missing",
+        message: "the checkout cannot supply this comparison",
+        reset_at: null,
+        at: "2026-09-17T11:00:00Z",
+      },
+    };
+    const run = harness(page, {
+      tab: "files",
+      get: () => answer(before),
+      post: () => recorded.started,
+    });
+    await run.controller.start();
+    await settle();
+    assert.deepEqual(run.posts(), [comparisonPost], "a newer record lifts the hold");
+    snapshot(run, "a borrowing refusal older than the record does not hold");
+    run.controller.dispose();
+  }
+  {
     const limited = failedAfter("rate_limited", null, "2026-09-17T12:05:00Z");
     const run = harness(page, {
       tab: "files",
@@ -344,12 +397,108 @@ async function run() {
     assert.equal(run.posts().length, 0, "no attempt is due before GitHub's limit lifts");
     assert.equal(run.model.canRetryComparison, true);
     snapshot(run, "a rate limit holds the automatic attempt until it lifts");
-    run.state.now = Date.parse("2026-09-17T12:05:01Z");
+    // A read fails while the hold still stands, and then the limit lifts by the clock
+    // alone, before any read repaints the page. The Retry changes still on screen sends.
+    run.state.get = () => answer(null, 500);
     await run.controller.poll();
+    assert.equal(run.model.canRetryComparison, true, "the hold's Retry changes stays painted");
+    run.requests.length = 0;
+    run.state.now = Date.parse("2026-09-17T12:05:01Z");
+    await run.controller.requestComparison();
     await settle();
-    assert.equal(run.posts().length, 1);
+    assert.deepEqual(run.posts(), [comparisonPost]);
     assert.equal(run.model.changesPending, true);
-    snapshot(run, "the automatic attempt starts once the limit lifts");
+    snapshot(run, "Retry changes after the limit lifts sends the attempt at once");
+    run.controller.dispose();
+  }
+  {
+    const limited = failedAfter("rate_limited", null, "2026-09-17T12:00:40Z");
+    const run = harness(page, {
+      tab: "",
+      get: () => answer(limited),
+      post: () => recorded.started,
+    });
+    await run.controller.start();
+    await settle();
+    assert.deepEqual(run.delays(), [page.SLOW_POLL_MS], "Conversation polls as it did");
+    run.controller.setTab("files");
+    assert.equal(run.posts().length, 0);
+    assert.deepEqual(run.delays(), [10_000], "Changes wakes when the limit lifts");
+    run.requests.length = 0;
+    run.state.now = Date.parse("2026-09-17T12:00:40Z");
+    await run.fire(10_000);
+    assert.deepEqual(run.posts(), [comparisonPost]);
+    snapshot(run, "the page wakes when the limit lifts and asks then");
+    run.controller.dispose();
+  }
+
+  // The page's own refresh of a stale record is on its way when Changes opens: the
+  // comparison waits for its answer, and no button is painted whose click would be ignored.
+  for (const owned of [true, false]) {
+    const stale = { ...full, state: "stale" };
+    let answerStale;
+    const run = harness(page, {
+      tab: "",
+      owns: () => owned,
+      get: () => answer(stale),
+      post: (body) =>
+        body.comparison
+          ? recorded.started
+          : () =>
+              new Promise((resolve) => {
+                answerStale = resolve;
+              }),
+    });
+    await run.controller.start();
+    await settle();
+    if (!owned) {
+      // Changes is painted with its button before the ask the stale read scheduled fires.
+      run.controller.setTab("files");
+      assert.equal(run.model.canFetchComparison, true);
+    }
+    await run.fire(page.REFRESH_ASK_MS);
+    assert.deepEqual(run.posts(), [
+      `POST /api/plugin/github/pull-refresh ${JSON.stringify({ number: 10 })}`,
+    ]);
+    if (owned) {
+      run.controller.setTab("files");
+    }
+    await settle();
+    assert.equal(run.posts().length, 1, "the comparison waits for the page's own refresh");
+    assert.equal(run.model.canFetchComparison, false);
+    assert.equal(run.model.canRetryComparison, false);
+    snapshot(
+      run,
+      owned
+        ? "Changes opened during the page's own refresh waits for it"
+        : "Changes without its address paints no Fetch changes during the page's own refresh",
+    );
+    answerStale(answer({ refresh: "not_due", pull: stale }));
+    await settle();
+    assert.equal(run.posts().length, owned ? 1 : 0);
+    assert.equal(run.model.canFetchComparison, !owned);
+    snapshot(
+      run,
+      owned
+        ? "the comparison follows the refresh's answer"
+        : "Fetch changes returns with the refresh's answer",
+    );
+    run.controller.dispose();
+  }
+
+  // A reader's selection paints a description it already has before the page's first read:
+  // Changes says the selected fetch is coming.
+  {
+    const run = harness(page, {
+      tab: "files",
+      reader: { initial: answer(coldCore), fetchAfterMs: 0 },
+      get: () => answer(coldCore),
+      post: () => answer({ pull: { ...coldCore, refreshing: true } }, 202),
+    });
+    const started = run.controller.start();
+    assert.equal(run.model.changesPending, true, "the selected fetch is still to be sent");
+    snapshot(run, "a reader's selection shows progress before its first read");
+    await started;
     run.controller.dispose();
   }
   process.stdout.write(`${JSON.stringify(story, null, 2)}\n`);

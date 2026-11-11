@@ -237,10 +237,15 @@ the store its Files changed needs.
 The page sends it once when **Changes** opens at its own address on a record without a
 store, and shows progress only while that request is on its way or still to be sent.
 Because `retry` bypasses the server’s window, the page itself holds that request after a
-recorded store-acquisition failure newer than the record, or before a rate limit’s
-`reset_at`, and leaves it to **Retry changes**. Changes shown while the address names
-another tab sends nothing and offers **Fetch changes**. `comparison: true` without
-`retry: true` is refused.
+recorded failure newer than the record that another attempt would repeat (the store’s
+acquisition, or an origin that cannot be read), and until a rate limit’s `reset_at`,
+when the page reads again and asks.
+**Retry changes** overrides a hold.
+A Pulls-tab file walk that will settle on Changes shows progress until its address moves
+there. Changes shown while the address names another tab, as a cancelled walk leaves it,
+sends nothing and offers **Fetch changes**. Neither button is shown while another
+refresh of the page is on its way.
+`comparison: true` without `retry: true` is refused.
 Acquisition leaves the source folder and its pin unchanged, and a request joining a
 metadata refresh retains the comparison action for that job.
 For an explicitly selected missing record, `retry: true` may include `wait_core: true`,
