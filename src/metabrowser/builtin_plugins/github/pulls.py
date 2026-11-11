@@ -816,6 +816,10 @@ async def _write(
         ) from exc
 
 
+class NeedsDeepening(Exception):
+    """Optional work found an uncertain merge base, which only a reader's request deepens."""
+
+
 async def _with_comparison(
     published: PublishedSource,
     record: PullRecord,
@@ -823,11 +827,17 @@ async def _with_comparison(
     expected: PullRecord | RecordAbsence,
     exact_base: bool = False,
     published_records: list[PullRecord] | None = None,
+    optional: bool = False,
 ) -> PullRecord:
     """Compute Files changed and write the record.
 
     *published_records* is told the pending record this writes before deepening, so a
     failure after it stamps the observation that is on disk.
+
+    *optional* work publishes only a computed comparison: where this would write the
+    comparison's absence it raises :class:`PullDataError` instead, and an uncertain merge
+    base is neither written nor deepened but raises :class:`NeedsDeepening`, since
+    deepening fetches more than the pull request's head and base.
 
     A comparison that cannot be computed is left out and named in the record's
     ``unavailable``. One whose merge base is uncertain writes that record first, so a
@@ -853,6 +863,8 @@ async def _with_comparison(
             open_pull=pull.state == "open" and not exact_base,
         )
     except BaseUncertainError as uncertain:
+        if optional:
+            raise NeedsDeepening from uncertain
         log.debug("pull request %s has an uncertain merge base; deepening", pull.number)
         # A write another writer won raises, so the second write expects the first.
         expected = await _write(published, without(uncertain.state), expected=expected)
@@ -872,6 +884,8 @@ async def _with_comparison(
             log.debug("deepening pull request %s stopped: %s (%s)", pull.number, exc, exc.state)
             return await _write(published, without(uncertain.state), expected=expected)
     except PullRefError as exc:
+        if optional:
+            raise _fetch_failure(exc) from exc
         log.debug("pull request %s has no comparison: %s", pull.number, exc)
         return await _write(published, without(exc.state), expected=expected)
     return await _write(
@@ -889,9 +903,17 @@ async def _with_comparison(
 
 
 async def prepare_pull_comparison(
-    published: PublishedSource, record: PullRecord
+    published: PublishedSource,
+    record: PullRecord,
+    *,
+    optional: bool = False,
 ) -> PullRecord | None:
-    """Prepare the cached observation without repeating its GitHub metadata reads."""
+    """Prepare the cached observation without repeating its GitHub metadata reads.
+
+    *optional* work publishes nothing but a computed comparison, and raises
+    :class:`PullDataError` or :class:`NeedsDeepening` for anything else (see
+    :func:`_with_comparison`).
+    """
     if record.comparison is not None:
         return record
     try:
@@ -904,7 +926,13 @@ async def prepare_pull_comparison(
             )
             if fetched != pull.head.sha:
                 return None
-        return await _with_comparison(published, record, expected=record, exact_base=True)
+        return await _with_comparison(
+            published,
+            record,
+            expected=record,
+            exact_base=True,
+            optional=optional,
+        )
     except PullRefError as exc:
         raise _fetch_failure(exc) from exc
     except GitError as exc:
@@ -1181,6 +1209,7 @@ async def open_pull_request(
 
 
 __all__ = [
+    "NeedsDeepening",
     "PullDataError",
     "PullDataState",
     "last_refresh",

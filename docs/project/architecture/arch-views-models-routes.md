@@ -268,12 +268,15 @@ record’s comparison as optional work.
 It stands alone: no other field may accompany it.
 It starts only while no other pull job of the checkout runs, the record is current and
 was written with no store, and its revision is the one named, and otherwise answers
-`200` with `refresh: "not_due"`. It fetches only the pull request’s head and base, holds
-no network slot, and records no outcome; a failed revision is not tried again.
+`200` with `refresh: "not_due"`. It fetches only the pull request’s head and base, never
+deepens a shallow store, holds no network slot, and records no outcome; a failed
+revision is not tried again.
 While it runs, the envelope carries `"preparing_comparison": true`, and the page polls
 at the slow rate on Conversation.
-A reader’s comparison request for the same pull request promotes it, a metadata refresh
-of it cancels the idle part, and a refresh of another pull request cancels it.
+A reader’s comparison request for the same pull request promotes it: a failure is then
+the reader’s, without a second fetch, and a merge base that needs deepening is deepened.
+A metadata refresh of it, automatic or not, cancels the idle part, and a refresh of
+another pull request cancels it.
 The page sends it once per record revision, from a visible Conversation at its own
 address, after `REFRESH_ASK_MS` and an idle callback, and only for a `stale` envelope of
 a fresh record without a store, which only a server with a store answers.
