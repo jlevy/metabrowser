@@ -105,6 +105,7 @@ function harness(page, { tab, get, post, owns = () => true, reader = null }) {
     },
     posts: () => requests.filter((request) => request.startsWith("POST ")),
     delays: () => [...timers.values()].map((timer) => timer.delay),
+    timerIds: () => [...timers.keys()],
     /** Run the asks scheduled with *delay*, as the page's timers would. */
     async fire(delay) {
       for (const [id, timer] of [...timers]) {
@@ -429,6 +430,49 @@ async function run() {
     await run.fire(10_000);
     assert.deepEqual(run.posts(), [comparisonPost]);
     snapshot(run, "the page wakes when the limit lifts and asks then");
+    run.controller.dispose();
+  }
+  {
+    // A Pulls-tab walk opens Changes before its address, so the tab is already Changes when
+    // the route confirms it: that confirmation is what owns Changes, and it wakes the page.
+    const limited = failedAfter("rate_limited", null, "2026-09-17T12:00:40Z");
+    let owned = false;
+    const run = harness(page, {
+      tab: "",
+      owns: () => owned,
+      get: () => answer(limited),
+      post: () => recorded.started,
+    });
+    await run.controller.start();
+    await settle();
+    run.controller.setTab("files", { settling: true });
+    assert.deepEqual(run.delays(), [page.SLOW_POLL_MS], "the unsettled walk owns nothing yet");
+    owned = true;
+    run.controller.setTab("files");
+    assert.deepEqual(run.delays(), [10_000], "the route's confirmation wakes it at the lift");
+    run.controller.setTab("files");
+    assert.deepEqual(run.delays(), [10_000], "a later confirmation keeps the earlier wake");
+    run.requests.length = 0;
+    run.state.now = Date.parse("2026-09-17T12:00:40Z");
+    await run.fire(10_000);
+    assert.deepEqual(run.posts(), [comparisonPost]);
+    snapshot(run, "a walk's Changes wakes when the limit lifts and asks then");
+    run.controller.dispose();
+  }
+  {
+    // Under a hold that lifts after the next poll, opening Changes keeps that poll.
+    const limited = failedAfter("rate_limited", null, "2026-09-17T12:05:00Z");
+    const run = harness(page, {
+      tab: "",
+      get: () => answer(limited),
+      post: () => recorded.started,
+    });
+    await run.controller.start();
+    await settle();
+    const before = run.timerIds();
+    run.controller.setTab("files");
+    assert.deepEqual(run.timerIds(), before, "a later lift does not restart the poll");
+    run.requests.length = 0;
     run.controller.dispose();
   }
 

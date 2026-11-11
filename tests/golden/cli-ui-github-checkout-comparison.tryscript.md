@@ -22,9 +22,10 @@ A refused comparison offers **Retry changes** and keeps its reason across reads,
 retry that then fails shows its own outcome.
 A recorded borrowing refusal or unreadable origin newer than the record, or a rate limit
 until it lifts, holds the automatic attempt for **Retry changes**; an older failure does
-not. The page wakes when the limit lifts, and **Retry changes** sends the attempt at
-once. Changes opened while the page’s own refresh is on its way waits for it and paints
-no button. A reader’s selection shows progress before its first read.
+not. The page wakes when the limit lifts, also when a Pulls-tab walk opened Changes and
+the route then confirmed it, and **Retry changes** sends the attempt at once.
+Changes opened while the page’s own refresh is on its way waits for it and paints no
+button. A reader’s selection shows progress before its first read.
 
 ```console
 $ node tests/dom/github-checkout-comparison-session.js
@@ -345,6 +346,22 @@ $ node tests/dom/github-checkout-comparison-session.js
   },
   {
     "step": "the page wakes when the limit lifts and asks then",
+    "requests": [
+      "GET /api/plugin/github/pull?number=10",
+      "POST /api/plugin/github/pull-refresh {\"number\":10,\"retry\":true,\"comparison\":true}"
+    ],
+    "changesPending": true,
+    "canRetryChanges": false,
+    "canFetchChanges": false,
+    "canRefresh": false,
+    "files": "Fetching changes…",
+    "message": null,
+    "failure": null,
+    "refreshing": true,
+    "comparison": null
+  },
+  {
+    "step": "a walk's Changes wakes when the limit lifts and asks then",
     "requests": [
       "GET /api/plugin/github/pull?number=10",
       "POST /api/plugin/github/pull-refresh {\"number\":10,\"retry\":true,\"comparison\":true}"
