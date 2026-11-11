@@ -524,6 +524,14 @@ status: 200
       "kind": "api"
     },
     {
+      "path": "/api/plugin/github/pull-rendered-diff",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
       "path": "/api/plugin/github/pull-snapshot",
       "methods": [
         "GET",
@@ -740,7 +748,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 59
+  "count": 60
 }
 ? 0
 ```
