@@ -42,7 +42,8 @@ public nonisolated struct SupervisorPolicy: Sendable {
 ///
 /// Every launch and stop bumps `generation`; work for an older generation sees the
 /// mismatch and stops, which is how a stop during startup, a crash during a readiness
-/// wait, and a retry cannot overwrite each other's state. There is no automatic
+/// wait, and a retry cannot overwrite each other's state, and how a restart that finds a
+/// newer stop when its old child is gone launches nothing. There is no automatic
 /// restart: an unexpected exit is a failure the window shows with Retry.
 ///
 /// Every child is ended by exactly one tracked termination (`retire`), whoever asks
@@ -70,6 +71,7 @@ public final class ServerSupervisor {
     /// The current launch's child. A child leaves this only by being retired.
     private var process: (any ServerProcess)?
     private var generation = 0
+    private var isShutDown = false
     private var terminations: [ObjectIdentifier: Termination] = [:]
 
     private struct Termination {
@@ -110,23 +112,43 @@ public final class ServerSupervisor {
             .map(\.pid)
     }
 
-    /// Starts a server unless one is starting, running, or stopping.
+    /// Starts a server unless one is starting, running, or stopping, or the supervisor has
+    /// been shut down.
     public func start() async {
+        guard !isShutDown else { return }
         switch state {
         case .stopped, .failed: await launchChild()
         case .starting, .ready, .stopping: return
         }
     }
 
-    /// Stops whatever is running, then starts a fresh child.
+    /// Stops whatever is running, then starts a fresh child, unless a stop, another
+    /// restart, or a shutdown arrived while the old child was stopping: the newest request
+    /// wins, so closing a folder's last window during a restart leaves nothing running.
     public func restart() async {
-        await stop()
+        let mine = await halt()
+        guard mine == generation, !isShutDown else { return }
         await launchChild()
     }
 
     /// Ends the current child and waits for every termination in flight, including one
     /// a failed start began. Safe in any state and from concurrent callers.
     public func stop() async {
+        await halt()
+    }
+
+    /// Stops for good: like `stop()`, and no later `start()` or `restart()` launches a
+    /// child, including one already waiting. A folder whose windows have all closed is
+    /// shut down, never just stopped.
+    public func shutDown() async {
+        isShutDown = true
+        await halt()
+    }
+
+    /// `stop()`, returning the generation it began, which a restart compares after the
+    /// wait to see whether anything newer happened.
+    @discardableResult
+    private func halt() async -> Int {
         generation += 1
         let mine = generation
         if let child = process {
@@ -136,6 +158,7 @@ public final class ServerSupervisor {
         if !terminations.isEmpty { state = .stopping }
         await awaitTerminations()
         if mine == generation { state = .stopped }
+        return mine
     }
 
     private func launchChild() async {
@@ -149,7 +172,7 @@ public final class ServerSupervisor {
             retire(previous)
         }
         await awaitTerminations()
-        guard current == generation else { return }
+        guard current == generation, !isShutDown else { return }
         if let gate { await gate.acquire() }
         defer { gate?.release() }
         guard current == generation else { return }

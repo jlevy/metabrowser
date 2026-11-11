@@ -64,9 +64,9 @@ final class FolderSession: ManagedServer {
         Task { await supervisor.restart() }
     }
 
-    func stop() async {
+    func shutDown() async {
         identityRequest?.cancel()
-        await supervisor.stop()
+        await supervisor.shutDown()
     }
 
     func showFrontWindow() {

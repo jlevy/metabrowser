@@ -308,6 +308,9 @@ Every child is ended by one tracked termination, whoever asks for it: a stop, a 
 a newer launch, or a start that gave up.
 A stop waits for all of them, and a launch first waits for any left by the launch it
 replaced, so overlapping restarts cannot drop a running child.
+A restart launches only if nothing newer arrived while its old child stopped, and a
+folder whose last window closed is shut down for good, so closing that window during a
+restart leaves no server running.
 `ServerFleet` holds the open and still-stopping servers for the app delegate, which is
 how its quit ordering is tested.
 

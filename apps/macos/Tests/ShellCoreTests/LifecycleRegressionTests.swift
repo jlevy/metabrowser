@@ -199,3 +199,81 @@ private func supervisor(_ child: FakeProcess, _ policy: SupervisorPolicy, gate: 
         #expect(first.hasExited)
     }
 }
+
+/// A restart waits for the old child to stop before it launches the next one. A stop that
+/// arrives during that wait used to lose to it: the restart launched anyway, after the
+/// fleet had let the server go, so closing a folder's last window during a restart left a
+/// server nothing would ever stop (review findings A2 and C2 on #341).
+@Suite struct RestartSupersededTests {
+    /// A server whose first child holds on until the test lets it exit, and whose later
+    /// children are ordinary.
+    private final class Children {
+        var all: [FakeProcess] = []
+        func make() -> FakeProcess {
+            let child = FakeProcess(pid: pid_t(100 + all.count), ignoresTerm: all.isEmpty, ignoresKill: all.isEmpty)
+            child.say(servingLine)
+            all.append(child)
+            return child
+        }
+    }
+
+    private func subject(_ children: Children) -> ServerSupervisor {
+        ServerSupervisor(
+            spec: spec, launch: CLIServeLaunch(), policy: policy(grace: .milliseconds(20), killWait: .seconds(5)),
+            makeProcess: { _ in children.make() }, probe: { _ in true })
+    }
+
+    @Test func closingTheLastWindowDuringARestartLeavesNothingRunning() async {
+        let children = Children()
+        let server = subject(children)
+        await server.start()
+        let fleet = ServerFleet()
+        fleet.insert(server, for: "/a")
+        let restarting = Task { await server.restart() }
+        #expect(await eventually { children.all[0].signals.contains(SIGKILL) })  // waiting on the old child
+        fleet.retire(server)  // the last window closed
+        children.all[0].exitOnItsOwn()
+        await restarting.value
+        await fleet.stopAll()
+        #expect(children.all.count == 1)
+        let allExited = children.all.allSatisfy { $0.hasExited }
+        #expect(allExited)
+        #expect(server.state == .stopped)
+        #expect(fleet.isEmpty)
+        #expect(fleet.childPIDs.isEmpty)
+    }
+
+    @Test func aStopDuringARestartWins() async {
+        let children = Children()
+        let server = subject(children)
+        await server.start()
+        let restarting = Task { await server.restart() }
+        #expect(await eventually { children.all[0].signals.contains(SIGKILL) })
+        let stopping = Task { await server.stop() }
+        try? await Task.sleep(for: .milliseconds(20))
+        children.all[0].exitOnItsOwn()
+        await restarting.value
+        await stopping.value
+        #expect(children.all.count == 1)
+        #expect(server.state == .stopped)
+        #expect(server.childPIDs.isEmpty)
+    }
+
+    @Test func aShutDownServerStartsNothingLater() async {
+        let spawned = Recorder<Int>()
+        let server = ServerSupervisor(
+            spec: spec, launch: CLIServeLaunch(), policy: policy(),
+            makeProcess: { _ in
+                spawned.append(1)
+                let child = FakeProcess()
+                child.say(servingLine)
+                return child
+            }, probe: { _ in true })
+        await server.start()
+        await server.shutDown()
+        await server.start()
+        await server.restart()
+        #expect(spawned.count == 1)
+        #expect(server.state == .stopped)
+    }
+}

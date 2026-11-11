@@ -2,8 +2,9 @@ import Darwin
 
 /// A server the app supervises, as quitting sees it.
 public protocol ManagedServer: AnyObject {
-    /// Stops every child, waiting until each has exited or been given up on.
-    func stop() async
+    /// Stops every child for good, waiting until each has exited or been given up on. A
+    /// server that has been shut down never starts another child.
+    func shutDown() async
     /// Every child not yet reaped; each pid is also its process group id.
     var childPIDs: [pid_t] { get }
 }
@@ -56,7 +57,7 @@ public final class ServerFleet {
         open[key] = nil
         let id = ObjectIdentifier(server)
         let task = Task {
-            await server.stop()
+            await server.shutDown()
             self.stopping[id] = nil
         }
         stopping[id] = Stopping(server: server, task: task)
