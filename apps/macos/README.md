@@ -253,7 +253,7 @@ Do not hand one out as a release.
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
 | `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, and stopping it. |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
-| `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, folder identity and window titles, the navigation policy, and downloads. |
+| `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, folder identity and window titles, the navigation policy, the web view configuration, and downloads. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
 | `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children and real `WKDownload`s from a local server. |
 | `Resources/Info.plist` | The bundle’s property list. |
@@ -264,9 +264,10 @@ Do not hand one out as a release.
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release. |
 
 `ShellCore` holds everything that can be tested without a window; it imports no AppKit.
-It imports WebKit only for what its tests can run in a `WKWebView` without a window:
-downloads. The app target is the platform behavior the brief exempts from the CLI parity
-rule: finding a runtime before one exists, windows, menus, the Dock, and file events.
+It imports WebKit only for what its tests can run in a `WKWebView` without a window: the
+web view’s configuration and downloads.
+The app target is the platform behavior the brief exempts from the CLI parity rule:
+finding a runtime before one exists, windows, menus, the Dock, and file events.
 
 ### A Folder’s Server
 
@@ -379,6 +380,9 @@ Terminal launch.
   `file://` and other schemes are cancelled.
   `target=_blank`, `window.open`, and Command-click on links to the same server open a
   new tab of the folder’s window.
+  A page opens one only on a user gesture: the configuration turns
+  `javaScriptCanOpenWindowsAutomatically` off, which macOS leaves on, so a previewed
+  HTML file cannot open tabs by itself.
 - **Downloads:** `WKDownload` with a save panel that opens in Downloads.
   Choosing the destination is user intent, so no Downloads privacy prompt appears.
   A confirmed Replace keeps the existing file until the new one is complete:

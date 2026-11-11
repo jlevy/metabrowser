@@ -29,7 +29,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
     /// it returns to be built from the configuration WebKit hands it.
     init(session: FolderSession, configuration: WKWebViewConfiguration? = nil) {
         self.session = session
-        webView = DropAwareWebView(frame: .zero, configuration: configuration ?? Self.makeConfiguration())
+        webView = DropAwareWebView(frame: .zero, configuration: configuration ?? WebConfiguration.make())
         webView.isInspectable = Self.isInspectable
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
@@ -75,15 +75,6 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("unused") }
-
-    static func makeConfiguration() -> WKWebViewConfiguration {
-        let configuration = WKWebViewConfiguration()
-        // Persistent cookies and local storage: Metabrowser keeps its preferences in
-        // host-only cookies, which every folder's server shares across ports.
-        configuration.websiteDataStore = .default()
-        configuration.preferences.isElementFullscreenEnabled = true
-        return configuration
-    }
 
     /// Safari's Develop menu can inspect the page in debug builds, or in any build after
     /// `defaults write io.github.jlevy.metabrowser WebInspectorEnabled -bool true`.
@@ -301,6 +292,7 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
     ) -> WKWebView? {
         switch policy.decideNewWindow(action.request.url) {
         case .openInNewWindow:
+            WebConfiguration.restrict(configuration)
             return session?.openChildWindow(configuration: configuration, besides: self)
         case .openExternally(let url):
             NSWorkspace.shared.open(url)

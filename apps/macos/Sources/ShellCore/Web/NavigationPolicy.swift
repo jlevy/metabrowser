@@ -58,8 +58,9 @@ public nonisolated struct NavigationPolicy: Equatable, Sendable {
     }
 
     /// For `target=_blank` and `window.open`: a window of this folder, or the default
-    /// browser, or nothing. WebKit asks only on a user gesture, because it blocks
-    /// `window.open` without one (`javaScriptCanOpenWindowsAutomatically` is off).
+    /// browser, or nothing. WebKit asks only on a user gesture, because the app turns
+    /// `javaScriptCanOpenWindowsAutomatically` off (`WebConfiguration.restrict`), so it
+    /// blocks `window.open` without one.
     public func decideNewWindow(_ url: URL?) -> NavigationDecision {
         guard let url, let scheme = url.scheme?.lowercased() else { return .cancel }
         if isAppOrigin(url) { return .openInNewWindow(url) }
