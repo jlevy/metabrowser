@@ -46,8 +46,10 @@ product. Dev and release builds have separate bundle ids,
 - **Give the app a version policy.** One required minimum, below which the app shows the
   exact upgrade command and starts nothing.
   Graceful fallbacks above it: the folder identity route’s 404 fallback is the pattern.
-  Stop the app’s servers before any change the app makes to the install, and offer to
-  restart them after an upgrade made in Terminal, which may already have reached them.
+  Before any change the app makes to the install, stop its own servers and wait until no
+  other listed server uses that install.
+  After an upgrade made in Terminal, which may already have reached running servers,
+  offer to restart them.
   The host-protocol version replaces the minimum once host mode exists.
 - **Flow 2 today stops at a copyable `uv tool install metabrowser`,** which assumes uv
   is installed and needs a manual Find Again.
@@ -377,8 +379,12 @@ kept in short form:
    - **Stop before changing.** Before the app changes an install itself (Reinstall,
      Remove, or any later upgrade button), it stops the servers it started from that
      install, and restarts them after a reinstall or an upgrade.
-     It names any other live server that the 2026-11-10 brief’s registry lists for that
-     install, and does not signal it: the app never signals a server it did not start.
+     It changes nothing while the 2026-11-10 brief’s registry lists another live server
+     using that install, such as one started in Terminal from Flow 2’s ordinary CLI
+     install. It names each such server and its owner, asks the user to stop it, and
+     checks the registry again before it proceeds; it never signals a server it did not
+     start. A process the registry does not list, such as a `metab --api` run, can still
+     be caught by the change, as with an upgrade made in Terminal.
    - **Notice upgrades.** Recheck the version when a folder opens if the runtime’s
      executable or environment changed, and offer to restart the servers the app started
      from the old version.
@@ -403,9 +409,9 @@ kept in short form:
      terminal” that runs `uv tool update-shell`. Stream uv’s output into a progress
      view. On failure, show uv’s last lines, Retry, and the command to run by hand.
    - Repair and removal: Settings offers Reinstall (`uv tool install --reinstall`) and
-     Remove (`uv tool uninstall metabrowser`) for an install the app made, stops the
-     app’s servers first (recommendation 2), and says that the Python and the cache stay
-     in uv’s folders.
+     Remove (`uv tool uninstall metabrowser`) for an install the app made, first stops
+     the app’s servers and waits for every other listed server on that install to stop
+     (recommendation 2), and says that the Python and the cache stay in uv’s folders.
 6. **Narrow `mb-lrcd` to (iii) as an optional mode** for offline, managed, or
    hash-pinned setups, built only when such a user appears.
    (ii) replaces it as the default answer for a Mac with no CLI, and the runtime builder
@@ -457,7 +463,8 @@ The later install mode keeps the parity rows its own bead needs (a status mode w
    exact upgrade command.
    After a compatible upgrade, the next folder opened runs the new version, and the app
    offers to restart every server it started from the old one.
-   No server the app started runs across a reinstall or removal the app makes.
+   No server the app started, and no other server the registry lists for that install,
+   runs across a reinstall, removal, or upgrade the app makes.
 6. **No quarantine:** no file written by either flow’s install carries
    `com.apple.quarantine`.
 

@@ -1293,9 +1293,10 @@ What it adds to this brief:
   (under What Metabrowser Requires of a Host and in layering item 1) prevents collisions
   but isolates nothing.
   A cookie ignores the port and `SameSite` treats two ports on one host as the same
-  site, so every server the browser visits on `127.0.0.1` receives it.
-  The later brief gives each trust profile its own web data store in the app, and has
-  host mode choose a browser credential that is not a host-wide cookie.
+  site, so a page can send it to every server on `127.0.0.1`. A separate web data store
+  does not help, because it belongs to the requesting page.
+  The later brief has host mode give every client, the app’s web views included, a
+  credential bound to its origin rather than a host-wide cookie.
 
 ## References
 

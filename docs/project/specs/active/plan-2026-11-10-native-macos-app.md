@@ -268,9 +268,11 @@ For any other root, the app starts a server as its own child only after the user
 confirms that root in the app.
 
 - [ ] Host mode: a ready line after bind, sticky ports, a stdin token, stdin-EOF exit,
-  and idle exit (`mb-qzny`), generalizing the VS Code host design (`mb-x4y5`). A browser
-  credential cannot be a host-wide cookie, which every port on the host receives; the
-  topology brief’s Tokens across ports names the candidates.
+  and idle exit (`mb-qzny`), generalizing the VS Code host design (`mb-x4y5`). No
+  client’s credential, the app’s web views included, is a host-wide cookie, since a page
+  can send one to every port on the host whichever data store it uses.
+  Host mode picks an origin-bound credential from the topology brief’s candidates
+  (Tokens across ports) and passes the cross-port check under Testing Strategy.
 - [ ] The live-server registry with a per-root find-or-start lock (`mb-5xi4`).
 - [ ] Control verbs on an owner-only socket: identity, present, clients, close
   (`mb-1zyp`).
@@ -301,13 +303,16 @@ The two standard setup flows come first; see the
   names the exact upgrade command, notices `uv tool upgrade`, and offers to restart the
   servers it started from the old version (`mb-895s`). An upgrade run in Terminal can
   reach a running server before the app notices; the setup brief records that gap.
+  Any upgrade the app runs itself waits as Reinstall and Remove do (below).
   The app also flags a launch from the disk image (`mb-3n79`). The installation guide
   covers both flows (`mb-2hqz`).
 - [ ] Flow 2, app first with no CLI: copyable commands for only the missing steps,
   continuing by itself when `metab` appears; then an “Install for me” button that runs
   the user’s uv, or a signed uv inside the app, to make Flow 1’s CLI install (`mb-su30`,
-  then `mb-34oi`). Its Reinstall and Remove stop the app’s servers on that install
-  before changing it.
+  then `mb-34oi`). Its Reinstall and Remove stop the app’s servers on that install, then
+  change nothing while the registry lists another server using it: the app names each
+  one and its owner, asks the user to stop it, and checks again, and it never signals a
+  server it did not start.
 - [ ] Narrowed: an optional app-private runtime from a bundled uv and a hash-pinned
   `pylock.toml`, for offline, managed, or hash-pinned setups, built only on demand
   (`mb-lrcd`).
@@ -336,6 +341,10 @@ The two standard setup flows come first; see the
 - **Core:** unit tests for identity derivation; golden transcripts through `metab --api`
   for every new route; browserless golden sessions for page behavior such as following
   `navigate`; `devtools/check_parity.py` for parity rows.
+- **Credentials:** a page from one server that loads a subresource from, is redirected
+  to, or navigates to another server’s port sends none of its server’s credentials
+  there, as a listener on that port records, in the app’s `WKWebView`, Safari, and
+  Chrome.
 - **Shell:** `ShellCore` unit tests for every model and policy (titles, warm budgets,
   restore order), live tests against a real `metab`, and fresh-launch runs: a first
   launch with settings cleared, a second folder through `open -a`, reopening a folder,
