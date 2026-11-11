@@ -44,7 +44,7 @@ def _lose_the_next_write(stand: _Stand, monkeypatch: pytest.MonkeyPatch, number:
                 update={"fetched_at": "2026-09-17T12:00:05Z", "comparison": None}
             )
             write_pull_record(home, slug, winner, store_id=kwargs.get("store_id"))
-            write_pull_refresh(home, slug, number, _WINNER_STAMP)
+            write_pull_refresh(home, slug, number, _WINNER_STAMP, expected=winner)
             winners.append(winner)
         return real(home, slug, record, **kwargs)
 

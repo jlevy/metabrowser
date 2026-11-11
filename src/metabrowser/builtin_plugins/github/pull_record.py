@@ -660,12 +660,20 @@ def write_pull_refresh(
     number: int,
     stamp: PullRefreshStamp,
     *,
-    expected: PullRecord | RecordAbsence | None = None,
+    expected: PullRecord | RecordAbsence,
 ) -> bool:
-    """Keep the outcome only while the observation it describes is current."""
+    """Keep the outcome only while the observation it describes is current.
+
+    *expected* is the record the outcome describes, or ``"not_cached"`` when there was
+    none. As for :func:`write_pull_record`, only those observe the disk; another absence,
+    such as an unreadable record, checks nothing. A different record there now refuses
+    the stamp, and the answer is ``False``.
+    """
     _require_published_source(home, slug)
+    observed = expected if isinstance(expected, PullRecord) or expected == "not_cached" else None
     with source_alias_lock(home, slug):
-        if expected is not None and read_pull_record(home, slug, number) != expected:
+        current = read_pull_record(home, slug, number) if observed is not None else None
+        if isinstance(current, PullRecord) and current != observed:
             return False
         write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
         return True

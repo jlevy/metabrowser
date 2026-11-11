@@ -1160,6 +1160,7 @@ def test_after_a_rate_limit_no_automatic_attempt_runs_before_it_lifts(stand: _St
             reset_at=lifts_at.strftime(stamp),
             at=tried_at.strftime(stamp),
         ),
+        expected=stand.record(7),
     )
     limited = served_pull(stand.published, 7)
     past_the_window = tried_at + timedelta(seconds=window + 1)
@@ -4769,6 +4770,7 @@ def test_disk_core_revocation_after_worker_check_is_rejected_on_loop(
             PullRefreshStamp(
                 outcome="succeeded", at=gh_lists.utc_stamp(pulls.utc_now()), reader=f"gh:{READER}"
             ),
+            expected=stand.record(8),
         )
         body = client.post("/api/plugin/github/pull-refresh", json={"number": 8}).json()["pull"]
     assert revoked and body["core_preview"] is None
