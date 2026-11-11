@@ -119,7 +119,12 @@ async function heldPostCadence(page, full) {
     const requested = controller.requestRefresh();
     await settle();
     if (!waitCore) {
-      assert.match(shown.freshness, /^Refreshing… · fetched .+ via GitHub CLI$/);
+      // A stale cached record is already refreshing itself, so it offers no Refresh and
+      // the reader's press sends nothing; the automatic ask, held below, is the POST. The
+      // record keeps its plain age meanwhile.
+      assert.match(shown.freshness, /^Fetched .+ via GitHub CLI$/);
+      assert.equal(shown.revalidating, true);
+      assert.equal(shown.canRefresh, false);
     }
     await advance(heldMs);
     assert.deepEqual(
@@ -141,6 +146,7 @@ async function heldPostCadence(page, full) {
       : { ...full, refreshing: true };
     release({ status: 202, etag: null, body: { pull: current } });
     await requested;
+    await settle();
     if (cancel || hide) {
       assert.equal(tasks.size, 0, "hidden/disposed POST completion cannot schedule polling");
       return;
@@ -427,19 +433,24 @@ async function run() {
   await handle.ready;
   assert.equal(container.dataset.corePreview, "true");
   assert.equal(container.querySelector(".github-pull-plain").textContent, full.record.pull.body);
-  assert.match(container.textContent, /Comments and reviews are still loading/);
   const body = container.querySelector(".github-pull-body");
   assert.doesNotMatch(body.textContent, /Checks and statuses|No checks or statuses reported/);
-  const progress = container.querySelectorAll(".github-pull-progress");
-  assert.equal(progress.length, 2, "the header and Discussion show active progress");
-  assert.match(
-    progress[0].textContent,
-    /^Loading details… · description fetched .+ via GitHub CLI$/,
-  );
-  for (const status of progress) {
-    assert.equal(status.getAttribute("role"), "status");
-    assert.equal(status.querySelector(".spinner").getAttribute("aria-hidden"), "true");
-  }
+  assert.doesNotMatch(container.textContent, /still loading|Loading details/);
+  assert.equal(container.querySelector(".spinner"), null, "a description preview never spins");
+  // Discussion is a section the preview does not have yet: delayed blocks, named for a reader.
+  const discussionPending = body.querySelector(".github-pull-section-loading");
+  assert.ok(discussionPending, "Discussion shows the shared skeleton blocks");
+  assert.equal(discussionPending.getAttribute("aria-hidden"), "true");
+  const pendingReveal = body.querySelectorAll(".mb-delayed-loading");
+  assert.equal(pendingReveal.length, 1, "revealed after the quiet period");
+  assert.equal(pendingReveal[0].getAttribute("role"), "status");
+  assert.equal(pendingReveal[0].getAttribute("aria-label"), "Loading comments and reviews");
+  // The header keeps the description's plain age, breathing while its details are fetched.
+  const statusLine = container.querySelector(".github-pull-status");
+  const age = statusLine.querySelector(".github-pull-freshness");
+  assert.match(age.textContent, /^Description fetched .+ via GitHub CLI$/);
+  assert.ok(age.classes.has("mb-refreshing") && age.classes.has("mb-refreshing-muted"));
+  assert.equal(statusLine.getAttribute("aria-busy"), "true");
   function land(tab) {
     window.location.pathname = tab ? `/pull/7/${tab}` : "/pull/7";
     handle.land({ tab });
@@ -452,9 +463,14 @@ async function run() {
       .find((tab) => tab.getAttribute("aria-selected") === "true")?.textContent,
     "Checks",
   );
-  assert.match(body.textContent, /Checks and statuses are still loading/);
   assert.doesNotMatch(body.textContent, /Comments and reviews|No checks or statuses reported/);
-  assert.ok(body.querySelector(".spinner"), "Checks has the shared progress spinner");
+  assert.equal(body.querySelector(".spinner"), null, "Checks does not spin either");
+  assert.equal(
+    body.querySelector(".mb-delayed-loading")?.getAttribute("aria-label"),
+    "Loading checks and statuses",
+    "Checks shows the same delayed blocks",
+  );
+  assert.ok(body.querySelector(".github-pull-section-loading"));
   assert.ok(body.classes.has("page-reading-column"), "Checks uses the reading column");
   land("");
   assert.equal(markdownRequests, 0, "preview stays plain and never asks for full-record Markdown");
@@ -518,8 +534,13 @@ async function run() {
   poll[1].callback();
   await settle();
   assert.equal(container.dataset.corePreview, "false");
-  assert.doesNotMatch(container.textContent, /still loading/);
+  assert.equal(container.querySelector(".github-pull-section-loading"), null);
   assert.equal(container.querySelector(".spinner"), null, "full arrival clears progress");
+  assert.equal(
+    container.querySelector(".github-pull-status").getAttribute("aria-busy"),
+    "false",
+    "and the age stops breathing",
+  );
   assert.doesNotMatch(body.textContent, /No checks or statuses reported/);
   const fullMarkdownRequests = markdownRequests;
   assert.equal(fullMarkdownRequests, 1, "full-record arrival enables the normal Markdown path");
@@ -609,13 +630,20 @@ async function run() {
     );
     await view.ready;
     const body = changes.querySelector(".github-pull-body");
+    // Changes has nothing cached and no known shape: the delayed spinner, its sentence only
+    // for a screen reader.
     assert.equal(body.querySelector(".spinner") !== null, refreshing);
-    assert.match(
-      body.textContent,
-      refreshing
-        ? /Changes are still being prepared/
-        : /Changes are unavailable because the full pull request could not be loaded/,
-    );
+    if (refreshing) {
+      const pending = body.querySelector(".github-pull-changes-pending");
+      assert.ok(pending.classes.has("mb-delayed-loading"));
+      assert.equal(pending.getAttribute("aria-label"), "Changes are still being prepared.");
+      assert.doesNotMatch(body.textContent, /still being prepared/);
+    } else {
+      assert.match(
+        body.textContent,
+        /Changes are unavailable because the full pull request could not be loaded/,
+      );
+    }
     view.dispose();
   }
 

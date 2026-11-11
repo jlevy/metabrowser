@@ -21,11 +21,14 @@ A changed generation stages the displayed range in bounded cache pages and accep
 only when every page has the same source, reader, and generation.
 Changing filters or hiding the panel aborts presentation reads, with late responses
 unable to replace the next request’s ownership.
-One connection row shows progress or recovery, with a Reload action.
-A failed refresh keeps cached rows.
+One connection row shows progress while no rows are shown, and otherwise the rows’ age,
+breathing while a refresh runs, or recovery, with a Reload action; nothing spins over
+rows. A failed refresh keeps cached rows.
 
 Holding a key changes two row marks per step and reads no detail until the walk stops.
 Opening a PR can reuse the one cache-only record read made by a click, focus, or hover.
+A row whose record is stale opens painted refreshing and refreshes it at once for a
+click, after a wait for a key, and not until a held key is let go.
 The production row mount keeps current and focused rows, text-only titles, absolute
 accessibility positions, and bounded retained changed-file trees.
 A variable-height spacer window bounds mounted rows as the displayed list grows.
@@ -247,12 +250,13 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "1,000 PRs on octo/demo",
         "window": "Showing last 500",
         "connection": {
-          "state": "working",
-          "text": "Fetching pull requests…",
-          "reload": false
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": false,
+          "refreshing": true
         },
         "loadMore": "ready",
-        "live": "Fetching pull requests…",
+        "live": "Pull requests of octo/demo: 1,000 pull requests",
         "rowsHeld": 500,
         "rows": [
           "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
@@ -277,12 +281,13 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "6,000 PRs on octo/demo",
         "window": "Showing last 500",
         "connection": {
-          "state": "working",
-          "text": "Fetching pull requests…",
-          "reload": false
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": false,
+          "refreshing": true
         },
         "loadMore": "ready",
-        "live": "Fetching pull requests…",
+        "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 500,
         "rows": [
           "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
@@ -311,12 +316,13 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "6,000 PRs on octo/demo",
         "window": "Showing last 1,000",
         "connection": {
-          "state": "working",
-          "text": "Fetching pull requests…",
-          "reload": false
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": false,
+          "refreshing": true
         },
         "loadMore": "ready",
-        "live": "Fetching pull requests…",
+        "live": "Pull requests of octo/demo: 6,000 pull requests",
         "rowsHeld": 1000,
         "rows": [
           "[Closed] Work item 6000 | #6000 · contributor · topic ← work-6000 | /pull/6000",
@@ -350,12 +356,13 @@ $ node tests/dom/github-pulls-panel-session.js
         "summary": "6,001 PRs on octo/demo",
         "window": "Showing last 1,000",
         "connection": {
-          "state": "working",
-          "text": "Fetching pull requests…",
-          "reload": false
+          "state": "connected",
+          "text": "Updated just now",
+          "reload": false,
+          "refreshing": true
         },
         "loadMore": "ready",
-        "live": "Fetching pull requests…",
+        "live": "Pull requests of octo/demo: 6,001 pull requests",
         "rowsHeld": 1000,
         "rows": [
           "[Closed] Work item 6001 | #6001 · contributor · topic ← work-6001 | /pull/6001",
@@ -637,11 +644,13 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "after": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       }
     },
     {
@@ -656,11 +665,13 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "after": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       }
     },
     {
@@ -675,11 +686,13 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "after": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       }
     },
     {
@@ -693,17 +706,20 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "after": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "once let go": {
         "asked": [
           "POST /api/plugin/github/pull-refresh {\"number\":7,\"retry\":true,\"wait_core\":true}"
         ],
-        "message": "Fetching the pull request…"
+        "message": "Fetching the pull request…",
+        "revalidating": false
       }
     },
     {
@@ -718,11 +734,13 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": "Fetching the pull request…",
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "after": {
         "message": "The refresh was refused (too many pull requests are being fetched; try again when one has finished).",
-        "canRefresh": true
+        "canRefresh": true,
+        "revalidating": false
       }
     },
     {
@@ -735,11 +753,82 @@ $ node tests/dom/github-pulls-panel-second-session.js
       ],
       "before": {
         "message": null,
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
       },
       "after": {
         "message": null,
-        "canRefresh": false
+        "canRefresh": false,
+        "revalidating": false
+      }
+    },
+    {
+      "name": "a click on a row whose record is stale refreshes it at once",
+      "asked": [
+        "GET /api/plugin/github/pull?number=7",
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "waits": [
+        0,
+        30000
+      ],
+      "before": {
+        "message": null,
+        "canRefresh": false,
+        "revalidating": true
+      },
+      "after": {
+        "message": null,
+        "canRefresh": false,
+        "revalidating": true
+      }
+    },
+    {
+      "name": "a key stopping on a stale row refreshes it after the wait",
+      "asked": [
+        "GET /api/plugin/github/pull?number=7",
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "waits": [
+        500,
+        30000
+      ],
+      "before": {
+        "message": null,
+        "canRefresh": false,
+        "revalidating": true
+      },
+      "after": {
+        "message": null,
+        "canRefresh": false,
+        "revalidating": true
+      }
+    },
+    {
+      "name": "a key still held over a stale row refreshes nothing until it is let go",
+      "asked": [
+        "GET /api/plugin/github/pull?number=7"
+      ],
+      "waits": [
+        500,
+        30000
+      ],
+      "before": {
+        "message": null,
+        "canRefresh": false,
+        "revalidating": true
+      },
+      "after": {
+        "message": null,
+        "canRefresh": false,
+        "revalidating": true
+      },
+      "once let go": {
+        "asked": [
+          "POST /api/plugin/github/pull-refresh {\"number\":7}"
+        ],
+        "message": null,
+        "revalidating": true
       }
     }
   ],
@@ -769,9 +858,9 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "the list": "ul .github-pulls-list role=\"tree\" aria-label=\"Pull requests of octo/demo: 102 pull requests\"",
     "a row": [
       "li .github-pulls-item role=\"none\"",
-      "a .github-pulls-row.collapsed href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"false\" tabindex=\"-1\" aria-posinset=\"1\" aria-setsize=\"102\""
+      "a .github-pulls-row.collapsed href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"false\" tabindex=\"-1\" aria-busy=\"false\" aria-posinset=\"1\" aria-setsize=\"102\""
     ],
-    "the row whose page is shown": "a .github-pulls-row.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
+    "the row whose page is shown": "a .github-pulls-row.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-busy=\"false\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
     "its parts": [
       "span .github-pulls-toggle aria-hidden=\"true\"",
       "span .github-pull-state-icon role=\"img\" aria-label=\"Open\"",
@@ -782,8 +871,8 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "a PR preview leaves its files expanded": false,
     "Right opens its cached changed files": "/api/plugin/github/pull-files?number=105&offset=0",
     "they hang under it as a group it owns": [
-      "a .github-pulls-row.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
-      "div .tree-children.github-pull-files role=\"group\" id=\"github-pull-files-105\" aria-label=\"Changed files of #105: 2 files\""
+      "a .github-pulls-row.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-busy=\"false\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
+      "div .tree-children.github-pull-files role=\"group\" id=\"github-pull-files-105\" aria-label=\"Changed files of #105: 2 files\" aria-busy=\"false\""
     ],
     "a title written as markup is one text node": [
       {
@@ -801,7 +890,7 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "an age, before": "2h",
     "an age, two hours on": "4h",
     "rows built to tell it": 0,
-    "a passive retry keeps the announced outage beside its spinner": "GitHub could not be reached. Showing cached pull requests.",
+    "a passive retry over cached rows breathes the announced outage, with no spinner": "GitHub could not be reached. Showing cached pull requests.",
     "closing twelve expanded trees enforces retention immediately": {
       "whileExpanded": 10,
       "afterClosingAll": 9

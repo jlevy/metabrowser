@@ -519,7 +519,10 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   assert.equal(refreshRace.waiting.length, 0);
   assert.equal(refreshRace.model().rowsVersion, oldVersion);
   assert.equal(refreshRace.model().rows[0].number, 8000);
-  assert.equal(refreshRace.model().connection.state, "working");
+  // Rows are held, so the refresh runs under their plain age, breathing, with no spinner.
+  assert.equal(refreshRace.model().connection.state, "connected");
+  assert.equal(refreshRace.model().connection.refreshing, true);
+  assert.match(refreshRace.model().connection.text, /^Updated /u);
   assert.equal(refreshRace.model().connection.reload, false);
   assert.equal(refreshRace.controller.snapshot().timer, "fast");
   refreshRace.controller.onVisibilityChange();
@@ -685,11 +688,12 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   transient.state.automatic = false;
   const outage = transient.model().connection.text;
   const steadyRetry = () => {
+    // 500 rows are held: the retry breathes the outage text instead of a spinner.
     assert.deepEqual(transient.model().connection, {
       state: "paused",
       text: outage,
       reload: false,
-      retrying: true,
+      refreshing: true,
     });
     assert.equal(transient.model().live, outage);
     assert.equal(transient.model().rows.length, 500);
@@ -745,7 +749,8 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
   const reloading = reload.controller.reload();
   await reload.controller.reload();
   assert.equal(reload.model().connection.state, "paused");
-  assert.equal(reload.model().connection.retrying, true);
+  assert.equal(reload.model().connection.refreshing, true, "rows are held: no spinner");
+  assert.equal(reload.model().connection.retrying, undefined);
   assert.equal(reload.model().connection.reload, false);
   assert.deepEqual(providerAsks(reload), [{ state: "open", target: 500, retry: true }]);
   await reload.respond();

@@ -128,14 +128,6 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
-.github-pull-progress {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.github-pull-progress > .spinner {
-  flex: none;
-}
 .github-pull-failure {
   color: var(--status-warning-strong);
 }
@@ -158,11 +150,6 @@
 }
 .github-pull-card-head:last-child {
   border-bottom: 0;
-}
-.github-pull-timeline-loading {
-  display: inline-flex;
-  vertical-align: middle;
-  margin-inline-start: 0.5em;
 }
 .github-pull-commit {
   display: flex;
@@ -767,6 +754,10 @@
 }
 .github-pull-loading {
   margin: 0;
+}
+/* A section a description preview does not have yet: three rows of the cold page's blocks. */
+.github-pull-section-loading {
+  height: calc(var(--ui-row-height) * 3);
 }
 
 .github-pull-identity {

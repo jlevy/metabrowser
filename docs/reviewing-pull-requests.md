@@ -173,9 +173,13 @@ An initially empty page shows gray pulsing loading blocks.
 When switching from useful content, that content stays visible until the new description
 or an actionable failure is ready.
 The description can appear while comments, reviews, checks, and changes are still
-loading. Active sections show the shared gray spinner.
+loading; those sections show gray pulsing blocks after a moment, and nothing spins.
 A visible PR opened from a row or a direct link fetches its record on the first visit.
-A cached full page renders from disk and keeps its content visible while it refreshes.
+A cached full page renders from disk at once and stays as it is while it refreshes in
+the background: no spinner covers it, and only the line saying when it was fetched
+breathes gently until the refresh lands.
+A row’s changed-files tree does the same with its folder and file names, and the Pulls
+list with its “Updated” line.
 **View on GitHub** opens the pull request on github.com with a leading GitHub brand
 icon. External GitHub links in conversation text carry a destination icon; an unknown
 issue or PR state uses a neutral entity icon.
@@ -418,11 +422,18 @@ The page shows when GitHub CLI fetched the record, for example
 `Fetched 3 min ago via GitHub CLI`. A description preview reports when GitHub CLI
 fetched the description while discussion and checks load.
 A record is current for a minute.
-When it goes stale, the page adds `may be out of date`. A managed PR URL refreshes a
-stale record when the server starts.
-A visible stale PR page also requests a refresh.
-**Refresh** is also available after a failed refresh or an unavailable comparison, and
-on **Changes** even while the record is current.
+A managed PR URL refreshes a stale record when the server starts.
+A visible stale PR page refreshes it too: at once when you clicked its row, after a
+short pause when you reached it by a key or an address, and again each time it goes
+stale while you keep it open, at most once a minute.
+It keeps showing the plain age meanwhile, never a note that it may be out of date.
+The page names a problem only when it cannot refresh: `Offline`,
+`GitHub rate limit · next check at` a time, after which it tries again by itself, or the
+last failure, with **Refresh**. It tries a failure again once a minute while you keep it
+open, except one you must fix, such as GitHub CLI missing or signed out, which waits for
+your **Refresh**. **Refresh** is available after a failed refresh or an unavailable
+comparison, on a stale record whose automatic refresh did not run, and on **Changes**
+even while the record is current.
 A managed source’s row at the foot of the navigation pane separately reports when its
 Git store was fetched and can refresh it.
 

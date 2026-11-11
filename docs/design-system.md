@@ -1093,10 +1093,12 @@ A cold page uses the same gray pulsing row skeleton as other known text layouts,
 reading column even when Changes is selected.
 Its reveal wrapper and skeleton are separate nodes, so the shared loading delay does not
 replace the pulse or reduced-motion rule.
-A cached page stays readable during refresh.
-The header pairs the shared spinner with `Refreshing…` on a cached page or
-`Loading details…` on a description preview.
-Its freshness copy names GitHub CLI and the fetch age.
+A cached page stays readable and still during refresh: nothing spins over it, and only
+its age line breathes ([Refreshing Content](#refreshing-content)). Its freshness copy
+names GitHub CLI and the plain fetch age, with no prefix while a refresh runs and no
+suffix while the record is stale, since a stale page is refreshing.
+It names a problem only when no refresh can run: `Offline`,
+`GitHub rate limit · next check at` a time, or the last failure with Refresh.
 The Checks tab uses the same heading and status badges for check runs and status
 contexts. A check row is its status badge, its plain name, its action, and its
 description. The action says where it opens: **View action on GitHub** for a GitHub
@@ -1104,8 +1106,11 @@ Actions run, **View on GitHub** for another page on a GitHub host, and **View de
 for the check’s own site, and its accessible name adds the check’s name.
 A check whose address is not http(s) has no action.
 A run’s app is its description, except GitHub Actions beside an Actions link, which
-already says so. Use a shared small gray spinner beside each active section’s status
-after the page has rendered.
+already says so.
+A section a description preview does not have yet, Discussion or Checks,
+shows the cold page’s gray pulsing blocks after the quiet period while its record is
+fetched, never a spinner or a sentence; Changes with nothing cached shows the delayed
+shared spinner, because its shape is unknown.
 Idle and failed sections use static notices.
 
 Native stack navigation uses the repository snapshot’s verified membership and order.
@@ -1266,7 +1271,7 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Open, Closed, All | `metabrowser.filterControls.groupHtml`, joined and exclusive, sticky at the list’s top; Open is the default | Small, muted tallies show each filter’s exact catalog total. Zero is visible and unknown is distinct. See [Choosing Among Values](#choosing-among-values). |
 | Count | Bold numeric total and repository name in “N PRs on owner/repo,” or just the bold repository name while the count is unknown. A partial display adds “Showing last N.” | Counts describe the repository and the displayed window. |
 | Reload | Flush right beside Open, Closed, All, in the same sticky row | The update age stays below the repository summary. |
-| Connection | One live status row with the shared small gray spinner during work, a quiet update age when idle, and actionable copy during failures | Cached rows stay visible. |
+| Connection | One live status row: the shared small gray spinner and “Fetching pull requests…” only while no rows are shown; otherwise the quiet update age, which breathes while a refresh runs, and actionable copy during failures | Cached rows stay visible and still. See [Refreshing Content](#refreshing-content). |
 | Fetch more, Reload | `.btn` | Fetch more extends the display window. Reload checks GitHub for updates. See [Control Families](#control-families). |
 
 A row is two lines and one target, because a pane is narrower than its parts: the state
@@ -2409,7 +2414,8 @@ One that meets either keeps the lift and states why here.
 
 Motion communicates a state transition: tree insertion, removal, refresh, loading, or
 layout change. Keep durations short and use the shared motion tokens.
-Avoid looping animation except for active progress indicators.
+Avoid looping animation except for active progress indicators and
+[refreshing content](#refreshing-content).
 
 Respect `prefers-reduced-motion`. Content and status must remain understandable when
 transitions are disabled.
@@ -2535,8 +2541,60 @@ That text is not visible copy; the rule is about what is painted.
 Visible copy is for a state neither form can express — a scan still running behind an
 empty result, an index that failed — and it says what that state is rather than that
 something is loading.
-For a background fetch alongside usable content, the Pulls tab pairs one gray spinner
-with a short status, as the Files tab does for scanning.
+A background refresh of content already shown is neither form: it is
+[Refreshing Content](#refreshing-content).
+
+### Refreshing Content
+
+**Content already rendered is never covered by progress.** When a refresh checks data
+the reader can already see — a cached pull request, its changed files, a Pulls list —
+the content stays as it is, at full size and in place, with no spinner and no progress
+or staleness sentence beside it.
+A spinner over rendered content is the strongest loading signal pointed at something
+that is not loading, and it drew the eye to a wait the reader was not making.
+
+Instead, the text a refresh is checking **breathes**: its opacity eases down and back
+once every `--refreshing-text-period` (2.4 s), starting only after
+`--loading-state-delay`, so a refresh that lands within the quiet period shows nothing.
+The container carries `aria-busy="true"` for as long as it breathes.
+
+- `.mb-refreshing` breathes the element it is on.
+- `.mb-refreshing-group` breathes the `.mb-refreshing-text` elements inside it, so a
+  list toggles one container and a row drawn into it later joins.
+  A view that draws rows into a breathing list brings them to the same beat
+  (`alignRefreshing` in the GitHub plugin).
+- **Primary ink only.** Primary ink dims to `--refreshing-text-dim-opacity` (0.8), 9.2:1
+  in light and 9.8:1 in dark at its dimmest.
+  Muted ink cannot dim and keep 4.5:1 (it rests at 4.62:1 in light), so a muted line
+  takes `.mb-refreshing-muted` as well: it is drawn in `--text` at the opacity that
+  reproduces `--muted` (`--refreshing-muted-rest-opacity`, an OKLab difference under a
+  just-noticeable one) and lifts toward full ink instead.
+  Status inks — change badges, line stats, state icons — never breathe.
+- **One container per surface:** the pull request page’s age line, a changed-files
+  tree’s folder and file names, the Pulls connection row’s age, and the titles of the
+  rows whose own data GitHub is being read for.
+- **Opacity only**, so the compositor runs it.
+  Measured in headless Chrome 152 on 2026-11-11 with the real stylesheets: no
+  compositing failure, and in the 2.7 s after the class went on, no style, layout,
+  pre-paint, or paint on the main thread while the compositor drew 165 frames, in both
+  themes. Starting it costs one style recalculation per breathing element: 2.5 ms for the
+  120 a windowed tree and list draw, and 51 ms for 3,009 if every row of a 3,000-file
+  tree were drawn, which the tree’s window never does.
+  The numbers are beside the tokens in `static/styles.css`.
+- `prefers-reduced-motion: reduce` stops it: the text stays as it rests, and `aria-busy`
+  still says a refresh runs.
+
+What a stale view says follows from the same rule.
+Stale data that can be refreshed is being refreshed, so a view shows its plain age
+(“Fetched 3 min ago”, “Updated 3 min ago”) and never “may be out of date”.
+It names a problem only when no refresh can run: offline, held by GitHub’s rate limit
+until a stated time, a failure with Retry or Refresh, or a setup message.
+A page left open refreshes again each time its data goes stale, at most once a freshness
+window, rather than settling into a stale state.
+The skeleton and spinner forms above remain for content with nothing usable cached.
+`test_refreshing_text_breathes_on_the_compositor_and_keeps_its_contrast` holds the
+utility, its tokens, and its contrast, and
+`test_no_pull_request_surface_says_it_may_be_out_of_date` the copy.
 
 ## Text Selection
 
