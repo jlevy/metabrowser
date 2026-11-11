@@ -984,6 +984,53 @@ async function main() {
   );
   leftOpen.controller.dispose();
 
+  // GitHub's rate limit refused the page's refresh. It is a hold, not a failure: the page
+  // offers no Refresh, names when it will ask again, which is not before `reset_at` and not
+  // within a freshness window of the refused attempt, and asks at that time, at once.
+  const held = createPage(runtime, { number: 7, tab: "", brief: true });
+  /** Printed with the second part, as `leftOpen` is. */
+  const rateLimitedStory = [];
+  held.clock.now = page.clock.now;
+  held.server.pull = recorded.stale;
+  await held.controller.start();
+  held.server.refresh.push(recorded.refresh_again);
+  rateLimitedStory.push(await held.step("a stale page asks for its refresh", () => held.fireAsk()));
+  const refusedAt = held.clock.now + 2000;
+  const limited = {
+    ...recorded.stale.body,
+    last_refresh: {
+      outcome: "rate_limited",
+      message: "GitHub's API rate limit is exhausted",
+      reset_at: new Date(refusedAt + 30_000).toISOString(),
+      at: new Date(refusedAt).toISOString(),
+    },
+  };
+  held.clock.now = refusedAt + 10_000;
+  held.server.pull = { status: 200, etag: '"rate limited"', body: limited };
+  const holding = await held.step("GitHub's rate limit refused it", async () => held.fire());
+  const named = new Date(refusedAt + 60_000).toISOString().replace(".000Z", "Z");
+  assert(
+    holding.paint.canRefresh === false &&
+      holding.paint.failure === `GitHub rate limit · next check at ${named}`,
+    `a held page offers Refresh or names another time: ${JSON.stringify(holding)}`,
+  );
+  rateLimitedStory.push(holding);
+  held.clock.now = refusedAt + 40_000;
+  const waking = await held.step("still held, it wakes at the time it named", async () =>
+    held.fire(),
+  );
+  assert(waking.timer === 20_000, `a held page does not wake at the lift: ${waking.timer}`);
+  rateLimitedStory.push(waking);
+  held.clock.now = refusedAt + 60_000;
+  rateLimitedStory.push(
+    await held.step("at the time it named, its poll asks again at once", async () => held.fire()),
+  );
+  held.server.refresh.push(recorded.refresh_again);
+  rateLimitedStory.push(
+    await held.step("and sends that ask with no wait", async () => held.fireAsk(0)),
+  );
+  held.controller.dispose();
+
   // A reader walking past a stale page, holding Back or a key, spends no refresh on it.
   const walkedPast = createPage(runtime, { number: 7, tab: "", brief: true });
   walkedPast.clock.now = page.clock.now;
@@ -1366,6 +1413,7 @@ async function main() {
   const second = {
     leftOpen: leftOpenStory,
     failing: failingStory,
+    rateLimited: rateLimitedStory,
     checkActions,
     filesUnavailable,
     checkout,

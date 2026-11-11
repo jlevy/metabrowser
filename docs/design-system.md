@@ -2556,7 +2556,10 @@ that is not loading, and it drew the eye to a wait the reader was not making.
 Instead, the text a refresh is checking **breathes**: its opacity eases down and back
 once every `--refreshing-text-period` (2.4 s), starting only after
 `--loading-state-delay`, so a refresh that lands within the quiet period shows nothing.
-The container carries `aria-busy="true"` for as long as it breathes.
+A status text that breathes — a page’s age line, the Pulls connection row’s text —
+carries `aria-busy="true"` while it does.
+Names and titles that breathe sit in rows that stay usable links and tree items, so
+their breathing is paint alone and nothing marks them busy.
 
 - `.mb-refreshing` breathes the element it is on.
 - `.mb-refreshing-group` breathes the `.mb-refreshing-text` elements inside it, so a
@@ -2583,8 +2586,8 @@ The container carries `aria-busy="true"` for as long as it breathes.
   120 a windowed tree and list draw, and 51 ms for 3,009 if every row of a 3,000-file
   tree were drawn, which the tree’s window never does.
   The numbers are beside the tokens in `static/styles.css`.
-- `prefers-reduced-motion: reduce` stops it: the text stays as it rests, and `aria-busy`
-  still says a refresh runs.
+- `prefers-reduced-motion: reduce` stops it: the text stays as it rests, and a status
+  text’s `aria-busy` still says a refresh runs.
 
 What a stale view says follows from the same rule.
 Stale data that can be refreshed is being refreshed, so a view shows its plain age

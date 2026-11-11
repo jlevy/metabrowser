@@ -1373,17 +1373,18 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     # Rows already shown are never covered by progress ("Refreshing Content"): the spinner and
     # "Fetching pull requests…" are only for a list with no rows. While rows are held, the
     # connection row keeps its age, muted and breathing, and a row whose data GitHub is read
-    # for breathes its title, which is primary ink; each is marked busy.
+    # for breathes its title, which is primary ink. Only the status text is marked busy: a row
+    # and a tree group stay usable links, so the breathing there is paint alone.
     assert 'const connectionMessage = h("span", { class: "mb-refreshing-muted" });' in panel
     assert 'connectionMessage.classList.toggle("mb-refreshing", refreshing);' in panel
-    assert 'connection.setAttribute("aria-busy"' in panel
+    assert 'connectionText.setAttribute("aria-busy", "true");' in panel
     assert "} else if ((working || page.more) && !holding) {" in panel
     assert 'entry.title.classList.toggle("mb-refreshing", on);' in panel
-    assert 'entry.row.setAttribute("aria-busy", String(on));' in panel
+    assert 'entry.row.setAttribute("aria-busy"' not in panel, "a usable row is never busy"
     files = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-files-view.js").read_text(encoding="utf-8")
     assert 'class: "github-pull-file-name mb-refreshing-text"' in files
     assert 'group.classList.toggle("mb-refreshing-group", next.refreshing);' in files
-    assert 'group.setAttribute("aria-busy", String(next.loading || next.refreshing));' in files
+    assert '"aria-busy"' not in files, "the usable tree group is never busy"
     assert "spinner.hidden = !next.loading;" in files
     # A file the comparison does not hold is muted ink, so its name breathes as a muted line.
     muted_name = github[
@@ -1489,7 +1490,8 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert '"loading mb-delayed-loading github-pull-changes-pending"' in page
     assert 'h("span", { class: "github-pull-freshness mb-refreshing-muted" })' in page
     assert 'freshnessLine.classList.toggle("mb-refreshing", busy);' in page
-    assert 'status.setAttribute("aria-busy", String(busy));' in page
+    assert 'freshnessLine.setAttribute("aria-busy", "true");' in page
+    assert 'status.setAttribute("aria-busy"' not in page, "the status line's controls stay usable"
     assert '"recent-loading github-pull-loading github-pull-section-loading"' in page
     assert github[".github-pull-section-loading"] == {"height": "calc(var(--ui-row-height) * 3)"}
     # The author, action, and relative age share one prose size and baseline.

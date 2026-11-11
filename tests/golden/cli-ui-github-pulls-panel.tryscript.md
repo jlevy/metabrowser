@@ -858,9 +858,9 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "the list": "ul .github-pulls-list role=\"tree\" aria-label=\"Pull requests of octo/demo: 102 pull requests\"",
     "a row": [
       "li .github-pulls-item role=\"none\"",
-      "a .github-pulls-row.collapsed href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"false\" tabindex=\"-1\" aria-busy=\"false\" aria-posinset=\"1\" aria-setsize=\"102\""
+      "a .github-pulls-row.collapsed href=\"/pull/106\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"false\" tabindex=\"-1\" aria-posinset=\"1\" aria-setsize=\"102\""
     ],
-    "the row whose page is shown": "a .github-pulls-row.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-busy=\"false\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
+    "the row whose page is shown": "a .github-pulls-row.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
     "its parts": [
       "span .github-pulls-toggle aria-hidden=\"true\"",
       "span .github-pull-state-icon role=\"img\" aria-label=\"Open\"",
@@ -871,8 +871,8 @@ $ node tests/dom/github-pulls-panel-second-session.js
     "a PR preview leaves its files expanded": false,
     "Right opens its cached changed files": "/api/plugin/github/pull-files?number=105&offset=0",
     "they hang under it as a group it owns": [
-      "a .github-pulls-row.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-busy=\"false\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
-      "div .tree-children.github-pull-files role=\"group\" id=\"github-pull-files-105\" aria-label=\"Changed files of #105: 2 files\" aria-busy=\"false\""
+      "a .github-pulls-row.selected.expanded href=\"/pull/105\" role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" tabindex=\"0\" aria-current=\"page\" aria-selected=\"true\" aria-posinset=\"2\" aria-setsize=\"102\" aria-owns=\"github-pull-files-105\"",
+      "div .tree-children.github-pull-files role=\"group\" id=\"github-pull-files-105\" aria-label=\"Changed files of #105: 2 files\""
     ],
     "a title written as markup is one text node": [
       {
@@ -981,11 +981,13 @@ $ node tests/dom/github-pulls-file-selection-session.js
 
 The mounted panel requests preparation for visible rows and releases its window when it
 hides. The session checks that a prepared description keeps its reader and observation
-time.
+time. `titleBreathing` is which rows’ titles breathe: those of an admitted batch GitHub
+is being read for, until a settled receipt, a new window, or going offline ends it; no
+row is marked busy, and `beat` is the one start time the breaths are aligned to.
 
 ```console
 $ node tests/dom/github-pulls-viewport-behavior.js
-{"case":"viewport-height-increase","before":43,"after":113,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000,"oneVisibleFlash":true,"retainedReadingPlace":true}
+{"case":"viewport-height-increase","before":43,"after":113,"observedRoot":1,"gapStartsAt":null,"viewportHeight":3000,"oneVisibleFlash":true,"retainedReadingPlace":true,"titleBreathing":{"admitted":{"asked":[407,406,405],"breathing":[407,406,405],"busyRows":0},"settled":[],"moved":{"asked":[311,310,309,308],"breathing":[311,310,309,308]},"offline":[],"beat":[100,100,50,100]}}
 ? 0
 ```
 

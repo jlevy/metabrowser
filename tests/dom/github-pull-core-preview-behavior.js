@@ -450,7 +450,9 @@ async function run() {
   const age = statusLine.querySelector(".github-pull-freshness");
   assert.match(age.textContent, /^Description fetched .+ via GitHub CLI$/);
   assert.ok(age.classes.has("mb-refreshing") && age.classes.has("mb-refreshing-muted"));
-  assert.equal(statusLine.getAttribute("aria-busy"), "true");
+  // Busy is the age's, never the status line's, whose buttons and links stay usable.
+  assert.equal(age.getAttribute("aria-busy"), "true");
+  assert.equal(statusLine.getAttribute("aria-busy"), null);
   function land(tab) {
     window.location.pathname = tab ? `/pull/7/${tab}` : "/pull/7";
     handle.land({ tab });
@@ -536,11 +538,9 @@ async function run() {
   assert.equal(container.dataset.corePreview, "false");
   assert.equal(container.querySelector(".github-pull-section-loading"), null);
   assert.equal(container.querySelector(".spinner"), null, "full arrival clears progress");
-  assert.equal(
-    container.querySelector(".github-pull-status").getAttribute("aria-busy"),
-    "false",
-    "and the age stops breathing",
-  );
+  const settledAge = container.querySelector(".github-pull-freshness");
+  assert.ok(!settledAge.classes.has("mb-refreshing"), "and the age stops breathing");
+  assert.equal(settledAge.getAttribute("aria-busy"), null, "with no busy attribute left behind");
   assert.doesNotMatch(body.textContent, /No checks or statuses reported/);
   const fullMarkdownRequests = markdownRequests;
   assert.equal(fullMarkdownRequests, 1, "full-record arrival enables the normal Markdown path");

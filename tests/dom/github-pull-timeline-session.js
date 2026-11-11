@@ -236,8 +236,9 @@ async function run() {
   const [first] = session.timelines;
   // Commits join a conversation already shown: the age breathes, and nothing spins.
   assert.equal(body.querySelector(".spinner"), null);
-  assert.equal(session.status().getAttribute("aria-busy"), "true");
-  assert.ok(session.status().querySelector(".github-pull-freshness").classes.has("mb-refreshing"));
+  const age = session.status().querySelector(".github-pull-freshness");
+  assert.ok(age.classes.has("mb-refreshing"));
+  assert.equal(age.getAttribute("aria-busy"), "true");
   assert.deepEqual(first.request, { number: 7, record_revision: firstRevision });
   assert.ok(
     session.marks.indexOf("githubPull:conversationReady") <
@@ -261,7 +262,7 @@ async function run() {
   ]);
   await settle();
   const interleaved = order(body);
-  assert.equal(session.status().getAttribute("aria-busy"), "false", "the commits arrived");
+  assert.equal(age.getAttribute("aria-busy"), null, "the commits arrived");
   assert.deepEqual(interleaved.slice(0, 8), [
     "body",
     `issue_comment/${wideId}`,

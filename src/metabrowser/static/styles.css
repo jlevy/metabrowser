@@ -4990,7 +4990,7 @@ pre.code-block.metabrowser-source-lines > code {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  /* The text stays as it is at rest; aria-busy still says the refresh is running. */
+  /* The text stays as it is at rest; a status text's aria-busy still says a refresh runs. */
   .mb-refreshing,
   .mb-refreshing-group .mb-refreshing-text {
     animation: none;

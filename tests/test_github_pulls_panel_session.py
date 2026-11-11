@@ -579,6 +579,16 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
         "viewportHeight": 3000,
         "oneVisibleFlash": True,
         "retainedReadingPlace": True,
+        # The titles of an admitted core batch breathe, with no row busy, until a settled
+        # receipt, a new window, or going offline ends it; `beat` is alignRefreshing's one
+        # start time ("Refreshing Content" in docs/design-system.md; review A on #354).
+        "titleBreathing": {
+            "admitted": {"asked": [407, 406, 405], "breathing": [407, 406, 405], "busyRows": 0},
+            "settled": [],
+            "moved": {"asked": [311, 310, 309, 308], "breathing": [311, 310, 309, 308]},
+            "offline": [],
+            "beat": [100, 100, 50, 100],
+        },
     }
 
 
