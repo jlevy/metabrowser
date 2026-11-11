@@ -1,0 +1,57 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Metabrowser app icon base, development variant (gold rim and warm sheen). The squircle, rim, panel, sheen, border, and the
+glyphs' inner shadow are the sister app's v6 icon as Figma exports it, copied verbatim, with one
+change: the panel's 9-unit outside border is its 18-unit stroke drawn under the panel fill
+rather than masked to the panel's outside, which paints it as Figma does without a translucent
+seam where the two antialiased edges meet. make-glyphs.swift fills the glyph group and sizes
+the glyph filter from a parameter file to make each master. See README.md. -->
+<mask id="stroke0_14_46" maskUnits="userSpaceOnUse" x="39" y="39" width="434" height="434" fill="black">
+<rect fill="white" x="39" y="39" width="434" height="434"/>
+<path d="M68 172C68 135.597 68 117.395 75.0846 103.491C81.3163 91.2601 91.2601 81.3163 103.491 75.0846C117.395 68 135.597 68 172 68H340C376.403 68 394.605 68 408.509 75.0846C420.74 81.3163 430.684 91.2601 436.915 103.491C444 117.395 444 135.597 444 172V340C444 376.403 444 394.605 436.915 408.509C430.684 420.74 420.74 430.684 408.509 436.915C394.605 444 376.403 444 340 444H172C135.597 444 117.395 444 103.491 436.915C91.2601 430.684 81.3163 420.74 75.0846 408.509C68 394.605 68 376.403 68 340V172Z"/>
+</mask>
+<path d="M172 444H340C376.403 444 394.605 444 408.509 436.915C420.74 430.684 430.684 420.74 436.915 408.509C444 394.605 444 376.403 444 340V172C444 135.597 444 117.395 436.915 103.491C430.684 91.2601 420.74 81.3163 408.509 75.0846C394.605 68 376.403 68 340 68H172C135.597 68 117.395 68 103.491 75.0846C91.2601 81.3163 81.3163 91.2601 75.0846 103.491C68 117.395 68 135.597 68 172V340C68 376.403 68 394.605 75.0846 408.509C81.3163 420.74 91.2601 430.684 103.491 436.915C117.395 444 135.597 444 172 444Z" stroke-width="58" stroke="url(#paint0_linear_14_46)" mask="url(#stroke0_14_46)"/>
+<g filter="url(#filter0_d_14_46)">
+<path d="M170 438H342C375.603 438 392.405 438 405.239 431.46C416.529 425.708 425.708 416.529 431.46 405.239C438 392.405 438 375.603 438 342V170C438 136.397 438 119.595 431.46 106.761C425.708 95.4708 416.529 86.292 405.239 80.5396C392.405 74 375.603 74 342 74H170C136.397 74 119.595 74 106.761 80.5396C95.4708 86.292 86.292 95.4708 80.5396 106.761C74 119.595 74 136.397 74 170V342C74 375.603 74 392.405 80.5396 405.239C86.292 416.529 95.4708 425.708 106.761 431.46C119.595 438 136.397 438 170 438Z" stroke-width="18" stroke="#1B1B1B"/>
+<use xlink:href="#stroke1_14_46" fill="#1F2020"/>
+</g>
+<path d="M74 170C74 136.397 74 119.595 80.5396 106.761C86.292 95.4708 95.4708 86.292 106.761 80.5396C119.595 74 136.397 74 170 74H342C375.603 74 392.405 74 405.239 80.5396C416.529 86.292 425.708 95.4708 431.46 106.761C438 119.595 438 136.397 438 170V342C438 375.603 438 392.405 431.46 405.239C425.708 416.529 416.529 425.708 405.239 431.46C392.405 438 375.603 438 342 438H170C136.397 438 119.595 438 106.761 431.46C95.4708 425.708 86.292 416.529 80.5396 405.239C74 392.405 74 375.603 74 342V170Z" fill="url(#paint1_linear_14_46)"/>
+<g filter="url(#filter1_i_14_46)">
+<!-- glyphs: written by make-glyphs.swift -->
+</g>
+<defs>
+<filter id="filter0_d_14_46" x="46" y="46" width="420" height="420" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+<feMorphology radius="9" operator="dilate" in="SourceAlpha" result="effect1_dropShadow_14_46"/>
+<feOffset/>
+<feGaussianBlur stdDeviation="5"/>
+<feComposite in2="hardAlpha" operator="out"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.2 0"/>
+<feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_14_46"/>
+<feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_14_46" result="shape"/>
+</filter>
+<filter id="filter1_i_14_46" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+<feFlood flood-opacity="0" result="BackgroundImageFix"/>
+<feBlend mode="normal" in="SourceGraphic" in2="BackgroundImageFix" result="shape"/>
+<feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+<feOffset dx="4" dy="4"/>
+<feGaussianBlur stdDeviation="1.5"/>
+<feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1"/>
+<feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.25 0"/>
+<feBlend mode="normal" in2="shape" result="effect1_innerShadow_14_46"/>
+</filter>
+<linearGradient id="paint0_linear_14_46" x1="444" y1="438.172" x2="68" y2="73.8279" gradientUnits="userSpaceOnUse">
+<stop stop-color="#A67F14"/>
+<stop offset="0.427291" stop-color="#674F0D"/>
+<stop offset="0.663721" stop-color="#674F0D"/>
+<stop offset="1" stop-color="#A67F14"/>
+</linearGradient>
+<linearGradient id="paint1_linear_14_46" x1="438" y1="437.248" x2="74" y2="74.7519" gradientUnits="userSpaceOnUse">
+<stop offset="0.0201484" stop-color="#CCA029" stop-opacity="0.51"/>
+<stop offset="0.374234" stop-color="#887541" stop-opacity="0"/>
+<stop offset="0.687053" stop-color="#4C4B48" stop-opacity="0"/>
+<stop offset="1" stop-color="#CCA029" stop-opacity="0.51"/>
+</linearGradient>
+<path id="stroke1_14_46" d="M74 170C74 136.397 74 119.595 80.5396 106.761C86.292 95.4708 95.4708 86.292 106.761 80.5396C119.595 74 136.397 74 170 74H342C375.603 74 392.405 74 405.239 80.5396C416.529 86.292 425.708 95.4708 431.46 106.761C438 119.595 438 136.397 438 170V342C438 375.603 438 392.405 431.46 405.239C425.708 416.529 416.529 425.708 405.239 431.46C392.405 438 375.603 438 342 438H170C136.397 438 119.595 438 106.761 431.46C95.4708 425.708 86.292 416.529 80.5396 405.239C74 392.405 74 375.603 74 342V170Z"/>
+</defs>
+</svg>

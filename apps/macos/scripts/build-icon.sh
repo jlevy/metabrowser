@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Regenerates the app icons from the SVG masters in AppIcon/ (see AppIcon/README.md):
-#   Resources/AppIcon.icns       official builds, from AppIcon/metabrowser-icon.svg
-#   Resources/AppIcon-Dev.icns   development builds, from AppIcon/metabrowser-icon-dev.svg
-# Every size is rendered from the vector master by AppIcon/render-svg.swift, which needs only
-# the Swift toolchain and macOS frameworks.
+# Regenerates the app icons from the parameter files in AppIcon/ (see AppIcon/README.md).
+# Each AppIcon/metabrowser-icon*.json makes the master SVG of the same name, and two of the
+# masters become the icons:
+#   Resources/AppIcon.icns       official builds, from AppIcon/metabrowser-icon.json
+#   Resources/AppIcon-Dev.icns   development builds, from AppIcon/metabrowser-icon-dev.json
+# Every size is rendered from the vector master by AppIcon/render-svg.swift. The script needs
+# only the Swift toolchain and macOS frameworks.
 #
 # Usage: scripts/build-icon.sh [--review] [--sister SISTER.svg]
 #   --review          also write review images to AppIcon/review/ (ignored by git)
@@ -25,6 +27,12 @@ done
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 swiftc -O AppIcon/render-svg.swift -o "$work/render-svg"
+swiftc -O AppIcon/make-glyphs.swift -o "$work/make-glyphs"
+
+# Every master comes from its parameter file and the variant's base.
+for params in AppIcon/metabrowser-icon*.json; do
+  "$work/make-glyphs" "$params" "${params%.json}.svg"
+done
 
 # Renders a master at the sizes an .iconset needs, once per distinct pixel size.
 icns() {
@@ -49,7 +57,6 @@ icns AppIcon/metabrowser-icon-dev.svg Resources/AppIcon-Dev.icns
 # ── Review images ──────────────────────────────────────────────
 out=AppIcon/review
 mkdir -p "$out"
-swiftc -O AppIcon/make-glyphs.swift -o "$work/make-glyphs"
 swiftc -O AppIcon/review-sheet.swift -o "$work/review-sheet"
 render="$work/render-svg"
 sheet="$work/review-sheet"
@@ -60,15 +67,15 @@ ink="#202020"
 "$render" AppIcon/metabrowser-icon-dev.svg "$out/metabrowser-icon-dev-1024.png" 1024
 
 # Junction options: how the M's second diagonal meets the B's stem.
-for junction in gap touch overlap; do
-  "$work/make-glyphs" AppIcon/metabrowser-icon.svg "$work/junction-$junction.svg" "$junction" >/dev/null
+for junction in gap bevel touch overlap; do
+  "$work/make-glyphs" AppIcon/metabrowser-icon.json "$work/junction-$junction.svg" --junction "$junction" >/dev/null
   "$render" "$work/junction-$junction.svg" "$work/junction-$junction-1024.png" 1024 \
     "$work/junction-$junction-64.png" 64
 done
 {
-  echo "canvas 3240 1400 $bg"
+  echo "canvas 4300 1400 $bg"
   x=40
-  for junction in gap touch overlap; do
+  for junction in gap bevel touch overlap; do
     echo "image $work/junction-$junction-1024.png $x 90"
     echo "image $work/junction-$junction-64.png $((x + 480)) 1150"
     echo "text $x 30 40 $ink bold $junction"
@@ -80,7 +87,7 @@ done
 
 # Construction guides over the release master: cap line, baseline, crotch and vertex lines,
 # stem edges, the vertical face, the M's axis, and both diagonals' edges.
-"$work/make-glyphs" AppIcon/metabrowser-icon.svg "$work/master-copy.svg" gap \
+"$work/make-glyphs" AppIcon/metabrowser-icon.json "$work/master-copy.svg" \
   --guides "$work/guides.svg" --dims "$work/dims.sh" >/dev/null
 # shellcheck disable=SC1091
 source "$work/dims.sh"
@@ -134,7 +141,7 @@ labels=(
   "3. The file overview's own hues, 102.08 and 276|M #F1DF53 oklch(89.34% 0.1570 101.94), relative chroma 0.84|B #B4C0FF oklch(82.10% 0.0898 275.89), relative chroma 1.00"
 )
 for i in 0 1 2; do
-  "$work/make-glyphs" AppIcon/metabrowser-icon.svg "$work/color-$i.svg" gap --fills "${pairs[$i]}" >/dev/null
+  "$work/make-glyphs" AppIcon/metabrowser-icon.json "$work/color-$i.svg" --fills "${pairs[$i]}" >/dev/null
   "$render" "$work/color-$i.svg" "$work/color-$i-1024.png" 1024
 done
 columns=3
@@ -199,5 +206,89 @@ if [[ -n "$sister" ]]; then
     echo "text 30 560 22 $ink At 512 px (top) and 64 px (bottom): the sister app, then Metabrowser, then its dev icon."
   } >"$work/sister.spec"
   "$sheet" "$work/sister.spec" "$out/side-by-side-sister-512-and-64.png"
+fi
+
+# ── The bevel alternate, when its parameter files are present ──
+if [[ -f AppIcon/metabrowser-icon-bevel.json ]]; then
+  "$render" AppIcon/metabrowser-icon-bevel.svg "$out/metabrowser-icon-bevel-1024.png" 1024 \
+    "$work/bevel-64.png" 64
+  "$render" AppIcon/metabrowser-icon-dev-bevel.svg "$out/metabrowser-icon-dev-bevel-1024.png" 1024
+
+  # The beveled junction at 4x the 1024 px icon (8 px per master unit), channel dimensioned.
+  "$work/make-glyphs" AppIcon/metabrowser-icon-bevel.json "$work/bevel-copy.svg" --dims "$work/bevel-dims.sh" >/dev/null
+  # shellcheck disable=SC1091
+  source "$work/bevel-dims.sh"
+  "$render" AppIcon/metabrowser-icon-bevel.svg "$work/bevel-2048.png" 2048
+  ox=$(awk -v b="$xB" 'BEGIN { print b - 40 }')
+  oy=$(awk -v t="$top" 'BEGIN { print t - 18 }')
+  read -r cx cy cw ch <<<"$(awk -v ox="$ox" -v oy="$oy" -v r="$bevelAtCap" -v l="$bevelMeetsStemLeft" \
+    'BEGIN { printf "%d %d %d %d", ox * 4, oy * 4, (r + 30 - ox) * 4, (l + 22 - oy) * 4 }')"
+  P() { awk -v x="$1" -v y="$2" -v ox="$ox" -v oy="$oy" 'BEGIN { printf "%d %d", (x - ox) * 8, (y - oy) * 8 + 70 }'; }
+  # A point on the diagonal's lower edge, the channel square to it, and the same horizontally.
+  read -r ax ay bx by hx1 hy hx2 <<<"$(awk -v d="$diagonalTopRight" -v t="$top" -v k="$tanTheta" \
+    -v c="$channel" -v h="$channelHorizontal" 'BEGIN {
+      th = atan2(k, 1); y = t + 34; x = d - (y - t) * k
+      y2 = t + 78; x2 = d - (y2 - t) * k
+      printf "%f %f %f %f %f %f %f", x, y, x + c * cos(th), y + c * sin(th), x2, y2, x2 + h }')"
+  read -r pax pay <<<"$(P "$ax" "$ay")"
+  read -r pbx pby <<<"$(P "$bx" "$by")"
+  read -r ph1x phy <<<"$(P "$hx1" "$hy")"
+  read -r ph2x _ <<<"$(P "$hx2" "$hy")"
+  red="#FF3B6B"
+  {
+    echo "canvas $((cw * 2)) $((ch * 2 + 200)) $bg"
+    echo "text 24 20 26 $ink bold The beveled junction at 4x: the M's diagonal, the channel, and the B's bevel"
+    echo "image $work/bevel-2048.png 0 70 $((cw * 2)) $((ch * 2)) smooth $cx $cy $cw $ch"
+    echo "line $pax $pay $pbx $pby 3 $red"
+    echo "text $((pbx + 10)) $((pby - 30)) 22 #FFFFFF bold channel $channel"
+    echo "line $ph1x $phy $ph2x $phy 3 #00D8FF"
+    echo "text $((ph2x + 10)) $((phy - 12)) 20 #FFFFFF $channelHorizontal across"
+    echo "text 24 $((ch * 2 + 90)) 22 $ink Channel: $channel units square to the M's diagonal ($channelHorizontal measured across), the sister"
+    echo "text 24 $((ch * 2 + 122)) 22 $ink app's least gap. The bevel is one straight cut at 29 degrees; the B's stem is trimmed above"
+    echo "text 24 $((ch * 2 + 154)) 22 $ink its middle bar (y $middleBarTop), where the bevel left only a thin wedge."
+  } >"$work/bevel-zoom.spec"
+  "$sheet" "$work/bevel-zoom.spec" "$out/bevel-junction-closeup-4x.png"
+
+  # The committed gap version and the bevel alternate, with the sister app, at 1024 and 64 px.
+  "$render" AppIcon/metabrowser-icon.svg "$work/gap-1024.png" 1024 "$work/gap-64.png" 64
+  columns=2
+  [[ -n "$sister" ]] && columns=3
+  {
+    echo "canvas $((columns * 1064 + 40)) 1290 $bg"
+    x=40
+    if [[ -n "$sister" ]]; then
+      "$render" "$sister" "$work/sister-1024.png" 1024 "$work/sister-64.png" 64
+      echo "image $work/sister-1024.png $x 70"
+      echo "image $work/sister-64.png $((x + 480)) 1120"
+      echo "text $x 20 30 $ink bold The sister app"
+      x=$((x + 1064))
+    fi
+    echo "image $work/gap-1024.png $x 70"
+    echo "image $work/gap-64.png $((x + 480)) 1120"
+    echo "text $x 20 30 $ink bold Gap (committed): 271 units wide"
+    x=$((x + 1064))
+    echo "image $out/metabrowser-icon-bevel-1024.png $x 70"
+    echo "image $work/bevel-64.png $((x + 480)) 1120"
+    echo "text $x 20 30 $ink bold Bevel (alternate): $inkWidth units wide"
+    echo "text 40 1220 24 $ink 64 px, actual size, under each icon. The sister app's mark is 222 units wide."
+  } >"$work/compare.spec"
+  "$sheet" "$work/compare.spec" "$out/gap-vs-bevel-1024-and-64.png"
+
+  # The channel width, swept around the sister app's gap.
+  {
+    echo "canvas 2200 640 $bg"
+    echo "text 30 20 26 $ink bold Bevel channel widths, square to the diagonal, at 512 px"
+    x=30
+    for g in 15 18 21.437 26; do
+      sed "s/\"gap\": [0-9.]*/\"gap\": $g/" AppIcon/metabrowser-icon-bevel.json >"$work/sweep.json"
+      cp AppIcon/base-release.svg "$work/base-release.svg"
+      "$work/make-glyphs" "$work/sweep.json" "$work/sweep-$g.svg" >/dev/null
+      "$render" "$work/sweep-$g.svg" "$work/sweep-$g.png" 512
+      echo "image $work/sweep-$g.png $x 70"
+      echo "text $x 590 22 $ink channel $g"
+      x=$((x + 540))
+    done
+  } >"$work/sweep.spec"
+  "$sheet" "$work/sweep.spec" "$out/bevel-channel-sweep-512.png"
 fi
 echo "wrote review images to $out/"

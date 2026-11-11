@@ -1,8 +1,8 @@
 # Metabrowser App Icon
 
 **Status:** Draft under review.
-Both masters use the `gap` junction and the citrine and amethyst fills; the small sizes
-wait on review.
+Both masters use the `gap` junction and the citrine and amethyst fills.
+The `bevel` alternate masters are for comparison, and the small sizes wait on review.
 
 The icon is an MB mark on the sister app’s v6 icon: the same squircle, rim, panel,
 sheen, border, and pressed-in letter shadow, with a partial M in a gem tone of
@@ -13,17 +13,20 @@ The partial M stops one glyph gap short of the B, whose stem completes the M.
 
 | Path | Holds |
 | --- | --- |
-| `metabrowser-icon.svg` | Release master, for official builds. |
-| `metabrowser-icon-dev.svg` | Development master: the sister app’s canary scheme, a gold rim and a warm sheen. |
-| `make-glyphs.swift` | Constructs the partial M and the B and writes them into a master, changing nothing else. |
+| `metabrowser-icon.json` | Parameters of the release master, for official builds. |
+| `metabrowser-icon-dev.json` | Parameters of the development master. |
+| `metabrowser-icon-bevel.json`, `metabrowser-icon-dev-bevel.json` | Parameters of the `bevel` alternates, for review only. |
+| `base-release.svg`, `base-dev.svg` | The sister app’s v6 icon structure with an empty glyph group: the release base and the canary scheme, a gold rim and a warm sheen. |
+| `metabrowser-icon*.svg` | The masters, generated from the parameters and the base; edit those, not these. |
+| `make-glyphs.swift` | Builds a master from a parameter file, validates the parameters, and prints the derived dimensions. |
 | `render-svg.swift` | Renders a master to PNG at any size that divides 2048. |
 | `review-sheet.swift` | Lays out the review images. |
-| `../scripts/build-icon.sh` | Builds `Resources/AppIcon.icns` and `Resources/AppIcon-Dev.icns`, and with `--review`, the review images. |
+| `../scripts/build-icon.sh` | Regenerates every master, builds `Resources/AppIcon.icns` and `Resources/AppIcon-Dev.icns`, and with `--review`, the review images. |
 
 ## Regenerate
 
 ```shell
-scripts/build-icon.sh                   # from apps/macos: both .icns files
+scripts/build-icon.sh                   # from apps/macos: every master and both .icns files
 scripts/build-icon.sh --review          # also AppIcon/review/, which git ignores
 ```
 
@@ -32,19 +35,45 @@ comparisons in the review.
 The script needs only the Swift toolchain and macOS frameworks, and it writes
 byte-identical files on every run.
 
-To change the glyphs, edit the measurements at the top of `make-glyphs.swift` and
-rewrite both masters in place:
+To adjust the design, change a value in a parameter file and rerun the script.
+`make-glyphs.swift` prints every derived dimension (stem edges, the M’s axis, the face
+or bevel positions, the mark’s width) for each master, and it refuses parameters that
+are out of order, outside sRGB, or that would leave a flat or a fragment thinner than
+`minSliver`.
 
-```shell
-swiftc -O AppIcon/make-glyphs.swift -o /tmp/make-glyphs
-/tmp/make-glyphs AppIcon/metabrowser-icon.svg AppIcon/metabrowser-icon.svg gap
-/tmp/make-glyphs AppIcon/metabrowser-icon-dev.svg AppIcon/metabrowser-icon-dev.svg gap
-```
+## Parameters
+
+Units are the 512-unit master.
+The font measurements are Reddit Mono Bold (wght 700) at 232 px, the face and size of
+the sister app’s K, in font units (2048 per em) times 232/2048. A parameter file may
+omit a parameter to take its default, which is the value below; names starting with `_`
+are comments, and any other unknown name is refused.
+
+| Parameter | Default | Meaning and source |
+| --- | --- | --- |
+| `variant` | `release` | The base: `release` or `dev` (the canary scheme). |
+| `junction` | `gap` | How the M’s rising diagonal meets the B’s stem: `gap`, `bevel`, `touch`, or `overlap` (below). |
+| `gap` | 21.437 | The space between the partial M and the B: face to stem (`gap`) or the channel (`bevel`). The sister app’s least distance between its glyphs. |
+| `gapMeasure` | `perpendicular` | For `bevel`: the channel measured square to the diagonal or `horizontal`. |
+| `faceTopFlat` | 1 | For `gap`: the diagonal’s flat top in stems, which places the vertical face; 1 puts it at the first stem’s outer edge mirrored on the M’s axis. |
+| `stem` | 31.464 | The partial M’s stem: the B’s stem, 277.75 font units. The B keeps the font’s stem. |
+| `diagonal` | 31.464 | The diagonals’ thickness, square to the stroke: the K’s arms, which are stem weight. |
+| `angle` | 28.9993 | The diagonals’ angle from vertical in degrees: the font M’s outer diagonal edge. |
+| `capLine` | 172.023 | The cap line, as y: cap height 1474 font units above the baseline. |
+| `baseline` | 339 | The baseline, as y: the sister app’s K (Figma snaps 339.10 to 339). |
+| `crotch` | 239.451 | Where the diagonals’ upper edges meet, as y: the font M’s, 878.781 font units. |
+| `vertexFlat` | 284.418 | The flat cut under the vertex, as y: the font M’s, 481.828 font units. |
+| `centroidX` | 262.598 | The x of the pair’s area centroid: the sister app’s glyph pair, so both marks balance alike. |
+| `bSize` | 232 | The B’s size in px per em: the sister app’s K. |
+| `overlapTopFlat` | 0.697 | For `overlap`: the stem top before the diagonal starts, as a fraction of the stem: the font M’s. |
+| `minSliver` | 6 | The thinnest part a cut may leave: a thinner wedge of the B’s stem is trimmed (`bevel`), and parameters that would leave a thinner flat or a smaller fragment are refused. |
+| `fills` | `#ECC44B`, `#C896FF` | The partial M’s and the B’s fills, as `#RRGGBB` or `oklch(L% C H)` (see Colors). |
 
 ## The Base
 
-The masters are the sister app’s v6 icon as Figma exports it to SVG, copied verbatim,
-including Figma’s element ids, so a diff against the export shows only what changed.
+The bases are the sister app’s v6 icon as Figma exports it to SVG, copied verbatim with
+the glyph group emptied, including Figma’s element ids, so a diff of a master against
+the export shows only what changed.
 In the Figma document the rim is a 376-unit square with a 65-unit corner radius at 60%
 corner smoothing and a 29-unit outside stroke.
 The panel is 364 units with a 60-unit radius at the same smoothing, a 9-unit outside
@@ -55,7 +84,7 @@ the same parameters.
 
 One change from the export: the export draws the panel’s outside border as an 18-unit
 stroke masked to the panel’s outside, and any SVG renderer then leaves a translucent
-seam where the panel’s antialiased edge meets the mask’s. The masters draw the same
+seam where the panel’s antialiased edge meets the mask’s. The bases draw the same
 stroke, unmasked, under the panel fill, which paints what Figma paints.
 
 ## The Glyphs
@@ -66,19 +95,7 @@ own K within 0.063 units.
 The ❯ is U+276F, which Reddit Mono lacks, so Figma drew it from a fallback font at 182
 px; it is resized, not edited.
 
-Every dimension below is in the 512-unit master and comes from Reddit Mono Bold at 232
-px (font units times 232/2048).
-
-| Dimension | Value | Source |
-| --- | --- | --- |
-| Baseline | 339 | The K’s baseline in the export |
-| Cap line | 172.023 | Cap height, 1474 font units |
-| Stem | 31.464 | The B’s stem, 277.75 font units |
-| Diagonal weight | 31.464 | The K’s arms, which are stem weight measured square to the stroke |
-| Diagonal angle | 29.0° from vertical | The M’s outer diagonal edge |
-| Crotch | 239.451 | The M’s crotch height, 878.781 font units |
-| Vertex flat | 284.418 | The M’s flat cut under its vertex, 481.828 font units |
-| Horizontal position | Area centroid at x 262.598 | The sister app’s glyph pair, so both marks balance alike |
+The Parameters table above gives every dimension and its source.
 
 The B is the font’s own outline, unedited, at the K’s size and baseline, since the
 sister app applied no edits to its K. Its outline coordinates are copied into
@@ -88,9 +105,7 @@ Font License 1.1, and the font itself is not used or shipped.
 The partial M is drawn: a stem, and two diagonal bands between parallel edges, cut flat
 on the cap line and on the vertex line.
 The first diagonal leaves the stem’s top-right corner, so the stem stays a clean
-rectangle.
-The `junction` argument of `make-glyphs.swift` chooses how the second diagonal
-meets the B’s stem:
+rectangle. The `junction` parameter chooses how the second diagonal meets the B’s stem:
 
 - **gap** (in the masters): a vertical cut ends it where the first stem’s outer edge
   falls when mirrored on the M’s axis.
@@ -98,6 +113,13 @@ meets the B’s stem:
   right angle, and the partial M is symmetric about its axis but for the missing stem.
   The B’s stem follows 21.437 units beyond the face.
   The mark is 271 units wide, against the sister app’s 222.
+- **bevel** (the alternate): the B’s stem stands where the M’s right stem would, and the
+  diagonal runs at full width over it to the cap line.
+  The B is cut by one straight line parallel to the diagonal, a 21.437-unit channel from
+  it (24.510 measured across), which takes off the B’s upper-left corner.
+  Above the B’s middle bar the bevel would leave only a wedge of its stem, 9.642 wide at
+  its base, so the stem is trimmed there, on the font’s axes.
+  The mark is 218 units wide.
 - **touch**: its upper edge ends on the B stem’s top-left corner, so the B’s stem joins
   the M; the mark is 218 units wide.
 - **overlap**: it runs into the B’s stem as in the font’s M, whose stem tops are 70% of
@@ -108,6 +130,8 @@ K’s stem, so the vertical face sits as close to the B as that tip does to the 
 Optically the two gaps are close too: capping clearance at twice the gap, the mean
 clearance over the cap height is 39.3 units here and 38.1 in the sister app, whose tip
 leaves open space above and below it where the face leaves it only below.
+The `bevel` channel is a long run of parallel edges, which reads at about its width; the
+review’s channel sweep shows 15, 18, 21.437, and 26.
 
 In the `touch` and `overlap` junctions the partial M runs 2 units under the B’s stem, so
 their shared edge has no antialiasing seam.
