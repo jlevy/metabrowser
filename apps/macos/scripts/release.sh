@@ -63,10 +63,8 @@ scripts/check-dmg.sh "$dmg"
 sha256="$(cut -d' ' -f1 "$dmg.sha256")"
 outputs=("$app" "$dmg" "$dmg.sha256")
 if [[ "$variant" == release ]]; then
-  # The template's leading comment is about the template, so the cask drops it.
   cask="build/metabrowser-app.rb"
-  sed -e '1,/^cask /{/^#/d;}' -e "s/{{VERSION}}/$version/" -e "s/{{SHA256}}/$sha256/" \
-    packaging/metabrowser-app.rb.template >"$cask"
+  write_cask "$dmg" "$cask" "$version" "$arch_label"
   outputs+=("$cask")
 fi
 

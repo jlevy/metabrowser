@@ -1,13 +1,14 @@
 # A draft cask for a personal tap (Casks/metabrowser-app.rb in a homebrew-tap
-# repository), not yet published. scripts/release.sh fills in the version and checksum
-# and writes build/metabrowser-app.rb. Homebrew quarantines what it downloads, so only a
-# notarized image installs. The "-app" suffix keeps the name free for a formula of the
-# metab command-line tool.
+# repository), not yet published. scripts/release.sh fills in the version, the checksum,
+# and the image's architecture (write_cask in scripts/common.sh; a universal image
+# declares none) and writes build/metabrowser-app.rb. Homebrew quarantines what it
+# downloads, so only a notarized image installs. The "-app" suffix keeps the name free
+# for a formula of the metab command-line tool.
 cask "metabrowser-app" do
   version "{{VERSION}}"
   sha256 "{{SHA256}}"
 
-  url "https://github.com/jlevy/metabrowser/releases/download/macos-v#{version}/Metabrowser-#{version}-arm64.dmg"
+  url "https://github.com/jlevy/metabrowser/releases/download/macos-v#{version}/Metabrowser-#{version}-{{ARCH}}.dmg"
   name "Metabrowser"
   desc "Native window for browsing folders with Metabrowser"
   homepage "https://github.com/jlevy/metabrowser"
@@ -19,7 +20,7 @@ cask "metabrowser-app" do
     strategy :github_releases
   end
 
-  depends_on arch: :arm64
+  depends_on arch: {{ARCH_SYMBOL}}
   depends_on macos: ">= :sequoia"
 
   app "Metabrowser.app"

@@ -178,7 +178,11 @@ make macos-release SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
 6. **Check:** `check-dmg.sh` checks the image as a downloader meets it (see
    [Variants](#variants) for the icon rule).
 7. **Cask:** `build/metabrowser-app.rb`, the cask template in `packaging/` with the
-   version and checksum filled in.
+   version, the checksum, and the image’s architecture filled in: `-arm64.dmg` declares
+   `depends_on arch: :arm64`, `-x86_64.dmg` declares `:x86_64`, and `-universal.dmg`
+   (`ARCHES="arm64 x86_64"`) declares none.
+   The release stops if the cask’s URL would name another image than the one
+   checksummed.
 
 The outputs, at 0.1.0:
 

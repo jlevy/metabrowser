@@ -138,6 +138,29 @@ require_no_entitlements() {
   fi
 }
 
+# Writes the Homebrew cask for the release image $1 to $2 from packaging/: the version $3,
+# the image's checksum, and its architecture label $4 (arm64, x86_64, or universal), so
+# the cask downloads the image it was checksummed from. A universal image declares no
+# architecture. Then checks that the cask's URL names that image and carries its checksum.
+write_cask() {
+  local dmg="$1" cask="$2" version="$3" label="$4" sha256 url
+  sha256="$(cut -d' ' -f1 "$dmg.sha256")"
+  local -a arch_rule
+  case "$label" in
+    arm64 | x86_64) arch_rule=(-e "s/{{ARCH_SYMBOL}}/:$label/") ;;
+    universal) arch_rule=(-e '/{{ARCH_SYMBOL}}/d') ;;
+    *) die "no cask for the architecture label '$label'; it must be arm64, x86_64, or universal" ;;
+  esac
+  # The template's leading comment is about the template, so the cask drops it.
+  sed -e '1,/^cask /{/^#/d;}' "${arch_rule[@]}" -e "s/{{VERSION}}/$version/" -e "s/{{SHA256}}/$sha256/" \
+    -e "s/{{ARCH}}/$label/" packaging/metabrowser-app.rb.template >"$cask"
+  url="$(sed -n 's/^ *url "\(.*\)"$/\1/p' "$cask")"
+  url="${url//\#\{version\}/$version}"
+  [[ "${url##*/}" == "$(basename "$dmg")" ]] || die "$cask downloads ${url##*/}, not $(basename "$dmg")"
+  grep -qx "  sha256 \"$sha256\"" "$cask" || die "$cask does not carry the checksum of $(basename "$dmg")"
+  ! grep -q '{{' "$cask" || die "$cask has an unfilled placeholder"
+}
+
 # Whether the target carries a Developer ID Application signature, the only kind the
 # notary service accepts.
 is_developer_id_signed() {
