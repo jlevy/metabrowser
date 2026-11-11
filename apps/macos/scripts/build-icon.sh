@@ -67,13 +67,15 @@ cyan="#00D8FF"
 
 "$render" AppIcon/metabrowser-icon.svg "$out/metabrowser-icon-1024.png" 1024
 "$render" AppIcon/metabrowser-icon-dev.svg "$out/metabrowser-icon-dev-1024.png" 1024
-default_junction=$(sed -n 's/.*"junction": "\([^"]*\)".*/\1/p' AppIcon/metabrowser-icon.json)
+# The masters' name in the review images; "default", not a junction name, since an alternate
+# may share the masters' junction.
+default_name=default
 
 # Every release variant: its junction, a 1024 px render, a 64 px render, its width, and a
 # release .icns to swap into a built app for comparison in the Dock. The junction alternates go
 # on one sheet; the symmetry (sym-*) and |\B (norise-*) families go on the refresh sheet.
-variants=("$default_junction")
-junctions=("$default_junction")
+variants=("$default_name")
+junctions=("$default_name")
 sym=()
 norise=()
 for params in AppIcon/metabrowser-icon-*.json; do
@@ -89,7 +91,7 @@ for params in AppIcon/metabrowser-icon-*.json; do
 done
 # The release parameter file of a variant, a string parameter from it, and its width (macOS's
 # bash has no hash tables).
-params_of() { if [[ "$1" == "$default_junction" ]]; then echo AppIcon/metabrowser-icon.json; else echo "AppIcon/metabrowser-icon-$1.json"; fi; }
+params_of() { if [[ "$1" == "$default_name" ]]; then echo AppIcon/metabrowser-icon.json; else echo "AppIcon/metabrowser-icon-$1.json"; fi; }
 param_of() { sed -n "s/.*\"$2\": \"\\([^\"]*\\)\".*/\\1/p" "$(params_of "$1")"; }
 dim_of() { sed -n "s/^$2=//p" "$work/$1.dims"; }
 width_of() { dim_of "$1" inkWidth; }
@@ -125,8 +127,8 @@ detail_of() {
 }
 # How far the B's stem moved right from the M's stem, and in the icon, against the default.
 shift_of() {
-  awk -v b="$(dim_of "$1" xB)" -v x="$(dim_of "$1" x0)" -v rb="$(dim_of "$default_junction" xB)" \
-    -v rx="$(dim_of "$default_junction" x0)" 'BEGIN { printf "%+.3f from the M'"'"'s stem, %+.3f in the icon", (b - x) - (rb - rx), b - rb }'
+  awk -v b="$(dim_of "$1" xB)" -v x="$(dim_of "$1" x0)" -v rb="$(dim_of "$default_name" xB)" \
+    -v rx="$(dim_of "$default_name" x0)" 'BEGIN { printf "%+.3f from the M'"'"'s stem, %+.3f in the icon", (b - x) - (rb - rx), b - rb }'
 }
 for v in "${variants[@]}"; do
   "$work/make-glyphs" "$(params_of "$v")" "$work/$v.svg" --dims "$work/$v.dims" >/dev/null
@@ -152,7 +154,7 @@ count=${#junctions[@]}
   fi
   for v in "${junctions[@]}"; do
     label="$v"
-    [[ "$v" == "$default_junction" ]] && label="$v (default)"
+    [[ "$v" == "$default_name" ]] && label="the default"
     echo "image $out/variant-$v-1024.png $x 70"
     echo "image $work/$v-64.png $((x + 480)) 1120"
     echo "text $x 20 30 $ink bold $label: $(width_of "$v") units wide"
@@ -195,9 +197,9 @@ if ((rows > 0)); then
       ((${#members[@]} > 0)) || continue
       echo "text 40 $y 34 $ink bold $(family_title "$family")"
       x=40
-      for v in "$default_junction" "${members[@]}"; do
+      for v in "$default_name" "${members[@]}"; do
         label="$v"
-        [[ "$v" == "$default_junction" ]] && label="$v (today's default, for reference)"
+        [[ "$v" == "$default_name" ]] && label="the default, for reference"
         echo "text $x $((y + 60)) 28 $ink bold $label"
         echo "text $x $((y + 102)) 24 $ink $(end_of "$v"); gap $(dim_of "$v" gap)"
         echo "text $x $((y + 136)) 24 $ink $(detail_of "$v")"
@@ -223,7 +225,7 @@ if ((rows > 0)); then
       ((${#members[@]} > 0)) || continue
       echo "text 40 $y 26 $ink bold $(family_title "$family")"
       x=40
-      for v in "$default_junction" "${members[@]}"; do
+      for v in "$default_name" "${members[@]}"; do
         echo "image $work/$v-64.png $((x + 96)) $((y + 50))"
         echo "image $work/$v-64.png $x $((y + 134)) 256 256 nearest"
         echo "text $x $((y + 400)) 18 $ink $v"

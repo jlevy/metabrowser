@@ -1,16 +1,36 @@
 # Metabrowser App Icon
 
-**Status:** Draft under review.
-Both masters use the `b-over` junction and the citrine and amethyst fills, so the design
-can be seen in the app.
-The other junctions, and two refresh families (see [The Refresh](#the-refresh)), have
-parameter files for comparison, and the small sizes wait on review.
+**Status:** The design is chosen (2026-11-11): both masters use `sym-drop19-gap34` and
+the citrine and amethyst fills.
+Hand-tuned small sizes (16 and 32 px) still wait on review.
+The previous masters’ design is kept as the `b-over` alternate, and the other junctions
+and two refresh families (see [The Refresh](#the-refresh)) keep their parameter files
+for comparison.
 
 The icon is an MB mark on the sister app’s v6 icon: the same squircle, rim, panel,
 sheen, border, and pressed-in letter shadow, with a partial M in a gem tone of
 Metabrowser’s JavaScript color and a B in a gem tone of its Markdown color.
-The B stands where the M’s right stem would, intact, and the partial M stops one glyph
-gap short of it.
+The partial M’s rising diagonal ends in a point 19.337 below the cap line, at a vertical
+face, and the intact B’s stem follows 34 units beyond it, a little more than the M’s
+31.464 stem.
+
+## The Chosen Parameters
+
+`metabrowser-icon.json` (release) and `metabrowser-icon-dev.json` (development) hold the
+final parameters; they differ only in `variant`. These differ from the generator’s
+defaults (see [Parameters](#parameters)):
+
+| Parameter | Value | Effect |
+| --- | --- | --- |
+| `junction` | `gap` | The rising diagonal ends at a vertical face, and the B follows a gap. |
+| `faceTopFlat` | 0 | No flat top: the diagonal ends in a 29° point. |
+| `faceDrop` | 19.337 | The point sits 19.337 below the cap line, halfway between the cap line and the `b-over` point (38.674). |
+| `gap` | 34 | The horizontal space from the face to the B’s stem, a little more than a stem (31.464). |
+
+Every other parameter keeps its default.
+The mark is 241.654 units wide, balanced on `centroidX` 262.598; the face runs from y
+191.360 to 256.261. To change the design, edit both files and run
+`scripts/build-icon.sh`.
 
 ## Files
 
@@ -18,7 +38,7 @@ gap short of it.
 | --- | --- |
 | `metabrowser-icon.json` | Parameters of the release master, for official builds. |
 | `metabrowser-icon-dev.json` | Parameters of the development master. |
-| `metabrowser-icon-<junction>.json` | Parameters of the other junctions (`gap`, `bevel`, `corner-bevel`, `touch`, `overlap`, and a dev `bevel`), for review only. |
+| `metabrowser-icon-<junction>.json` | Parameters of the other junctions (`b-over`, `gap`, `bevel`, `corner-bevel`, `touch`, `overlap`, and a dev `bevel`), for review only. |
 | `metabrowser-icon-sym-*.json`, `metabrowser-icon-norise-*.json` | Parameters of the refresh families, for review only. |
 | `base-release.svg`, `base-dev.svg` | The sister app’s v6 icon structure with an empty glyph group: the release base and the canary scheme, a gold rim and a warm sheen. |
 | `metabrowser-icon*.svg` | The masters, generated from the parameters and the base; edit those, not these. |
@@ -115,10 +135,11 @@ on the cap line and on the vertex line.
 The first diagonal leaves the stem’s top-right corner, so the stem stays a clean
 rectangle. The `junction` parameter chooses how the second diagonal meets the B’s stem:
 
-- **b-over** (in the masters): the B’s stem stands where the M’s right stem would, and
-  the B is intact. A vertical cut ends the diagonal one gap, 21.437, left of the B’s
-  stem. The cut lies left of where the diagonal meets the cap line, so the diagonal keeps
-  no flat top: it ends 38.674 below the cap line in a 29° point, where the vertical face
+- **b-over** (the masters until 2026-11-11, now an alternate): the B’s stem stands where
+  the M’s right stem would, and the B is intact.
+  A vertical cut ends the diagonal one gap, 21.437, left of the B’s stem.
+  The cut lies left of where the diagonal meets the cap line, so the diagonal keeps no
+  flat top: it ends 38.674 below the cap line in a 29° point, where the vertical face
   meets the diagonal’s upper edge, with a 64.901-unit vertical face, and keeps 15.938
   units across right of the M’s axis.
   The mark is 218 units wide.
@@ -136,6 +157,8 @@ rectangle. The `junction` parameter chooses how the second diagonal meets the B�
   moves the face left; at 0 the diagonal ends in a point on the cap line, and `faceDrop`
   then lowers the point and the face together.
   The `b-over` geometry is `faceDrop` 38.674 with the B one gap past the face.
+  The masters use `faceDrop` 19.337 with a 34-unit gap (`sym-drop19-gap34` in The
+  Refresh).
 - **bevel** (the alternate): the B’s stem stands where the M’s right stem would, and the
   diagonal runs at full width over it to the cap line.
   The B is cut by one straight line parallel to the diagonal, a 21.437-unit channel from
@@ -172,22 +195,23 @@ In every junction the inner shadow, a filter on the pair, treats them as one sha
 ## The Refresh
 
 Two families, for review only, try a cut nearer the M’s upper right and a gap nearer a
-stem’s width. Each keeps the B intact and balances the pair on `centroidX`.
-`build-icon.sh --review` sets them beside the default in
-`review/refresh-1024-and-64.png` and `review/refresh-64-px.png`, with a 4x close-up and
-a release `.icns` for each.
+stem’s width. Each keeps the B intact and balances the pair on `centroidX`. The masters
+now use `sym-drop19-gap34`, so the review images’ default is that design and the
+B-on-top design appears as `b-over`. `build-icon.sh --review` sets them beside the
+default in `review/refresh-1024-and-64.png` and `review/refresh-64-px.png`, with a 4x
+close-up and a release `.icns` for each.
 
 The symmetry family, `sym-*`, is the `gap` junction with the face moved up the rising
 diagonal.
 Every point is 29°, the diagonal’s angle from vertical, where the vertical face
 meets its upper edge.
 
-| File | The diagonal’s end | Face, as y | Gap | Width | B’s stem from the M’s, against the default |
+| File | The diagonal’s end | Face, as y | Gap | Width | B’s stem from the M’s, against `b-over` |
 | --- | --- | --- | --- | --- | --- |
-| `metabrowser-icon` | point 38.674 below the cap line | 210.697 to 275.599 | 21.437 | 218.373 | 0 |
+| `b-over` | point 38.674 below the cap line | 210.697 to 275.599 | 21.437 | 218.373 | 0 |
 | `sym-drop19-gap26` | point 19.337 below the cap line | 191.360 to 256.261 | 26 | 233.654 | +15.281 |
 | `sym-drop19-gap31` | point 19.337 below the cap line | 191.360 to 256.261 | 31.464 | 239.118 | +20.745 |
-| `sym-drop19-gap34` | point 19.337 below the cap line | 191.360 to 256.261 | 34 | 241.654 | +23.281 |
+| `sym-drop19-gap34` (the masters) | point 19.337 below the cap line | 191.360 to 256.261 | 34 | 241.654 | +23.281 |
 | `sym-drop19-gap37` | point 19.337 below the cap line | 191.360 to 256.261 | 37 | 244.654 | +26.281 |
 | `sym-drop19-gap40` | point 19.337 below the cap line | 191.360 to 256.261 | 40 | 247.654 | +29.281 |
 | `sym-drop19-gap43` | point 19.337 below the cap line | 191.360 to 256.261 | 43 | 250.654 | +32.281 |
@@ -202,7 +226,7 @@ mirrored.
 
 The `|\B` family, `norise-*`, is the `no-rise` junction.
 
-| File | The diagonal’s end | Bottom, as y | Gap | Width | B’s stem from the M’s, against the default |
+| File | The diagonal’s end | Bottom, as y | Gap | Width | B’s stem from the M’s, against `b-over` |
 | --- | --- | --- | --- | --- | --- |
 | `norise-floor-bottom-gap21` | horizontal cut on the bar’s bottom, its right corner 61° | 266.944 | 21.437 | 217.674 | -0.699 |
 | `norise-bar-gap21` | vertical face across the bar, 241.775 to 266.944, on a floor 22.023 wide | 266.944 | 21.437 | 203.723 | -14.650 |
