@@ -3,9 +3,9 @@ type: is
 id: is-01m74qv74fxdqpx51jpxnsmeh9
 title: "PR #346 (merge): fix(pulls): fetch changes when selected"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 6
+version: 7
 labels: []
 dependencies: []
 parent_id: is-01m74qv6pggjrpe3kkqbtj01g3
@@ -14,7 +14,11 @@ child_order_hints:
   - is-01m74xysspjzemqnftp8y2rgb9
   - is-01m751ytvafc561t05kr196g8y
 created_at: 2026-11-11T07:23:34.926Z
-updated_at: 2026-11-11T10:50:37.654Z
+updated_at: 2026-11-11T16:41:47.141Z
+closed_at: 2026-11-11T16:41:47.140Z
+close_reason: "Landed on main in ab346bf8 via native stack #350 merge (2026-11-11). Reviews and dispositions recorded in the bead notes; merge gate passed with CI 9/9 at the final head."
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes

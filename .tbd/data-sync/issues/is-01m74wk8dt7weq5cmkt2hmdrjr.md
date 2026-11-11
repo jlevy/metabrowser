@@ -3,9 +3,9 @@ type: is
 id: is-01m74wk8dt7weq5cmkt2hmdrjr
 title: "Address PR #349 reviews A, B, C: rendered Markdown redlines"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 31
+version: 32
 labels: []
 dependencies: []
 parent_id: is-01m74qv8b02t85rv9cam272wqj
@@ -41,6 +41,10 @@ child_order_hints:
   - is-01m74wm86sktvwece1dwpb2j7b
   - is-01m74wm8jznykt68dn5fbmd9z3
 created_at: 2026-11-11T08:46:36.985Z
-updated_at: 2026-11-11T08:47:09.918Z
+updated_at: 2026-11-11T16:14:35.901Z
+closed_at: 2026-11-11T16:14:35.899Z
+close_reason: "Reviews A, B, C addressed at 59ad56cc (CI run 43053293968 green); dispositions posted on PR #349."
+resolution: null
+duplicate_of: null
 ---
 Reviews A (https://github.com/jlevy/metabrowser/pull/349#pullrequestreview-5855490584), B (https://github.com/jlevy/metabrowser/pull/349#pullrequestreview-5855503638), C (https://github.com/jlevy/metabrowser/pull/349#pullrequestreview-5855871513) at head 705d85a1, plus #351 review A items 351-A9, A12, A13, A14, A15 assigned to #349.

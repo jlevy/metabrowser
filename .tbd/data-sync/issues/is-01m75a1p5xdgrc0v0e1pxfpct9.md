@@ -3,9 +3,9 @@ type: is
 id: is-01m75a1p5xdgrc0v0e1pxfpct9
 title: "Address PR #351 review A: metadata and GitHub actions"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 17
+version: 18
 labels: []
 dependencies: []
 parent_id: is-01m74qv8qsq8mywe4cdxzfmc5z
@@ -27,6 +27,10 @@ child_order_hints:
   - is-01m75a2b410c9h4rhgxbc6745m
   - is-01m75a2bg9ds5y1n3ga5qf7qkw
 created_at: 2026-11-11T12:41:41.308Z
-updated_at: 2026-11-11T12:42:03.144Z
+updated_at: 2026-11-11T16:37:57.449Z
+closed_at: 2026-11-11T16:37:57.441Z
+close_reason: all 16 findings dispositioned; reply posted at https://github.com/jlevy/metabrowser/pull/351#issuecomment-6801525467 at head 97d49fbe, CI run 43057502420 green
+resolution: null
+duplicate_of: null
 ---
 Review A (senior + whole-stack, round 1) on PR #351 at 1db567f7: https://github.com/jlevy/metabrowser/pull/351#pullrequestreview-5855489961. A1-A8 on this layer, A9-A16 whole-stack. Addressing agent is sole committer on codex/pr-metadata-polish.

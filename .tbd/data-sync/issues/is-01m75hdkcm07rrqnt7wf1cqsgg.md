@@ -3,9 +3,9 @@ type: is
 id: is-01m75hdkcm07rrqnt7wf1cqsgg
 title: "Address PR #349 review F: follow-up round 3"
 kind: task
-status: in_progress
+status: closed
 priority: 1
-version: 8
+version: 9
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -20,7 +20,11 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-11T14:50:31.699Z
-updated_at: 2026-11-11T14:50:47.834Z
+updated_at: 2026-11-11T16:14:37.015Z
 started_at: 2026-11-11T14:50:47.833Z
+closed_at: 2026-11-11T16:14:37.014Z
+close_reason: "Review F addressed at 59ad56cc (CI run 43053293968 green); dispositions posted on PR #349."
+resolution: null
+duplicate_of: null
 ---
 Review F (round 3) at 4e4f4ca0: https://github.com/jlevy/metabrowser/pull/349#pullrequestreview-5860564104

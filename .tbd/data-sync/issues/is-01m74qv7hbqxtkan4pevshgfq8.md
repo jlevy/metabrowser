@@ -3,9 +3,9 @@ type: is
 id: is-01m74qv7hbqxtkan4pevshgfq8
 title: "PR #347 (merge): feat(pulls): open exact revision files from Changes"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 7
+version: 8
 labels: []
 dependencies: []
 parent_id: is-01m74qv6pggjrpe3kkqbtj01g3
@@ -15,7 +15,11 @@ child_order_hints:
   - is-01m75843dp8xrq74kap2tsr2b6
   - is-01m7584qkw8sr4z3rn6rhd610h
 created_at: 2026-11-11T07:23:35.338Z
-updated_at: 2026-11-11T12:41:16.653Z
+updated_at: 2026-11-11T16:41:47.505Z
+closed_at: 2026-11-11T16:41:47.504Z
+close_reason: "Landed on main in ab346bf8 via native stack #350 merge (2026-11-11). Reviews and dispositions recorded in the bead notes; merge gate passed with CI 9/9 at the final head."
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes

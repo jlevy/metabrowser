@@ -3,9 +3,9 @@ type: is
 id: is-01m718rgbk80mnnjb8d4b1r4xz
 title: Render Markdown redlines within PR Changes
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 7
+version: 8
 spec_path: docs/project/specs/active/plan-2026-08-17-general-diff-rendering.md
 delegate: codex@spud10.local
 labels: []
@@ -14,8 +14,12 @@ parent_id: is-01m7327d4wd92r1n5bnmr1b0zb
 hold: null
 hold_until: null
 created_at: 2026-11-09T23:02:14.117Z
-updated_at: 2026-11-10T18:29:39.855Z
+updated_at: 2026-11-11T16:41:46.402Z
 started_at: 2026-11-10T15:46:31.780Z
+closed_at: 2026-11-11T16:41:46.401Z
+close_reason: "Landed on main in ab346bf8 via native stack #350 merge (2026-11-11): PR #349 (rendered Markdown redlines, projection child process, dedicated rendered-diff route)."
+resolution: null
+duplicate_of: null
 ---
 Default eligible Markdown file sections to Rendered, with a per-file Rendered | Source toggle beside the filename. Use resolved base/head Git blobs in both checkout and cached modes. Map source hunks to safe rendered blocks, use existing red/green gutter and text tokens, and fall back to exact Source for unsupported or over-budget projections. Keep full revision links (mb-01s3) separate. Verify accessibility, safe relative URLs, structural changes, limits and races.
 

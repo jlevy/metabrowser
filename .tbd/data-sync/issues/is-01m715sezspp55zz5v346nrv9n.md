@@ -3,9 +3,9 @@ type: is
 id: is-01m715sezspp55zz5v346nrv9n
 title: Design layered Git stores for cache-first PR review
 kind: feature
-status: in_progress
+status: closed
 priority: 2
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-11-02-pr-review-mirror-and-checkout.md
 delegate: codex@spud10.local
 labels: []
@@ -18,8 +18,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-09T22:10:19.755Z
-updated_at: 2026-11-10T18:29:38.899Z
+updated_at: 2026-11-11T16:41:44.901Z
 started_at: 2026-11-09T22:11:54.567Z
+closed_at: 2026-11-11T16:41:44.900Z
+close_reason: "Landed on main in ab346bf8 via native stack #350 merge (2026-11-11): designed in PR #346, implemented in PR #348 (shared loading contract, guarded publication)."
+resolution: null
+duplicate_of: null
 ---
 Keep the live Files root and local Commits history on the checkout, and give both checkout and URL-backed PR review a shared immutable Git snapshot reader. Reuse healthy managed stores, borrow eligible checkout objects, and fetch missing objects on demand or during bounded idle work. Design process and cross-process deduplication, atomic publication, route ownership, stale metadata guards, and lender repair first. Measure the selected path before widening eager preparation. Do not change the full-clone fallback policy as a side effect.
 

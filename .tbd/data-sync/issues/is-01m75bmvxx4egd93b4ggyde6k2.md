@@ -3,9 +3,9 @@ type: is
 id: is-01m75bmvxx4egd93b4ggyde6k2
 title: "Address PR #349 review D: follow-up round 2"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 10
+version: 11
 labels: []
 dependencies: []
 parent_id: is-01m74qv8b02t85rv9cam272wqj
@@ -20,6 +20,10 @@ child_order_hints:
   - is-01m75bn15ds31s30y33byrnnnx
   - is-01m75bn1xwnnwg5tvk3dz2vjkh
 created_at: 2026-11-11T13:09:38.352Z
-updated_at: 2026-11-11T13:09:44.507Z
+updated_at: 2026-11-11T16:14:36.282Z
+closed_at: 2026-11-11T16:14:36.281Z
+close_reason: "Review D addressed at 59ad56cc (CI run 43053293968 green); dispositions posted on PR #349."
+resolution: null
+duplicate_of: null
 ---
 Review D (round 2) at 5e6b2955: https://github.com/jlevy/metabrowser/pull/349#pullrequestreview-5859191069
