@@ -4,7 +4,9 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Complete
+**Status:** Complete; its agent-controlled server questions are taken further, and its
+per-instance cookie name corrected, in the
+[2026-11-10 addendum](#2026-11-10-addendum-server-topology-and-agent-handoff)
 
 Supersedes, for macOS,
 [Desktop App Packaging for Metabrowser](research-2026-08-16-desktop-app-packaging.md)
@@ -1260,6 +1262,43 @@ redirected, a 150-line AppKit and `WKWebView` probe, a pywebview launcher bundle
 scratch build of paraverse.
 Not tested: a Mac without the Command Line Tools, a managed Mac, notarization of nested
 archives, and privacy prompts for a child server under a Developer ID build.
+
+## 2026-11-10 Addendum: Server Topology and Agent Handoff
+
+[Server Topology, Lifecycle, and Agent Handoff for the Native App](research-2026-11-10-native-app-server-topology.md)
+takes up the questions under Use Cases Under Exploration with code reading,
+measurements, and platform probes.
+What it adds to this brief:
+
+- **Questions That Decide It:** per-root servers behind a registry (option P+, extended
+  with a `present` verb and a `navigate` event).
+  A server’s fixed cost measured about 65 MB and 1 s of CPU, and four started together
+  were as fast as one.
+  One shared process stays a later option: its two technical objections failed when
+  measured, but it would save only that fixed cost per root.
+- **S1–S3:** a server the app spawns is charged to the app (observed; a detached one was
+  not tested). A server started from an agent’s shell is charged to the agent’s host,
+  which under Claude Desktop is a versioned binary whose grants are lost on each update.
+  Apple DTS says an `SMAppService` agent is charged to the app, and that a bare
+  executable in `Contents/MacOS` worked where a separate helper bundle did not.
+  Whether an Open-panel grant reaches a child is still untested.
+- **Sandboxed agents:** no probed sandbox lets a shell command launch an app, and
+  Codex’s default also blocks loopback, so the CLI runs outside the agent’s sandbox or
+  behind an MCP adapter.
+- **Threats:** WebKit landed a Local Network Access check in September 2026 that has no
+  prompt yet, so a prompt decision is treated as denied
+  ([bug 319907](https://bugs.webkit.org/show_bug.cgi?id=319907)); whether Safari ships
+  it is unknown.
+- **Cookie scope:** the per-instance cookie name this brief gives the session token
+  (under What Metabrowser Requires of a Host and in layering item 1) prevents collisions
+  but isolates nothing.
+  A cookie ignores the port and `SameSite` treats two ports on one host as the same
+  site, so a page can send it to every server on `127.0.0.1`. A separate web data store
+  does not help, because it belongs to the requesting page.
+  Nor does a host name per server, since a host-only cookie still goes to every port on
+  that host. The later brief has host mode give every client, the app’s web views
+  included, a token in the `Authorization` header that it sends only to its own origin,
+  in place of any cookie.
 
 ## References
 
