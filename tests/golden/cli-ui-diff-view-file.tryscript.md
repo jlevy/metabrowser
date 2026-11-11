@@ -31,7 +31,10 @@ Its comparison names the route that opens a file at either end of it,
 `GET github/pull-snapshot`, and every side at another commit than the page shows is a
 link there, on a mirror and beside a checkout alike.
 A side at the commit the page shows keeps its `/view/` link.
-A side whose commit is not that end of the comparison has no control.
+A side whose commit is not the end the route names has no control, so a control’s label
+and the file it opens are at one commit.
+A route that is not this origin’s plugin route gives no revision links and is logged,
+and the diff still shows.
 Beside a checkout the page has no pin, and the diff plugin imports the route codec its
 shell did not load.
 
@@ -321,27 +324,46 @@ $ node tests/dom/diff-view-file-session.js
       }
     },
     {
-      "step": "a side at another commit than its end of the comparison has no control",
+      "step": "a side at another commit than the route's end of it has no control",
       "requests": [
         "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
       ],
       "bars": {
         "M README.md": [
-          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b5eb94 without changing this page's commit"
+          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b5eb94 without changing this page's commit"
         ],
         "A added.txt": [
-          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b5eb94 without changing this page's commit"
+          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b5eb94 without changing this page's commit"
         ],
         "D gone.txt": [],
         "M latin1-�.txt": [
-          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b5eb94 without changing this page's commit"
+          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b5eb94 without changing this page's commit"
         ],
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [
-          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-c3Jj%2Fg1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b5eb94 without changing this page's commit"
+          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-c3Jj%2Fg1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b5eb94 without changing this page's commit"
         ],
         "M vendor/lib": []
       }
+    },
+    {
+      "step": "a revision route from elsewhere gives no controls and keeps the diff",
+      "requests": [
+        "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
+      ],
+      "bars": {
+        "M README.md": [],
+        "A added.txt": [],
+        "D gone.txt": [],
+        "M latin1-�.txt": [],
+        "M link": [],
+        "R100 src/old_name.py → src/new_name.py": [],
+        "M vendor/lib": []
+      },
+      "failure": [],
+      "logged": [
+        "metabrowser diff: revision links unavailable · diff/view-file · The comparison route is not a same-origin plugin route."
+      ]
     },
     {
       "step": "a patch file names no commit",

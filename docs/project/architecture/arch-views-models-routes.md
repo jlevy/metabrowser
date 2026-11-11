@@ -204,7 +204,9 @@ A side at the commit a pinned page shows keeps its `/view/` link, so the file op
 the app’s own viewer.
 Every other side is a link to its revision page, including both sides beside a checkout,
 whose page has no pin and which then imports `/static/git-path.js` on demand.
-A side whose commit is not that end of the comparison has no control.
+A side whose commit is not the end the route itself names has no control, and a route
+that is not a same-origin plugin route gives no revision links while the diff still
+shows.
 
 Back and forward bring a pin’s page back without asking the server for it, from the
 back/forward cache or the HTTP cache, so after a pin switch the page can name a commit
@@ -310,8 +312,10 @@ the store that computed it (see
 document of at most 64 KiB and 16,384 `[` renders inert, with its relative links and up
 to 64 images in the same Git tree and the rest as links; Source opens in 2 MiB windows
 that end on a line or a character.
-The page applies the reader’s theme, type, and width with the shell’s own first-paint
-scripts, allowed by hash, and runs no other script.
+The page applies the reader’s theme, interface font, reading font, and reading width
+with the shell’s own first-paint scripts and the width default they read, allowed by
+hash, and runs no other script; a Markdown document sits in the in-app inert render’s
+KPress frame, which carries the width and reading font to its text.
 Each outcome has its own code: `snapshot_expired` (410) for a pair not admitted,
 `snapshot_unavailable` (409) when admission cannot be decided now,
 `snapshot_objects_unavailable` (409) and `snapshot_objects_expired` (410) for objects

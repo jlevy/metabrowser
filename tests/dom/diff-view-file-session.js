@@ -661,11 +661,26 @@ async function main() {
   });
   globalThis.window.MetabrowserGitPath = codec;
 
-  // A side whose commit is not that end of the comparison is not served by the route.
-  await open(null, { comparison: { ...pullPage, left: ids.base } });
+  // A side whose commit is not the end the route names would open another commit than
+  // its label says, so it has no control: here a route for the base branch's tip.
+  const tipRoute = routes.snapshot.replace(`left=${merged}`, `left=${ids.base}`);
+  assert(tipRoute !== routes.snapshot, "the route names the merge base");
+  await open(null, { comparison: { ...pullPage, snapshot_route: tipRoute } });
   noSwitch();
-  step("a side at another commit than its end of the comparison has no control", {
+  step("a side at another commit than the route's end of it has no control", {
     bars: bars(container),
+  });
+
+  // A route that is not this origin's plugin route gives no revision links, and the diff
+  // still shows.
+  const elsewhere = "https://elsewhere.invalid/api/plugin/github/pull-snapshot?number=7";
+  const refused = await logging(() =>
+    open(null, { comparison: { ...pullPage, snapshot_route: elsewhere } }),
+  );
+  step("a revision route from elsewhere gives no controls and keeps the diff", {
+    bars: bars(container),
+    failure: failure(container),
+    logged: refused,
   });
 
   const patch = gitPath.wire("changes.patch");

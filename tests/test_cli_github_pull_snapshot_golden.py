@@ -38,8 +38,13 @@ _SCRIPT = re.compile(r"<script>(.*?)</script>", re.DOTALL)
 
 def _script_name(found: re.Match[str]) -> str:
     body = found.group(1)
-    name = "theme" if "metabrowser.themeMode" in body else "document width"
-    return f"<script>[the shell's {name} script]</script>"
+    if "metabrowser.themeMode" in body:
+        name = "the shell's theme script"
+    elif "function normalize" in body:
+        name = "the shell's document width script"
+    else:
+        name = "the document width default"
+    return f"<script>[{name}]</script>"
 
 
 def _wire(path: str) -> str:

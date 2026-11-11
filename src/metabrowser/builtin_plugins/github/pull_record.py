@@ -522,13 +522,15 @@ def write_pull_record(
 
     *store_id* names the store a mirror computed *record*'s comparison in. The pair it
     replaces and its own pair are kept in the bounded history the revision route admits
-    (:mod:`.pull_snapshot_cache`); a history that cannot be read or saved is left as it
-    was and logged, and the record is still published.
+    (:mod:`.pull_snapshot_cache`). Any write keeps only its own reader's pairs there, with
+    a store or without. A history that cannot be read or saved is left as it was and
+    logged, and the record is still published.
 
     Raises :class:`RecordTooLargeError`, or the home's ``PrivateStorageError`` or an
     ``OSError`` when the cache cannot take it, a slug no source holds among them.
     """
     from metabrowser.builtin_plugins.github.pull_snapshot_cache import (
+        retain_reader,
         retain_replaced_pair,
         retain_snapshot_binding,
     )
@@ -549,12 +551,16 @@ def write_pull_record(
         if metadata_only:
             record = fit_record(_metadata_record(record, current))
             data = serialize_pull_record(record)
-        if store_id is not None:
-            # The current record still authorizes its exact pair if history cannot be saved.
-            try:
+        try:
+            if store_id is not None:
+                # The current record still authorizes its exact pair if history cannot be
+                # saved.
                 retain_replaced_pair(home, slug, store_id, current, record)
-            except (PrivateStorageError, OSError) as exc:
-                _history_not_kept(record.number, exc)
+            else:
+                # No store, so no pair to keep; another reader's pairs still go.
+                retain_reader(home, slug, record.number, record.reader)
+        except (PrivateStorageError, OSError) as exc:
+            _history_not_kept(record.number, exc)
         write_private_file_atomic(home, source_pull_record(slug, record.number), data)
         if store_id is not None and record.comparison is not None:
             try:

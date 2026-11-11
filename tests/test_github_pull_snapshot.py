@@ -5,11 +5,13 @@ from __future__ import annotations
 import base64
 import errno
 import hashlib
+import json
 import logging
 import re
 import subprocess
 from collections import OrderedDict
 from html import escape, unescape
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -31,6 +33,7 @@ from metabrowser.builtin_plugins.github.pull_snapshot_cache import read_snapshot
 from metabrowser.cache.paths import source_pull_snapshots
 from metabrowser.git.tree_source import GitPath, GitTreeSource
 from tests.git_pin_harness import git_env
+from tests.required_tools import needs_node
 from tests.test_github_pulls import (
     _answering_head,  # pyright: ignore[reportPrivateUsage]
     _move_pull_head,  # pyright: ignore[reportPrivateUsage]
@@ -325,6 +328,24 @@ def test_a_reader_change_starts_the_history_over_whatever_its_write_holds(
     assert _admits(stand, base, p0) == "refused"
 
 
+def test_a_checkout_write_by_another_reader_starts_the_history_over(stand: _Stand) -> None:
+    """Review D4: a metadata write, which has no store, also drops another reader's pairs."""
+    home, slug, store = stand.published.home, stand.published.slug, stand.published.store_id
+    first = stand.refresh(7)
+    assert first.comparison is not None
+    base, p0, alice = first.comparison.base, first.comparison.head, first.reader
+    assert _pairs(stand) == [(store, alice, p0[:4])]
+    bob = first.model_copy(update={"reader": "gh:bob", "comparison": None})
+    write_pull_record(home, slug, bob, metadata_only=True)
+    assert _pairs(stand) == []
+    write_pull_record(home, slug, _with_head(first, "a" * 40, alice), store_id=store)
+    assert _pairs(stand) == [(store, alice, "aaaa")]
+    assert _admits(stand, base, p0) == "refused"
+    # The same reader's metadata write keeps them.
+    write_pull_record(home, slug, _with_head(first, "a" * 40, alice), metadata_only=True)
+    assert _pairs(stand) == [(store, alice, "aaaa")]
+
+
 def test_a_replaced_pair_stays_with_the_store_that_computed_it(stand: _Stand) -> None:
     """Review C5 (R3): the next store's write does not adopt an earlier store's pair."""
     home, slug = stand.published.home, stand.published.slug
@@ -458,11 +479,13 @@ def test_every_response_carries_the_page_policy(
         "'sha256-" + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode() + "'"
         for script in scripts
     ]
-    assert len(scripts) == 2 and all(
+    assert len(scripts) == 3 and all(
         value in page.headers["content-security-policy"] for value in hashes
     )
-    # The reader's theme, type, and width scripts are the shell's own.
-    assert "metabrowser.themeMode" in scripts[1] and "MetabrowserDocumentWidth" in scripts[0]
+    # The reader's theme, type, and width scripts are the shell's own, after the default
+    # the width script reads.
+    assert scripts[0].startswith("window.METABROWSER_SETTINGS=")
+    assert "MetabrowserDocumentWidth" in scripts[1] and "metabrowser.themeMode" in scripts[2]
     with monkeypatch.context() as patch:
         patch.setattr(GitTreeSource, "max_blob_bytes", property(lambda _source: 4))
         too_large = client.get(at + _wire("payload.bin") + "&mode=download")
@@ -650,3 +673,75 @@ def test_a_pages_images_repeat_no_record_read_or_revision_resolution(
         answer = client.get(image)
         assert answer.status_code == 200 and answer.content.startswith(b"\x89PNG")
     assert (len(reads), len(opens)) == (1, 1)
+
+
+_PREFERENCES_RUNNER = r"""
+const fs = require("node:fs");
+const vm = require("node:vm");
+const { scripts, cookie, dark } = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const attributes = {};
+const style = {};
+const documentElement = {
+  setAttribute: (name, value) => { attributes[name] = String(value); },
+  style: { setProperty: (name, value) => { style[name] = String(value); } },
+};
+const sandbox = { document: { cookie, documentElement }, matchMedia: () => ({ matches: dark }) };
+sandbox.window = sandbox;
+vm.createContext(sandbox);
+for (const script of scripts) {
+  vm.runInContext(script, sandbox);
+}
+process.stdout.write(JSON.stringify({ attributes, style }));
+"""
+
+
+@needs_node
+def test_the_revision_page_scripts_apply_the_readers_preferences(
+    pinned_pull: tuple[_Stand, TestClient], tmp_path: Path
+) -> None:
+    """Review D1: the page's scripts run in order, without the shell, and set every hook."""
+    _, client = pinned_pull
+    route = client.get("/api/plugin/github/pull?number=7").json()["snapshot_route"]
+    page = client.get(f"{route}&side=head&path={_wire('docs/new.md')}")
+    assert page.status_code == 200, page.text
+    scripts = re.findall(r"<script>(.*?)</script>", page.text, re.DOTALL)
+    # The Markdown sits in the frame whose classes carry the measure and reading font.
+    assert '<div class="metabrowser-kpress-host"><article class="kpress kpress-doc' in page.text
+    assert '<div class="kpress-prose kpress-long-text">' in page.text
+    runner = tmp_path / "preferences.js"
+    runner.write_text(_PREFERENCES_RUNNER, encoding="utf-8")
+    cases = {
+        "defaults": ("", False),
+        "system dark": ("", True),
+        "chosen": (
+            "metabrowser.themeMode=dark; metabrowser.proseFont=sans; "
+            "metabrowser.interfaceFont=system; metabrowser.docMaxChars=80",
+            False,
+        ),
+    }
+    seen = {}
+    for name, (cookie, dark) in cases.items():
+        given = tmp_path / f"{name}.json"
+        given.write_text(json.dumps({"scripts": scripts, "cookie": cookie, "dark": dark}))
+        result = subprocess.run(
+            ["node", str(runner), str(given)], capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0, result.stderr
+        seen[name] = json.loads(result.stdout)
+    assert seen["defaults"]["attributes"] == {
+        "data-theme-mode": "system",
+        "data-theme": "light",
+        "data-kpress-resolved-theme": "light",
+        "data-prose-font": "serif",
+        "data-app-font": "clean",
+    }
+    assert seen["defaults"]["style"] == {"--doc-max-chars": "102"}
+    assert seen["system dark"]["attributes"]["data-theme"] == "dark"
+    assert seen["chosen"]["attributes"] == {
+        "data-theme-mode": "dark",
+        "data-theme": "dark",
+        "data-kpress-resolved-theme": "dark",
+        "data-prose-font": "sans",
+        "data-app-font": "system",
+    }
+    assert seen["chosen"]["style"] == {"--doc-max-chars": "80"}

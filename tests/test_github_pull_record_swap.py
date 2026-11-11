@@ -14,6 +14,7 @@ from datetime import timedelta
 from typing import Any
 
 import pytest
+from starlette.testclient import TestClient
 
 from metabrowser.builtin_plugins.github import pull_record, pulls
 from metabrowser.builtin_plugins.github.pull_list import ListedRepository
@@ -25,7 +26,9 @@ from metabrowser.builtin_plugins.github.pull_record import (
     write_pull_record,
 )
 from metabrowser.cache.pull_refs import BaseUncertainError, has_commit
+from tests.golden_harness import settle
 from tests.test_github_pulls import _Stand
+from tests.test_github_pulls import pinned_pull as pinned_pull
 from tests.test_github_pulls import stand as stand
 
 
@@ -108,12 +111,55 @@ def test_a_mirror_refresh_that_loses_adopts_the_winner_without_a_success_stamp(
     winner = winners[0]
     assert asyncio.run(pulls.refresh_pull_request(stand.published, 7)) == winner
     assert _record(stand) == winner
-    # Nothing claims this refresh succeeded at the winner's time.
+    # Nothing claims this refresh succeeded, at the winner's time or this one's; a served
+    # refresh reports the same (test_a_served_refresh_that_loses_reports_the_stamp_on_disk).
     assert read_pull_refresh(home, slug, 7) == stamp
     # A caller that keeps its own outcome is told instead.
     with pytest.raises(PullObservationSuperseded) as superseded:
         asyncio.run(pulls.refresh_pull_request(stand.published, 7, adopt_current=False))
     assert superseded.value.current.pull.title == "another winner"
+
+
+def test_a_served_refresh_that_loses_reports_the_stamp_on_disk_not_a_new_success(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review D3: a reader's Refresh that another writer beat claims no success of its own.
+
+    The page shows the winner's record, and how a refresh last ended is what the disk
+    says, not ``succeeded`` at the winner's read time or at this one's.
+    """
+    stand, client = pinned_pull
+    home, slug = stand.published.home, stand.published.slug
+    first = stand.refresh(7)
+    stamp = read_pull_refresh(home, slug, 7)
+    assert stamp is not None and stamp.at == first.fetched_at == "2026-09-17T12:00:00Z"
+    later = pulls.utc_now() + timedelta(hours=2)
+    monkeypatch.setattr(pulls, "utc_now", lambda: later)
+    winner = _titled(first, "winner").model_copy(update={"fetched_at": "2026-09-17T13:00:00Z"})
+    fetch = pulls.fetch_pull_head
+
+    async def fetch_then_another_writer(*args: Any, **kwargs: Any) -> str | None:
+        fetched = await fetch(*args, **kwargs)
+        await asyncio.to_thread(write_pull_record, home, slug, winner)
+        return fetched
+
+    monkeypatch.setattr(pulls, "fetch_pull_head", fetch_then_another_writer)
+    started = client.post(
+        "/api/plugin/github/pull-refresh",
+        json={"number": 7, "retry": True},
+        headers={"content-type": "application/json"},
+    )
+    assert started.status_code == 202, started.text
+    settle(client)
+    envelope = client.get("/api/plugin/github/pull", params={"number": 7}).json()
+    while envelope["refreshing"]:
+        envelope = client.get("/api/plugin/github/pull", params={"number": 7}).json()
+    assert envelope["record"]["pull"]["title"] == "winner"
+    assert envelope["fetched_at"] == "2026-09-17T13:00:00Z"
+    assert envelope["last_refresh"] == stamp.model_dump(
+        include={"outcome", "message", "reset_at", "at"}
+    )
+    assert read_pull_refresh(home, slug, 7) == stamp
 
 
 def test_a_failed_pre_read_does_not_turn_a_refresh_into_a_no_op(

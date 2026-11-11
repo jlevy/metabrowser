@@ -205,7 +205,11 @@ async function viewFileOpener(comparison) {
 /**
  * How a comparison's sides open without changing the served pin, or null when the
  * comparison names no route for it. The server spells the route; this adds the side and
- * its path, and offers only a side at that end of the comparison.
+ * its path, and offers a side only at the commit the route itself names for that end, so
+ * a control's label and the file it opens are at one commit.
+ *
+ * A route that is not a same-origin plugin route, or names no ends, gives no revision
+ * links and is logged; the diff itself still renders.
  *
  * @param {Comparison | undefined} comparison
  * @returns {Pick<import("./diff-view-file.js").ViewFileHost, "snapshotHref"> | null}
@@ -215,9 +219,21 @@ function snapshotHost(comparison) {
   if (typeof route !== "string") {
     return null;
   }
-  // Same origin and a plugin's route, or no controls at all.
-  pluginComparisonRoute(route);
-  const ends = { base: comparison?.left, head: comparison?.right };
+  let params;
+  try {
+    ({ params } = pluginComparisonRoute(route));
+  } catch (error) {
+    console.error(
+      "metabrowser diff: revision links unavailable",
+      { hook: "diff/view-file" },
+      error,
+    );
+    return null;
+  }
+  if (typeof params.left !== "string" || typeof params.right !== "string") {
+    return null;
+  }
+  const ends = { base: params.left, head: params.right };
   return {
     snapshotHref(side) {
       const path = window.MetabrowserGitPath?.wire(side.address);

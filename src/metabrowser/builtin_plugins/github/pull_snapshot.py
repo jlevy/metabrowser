@@ -91,14 +91,20 @@ _IMAGE_TYPES: Final = {
 # blocks of 200 `[` took 3.4 s split by blank lines and 3.9 s split by `\n\x0b\n`, a
 # 2,000-column table 1.3 s, a run of `*a` 0.5 s, nested `<div>` 0.45 s, and a run of `<`
 # 0.4 s. Review B of #347 measured 16.99 s for the `[` run at the earlier 256 KiB bound.
-# KPress keeps each render by path and object ID, so a reload does not pay it again. The
-# in-app pinned viewer renders larger files: its Markdown is the served repository's.
+# Math costs as much without any `[`: 64 KiB of `$a$ ` took 2.72 to 2.85 s (review D of
+# #347: 2.77 s, and 0.76 s at 16 KiB, 1.37 s at 32 KiB), and `$` alone or `$$` blocks about
+# 1.4 s. KPress keeps each render by path and object ID, but the hardening of its output
+# runs on every request: a reload of that `$a$` file took 0.50 s, of plain text none.
+# The in-app pinned viewer renders larger files: its Markdown is the served repository's.
 _DOCUMENT_BYTES: Final = 64 * 1024
 # The `[` a rendered document may hold; one with more opens as Source. The render costs
 # about 60 µs per `[`, closed or not, in one block or many (same measurement: 16 KiB of `[`
-# took 1.0 s, 32 KiB 2.0 s, 64 KiB 4.1 s, and 6,553 `[a](b.md)` links 0.35 s), so the
-# whole document's count bounds it, which no per-block count does. 16,384 is about 1 s, and
-# above the 6,553 shortest links a 64 KiB file holds.
+# took 1.0 s, 32 KiB 2.0 s, 64 KiB 4.1 s, and 6,553 `[a](b.md)` links 0.35 s), and 16,384 is
+# above the 6,553 shortest links a 64 KiB file holds. It bounds the brackets' share, not
+# the whole render: 16,384 `[` and then text took 0.98 s, but 16,384 `[` and then `$a$ ` to
+# 64 KiB took 3.03 to 3.07 s at load average 9 to 11 (review D of #347: 3.57 s). One
+# distinct document therefore costs at most about 3.6 s of one worker, below the 4.1 s
+# `_DOCUMENT_BYTES` alone allows, and a reload of a math-heavy one about 0.5 s.
 _DOCUMENT_OPENERS: Final = 16 * 1024
 # The images one document keeps; the rest become links to their own pages. Each kept image
 # is one request to this route, and a browser requests every unsized lazy image of a page
@@ -119,8 +125,9 @@ type Admission = Literal["current", "retained", "refused", "unknown"]
 
 @cache
 def _page_scripts() -> tuple[str, ...]:
-    # The shell's own first-paint preference scripts, so this page paints in the reader's
-    # theme, reading font, and width. Imported late: the server imports every plugin.
+    # The shell's own first-paint preference scripts and the width default they read, so
+    # this page paints in the reader's theme, fonts, and reading width. Imported late: the
+    # server imports every plugin.
     from metabrowser.server import page_preference_scripts
 
     return page_preference_scripts()
@@ -427,6 +434,16 @@ def _page(
         )
     styles = ""
     if document:
+        # The frame the in-app inert render puts around the same HTML
+        # (builtin_plugins/markdown/inert-render.js): the host class bridges the reader's
+        # width (`--doc-measure`) into KPress's measure, and KPress's prose classes carry
+        # the reading font (`--kpress-host-font-prose`). The page writes these classes;
+        # the document's own were removed with the rest of its attributes.
+        content = (
+            '<div class="metabrowser-kpress-host"><article class="kpress kpress-doc kpress-inert"'
+            ' data-kpress-card="on"><div class="kpress-doc-layout">'
+            f'<div class="kpress-prose kpress-long-text">{content}</div></div></article></div>'
+        )
         for asset in kpress_adapter.document_stylesheets().get("assets", []):
             href = asset.get("public_url")
             if isinstance(href, str) and href.startswith("/kpress-static/"):
