@@ -61,8 +61,6 @@ plutil -lint "$plist"
 # Sign inside out; this bundle has no nested code yet. Never sign with --deep.
 sign "$identity" "$app" --options runtime
 codesign --verify --deep --strict --verbose=2 "$app"
-if codesign -d --entitlements - --xml "$app" 2>/dev/null | grep -q '<key>'; then
-  die "$app has entitlements; add one only for a verified need, and document it here"
-fi
+require_no_entitlements "$app"
 codesign -dvv "$app" 2>&1 | grep -E '^(Identifier|CodeDirectory|Signature|Authority|Timestamp|TeamIdentifier)' || true
 echo "Built $app: $variant $version ($build), $(du -sh "$app" | cut -f1)"

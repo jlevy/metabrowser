@@ -70,14 +70,11 @@ ok "contents: $name, Applications -> /Applications, and the volume icon"
 
 plutil -lint -s "$app/Contents/Info.plist"
 codesign --verify --deep --strict "$app"
+require_no_entitlements "$app"
 plist="$app/Contents/Info.plist"
 ok "$name: $(plutil -extract CFBundleIdentifier raw -o - "$plist")" \
   "$(plutil -extract CFBundleShortVersionString raw -o - "$plist")" \
   "($(plutil -extract CFBundleVersion raw -o - "$plist")), signature valid"
-if codesign -d --entitlements - --xml "$app" 2>/dev/null | grep -q '<key>'; then
-  die "$name has entitlements"
-fi
-
 # The canary icon marks development builds and never ships in a release, and a release
 # carries the published icon. The icons compared are this checkout's, so check an image
 # from the commit that built it.

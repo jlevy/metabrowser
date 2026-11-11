@@ -125,6 +125,19 @@ sign() {
   fi
 }
 
+# Stops unless codesign reads the target's signature and finds no entitlements in it.
+# A failed read is an error, never a clean result: tested inside an `if`, a failing
+# `codesign | grep` pipeline is indistinguishable from one that found nothing.
+require_no_entitlements() {
+  local target="$1" output
+  if ! output="$(codesign -d --entitlements - --xml "$target" 2>&1)"; then
+    die "could not read the entitlements of $target: $output"
+  fi
+  if [[ "$output" == *"<key>"* ]]; then
+    die "$target has entitlements; add one only for a verified need, and document it in scripts/build-app.sh"
+  fi
+}
+
 # Whether the target carries a Developer ID Application signature, the only kind the
 # notary service accepts.
 is_developer_id_signed() {

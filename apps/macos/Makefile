@@ -1,7 +1,7 @@
 # The native macOS app. See README.md. Needs macOS and Swift 6.2 or later (Xcode 26).
 #
 #   make build                build the debug executable
-#   make test                 run the unit tests
+#   make test                 run the unit tests and the release scripts' checks
 #   make app                  assemble and sign build/Metabrowser Dev.app
 #   make run FOLDER=path      build the app and open a folder with it
 #   make dmg                  build/Metabrowser-Dev-VERSION-arm64.dmg, checked, not notarized
@@ -35,6 +35,7 @@ build:
 
 test:
 	$(SWIFT) test
+	scripts/test-scripts.sh
 
 app:
 	VARIANT=$(dev_variant) scripts/build-app.sh

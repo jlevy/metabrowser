@@ -33,7 +33,7 @@ From the repository root (each target delegates to `apps/macos/Makefile`, and ea
 prints a skip message on systems other than macOS):
 
 ```shell
-make macos-test                      # unit tests (swift test)
+make macos-test                      # unit tests (swift test) and the scripts' checks
 make macos-app                       # build, assemble, and sign build/Metabrowser Dev.app
 make macos-run FOLDER="$HOME/notes"  # build the app and open a folder with it
 make macos-dmg                       # build/Metabrowser-Dev-0.1.0-arm64.dmg, checked
@@ -162,7 +162,8 @@ make macos-release SIGN_IDENTITY="Developer ID Application: Name (TEAMID)" \
 1. **Preflight:** the identity is in the keychain, the notary credentials are set, the
    published icon exists, and `apps/macos` has no uncommitted changes.
 2. **App:** `build-app.sh` builds and signs it with the hardened runtime and a secure
-   timestamp, inside out and never with `--deep`, and refuses any entitlement.
+   timestamp, inside out and never with `--deep`, and refuses any entitlement and any
+   signature whose entitlements `codesign` cannot read.
 3. **App notarization:** `notarize.sh` zips the app with `ditto`, submits it with
    `notarytool submit --wait`, saves the notary log as
    `build/notary-Metabrowser.app.json` (read it for warnings even after an Accepted
@@ -259,7 +260,7 @@ Do not hand one out as a release.
 | `Resources/Info.plist` | The bundle’s property list. |
 | `AppIcon/`, `scripts/build-icon.sh`, `Resources/AppIcon*.icns` | The app icon’s SVG masters and renderer, and the icons they build: `AppIcon.icns` for official builds and `AppIcon-Dev.icns` for development builds. See [AppIcon/README.md](AppIcon/README.md). |
 | `VERSION` | The app’s version, set nowhere else. |
-| `scripts/build-app.sh`, `scripts/common.sh` | The bundle script, and the variants and helpers every script shares. |
+| `scripts/build-app.sh`, `scripts/common.sh`, `scripts/test-scripts.sh` | The bundle script, the variants and helpers every script shares, and the tests of those helpers that `make test` runs. |
 | `scripts/release.sh`, `notarize.sh`, `make-dmg.sh`, `check-dmg.sh` | The release pipeline and its steps. |
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release. |
 
