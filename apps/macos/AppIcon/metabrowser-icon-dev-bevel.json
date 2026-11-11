@@ -1,9 +1,10 @@
 {
-  "_about": "Alternate development master for review (metabrowser-icon-dev-bevel.svg): the bevel junction on the gold-rim base. Not built into an .icns. Each parameter is documented in README.md.",
+  "_about": "Alternate development master for review (metabrowser-icon-dev-bevel.svg): the bevel junction on the gold-rim base. Not built into Resources. Each parameter is documented in README.md.",
   "variant": "dev",
   "junction": "bevel",
   "gap": 21.437,
   "gapMeasure": "perpendicular",
+  "cornerCut": 0.5,
   "faceTopFlat": 1.0,
   "stem": 31.464,
   "diagonal": 31.464,

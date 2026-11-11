@@ -22,19 +22,30 @@ struct Params: Decodable {
     /// scheme).
     var variant = "release"
     /// How the M's rising diagonal meets the B's stem:
-    ///   "gap"     the diagonal ends at a vertical face, then `gap`, then the B's stem;
-    ///   "bevel"   the diagonal runs to the cap line over the B's stem, and the B is cut by a
-    ///             line parallel to it, `gap` away;
-    ///   "touch"   the diagonal's upper edge ends on the B stem's top-left corner;
-    ///   "overlap" the diagonal runs into the B's stem as in the font's M.
+    ///   "gap"          the diagonal ends at a vertical face, then `gap`, then the B's stem;
+    ///   "bevel"        the B's stem stands where the M's right stem would; the diagonal runs to
+    ///                  the cap line over it, and the B is cut by a line parallel to it, `gap`
+    ///                  away;
+    ///   "b-over"       the same placement with the B intact; the diagonal ends at a vertical
+    ///                  face `gap` left of the B's stem;
+    ///   "corner-bevel" the diagonal runs to the cap line and the B's top-left corner is cut
+    ///                  parallel to it, `gap` away; `cornerCut` sizes the corner and so places
+    ///                  the B;
+    ///   "touch"        the diagonal's upper edge ends on the B stem's top-left corner;
+    ///   "overlap"      the diagonal runs into the B's stem as in the font's M.
     var junction = "gap"
     /// The space between the partial M and the B: from the vertical face to the B's stem
     /// ("gap"), or the channel between the diagonal and the B's bevel ("bevel"). Default: the
     /// sister app's least distance between its glyphs, its chevron's tip to its K's stem.
     var gap = 21.437
-    /// "perpendicular" (square to the diagonal) or "horizontal". Matters only for "bevel": the
-    /// "gap" junction's faces are both vertical.
+    /// "perpendicular" (square to the diagonal) or "horizontal". Matters only for the bevels:
+    /// the other junctions' facing edges are both vertical.
     var gapMeasure = "perpendicular"
+    /// "corner-bevel" junction: how far the corner cut runs along the B's cap line, in B stems.
+    /// The cut runs down the stem's left edge 1/tan(angle) times as far. Below 0.779 (the
+    /// channel's width across, in stems) the diagonal stops short of the B's stem; above it the
+    /// diagonal reaches over the stem.
+    var cornerCut = 0.5
     /// "gap" junction: the width of the diagonal's flat top, in stems, which places the vertical
     /// face. 1 puts the face where the first stem's outer edge falls mirrored on the M's axis.
     var faceTopFlat = 1.0
@@ -72,7 +83,7 @@ struct Params: Decodable {
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case variant, junction, gap, gapMeasure, faceTopFlat, stem, diagonal, angle, capLine, baseline
+        case variant, junction, gap, gapMeasure, cornerCut, faceTopFlat, stem, diagonal, angle, capLine, baseline
         case crotch, vertexFlat, centroidX, bSize, overlapTopFlat, minSliver, fills
     }
 
@@ -83,7 +94,8 @@ struct Params: Decodable {
             if let v = try c.decodeIfPresent(T.self, forKey: key) { value = v }
         }
         try get(.variant, &variant); try get(.junction, &junction); try get(.gap, &gap)
-        try get(.gapMeasure, &gapMeasure); try get(.faceTopFlat, &faceTopFlat); try get(.stem, &stem)
+        try get(.gapMeasure, &gapMeasure); try get(.cornerCut, &cornerCut)
+        try get(.faceTopFlat, &faceTopFlat); try get(.stem, &stem)
         try get(.diagonal, &diagonal); try get(.angle, &angle); try get(.capLine, &capLine)
         try get(.baseline, &baseline); try get(.crotch, &crotch); try get(.vertexFlat, &vertexFlat)
         try get(.centroidX, &centroidX); try get(.bSize, &bSize); try get(.overlapTopFlat, &overlapTopFlat)
@@ -158,12 +170,43 @@ func construct(_ p: Params, x0: Double) -> Glyphs {
     var notes: [String] = []
     var dims: [(String, Double)] = []
 
+    guard ["perpendicular", "horizontal"].contains(p.gapMeasure) else { fail("gapMeasure must be perpendicular or horizontal") }
+    let across = p.gapMeasure == "perpendicular" ? p.gap / cosTheta : p.gap  // a bevel channel, measured across
     let xB: Double  // the B's stem left edge
     var clipRight = 100_000.0  // the partial M's right limit
     switch p.junction {
-    case "touch", "overlap", "bevel":
+    case "touch", "overlap", "bevel", "b-over":
         xB = 2 * xm - x0 - w  // the B's stem where the M's right stem would be
-        if p.junction != "bevel" { clipRight = xB + 2 }  // hidden under the B's stem: no antialiasing seam
+        if p.junction == "touch" || p.junction == "overlap" { clipRight = xB + 2 }  // hidden under the B's stem: no antialiasing seam
+        if p.junction == "b-over" {
+            clipRight = xB - p.gap
+            // The face spans the rising diagonal between its edges' crossings of x = clipRight.
+            let faceTop = top + (2 * xm - start - clipRight) / tanTheta
+            let faceBottom = top + (2 * xm - start + hw - clipRight) / tanTheta
+            dims.append(("faceTop", max(top, faceTop)))
+            dims.append(("faceBottom", faceBottom))
+            dims.append(("rightEdge", clipRight))
+            if faceTop > top {
+                notes.append(String(format: "the cut lies %.3f left of where the rising diagonal meets the cap line, so the diagonal keeps no flat top: it ends %.3f below the cap line in a %.1f-degree point", 2 * xm - start - clipRight, faceTop - top, 90 - p.angle))
+            }
+            notes.append(String(format: "the vertical face runs from y %.3f to %.3f, %.3f tall; the rising diagonal keeps %.3f of its %.3f height above the crotch, and %.3f across right of the axis", max(top, faceTop), faceBottom, faceBottom - max(top, faceTop), max(0, p.crotch - faceTop), p.crotch - top, clipRight - xm))
+            let flatHalf = (p.crotch + hw / tanTheta - p.vertexFlat) * tanTheta
+            if clipRight < xm + flatHalf { notes.append("the cut reaches into the vertex flat") }
+            guard clipRight - xm >= p.minSliver else { fail("the cut leaves the rising diagonal under minSliver across") }
+        }
+    case "corner-bevel":
+        let cut = p.cornerCut * (bStemRight - bStemLeft) * unit
+        guard cut >= p.minSliver else { fail("cornerCut leaves a corner cut under minSliver") }
+        // The diagonal's upper edge meets the cap line at 2xm - start, its lower edge hw later,
+        // the bevel `across` after that, and the bevel meets the cap line `cut` inside the stem.
+        xB = 2 * xm - start + hw + across - cut
+        dims.append(("cornerCut", cut))
+        dims.append(("cornerCutDown", cut / tanTheta))
+        notes.append(String(format: "the corner cut takes a triangle %.3f along the cap line and %.3f down the stem's left edge", cut, cut / tanTheta))
+        let reach = 2 * xm - start + hw - xB
+        notes.append(reach < 0
+            ? String(format: "the diagonal's top stops %.3f short of the B's stem", -reach)
+            : String(format: "the diagonal's top reaches %.3f over the B's stem", reach))
     case "gap":
         let flat = p.faceTopFlat * w
         guard flat >= p.minSliver else { fail("faceTopFlat leaves a top flat of \(flat), under minSliver \(p.minSliver)") }
@@ -172,7 +215,7 @@ func construct(_ p: Params, x0: Double) -> Glyphs {
         xB = clipRight + p.gap
         dims.append(("rightEdge", clipRight))
         dims.append(("faceBottom", top + (hw - flat) / tanTheta))
-    default: fail("junction must be gap, bevel, touch, or overlap")
+    default: fail("junction must be gap, bevel, b-over, corner-bevel, touch, or overlap")
     }
 
     // Each diagonal is a band between parallel edges, cut by the cap line and the vertex flat.
@@ -203,9 +246,8 @@ func construct(_ p: Params, x0: Double) -> Glyphs {
     }
     var b: CGPath = bm
 
-    if p.junction == "bevel" {
-        guard ["perpendicular", "horizontal"].contains(p.gapMeasure) else { fail("gapMeasure must be perpendicular or horizontal") }
-        let shift = p.gapMeasure == "perpendicular" ? p.gap / cosTheta : p.gap
+    if p.junction == "bevel" || p.junction == "corner-bevel" {
+        let shift = across
         func bevel(_ yy: Double) -> Double { risingLower(yy) + shift }
         let keep = polygon([(bevel(y0), y0), (100_000, y0), (100_000, y1), (bevel(y1), y1)])
         b = b.intersection(keep, using: .winding)
@@ -220,6 +262,7 @@ func construct(_ p: Params, x0: Double) -> Glyphs {
         let crossLeft = top + (risingLower(top) + shift - xB) / tanTheta
         guard crossLeft < p.baseline - p.minSliver else { fail("the bevel cuts the B's stem down to the baseline") }
         dims.append(("channel", p.gapMeasure == "perpendicular" ? p.gap : p.gap * cosTheta))
+        dims.append(("bStemTop", top))
         dims.append(("channelHorizontal", shift))
         dims.append(("diagonalTopRight", risingLower(top)))
         dims.append(("bevelAtCap", bevel(top)))

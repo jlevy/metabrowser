@@ -1,13 +1,16 @@
 # Metabrowser App Icon
 
 **Status:** Draft under review.
-Both masters use the `gap` junction and the citrine and amethyst fills.
-The `bevel` alternate masters are for comparison, and the small sizes wait on review.
+Both masters use the `b-over` junction and the citrine and amethyst fills, so the design
+can be seen in the app.
+The other junctions have parameter files for comparison, and the small sizes wait on
+review.
 
 The icon is an MB mark on the sister app’s v6 icon: the same squircle, rim, panel,
 sheen, border, and pressed-in letter shadow, with a partial M in a gem tone of
 Metabrowser’s JavaScript color and a B in a gem tone of its Markdown color.
-The partial M stops one glyph gap short of the B, whose stem completes the M.
+The B stands where the M’s right stem would, intact, and the partial M stops one glyph
+gap short of it.
 
 ## Files
 
@@ -15,7 +18,7 @@ The partial M stops one glyph gap short of the B, whose stem completes the M.
 | --- | --- |
 | `metabrowser-icon.json` | Parameters of the release master, for official builds. |
 | `metabrowser-icon-dev.json` | Parameters of the development master. |
-| `metabrowser-icon-bevel.json`, `metabrowser-icon-dev-bevel.json` | Parameters of the `bevel` alternates, for review only. |
+| `metabrowser-icon-<junction>.json` | Parameters of the other junctions (`gap`, `bevel`, `corner-bevel`, `touch`, `overlap`, and a dev `bevel`), for review only. |
 | `base-release.svg`, `base-dev.svg` | The sister app’s v6 icon structure with an empty glyph group: the release base and the canary scheme, a gold rim and a warm sheen. |
 | `metabrowser-icon*.svg` | The masters, generated from the parameters and the base; edit those, not these. |
 | `make-glyphs.swift` | Builds a master from a parameter file, validates the parameters, and prints the derived dimensions. |
@@ -54,7 +57,8 @@ are comments, and any other unknown name is refused.
 | `variant` | `release` | The base: `release` or `dev` (the canary scheme). |
 | `junction` | `gap` | How the M’s rising diagonal meets the B’s stem: `gap`, `bevel`, `touch`, or `overlap` (below). |
 | `gap` | 21.437 | The space between the partial M and the B: face to stem (`gap`) or the channel (`bevel`). The sister app’s least distance between its glyphs. |
-| `gapMeasure` | `perpendicular` | For `bevel`: the channel measured square to the diagonal or `horizontal`. |
+| `gapMeasure` | `perpendicular` | For the bevels: the channel measured square to the diagonal or `horizontal`. |
+| `cornerCut` | 0.5 | For `corner-bevel`: how far the B’s corner cut runs along the cap line, in B stems; it runs 1/tan(`angle`) times as far down the stem. Below 0.779 the diagonal stops short of the B’s stem. |
 | `faceTopFlat` | 1 | For `gap`: the diagonal’s flat top in stems, which places the vertical face; 1 puts it at the first stem’s outer edge mirrored on the M’s axis. |
 | `stem` | 31.464 | The partial M’s stem: the B’s stem, 277.75 font units. The B keeps the font’s stem. |
 | `diagonal` | 31.464 | The diagonals’ thickness, square to the stroke: the K’s arms, which are stem weight. |
@@ -107,11 +111,22 @@ on the cap line and on the vertex line.
 The first diagonal leaves the stem’s top-right corner, so the stem stays a clean
 rectangle. The `junction` parameter chooses how the second diagonal meets the B’s stem:
 
-- **gap** (in the masters): a vertical cut ends it where the first stem’s outer edge
-  falls when mirrored on the M’s axis.
-  Its top is then a flat cut one stem wide that meets an 8.137-unit vertical face at a
-  right angle, and the partial M is symmetric about its axis but for the missing stem.
-  The B’s stem follows 21.437 units beyond the face.
+- **b-over** (in the masters): the B’s stem stands where the M’s right stem would, and
+  the B is intact. A vertical cut ends the diagonal one gap, 21.437, left of the B’s
+  stem. The cut lies left of where the diagonal meets the cap line, so the diagonal keeps
+  no flat top: it ends 38.674 below the cap line in a 61° point, with a 64.901-unit
+  vertical face, and keeps 15.938 units across right of the M’s axis.
+  The mark is 218 units wide.
+- **corner-bevel**: the diagonal runs to the cap line, and the B’s top-left corner is
+  cut parallel to it, one channel away; `cornerCut` sizes the corner and so places the
+  B. At 0.5 the cut is 15.732 along the cap line and 28.382 down the stem, the diagonal
+  stops 8.778 short of the stem, and the mark is 263 units wide.
+  A channel this wide is 24.510 across, so a diagonal reaching over the stem would take
+  at least 44 units off it, as `bevel` does.
+- **gap**: a vertical cut ends it where the first stem’s outer edge falls when mirrored
+  on the M’s axis. Its top is then a flat cut one stem wide that meets an 8.137-unit
+  vertical face at a right angle, and the partial M is symmetric about its axis but for
+  the missing stem. The B’s stem follows 21.437 units beyond the face.
   The mark is 271 units wide, against the sister app’s 222.
 - **bevel** (the alternate): the B’s stem stands where the M’s right stem would, and the
   diagonal runs at full width over it to the cap line.

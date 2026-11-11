@@ -1,9 +1,10 @@
 {
-  "_about": "Alternate release master for review (metabrowser-icon-bevel.svg): the M's rising diagonal over the B's stem, the B beveled parallel to it. Not built into an .icns. Each parameter is documented in README.md.",
+  "_about": "Alternate release master for review (metabrowser-icon-bevel.svg): the M's rising diagonal over the B's stem, the B beveled parallel to it. Not built into Resources. Each parameter is documented in README.md.",
   "variant": "release",
   "junction": "bevel",
   "gap": 21.437,
   "gapMeasure": "perpendicular",
+  "cornerCut": 0.5,
   "faceTopFlat": 1.0,
   "stem": 31.464,
   "diagonal": 31.464,

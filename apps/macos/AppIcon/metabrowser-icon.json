@@ -1,9 +1,10 @@
 {
-  "_about": "Release master (metabrowser-icon.svg, built into Resources/AppIcon.icns). Each parameter is documented in README.md; units are the 512-unit master.",
+  "_about": "Release master (metabrowser-icon.svg, built into Resources/AppIcon.icns): the B intact on top, the M's rising diagonal ending at a vertical face one gap from the B's stem. Each parameter is documented in README.md; units are the 512-unit master.",
   "variant": "release",
-  "junction": "gap",
+  "junction": "b-over",
   "gap": 21.437,
   "gapMeasure": "perpendicular",
+  "cornerCut": 0.5,
   "faceTopFlat": 1.0,
   "stem": 31.464,
   "diagonal": 31.464,
