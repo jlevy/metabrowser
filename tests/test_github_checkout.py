@@ -1732,7 +1732,15 @@ def _origin_only_commit(origin: Origin, parent: str) -> str:
     """A commit only the origin has, at the tip of a new branch there."""
     from tests.github_pull_fixture import git_env
 
-    env = git_env(origin.path.parent)
+    # The fixture's origin is written by fast-import, so no identity is configured; a
+    # runner without one to detect refuses `commit-tree` without these.
+    env = {
+        **git_env(origin.path.parent),
+        "GIT_AUTHOR_NAME": "Origin",
+        "GIT_AUTHOR_EMAIL": "origin@example.invalid",
+        "GIT_COMMITTER_NAME": "Origin",
+        "GIT_COMMITTER_EMAIL": "origin@example.invalid",
+    }
 
     def run(*args: str) -> str:
         return subprocess.run(
