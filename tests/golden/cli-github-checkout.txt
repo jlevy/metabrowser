@@ -1202,7 +1202,7 @@ status: 200
 }
 --- stderr ---
 --- gh ---
-## An explicit comparison Fetch attaches the cached store without changing the folder
+## A comparison request attaches the cached store without changing the folder
 # metab checkout --api /api/plugin/github/pull-refresh --data request.json
 exit: 0
 --- stdout ---

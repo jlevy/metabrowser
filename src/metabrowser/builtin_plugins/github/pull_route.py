@@ -478,7 +478,11 @@ def requested_number(params: Mapping[str, str]) -> int:
 
 @dataclass(frozen=True, slots=True)
 class RefreshRequest:
-    """What a ``POST`` asks for. *retry* is a reader's own action."""
+    """What a ``POST`` asks for.
+
+    *retry* is a reader's own action, or the one comparison request a page on Changes
+    sends by itself for a record without a store.
+    """
 
     number: int
     retry: bool
@@ -568,7 +572,8 @@ async def _start_refresh(
 ) -> PullRefreshStart:
     """Start the refresh *ask* names, join the one running, or say why it starts nothing.
 
-    A reader's own action always may start one. An automatic request may only for a
+    A request with *retry*, a reader's own action or a Changes page's one comparison
+    request, always may start one. An automatic request may only for a
     pull request with a record (``not_cached`` otherwise), and only when that record is
     stale and no attempt is due to wait (``not_due`` otherwise).
     """
