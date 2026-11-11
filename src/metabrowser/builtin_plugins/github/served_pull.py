@@ -156,6 +156,9 @@ class ServedPull:
     fetched_at: str | None = None
     last: PullRefreshOutcome | None = None
     without_store: bool = False
+    # Set when another writer published this job's record first: how a refresh last ended
+    # is then the stamp beside the record, read each time, not anything this job kept.
+    outcome_on_disk: bool = field(default=False, repr=False)
     _last_attempt: datetime | None = field(default=None, repr=False)
     _refreshing: bool = field(default=False, repr=False)
     core_preview: PullCorePreview | None = field(default=None, repr=False)
@@ -205,6 +208,18 @@ class ServedPull:
         """Whether its refresh is running now, so its state is about to change."""
 
         return self._refreshing
+
+    def outcome(self) -> PullRefreshOutcome | None:
+        """How the last refresh ended, as the pull route reports it. Blocking and bounded.
+
+        Normally this job's own outcome. After another writer published first it is the
+        stamp on disk, read again on each call: usually that writer's own success, written
+        just after its record, and never a success claimed for this job.
+        """
+
+        if self.outcome_on_disk:
+            return last_refresh(self.published, self.number)
+        return self.last
 
     def is_stale(self, now: datetime, *, window_s: float) -> bool:
         """Older than *window_s*, and not tried within it or before GitHub's limit lifts.
@@ -388,22 +403,14 @@ class ServedPull:
                         )
                 except pulls.PullObservationSuperseded as exc:
                     # Another writer's record is what this server now shows, and this
-                    # refresh published nothing: how a refresh last ended is the stamp
-                    # on disk, never a success claimed for this one.
+                    # refresh published nothing. Its writer stamps how it ended just after
+                    # the record, possibly after this, so the outcome is read from disk
+                    # until this job's next refresh (see outcome()).
                     self.fetched_at = exc.current.fetched_at
                     self.without_store = written_without_store(exc.current)
-                    stamp = await asyncio.to_thread(pulls.last_refresh, published, self.number)
-                    self.last = (
-                        None
-                        if stamp is None
-                        else PullRefreshOutcome(
-                            outcome=stamp.outcome,
-                            message=stamp.message,
-                            reset_at=stamp.reset_at,
-                            at=stamp.at,
-                        )
-                    )
+                    self.outcome_on_disk = True
                 except pulls.PullDataError as exc:
+                    self.outcome_on_disk = False
                     self.last = PullRefreshOutcome(
                         outcome=exc.state,
                         message=str(exc),
@@ -411,6 +418,7 @@ class ServedPull:
                         at=_stamp(pulls.utc_now()),
                     )
                 else:
+                    self.outcome_on_disk = False
                     self.fetched_at = record.fetched_at
                     self.without_store = written_without_store(record)
                     if record.comparison is not None:

@@ -1023,7 +1023,7 @@ async def refresh_pull_request(
     recovery_pair: tuple[str, str] | None = None,
     on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
     observe_reader: Callable[[str], None] | None = None,
-    adopt_current: bool = True,
+    adopt_current: bool = False,
 ) -> PullRecord:
     """Read pull request *number* of *published* from GitHub and cache it; see the module.
 
@@ -1032,8 +1032,8 @@ async def refresh_pull_request(
     A checkout preserves a shared comparison only for the same reader and unchanged
     comparison inputs; otherwise its record has no comparison, ``no_store``. Raises only
     :class:`PullDataError` on failure. If another writer published a mirror's record
-    first, return its record without stamping success. Callers that manage their own
-    outcome can set *adopt_current* to false to receive :class:`PullObservationSuperseded`.
+    first, raises :class:`PullObservationSuperseded` with that record and stamps nothing;
+    with *adopt_current* it returns that record instead.
     A failure leaves any previous record in place. How it ended is
     kept beside the record either way; see :func:`last_refresh`.
     """

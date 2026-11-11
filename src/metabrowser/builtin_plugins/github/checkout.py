@@ -383,6 +383,7 @@ async def _pull_job(
                             companion.last = PullRefreshOutcome(
                                 outcome=exc.state, message=str(exc), reset_at=exc.reset_at, at=at
                             )
+                            companion.outcome_on_disk = False
                             try:
                                 claimed = await claim_source(repository)
                                 await asyncio.to_thread(

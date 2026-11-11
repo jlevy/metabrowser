@@ -402,7 +402,9 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         record_revision=revision,
         fresh_for_s=FRESHNESS_WINDOW_S,
         refreshing=view.refreshing,
-        last_refresh=view.kept.last if view.kept is not None else served.last_refresh(view.number),
+        last_refresh=(
+            view.kept.outcome() if view.kept is not None else served.last_refresh(view.number)
+        ),
         comparison_route=route,
         snapshot_route=snapshots,
         record=dumped if isinstance(record, PullRecord) else None,
