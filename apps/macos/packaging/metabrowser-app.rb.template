@@ -1,0 +1,40 @@
+# A draft cask for a personal tap (Casks/metabrowser-app.rb in a homebrew-tap
+# repository), not yet published. scripts/release.sh fills in the version and checksum
+# and writes build/metabrowser-app.rb. Homebrew quarantines what it downloads, so only a
+# notarized image installs. The "-app" suffix keeps the name free for a formula of the
+# metab command-line tool.
+cask "metabrowser-app" do
+  version "{{VERSION}}"
+  sha256 "{{SHA256}}"
+
+  url "https://github.com/jlevy/metabrowser/releases/download/macos-v#{version}/Metabrowser-#{version}-arm64.dmg"
+  name "Metabrowser"
+  desc "Native window for browsing folders with Metabrowser"
+  homepage "https://github.com/jlevy/metabrowser"
+
+  # App releases share the repository's releases with the Python package's.
+  livecheck do
+    url :url
+    regex(/^macos-v(\d+(?:\.\d+)+)$/i)
+    strategy :github_releases
+  end
+
+  depends_on arch: :arm64
+  depends_on macos: ">= :sequoia"
+
+  app "Metabrowser.app"
+
+  caveats <<~EOS
+    Metabrowser.app runs your own installation of the metab command-line tool.
+    Install it first:
+      uv tool install metabrowser
+  EOS
+
+  zap trash: [
+    "~/Library/Caches/io.github.jlevy.metabrowser",
+    "~/Library/HTTPStorages/io.github.jlevy.metabrowser.binarycookies",
+    "~/Library/Logs/Metabrowser",
+    "~/Library/Preferences/io.github.jlevy.metabrowser.plist",
+    "~/Library/WebKit/io.github.jlevy.metabrowser",
+  ]
+end
