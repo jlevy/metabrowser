@@ -594,10 +594,12 @@ class ServedPulls:
             self.core_failure = None
             # The reader is the gh account this server observed for the source, not a
             # property of the store: attaching one, or a claimed slug, keeps it, so the
-            # reader-scoped checks go on applying where no refresh follows the bind.
+            # reader-scoped checks go on applying where no refresh follows the bind. The
+            # catalog it was observed with stays too, so a catalog another account writes
+            # later still changes the reader (`observe_catalog`).
             if _source_of(published) != self.source:
                 self.observed_reader = None
-            self.core_catalog_identity = None
+                self.core_catalog_identity = None
         self.published = published
         for held in self._kept.values():
             held.bind(published)

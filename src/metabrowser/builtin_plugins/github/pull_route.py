@@ -689,7 +689,15 @@ async def _start_refresh(
                     adopt = prepared
     if ask.comparison and host.start_comparison is not None:
         return host.start_comparison(ask.number)
-    if host.running(ask.number):
+    # Optional comparison work on a checkout reads no metadata, so an automatic request
+    # finding it is due as if nothing ran, and when due promotes the job to a metadata read.
+    idle = (
+        not ask.retry
+        and host.preparing is not None
+        and host.running(ask.number)
+        and host.preparing(ask.number)
+    )
+    if host.running(ask.number) and not idle:
         # Only checkout jobs can be promoted from idle preparation. The other
         # hosts are already running the requested refresh.
         return host.start(ask.number) if ask.retry and host.prepare is not None else "joined"
@@ -710,7 +718,7 @@ async def _start_refresh(
             or window.preview(ask.number) is not preview
         ):
             adopt = None
-    if host.running(ask.number):
+    if host.running(ask.number) and not idle:
         return "joined"
     started = host.start(ask.number)
     if queued is not None:
