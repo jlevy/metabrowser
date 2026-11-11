@@ -1141,6 +1141,8 @@ export function createPullController(deps, options) {
   let tab = TABS.includes(options.tab) ? options.tab : "";
   /** @type {unknown} */
   let timer = null;
+  /** When `timer` fires, by `deps.now()`. */
+  let timerDue = 0;
   let polling = false;
   let hasPolled = false;
   let inFlightRefreshes = 0;
@@ -1302,13 +1304,12 @@ export function createPullController(deps, options) {
     const fast = envelope === null || envelope.refreshing || envelope.state === "pending";
     const delay = fast ? fastDelay : SLOW_POLL_MS;
     const lifts = untilHoldLifts();
-    timer = deps.schedule(
-      () => {
-        timer = null;
-        void poll();
-      },
-      lifts === null ? delay : Math.min(delay, lifts),
-    );
+    const next = lifts === null ? delay : Math.min(delay, lifts);
+    timerDue = deps.now() + next;
+    timer = deps.schedule(() => {
+      timer = null;
+      void poll();
+    }, next);
   }
 
   /**
@@ -1661,11 +1662,12 @@ export function createPullController(deps, options) {
     if (disposed || !TABS.includes(next)) {
       return;
     }
-    const opening = next === "files" && tab !== "files";
     tab = next;
     walkSettling = next === "files" && how.settling === true;
-    if (opening && timer !== null && untilHoldLifts() !== null) {
-      // The poll scheduled for another tab does not wake the page when the hold lifts.
+    // Whichever call leaves the address owning Changes under a hold, the route's confirmation
+    // of a walk's tab among them, wakes the page at the lift if the poll set is later.
+    const lifts = untilHoldLifts();
+    if (timer !== null && lifts !== null && deps.now() + lifts < timerDue) {
       scheduleNext();
     }
     fetchSelectedChanges();
@@ -1798,6 +1800,7 @@ export function createPullController(deps, options) {
       queued: [...queue],
       inFlight,
       error,
+      settling: walkSettling,
     }),
   });
 }
@@ -4162,7 +4165,12 @@ export function mountPullPage(container, ctx, mb) {
      */
     showFile(path, how = {}) {
       place?.keeper.readerMoved();
-      controller.setTab("files", { settling: how.settling === true });
+      const settling = how.settling === true;
+      // A walk's every key repeats its claim, which would change nothing but cost a model.
+      // Only Changes can be settling, so a repeated claim is already on it.
+      if (!(settling && controller.snapshot().settling)) {
+        controller.setTab("files", { settling });
+      }
       wantedFile = path;
       return landFile() ?? { kind: "no_diff", path };
     },

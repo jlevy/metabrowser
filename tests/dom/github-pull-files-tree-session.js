@@ -316,6 +316,8 @@ async function controllerStory(tree) {
   // Each jump says whether a walk will settle there, and a cancelled walk says so.
   const settling = [];
   let cancelled = 0;
+  // Paths the route cannot encode, as `tab.fileHref` answers null for them.
+  const unroutable = new Set();
   const opens = [];
   let model = null;
   let nextTimer = 0;
@@ -365,6 +367,7 @@ async function controllerStory(tree) {
         },
       }),
       open: (route) => opens.push(route),
+      routable: (path) => !unroutable.has(path),
       leave() {},
     },
     { number: 106, autoExpandFiles: 300 },
@@ -500,7 +503,58 @@ async function controllerStory(tree) {
   visible = false;
   controller.onVisibilityChange();
   look("a closed or hidden tree has no timer");
+  // A walk's other endings tell the page too: the page hidden, the tree collapsed, and the
+  // tree disposed. A walk onto a file the route cannot encode claims no settling at all,
+  // since no address will confirm it.
+  const walkOn = () => {
+    const at = model.rows.findIndex(
+      (row, index) => row.kind === "file" && model.rows[index + 1]?.kind === "file",
+    );
+    controller.focused(model.rows[at].id);
+    controller.move(1, { repeat: true });
+    if (controller.snapshot().walking === null) {
+      throw Error("the probe needs a pending file walk");
+    }
+    return model.rows[at + 1].path;
+  };
+  visible = true;
+  controller.setShown(true);
+  reads.push("filled");
+  controller.expand();
+  await settle();
+  walkOn();
+  visible = false;
+  controller.onVisibilityChange();
+  if (cancelled !== 3) {
+    throw Error("a hidden page must tell the page the walk will not settle");
+  }
+  visible = true;
+  reads.push("filled");
+  controller.onVisibilityChange();
+  await settle();
+  walkOn();
+  controller.collapse();
+  if (cancelled !== 4) {
+    throw Error("collapsing the tree must tell the page the walk will not settle");
+  }
+  reads.push("filled");
+  controller.expand();
+  await settle();
+  const at = model.rows.findIndex(
+    (row, index) => row.kind === "file" && model.rows[index + 1]?.kind === "file",
+  );
+  unroutable.add(model.rows[at + 1].path);
+  settling.length = 0;
+  walkOn();
+  if (settling.at(-1) !== false) {
+    throw Error("a walk onto a file the route cannot encode must claim no settling");
+  }
+  unroutable.clear();
+  walkOn();
   controller.dispose();
+  if (cancelled !== 5) {
+    throw Error("disposing the tree must tell the page the walk will not settle");
+  }
   return story;
 }
 

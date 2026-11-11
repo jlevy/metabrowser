@@ -241,10 +241,12 @@ recorded failure newer than the record that another attempt would repeat (the st
 acquisition, or an origin that cannot be read), and until a rate limit’s `reset_at`,
 when the page reads again and asks.
 **Retry changes** overrides a hold.
-A Pulls-tab file walk that will settle on Changes shows progress until its address moves
-there. Changes shown while the address names another tab, as a cancelled walk leaves it,
-sends nothing and offers **Fetch changes**. Neither button is shown while another
-refresh of the page is on its way.
+A Pulls-tab file walk that will settle on Changes, at a file the route can address,
+shows progress until its address moves there; the route’s confirmation, too, wakes the
+page at a hold’s lift.
+Changes shown while the address names another tab, as a cancelled walk leaves it, sends
+nothing and offers **Fetch changes**. Neither button is shown while another refresh of
+the page is on its way.
 `comparison: true` without `retry: true` is refused.
 Acquisition leaves the source folder and its pin unchanged, and a request joining a
 metadata refresh retains the comparison action for that job.

@@ -284,10 +284,12 @@ async function run() {
     });
     return { handle, paint };
   };
-  for (const cancelled of [false, true]) {
+  for (const end of ["settled", "cancelled", "unclaimed"]) {
     const { handle, paint } = unstored();
     await handle.ready;
     await settle();
+    handle.showFile("src/app.txt", { settling: true });
+    // A walk's later keys repeat the claim, which changes nothing.
     handle.showFile("src/app.txt", { settling: true });
     await settle();
     const during = paint();
@@ -295,8 +297,13 @@ async function run() {
     assert.equal(during.spinner, true);
     assert.equal(during.fetch, false, "no Fetch changes the settled address makes needless");
     assert.equal(during.posts, 0, "the request waits for the address");
-    if (cancelled) {
-      handle.walkCancelled();
+    if (end !== "settled") {
+      if (end === "cancelled") {
+        handle.walkCancelled();
+      } else {
+        // A key onto a file no address can name claims no settling, which ends the claim.
+        handle.showFile("src/app.txt");
+      }
       await settle();
       const left = paint();
       assert.match(left.text, /Changes have not been fetched/);
