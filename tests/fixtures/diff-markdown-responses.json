@@ -1,0 +1,384 @@
+{
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef",
+  "manifest": [
+    {
+      "id": "f1",
+      "availability": "ready",
+      "old": {
+        "entry_type": "file",
+        "path": "docs/guide.md"
+      },
+      "new": {
+        "entry_type": "file",
+        "path": "docs/guide.md"
+      }
+    },
+    {
+      "id": "f5",
+      "availability": "ready",
+      "old": {
+        "entry_type": "file",
+        "path": "src/app.py"
+      },
+      "new": {
+        "entry_type": "file",
+        "path": "src/app.py"
+      }
+    },
+    {
+      "id": "f2",
+      "availability": "ready",
+      "old": null,
+      "new": {
+        "entry_type": "file",
+        "path": "docs/tasks.md"
+      }
+    },
+    {
+      "id": "f3",
+      "availability": "ready",
+      "old": null,
+      "new": {
+        "entry_type": "file",
+        "path": "docs/big.md"
+      }
+    },
+    {
+      "id": "f4",
+      "availability": "ready",
+      "old": null,
+      "new": {
+        "entry_type": "file",
+        "path": "README.md"
+      }
+    }
+  ],
+  "answers": {
+    "f1": {
+      "version": "markdown-diff-v1",
+      "status": "ready",
+      "blocks": [
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>",
+          "source_only": true
+        },
+        {
+          "kind": "removed",
+          "side": "old",
+          "html": "<p>Read the <span>setup notes</span> first.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "added",
+          "side": "new",
+          "html": "<p>Read the <a href=\"/api/plugin/github/pull-snapshot?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;side=head&amp;path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&amp;mode=document\">first setup notes</a> first.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<p>Unchanged paragraph 0.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<p>Unchanged paragraph 1.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<p>Unchanged paragraph 2.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<p>Unchanged paragraph 3.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<p>Unchanged paragraph 4.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<p>Unchanged paragraph 5.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<p>Unchanged paragraph 6.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<p>Unchanged paragraph 7.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "context",
+          "side": "new",
+          "html": "<img loading=\"lazy\" src=\"/api/plugin/github/pull-snapshot?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;side=head&amp;path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&amp;mode=image\" alt=\"Diagram\">",
+          "source_only": false
+        },
+        {
+          "kind": "removed",
+          "side": "old",
+          "html": "<p>The <del>old</del> closing line.</p>",
+          "source_only": false
+        },
+        {
+          "kind": "added",
+          "side": "new",
+          "html": "<p>The <ins>new</ins> closing line.</p>",
+          "source_only": false
+        }
+      ],
+      "source_only": true
+    },
+    "f2": {
+      "version": "markdown-diff-v1",
+      "status": "unsupported",
+      "blocks": [],
+      "source_only": false
+    },
+    "f3": {
+      "version": "markdown-diff-v1",
+      "status": "too_large",
+      "blocks": [],
+      "source_only": false
+    },
+    "f4": {
+      "version": "markdown-diff-v1",
+      "status": "ready",
+      "blocks": [
+        {
+          "kind": "added",
+          "side": "new",
+          "html": "<h1 id=\"user-content-16979ee89c3406b5dab20e21-new-demo\">Demo</h1>",
+          "source_only": false
+        },
+        {
+          "kind": "added",
+          "side": "new",
+          "html": "<p>Welcome.</p>",
+          "source_only": false
+        }
+      ],
+      "source_only": false
+    }
+  },
+  "trees": {
+    "<h1 id=\"user-content-9db1f7c43fe35b9a67d97ca0-new-guide-\">Guide </h1>": [
+      {
+        "tag": "h1",
+        "attrs": [
+          [
+            "id",
+            "user-content-9db1f7c43fe35b9a67d97ca0-new-guide-"
+          ]
+        ],
+        "children": [
+          "Guide "
+        ]
+      }
+    ],
+    "<p>Read the <span>setup notes</span> first.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "Read the ",
+          {
+            "tag": "span",
+            "attrs": [],
+            "children": [
+              "setup notes"
+            ]
+          },
+          " first."
+        ]
+      }
+    ],
+    "<p>Read the <a href=\"/api/plugin/github/pull-snapshot?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;side=head&amp;path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&amp;mode=document\">first setup notes</a> first.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "Read the ",
+          {
+            "tag": "a",
+            "attrs": [
+              [
+                "href",
+                "/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&side=head&path=g1-ZG9jcw%2Fg1-c2V0dXAubWQ&mode=document"
+              ]
+            ],
+            "children": [
+              "first setup notes"
+            ]
+          },
+          " first."
+        ]
+      }
+    ],
+    "<p>Unchanged paragraph 0.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "Unchanged paragraph 0."
+        ]
+      }
+    ],
+    "<p>Unchanged paragraph 1.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "Unchanged paragraph 1."
+        ]
+      }
+    ],
+    "<p>Unchanged paragraph 2.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "Unchanged paragraph 2."
+        ]
+      }
+    ],
+    "<p>Unchanged paragraph 3.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "Unchanged paragraph 3."
+        ]
+      }
+    ],
+    "<p>Unchanged paragraph 4.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "Unchanged paragraph 4."
+        ]
+      }
+    ],
+    "<p>Unchanged paragraph 5.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "Unchanged paragraph 5."
+        ]
+      }
+    ],
+    "<p>Unchanged paragraph 6.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "Unchanged paragraph 6."
+        ]
+      }
+    ],
+    "<p>Unchanged paragraph 7.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "Unchanged paragraph 7."
+        ]
+      }
+    ],
+    "<img loading=\"lazy\" src=\"/api/plugin/github/pull-snapshot?number=7&amp;left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&amp;right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&amp;store=0123456789abcdef&amp;side=head&amp;path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&amp;mode=image\" alt=\"Diagram\">": [
+      {
+        "tag": "img",
+        "attrs": [
+          [
+            "loading",
+            "lazy"
+          ],
+          [
+            "src",
+            "/api/plugin/github/pull-snapshot?number=7&left=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&right=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&store=0123456789abcdef&side=head&path=g1-ZG9jcw%2Fg1-ZGlhZ3JhbS5wbmc&mode=image"
+          ],
+          [
+            "alt",
+            "Diagram"
+          ]
+        ],
+        "children": []
+      }
+    ],
+    "<p>The <del>old</del> closing line.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "The ",
+          {
+            "tag": "del",
+            "attrs": [],
+            "children": [
+              "old"
+            ]
+          },
+          " closing line."
+        ]
+      }
+    ],
+    "<p>The <ins>new</ins> closing line.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "The ",
+          {
+            "tag": "ins",
+            "attrs": [],
+            "children": [
+              "new"
+            ]
+          },
+          " closing line."
+        ]
+      }
+    ],
+    "<h1 id=\"user-content-16979ee89c3406b5dab20e21-new-demo\">Demo</h1>": [
+      {
+        "tag": "h1",
+        "attrs": [
+          [
+            "id",
+            "user-content-16979ee89c3406b5dab20e21-new-demo"
+          ]
+        ],
+        "children": [
+          "Demo"
+        ]
+      }
+    ],
+    "<p>Welcome.</p>": [
+      {
+        "tag": "p",
+        "attrs": [],
+        "children": [
+          "Welcome."
+        ]
+      }
+    ]
+  }
+}

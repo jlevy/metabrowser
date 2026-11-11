@@ -4,16 +4,43 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- Pull-request metadata omits repeated opened and updated ages.
+- A pull request’s header leaves out an updated age that reads the same as its opened,
+  merged, or closed age, and keeps the exact updated time in that age’s tooltip.
   Conversation commit hashes match the surrounding metadata size.
-  GitHub actions use a separate muted link after the check name, and the PR’s GitHub
-  link shares that muted styling.
-  A diff with only Source available hides its format chooser.
+  A check on **Checks** shows its name, then a link that says where its details open:
+  **View action on GitHub**, **View on GitHub**, or **View details** on the check’s own
+  site. Links to GitHub, including the pull request’s **View on GitHub**, are muted with
+  a leading GitHub mark.
 
 - Opening a pull request’s **Changes** tab fetches a missing comparison automatically.
   A served checkout reuses a healthy cached store or borrows Git objects without
   changing the checkout.
   If preparation fails, the tab reports the reason and offers a retry.
+
+- Once a served checkout has a comparison store, its **Conversation** prepares a fresh
+  pull request’s comparison in the background, fetching only that pull request’s head
+  and base, and gives way to anything the reader asks for.
+  Reading **Conversation** never creates a store or runs Git: only **Changes** does.
+
+- A cold open of a repository another Metabrowser process is acquiring says that it is
+  waiting, and then uses that process’s store.
+
+- In a pull request’s **Changes**, **View file** and **View at base** open the file at
+  that exact commit on its own page, and no longer switch the commit the server serves.
+  A link stays valid after the pull request moves on, for the last 16 comparisons.
+  A file at the commit a mirror’s page shows still opens in the app’s viewer.
+  A Markdown file whose rendering would cost more than a few hundred milliseconds, such
+  as a long task list or tens of kilobytes of highlighted code, opens as Source.
+
+- A pull request’s **Changes** shows Markdown files **Rendered** by default: changed
+  blocks are shown as removed and added, with changed words marked, and a changed list
+  item or quoted paragraph is shown on its own.
+  **Source** remains one click away, and is used for files with raw HTML, task lists,
+  footnotes, or more than 48 KiB of Markdown.
+  A file that can only be shown as Source has no **Rendered** | **Source** chooser.
+  When the source changed in a way the rendered view cannot show, such as a link
+  destination or an HTML comment, the file and the block say so.
+  The first screen is rendered in the background while you read **Conversation**.
 
 - Each browser tab is titled by what it serves, so windows can be told apart: the
   folder’s name, or a cached mirror’s repository name (`tbd #123` on a pull request’s

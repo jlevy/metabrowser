@@ -44,6 +44,12 @@ repository, so both sides are bare branch names.
 The last lines show which links a rendered text keeps (made absolute against the pull
 request’s github.com page, http and https only), and the `/view/` address a review
 comment’s file opens at.
+`checkActions` is where each check’s link opens, for the recorded checks and three the
+session adds: a GitHub Actions run says **View action on GitHub**, another github.com
+page **View on GitHub**, and a check’s own site **View details**; each link’s accessible
+name adds its check’s name; an address a page may not follow, here `ftp:`, has no link;
+and a run’s app is its description unless an Actions link already says so.
+Each check line of a paint gives its status, name, description, and link the same way.
 `hunks` is what a review comment shows of its diff hunk, which ends at the commented
 line: the last eight lines, or back to the start of a multi-line comment’s range, with
 the rest behind a disclosure, and each line classed so an addition or deletion is
@@ -161,9 +167,9 @@ $ node tests/dom/github-pull-page-session.js
             "pending": 1
           },
           "items": [
-            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -267,9 +273,9 @@ $ node tests/dom/github-pull-page-session.js
             "pending": 1
           },
           "items": [
-            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -326,9 +332,9 @@ $ node tests/dom/github-pull-page-session.js
             "pending": 1
           },
           "items": [
-            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -378,9 +384,9 @@ $ node tests/dom/github-pull-page-session.js
             "pending": 1
           },
           "items": [
-            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -422,9 +428,9 @@ $ node tests/dom/github-pull-page-session.js
             "pending": 1
           },
           "items": [
-            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -470,9 +476,9 @@ $ node tests/dom/github-pull-page-session.js
             "pending": 1
           },
           "items": [
-            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -517,9 +523,9 @@ $ node tests/dom/github-pull-page-session.js
             "pending": 1
           },
           "items": [
-            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -573,9 +579,9 @@ $ node tests/dom/github-pull-page-session.js
             "pending": 1
           },
           "items": [
-            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -630,9 +636,9 @@ $ node tests/dom/github-pull-page-session.js
             "pending": 1
           },
           "items": [
-            "[success] tests (3.13) -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
-            "[in progress] docs -> https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
-            "[success] docs/readthedocs.org:demo -> https://demo--7.org.readthedocs.build/en/7/"
+            "[success] tests (3.13) -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+            "[in progress] docs -> View action on GitHub https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+            "[success] docs/readthedocs.org:demo (Read the Docs build succeeded!) -> View details https://demo--7.org.readthedocs.build/en/7/"
           ]
         },
         "notes": [],
@@ -981,6 +987,63 @@ $ node tests/dom/github-pull-page-session.js
       "followed": "https://evil.example/x"
     }
   ],
+  "checkActions": [
+    {
+      "name": "tests (3.13)",
+      "detail": null,
+      "action": {
+        "kind": "actions",
+        "href": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "label": "View action on GitHub",
+        "name": "View action on GitHub: tests (3.13)"
+      }
+    },
+    {
+      "name": "docs",
+      "detail": null,
+      "action": {
+        "kind": "actions",
+        "href": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "label": "View action on GitHub",
+        "name": "View action on GitHub: docs"
+      }
+    },
+    {
+      "name": "coverage",
+      "detail": "Codecov",
+      "action": {
+        "kind": "github",
+        "href": "https://github.com/octo/demo/runs/123",
+        "label": "View on GitHub",
+        "name": "View on GitHub: coverage"
+      }
+    },
+    {
+      "name": "lint",
+      "detail": "GitHub Actions",
+      "action": {
+        "kind": "external",
+        "href": "https://ci.example/runs/2",
+        "label": "View details",
+        "name": "View details: lint"
+      }
+    },
+    {
+      "name": "docs/readthedocs.org:demo",
+      "detail": "Read the Docs build succeeded!",
+      "action": {
+        "kind": "external",
+        "href": "https://demo--7.org.readthedocs.build/en/7/",
+        "label": "View details",
+        "name": "View details: docs/readthedocs.org:demo"
+      }
+    },
+    {
+      "name": "legacy-ci",
+      "detail": "Passed",
+      "action": null
+    }
+  ],
   "wire": "g1-c3Jj/g1-YXBwLnR4dA",
   "pageDefense": "<p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<a href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span>image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n",
   "filesChanged": [
@@ -1303,7 +1366,7 @@ refusal.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true,"checkRows":true,"headerAges":true}
 ? 0
 ```
 

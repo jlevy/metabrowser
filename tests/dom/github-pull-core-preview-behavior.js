@@ -477,7 +477,21 @@ async function run() {
     ...idleCore,
     last_refresh: { outcome: "network_error", message: "offline" },
   };
-  assert.equal(page.describePull(idleCore, filesPage).changesPending, true);
+  assert.equal(
+    page.describePull(idleCore, { ...filesPage, fetchQueued: true }).changesPending,
+    true,
+    "a selected fetch the page will still send is preparing the record",
+  );
+  assert.equal(
+    page.describePull(idleCore, { ...filesPage, fetching: true }).changesPending,
+    true,
+    "and so is one on its way",
+  );
+  assert.equal(
+    page.describePull(idleCore, filesPage).changesPending,
+    false,
+    "once the selected fetch was refused, nothing is preparing it",
+  );
   assert.equal(
     page.describePull(failedCore, filesPage).filesUnavailable,
     "Changes are unavailable because the full pull request could not be loaded.",
@@ -580,13 +594,17 @@ async function run() {
   for (const refreshing of [true, false]) {
     current = refreshing ? { ...preview, core_preview: preparedCore } : failedCore;
     const changes = new Element("main");
+    // A reader's selection would ask for the failed record again, so the failure is seen
+    // on a direct link, whose cold miss was already tried.
     const view = page.mountPullPage(
       changes,
-      {
-        number: 7,
-        tab: "files",
-        reader: { initial: { body: current, etag: null }, fetchAfterMs: 0 },
-      },
+      refreshing
+        ? {
+            number: 7,
+            tab: "files",
+            reader: { initial: { body: current, etag: null }, fetchAfterMs: 0 },
+          }
+        : { number: 7, tab: "files" },
       mb,
     );
     await view.ready;

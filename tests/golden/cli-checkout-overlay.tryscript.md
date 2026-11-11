@@ -327,6 +327,7 @@ status: 200
     "at": "2026-09-17T12:00:00Z"
   },
   "comparison_route": null,
+  "snapshot_route": null,
   "record": {
     "schema_version": 2,
     "projection_version": 1,

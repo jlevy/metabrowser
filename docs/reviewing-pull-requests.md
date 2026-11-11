@@ -81,13 +81,21 @@ file and reading position.
 
 A served folder can show Pulls and Conversation without a comparison store.
 Opening **Changes** prepares a missing comparison automatically.
-When a checkout’s Conversation has a current PR record, Metabrowser can start the same
-work in the background.
-It uses the record’s exact head and base and reuses Git objects already in the store.
 Metabrowser reuses a healthy cached store or creates one that borrows the checkout’s
 objects and fetches what it lacks into the cache.
 Git runs in the store and leaves the served folder and Commits tab on your checkout.
 If preparation fails, **Changes** reports the reason and offers a retry.
+
+Only **Changes** creates that store.
+The first one fetches every branch and tag the checkout lacks, and once it exists each
+later refresh of a PR fetches that PR into it, so reading Conversation never starts that
+cost: a Conversation-only session runs no Git at all.
+The trade-off is that the first **Changes** on a checkout without a store waits for it.
+Once the checkout has a store, from an earlier **Changes** in this session or another,
+Conversation can prepare the comparison of a PR record fetched within the last minute in
+the background. That work fetches only the PR’s head and base, says nothing on
+Conversation, and gives way to anything you ask for: opening **Changes** takes it over,
+and any other refresh stops it.
 See [Beside a Checkout](#beside-a-checkout) for the URL-based borrowing workflow.
 
 ## Keep Pulls Up to Date
@@ -180,8 +188,8 @@ The page has three tabs.
   **Review comments** lists inline review comments with their files and diff hunks.
 - **Changes** shows the comparison from the merge base to the head, split or unified.
   Markdown changes open in **Rendered** when Metabrowser can map the Git hunks to the
-  document. **Source** keeps the exact patch and is used automatically for files beyond
-  the rendered view’s limits.
+  document. **Source** keeps the exact patch and is used automatically for the files
+  [Rendered Markdown in Changes](#rendered-markdown-in-changes) lists.
   The changed-files tree in Pulls navigates this comparison.
 - **Checks** summarizes check runs and status contexts, with links to their details.
   Open or share it directly at `/pull/<n>/checks`.
@@ -190,15 +198,42 @@ The code controls depend on how the repository was opened:
 
 | Opened with | Code controls |
 | --- | --- |
-| A repository or pull-request URL, with or without `--checkout` | **Browse code** opens the pinned code; if another branch or PR is pinned, it first switches to the selected PR’s head. A newer head is selected separately with **Switch to the head** when offered. A changed file offers **View file** at the head and **View at base** at the merge base where that side exists. These links leave the served pin in place. |
-| A checkout or subdirectory path | Files and Commits continue to show the local checkout. The PR page offers **View file** and **View at base** from the comparison store while Files and Commits stay on the local checkout. |
+| A repository or pull-request URL, with or without `--checkout` | **Browse code** opens the pinned code; if another branch or PR is pinned, it first switches to the selected PR’s head. A newer head is selected separately with **Switch to the head** when offered. A changed file offers **View file** at the head and **View at base** at the merge base where that side exists. |
+| A checkout or subdirectory path | Files and Commits continue to show the local checkout. The PR page has no **Browse code**: the working files may differ from the PR commits. Once Changes are fetched, **View file** and **View at base** open each side from the cache. |
 
-Each file link opens an immutable revision page.
-Relative Markdown links and supported images stay at that revision.
-Previously opened comparisons can be reopened offline while their snapshots and Git
-objects are retained.
-On a managed source, **Browse code** and **Switch to the head** still select a pin
-shared by the server’s pages.
+**View file** and **View at base** never move the server’s pin.
+A side the page does not show opens on its own revision page, at that exact commit, in
+your theme; the link keeps working after the pull request moves on, for its last 16
+comparisons.
+On a managed source pinned at the head, **View file** opens in the app’s own
+viewer. **Browse code** returns to the PR head, or **Switch to the head** does so when
+the page shows that offer.
+A pin is shared by the pages of that server.
+
+### Rendered Markdown in Changes
+
+**Rendered** shows each changed block of a Markdown file as removed and added, with the
+changed words marked.
+A changed list item or quoted paragraph is shown alone, and long runs of unchanged
+blocks fold. A file’s **Rendered** | **Source** chooser switches between the two.
+
+Rendered never presents a change as complete when the source says more.
+**Source shows additional changes** appears above a file whose source changed in a way
+its render does not show: a link or image destination or title, an HTML comment,
+attribute syntax such as `{#name}`, a code fence’s language, or only whitespace and line
+wrapping. A changed block that hides such a change also says **Source shows changes not
+shown here**.
+
+These files open in **Source**:
+
+- files with raw HTML, including inline tags such as `<br>` and blocks such as
+  `<details>` (HTML comments are allowed),
+- task lists (`- [ ]` items) and footnotes,
+- files past the rendered view’s limits, such as more than 48 KiB of Markdown across the
+  two sides.
+
+Rendered differs from the file’s own document view in two ways: math (`$…$`) and Mermaid
+diagrams show as their source text, and code blocks are not highlighted.
 
 ## Beside a Checkout
 
@@ -291,8 +326,9 @@ of the repository. An unreadable lender must be made readable or replaced before
 store can use it again.
 Beside a served folder, comparison preparation reuses a healthy store or borrows from
 the checkout. Partial clones and checkouts that borrow objects themselves cannot lend.
-Metabrowser reports a borrowing refusal in **Changes**. The URL-based `--checkout`
-command has its own [documented fallback cases](command-line.md#beside-a-checkout).
+Metabrowser reports a borrowing refusal in **Changes** and never falls back to a full
+clone. The URL-based `--checkout` command has its own
+[documented fallback cases](command-line.md#beside-a-checkout).
 
 A managed source whose cached pinned tree is missing can fail before the server starts.
 It reports an error without a traceback or automatic replacement clone; the page’s

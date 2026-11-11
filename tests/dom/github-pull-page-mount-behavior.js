@@ -482,6 +482,217 @@ async function markdownOwnership(page) {
   }
 }
 
+// Mount the page on a recorded answer, read nothing more from the server, and return what
+// it painted. `ageLabel` plays the age primitive's label for a time, so a test chooses
+// which ages read the same.
+async function mountOn(page, body, tab, ageLabel) {
+  globalThis.document = {
+    visibilityState: "visible",
+    addEventListener() {},
+    removeEventListener() {},
+    createElement: (tag) => new Element(tag),
+    importNode: () => new Element("svg"),
+  };
+  globalThis.window = {
+    location: { pathname: `/pull/${body.number}${tab ? `/${tab}` : ""}` },
+    setTimeout: () => Symbol(),
+    clearTimeout() {},
+  };
+  globalThis.fetch = async () => ({ status: 304, headers: { get: () => null } });
+  const container = new Element("main");
+  const handle = page.mountPullPage(
+    container,
+    { number: body.number, tab, reader: { initial: { etag: null, body }, fetchAfterMs: 60_000 } },
+    {
+      perf,
+      ensureAsset: async () => {},
+      ensureKindAssets: async () => {},
+      ...require("./sdk-ref-fixture.js").refHelpers(document),
+      formatAge: (seconds) => ({ label: ageLabel(seconds), className: "age" }),
+      formatTimestamp: (seconds) => new Date(seconds * 1000).toISOString(),
+      navigation: { href: () => "/view/" },
+      sourceKind: () => "filesystem",
+      icons: { toggle: "" },
+    },
+  );
+  await settle();
+  return { container, handle };
+}
+
+// A check row is its badge, its plain name, its action, and its description: the action
+// says where it opens, is the quiet GitHub action with a leading mark only for a GitHub
+// destination, names its check for a list of links, and is absent for an address a page
+// may not follow. Only an Actions link stands in for the "GitHub Actions" app.
+async function checkRows(page) {
+  const body = structuredClone(recorded.current.body);
+  body.record.check_runs.push(
+    {
+      id: 1,
+      name: "coverage",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://github.com/octo/demo/runs/123",
+      app: "Codecov",
+    },
+    {
+      id: 2,
+      name: "lint",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://ci.example/runs/2",
+      app: "GitHub Actions",
+    },
+  );
+  body.record.status.statuses.push({
+    context: "legacy-ci",
+    state: "success",
+    description: "Passed",
+    target_url: "ftp://ci.example/7",
+  });
+  const { container, handle } = await mountOn(page, body, "checks", () => "now");
+  const list = container.querySelector(".github-pull-checks");
+  assert.ok(list, "the Checks tab lists its checks");
+  const rows = list.children.map((row) => {
+    const [badge, space, name, ...rest] = row.children;
+    assert.ok(badge.classes.has("file-header-badge"), "a row leads with its status badge");
+    assert.equal(space, " ");
+    assert.equal(name.tag, "span");
+    assert.equal(name.getAttribute("class"), null, "the name is plain text, not a link");
+    const link = rest.find((node) => node.tag === "a") ?? null;
+    const detail = rest.find((node) => node.classes.has("github-pull-quiet")) ?? null;
+    assert.equal(rest.length, Number(link !== null) + Number(detail !== null));
+    if (link !== null && detail !== null) {
+      assert.equal(rest.indexOf(link), 0, "the action comes before the description");
+    }
+    const mark = link?.children.find(
+      (node) => typeof node !== "string" && node.getAttribute("data-external-kind") !== null,
+    );
+    return {
+      name: name.textContent,
+      action:
+        link === null
+          ? null
+          : {
+              text: link.textContent,
+              href: link.getAttribute("href"),
+              accessibleName: link.getAttribute("aria-label"),
+              quiet: link.classes.has("github-pull-external-action"),
+              mark:
+                mark === undefined
+                  ? null
+                  : `${mark.getAttribute("data-external-kind")} ${link.children.indexOf(mark) === 0 ? "before" : "after"}`,
+            },
+      detail: detail?.textContent ?? null,
+    };
+  });
+  const actions = (kind, href) => ({
+    text: { actions: "View action on GitHub", github: "View on GitHub", external: "View details" }[
+      kind
+    ],
+    href,
+    quiet: kind !== "external",
+    mark: kind === "external" ? null : "github before",
+  });
+  const job = "https://github.com/octo/demo/actions/runs/18062895276/job/";
+  assert.deepEqual(rows, [
+    {
+      name: "tests (3.13)",
+      action: {
+        ...actions("actions", `${job}51401654787`),
+        accessibleName: "View action on GitHub: tests (3.13)",
+      },
+      detail: null,
+    },
+    {
+      name: "docs",
+      action: {
+        ...actions("actions", `${job}51401654788`),
+        accessibleName: "View action on GitHub: docs",
+      },
+      detail: null,
+    },
+    {
+      name: "coverage",
+      action: {
+        ...actions("github", "https://github.com/octo/demo/runs/123"),
+        accessibleName: "View on GitHub: coverage",
+      },
+      detail: "Codecov",
+    },
+    {
+      name: "lint",
+      action: {
+        ...actions("external", "https://ci.example/runs/2"),
+        accessibleName: "View details: lint",
+      },
+      detail: "GitHub Actions",
+    },
+    {
+      name: "docs/readthedocs.org:demo",
+      action: {
+        ...actions("external", "https://demo--7.org.readthedocs.build/en/7/"),
+        accessibleName: "View details: docs/readthedocs.org:demo",
+      },
+      detail: "Read the Docs build succeeded!",
+    },
+    { name: "legacy-ci", action: null, detail: "Passed" },
+  ]);
+  const names = rows.flatMap((row) => (row.action === null ? [] : [row.action.accessibleName]));
+  assert.equal(new Set(names).size, names.length, "every action has its own accessible name");
+  handle.dispose();
+}
+
+// The header leaves out an updated age that reads the same as the merged or closed age
+// beside it, or else the opened age, and keeps its exact time in that age's tooltip.
+async function headerAges(page) {
+  const said = async (name, ageLabel) => {
+    const { container, handle } = await mountOn(page, recorded[name].body, "", ageLabel);
+    const line = container
+      .querySelector(".github-pull-header")
+      .children.find((node) => node.classes?.has("github-pull-quiet"));
+    const ages = line.children.filter((node) => node.classes?.has("github-pull-age"));
+    const link = line.children.find((node) => node.tag === "a");
+    assert.ok(link.classes.has("github-pull-external-action"), "View on GitHub is quiet");
+    assert.equal(link.children[0].getAttribute("data-external-kind"), "github");
+    handle.dispose();
+    return {
+      text: line.textContent.split(" · View on GitHub")[0],
+      tips: ages.map((node) => node.getAttribute("data-tip-text")),
+    };
+  };
+  const at = (iso) => Date.parse(iso) / 1000;
+  const hour = (seconds) => new Date(seconds * 1000).toISOString().slice(0, 13);
+  const day = (seconds) => new Date(seconds * 1000).toISOString().slice(0, 10);
+  // Opened 10:57, updated 17:39; merged 18:00; closed 19:00, all on 2026-09-16.
+  assert.deepEqual(await said("current", hour), {
+    text: "Opened 2026-09-16T10 · updated 2026-09-16T17",
+    tips: ["2026-09-16T10:57:23.000Z", "2026-09-16T17:39:01.000Z"],
+  });
+  assert.deepEqual(await said("current", day), {
+    text: "Opened 2026-09-16",
+    tips: ["2026-09-16T10:57:23.000Z · updated 2026-09-16T17:39:01.000Z"],
+  });
+  const late = (seconds) => (seconds >= at("2026-09-16T17:00:00Z") ? "late" : "early");
+  assert.deepEqual(await said("merged", late), {
+    text: "Opened early · merged late",
+    tips: [
+      "2026-09-16T10:57:23.000Z",
+      "2026-09-16T18:00:00.000Z · updated 2026-09-16T17:39:01.000Z",
+    ],
+  });
+  assert.deepEqual(await said("merged", day), {
+    text: "Opened 2026-09-16 · merged 2026-09-16",
+    tips: [
+      "2026-09-16T10:57:23.000Z",
+      "2026-09-16T18:00:00.000Z · updated 2026-09-16T17:39:01.000Z",
+    ],
+  });
+  assert.deepEqual(await said("closed", hour), {
+    text: "Opened 2026-09-16T10 · updated 2026-09-16T17 · closed 2026-09-16T19",
+    tips: ["2026-09-16T10:57:23.000Z", "2026-09-16T17:39:01.000Z", "2026-09-16T19:00:00.000Z"],
+  });
+}
+
 async function run() {
   const timers = new Map();
   const frames = new Map();
@@ -849,6 +1060,14 @@ async function run() {
   );
   await settle();
   assert.deepEqual(posts, [], "a staged Changes mount cannot fetch after the route moved away");
+  const stagedBody = checkoutContainer.querySelector(".github-pull-body");
+  assert.match(stagedBody.textContent, /Changes have not been fetched/);
+  assert.equal(stagedBody.querySelector(".spinner"), null, "nothing is on its way to spin for");
+  assert.equal(
+    stagedBody.querySelector(".github-pull-fetch-changes")?.textContent,
+    "Fetch changes",
+    "the reader can still fetch what the address does not ask for",
+  );
   window.location.pathname = "/pull/10/files/src/app.txt";
   checkoutHandle.land({ tab: "files", file: "src/app.txt" });
   await settle();
@@ -869,6 +1088,11 @@ async function run() {
   await settle();
   assert.deepEqual(posts, [comparisonAsk], "polling does not retry a refused acquisition");
   assert.match(checkoutBody.textContent, /Changes could not be fetched/);
+  assert.match(
+    checkoutContainer.querySelector(".github-pull-message")?.textContent ?? "",
+    /server busy/,
+    "the refusal's reason outlasts the read that cleared its error",
+  );
   assert.equal(checkoutBody.querySelector(".spinner"), null);
   const retryChanges = checkoutBody.querySelector(".github-pull-retry-changes");
   assert.equal(retryChanges?.textContent, "Retry changes");
@@ -1012,6 +1236,8 @@ async function run() {
     "reentrant disposal releases the just-created subscription",
   );
   await markdownOwnership(page);
+  await checkRows(page);
+  await headerAges(page);
   for (const label of [
     "githubPull:decode",
     "githubPull:render",
@@ -1031,6 +1257,8 @@ async function run() {
     bridgeFramesOwned: true,
     hiddenReadiness: true,
     markdownOwnership: true,
+    checkRows: true,
+    headerAges: true,
   };
 }
 module.exports = { Element, recorded, root, settle, perf };

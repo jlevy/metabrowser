@@ -5,21 +5,26 @@ const { pathToFileURL } = require("node:url");
 const fixture = require("../fixtures/github-checkout-comparison-responses.json");
 
 async function main() {
-  const { createPullController } = await import(
+  const { createPullController, FAST_POLL_MS, SLOW_POLL_MS } = await import(
     pathToFileURL(
       path.resolve(__dirname, "../../src/metabrowser/builtin_plugins/github/pull-page.js"),
     ).href
   );
-  const record = fixture.before.body;
+  // A server with a store answers a record written without one as stale, whatever its age:
+  // the only place idle preparation runs. The same record on a checkout with no store is
+  // current, and its page asks nothing.
+  const record = { ...fixture.before.body, state: "stale" };
+  const storeless = fixture.before.body;
   const idleAsk = { number: 10, prepare_comparison: record.record_revision };
   const foregroundAsk = { number: 10, comparison: true, retry: true };
   const pending = { ...record, refreshing: true, preparing_comparison: true };
   const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-  function page({ visible = true } = {}) {
+  function page({ visible = true, latest = record } = {}) {
     const posts = [];
     const scheduled = new Set();
-    const state = { visible, conversation: true, latest: record };
+    const delays = [];
+    const state = { visible, conversation: true, latest };
     let model;
     const controller = createPullController(
       {
@@ -29,7 +34,10 @@ async function main() {
           }
           return new Promise((resolve) => posts.push({ ask: options.body, resolve }));
         },
-        schedule: () => 0,
+        schedule(_callback, delay) {
+          delays.push(delay);
+          return 0;
+        },
         cancel() {},
         scheduleComparison(callback) {
           scheduled.add(callback);
@@ -50,6 +58,7 @@ async function main() {
     );
     return {
       posts,
+      delays,
       state,
       controller,
       model: () => model,
@@ -65,6 +74,12 @@ async function main() {
       },
     };
   }
+
+  const noStore = page({ latest: storeless });
+  await noStore.controller.start();
+  noStore.idle();
+  assert.deepEqual(noStore.posts, [], "a checkout with no store is never asked for idle work");
+  noStore.controller.dispose();
 
   const quick = page();
   await quick.controller.start();
@@ -98,11 +113,19 @@ async function main() {
   hidden.posts[0].resolve({ status: 202, etag: null, body: { pull: pending } });
   await tick();
   assert.equal(hidden.model().refreshing, false, "idle Git work is quiet in Conversation");
+  hidden.state.latest = pending;
+  await hidden.controller.poll();
+  const conversationPoll = hidden.delays.at(-1);
+  assert.equal(conversationPoll, SLOW_POLL_MS, "Conversation polls slowly during idle work");
   hidden.changes();
   assert.deepEqual(
     hidden.posts.map(({ ask }) => ask),
     [idleAsk, foregroundAsk],
   );
+  hidden.posts[1].resolve({ status: 202, etag: null, body: { pull: pending } });
+  await tick();
+  const changesPoll = hidden.delays.at(-1);
+  assert.equal(changesPoll, FAST_POLL_MS, "Changes polls the promoted job at the fast rate");
   hidden.controller.dispose();
 
   const race = page();
@@ -145,7 +168,9 @@ async function main() {
     page.posts.map(({ ask }) => ("prepare_comparison" in ask ? "idle" : "foreground"));
   console.log(
     JSON.stringify({
+      withoutStore: asks(noStore),
       changesBeforeIdle: asks(quick),
+      pollWhilePreparing: { conversation: conversationPoll, changes: changesPoll },
       hiddenUntilVisible: asks(hidden),
       afterLateIdleReply: race.model().comparison ? "Changes ready" : "Changes unavailable",
       afterIdleRefusal: asks(refused),

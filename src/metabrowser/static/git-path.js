@@ -1,10 +1,11 @@
 // The GitPath wire codec: a pinned revision's path as `/view/` addresses it, and back.
 //
 // A pin's tree holds names that are not valid inventory paths, or not UTF-8 at all, so
-// its addresses carry each segment as `g1-` and unpadded base64url. Only a pinned
-// revision's page reads or writes that spelling, and it needs it before its first
-// paint, so the server writes this script into a pin's shell, ahead of navigation.js,
-// and leaves it out of a folder's, as it does the pin guard.
+// its addresses carry each segment as `g1-` and unpadded base64url. A pinned revision's
+// page reads and writes that spelling before its first paint, so the server writes this
+// script into a pin's shell, ahead of navigation.js, and leaves it out of a folder's, as
+// it does the pin guard. A pull request's Changes on a folder (beside a checkout) also
+// spells revision-file addresses with it, so the diff plugin imports it on demand there.
 //
 // Measured 2026-10-01: in navigation.js this was 885 compressed bytes of a startup
 // script on every folder's page. See

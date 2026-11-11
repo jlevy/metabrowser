@@ -1397,6 +1397,22 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert (title_glyph["width"], title_glyph["height"]) == ("1em", "1em")
     # Links take the link token rather than the browser's blue.
     assert github[".github-pull-header a"]["color"] == "var(--link)"
+    # A GitHub action (View on GitHub, a check's action on GitHub, a conversation commit
+    # hash) is quiet: muted at rest, the link token on hover and focus, at its row's size.
+    for place in (".github-pull-header", ".github-pull-checks", ".github-pull-commit"):
+        action = f"{place} .github-pull-external-action"
+        assert github[action] == {"color": "var(--muted)"}, action
+        for state in (":hover", ":focus-visible"):
+            assert github[action + state]["color"] == "var(--link)", action + state
+    assert page.count('"github-pull-external-action"') == 2, "the header's and a check's"
+    assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
+    # A check's own site is an ordinary link, so it never reads as the description after it.
+    assert github[".github-pull-checks a"]["color"] == "var(--link)"
+    # A hash matches its 12 px row; the ramp's next step below is the 10 px micro size.
+    assert github[".github-pull-commit"]["font-size"] == "var(--ui-small-font-size)"
+    assert github[".github-pull-commit .git-commit-sha"]["font-size"] == (
+        "var(--ui-small-font-size)"
+    )
     # A button that moves the pin looks as a link does: no primitive's border or fill.
     action = github[".github-pull-text-action"]
     assert (action["color"], action["border"], action["background"]) == (
