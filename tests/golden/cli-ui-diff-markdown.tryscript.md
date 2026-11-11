@@ -23,7 +23,7 @@ A file is asked for when it comes within a viewport of the screen, one request a
 time, and its progress mark counts down to visible only while its request waits.
 A busy server is transient: the file keeps Rendered and asks again after 100 ms,
 doubling to 1.6 s. An unsupported or over-budget answer leaves the file in Source with
-Rendered disabled, and a failed request offers a retry.
+no chooser, and a failed request keeps the chooser and offers a retry.
 An answer that arrives after the reader chose Source is kept, and choosing Rendered
 again shows it without asking.
 
@@ -47,9 +47,10 @@ hand.
 
 `links` says which addresses in a rendered block open a file of the comparison.
 Each step lists the requests the page made and each file whose state it changed: its
-chooser (`*` chosen, `-` cannot be chosen), what its body shows (`nothing` while it
-waits within the loading delay), `progress` while its mark counts down, any message
-under its bar, and its rendered rows, `[note]` marking a block whose source says more.
+chooser (`*` chosen, `-` cannot be chosen, `none` when the file can show only Source),
+what its body shows (`nothing` while it waits within the loading delay), `progress`
+while its mark counts down, any message under its bar, and its rendered rows, `[note]`
+marking a block whose source says more.
 
 ```console
 $ node tests/dom/diff-markdown-session.js
@@ -161,11 +162,11 @@ $ node tests/dom/diff-markdown-session.js
       }
     },
     {
-      "step": "an unsupported file stays in Source and cannot choose Rendered",
+      "step": "an unsupported file stays in Source and has no chooser",
       "requests": [],
       "files": {
         "f2 docs/tasks.md": {
-          "chooser": "-Rendered | *Source",
+          "chooser": "none",
           "shows": "source",
           "message": "Rendered diff unavailable. Showing source."
         }
@@ -198,7 +199,7 @@ $ node tests/dom/diff-markdown-session.js
       ],
       "files": {
         "f3 docs/big.md": {
-          "chooser": "-Rendered | *Source",
+          "chooser": "none",
           "shows": "source",
           "message": "Rendered diff unavailable. Showing source."
         },

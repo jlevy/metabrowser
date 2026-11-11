@@ -107,6 +107,8 @@ def test_session_replays_the_recording() -> None:
     assert first["f1 docs/guide.md"]["shows"] == "rendered"
     after = steps["past the loading delay a waiting file shows Source"]["files"]
     assert after["f2 docs/tasks.md"]["shows"] == "source"
+    unsupported = steps["an unsupported file stays in Source and has no chooser"]["files"]
+    assert unsupported["f2 docs/tasks.md"]["chooser"] == "none"
     assert steps["the wait is over"]["requests"] == ["f3"]
     kept = steps["choosing Rendered again shows the kept answer without asking"]
     assert kept["requests"] == [] and kept["files"]["f4 README.md"]["shows"] == "rendered"

@@ -27,7 +27,8 @@ const LOADING_DELAY_MS = 50;
 /** @typedef {"rendered" | "source"} Mode */
 /** @typedef {{kind: "context" | "removed" | "added", html: string, source_only?: boolean}} Block */
 /** @typedef {{
- *   section: HTMLElement, bar: HTMLElement, source: HTMLElement, rendered: HTMLElement,
+ *   section: HTMLElement, bar: HTMLElement, toggle: HTMLElement,
+ *   source: HTMLElement, rendered: HTMLElement,
  *   progress: HTMLElement, progressLabel: HTMLElement, fallback: HTMLElement,
  *   control: HTMLElement,
  *   id: string, mode: Mode, pending: boolean, expanded: boolean, holding: boolean,
@@ -357,10 +358,16 @@ export function createMarkdownViews(deps) {
     drawProgress(file);
   }
 
+  // A file that can only show Source has no format to choose. Its chooser, its progress
+  // mark and the bar's two-format layout go, so its bar lays out as any other file's, and
+  // focus the chooser held returns to the file's disclosure.
   /** @param {FileView} file */
   function drawControl(file) {
     const restoreFocus = file.control.contains(document.activeElement);
-    file.control.hidden = file.state === "unavailable";
+    const chooser = file.state !== "unavailable";
+    file.control.hidden = !chooser;
+    file.progress.hidden = !chooser;
+    file.bar.classList.toggle("diff-file-bar-markdown", chooser);
     file.control.innerHTML = deps.controls.groupHtml({
       key: file.source.id,
       label: "Markdown diff format",
@@ -377,12 +384,12 @@ export function createMarkdownViews(deps) {
       const mode = button.dataset.chipValue;
       button.setAttribute("aria-controls", mode === "rendered" ? file.rendered.id : file.source.id);
       button.disabled = mode === "rendered" && file.state === "unavailable";
-      if (restoreFocus && !file.control.hidden && mode === file.mode) {
+      if (restoreFocus && chooser && mode === file.mode) {
         button.focus();
       }
     }
-    if (restoreFocus && file.control.hidden) {
-      /** @type {HTMLElement | null} */ (file.bar.firstElementChild)?.focus();
+    if (restoreFocus && !chooser) {
+      file.toggle.focus();
     }
   }
 
@@ -564,8 +571,14 @@ export function createMarkdownViews(deps) {
   }
 
   return {
-    /** @param {{section: HTMLElement, bar: HTMLElement, source: HTMLElement, id: string}} input */
-    add({ section, bar, source, id }) {
+    /**
+     * @param {{
+     *   section: HTMLElement, bar: HTMLElement, toggle: HTMLElement, source: HTMLElement,
+     *   id: string
+     * }} input The file's section, its bar, the bar's disclosure button, which the
+     *   chooser follows and which takes focus when the chooser goes, and its Source body.
+     */
+    add({ section, bar, toggle, source, id }) {
       const control = document.createElement("div");
       control.className = "diff-markdown-control";
       const rendered = document.createElement("article");
@@ -587,6 +600,7 @@ export function createMarkdownViews(deps) {
       const file = {
         section,
         bar,
+        toggle,
         source,
         rendered,
         progress,
@@ -613,8 +627,7 @@ export function createMarkdownViews(deps) {
           file.folds.get(href.slice(1))?.();
         }
       });
-      bar.firstElementChild?.after(control, progress);
-      bar.classList.add("diff-file-bar-markdown");
+      toggle.after(control, progress);
       source.before(fallback, rendered);
       files.set(section, file);
       controls.set(source.id, file);

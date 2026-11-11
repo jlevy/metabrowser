@@ -342,26 +342,31 @@ async function main() {
     later: time.later,
     cancel: time.cancel,
   });
-  function file(id) {
+  // `lead` puts another control before the disclosure, so a test can tell the disclosure
+  // the module was handed from whatever happens to lead the bar.
+  function file(id, { lead = false } = {}) {
     const section = make("section");
     root.append(section);
     const bar = make("div");
     const source = make("div");
     source.id = id;
     section.append(bar, source);
-    bar.append(make("button"));
-    const state = view.add({ section, bar, source, id });
+    const toggle = make("button");
+    bar.append(...(lead ? [make("span"), toggle] : [toggle]));
+    const state = view.add({ section, bar, toggle, source, id });
     const [, fallback, rendered] = section.children;
-    const [, control, progress] = bar.children;
+    const at = bar.children.indexOf(toggle);
+    const [control, progress] = bar.children.slice(at + 1, at + 3);
     return {
       section,
+      bar,
       source,
       rendered,
       progress,
       fallback,
       state,
-      control: bar.children[1],
-      toggle: bar.firstElementChild,
+      control,
+      toggle,
       get renderedChoice() {
         return control.children[0];
       },
@@ -373,9 +378,12 @@ async function main() {
 
   const a = file("a");
   const b = file("b");
-  const c = file("c");
+  const c = file("c", { lead: true });
   const d = file("d");
   assert.equal(a.source.hidden, true, "a file waits for Rendered before showing Source");
+  assert.ok(a.bar.classList.contains("diff-file-bar-markdown"), "a chooser lays the bar out for it");
+  assert.equal(a.control.hidden, false);
+  assert.equal(a.progress.hidden, false);
   view.observe(root, null);
   assert.equal(observer.options.rootMargin, "0px 0px 100% 0px", "a viewport of lookahead");
   assert.equal(calls.length, 0);
@@ -427,6 +435,7 @@ async function main() {
   await new Promise(setImmediate);
   assert.equal(b.renderedChoice.attributes.get("aria-checked"), "true");
   assert.equal(b.fallback.textContent, "");
+  assert.equal(b.control.hidden, false, "a busy server keeps the chooser");
   assert.equal(calls.length, 2);
   time.advance(99);
   assert.equal(calls.length, 2);
@@ -456,6 +465,12 @@ async function main() {
   assert.equal(c.sourceChoice.attributes.get("aria-checked"), "true");
   assert.equal(c.renderedChoice.disabled, true);
   assert.equal(c.control.hidden, true, "a source-only file has no format chooser");
+  assert.equal(c.progress.hidden, true, "nor a progress mark");
+  assert.equal(
+    c.bar.classList.contains("diff-file-bar-markdown"),
+    false,
+    "its bar lays out as any other file's",
+  );
   assert.equal(document.activeElement, c.toggle, "a removed chooser returns focus to the file");
   assert.equal(c.fallback.hidden, false);
 
@@ -479,6 +494,9 @@ async function main() {
   await new Promise(setImmediate);
   assert.equal(d.sourceChoice.attributes.get("aria-checked"), "true");
   assert.equal(d.renderedChoice.disabled, false, "a transport error allows another attempt");
+  assert.equal(d.control.hidden, false, "a retryable failure keeps the chooser");
+  assert.equal(d.progress.hidden, false);
+  assert.ok(d.bar.classList.contains("diff-file-bar-markdown"));
   assert.match(d.fallback.textContent, /retry/);
   await d.renderedChoice.click();
   assert.equal(calls.length, 6);

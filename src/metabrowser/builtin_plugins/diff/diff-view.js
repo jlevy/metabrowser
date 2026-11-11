@@ -2387,7 +2387,7 @@ function renderFileSection(change, patch, context, view, draw) {
   // synthesized click bubbles here. Only the copy and View file
   // controls opt out.
   const markdown = view.markdown?.supports(change)
-    ? view.markdown.controller.add({ section, bar, source: body, id: String(change.id) })
+    ? view.markdown.controller.add({ section, bar, toggle, source: body, id: String(change.id) })
     : null;
   let expanded = true;
   /** @param {boolean} next */

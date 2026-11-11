@@ -12,8 +12,8 @@
 // steps of the story rather than races.
 //
 // Each step prints the requests the page made, and for each file whose state the step
-// changed: its chooser (`*` marks
-// the chosen format, `-` one that cannot be chosen), what its body shows (`rendered`,
+// changed: its chooser (`*` marks the chosen format, `-` one that cannot be chosen, and
+// `none` for a file that can show only Source), what its body shows (`rendered`,
 // `source`, or `nothing` while it waits within the loading delay), whether its progress
 // mark is counting down to visible, any message under its bar, and the rendered rows:
 // each block's kind and text, `[note]` when its source says more than its render, and
@@ -389,8 +389,15 @@ function describe(file) {
     return `${chosen}${chip.disabled ? "-" : ""}${chip.textContent}`;
   });
   const shows = !file.rendered.hidden ? "rendered" : !file.source.hidden ? "source" : "nothing";
+  // A file with no chooser has no progress mark either, and its bar drops the layout that
+  // makes room for the chooser.
+  const chooserless =
+    file.control.hidden &&
+    file.progress.hidden &&
+    !file.bar.classList.contains("diff-file-bar-markdown");
+  assert(chooserless === file.control.hidden, `${file.name}: the chooser and its bar disagree`);
   return {
-    chooser: chips.join(" | "),
+    chooser: file.control.hidden ? "none" : chips.join(" | "),
     shows,
     ...(file.progress.classList.contains("mb-delayed-loading") ? { progress: "counting" } : {}),
     ...(file.fallback.textContent ? { message: file.fallback.textContent } : {}),
@@ -482,18 +489,20 @@ async function main() {
   const files = supported.map((entry) => {
     const section = element("section");
     const bar = element("div");
-    bar.append(element("button"));
+    const toggle = element("button");
+    bar.append(toggle);
     const source = element("div");
     source.id = `diff-file-${entry.id}`;
     section.append(bar, source);
     root.append(section);
-    const state = views.add({ section, bar, source, id: entry.id });
+    const state = views.add({ section, bar, toggle, source, id: entry.id });
     const [, control, progress] = bar.childNodes;
     const [, fallback, rendered] = section.childNodes;
     return {
       name: `${entry.id} ${(entry.new ?? entry.old).path}`,
       id: entry.id,
       section,
+      bar,
       source,
       control,
       progress,
@@ -537,7 +546,7 @@ async function main() {
 
   answer("f2");
   await settle();
-  step("an unsupported file stays in Source and cannot choose Rendered", files);
+  step("an unsupported file stays in Source and has no chooser", files);
 
   near("f3");
   await settle();
