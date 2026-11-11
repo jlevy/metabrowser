@@ -2,7 +2,8 @@
 // Usage: review-sheet SPEC OUT.png, where SPEC has one command per line (top-left origin):
 //   canvas W H #RRGGBB
 //   rect X Y W H #RRGGBB
-//   image PATH X Y [W H [nearest]]
+//   image PATH X Y [W H [nearest|smooth [SX SY SW SH]]]   (SX..SH crop the source, in its pixels)
+//   line X0 Y0 X1 Y1 WIDTH #RRGGBB
 //   text X Y SIZE #RRGGBB [bold] CAPTION...
 import AppKit
 import CoreText
@@ -40,10 +41,17 @@ for line in lines where !line.trimmingCharacters(in: .whitespaces).isEmpty {
         context!.fill(CGRect(x: n(1), y: CGFloat(height) - n(2) - n(4), width: n(3), height: n(4)))
     case "image":
         let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: parts[1]) as CFURL, nil)!
-        let image = CGImageSourceCreateImageAtIndex(source, 0, nil)!
+        var image = CGImageSourceCreateImageAtIndex(source, 0, nil)!
+        if parts.count > 10 {
+            image = image.cropping(to: CGRect(x: n(7), y: n(8), width: n(9), height: n(10)))!
+        }
         let w = parts.count > 5 ? n(4) : CGFloat(image.width), h = parts.count > 5 ? n(5) : CGFloat(image.height)
         context!.interpolationQuality = parts.count > 6 && parts[6] == "nearest" ? .none : .high
         context!.draw(image, in: CGRect(x: n(2), y: CGFloat(height) - n(3) - h, width: w, height: h))
+    case "line":
+        context!.setStrokeColor(color(parts[6]))
+        context!.setLineWidth(n(5))
+        context!.strokeLineSegments(between: [CGPoint(x: n(1), y: CGFloat(height) - n(2)), CGPoint(x: n(3), y: CGFloat(height) - n(4))])
     case "text":
         let bold = parts[5] == "bold"
         let caption = parts[(bold ? 6 : 5)...].joined(separator: " ")

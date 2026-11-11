@@ -1,13 +1,13 @@
 # Metabrowser App Icon
 
 **Status:** Draft under review.
-The release and development masters use the `touch` junction; the alternatives and the
-small sizes wait on review.
+Both masters use the `gap` junction and the citrine and amethyst fills; the small sizes
+wait on review.
 
 The icon is an MB mark on the sister app’s v6 icon: the same squircle, rim, panel,
-sheen, border, and pressed-in letter shadow, with a partial M in a light shade of
-Metabrowser’s JavaScript color and a B in a light shade of its Markdown color.
-The partial M and the B’s stem read together as an M.
+sheen, border, and pressed-in letter shadow, with a partial M in a gem tone of
+Metabrowser’s JavaScript color and a B in a gem tone of its Markdown color.
+The partial M stops one glyph gap short of the B, whose stem completes the M.
 
 ## Files
 
@@ -37,8 +37,8 @@ rewrite both masters in place:
 
 ```shell
 swiftc -O AppIcon/make-glyphs.swift -o /tmp/make-glyphs
-/tmp/make-glyphs AppIcon/metabrowser-icon.svg AppIcon/metabrowser-icon.svg touch
-/tmp/make-glyphs AppIcon/metabrowser-icon-dev.svg AppIcon/metabrowser-icon-dev.svg touch
+/tmp/make-glyphs AppIcon/metabrowser-icon.svg AppIcon/metabrowser-icon.svg gap
+/tmp/make-glyphs AppIcon/metabrowser-icon-dev.svg AppIcon/metabrowser-icon-dev.svg gap
 ```
 
 ## The Base
@@ -87,21 +87,31 @@ Font License 1.1, and the font itself is not used or shipped.
 
 The partial M is drawn: a stem, and two diagonal bands between parallel edges, cut flat
 on the cap line and on the vertex line.
-The `junction` argument of `make-glyphs.swift` chooses how the second diagonal meets the
-B’s stem:
+The first diagonal leaves the stem’s top-right corner, so the stem stays a clean
+rectangle.
+The `junction` argument of `make-glyphs.swift` chooses how the second diagonal
+meets the B’s stem:
 
-- **touch** (in the masters): its upper edge ends on the stem’s top-left corner, and the
-  first diagonal leaves the first stem’s top-right corner the same way, so both stems
-  stay clean rectangles.
-  The mark is 218 units wide, against the sister app’s 222.
-- **overlap**: it runs into the stem as in the font’s M, whose stem tops are 70% of the
-  stem width.
-- **gap**: it stops short with a flat terminal, the sister app’s 21.4-unit glyph gap
-  from the stem. It reads as a V beside a B rather than as an M.
+- **gap** (in the masters): a vertical cut ends it where the first stem’s outer edge
+  falls when mirrored on the M’s axis.
+  Its top is then a flat cut one stem wide that meets an 8.137-unit vertical face at a
+  right angle, and the partial M is symmetric about its axis but for the missing stem.
+  The B’s stem follows 21.437 units beyond the face.
+  The mark is 271 units wide, against the sister app’s 222.
+- **touch**: its upper edge ends on the B stem’s top-left corner, so the B’s stem joins
+  the M; the mark is 218 units wide.
+- **overlap**: it runs into the B’s stem as in the font’s M, whose stem tops are 70% of
+  the stem width; the mark is 199 units wide.
 
-The partial M is drawn first and runs 2 units under the B’s stem, so their shared edge
-has no antialiasing seam, and the inner shadow, a filter on the pair, treats them as one
-shape.
+The gap is the sister app’s least distance between its glyphs, from the ❯’s tip to the
+K’s stem, so the vertical face sits as close to the B as that tip does to the K.
+Optically the two gaps are close too: capping clearance at twice the gap, the mean
+clearance over the cap height is 39.3 units here and 38.1 in the sister app, whose tip
+leaves open space above and below it where the face leaves it only below.
+
+In the `touch` and `overlap` junctions the partial M runs 2 units under the B’s stem, so
+their shared edge has no antialiasing seam.
+In every junction the inner shadow, a filter on the pair, treats them as one shape.
 
 ## Colors
 
@@ -112,17 +122,27 @@ dark.
 The Markdown family (hue 276.0) paints oklch(50% 0.1856 276), #4C50CA, and #717DE5.
 
 The sister app’s fills are #84FA9F, oklch(89.36% 0.1651 149.47), at 84% of the chroma
-sRGB holds there, and #FF9AF7, oklch(82.00% 0.1657 329.84), at 100%. Each Metabrowser
-glyph takes its family’s hue and the lightness and gamut-relative chroma of the sister
-glyph in the same role:
+sRGB holds there, and #FF9AF7, oklch(82.00% 0.1657 329.84), at 100%. Their radiance, a
+gem tone, comes from that high lightness and chroma near the limit.
 
-| Glyph | Role | Fill | Oklch |
-| --- | --- | --- | --- |
-| Partial M | The ❯ | #F1DF53 | 89.36% 0.1569 102.08 |
-| B | The K | #B4C0FF | 82.00% 0.0904 276.00 |
+At the sister app’s lightness the file overview’s own hues fail: hue 102 turns lemon,
+#F1DF53, and hue 276 can reach only 0.090 chroma, a pale periwinkle, #B4C0FF. So each
+glyph keeps its family but moves its hue to where sRGB holds the color as a gem, and
+takes the gamut-relative chroma of the sister glyph in the same role:
 
-sRGB holds only 0.090 chroma at hue 276 and 82% lightness, so the B is paler than the
-sister app’s K.
+| Glyph | Role | Fill | Oklch | Relative chroma |
+| --- | --- | --- | --- | --- |
+| Partial M | The ❯ | #ECC44B, citrine | 83.38% 0.1428 90.40 | 0.84 |
+| B | The K | #C896FF, amethyst | 76.03% 0.1539 304.96 | 1.00 |
+
+The yellow moves 11.7° from the JavaScript hue toward amber, which keeps its brownish,
+golden warmth, and the purple moves 29° from the Markdown hue toward violet, where sRGB
+holds a saturated purple.
+Both sit 0.06 below the sister glyphs’ lightness: at the sister app’s own lightness
+these hues reach only 0.114 chroma and read as pastel, #F9D980 and #D5B1FF, while one
+step deeper they reach 0.143 and 0.154, near the sister app’s 0.165. The two keep the
+sister pair’s lightness difference, 0.074, so they balance as its green and pink do.
+The review’s color sheet shows all three pairs.
 
 ## The Renderer
 

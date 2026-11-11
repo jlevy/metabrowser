@@ -10,13 +10,19 @@
 //     stem weight, measured perpendicular), the M's diagonal angle, the M's crotch and vertex
 //     heights, flat cuts on the cap line, the baseline, and the vertex line.
 //
-// Usage: make-glyphs TEMPLATE.svg OUT.svg JUNCTION [GUIDES.svg]
+// Usage: make-glyphs TEMPLATE.svg OUT.svg JUNCTION [--guides GUIDES.svg] [--fills FIRST,B] [--dims DIMS]
 //   JUNCTION is how the M's second diagonal meets the B's stem:
-//     touch    its upper edge ends on the stem's top-left corner (the stem stays a clean
-//              rectangle; the first stem gets the same corner join)
+//     gap      (the masters) it stops short of the stem: a vertical cut ends it where the
+//              first stem's outer edge falls when mirrored on the M's axis, so its top is a
+//              flat cut one stem wide meeting a vertical face at a right angle; then the
+//              sister app's glyph gap; then the B's stem
+//     touch    its upper edge ends on the stem's top-left corner
 //     overlap  it runs into the stem as in the font's M (its upper edge reaches the cap line
 //              inside the stem)
-//     gap      it stops short with a flat top terminal, the sister app's glyph gap from the stem
+//   In gap and touch the first diagonal leaves the first stem's top-right corner, so the
+//   stem stays a clean rectangle; in overlap it leaves the cap line inside the stem.
+//   --fills overrides the two fill colors, for comparing colors; --dims writes the
+//   construction's dimensions as shell assignments, for annotating review images.
 import CoreGraphics
 import Foundation
 
@@ -36,7 +42,10 @@ let gapPx = 252.801 - 231.364  // px: the sister app's gap from its first glyph'
 // The sister app's glyph pair, measured from its v6 outlines: area centroid x in the 512 frame.
 // The new pair is placed with its centroid on the same x, so both marks balance alike.
 let targetCentroidX = 262.598
-let fills = (first: "#F1DF53", b: "#B4C0FF")  // see README: Metabrowser's JavaScript and Markdown hues
+// Gem tones in the file overview's JavaScript and Markdown hue families (see README): citrine,
+// oklch(83.38% 0.1428 90.40), and amethyst, oklch(76.03% 0.1539 304.96), each at the relative
+// chroma of the sister app's glyph in the same role and 0.06 below its lightness.
+let defaultFills = (first: "#ECC44B", b: "#C896FF")
 
 // Reddit Mono Bold (wght 700) "B", font units, y up. Copyright 2020-23 Reddit, Inc.,
 // SIL Open Font License 1.1. Only these outline coordinates are used; the font is not.
@@ -99,15 +108,20 @@ func construct(x0: Double, junction: String) -> Glyphs {
     let top = y(capHeight)
     let cosTheta = 1 / (1 + tanTheta * tanTheta).squareRoot()
     let hw = px(diagonal) / cosTheta  // horizontal width of a diagonal
-    let a = junction == "touch" ? w : px(stem) * topFlat  // where the first diagonal's upper edge leaves the cap line
+    let a = junction == "overlap" ? px(stem) * topFlat : w  // where the first diagonal's upper edge leaves the cap line
     let crotchY = y(crotchHeight), vertexY = y(vertexHeight)
     let start = x0 + a
     let xm = start + (crotchY - top) * tanTheta  // the crotch, on the M's axis
     let xB: Double  // the B's stem left edge
+    var clipRight: Double  // the partial M's right limit
     switch junction {
-    case "touch", "overlap": xB = 2 * xm - x0 - w  // the B's stem mirrors the first stem
-    case "gap": xB = 2 * xm - (start - hw) + gapPx  // the second diagonal's top terminal, then the gap
-    default: fatalError("junction must be touch, overlap, or gap")
+    case "touch", "overlap":
+        xB = 2 * xm - x0 - w  // the B's stem mirrors the first stem
+        clipRight = xB + 2  // hidden under the B's stem, so no antialiasing seam
+    case "gap":
+        clipRight = 2 * xm - x0  // the vertical face: the first stem's outer edge, mirrored
+        xB = clipRight + gapPx
+    default: fatalError("junction must be gap, touch, or overlap")
     }
 
     // Each diagonal is a band between parallel edges, cut later by the cap and vertex lines.
@@ -118,7 +132,6 @@ func construct(x0: Double, junction: String) -> Glyphs {
     // The bands cross at the crotch and would go on as an X; each ends at the other's outer
     // edge, so the V is also bounded by the wedge over the point where the outer edges meet.
     let wedge = polygon([(upper(y0) - hw, y0), (2 * xm - upper(y0) + hw, y0), (xm, crotchY + hw / tanTheta)])
-    let clipRight = junction == "gap" ? 10_000 : xB + 2  // hidden under the B's stem, so no antialiasing seam
     let vee = left.union(right, using: .winding)
         .intersection(wedge, using: .winding)
         .intersection(rect(x0, top, clipRight, vertexY), using: .winding)
@@ -127,6 +140,8 @@ func construct(x0: Double, junction: String) -> Glyphs {
     return Glyphs(first: first, b: bPath(origin: bOrigin), bOrigin: bOrigin, guides: [
         "x0": x0, "stemRight": x0 + w, "xm": xm, "xB": xB, "xBRight": xB + w, "top": top, "baseline": baseline,
         "crotchY": crotchY, "vertexY": vertexY, "start": start, "hw": hw, "w": w, "tanTheta": tanTheta,
+        "rightEdge": min(clipRight, xB),
+        "faceBottom": junction == "gap" ? top + (hw - w) / tanTheta : top,
     ])
 }
 
@@ -191,7 +206,7 @@ func polygonPath(_ path: CGPath) -> String {
             for i in 0..<p.count {
                 let a = p[(i + p.count - 1) % p.count], b = p[i], c = p[(i + 1) % p.count]
                 let cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)
-                if hypot(b.x - a.x, b.y - a.y) < 1e-4 || abs(cross) < 1e-6 {
+                if hypot(b.x - a.x, b.y - a.y) < 1e-4 || abs(cross) < 1e-6 * hypot(b.x - a.x, b.y - a.y) * hypot(c.x - b.x, c.y - b.y) {
                     p.remove(at: i)
                     changed = true
                     break
@@ -210,12 +225,28 @@ func polygonPath(_ path: CGPath) -> String {
 
 // MARK: - Output
 
-let arguments = CommandLine.arguments
-guard arguments.count == 4 || arguments.count == 5 else {
-    FileHandle.standardError.write(Data("usage: make-glyphs TEMPLATE.svg OUT.svg touch|overlap|gap [GUIDES.svg]\n".utf8))
+var arguments = Array(CommandLine.arguments.dropFirst())
+var guidesPath: String?
+var dimsPath: String?
+var fills = defaultFills
+while let flag = arguments.firstIndex(where: { $0.hasPrefix("--") }), flag + 1 < arguments.count {
+    let value = arguments[flag + 1]
+    switch arguments[flag] {
+    case "--guides": guidesPath = value
+    case "--dims": dimsPath = value
+    case "--fills":
+        let pair = value.split(separator: ",").map(String.init)
+        guard pair.count == 2 else { fatalError("--fills takes FIRST,B") }
+        fills = (first: pair[0], b: pair[1])
+    default: fatalError("unknown option \(arguments[flag])")
+    }
+    arguments.removeSubrange(flag...(flag + 1))
+}
+guard arguments.count == 3 else {
+    FileHandle.standardError.write(Data("usage: make-glyphs TEMPLATE.svg OUT.svg gap|touch|overlap [--guides GUIDES.svg] [--fills FIRST,B]\n".utf8))
     exit(2)
 }
-let junction = arguments[3]
+let junction = arguments[2]
 let trial = construct(x0: 0, junction: junction)
 let firstVisible = junction == "gap" ? trial.first
     : trial.first.intersection(rect(-1000, 0, trial.guides["xB"]!, 512), using: .winding)
@@ -224,12 +255,12 @@ let glyphs = construct(x0: shift, junction: junction)
 let g = glyphs.guides
 
 let bounds = glyphs.first.boundingBoxOfPath.union(glyphs.b.boundingBoxOfPath)
-var svg = try String(contentsOfFile: arguments[1], encoding: .utf8)
+var svg = try String(contentsOfFile: arguments[0], encoding: .utf8)
 // The glyph group is the one <g> whose filter is the inner shadow (Figma names it filter1_i_*).
 let groupPattern = try NSRegularExpression(pattern: #"(<g filter="url\(#(filter1_i_[^)"]+)\)">\n)(.*?)(\n</g>)"#, options: [.dotMatchesLineSeparators])
 guard let match = groupPattern.firstMatch(in: svg, range: NSRange(svg.startIndex..., in: svg)),
       let idRange = Range(match.range(at: 2), in: svg) else {
-    FileHandle.standardError.write(Data("make-glyphs: no glyph group in \(arguments[1])\n".utf8))
+    FileHandle.standardError.write(Data("make-glyphs: no glyph group in \(arguments[0])\n".utf8))
     exit(1)
 }
 let filterID = String(svg[idRange])
@@ -249,18 +280,18 @@ guard filterPattern.firstMatch(in: svg, range: NSRange(svg.startIndex..., in: sv
     FileHandle.standardError.write(Data("make-glyphs: no filter #\(filterID)\n".utf8))
     exit(1)
 }
-try replaced.write(toFile: arguments[2], atomically: true, encoding: .utf8)
+try replaced.write(toFile: arguments[1], atomically: true, encoding: .utf8)
 
 // Construction guides: cap line, baseline, crotch and vertex lines, stem edges, the M's axis,
 // and both diagonals' edges extended.
-if arguments.count == 5 {
+if let guidesPath {
     let top = g["top"]!, base = g["baseline"]!, hw = g["hw"]!, start = g["start"]!, xm = g["xm"]!
     func line(_ x0: Double, _ y0: Double, _ x1: Double, _ y1: Double, _ color: String) -> String {
         #"<path d="M\#(f3(x0)) \#(f3(y0))L\#(f3(x1)) \#(f3(y1))" stroke="\#(color)" stroke-width="0.6"/>"#
     }
     var lines: [String] = []
     for key in ["top", "baseline", "crotchY", "vertexY"] { lines.append(line(110, g[key]!, 402, g[key]!, "#00D8FF")) }
-    for key in ["x0", "stemRight", "xB", "xBRight"] { lines.append(line(g[key]!, 140, g[key]!, 372, "#00D8FF")) }
+    for key in ["x0", "stemRight", "rightEdge", "xB", "xBRight"] { lines.append(line(g[key]!, 140, g[key]!, 372, "#00D8FF")) }
     lines.append(line(xm, 140, xm, 372, "#FF5C8A"))
     let ya = top - 40, yb = base + 20
     for offset in [0.0, -hw] {
@@ -274,13 +305,19 @@ if arguments.count == 5 {
     </svg>
 
     """
-    try guides.write(toFile: arguments[4], atomically: true, encoding: .utf8)
+    try guides.write(toFile: guidesPath, atomically: true, encoding: .utf8)
+}
+
+if let dimsPath {
+    let lines = g.keys.sorted().map { "\($0)=\(f3(g[$0]!))" } + ["gap=\(f3(g["xB"]! - g["rightEdge"]!))"]
+    try (lines.joined(separator: "\n") + "\n").write(toFile: dimsPath, atomically: true, encoding: .utf8)
 }
 
 print(String(format: """
 junction %@: stem %.3f px, diagonal %.3f px (horizontal %.3f), angle %.2f deg, cap %.3f, baseline %.3f, \
-crotch %.3f, vertex %.3f, first stem x %.3f-%.3f, axis %.3f, B stem x %.3f-%.3f, B origin %.3f, \
-ink x %.3f-%.3f (center %.3f), centroid placed at %.3f
+crotch %.3f, vertex %.3f, first stem x %.3f-%.3f, axis %.3f, right face x %.3f (y %.3f-%.3f), \
+B stem x %.3f-%.3f, gap %.3f, B origin %.3f, ink x %.3f-%.3f (center %.3f), centroid placed at %.3f
 """, junction, g["w"]!, px(diagonal), g["hw"]!, atan(tanTheta) * 180 / .pi, g["top"]!, g["baseline"]!,
-      g["crotchY"]!, g["vertexY"]!, g["x0"]!, g["stemRight"]!, g["xm"]!, g["xB"]!, g["xBRight"]!, glyphs.bOrigin,
-      bounds.minX, bounds.maxX, bounds.midX, targetCentroidX))
+      g["crotchY"]!, g["vertexY"]!, g["x0"]!, g["stemRight"]!, g["xm"]!, g["rightEdge"]!, g["top"]!, g["faceBottom"]!,
+      g["xB"]!, g["xBRight"]!, g["xB"]! - g["rightEdge"]!, glyphs.bOrigin, bounds.minX, bounds.maxX, bounds.midX,
+      targetCentroidX))
