@@ -333,7 +333,8 @@ no blocks. Refusals have their own codes: `invalid_rendered_diff` (400),
 `snapshot_expired` (410), `snapshot_unavailable` and `rendered_objects_unavailable`
 (409), and `rendered_diff_busy` (429) past four loads waiting for its one projection at
 a time. Projections run in one child process once it is ready
-(`diff/markdown_projection_worker.py`) and the answers of the last 32 files are kept.
+(`diff/markdown_projection_worker.py`), which stops after ten idle minutes, and the
+answers of the last 32 files are kept.
 The page loads `diff-markdown.js` beside the comparison and falls back to the source
 diff when a projection is unsupported or over budget.
 The envelope’s `snapshot_route` names `GET github/pull-snapshot` for the same endpoints
