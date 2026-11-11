@@ -26,8 +26,8 @@ build="$(build_number)"
 identity="${SIGN_IDENTITY:--}"
 executable="Metabrowser"  # the SwiftPM product, and CFBundleExecutable in both variants
 arches="${ARCHES:-arm64}"
-if [[ "$variant" == release && "$identity" != "-" && "${ICON:-1}" != 0 && ! -f "$icon_source" ]]; then
-  die "$icon_source does not exist, and a signed release build carries the published icon"
+if [[ "${ICON:-1}" != 0 && ! -f "$icon_source" ]]; then
+  die "$icon_source does not exist; scripts/build-icon.sh builds it"
 fi
 
 slices=()
@@ -51,25 +51,8 @@ plutil -replace CFBundleVersion -string "$build" "$plist"
 [[ -z "$scheme_suffix" ]] || suffix_url_schemes "$plist" "$scheme_suffix" "$bundle_id"
 printf 'APPL????' >"$app/Contents/PkgInfo"
 
-# The variant's icon: the canary icon for dev, the published icon for release. Until
-# Resources has one, the icon scripts/generate-icon.swift draws, which a signed release
-# build was refused above for lacking.
-if [[ "${ICON:-1}" != 0 ]]; then
-  icns="$icon_source"
-  if [[ ! -f "$icns" ]]; then
-    icns="build/AppIcon.icns"
-    if [[ ! -f "$icns" || scripts/generate-icon.swift -nt "$icns" ]]; then
-      rm -rf build/AppIcon.iconset
-      if ! { swift scripts/generate-icon.swift build/AppIcon.iconset &&
-        iconutil -c icns build/AppIcon.iconset -o "$icns"; }; then
-        echo "warning: icon generation failed; the app keeps the generic icon" >&2
-        rm -f "$icns"
-      fi
-    fi
-    note "$icon_source does not exist yet; using the generated icon"
-  fi
-  [[ -f "$icns" ]] && cp "$icns" "$app/Contents/Resources/AppIcon.icns"
-fi
+# The variant's icon: the canary icon for dev, the published icon for release.
+[[ "${ICON:-1}" == 0 ]] || cp "$icon_source" "$app/Contents/Resources/AppIcon.icns"
 
 plutil -lint "$plist"
 

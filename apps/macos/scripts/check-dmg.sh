@@ -78,9 +78,9 @@ if codesign -d --entitlements - --xml "$app" 2>/dev/null | grep -q '<key>'; then
   die "$name has entitlements"
 fi
 
-# The canary icon marks development builds and never ships in a release, and an
-# official release (Developer ID signed, or NOTARIZE=1) carries the published icon. The
-# icons compared are this checkout's, so check an image from the commit that built it.
+# The canary icon marks development builds and never ships in a release, and a release
+# carries the published icon. The icons compared are this checkout's, so check an image
+# from the commit that built it.
 icon="$app/Contents/Resources/AppIcon.icns"
 cmp -s "$icon" "$mounted/.VolumeIcon.icns" || die "the volume icon is not the app's icon"
 shipped_id="$(plutil -extract CFBundleIdentifier raw -o - "$plist")"
@@ -88,29 +88,21 @@ shipped_variant="$(variant_of_bundle_id "$shipped_id")"
 [[ -n "$shipped_variant" ]] || die "$name has the bundle identifier $shipped_id, which is neither variant's"
 published_icon="$(icon_of_variant release)"
 canary_icon="$(icon_of_variant dev)"
+for expected_icon in "$published_icon" "$canary_icon"; do
+  [[ -f "$expected_icon" ]] || die "$expected_icon does not exist; scripts/build-icon.sh builds it"
+done
 if [[ "$shipped_variant" == release ]]; then
-  if [[ -f "$canary_icon" ]] && cmp -s "$icon" "$canary_icon"; then
+  if cmp -s "$icon" "$canary_icon"; then
     die "$name is a release build with the canary icon ($canary_icon)"
   fi
-  if [[ -f "$published_icon" ]]; then
-    cmp -s "$icon" "$published_icon" || die "$name is a release build without the published icon ($published_icon)"
-    ok "$name has the published icon"
-  elif ((require_tickets)) || is_developer_id_signed "$app"; then
-    die "$published_icon does not exist, and an official release carries the published icon"
-  else
-    note "$published_icon does not exist yet, so $name has the generated icon"
-  fi
+  cmp -s "$icon" "$published_icon" || die "$name is a release build without the published icon ($published_icon)"
+  ok "$name has the published icon"
 else
-  if [[ -f "$published_icon" ]] && ! cmp -s "$published_icon" "$canary_icon" &&
-    cmp -s "$icon" "$published_icon"; then
+  if cmp -s "$icon" "$published_icon"; then
     die "$name is a development build with the published icon"
   fi
-  if [[ -f "$canary_icon" ]]; then
-    cmp -s "$icon" "$canary_icon" || die "$name is a development build without the canary icon ($canary_icon)"
-    ok "$name has the canary icon"
-  else
-    note "$canary_icon does not exist yet, so $name has the generated icon"
-  fi
+  cmp -s "$icon" "$canary_icon" || die "$name is a development build without the canary icon ($canary_icon)"
+  ok "$name has the canary icon"
 fi
 
 if is_developer_id_signed "$app"; then

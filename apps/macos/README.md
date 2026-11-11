@@ -90,14 +90,13 @@ official releases.**
 - **The canary icon never ships in a release**: `scripts/check-dmg.sh` refuses a release
   image that holds the canary icon or lacks the published one, and a development image
   that holds the published icon.
-  `scripts/build-app.sh` refuses to sign a release build with a Developer ID when the
-  published icon is missing.
+  `scripts/build-app.sh` stops when the variant’s icon is missing from `Resources/`.
 
 A separate identity is what lets a development build run beside an installed release:
 two copies with one bundle identifier share user defaults, privacy grants, and
 LaunchServices registration, and a URL scheme claimed twice has no defined target.
-Until the icon files exist, both variants use the icon `scripts/generate-icon.swift`
-draws, which no official build may ship.
+`scripts/build-icon.sh` regenerates both icons from the masters in `AppIcon/`; see
+[AppIcon/README.md](AppIcon/README.md).
 
 To run the tests against a real server too:
 
@@ -262,7 +261,6 @@ Do not hand one out as a release.
 | `VERSION` | The app’s version, set nowhere else. |
 | `scripts/build-app.sh`, `scripts/common.sh` | The bundle script, and the variants and helpers every script shares. |
 | `scripts/release.sh`, `notarize.sh`, `make-dmg.sh`, `check-dmg.sh` | The release pipeline and its steps. |
-| `scripts/generate-icon.swift` | The stand-in icon, until the icon files exist. |
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release. |
 
 `ShellCore` holds everything that can be tested without a window; it imports no AppKit
@@ -473,7 +471,7 @@ Each gap points to the part of the brief that closes it.
 | **Privacy-safe I/O** | Usage descriptions are declared; a protected folder prompts in the app’s name with no in-app guidance. | Layering item 6; macOS Platform Rules |
 | **Settings served by Metabrowser** | A native Settings window. | Layering item 7 |
 | **App-managed runtime** | None: a CLI install is required. | Recommendation 5.2; Wrapping uv |
-| **First real release** | The release pipeline has run only with an ad hoc signature; no Developer ID build has been notarized, and the published and canary icons are not yet committed. | Recommendation 6 |
+| **First real release** | The release pipeline has run only with an ad hoc signature; no Developer ID build has been notarized. | Recommendation 6 |
 | **Updates** | None: `brew upgrade --cask`, no in-app notice, no Sparkle, and no refusal of translocated launches. | Recommendation 6; Updates |
 | **DMG window layout** | Finder places the two icons itself. A fixed layout needs a `.DS_Store` in the image, which Apple’s tools cannot write; Finder scripting needs a GUI session and an Automation grant, so it is not reproducible in CI. | Recommendation 6 |
 | **Variant gaps in the app** | Both variants write server logs to `~/Library/Logs/Metabrowser/`, so they share a folder’s log if both serve it, and the menu items say “Metabrowser” in the dev build. | Not in the brief (`mb-9xl0`) |
