@@ -41,6 +41,16 @@ struct LiveMetabTests {
         }
         let (_, response) = try await URLSession.shared.data(from: endpoint.entryURL)
         #expect((response as? HTTPURLResponse)?.statusCode == 200)
+        // The route, or, from a metab older than it, a 404 that leaves the fallback.
+        switch await IdentityClient.fetch(origin: endpoint.origin, authorization: launch.authorization(for: endpoint)) {
+        case .identity(let identity):
+            #expect(identity.shortName == root.lastPathComponent)
+            #expect(identity.kind == .folder)
+        case .missingRoute:
+            break
+        case .failed(let reason):
+            Issue.record("/api/identity failed: \(reason)")
+        }
         let pid = try #require(subject.pid)
         await subject.stop()
         #expect(subject.state == .stopped)
