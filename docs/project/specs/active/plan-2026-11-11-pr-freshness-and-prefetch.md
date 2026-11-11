@@ -1,9 +1,10 @@
 # Plan for Event-Based Pull-Request Freshness and Budgeted Prefetch
 
-**Status.** Draft. This is the second pull request of the spinner-free refresh stack
-(epic `mb-c93s`, bead `mb-wlx0`), based on the presentation pull request (`mb-wl9x`,
-branch `claude/pr-refresh-without-spinners`). One GraphQL query per record refresh is a
-later, separate change (`mb-xhtc`) and is out of scope.
+**Status.** Implemented in draft pull request #355, revised for its first reviews (A and
+B); not merged. This is the second pull request of the spinner-free refresh stack (epic
+`mb-c93s`, bead `mb-wlx0`), based on the presentation pull request (`mb-wl9x`, branch
+`claude/pr-refresh-without-spinners`). One GraphQL query per record refresh is a later,
+separate change (`mb-xhtc`) and is out of scope.
 
 ## Reader Behavior
 
@@ -75,35 +76,60 @@ A record is checked against the catalog row of its number, read with the catalog
 checkpoint in one SQLite transaction.
 The catalog is usable only when its `source` and `reader` equal the record’s.
 
-| Catalog | Row | Result | `verified_by` | `verified_at` |
+| Catalog | Row and record | Result | `verified_by` | `verified_at` |
 | --- | --- | --- | --- | --- |
-| usable, any age | `updated_at` newer than the record’s `pull.updated_at` | `stale`: changed on GitHub; `head_moved` when the row’s `head_oid` differs from the record’s head | `fetch` | the record’s `fetched_at` |
-| usable, scan within the window or the next one running | not newer, and no pending checks | `current` | `catalog` | the newer of the scan’s `fetched_at` and the record’s |
+| usable, any age | row’s `updated_at` newer than the record’s `pull.updated_at`, or equal with another `head_oid` | `stale`, *changed*: `head_moved` when the row’s `head_oid` differs from the record’s head | `fetch` | the record’s `fetched_at` |
+| usable, scan within the window, or the next one running and the last within the window and `SCAN_GRACE_S` | not changed; the pull request closed, or the record read within the window | `current` | `catalog` | the newer of the scan’s `fetched_at` and the record’s |
+| the same | not changed; an open pull request read longer ago than the window | `stale`, *checks*: its checks are read on their own | `catalog` | the same |
 | otherwise | — | the 60-second clock, as before | `fetch` | the record’s `fetched_at` |
 
 A record written with no store stays stale on a server that has one, as before.
 
-**Checks keep their own age.** `updated_at` does not move when a check run, a commit
-status, or `mergeable` changes.
-An open pull request whose record has a check run not `completed`, a combined status
-`pending` with contexts, or `mergeable: unknown` has `checks_pending: true`, and the
-catalog does not vouch for it: it ages by its own fetch, so a visible page refreshes it
-once a window, with ETags, until its checks settle.
-Its age is `fetched_at`, which the page shows as such.
+A second’s tie with another head is a change: `updated_at` has whole seconds, and a push
+within the second the record was read leaves the times equal.
+
+**A running scan vouches for a bounded time.** The page asks for the next scan before
+its read, so the read usually lands while that scan runs.
+The last scan then still vouches, but only for `SCAN_GRACE_S`, 15 s, past the window: a
+delta scan with nothing new is one account check and one GraphQL page, about 1 s, and it
+can wait for a network slot behind a record refresh, 4.7 to 7.0 s; 15 s is twice the
+slowest.
+An older catalog is unverified whatever runs, so a page reopened on it is judged
+by the clock and refreshes a stale record at once, as before.
+While the scan runs, a catalog verdict’s `x-metabrowser-verified` header ends in
+` scanning`, and the page polls fast until it ends, so a change that scan publishes is
+refreshed within a fast poll, not a slow one.
+
+**Checks are read on their own.** `updated_at` does not move when a check run, a commit
+status, or `mergeable` changes: CI that registers after the record was read, a re-run of
+settled checks, a conflict a moved base made.
+So the catalog vouches for an open pull request’s conversation and head, never for its
+checks: an open record read longer ago than the window is *checks*, `stale`, and its
+automatic refresh reads them on their own (T5). That refresh asks for the pull, its
+check runs, and its status, each with its ETag, and keeps the comments, reviews, and
+review comments, while the pull names the cached head, base, and `updated_at`, which
+those parts move; a mirror then keeps its comparison and fetches nothing.
+A pull that moved takes the full read.
+`checks_pending` reports checks still settling, for the page to say: a check run not
+`completed`, a combined status `pending` with contexts, `mergeable: unknown`, or no
+check run and no status in a record read within `NO_CHECKS_GRACE_S`, five minutes, of
+the pull request’s last update, since its CI may not have registered.
+It decides no verdict, since an open record past the window is read again anyway.
 
 **When the automatic refresh is due.** A request that is not a reader’s own action
 refreshes a record that is:
 
-- *changed*: due when no attempt was made since the catalog publication that showed the
-  change (the checkpoint’s `count_at`), and otherwise once a window; a rate-limit hold
-  still holds. So a pushed head is refreshed at once, and a REST answer that lags the
-  catalog cannot loop.
+- *changed*: due when no attempt was made for the row that reported the change, its
+  `updated_at` and head, and otherwise once a window; a rate-limit hold still holds.
+  So a pushed head is refreshed at once, and a REST answer that lags the catalog is
+  asked for again once a window, however many pages later scans publish.
+- *checks*: due once a window, the checks-only refresh.
 - *current*: not due.
 - *unverified*: the existing clock and attempt-window rules.
 
-`ServedPull` keeps the newest verdict the routes computed (`verified_at`, the change’s
-publication time), so the attended pull request’s share of a mirror’s `stale` follows
-the same rule from memory.
+`ServedPull` keeps the newest verdict the routes computed (`verified_at`, the changed
+row, and whether only checks are due), so the attended pull request’s share of a
+mirror’s `stale` follows the same rule from memory.
 
 **Head moved.** A changed record whose catalog head differs is `stale` with
 `head_moved: true`, and its refresh is due at once.
@@ -136,15 +162,20 @@ Nothing on the server starts background work by itself.
 | --- | --- | --- | --- | --- | --- |
 | T0 | Catalog delta scan | the Pulls panel on start, show, visibility, focus, online, page show, and at `fetched_at` + 60 s; a PR page whose record the catalog vouched for, when that check is a window old, before it reads | the window passed | one per window: at most 60 an hour | 1 account check, plus 1 GraphQL point per page |
 | T1 | Changed records this server recently served | the panel, after a scan publishes | catalog says changed | shares T2’s caps | at most 8 |
-| T2 | The anchored row, its J/K neighbours, the top open PRs, the visible rows | the panel, after a walk settles | missing, or changed | 8 per catalog revision, 40 an hour, T1 and T2 together | at most 8 |
+| T2 | The anchored row, its J/K neighbours, the top open PRs, the visible rows | the panel, after a walk settles | missing, or changed | 8 per catalog publication, 40 an hour, T1 and T2 together | at most 8 |
 | T3 | Changed-files lists of the selected row and its neighbours | the panel, with T1 and T2 | missing, incomplete, or head or base moved | 20 an hour | 1 account check, then a page and an account check per page: 3 for one page |
 | T4 | Changes | the existing idle prefetch only | — | — | — |
-| T5 | Pending checks | the visible PR page | the record’s own window | foreground: visible page only | at most 8 |
+| T5 | Checks of an open pull request | the visible PR page | read longer ago than the window | foreground: visible page only, once a window | 2 account checks, then the pull, its check runs, and its status, each free on a `304` |
 
-A record refresh costs at most 8 core points: two account checks, the pull, and five
-parts of one page each; a `304` is free, an account check is not.
-At the caps T1 to T3 spend at most 40 × 8 + 20 × 3 = 380 core points an hour, 7.6% of a
-5,000-point limit, and T0 at most 60 core and 60 GraphQL points.
+A record refresh costs at most 8 core points when each part fits on one page: two
+account checks, the pull, and five parts; a `304` is free, an account check is not.
+A part of more than 100 comments, reviews, or check runs costs a point a page more.
+The lanes and their caps are in memory, one per repository a server process serves, so
+at the caps, at one page a part, T1 to T3 spend at most 40 × 8 + 20 × 3 = 380 core
+points an hour for each repository in each process, 7.6% of a 5,000-point limit, and T0
+at most 60 core and 60 GraphQL points.
+The account as a whole is bounded by the governor’s floor, which is read from GitHub’s
+own count of what remains.
 The per-test measurements against the fake `gh` are in [Measurements](#measurements).
 
 T4 never prefetches a checkout’s store acquisition; idle comparison stays gated on an
@@ -158,6 +189,9 @@ T1: the numbers this server most recently answered `GET pull` for (at most 16), 
 catalog says they changed.
 The request replaces the lane’s queue; the newest intent of the page wins, so a J/K walk
 that moved on drops what it no longer needs.
+The panel sends one request at a time: an ask made while one is on its way waits as the
+one pending ask, sent when that request answers and built from the panel as it is then,
+with `changed` when any ask that waited had it.
 
 Each server keeps one lane per repository, a coordinator job that runs one item at a
 time. Before each item, off the event loop, it reads again whether the item is due, then
@@ -167,23 +201,30 @@ when the files route would start an automatic refresh.
 An item another process has refreshed meanwhile is no longer due, because the record and
 the list on disk are what is read.
 
-The lane stops, dropping the rest of its queue, when the governor refuses or a cap is
-reached. The page asks again later.
+The lane stops, dropping the rest of its queue, when the governor refuses, a cap is
+reached, or a reader’s job preempts its job.
+The page asks again later.
 A job is started under the item’s ordinary key, so a reader’s request for the same pull
-request joins it. The lane does not stop for a reader’s work, since it cannot delay it:
-its record jobs wait at the store turn behind a reader’s and are cancelled when one
-starts waiting, and no background job holds a network slot.
-(Stopping instead dropped every prefetch a reader’s landing asked for, because the
-page’s own refresh of the row was running.)
+request joins it.
+The lane does not stop merely because a reader’s work is running, since
+it cannot delay it: its record jobs wait at the store turn behind a reader’s and are
+cancelled when one starts waiting, and no background job holds a network slot.
+(Stopping then dropped every prefetch a reader’s landing asked for, because the page’s
+own refresh of the row was running.)
+A job a reader preempts gives its place in the caps back, since it made nothing current;
+the requests it spent are in the governor’s observations.
+The lane stops there, because what it had queued would wait behind the reader too.
 
 `GET /api/plugin/github/pulls-prefetch` reports the lane from memory: the running item,
-the queue, the caps and their use (`scan`, the catalog revision the per-scan count
-belongs to), the governor’s observations and verdict, and the outcomes of the last 16
-items. The `POST` answers `202` with `prefetch: "started"` or `"joined"` and that route
-as its `status_route`, or `200` with `"not_due"` (nothing named) or `"deferred"` and a
+the queue, the caps and their use (`scan`, the catalog publication the per-scan count
+belongs to, its epoch and `fetched_at`, which a scan of several pages publishes once),
+the governor’s observations and verdict, and the outcomes of the last 16 items.
+The `POST` answers `202` with `prefetch: "started"` or `"joined"` and that route as its
+`status_route`, or `200` with `"not_due"` (nothing named) or `"deferred"` and a
 `reason`, `below_floor` or `rate_hold`, when the governor admits nothing.
 An item the lane does not run says why in the report: `skipped:current`,
-`skipped:unverified`, `skipped:not_cached`, or `skipped:not_due`, or the stop,
+`skipped:checks` (only an open pull request’s checks are due, which its visible page
+reads), `skipped:unverified`, `skipped:not_cached`, or `skipped:not_due`, or the stop,
 `deferred:` and one of `below_floor`, `rate_hold`, `hourly_cap`, or `scan_cap`; one a
 reader preempted is `preempted`. A one-shot `--api` waits for the lane and prints that
 report.
@@ -195,7 +236,11 @@ to `gh_budget.py`, which keeps the newest observation per resource for the proce
 limit, remaining, and reset time.
 An observation expires at its reset.
 A `rate_limited` failure holds every resource until its `reset_at`, or for a window when
-GitHub gave none.
+GitHub gave none. Both belong to the account the last account check named: each
+`gh auth status` tells the governor its login, and another login forgets the
+observations and the hold, since its token has its own budget.
+A response already in flight at the switch can be observed for the new account until its
+next check, at most one refresh’s requests.
 
 Background work is admitted only while every observed resource it spends has more than
 25% of its limit remaining, no hold applies, and the catalog’s persisted list stamp
@@ -240,8 +285,9 @@ Records and file lists are replaced atomically and the catalog is SQLite, so eac
 process reads the others’ writes.
 Each lane item rereads the record, the list, and the catalog on disk before it runs, and
 the persisted refresh stamps carry attempt windows and rate holds across processes.
-The caps and the governor’s observations are per process; the floor is read from
-GitHub’s account-wide `remaining`, so several servers stop together.
+The caps are per repository and per process, and the governor’s observations per process
+and account; the floor is read from GitHub’s account-wide `remaining`, so several
+servers stop together.
 
 ## API Changes
 
@@ -251,6 +297,7 @@ GitHub’s account-wide `remaining`, so several servers stop together.
   `checks_pending`, and `state` but not `verified_at` or `verified_by`, which move with
   every scan: `x-metabrowser-verified: <verified_by> <verified_at>` carries them on a
   `200` and a `304` alike, so a polled page is not sent its record again each window.
+  A catalog verdict given while the next scan runs adds ` scanning`.
 - `GET pull-files` and its refresh answer: `head` is set for a GitHub list too, and
   `base_ref` is added.
 - New `POST` and `GET pulls-prefetch`, as above, with a parity row and goldens.
@@ -279,10 +326,11 @@ batch’s rows do (the presentation pull request’s `.mb-refreshing`).
 
 ## Testing Strategy
 
-- Unit tests: the record verdict table, pending checks, due-ness of a changed record and
-  its loop guard, the files head rule and its fallback, the governor’s floor, expiry,
-  and holds, caps and their reset, store-turn priority, preemption, promotion, and a
-  forgotten attempt after preemption.
+- Unit tests: the record verdict table, the bounded scan grace, pending checks and the
+  three cases `updated_at` misses, the checks-only read, due-ness of a changed record
+  and its loop guard across publications, the files head rule and its fallback, the
+  governor’s floor, expiry, and holds, caps and their reset, store-turn priority,
+  preemption, promotion, and a forgotten attempt after preemption.
 - `--api` goldens with the fake `gh`: rows with `head_oid`; a record current by the
   catalog, changed, head moved, and with pending checks; a files list current across a
   comment and stale after a push; and a prefetch run that refreshes, skips, and defers
@@ -304,16 +352,20 @@ Filled in as each budget lands, beside its constant.
 | Account check | 1 core point | six `gh auth status`, `rate_limit` before and after |
 | Delta scan with nothing new to page | 1 account check and 1 GraphQL page | `cli-github-pulls-prefetch.txt` |
 | Background record refresh, cold or changed | 2 account checks and 6 REST reads (304s free) | the same transcript, pull requests 7, 9, and 10 |
+| Checks-only refresh of an open pull request (T5) | 2 account checks and 3 conditional REST reads: the pull, its check runs, its status; no fetch | `test_a_checks_only_refresh_reads_the_pull_its_checks_and_its_status_alone`, the same transcript |
+| First check run after its check suite was created | 1 to 2 s on three `cli/cli` heads | `check-suites` and `check-runs` of `e5137cb6`, `b557a232`, `38aef55a`, 2026-11-11; `NO_CHECKS_GRACE_S` is 300 s |
+| Delta scan with nothing new, end to end | `gh auth status` 0.46–0.58 s, the page 0.48 s | gh 2.98.0 on `cli/cli`, 2026-11-11; `SCAN_GRACE_S` is 15 s |
 | Files list from the store’s comparison | no `gh` request | the same transcript, pull requests 7 and 8 |
 | Files list from GitHub | 1 account check, then a page and an account check per page | `cli-github-pull-files-refresh.txt` |
 | `catalog_member` on every `GET pull` | median 1.09 ms, at most 1.94 ms (200 runs, load 23) | the fixture’s 102-row catalog |
-| A reader’s refresh behind a running prefetch | 0.46–0.47 s, against 0.63–0.72 s alone (4 runs); 4.61–4.71 s without preemption (3 runs) | `test_a_readers_refresh_is_never_queued_behind_a_prefetch`, 2 s per prefetch request, load 16–23 |
+| A reader’s refresh behind a running prefetch | about what the same refresh takes alone: 0.49–0.56 s behind, 0.51–0.53 s alone (3 back-to-back pairs, load 16–17); 4.61–4.71 s without preemption (3 runs) | `test_a_readers_refresh_is_never_queued_behind_a_prefetch`, 2 s per prefetch request; alone is the same sequence, 10 then 9, with no prefetch |
 | A polled page’s bytes a minute, one scan a minute | none (two 304s, the verdict in `x-metabrowser-verified`), against 3,836 with the verdict’s time in the entity tag | `test_a_catalog_scan_does_not_send_a_polled_record_again`, pull request 8’s 3,834-byte envelope; `served_pull.py` measures a 295 KB record (pallets/click#3030) |
 
 ## Risks
 
-- `updated_at` misses checks, statuses, and `mergeable`; pending checks fall back to the
-  clock, and settled ones show their own age.
+- `updated_at` misses checks, statuses, and `mergeable`; a visible open pull request
+  reads them on their own once a window, so a closed one, or an open one no page shows,
+  can hold settled checks until it is opened.
 - The catalog may be old or another reader’s; the clock remains the fallback.
 - The rate budget is shared with other clients; the floor keeps a reserve, and holds
   stop everything.

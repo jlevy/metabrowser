@@ -424,9 +424,10 @@ fetched the description while discussion and checks load.
 A record is current for a minute, and for as long after that as the repository’s list of
 pull requests, which Metabrowser rescans about once a minute while its Pulls tab or the
 page is visible, says GitHub has not changed it: the page then says
-`Checked just now · fetched 3 h ago via GitHub CLI`. Checks that are still running, and
-a mergeability GitHub is still working out, keep the record on its own fetch age, so it
-is read again each minute until they settle.
+`Checked just now · fetched 3 h ago via GitHub CLI`. That list does not track checks,
+statuses, or mergeability, so while you have an open pull request’s page open, those are
+read again on their own each minute: a check that starts, a re-run, or a conflict a
+newer base commit made shows within about a minute.
 The Pulls tab also asks Metabrowser to read, behind you and within hourly limits, the
 pull requests you are likely to open next: the rows around the one you opened and the
 top of the list, when they are missing or changed, and their changed files.

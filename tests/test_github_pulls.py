@@ -4984,12 +4984,15 @@ def test_a_readers_refresh_is_never_queued_behind_a_prefetch(
     pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The prefetch holding the store's turn is cancelled, so the reader waits for it to
-    unwind, not to end. Measured in the same test, against the same refresh with nothing in
-    the background, so the bound is relative and not a machine's speed.
+    unwind, not to end. The bound is relative to a refresh measured in the same test with
+    nothing in the background, so it is not a machine's speed.
 
-    On 2026-11-11, at a load average of 16 to 23: 0.46 to 0.47 s behind the prefetch against
-    0.63 to 0.72 s alone in four runs, and 4.61 to 4.71 s in three runs with the store turn's
-    preemption switched off, which is the wait this test exists to forbid.
+    That baseline is pull request 10's first refresh, and the one behind the prefetch is 9's,
+    after it, so they differ in more than the prefetch. Like for like, the same sequence with
+    no prefetch (review B3), on 2026-11-11 at a load average of 16 to 17 in back-to-back
+    pairs: 9 took 0.51 to 0.53 s alone and 0.49 to 0.56 s behind the prefetch, about the
+    same, and 4.61 to 4.71 s in three earlier runs with the store turn's preemption switched
+    off, which is the wait this test exists to forbid.
     """
 
     stand, client = pinned_pull

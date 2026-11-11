@@ -18,7 +18,8 @@ All notable changes to Metabrowser are documented here.
 - A cached pull request is checked against the repository’s list of pull requests, which
   says what changed on GitHub since: one that has not changed is current however long
   ago it was read, and one that has, or whose head moved, is refreshed at once.
-  Its checks, statuses, and mergeability keep their own age while they are pending.
+  An open pull request’s checks, statuses, and mergeability, which that list does not
+  track, are read again on their own once a minute while its page is shown.
   A pull request’s list of changed files stays current across comments and reviews and
   is read again when its head or base moves.
   `GET /api/plugin/github/pull` adds `verified_at`, `verified_by`, `head_moved`, and

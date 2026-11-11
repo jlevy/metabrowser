@@ -1108,11 +1108,18 @@ success. A list or newest source that names no head falls back to `updated_at`.
 Records and file lists are judged by events (`pull_freshness.py`): the catalog’s delta
 scan reads pull requests by `UPDATED_AT`, and each row carries `head_oid`. A record is
 current while a scan within the window of the same source and reader has not seen it
-change, changed when its row is newer, and otherwise judged by the window.
-An open pull request with pending checks, a pending status, or unknown mergeability is
-not vouched for, since `updated_at` does not move for those; it ages by its own fetch.
-A changed record is due at once unless an attempt was made since the catalog published
-the change, so a pushed head is read at once and a lagging REST answer cannot loop.
+change, changed when its row is newer or names another head at the same time, and
+otherwise judged by the window.
+A scan that is running keeps the last one vouching for at most `SCAN_GRACE_S` past the
+window, so an older catalog falls back to the clock.
+A delta scan is published at the time it asked for its first page, which is what it saw.
+`updated_at` does not move for check runs, statuses, or mergeability, so the catalog
+vouches for an open pull request’s conversation and head only: an open record read
+longer ago than the window has its checks read on their own once a window while a page
+shows it, the pull, its check runs, and its status, with ETags and no fetch into the
+store. A changed record is due at once unless an attempt was made for the row that
+reported the change, and otherwise once a window, so a pushed head is read at once and a
+lagging REST answer cannot loop.
 GraphQL’s `updatedAt` and `headRefOid` equalled REST’s `updated_at` and `head.sha` on
 five public pull requests when this was built (2026-11-11).
 
@@ -1122,26 +1129,35 @@ work by itself, so a hidden or offline page spends nothing.
 Each served repository has one lane, a coordinator job that runs one item at a time and
 reads it again from disk before it runs, so a record or list another process refreshed
 meanwhile is skipped.
-Its caps are 8 record refreshes per catalog revision, 40 an hour, and 20 GitHub file
-lists an hour. A background record refresh costs at most 8 core points, two of them
-account checks, which GitHub counts, and a one-page file list 3; at the caps that is 380
-core points an hour, 7.6% of a 5,000-point limit.
+Its caps are 8 record refreshes per catalog publication, however many pages its scan
+read, 40 an hour, and 20 GitHub file lists an hour, kept in memory for each repository a
+server process serves.
+A background record refresh costs at most 8 core points when each part fits on one page,
+two of them account checks, which GitHub counts, and a one-page file list 3; at the caps
+that is 380 core points an hour for each repository in each process, 7.6% of a
+5,000-point limit.
+A job a reader preempts gives its place in the caps back, and the lane
+stops there.
 
 `gh_budget.py` keeps, per process, the newest `x-ratelimit-*` observation of each
 resource every response carries, until its reset, and holds every resource after a
 `rate_limited` refusal.
-Background work is admitted only above 25% remaining of each resource it spends, with no
-hold and no rate hold in the catalog’s persisted stamp; a reader’s own work is never
-asked.
+Both belong to the account the last `gh auth status` named, and another account forgets
+them. Background work is admitted only above 25% remaining of each resource it spends,
+with no hold and no rate hold in the catalog’s persisted stamp; a reader’s own work is
+never asked. That floor, read from GitHub’s account-wide count, is what bounds the
+account.
 
-A background job never makes a reader wait.
+A background job never makes a reader wait for its work, only for it to unwind.
 It takes no network slot, so the lane adds at most one job beside the coordinator’s two.
 At a store turn it waits behind every other job, is never counted for
 `MAX_FIRST_IN_A_ROW`, and is cancelled when any other job starts waiting while it holds
 the turn; a cancelled refresh leaves the record as it was and forgets its attempt.
 A reader’s request for the same pull request joins and promotes it, after which it
-counts toward `MAX_PULL_JOBS` and cannot be cancelled that way.
-Background jobs count toward neither job bound.
+counts toward `MAX_PULL_JOBS` and cannot be cancelled that way; a promoted files job
+still holds no network slot, since its slot is chosen when it starts.
+Background jobs count toward neither job bound, and on a checkout they do not stop the
+open pull request’s idle comparison, which preempts another’s and promotes its own.
 
 ### Git path and blob semantics
 
