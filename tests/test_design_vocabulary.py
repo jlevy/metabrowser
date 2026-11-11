@@ -1370,6 +1370,31 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert '"mb-delayed-loading"' in panel
     assert 'class: "spinner spinner-sm"' in panel
     assert 'class: "btn github-pulls-more"' in panel
+    # Rows already shown are never covered by progress ("Refreshing Content"): the spinner and
+    # "Fetching pull requests…" are only for a list with no rows. While rows are held, the
+    # connection row keeps its age, muted and breathing, and a row whose data GitHub is read
+    # for breathes its title, which is primary ink. Only the status text is marked busy: a row
+    # and a tree group stay usable links, so the breathing there is paint alone.
+    assert 'const connectionMessage = h("span", { class: "mb-refreshing-muted" });' in panel
+    assert 'connectionMessage.classList.toggle("mb-refreshing", refreshing);' in panel
+    assert 'connectionText.setAttribute("aria-busy", "true");' in panel
+    assert "} else if ((working || page.more) && !holding) {" in panel
+    assert 'entry.title.classList.toggle("mb-refreshing", on);' in panel
+    assert 'entry.row.setAttribute("aria-busy"' not in panel, "a usable row is never busy"
+    files = (REPO_ROOT / BUILTIN_PLUGINS / "github/pull-files-view.js").read_text(encoding="utf-8")
+    assert 'class: "github-pull-file-name mb-refreshing-text"' in files
+    assert 'group.classList.toggle("mb-refreshing-group", next.refreshing);' in files
+    assert '"aria-busy"' not in files, "the usable tree group is never busy"
+    assert "spinner.hidden = !next.loading;" in files
+    # A file the comparison does not hold is muted ink, so its name breathes as a muted line.
+    muted_name = github[
+        ".github-pull-files.mb-refreshing-group .github-pull-file-muted > .github-pull-file-name"
+    ]
+    assert muted_name == {
+        "--mb-refreshing-to": "var(--refreshing-muted-lift-opacity)",
+        "color": "var(--text)",
+        "opacity": "var(--refreshing-muted-rest-opacity)",
+    }
     # A pull request's title is bold in normal text ink wherever it appears. A row and a
     # stack menu item are links, so the title sets both itself; in headless Chrome its
     # computed weight is 700 in the text ink for a normal, visited, hovered, focused and
@@ -1452,6 +1477,23 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # form, where the link alone let it follow the text. Measured in Chrome on a 685 px card
     # head: before, the link's head was 45 px and the button's 63 px; after, both 63 px.
     assert github[".github-pull-file"]["display"] == "inline-block"
+    # Content already shown is never covered by progress ("Refreshing Content"): no spinner in
+    # the header, a section, or the description card. The age line is one persistent element,
+    # muted, that breathes while a refresh runs or is due, on a status line marked busy; a
+    # section a description preview lacks shows the cold page's blocks after the quiet period.
+    assert "github-pull-progress" not in page and "github-pull-progress" not in str(github)
+    assert "github-pull-timeline-loading" not in page
+    assert 'class: "spinner spinner-sm"' not in page
+    spinners = page.count('h("span", { class: "spinner", "aria-hidden": "true" })')
+    assert spinners == 2, "only the diff host and Changes with nothing cached spin"
+    assert '"loading mb-delayed-loading github-pull-diff-loading"' in page
+    assert '"loading mb-delayed-loading github-pull-changes-pending"' in page
+    assert 'h("span", { class: "github-pull-freshness mb-refreshing-muted" })' in page
+    assert 'freshnessLine.classList.toggle("mb-refreshing", busy);' in page
+    assert 'freshnessLine.setAttribute("aria-busy", "true");' in page
+    assert 'status.setAttribute("aria-busy"' not in page, "the status line's controls stay usable"
+    assert '"recent-loading github-pull-loading github-pull-section-loading"' in page
+    assert github[".github-pull-section-loading"] == {"height": "calc(var(--ui-row-height) * 3)"}
     # The author, action, and relative age share one prose size and baseline.
     assert github[".github-pull-card-head"]["font-size"] == "var(--body-font-size)"
     age = github[".github-pull-card-head .github-pull-age"]
@@ -1463,6 +1505,106 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     # A hunk is the user's code, at the chrome-context mono size, in the app's mono face.
     assert github[".github-pull-hunk"]["font-family"] == "var(--font-mono)"
     assert github[".github-pull-hunk"]["font-size"] == "var(--mono-block-font-size)"
+
+
+def test_no_pull_request_surface_says_it_may_be_out_of_date() -> None:
+    """Stale data that can be refreshed is being refreshed ("Refreshing Content").
+
+    A pull request's page, the Pulls tab, and a changed-files tree once said "may be out of
+    date" beside data they were about to refresh, or never would. They show the plain age
+    while a refresh runs, and name a problem only when no refresh can run.
+    """
+
+    plugin = REPO_ROOT / BUILTIN_PLUGINS / "github"
+    sources = sorted(path for suffix in ("*.js", "*.css", "*.py") for path in plugin.glob(suffix))
+    assert sources
+    for source in sources:
+        assert "may be out of date" not in source.read_text(encoding="utf-8").lower(), source.name
+
+
+def _srgb(value: str) -> tuple[float, float, float]:
+    """Gamma-encoded sRGB channels of an `oklch(L% C H)` color, the space opacity blends in."""
+
+    lightness, chroma, hue = _oklch_channels(value)
+    a = chroma * math.cos(math.radians(hue))
+    b = chroma * math.sin(math.radians(hue))
+    long = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    medium = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    short = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    linear = (
+        4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short,
+        -1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short,
+        -0.0041960863 * long - 0.7034186147 * medium + 1.7076147010 * short,
+    )
+    encoded = [
+        12.92 * c if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055
+        for c in (min(max(channel, 0.0), 1.0) for channel in linear)
+    ]
+    return encoded[0], encoded[1], encoded[2]
+
+
+def _blended_luminance(ink: str, ground: str, opacity: float) -> float:
+    """WCAG relative luminance of *ink* at *opacity* over *ground*."""
+
+    channels = [
+        opacity * front + (1 - opacity) * back
+        for front, back in zip(_srgb(ink), _srgb(ground), strict=True)
+    ]
+    linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+
+def _ratio(first: float, second: float) -> float:
+    lighter, darker = max(first, second), min(first, second)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_refreshing_text_breathes_on_the_compositor_and_keeps_its_contrast() -> None:
+    """The one refresh animation ("Refreshing Content"): opacity only, quiet first, and legible.
+
+    Breathing changes opacity alone, so the compositor runs it with no style or paint work per
+    frame (measured in headless Chrome beside the tokens). It starts after the loading quiet
+    period and stops under reduced motion. Primary ink keeps 4.5:1 at its dimmest in both
+    themes; muted ink cannot dim and keep it, so a muted line is drawn in primary ink at the
+    opacity that reproduces muted, within 0.1:1, and lifts toward full ink instead.
+    """
+
+    styles = (STATIC / "styles.css").read_text(encoding="utf-8")
+    shell = _rules_of(STATIC / "styles.css")
+    rules = dict(shell)
+    # Each form is declared twice: the breath, and its reduced-motion override.
+    for form in (".mb-refreshing", ".mb-refreshing-group .mb-refreshing-text"):
+        declared = [body for selector, body in shell if selector == form]
+        assert len(declared) == 2, form
+        assert declared[1] == {"animation": "none"}, f"reduced motion stops {form}"
+    breathe = next(body for selector, body in shell if selector == ".mb-refreshing")
+    assert " ".join(breathe["animation"].split()) == (
+        "mb-refreshing-text var(--refreshing-text-period) ease-in-out"
+        " var(--loading-state-delay) infinite"
+    ), "one period, eased, after the quiet period, looping while the refresh runs"
+    keyframes = re.search(r"@keyframes mb-refreshing-text \{(.*?)\n\}", styles, re.DOTALL)
+    assert keyframes is not None
+    assert set(re.findall(r"([a-z-]+):", keyframes[1])) == {"opacity"}, "opacity only"
+    muted = rules[".mb-refreshing.mb-refreshing-muted"]
+    assert muted["color"] == "var(--text)"
+    assert muted["opacity"] == "var(--refreshing-muted-rest-opacity)"
+    assert "prefers-reduced-motion: reduce) {\n  /* The text stays as it is at rest" in styles
+    light_block, dark_block = _theme_blocks()
+    dim = float(_declared(light_block, "--refreshing-text-dim-opacity"))
+    for theme, block in (("light", light_block), ("dark", dark_block)):
+        ground = _declared(block, "--bg")
+        text = _declared(block, "--text")
+        muted_ink = _declared(block, "--muted")
+        surface = _relative_luminance(*_oklch_channels(ground))
+        dimmed = _ratio(_blended_luminance(text, ground, dim), surface)
+        assert dimmed >= 4.5, f"primary ink dims to {dimmed:.2f}:1 in the {theme} theme"
+        rest = float(_declared(block, "--refreshing-muted-rest-opacity"))
+        lift = float(_declared(block, "--refreshing-muted-lift-opacity"))
+        resting = _ratio(_blended_luminance(text, ground, rest), surface)
+        assert abs(resting - _contrast(muted_ink, ground)) <= 0.1, (
+            f"a muted line at rest reads {resting:.2f}:1, not muted's, in the {theme} theme"
+        )
+        assert rest < lift <= 1, "a muted line lifts toward primary ink, never below its rest"
 
 
 # A serif face, named directly or through the token KPress reads it from.

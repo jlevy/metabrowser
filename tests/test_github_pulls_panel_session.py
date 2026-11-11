@@ -579,6 +579,16 @@ def test_viewport_resize_and_distant_focus_keep_the_mounted_window_complete() ->
         "viewportHeight": 3000,
         "oneVisibleFlash": True,
         "retainedReadingPlace": True,
+        # The titles of an admitted core batch breathe, with no row busy, until a settled
+        # receipt, a new window, or going offline ends it; `beat` is alignRefreshing's one
+        # start time ("Refreshing Content" in docs/design-system.md; review A on #354).
+        "titleBreathing": {
+            "admitted": {"asked": [407, 406, 405], "breathing": [407, 406, 405], "busyRows": 0},
+            "settled": [],
+            "moved": {"asked": [311, 310, 309, 308], "breathing": [311, 310, 309, 308]},
+            "offline": [],
+            "beat": [100, 100, 50, 100],
+        },
     }
 
 
@@ -779,3 +789,30 @@ def test_background_core_warming_covers_viewport_and_catalog_without_stranding_r
         "completedBeforeDisconnect": 8,
         "backgroundRequestsAfterCompletion": 17,
     }
+
+
+def test_background_freshness_asks_only_while_visible_and_says_how_old_each_part_is() -> None:
+    """The prefetch policy and the page's catalog ask; the transcript shows the rest."""
+
+    facts = run_session("github-pulls-prefetch-behavior.js")
+    assert facts["afterScan"] == {
+        "records": [119, 117, 120, 116],
+        "files": [118, 119, 117],
+        "changed": True,
+    }
+    assert facts["sameScanAsksOnce"] and facts["nextScanAsksAgain"]
+    assert facts["afterLanding"]["files"] == [110, 111, 109]
+    assert 110 not in facts["afterLanding"]["records"]
+    assert facts["quiet"] == {"refreshing": 1, "failed": 0, "hidden": 0, "offline": 0}
+    assert facts["lapsedRead"] == [
+        "POST /api/plugin/github/pulls-refresh",
+        "GET /api/plugin/github/pull?number=7",
+    ]
+    assert facts["withinWindow"] == ["GET /api/plugin/github/pull?number=7"]
+    assert facts["checked"].startswith("Checked ") and " · fetched 3 h ago" in facts["checked"]
+    assert facts["pendingChecks"][-1] == "POST /api/plugin/github/pull-refresh"
+    assert facts["pendingFreshness"].startswith("Fetched ")
+    assert facts["headMoved"] == "New commits were pushed; updating."
+    assert facts["headStill"] is None
+    assert facts["breathingWhileRead"] == [111] and facts["breathingAfter"] == []
+    assert facts["breathingOffline"] == []

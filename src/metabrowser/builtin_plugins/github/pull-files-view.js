@@ -20,9 +20,15 @@
 // A path is GitHub's users' text. Its name is painted with textContent, it reaches an address
 // only through the route's encoder, and no value from GitHub reaches a class, a style, or
 // markup; the only markup parsed is the shell's own chevron.
+//
+// A list with rows is never covered by a spinner: while its refresh is asked for or runs, the
+// group carries `.mb-refreshing-group`, and the folder and file names, which are the rows'
+// primary ink, breathe together (docs/design-system.md, "Refreshing Content"). The rows stay
+// usable, so nothing marks them busy; the live region says what changed. The spinner is only
+// for a list with no rows yet.
 
 import { createFileTreeController, LISTING_FILES, windowRange } from "./pull-files-tree.js";
-import { h, isPlainClick } from "./pull-page.js";
+import { alignRefreshing, h, isPlainClick } from "./pull-page.js";
 
 // Rows drawn past the view each way. Chrome 152, 2026-11-03, with a 700px nav pane:
 // 67 DOM rows at the top and 111 mid-list, including the anchored row, for 1,503 real
@@ -129,7 +135,7 @@ export function mountFileTree(host) {
    * @returns {Node[]}
    */
   function partsOf(row) {
-    const name = h("span", { class: "github-pull-file-name" }, [row.name]);
+    const name = h("span", { class: "github-pull-file-name mb-refreshing-text" }, [row.name]);
     if (row.kind === "folder") {
       return [
         h("span", { class: "github-pull-files-toggle", "aria-hidden": "true" }, [host.chevron()]),
@@ -287,6 +293,7 @@ export function mountFileTree(host) {
     // What is drawn is in the rows' order, which a change of rows keeps: a new row goes before
     // the first drawn one after it, and none that is drawn moves.
     let cursor = /** @type {HTMLElement | null} */ (list.firstElementChild);
+    let built = 0;
     for (const at of wanted) {
       const row = rows[at];
       let entry = drawn.get(row.id);
@@ -299,6 +306,7 @@ export function mountFileTree(host) {
         entry = build(row, at);
         drawn.set(row.id, entry);
         list.insertBefore(entry.element, cursor);
+        built += 1;
         continue;
       }
       const content = contentOf(row);
@@ -308,12 +316,17 @@ export function mountFileTree(host) {
           entry.element.setAttribute("aria-label", nameOf(row));
         }
         entry.content = content;
+        built += 1;
       }
       entry.at = at;
       place(entry.element, row, at);
       if (entry.element === cursor) {
         cursor = /** @type {HTMLElement | null} */ (cursor.nextElementSibling);
       }
+    }
+    // A name drawn into a refreshing list joins the others' breath rather than starting its own.
+    if (built > 0 && model.refreshing) {
+      alignRefreshing(list);
     }
   }
 
@@ -341,6 +354,8 @@ export function mountFileTree(host) {
     lineText.textContent = next.line ?? (next.loading ? LISTING_FILES : "");
     line.hidden = next.line === null && !next.loading;
     spinner.hidden = !next.loading;
+    // The names breathe as paint; the rows stay fully usable, so the group is not marked busy.
+    group.classList.toggle("mb-refreshing-group", next.refreshing);
     retryButton = null;
     if (next.notice === null) {
       notice.replaceChildren();

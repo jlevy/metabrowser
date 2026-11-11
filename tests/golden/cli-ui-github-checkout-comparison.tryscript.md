@@ -326,7 +326,7 @@ $ node tests/dom/github-checkout-comparison-session.js
     "canRefresh": false,
     "files": "Changes could not be fetched.",
     "message": null,
-    "failure": "The last refresh failed: rate limited",
+    "failure": "GitHub rate limit · next check at 2026-09-17T12:05:00Z",
     "refreshing": false,
     "comparison": null
   },

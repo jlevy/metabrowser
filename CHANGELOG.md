@@ -4,6 +4,39 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A pull request that is already shown no longer shows a spinner while it refreshes.
+  Its page, the changed files under its row, and the Pulls list keep what they show and
+  refresh in the background; the line that says when it was fetched, the folder and file
+  names, and the list’s “Updated” line breathe gently until the refresh lands, and stop
+  under reduced motion.
+  A description preview shows gray blocks for the comments and checks still to come.
+  Nothing says “may be out of date” any more: stale data is being refreshed, and a page
+  left open refreshes again each time it goes stale.
+  A view names a problem only when it cannot refresh: offline, GitHub’s rate limit with
+  the time of the next check, or the last failure with **Refresh** or **Retry**.
+
+- A cached pull request is checked against the repository’s list of pull requests, which
+  says what changed on GitHub since: one that has not changed is current however long
+  ago it was read, and one that has, or whose head moved, is refreshed at once.
+  An open pull request’s checks, statuses, and mergeability, which that list does not
+  track, are read again on their own once a minute while its page is shown.
+  A pull request’s list of changed files stays current across comments and reviews and
+  is read again when its head or base moves.
+  `GET /api/plugin/github/pull` adds `verified_at`, `verified_by`, `head_moved`, and
+  `checks_pending`; each row of `GET /api/plugin/github/pulls` adds `head_oid`; and
+  `GET /api/plugin/github/pull-files` sets `head` for GitHub’s list and adds `base_ref`.
+  A pull request’s page says `Checked just now · fetched 3 h ago` when the list vouched
+  for a record read earlier, keeps that list scanned while it is shown, and says
+  `New commits were pushed; updating.` over the diff it keeps when the head moved.
+  `GET /api/plugin/github/pull` answers a poll with `304` across a scan, and carries the
+  check in `x-metabrowser-verified` instead.
+
+- The Pulls tab asks Metabrowser to prefetch the pull requests a reader is likely to
+  open next, the rows around the one opened and the top of the list, and their changed
+  files, through the new `/api/plugin/github/pulls-prefetch`. It runs behind everything
+  the reader asks for, within hourly caps, and stops while less than a quarter of the
+  account’s GitHub rate limit remains.
+
 - A pull request’s header leaves out an updated age that reads the same as its opened,
   merged, or closed age, and keeps the exact updated time in that age’s tooltip.
   Conversation commit hashes match the surrounding metadata size.

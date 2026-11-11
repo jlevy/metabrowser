@@ -48,6 +48,7 @@ for (const envelope of Object.values(filesRecorded)) {
   envelope.rows = envelope.rows.map((row) => JSON.parse(row));
 }
 const pagePath = path.join(repoRoot, "src/metabrowser/builtin_plugins/github/pull-page.js");
+const PREFETCH_ROUTE = "/api/plugin/github/pulls-prefetch";
 // What the server answers of a record, for a page a reader's selection opens.
 const pageRecorded = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "tests/fixtures/github-pull-page-responses.json"), "utf8"),
@@ -122,6 +123,11 @@ function createPage() {
       const etag = options.etag ? ` if-none-match ${options.etag}` : "";
       const line = `${method} ${route}${body}${etag}`;
       log.push(line);
+      if (route === PREFETCH_ROUTE) {
+        // Background work the server admits on its own terms; the panel reads nothing from
+        // the answer, so the session answers at once and only the request counts.
+        return Promise.resolve({ status: 200, etag: null, body: { prefetch: "not_due" } });
+      }
       return new Promise((resolve, reject) => {
         const request = { route, method, etag: options.etag, resolve, reject };
         waiting.push(request);
@@ -389,7 +395,12 @@ async function run() {
     "the selected total stays current",
   );
   assert(moreCached.paint.window === "Showing last 1,000", "the display remains a partial window");
-  assert(moreCached.paint.connection.state === "working", "the refresh still runs");
+  assert(
+    moreCached.paint.connection.state === "connected" &&
+      moreCached.paint.connection.refreshing === true &&
+      moreCached.paint.connection.text.startsWith("Updated "),
+    "the refresh still runs, under the rows' plain age and no spinner",
+  );
   assert(moreCached.timer === "fast", "the append does not slow the refresh poll");
   assert(
     moreCached.requests.every((request) => request.startsWith("GET ")),
@@ -593,7 +604,11 @@ async function readerStory() {
     );
     await controller.start();
     await settle();
-    const before = { message: shown.message, canRefresh: shown.canRefresh };
+    const before = {
+      message: shown.message,
+      canRefresh: shown.canRefresh,
+      revalidating: shown.revalidating,
+    };
     const waits = [...timers.values()].map((timer) => timer.delayMs);
     for (const [handle, timer] of [...timers.entries()]) {
       if (timer.delayMs !== page.SLOW_POLL_MS && timer.delayMs !== page.FAST_POLL_MS) {
@@ -607,7 +622,11 @@ async function readerStory() {
       asked: asked.splice(0),
       waits,
       before,
-      after: { message: shown.message, canRefresh: shown.canRefresh },
+      after: {
+        message: shown.message,
+        canRefresh: shown.canRefresh,
+        revalidating: shown.revalidating,
+      },
     };
     if (letGo !== null) {
       // The key is let go where it opened this page: its wait runs out once more, and it asks.
@@ -619,7 +638,11 @@ async function readerStory() {
         }
       }
       await settle();
-      entry["once let go"] = { asked: asked.splice(0), message: shown.message };
+      entry["once let go"] = {
+        asked: asked.splice(0),
+        message: shown.message,
+        revalidating: shown.revalidating,
+      };
     }
     story.push(entry);
     controller.dispose();
@@ -657,6 +680,34 @@ async function readerStory() {
     "a row with a record fetches nothing",
     { fetchAfterMs: 0, initial: { etag: current.etag, body: current.body } },
     { pull: { status: 304, etag: current.etag, body: null } },
+  );
+  // A stale record is shown at once and refreshed behind it, with nothing to press: a click
+  // asks at once, a key that stops on the row after the same wait as a fetch, and a key still
+  // held not until it is let go. Each is painted revalidating from its first paint.
+  const { stale, refresh_again: refreshAgain } = pageRecorded;
+  const staleRow = { etag: stale.etag, body: stale.body };
+  const staleAnswers = {
+    pull: { status: 304, etag: stale.etag, body: null },
+    refresh: refreshAgain,
+  };
+  await opened(
+    "a click on a row whose record is stale refreshes it at once",
+    { fetchAfterMs: 0, initial: staleRow },
+    staleAnswers,
+  );
+  await opened(
+    "a key stopping on a stale row refreshes it after the wait",
+    { fetchAfterMs: page.REFRESH_ASK_MS, initial: staleRow },
+    staleAnswers,
+  );
+  holding = true;
+  await opened(
+    "a key still held over a stale row refreshes nothing until it is let go",
+    { fetchAfterMs: page.REFRESH_ASK_MS, initial: staleRow, walking: () => holding },
+    staleAnswers,
+    () => {
+      holding = false;
+    },
   );
   return story;
 }
@@ -762,9 +813,15 @@ async function paintStory(panel, selection = false) {
             headers: { get: () => optionalStacks.missing.etag },
             json: async () => optionalStacks.missing.body,
           })
-        : new Promise((resolve) => {
-            answers.push({ route, init, resolve });
-          }),
+        : route === PREFETCH_ROUTE
+          ? Promise.resolve({
+              status: 200,
+              headers: { get: () => null },
+              json: async () => ({ prefetch: "not_due" }),
+            })
+          : new Promise((resolve) => {
+              answers.push({ route, init, resolve });
+            }),
   };
   for (const [name, value] of Object.entries(globals)) {
     saved[name] = Object.getOwnPropertyDescriptor(globalThis, name);
@@ -1266,10 +1323,14 @@ async function paintStory(panel, selection = false) {
     const assertRetry = () => {
       assert(message.textContent === retryMessage, "the outage text stays visible");
       assert(live[0].textContent === retryMessage, "the polite announcement stays steady");
-      assert(!connectionText.classList.contains("mb-delayed-loading"), "only the spinner waits");
+      assert(!connectionText.classList.contains("mb-delayed-loading"), "nothing waits to appear");
+      assert(spinner.hidden, "no spinner over the cached rows");
       assert(
-        !spinner.hidden && spinner.classList.contains("mb-delayed-loading"),
-        "delayed spinner",
+        message.classList.contains("mb-refreshing") &&
+          message.classList.contains("mb-refreshing-muted") &&
+          connectionText.getAttribute("aria-busy") === "true" &&
+          connection.getAttribute("aria-busy") === null,
+        "the outage breathes, muted, and its text, not the row's Reload, is busy",
       );
       assert(reload.getAttribute("aria-disabled") === "true", "Reload waits for the retry");
     };
@@ -1280,7 +1341,8 @@ async function paintStory(panel, selection = false) {
       body: { pulls: { ...outage, refreshing: true, rows: [] } },
     });
     assertRetry();
-    story["a passive retry keeps the announced outage beside its spinner"] = retryMessage;
+    story["a passive retry over cached rows breathes the announced outage, with no spinner"] =
+      retryMessage;
     // Reader-opened trees can all be expanded together. Closing them must apply the bound
     // immediately, without waiting for another tree to be created.
     const many = list.childNodes

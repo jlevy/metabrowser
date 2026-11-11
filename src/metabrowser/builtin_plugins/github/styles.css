@@ -128,14 +128,6 @@
   color: var(--muted);
   font-size: var(--ui-small-font-size);
 }
-.github-pull-progress {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-.github-pull-progress > .spinner {
-  flex: none;
-}
 .github-pull-failure {
   color: var(--status-warning-strong);
 }
@@ -158,11 +150,6 @@
 }
 .github-pull-card-head:last-child {
   border-bottom: 0;
-}
-.github-pull-timeline-loading {
-  display: inline-flex;
-  vertical-align: middle;
-  margin-inline-start: 0.5em;
 }
 .github-pull-commit {
   display: flex;
@@ -646,6 +633,14 @@
 .github-pull-folder-row > .github-pull-file-name {
   align-self: baseline;
 }
+/* A file the comparison does not hold is muted ink, which cannot dim and keep 4.5:1, so while
+   its list refreshes its name breathes as a muted line does (docs/design-system.md,
+   "Refreshing Content"): primary ink at muted's contrast, lifting toward full ink. */
+.github-pull-files.mb-refreshing-group .github-pull-file-muted > .github-pull-file-name {
+  --mb-refreshing-to: var(--refreshing-muted-lift-opacity);
+  color: var(--text);
+  opacity: var(--refreshing-muted-rest-opacity);
+}
 .github-pull-files-line {
   margin: 0;
   padding: 2px 12px 2px calc(10px + var(--tree-indent) + 22px);
@@ -767,6 +762,10 @@
 }
 .github-pull-loading {
   margin: 0;
+}
+/* A section a description preview does not have yet: three rows of the cold page's blocks. */
+.github-pull-section-loading {
+  height: calc(var(--ui-row-height) * 3);
 }
 
 .github-pull-identity {

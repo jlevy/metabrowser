@@ -272,6 +272,24 @@ def test_removed_focused_file_transfers_focus_after_replacement_paint() -> None:
         {"scenario": "other focus", "focus": "elsewhere"},
         {"scenario": "windowed survivor", "focus": "a000.py"},
         {"scenario": "windowed other focus", "focus": "elsewhere"},
+        # A stale list's rows are never covered by progress: while its refresh is asked for
+        # and runs, the names breathe in one group, nothing spins, and no line says the list
+        # is stale ("Refreshing Content" in docs/design-system.md). The rows stay usable, so
+        # the group is never marked busy.
+        {
+            "scenario": "refreshing",
+            "paints": {
+                phase: {
+                    "breathing": phase != "settled",
+                    "busy": None,
+                    "spinner": False,
+                    "line": None,
+                    "names": ["src", "a.py", "b.py"],
+                    "namesBreathe": True,
+                }
+                for phase in ("asked", "running", "settled")
+            },
+        },
     ]
 
 
