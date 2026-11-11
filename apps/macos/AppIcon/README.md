@@ -30,7 +30,7 @@ gap short of it.
 
 ```shell
 scripts/build-icon.sh                   # from apps/macos: every master and both .icns files
-scripts/build-icon.sh --review          # also AppIcon/review/, which git ignores
+scripts/build-icon.sh --review          # also AppIcon/review/ (git ignores it), with a release .icns per variant in review/icns/
 ```
 
 Add `--sister FILE.svg`, the sister app’s v6 release export, to include side-by-side
