@@ -288,8 +288,9 @@ of the repository. An unreadable lender must be made readable or replaced before
 store can use it again.
 Beside a served folder, comparison preparation reuses a healthy store or borrows from
 the checkout. Partial clones and checkouts that borrow objects themselves cannot lend.
-Metabrowser reports a borrowing refusal in **Changes**. The URL-based `--checkout`
-command has its own [documented fallback cases](command-line.md#beside-a-checkout).
+Metabrowser reports a borrowing refusal in **Changes** and never falls back to a full
+clone. The URL-based `--checkout` command has its own
+[documented fallback cases](command-line.md#beside-a-checkout).
 
 A managed source whose cached pinned tree is missing can fail before the server starts.
 It reports an error without a traceback or automatic replacement clone; the page’s

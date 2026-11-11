@@ -679,7 +679,9 @@ so it is its own pull request with its own independent review.
 - `no_pull_request` and the page’s `other_number` state go away.
   A valid number with no record answers `absent` with `not_cached`, and a server with no
   GitHub repository answers `not_github`, as the list route does.
-- `"retry": true` in the `POST` body marks a reader’s own action, as on the list route.
+- `"retry": true` in the `POST` body marks a reader’s own action, as on the list route,
+  or the one comparison request a page on **Changes** sends by itself for a record
+  without a store.
 - `--show /pull/<n>` reads the same route, and `_require_served_pull` is removed.
 
 **A provider-kept set replaces the single companion.**
@@ -1437,9 +1439,10 @@ measurements.
 **Step 6: Files changed on a checkout.**
 
 - *Reviewed:* that nothing is written to the checkout and no Git runs in it, byte for
-  byte with the directory read-only; that the overlay is created only by an explicit
-  Files changed Fetch; the base the page names; each typed state; and that the
-  hostile-configuration replica leaves no marker.
+  byte with the directory read-only; that the overlay is created only by a comparison
+  request, then an explicit Files changed Fetch and now the one opening **Changes**
+  sends; the base the page names; each typed state; and that the hostile-configuration
+  replica leaves no marker.
 - *Leaves out:* healing, blob verification, conversions, and deepening, which are steps
   2, 3, and 5 of the review-mirror plan.
 

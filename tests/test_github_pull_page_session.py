@@ -590,6 +590,7 @@ def test_pending_file_selection_belongs_to_one_files_visit() -> None:
         "abandonedJump": False,
         "unavailableRetainsSelection": True,
         "replacementRetainsSelection": True,
+        "settledWalkJumpsOnce": True,
     }
 
 

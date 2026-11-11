@@ -39,10 +39,17 @@ async function run() {
   const { FAST_POLL_MS, mountPullPage } = await import(
     pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
   );
-  const mount = (initial, assets, jumps, container, renderReady = Promise.resolve()) =>
+  const mount = (
+    initial,
+    assets,
+    jumps,
+    container,
+    renderReady = Promise.resolve(),
+    tab = "files",
+  ) =>
     mountPullPage(
       container,
-      { number: 7, tab: "files", reader: { initial, fetchAfterMs: 0 } },
+      { number: 7, tab, reader: { initial, fetchAfterMs: 0 } },
       {
         perf,
         ensureAsset: async () => {},
@@ -201,10 +208,37 @@ async function run() {
     "same-Files replacement retains the newest pending selection",
   );
   sameVisit.dispose();
+
+  // A walk of the Pulls tab's files jumps the page key by key while the address still names
+  // Conversation. Once it settles, the route moves the address and confirms the tab with
+  // setTab, which must not jump the diff a second time.
+  setup();
+  window.location.pathname = "/pull/7";
+  globalThis.fetch = async () => response(recorded.current.body);
+  const walked = [];
+  const walk = mount(
+    recorded.current,
+    Promise.resolve(),
+    walked,
+    new Element("main"),
+    undefined,
+    "",
+  );
+  await settle();
+  walk.showFile("src/app.txt");
+  await walk.whenFilesReady();
+  await settle();
+  assert.deepEqual(walked, ["src/app.txt"], "the walk's key jumped the diff once");
+  window.location.pathname = "/pull/7/files/src/app.txt";
+  walk.setTab("files");
+  await settle();
+  assert.deepEqual(walked, ["src/app.txt"], "confirming a settled walk's tab does not jump again");
+  walk.dispose();
   return {
     abandonedJump: false,
     unavailableRetainsSelection: true,
     replacementRetainsSelection: true,
+    settledWalkJumpsOnce: true,
   };
 }
 run()

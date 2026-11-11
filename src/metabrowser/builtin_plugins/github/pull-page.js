@@ -257,6 +257,7 @@ const TRUNCATED = Object.freeze({
  *   refreshing: boolean,
  *   canRefresh: boolean,
  *   canRetryComparison: boolean,
+ *   canFetchComparison: boolean,
  *   freshness: string | null,
  *   failure: string | null,
  *   failureHelp?: "install" | "update",
@@ -745,6 +746,57 @@ export function filesUnavailableText(why) {
   return "Changes are unavailable: the pull request's base could not be compared with its head.";
 }
 
+/** What Changes says for a record without a store before anything has failed. */
+const CHANGES_NOT_FETCHED = "Changes have not been fetched.";
+
+/** Store acquisition failures that another automatic attempt would only repeat. */
+const HELD_COMPARISON_FAILURES = new Set(["lender_missing", "git_failed", "fetch_failed"]);
+
+/**
+ * Whether the recorded outcome holds Changes' automatic comparison attempt for the
+ * reader's Retry changes: GitHub's rate limit before it lifts, which the job's metadata
+ * read would meet, or a store acquisition failure recorded since the record was written,
+ * which a new visit would only repeat. A request with `retry` bypasses the server's own
+ * guards, so the page holds itself. Pure.
+ *
+ * @param {PullEnvelope | null} envelope
+ * @param {number} nowMs
+ */
+export function comparisonHeld(envelope, nowMs) {
+  const last = envelope?.last_refresh ?? null;
+  if (last === null) {
+    return false;
+  }
+  if (last.outcome === "rate_limited") {
+    return last.reset_at !== null && Date.parse(last.reset_at) > nowMs;
+  }
+  // An unreadable stamp cannot show the record is newer, so the outcome still holds.
+  return (
+    HELD_COMPARISON_FAILURES.has(last.outcome) &&
+    !(Date.parse(last.at) < Date.parse(envelope?.record?.fetched_at ?? ""))
+  );
+}
+
+/**
+ * Whether Changes will ask for the record's missing comparison by itself: the page is on
+ * Changes at its own address, has not asked yet, and no recorded outcome holds the ask.
+ * The controller asks only on this, once the page is visible, its read succeeded, and
+ * nothing else is in flight; `describePull` shows progress only on it, so the page never
+ * spins for an attempt that will not run. Pure.
+ *
+ * @param {PullEnvelope | null} envelope
+ * @param {{tab: string, nowMs: number, ownsChanges?: boolean, comparisonAttempted?: boolean}} page
+ */
+export function comparisonQueued(envelope, page) {
+  return (
+    page.tab === "files" &&
+    page.ownsChanges !== false &&
+    page.comparisonAttempted !== true &&
+    envelope?.record?.unavailable?.comparison === "no_store" &&
+    !comparisonHeld(envelope, page.nowMs)
+  );
+}
+
 /** Header and description fields shared by a full record and a validated core preview.
  * @param {Record<string, any>} pull
  * @returns {NonNullable<PullModel["pull"]>}
@@ -796,7 +848,13 @@ function describeCore(pull) {
  * @param {PullEnvelope | null} envelope
  * *checkoutHead* is the served checkout's `HEAD`, on a folder, which has no pin.
  *
- * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, refreshPending?: boolean, comparisonAttempted?: boolean, waitForReader?: boolean, checkoutHead?: string | null}} page
+ * The controller says what it will send. *fetchQueued* is a selected fetch not asked
+ * for yet that the page will send once it is visible or the reader stops; *ownsChanges*
+ * is whether the address names Changes, which an automatic comparison needs (see
+ * `comparisonQueued`); *comparisonRefusal* is why the page's last comparison request
+ * was refused, kept until it asks again.
+ *
+ * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, fetchQueued?: boolean, refreshPending?: boolean, ownsChanges?: boolean, comparisonAttempted?: boolean, comparisonRefusal?: string | null, waitForReader?: boolean, checkoutHead?: string | null}} page
  * @returns {PullModel}
  */
 export function describePull(envelope, page) {
@@ -812,6 +870,7 @@ export function describePull(envelope, page) {
     refreshing: false,
     canRefresh: false,
     canRetryComparison: false,
+    canFetchComparison: false,
     freshness: null,
     failure: null,
     pull: null,
@@ -864,12 +923,11 @@ export function describePull(envelope, page) {
       envelope.reason !== "not_github" &&
       !envelope.refreshing &&
       !page.fetching;
+    // Only the selected fetch on its way, or still to be sent, prepares the record. A refused
+    // or failed one leaves nothing running, which the header's Refresh then starts.
     model.changesPending =
       model.refreshing ||
-      (page.tab === "files" &&
-        envelope.state === "absent" &&
-        envelope.last_refresh === null &&
-        !page.error);
+      (page.tab === "files" && (page.fetching === true || page.fetchQueued === true));
     model.filesUnavailable = model.changesPending
       ? "Changes are still being prepared."
       : "Changes are unavailable because the full pull request could not be loaded.";
@@ -939,15 +997,26 @@ export function describePull(envelope, page) {
     // code. When its HEAD is this pull request's head, that much is so, and the page says it.
     model.checkoutAtHead = "This checkout's HEAD is this pull request's head.";
   }
-  const withoutStore = record.unavailable?.comparison === "no_store";
-  if (withoutStore && page.tab === "files") {
-    model.changesPending = model.refreshing || (!page.comparisonAttempted && !page.error);
-    model.canRetryComparison = !model.changesPending;
+  model.filesUnavailable = filesUnavailableText(record.unavailable?.comparison ?? null);
+  if (record.unavailable?.comparison === "no_store" && page.tab === "files") {
+    // Progress only for an attempt running or still to be sent, Retry changes only once one
+    // failed or a recorded outcome holds it, and Fetch changes only when nothing will ask.
+    // A failed read before any attempt waits for the next good one, which then asks.
+    const queued = comparisonQueued(envelope, page);
+    const failed = page.comparisonAttempted === true || comparisonHeld(envelope, page.nowMs);
+    model.changesPending = model.refreshing || (queued && !page.error);
+    model.canRetryComparison = !model.changesPending && failed;
+    model.canFetchComparison = !model.changesPending && !failed && !queued;
     model.canRefresh = false;
+    if (model.changesPending) {
+      model.filesUnavailable = "Fetching changes…";
+    } else if (!failed) {
+      model.filesUnavailable = CHANGES_NOT_FETCHED;
+    } else {
+      // A later read clears the refusal's error; its reason stays until the page asks again.
+      model.message = page.error ?? page.comparisonRefusal ?? null;
+    }
   }
-  model.filesUnavailable = model.changesPending
-    ? "Fetching changes…"
-    : filesUnavailableText(record.unavailable?.comparison ?? null);
   const comparison = record.comparison;
   if (comparison && typeof comparison.base === "string" && typeof comparison.head === "string") {
     model.comparison = {
@@ -1093,6 +1162,8 @@ export function createPullController(deps, options) {
   let idleAttemptedRevision = null;
   /** @type {(() => void) | null} */
   let cancelComparison = null;
+  /** Why the last comparison request was refused, until the page asks again. @type {string | null} */
+  let comparisonRefusal = null;
   // Only this page's acknowledged selected refresh can opt in to a settlement read.
   let waitForFull = false;
   /** Markdown by part, for the record content revision `markdownFor`. @type {Map<string, Record<string, any>>} */
@@ -1104,10 +1175,10 @@ export function createPullController(deps, options) {
   const asked = new Set();
   let inFlight = 0;
 
-  function directColdMiss() {
+  /** A direct link's cold miss, which the page asks to fill once it is visible. */
+  function coldMiss() {
     return (
       reader === null &&
-      deps.isVisible() &&
       error === null &&
       envelope?.state === "absent" &&
       envelope.reason === "not_cached" &&
@@ -1116,18 +1187,40 @@ export function createPullController(deps, options) {
     );
   }
 
-  function model() {
-    const next = describePull(envelope, {
+  function directColdMiss() {
+    return deps.isVisible() && coldMiss();
+  }
+
+  /** The selected fetch `fetchForReader` has still to ask for, once the page can. */
+  function fetchQueued() {
+    if (readerAsked || envelope === null) {
+      return false;
+    }
+    return reader === null
+      ? coldMiss()
+      : envelope.state === "absent" && envelope.reason !== "not_github" && !envelope.refreshing;
+  }
+
+  /** What `describePull` and `comparisonQueued` read of this page. */
+  function pageState() {
+    return {
       number: options.number,
       tab,
       nowMs: deps.now(),
       error,
       fetching: fetching || refreshPending,
+      fetchQueued: fetchQueued(),
       refreshPending,
+      ownsChanges: deps.ownsChanges?.() !== false,
       comparisonAttempted,
+      comparisonRefusal,
       waitForReader: reader !== null && !readerAsked && envelope?.reason !== "not_github",
       checkoutHead: options.checkoutHead ?? null,
-    });
+    };
+  }
+
+  function model() {
+    const next = describePull(envelope, pageState());
     if (refreshPending) {
       // The selected refresh has not acknowledged a core yet. Its POST being in flight
       // must not turn the still-absent envelope into a ready replacement surface.
@@ -1136,6 +1229,7 @@ export function createPullController(deps, options) {
       }
       next.canRefresh = false;
       next.canRetryComparison = false;
+      next.canFetchComparison = false;
     }
     return next;
   }
@@ -1386,10 +1480,16 @@ export function createPullController(deps, options) {
       } else if (ask.retry) {
         const said = body !== null && typeof body.error === "string" ? body.error : null;
         error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
+        if (ask.comparison) {
+          comparisonRefusal = error;
+        }
       }
     } catch {
       if (ask.retry) {
         error = "The refresh request failed.";
+        if (ask.comparison) {
+          comparisonRefusal = error;
+        }
       }
     }
     if (!idle) {
@@ -1430,28 +1530,30 @@ export function createPullController(deps, options) {
     }
   }
 
-  function ownsSelectedChanges() {
-    return !disposed && tab === "files" && deps.isVisible() && deps.ownsChanges?.() !== false;
-  }
-
   function fetchComparison() {
     comparisonAttempted = true;
+    comparisonRefusal = null;
     return askForRefresh({ number: options.number, retry: true, comparison: true });
   }
 
-  /** Open Changes as soon as the selected pull's record can name the comparison. */
+  /**
+   * Open Changes as soon as the selected pull's record can name the comparison. What it
+   * waits for besides `comparisonQueued`, which also decides what the page shows, is only
+   * timing: a visible page, a read that succeeded, and nothing else in flight.
+   */
   function fetchSelectedChanges() {
     if (
-      ownsSelectedChanges() &&
+      !disposed &&
+      deps.isVisible() &&
       hasPolled &&
       !polling &&
       !fetching &&
       inFlightRefreshes === 0 &&
-      !comparisonAttempted &&
       error === null &&
       envelope !== null &&
-      (envelope.preparing_comparison === true ||
-        (!envelope.refreshing && envelope.record?.unavailable?.comparison === "no_store"))
+      // A running idle preparation is promoted by the same request.
+      (envelope.preparing_comparison === true || !envelope.refreshing) &&
+      comparisonQueued(envelope, pageState())
     ) {
       void fetchComparison();
     }
@@ -1502,8 +1604,13 @@ export function createPullController(deps, options) {
     });
   }
 
+  /** A reader's Retry changes or Fetch changes, which the address need not name. */
   async function requestComparison() {
-    if (ownsSelectedChanges() && inFlightRefreshes === 0 && model().canRetryComparison) {
+    if (disposed || tab !== "files" || !deps.isVisible() || inFlightRefreshes > 0) {
+      return;
+    }
+    const next = model();
+    if (next.canRetryComparison || next.canFetchComparison) {
       await fetchComparison();
     }
   }
@@ -3565,12 +3672,18 @@ export function mountPullPage(container, ctx, mb) {
       const message = notice(model.corePreview || model.changesPending ? null : "error", [
         model.changesPending ? progress(model.filesUnavailable) : model.filesUnavailable,
       ]);
-      if (model.canRetryComparison) {
-        const retry = h("button", { type: "button", class: "btn github-pull-retry-changes" }, [
-          "Retry changes",
-        ]);
-        retry.addEventListener("click", () => void controller.requestComparison());
-        message.append(retry);
+      if (model.canRetryComparison || model.canFetchComparison) {
+        const retry = model.canRetryComparison;
+        const ask = h(
+          "button",
+          {
+            type: "button",
+            class: `btn ${retry ? "github-pull-retry-changes" : "github-pull-fetch-changes"}`,
+          },
+          [retry ? "Retry changes" : "Fetch changes"],
+        );
+        ask.addEventListener("click", () => void controller.requestComparison());
+        message.append(ask);
       }
       body.replaceChildren(message);
       return;

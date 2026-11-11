@@ -242,9 +242,7 @@ def test_golden_a_checkouts_pull_requests(
     assert again.payload()["comparison_route"] is None
     assert again.payload()["record"]["unavailable"] == {"comparison": "no_store"}
 
-    session.say(
-        "An explicit comparison Fetch attaches the cached store without changing the folder"
-    )
+    session.say("A comparison request attaches the cached store without changing the folder")
     fetched = session.post(
         checkout, f"{PULL}-refresh", {"number": 10, "retry": True, "comparison": True}
     )

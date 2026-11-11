@@ -354,7 +354,8 @@ Its step 5 uses the store described in
 Opening **Changes** prepares a missing comparison automatically by reusing a healthy
 store or borrowing from the served checkout without writing to it.
 Opening Conversation can read metadata without acquiring a store.
-A borrowing refusal leaves the comparison unavailable and offers a retry.
+A borrowing refusal leaves the comparison unavailable and offers a retry; it never falls
+back to a full clone.
 The CLI form is the plan’s own:
 
 ```shell
@@ -615,7 +616,10 @@ The same rules in both scenarios, and one boundary the review sharpened.
   `STORE_READ_POLICY` with `GIT_NO_LAZY_FETCH=1`. The planned
   [revision-scoped document view](plan-2026-08-17-general-diff-rendering.md#full-file-at-the-reviewed-revision)
   keeps those same restrictions on either server, without switching its source.
-  Test this restriction over every entry point to PR content on a trusted folder server.
+  **Planned:** a test of this restriction over every entry point to PR content on a
+  trusted folder server, the trust row of [Parity and Tests](#parity-and-tests).
+  Today `tests/test_checkout_overlay.py` checks only that borrowing cannot change the
+  untrusted profile.
 - **The checkout’s configuration is never read.** Reading a borrowed object is a file
   read of the checkout’s packs and loose objects; Git consults only the borrower’s
   configuration. The replica set `diff.external`, `core.fsmonitor`, `core.hooksPath`, and
