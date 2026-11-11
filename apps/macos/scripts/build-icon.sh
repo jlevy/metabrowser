@@ -70,17 +70,64 @@ cyan="#00D8FF"
 default_junction=$(sed -n 's/.*"junction": "\([^"]*\)".*/\1/p' AppIcon/metabrowser-icon.json)
 
 # Every release variant: its junction, a 1024 px render, a 64 px render, its width, and a
-# release .icns to swap into a built app for comparison in the Dock.
+# release .icns to swap into a built app for comparison in the Dock. The junction alternates go
+# on one sheet; the symmetry (sym-*) and |\B (norise-*) families go on the refresh sheet.
 variants=("$default_junction")
+junctions=("$default_junction")
+sym=()
+norise=()
 for params in AppIcon/metabrowser-icon-*.json; do
   name=$(basename "$params" .json)
   name=${name#metabrowser-icon-}
   [[ "$name" == dev* ]] && continue
   variants+=("$name")
+  case "$name" in
+    sym-*) sym+=("$name") ;;
+    norise-*) norise+=("$name") ;;
+    *) junctions+=("$name") ;;
+  esac
 done
-# The release parameter file of a variant, and its width (macOS's bash has no hash tables).
+# The release parameter file of a variant, a string parameter from it, and its width (macOS's
+# bash has no hash tables).
 params_of() { if [[ "$1" == "$default_junction" ]]; then echo AppIcon/metabrowser-icon.json; else echo "AppIcon/metabrowser-icon-$1.json"; fi; }
-width_of() { sed -n 's/^inkWidth=//p' "$work/$1.dims"; }
+param_of() { sed -n "s/.*\"$2\": \"\\([^\"]*\\)\".*/\\1/p" "$(params_of "$1")"; }
+dim_of() { sed -n "s/^$2=//p" "$work/$1.dims"; }
+width_of() { dim_of "$1" inkWidth; }
+# How a variant's partial M ends, in words, and where, for captions.
+bar_word() {
+  case "$1" in
+    barTop) echo "the bar's top" ;; barCenter) echo "the bar's center" ;;
+    barBottom) echo "the bar's bottom" ;; vertex) echo "the vertex flat" ;; *) echo "$1" ;;
+  esac
+}
+end_of() {
+  local face floor
+  if [[ "$(param_of "$1" junction)" == no-rise ]]; then
+    face=$(param_of "$1" endFace)
+    floor=$(param_of "$1" endFloor)
+    if [[ "$face" == none ]]; then echo "horizontal cut at $(bar_word "$floor")"; else
+      echo "vertical face from $(bar_word "$face") to $(bar_word "$floor")"; fi
+  else
+    awk -v t="$(dim_of "$1" top)" -v f="$(dim_of "$1" faceTop)" -v w="$(dim_of "$1" topFlat)" 'BEGIN {
+      if (w + 0 > 0) printf "flat top %.3f wide on the cap line", w
+      else if (f - t < 0.0005) printf "point on the cap line"
+      else printf "point %.3f below the cap line", f - t }'
+  fi
+}
+detail_of() {
+  if [[ "$(param_of "$1" junction)" == no-rise ]]; then
+    awk -v e="$(dim_of "$1" endBottom)" -v c="$(dim_of "$1" crotchY)" -v f="$(dim_of "$1" vertexY)" \
+      'BEGIN { printf "ends at y %.3f: %.3f below the crotch, %.3f above the vertex flat", e, e - c, f - e }'
+  else
+    awk -v a="$(dim_of "$1" faceTop)" -v b="$(dim_of "$1" faceBottom)" -v r="$(dim_of "$1" rightEdge)" -v m="$(dim_of "$1" xm)" \
+      'BEGIN { printf "vertical face from y %.3f to %.3f, %.3f right of the axis", a, b, r - m }'
+  fi
+}
+# How far the B's stem moved right from the M's stem, and in the icon, against the default.
+shift_of() {
+  awk -v b="$(dim_of "$1" xB)" -v x="$(dim_of "$1" x0)" -v rb="$(dim_of "$default_junction" xB)" \
+    -v rx="$(dim_of "$default_junction" x0)" 'BEGIN { printf "%+.3f from the M'"'"'s stem, %+.3f in the icon", (b - x) - (rb - rx), b - rb }'
+}
 for v in "${variants[@]}"; do
   "$work/make-glyphs" "$(params_of "$v")" "$work/$v.svg" --dims "$work/$v.dims" >/dev/null
   "$render" "$work/$v.svg" "$work/$v-2048.png" 2048 "$out/variant-$v-1024.png" 1024 "$work/$v-64.png" 64
@@ -90,8 +137,8 @@ if [[ -f AppIcon/metabrowser-icon-dev-bevel.json ]]; then
   "$render" AppIcon/metabrowser-icon-dev-bevel.svg "$out/variant-bevel-dev-1024.png" 1024
 fi
 
-# All variants side by side, with the sister app, at 1024 and 64 px.
-count=${#variants[@]}
+# The junction alternates side by side, with the sister app, at 1024 and 64 px.
+count=${#junctions[@]}
 [[ -n "$sister" ]] && count=$((count + 1))
 {
   echo "canvas $((count * 1064 + 40)) 1290 $bg"
@@ -103,7 +150,7 @@ count=${#variants[@]}
     echo "text $x 20 30 $ink bold The sister app: 222 units wide"
     x=$((x + 1064))
   fi
-  for v in "${variants[@]}"; do
+  for v in "${junctions[@]}"; do
     label="$v"
     [[ "$v" == "$default_junction" ]] && label="$v (default)"
     echo "image $out/variant-$v-1024.png $x 70"
@@ -115,6 +162,80 @@ count=${#variants[@]}
 } >"$work/compare.spec"
 "$sheet" "$work/compare.spec" "$out/variants-1024-and-64.png"
 
+# The refresh: the symmetry and |\B families, a row each after the default, each family in order
+# of how far the B's stem stands from the M's stem: at 1024 and 64 px, and at 64 px magnified.
+by_shift() {
+  local v
+  for v in "$@"; do
+    awk -v b="$(dim_of "$v" xB)" -v x="$(dim_of "$v" x0)" -v n="$v" 'BEGIN { printf "%.3f %s\n", b - x, n }'
+  done | sort -n | cut -d' ' -f2
+}
+family_title() {
+  if [[ "$1" == sym ]]; then
+    echo "Symmetry: the M's cut moves up toward the cap line, and the gap widens toward a stem (31.464)"
+  else
+    echo "|\\B: no rising diagonal; the falling diagonal's end lines up with the B's middle bar"
+  fi
+}
+rows=0
+cols=0
+for family in sym norise; do
+  if [[ "$family" == sym ]]; then n=${#sym[@]}; else n=${#norise[@]}; fi
+  ((n > 0)) && rows=$((rows + 1))
+  ((n > cols)) && cols=$n
+done
+if ((rows > 0)); then
+  {
+    echo "canvas $(((cols + 1) * 1064 + 40)) $((rows * 1372 + 110)) $bg"
+    y=30
+    for family in sym norise; do
+      # shellcheck disable=SC2207
+      if [[ "$family" == sym ]]; then members=($(by_shift ${sym[@]+"${sym[@]}"})); else
+        members=($(by_shift ${norise[@]+"${norise[@]}"})); fi
+      ((${#members[@]} > 0)) || continue
+      echo "text 40 $y 34 $ink bold $(family_title "$family")"
+      x=40
+      for v in "$default_junction" "${members[@]}"; do
+        label="$v"
+        [[ "$v" == "$default_junction" ]] && label="$v (today's default, for reference)"
+        echo "text $x $((y + 60)) 28 $ink bold $label"
+        echo "text $x $((y + 102)) 24 $ink $(end_of "$v"); gap $(dim_of "$v" gap)"
+        echo "text $x $((y + 136)) 24 $ink $(detail_of "$v")"
+        echo "text $x $((y + 170)) 24 $ink $(width_of "$v") wide; B's stem vs. the default: $(shift_of "$v")"
+        echo "image $out/variant-$v-1024.png $x $((y + 214))"
+        echo "image $work/$v-64.png $((x + 480)) $((y + 1262))"
+        x=$((x + 1064))
+      done
+      y=$((y + 1372))
+    done
+    echo "text 40 $y 24 $ink 64 px, actual size, under each icon. Release .icns files for each are in review/icns/; 4x close-ups are closeup-*-4x.png."
+  } >"$work/refresh.spec"
+  "$sheet" "$work/refresh.spec" "$out/refresh-1024-and-64.png"
+
+  # The same icons at 64 px only: actual size, then magnified 4x with nearest-neighbor sampling.
+  {
+    echo "canvas $(((cols + 1) * 320 + 40)) $((rows * 470 + 90)) $bg"
+    y=30
+    for family in sym norise; do
+      # shellcheck disable=SC2207
+      if [[ "$family" == sym ]]; then members=($(by_shift ${sym[@]+"${sym[@]}"})); else
+        members=($(by_shift ${norise[@]+"${norise[@]}"})); fi
+      ((${#members[@]} > 0)) || continue
+      echo "text 40 $y 26 $ink bold $(family_title "$family")"
+      x=40
+      for v in "$default_junction" "${members[@]}"; do
+        echo "image $work/$v-64.png $((x + 96)) $((y + 50))"
+        echo "image $work/$v-64.png $x $((y + 134)) 256 256 nearest"
+        echo "text $x $((y + 400)) 18 $ink $v"
+        x=$((x + 320))
+      done
+      y=$((y + 470))
+    done
+    echo "text 40 $y 22 $ink Each at 64 px: actual size (top) and magnified 4x (bottom). The first in each row is today's default."
+  } >"$work/refresh-64.spec"
+  "$sheet" "$work/refresh-64.spec" "$out/refresh-64-px.png"
+fi
+
 # 4x close-ups of each junction (8 px per master unit), from the 2048 px renders.
 # closeup VARIANT X0 Y0 X1 Y1: crops the master region and writes the sheet header.
 closeup() {
@@ -123,16 +244,17 @@ closeup() {
   read -r cx cy cw ch <<<"$(awk -v a="$2" -v b="$3" -v c="$4" -v d="$5" \
     'BEGIN { printf "%d %d %d %d", a * 4, b * 4, (c - a) * 4, (d - b) * 4 }')"
   {
-    echo "canvas $((cw * 2)) $((ch * 2 + 200)) $bg"
+    echo "canvas $((cw * 2)) $((ch * 2 + 232)) $bg"
     echo "image $work/$v-2048.png 0 70 $((cw * 2)) $((ch * 2)) smooth $cx $cy $cw $ch"
   } >"$work/closeup-$v.spec"
 }
 P() { awk -v x="$1" -v y="$2" -v ox="$cox" -v oy="$coy" 'BEGIN { printf "%d %d", (x - ox) * 8, (y - oy) * 8 + 70 }'; }
 for v in "${variants[@]}"; do
-  unset faceTop
+  unset faceTop endFaceTop
   # shellcheck disable=SC1090
   source "$work/$v.dims"
-  case "$v" in
+  junction=$(param_of "$v" junction)
+  case "${junction:-gap}" in
     gap | b-over)
       ft=${faceTop:-$top}
       closeup "$v" "$(awk -v r="$rightEdge" 'BEGIN { print r - 45 }')" "$(awk -v t="$top" 'BEGIN { print t - 18 }')" \
@@ -152,6 +274,8 @@ for v in "${variants[@]}"; do
         echo "text $((fx - 150)) $(( (fy + fb) / 2 + 30 )) 20 #FFFFFF face $face"
         echo "text 24 $((ch * 2 + 90)) 22 $ink Gap $gap from the face (x $rightEdge) to the B's stem (x $xB);"
         echo "text 24 $((ch * 2 + 122)) 22 $ink the face is $face tall, from y $ft to $faceBottom; the mark is $(width_of "$v") wide."
+        echo "text 24 $((ch * 2 + 154)) 22 $ink The diagonal ends in a $(end_of "$v")."
+        echo "text 24 $((ch * 2 + 186)) 22 $ink B's stem vs. the default: $(shift_of "$v")."
       } >>"$work/closeup-$v.spec"
       ;;
     bevel | corner-bevel)
@@ -174,18 +298,46 @@ for v in "${variants[@]}"; do
         echo "line $ph1x $phy $ph2x $phy 3 $cyan"
         echo "text $((ph2x + 10)) $((phy - 12)) 20 #FFFFFF $channelHorizontal across"
         echo "text 24 $((ch * 2 + 90)) 22 $ink Channel $channel square to the diagonal ($channelHorizontal across); one straight cut at 29 degrees."
-        if [[ "$v" == corner-bevel ]]; then
+        if [[ "$junction" == corner-bevel ]]; then
           echo "text 24 $((ch * 2 + 122)) 22 $ink Corner cut $cornerCut along the cap line, $cornerCutDown down the stem; the mark is $(width_of "$v") wide."
         else
           echo "text 24 $((ch * 2 + 122)) 22 $ink The B's stem is trimmed above its middle bar (y $middleBarTop); the mark is $(width_of "$v") wide."
         fi
       } >>"$work/closeup-$v.spec"
       ;;
+    no-rise)
+      closeup "$v" "$(awk -v s="$stemRight" 'BEGIN { print s - 12 }')" "$(awk -v c="$crotchY" 'BEGIN { print c - 34 }')" \
+        "$(awk -v b="$xBRight" 'BEGIN { print b + 28 }')" "$(awk -v y="$vertexY" 'BEGIN { print y + 22 }')"
+      # The gap is drawn across the end face's middle, or just above a horizontal end's corner.
+      gapY=$(awk -v a="${endFaceTop:-}" -v b="$endBottom" -v f="$endFloor" 'BEGIN { print (a == "") ? f - 3 : (a + b) / 2 }')
+      read -r _ bt <<<"$(P "$xB" "$barTop")"
+      read -r _ bb <<<"$(P "$xB" "$barBottom")"
+      read -r lx _ <<<"$(P "$xBRight" "$barTop")"
+      read -r ex gy <<<"$(P "$rightEdge" "$gapY")"
+      read -r sx _ <<<"$(P "$xB" "$gapY")"
+      read -r _ ty <<<"$(P "$rightEdge" "${endFaceTop:-$endFloor}")"
+      read -r _ ey <<<"$(P "$rightEdge" "$endBottom")"
+      {
+        echo "text 24 20 26 $ink bold $v at 4x: the falling diagonal's end, the gap, and the B's middle bar"
+        echo "line 0 $bt $((cw * 2)) $bt 2 $cyan"
+        echo "line 0 $bb $((cw * 2)) $bb 2 $cyan"
+        echo "text $((lx + 10)) $((bt - 30)) 20 #FFFFFF bar top $barTop"
+        echo "text $((lx + 10)) $((bb + 8)) 20 #FFFFFF bar bottom $barBottom"
+        echo "line $ex $((ty - 40)) $ex $((ey + 40)) 2 $red"
+        echo "line $sx $((ty - 40)) $sx $((ey + 40)) 2 $red"
+        echo "line $ex $gy $sx $gy 3 $red"
+        echo "text $((ex + 8)) $((gy - 34)) 22 #FFFFFF bold gap $gap"
+        echo "text 24 $((ch * 2 + 90)) 22 $ink End: $(end_of "$v")."
+        echo "text 24 $((ch * 2 + 122)) 22 $ink It $(detail_of "$v")."
+        echo "text 24 $((ch * 2 + 154)) 22 $ink Gap $gap from its rightmost point (x $rightEdge) to the B's stem (x $xB); the bar is $barThickness thick."
+        echo "text 24 $((ch * 2 + 186)) 22 $ink Mark $(width_of "$v") wide. B's stem vs. the default: $(shift_of "$v")."
+      } >>"$work/closeup-$v.spec"
+      ;;
     *) continue ;;
   esac
   "$sheet" "$work/closeup-$v.spec" "$out/closeup-$v-4x.png"
 done
-unset faceTop
+unset faceTop endFaceTop
 
 # Construction guides over the release master: cap line, baseline, crotch and vertex lines,
 # stem edges, the vertical face, the M's axis, and both diagonals' edges.

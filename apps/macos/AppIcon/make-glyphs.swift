@@ -32,7 +32,10 @@ struct Params: Decodable {
     ///                  parallel to it, `gap` away; `cornerCut` sizes the corner and so places
     ///                  the B;
     ///   "touch"        the diagonal's upper edge ends on the B stem's top-left corner;
-    ///   "overlap"      the diagonal runs into the B's stem as in the font's M.
+    ///   "overlap"      the diagonal runs into the B's stem as in the font's M;
+    ///   "no-rise"      there is no rising diagonal: the partial M is |\, the falling diagonal
+    ///                  ends at cuts lined up with the B's middle bar (`endFace`, `endFloor`),
+    ///                  and the B's stem follows `gap` beyond the end's rightmost point.
     var junction = "gap"
     /// The space between the partial M and the B: from the vertical face to the B's stem
     /// ("gap"), or the channel between the diagonal and the B's bevel ("bevel"). Default: the
@@ -47,8 +50,22 @@ struct Params: Decodable {
     /// diagonal reaches over the stem.
     var cornerCut = 0.5
     /// "gap" junction: the width of the diagonal's flat top, in stems, which places the vertical
-    /// face. 1 puts the face where the first stem's outer edge falls mirrored on the M's axis.
+    /// face. 1 puts the face where the first stem's outer edge falls mirrored on the M's axis; 0
+    /// puts it where the diagonal's upper edge meets the cap line, so the diagonal ends in a point
+    /// on the cap line.
     var faceTopFlat = 1.0
+    /// "gap" junction, with `faceTopFlat` 0: how far below the cap line the vertical face's top
+    /// sits. The face moves left with it, the diagonal ends there in a point as sharp as `angle`,
+    /// and the B's stem still follows `gap` beyond the face.
+    var faceDrop = 0.0
+    /// "no-rise" junction: the line of the B's middle bar at which a vertical cut meets the
+    /// falling diagonal's upper edge, placing the end's vertical face: "barTop", "barCenter",
+    /// "barBottom", or "none" for no vertical cut.
+    var endFace = "none"
+    /// "no-rise" junction: the horizontal cut under the falling diagonal's end: "barTop",
+    /// "barCenter", or "barBottom" (lines of the B's middle bar), or "vertex" (`vertexFlat`, where
+    /// the M's V is cut).
+    var endFloor = "vertex"
     /// The partial M's stem. Default: the font's B stem, 277.75 font units (the B itself keeps
     /// the font's stem whatever this says).
     var stem = 31.464
@@ -83,8 +100,8 @@ struct Params: Decodable {
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case variant, junction, gap, gapMeasure, cornerCut, faceTopFlat, stem, diagonal, angle, capLine, baseline
-        case crotch, vertexFlat, centroidX, bSize, overlapTopFlat, minSliver, fills
+        case variant, junction, gap, gapMeasure, cornerCut, faceTopFlat, faceDrop, endFace, endFloor, stem, diagonal
+        case angle, capLine, baseline, crotch, vertexFlat, centroidX, bSize, overlapTopFlat, minSliver, fills
     }
 
     init() {}
@@ -95,7 +112,8 @@ struct Params: Decodable {
         }
         try get(.variant, &variant); try get(.junction, &junction); try get(.gap, &gap)
         try get(.gapMeasure, &gapMeasure); try get(.cornerCut, &cornerCut)
-        try get(.faceTopFlat, &faceTopFlat); try get(.stem, &stem)
+        try get(.faceTopFlat, &faceTopFlat); try get(.faceDrop, &faceDrop)
+        try get(.endFace, &endFace); try get(.endFloor, &endFloor); try get(.stem, &stem)
         try get(.diagonal, &diagonal); try get(.angle, &angle); try get(.capLine, &capLine)
         try get(.baseline, &baseline); try get(.crotch, &crotch); try get(.vertexFlat, &vertexFlat)
         try get(.centroidX, &centroidX); try get(.bSize, &bSize); try get(.overlapTopFlat, &overlapTopFlat)
@@ -133,6 +151,7 @@ let bOutline: [[Double]] = [  // M/L x y, Q cx cy x y, Z
 ]
 let bStemLeft = 94.0781, bStemRight = 371.828
 let bMiddleBarTop = 858.266  // the top counter's floor
+let bMiddleBarBottom = 636.078  // the bottom counter's ceiling
 
 // MARK: - Geometry
 
@@ -174,6 +193,7 @@ func construct(_ p: Params, x0: Double) -> Glyphs {
     let across = p.gapMeasure == "perpendicular" ? p.gap / cosTheta : p.gap  // a bevel channel, measured across
     let xB: Double  // the B's stem left edge
     var clipRight = 100_000.0  // the partial M's right limit
+    var floorY = p.vertexFlat  // "no-rise": the cut under the falling diagonal's end
     switch p.junction {
     case "touch", "overlap", "bevel", "b-over":
         xB = 2 * xm - x0 - w  // the B's stem where the M's right stem would be
@@ -187,7 +207,7 @@ func construct(_ p: Params, x0: Double) -> Glyphs {
             dims.append(("faceBottom", faceBottom))
             dims.append(("rightEdge", clipRight))
             if faceTop > top {
-                notes.append(String(format: "the cut lies %.3f left of where the rising diagonal meets the cap line, so the diagonal keeps no flat top: it ends %.3f below the cap line in a %.1f-degree point", 2 * xm - start - clipRight, faceTop - top, 90 - p.angle))
+                notes.append(String(format: "the cut lies %.3f left of where the rising diagonal meets the cap line, so the diagonal keeps no flat top: it ends %.3f below the cap line in a %.1f-degree point", 2 * xm - start - clipRight, faceTop - top, p.angle))
             }
             notes.append(String(format: "the vertical face runs from y %.3f to %.3f, %.3f tall; the rising diagonal keeps %.3f of its %.3f height above the crotch, and %.3f across right of the axis", max(top, faceTop), faceBottom, faceBottom - max(top, faceTop), max(0, p.crotch - faceTop), p.crotch - top, clipRight - xm))
             let flatHalf = (p.crotch + hw / tanTheta - p.vertexFlat) * tanTheta
@@ -209,13 +229,90 @@ func construct(_ p: Params, x0: Double) -> Glyphs {
             : String(format: "the diagonal's top reaches %.3f over the B's stem", reach))
     case "gap":
         let flat = p.faceTopFlat * w
-        guard flat >= p.minSliver else { fail("faceTopFlat leaves a top flat of \(flat), under minSliver \(p.minSliver)") }
+        guard p.faceTopFlat >= 0 else { fail("faceTopFlat must be 0 or more; faceDrop moves the face below the cap line") }
+        guard flat == 0 || flat >= p.minSliver else {
+            fail(String(format: "faceTopFlat leaves a top flat of %.3f, under minSliver %.3f; 0 ends the diagonal in a point on the cap line", flat, p.minSliver))
+        }
         guard flat <= hw else { fail("faceTopFlat \(p.faceTopFlat) puts the face past the diagonal's top (\(hw) wide)") }
+        guard p.faceDrop >= 0 else { fail("faceDrop must be 0 or more; a flat top is faceTopFlat") }
+        guard p.faceDrop == 0 || flat == 0 else {
+            fail("faceDrop puts the face below the cap line, where the diagonal keeps no flat top: set faceTopFlat to 0")
+        }
         clipRight = 2 * xm - start + flat  // the diagonal's upper edge meets the cap line at 2xm - start
+        if p.faceDrop > 0 { clipRight -= p.faceDrop * tanTheta }  // the upper edge falls 1/tan per unit left
         xB = clipRight + p.gap
+        let faceTop = top + p.faceDrop
+        let faceBottom = faceTop + (hw - flat) / tanTheta  // where the lower edge crosses the face
+        guard clipRight - xm >= p.minSliver else { fail("faceDrop leaves the rising diagonal under minSliver across right of the axis") }
+        guard faceBottom < p.vertexFlat else {
+            fail(String(format: "faceDrop %.3f puts the face's foot at y %.3f, into the vertex flat (y %.3f)", p.faceDrop, faceBottom, p.vertexFlat))
+        }
+        dims.append(("faceTop", faceTop))
+        dims.append(("faceBottom", faceBottom))
         dims.append(("rightEdge", clipRight))
-        dims.append(("faceBottom", top + (hw - flat) / tanTheta))
-    default: fail("junction must be gap, bevel, b-over, corner-bevel, touch, or overlap")
+        dims.append(("topFlat", flat))
+        if flat == 0 {
+            notes.append(String(format: "the diagonal keeps no flat top: it ends %.3f below the cap line in a %.1f-degree point", p.faceDrop, p.angle))
+        } else {
+            notes.append(String(format: "the diagonal's flat top is %.3f wide and meets the face at a right angle", flat))
+        }
+        notes.append(String(format: "the vertical face runs from y %.3f to %.3f, %.3f tall, %.3f right of the axis", faceTop, faceBottom, faceBottom - faceTop, clipRight - xm))
+    case "no-rise":
+        // The B's middle bar, as placed: between the bottom counter's ceiling and the top counter's floor.
+        let barTop = p.baseline - bMiddleBarTop * unit, barBottom = p.baseline - bMiddleBarBottom * unit
+        let bar = ["barTop": barTop, "barCenter": (barTop + barBottom) / 2, "barBottom": barBottom]
+        guard let floorLine = p.endFloor == "vertex" ? p.vertexFlat : bar[p.endFloor] else {
+            fail("endFloor must be barTop, barCenter, barBottom, or vertex")
+        }
+        guard p.endFace == "none" || bar[p.endFace] != nil else { fail("endFace must be barTop, barCenter, barBottom, or none") }
+        guard floorLine <= p.vertexFlat else { fail(String(format: "endFloor %@ (y %.3f) lies under the vertex flat (y %.3f)", p.endFloor, floorLine, p.vertexFlat)) }
+        floorY = floorLine
+        func fallingUpper(_ yy: Double) -> Double { start + (yy - top) * tanTheta }
+        // The diagonal's lower edge leaves the stem's right edge at top + hw/tan; above that a floor
+        // would leave a flag on the stem, and just below it a notch too thin to read.
+        let notch = fallingUpper(floorLine) - hw - start
+        guard notch >= p.minSliver else {
+            fail(notch <= 0
+                ? String(format: "endFloor %@ (y %.3f) is above where the diagonal leaves the stem (y %.3f): the end would be a flag on the stem", p.endFloor, floorLine, top + hw / tanTheta)
+                : String(format: "endFloor %@ (y %.3f) leaves a notch %.3f wide between the diagonal and the stem, under minSliver", p.endFloor, floorLine, notch))
+        }
+        let rightmost: Double
+        var bottom = floorLine
+        if let faceY = bar[p.endFace] {
+            guard faceY < floorLine - p.minSliver else {
+                fail(String(format: "endFace %@ (y %.3f) leaves a face under minSliver above endFloor %@ (y %.3f)", p.endFace, faceY, p.endFloor, floorLine))
+            }
+            clipRight = fallingUpper(faceY)
+            rightmost = clipRight
+            let point = faceY + hw / tanTheta  // where the lower edge crosses the face
+            let floorWidth = clipRight - (fallingUpper(floorLine) - hw)
+            guard floorWidth <= 0 || floorWidth >= p.minSliver else {
+                fail(String(format: "endFace %@ and endFloor %@ leave a floor %.3f wide, under minSliver", p.endFace, p.endFloor, floorWidth))
+            }
+            bottom = min(floorLine, point)
+            dims.append(("endFaceTop", faceY))
+            dims.append(("endFaceBottom", bottom))
+            dims.append(("endFloorWidth", max(0, floorWidth)))
+            notes.append(point <= floorLine
+                ? String(format: "the vertical end face runs from y %.3f to %.3f, %.3f tall, and ends in a %.1f-degree point", faceY, point, point - faceY, p.angle)
+                : String(format: "the vertical end face runs from y %.3f to %.3f, %.3f tall, over a floor %.3f wide", faceY, floorLine, floorLine - faceY, floorWidth))
+        } else {
+            rightmost = fallingUpper(floorLine)
+            dims.append(("endFloorWidth", hw))
+            notes.append(String(format: "the end is a horizontal cut %.3f wide at y %.3f; its right corner, %.1f degrees, comes nearest the B", hw, floorLine, 90 - p.angle))
+        }
+        xB = rightmost + p.gap
+        dims.append(("barTop", barTop))
+        dims.append(("barCenter", (barTop + barBottom) / 2))
+        dims.append(("barBottom", barBottom))
+        dims.append(("barThickness", barBottom - barTop))
+        dims.append(("endFloor", floorLine))
+        dims.append(("endBottom", bottom))
+        dims.append(("notch", notch))
+        dims.append(("rightEdge", rightmost))
+        notes.append(String(format: "the falling diagonal ends at y %.3f, %.3f below the crotch and %.3f above the vertex flat; the notch under it is %.3f wide", bottom, bottom - p.crotch, p.vertexFlat - bottom, notch))
+        notes.append(String(format: "the B's middle bar runs from y %.3f to %.3f (%.3f thick); the B's stem stands %.3f beyond the end's rightmost point (x %.3f)", barTop, barBottom, barBottom - barTop, p.gap, rightmost))
+    default: fail("junction must be gap, bevel, b-over, corner-bevel, touch, overlap, or no-rise")
     }
 
     // Each diagonal is a band between parallel edges, cut by the cap line and the vertex flat.
@@ -227,9 +324,11 @@ func construct(_ p: Params, x0: Double) -> Glyphs {
     // The bands cross at the crotch and would go on as an X; each ends at the other's outer
     // edge, so the V is also bounded by the wedge over the point where the outer edges meet.
     let wedge = polygon([(upper(y0) - hw, y0), (risingLower(y0), y0), (xm, p.crotch + hw / tanTheta)])
-    let vee = left.union(right, using: .winding)
-        .intersection(wedge, using: .winding)
-        .intersection(rect(x0, top, clipRight, p.vertexFlat), using: .winding)
+    let vee = p.junction == "no-rise"
+        ? left.intersection(rect(x0, top, clipRight, floorY), using: .winding)  // |\ alone
+        : left.union(right, using: .winding)
+            .intersection(wedge, using: .winding)
+            .intersection(rect(x0, top, clipRight, p.vertexFlat), using: .winding)
     let first = rect(x0, top, x0 + w, p.baseline).union(vee, using: .winding)
 
     // The B: the font's outline on the baseline, its stem's left edge at xB.
@@ -490,7 +589,9 @@ if let path = options["--guides"] {
         #"<path d="M\#(f3(x0)) \#(f3(y0))L\#(f3(x1)) \#(f3(y1))" stroke="\#(color)" stroke-width="0.6"/>"#
     }
     var lines: [String] = []
-    for key in ["top", "baseline", "crotchY", "vertexY"] { lines.append(line(110, d[key]!, 402, d[key]!, "#00D8FF")) }
+    for key in ["top", "baseline", "crotchY", "vertexY", "barTop", "barBottom"] {
+        if let y = d[key] { lines.append(line(110, y, 402, y, "#00D8FF")) }
+    }
     for key in ["x0", "stemRight", "rightEdge", "xB", "xBRight"] { lines.append(line(d[key]!, 140, d[key]!, 372, "#00D8FF")) }
     lines.append(line(xm, 140, xm, 372, "#FF5C8A"))
     let ya = top - 40, yb = base + 20
