@@ -44,6 +44,10 @@ links to the document that covers each in depth.
 
 ## Active Feature Plans
 
+- [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md) — folder identity
+  and window titles, the icon and release pipeline adapted from a sister app, warm
+  folder switching, host mode and the agent front door, and the app-managed runtime,
+  tracked under epic `mb-1apq`
 - [v0.12 thin mirror for Git and GitHub browsing](specs/active/plan-2026-09-23-v012-thin-mirror.md)
   — the original mirror design and its delivery record; the checkout plan below extends
   it with borrowed stores and explicit recovery
@@ -93,6 +97,8 @@ Once its questions are answered and its measurements are superseded, it moves to
 - [Mermaid diagram support](research/research-2026-08-21-mermaid-diagram-support.md)
 - [Repository cache and open from a Git URL](research/research-2026-08-11-repo-cache-and-git-url-open.md)
 - [Native macOS app: shells, uv runtimes, and CLI layering](research/research-2026-11-08-macos-app-packaging.md)
+- [Native app server topology, lifecycle, and agent handoff](research/research-2026-11-10-native-app-server-topology.md)
+- [Setup flows for `metab` and the native macOS app](research/research-2026-11-11-uv-and-macos-app-install.md)
 
 ### Archived Research
 
