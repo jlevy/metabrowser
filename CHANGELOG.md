@@ -9,8 +9,8 @@ All notable changes to Metabrowser are documented here.
   Conversation commit hashes match the surrounding metadata size.
   A check on **Checks** shows its name, then a link that says where its details open:
   **View action on GitHub**, **View on GitHub**, or **View details** on the check’s own
-  site. Links to GitHub, including the pull request’s **View on GitHub**, are muted with
-  a leading GitHub mark.
+  site. The pull request’s **View on GitHub**, a check’s link to GitHub, and a
+  conversation commit hash are muted, with a leading GitHub mark.
 
 - Opening a pull request’s **Changes** tab fetches a missing comparison automatically.
   A served checkout reuses a healthy cached store or borrows Git objects without

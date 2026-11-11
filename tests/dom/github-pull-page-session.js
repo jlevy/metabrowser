@@ -1107,6 +1107,30 @@ async function main() {
       details_url: "https://ci.example/runs/2",
       app: "GitHub Actions",
     },
+    {
+      id: 3,
+      name: "gist",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://gist.github.com/octo/abc",
+      app: "Gist bot",
+    },
+    {
+      id: 4,
+      name: "proxied",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://github.com:8443/octo/demo/actions/runs/9",
+      app: "Proxy",
+    },
+    {
+      id: 5,
+      name: "credentialed",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://bot@github.com/octo/demo/runs/5",
+      app: "Bot",
+    },
   );
   variedChecks.record.status.statuses.push({
     context: "legacy-ci",
@@ -1263,7 +1287,6 @@ async function main() {
       canRefresh: notGithub.canRefresh,
     },
     links,
-    checkActions,
     wire: runtime.gitPathWire("src/app.txt"),
     pageDefense: inert,
     filesChanged: files,
@@ -1286,7 +1309,14 @@ async function main() {
     ([pathname, number, tab]) =>
       `${pathname} is #${number}'s ${tab || "conversation"}: ${runtime.onPageRoute(pathname, number, tab)}`,
   );
-  const second = { filesUnavailable, checkout, hunks, place: placeStory(runtime), pageRoutes };
+  const second = {
+    checkActions,
+    filesUnavailable,
+    checkout,
+    hunks,
+    place: placeStory(runtime),
+    pageRoutes,
+  };
   const part = process.argv.indexOf("--part");
   const wanted = part === -1 ? "1" : process.argv[part + 1];
   const chosen = wanted === "all" ? { ...first, ...second } : wanted === "2" ? second : first;

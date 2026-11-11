@@ -437,11 +437,6 @@
   visibility: hidden;
 }
 
-.metabrowser-diff-host .diff-markdown-control .chip:disabled {
-  color: var(--muted);
-  cursor: default;
-}
-
 .metabrowser-diff-host
   :is(
     .diff-markdown-control,

@@ -542,6 +542,30 @@ async function checkRows(page) {
       details_url: "https://ci.example/runs/2",
       app: "GitHub Actions",
     },
+    {
+      id: 3,
+      name: "gist",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://gist.github.com/octo/abc",
+      app: "Gist bot",
+    },
+    {
+      id: 4,
+      name: "proxied",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://github.com:8443/octo/demo/actions/runs/9",
+      app: "Proxy",
+    },
+    {
+      id: 5,
+      name: "credentialed",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://bot@github.com/octo/demo/runs/5",
+      app: "Bot",
+    },
   );
   body.record.status.statuses.push({
     context: "legacy-ci",
@@ -626,6 +650,30 @@ async function checkRows(page) {
         accessibleName: "View details: lint",
       },
       detail: "GitHub Actions",
+    },
+    {
+      name: "gist",
+      action: {
+        ...actions("github", "https://gist.github.com/octo/abc"),
+        accessibleName: "View on GitHub: gist",
+      },
+      detail: "Gist bot",
+    },
+    {
+      name: "proxied",
+      action: {
+        ...actions("external", "https://github.com:8443/octo/demo/actions/runs/9"),
+        accessibleName: "View details: proxied",
+      },
+      detail: "Proxy",
+    },
+    {
+      name: "credentialed",
+      action: {
+        ...actions("external", "https://bot@github.com/octo/demo/runs/5"),
+        accessibleName: "View details: credentialed",
+      },
+      detail: "Bot",
     },
     {
       name: "docs/readthedocs.org:demo",
