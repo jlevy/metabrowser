@@ -108,7 +108,7 @@ def test_obsidian_fixture_canonical_routes_and_raw_resource_reload() -> None:
     ):
         response = client.get(route)
         assert response.status_code == 200, route
-        assert "<title>Metabrowser</title>" in response.text
+        assert "<title>obsidian-vault \u2022 Metabrowser</title>" in response.text
 
     resource = client.get("/raw?path=Attachments%2Fmap.svg")
     assert resource.status_code == 200

@@ -17,6 +17,12 @@ All notable changes to Metabrowser are documented here.
 
 ## 0.12.0
 
+- Each browser tab is titled by what it serves, so windows can be told apart: the
+  folder’s name, or a cached mirror’s repository name (`tbd #123` on a pull request’s
+  head), then `• Metabrowser`. `GET /api/identity` reports that title with a short name,
+  a full name (the folder’s path with `~`, or the mirror’s origin and ref, such as
+  `github.com/jlevy/tbd@main`), and whether it is a local folder or a cached mirror.
+
 - Configuration and repository-cache contract names use `metabrowser.config` and
   `metabrowser.cache`, independent of their hosting location.
   An unreadable config names its location and explains how to recreate it without

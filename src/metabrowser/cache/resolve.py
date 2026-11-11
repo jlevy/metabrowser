@@ -44,8 +44,8 @@ from metabrowser.git.process import (
     RepositoryStoreTarget,
     run_git,
 )
-from metabrowser.git.tree_source import display_segment
 from metabrowser.git.wire import is_full_revision
+from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
     AmbiguousSelectionError,
     InvalidSelectionError,

@@ -24,6 +24,7 @@ as a reader's is.
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import os
 import re
@@ -97,9 +98,12 @@ def _page(client: TestClient, kind: str) -> dict[str, Any]:
     status = client.get("/api/source/status").json()
     page_pin = _PAGE_PIN.findall(shell.text)
     assert len(page_pin) == (kind == "git_revision"), page_pin
+    # The tab's title as a browser reads it, which is what /api/identity calls the page.
+    title = [html.unescape(found) for found in _TITLE.findall(shell.text)]
+    assert title == [client.get("/api/identity").json()["title"]], title
     return {
         "kind": kind,
-        "title": _TITLE.findall(shell.text),
+        "title": title,
         "heading": _HEADING.findall(shell.text),
         "dataset": attributes.dataset,
         # The commit and ref the page was rendered for, which a pin's page carries.
@@ -194,6 +198,10 @@ def test_fixture_is_what_the_server_serves_for_a_folder_and_for_a_mirror(
     assert hostile["status"]["name"] == "a<b>&\ufffdx"
     assert hostile["status"]["origin"] == "file://~/git/a%3Cb%3E&%E2%80%AEx.git"
     assert "a&lt;b&gt;&amp;\ufffdx" in hostile["heading"]
+    # Each tab is called by what its heading names, then a bullet and the app.
+    assert folder["title"] == "squares \u2022 Metabrowser"
+    assert mirror["title"] == "squares \u2022 Metabrowser"
+    assert hostile["title"] == "a<b>&\ufffdx \u2022 Metabrowser"
     assert SANDBOX_STAND_IN not in json.dumps(served)
     check_recording(RECORDING, served, transcript=TRANSCRIPT)
 
@@ -266,9 +274,9 @@ def test_the_session_names_a_mirror_and_says_where_it_is_kept() -> None:
     assert folder["navigationHeading"]["commitCopy"] is None
     assert folder["tooltips"]["rootName"] is None and folder["tooltips"]["note"] is None
     assert hostile["mainHeading"]["file"]["text"].startswith("a<b>&\ufffdx / docs / guide.md ")
-    for page in (folder, mirror, hostile):
-        assert page["title"] == {
-            "served": "Metabrowser",
-            "afterEveryStep": "Metabrowser",
-            "writes": [],
-        }
+    for page, title in (
+        (folder, "squares \u2022 Metabrowser"),
+        (mirror, "squares \u2022 Metabrowser"),
+        (hostile, "a<b>&\ufffdx \u2022 Metabrowser"),
+    ):
+        assert page["title"] == {"served": title, "afterEveryStep": title, "writes": []}

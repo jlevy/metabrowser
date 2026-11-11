@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from metabrowser import invisible_chars
 from metabrowser.git import tree_source as tree_module
 from metabrowser.git.process import (
     GitTimeoutError,
@@ -29,7 +30,6 @@ from metabrowser.git.tree_source import (
     GitPathError,
     GitRevisionSubject,
     GitTreeTally,
-    display_segment,
     git_revision_subject,
     read_store_blob,
     store_batch_reader_count,
@@ -40,6 +40,7 @@ from metabrowser.invisible_chars import (
     FORMAT,
     SPACE_SEPARATORS,
     VARIATION_SELECTORS,
+    display_segment,
     hidden_at,
 )
 from metabrowser.plugin_api import (
@@ -819,7 +820,7 @@ def test_display_does_per_character_work_only_for_a_name_that_needs_it(
         asked.append((text, index))
         return hidden_at(text, index)
 
-    monkeypatch.setattr(tree_module, "hidden_at", counted)
+    monkeypatch.setattr(invisible_chars, "hidden_at", counted)
     plain = "\u30c9\u30ad\u30e5\u30e1\u30f3\u30c8\u6982\u8981-123.md"
     assert display_segment(plain.encode()) == plain
     assert asked == []

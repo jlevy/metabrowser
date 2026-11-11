@@ -433,6 +433,14 @@ type SelectionOpener = Callable[[], Awaitable[OpenedSelection | None]]
 # A pull request's head as a pin names it, which makes that pull request the attended one.
 _PULL_HEAD: Final = re.compile(r"refs/pull/([1-9][0-9]{0,9})/head")
 
+
+def pull_head_number(ref: str | None) -> int | None:
+    """The pull request whose head *ref* is, ``refs/pull/<n>/head``, or ``None`` for any other."""
+
+    head = _PULL_HEAD.fullmatch(ref or "")
+    return int(head.group(1)) if head is not None else None
+
+
 # Outcomes after which the store holds what the origin had: the fetch ran.
 _FETCHED_OUTCOMES: Final = frozenset({"succeeded", "default_branch_unknown"})
 
@@ -1120,9 +1128,9 @@ class MirrorSession:
                 self._tip = (subject.ref, subject.commit_oid)
             else:
                 self._tip = None
-            head = _PULL_HEAD.fullmatch(subject.ref or "")
-            if head is not None:
-                await self.attend(int(head.group(1)))
+            number = pull_head_number(subject.ref)
+            if number is not None:
+                await self.attend(number)
             return True, session
 
     def _refs_to_keep(self) -> tuple[str, ...]:
@@ -1339,6 +1347,7 @@ __all__ = [
     "followed_outcome",
     "lifespan_refresh",
     "mirror_session",
+    "pull_head_number",
     "refresh_coordinator",
     "serve_mirror",
 ]

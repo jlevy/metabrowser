@@ -211,6 +211,13 @@ where a folder shows its name, and nothing said its files came out of the cache.
   heading, as the dimmed root of the main heading’s address, and in the heading’s
   tooltip. A pin with no mirror has no origin to take a name from and is headed by its
   ref and commit, as before.
+- **Title.** The tab, and a window of the native app, are called by the name too:
+  `squares • Metabrowser`, or `squares #7 • Metabrowser` on a pull request’s head.
+  `/api/identity` gives that title with a full name that tells two mirrors of one name
+  apart without naming the cache: the origin without its scheme, then what the mirror is
+  pinned to, as in `github.com/jlevy/squares@main`.
+  [The map](arch-views-models-routes.md#data-routes) holds the rules, and a served
+  folder is named by the same route.
 - **Commit.** The ref and the short commit follow the name in the navigation heading,
   and a control after the short commit copies the full one, through the SDK’s
   owner-stamped copy delegate.
