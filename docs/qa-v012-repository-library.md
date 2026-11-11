@@ -2006,22 +2006,19 @@ Serve the stand-in of 5.7 (`--serve 7 8475`) and open
 
 7. `docs/new.md`, which the pull request adds, has only **View file**. `src/app.txt` has
    **View at base**, whose tooltip names `f92fd713acd5`, the merge base rather than the
-   base branch’s tip, and **View file**, a link.
-8. Click **View file** on `src/app.txt`: the file opens from the served head and reads
-   `one` and `two`. Back returns to Changes.
-9. Click **View at base** on `src/app.txt`: the page reloads on `f92fd713acd5` and the
-   file reads `one` only.
-   Back returns to Changes on the base’s page: the status line says
-   `This page's code is f92fd713acd5, not the pull request's head 85fcb2fa9e77` with
-   **Switch to the head**, **View at base** is now the link, and **View file** the
-   switch. Click **View file** on `src/app.txt`: the file opens from the head, and the
-   button under the heading reads `Pull request: #7` again.
+   base branch’s tip, and **View file**; both are links.
+8. Click **View file** on `src/app.txt`: the file opens in the app from the served head
+   and reads `one` and `two`. Back returns to Changes.
+9. Click **View at base** on `src/app.txt`: a revision page opens at
+   `/api/plugin/github/pull-snapshot?…&side=base…` with the heading `src/app.txt`, the
+   commit `f92fd713acd5…`, and the file reading `one` only, in the reader’s theme.
+   In DevTools, `<html>` carries `data-theme`, `data-prose-font`, and a
+   `--doc-max-chars` matching the settings menu’s width, and the console is empty.
+   Its **Pull request #7 Changes** link returns to Changes, where the status line still
+   names the head and nothing offers **Switch to the head**.
 
-**Pass:** every step as described; a switch sends one `POST /api/source/pin` naming the
-commit and the file’s `/view/` address, and nothing else changes the pin; no console
-errors, except that a browser which does not restore the page from its back/forward
-cache logs one `409` for the old pin when Back lands after a switch, just before the
-page reloads itself once; no request leaves `127.0.0.1`.
+**Pass:** every step as described; no step sends `POST /api/source/pin`, and the served
+pin stays the head throughout; no console errors; no request leaves `127.0.0.1`.
 
 **Fail:** a bar offers a side the change does not have, or the new path at the old side;
 a link opens the file at another commit than its tooltip names; **View file** folds the
@@ -2029,7 +2026,8 @@ file instead of opening it; Back after a switch shows `Could not load files` or 
 naming the commit served before the switch, or reloads more than once; Back with nothing
 switched loads the page again or loses its scroll position; the way back to a branch’s
 tip or a pull request’s head leaves the selector on `Commit: …`; a control on a symbolic
-link, a submodule, a patch file, or in a served folder.
+link, a submodule, a patch file, or in a served folder’s commit diff; a pull request’s
+control switches the pin, or its revision page shows another commit than it names.
 
 A folder served from an ordinary Git checkout shows the same diffs with no View file
 control: it has no file at a commit to open, only the working tree’s.

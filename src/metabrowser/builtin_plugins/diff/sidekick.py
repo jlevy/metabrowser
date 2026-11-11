@@ -114,6 +114,12 @@ _FULL_COMMIT_ID = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")
 _COMPARISONS = ComparisonCache()
 
 
+async def shared_comparison_manifest(
+    key: tuple[str, ...], load: Callable[[], Awaitable[ResolvedManifest]]
+) -> ResolvedManifest:
+    return await _COMPARISONS.manifest(key, load)
+
+
 def _error(kind: str, message: str, status: int, *, path: str) -> JSONResponse:
     return JSONResponse({"error": kind, "message": message, "path": path}, status_code=status)
 
@@ -407,7 +413,9 @@ async def comparison_at(
             await source.resolve(intent)
             return Response(status_code=304, headers=headers)
         comparison = (
-            await listed() if kept_key is None else await _COMPARISONS.manifest(kept_key, listed)
+            await listed()
+            if kept_key is None
+            else await shared_comparison_manifest(kept_key, listed)
         )
         resolved, manifest = comparison.resolved, comparison.manifest
         projected: list[FileChange] = []

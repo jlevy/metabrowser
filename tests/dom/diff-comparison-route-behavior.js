@@ -15,7 +15,7 @@ registerHooks({
         format: "module",
         shortCircuit: true,
         source:
-          "export const setChangeLoader = (load) => { globalThis.deferredLoader = load; }; export const mountDiffView = (_host, document) => ({ document, dispose() {} });",
+          "export const setChangeLoader = (load) => { globalThis.deferredLoader = load; }; export const mountDiffView = (_host, document, _api, options) => ({ document, options, dispose() {} });",
       };
     }
     return nextLoad(url, context);
@@ -74,6 +74,64 @@ async function main() {
   assert.equal(requests[3].plugin, "diff");
   assert.equal(requests[3].hook, "comparison");
   assert.equal(requests[3].params.build, "page-build");
+
+  // The rendered Markdown route is the server's too: the plugin appends only `file`, and
+  // `prefetch` on the requests it sends ahead of Changes for the first screen's files.
+  requests.length = 0;
+  const rendered_route =
+    "/api/plugin/github/pull-rendered-diff?number=7&left=base&right=head&store=route-store";
+  const snapshot_route =
+    "/api/plugin/github/pull-snapshot?number=7&left=base&right=head&store=route-store";
+  const pull = { ...comparison, rendered_route, snapshot_route };
+  const markdown = answer.manifest.files
+    .filter((file) => /\.md$/.test((file.new ?? file.old).path))
+    .map((file) => file.id);
+  assert.ok(markdown.length > 0, "the recorded comparison changes a Markdown file");
+  await registered.prefetch(pull, signal);
+  for (let turn = 0; turn < 20; turn += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.deepEqual(
+    requests.map(({ hook, params }) => [hook, params.file, params.prefetch]),
+    [
+      ["pull-comparison", undefined, undefined],
+      ...markdown.map((id) => ["pull-rendered-diff", id, "1"]),
+    ],
+  );
+  assert.equal(requests.at(-1).params.store, "route-store");
+  requests.length = 0;
+  // The route codec a page has loaded; View file's own behavior is its session's.
+  window.MetabrowserGitPath = { wire: () => "g1-UkVBRE1FLm1k" };
+  const mounted = await registered.render({}, { comparison: pull });
+  assert.equal(typeof mounted.options.renderMarkdown, "function");
+  await mounted.options.renderMarkdown(markdown[0], signal);
+  assert.deepEqual(requests.at(-1).params, {
+    number: "7",
+    left: "base",
+    right: "head",
+    store: "route-store",
+    file: markdown[0],
+  });
+  assert.equal(requests.at(-1).signal, signal);
+  const target = `${snapshot_route}&side=head&path=g1-UkVBRE1FLm1k`;
+  assert.equal(mounted.options.isSnapshotTarget(target, false), true);
+  assert.equal(mounted.options.isSnapshotTarget(`${target}&mode=image`, true), true);
+  assert.equal(mounted.options.isSnapshotTarget("/api/tree", false), false);
+  const plain = await registered.render({}, { comparison });
+  assert.equal(plain.options.renderMarkdown, undefined, "no rendered route, no Rendered view");
+  const errors = [];
+  const logged = console.error;
+  console.error = (...args) => errors.push(args[0]);
+  try {
+    const refused = await registered.render(
+      {},
+      { comparison: { ...pull, rendered_route: "https://example.org/api/plugin/x/y" } },
+    );
+    assert.equal(refused.options.renderMarkdown, undefined);
+  } finally {
+    console.error = logged;
+  }
+  assert.deepEqual(errors, ["metabrowser diff: rendered Markdown unavailable"]);
   console.log("diff comparison routes OK");
 }
 main().catch((error) => {

@@ -10,13 +10,18 @@ repository data or, for ``auth status``, the account's scopes.
 :func:`gh_api` issues one ``gh api --hostname github.com --include`` request and returns
 the status, headers, and body; :func:`gh_account` reads the active github.com login.
 Both raise :class:`GhError` with a typed ``state`` a user can act on. Nothing here
-paginates or caches: callers name every page, as ``gh api --paginate`` and ``--cache``
-would hide the page cap, the ETags, and the rate-limit headers.
+paginates, caches, or shares a read: callers name every page, as ``gh api --paginate``
+and ``--cache`` would hide the page cap, the ETags, and the rate-limit headers. Each
+read is owned by the one refresh job of what it reads, so identical reads do not overlap:
+in the GitHub plugin's test flows, 3 of 1,523 launches did, all in one test that runs
+same-second refreshes at once on purpose (measured 2026-11-11).
+:func:`gh_graphql` runs only a read-only query document, checked by its structure.
 """
 
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -31,6 +36,7 @@ from typing import Any, Final, Literal
 
 from metabrowser.git.process import (
     forget_process_group,
+    kill_when_spawned,
     terminate_git_process,
     track_process_group,
 )
@@ -227,27 +233,41 @@ async def _read_capped(stream: asyncio.StreamReader | None, limit: int) -> tuple
 async def _run(
     args: Sequence[str], *, timeout_s: float, max_bytes: int, cwd: Path | None = None
 ) -> _Completed:
-    """Run ``gh`` once. Raises only for a missing gh, a deadline, or too much output."""
+    """Run ``gh`` once. Raises only for a missing gh, a deadline, or too much output.
+
+    A cancellation while gh is still being spawned waits for the spawn and kills the
+    child, so no gh process outlives the call untracked.
+    """
 
     exe = gh_executable()
     if exe is None:
         raise GhUnavailableError
-    try:
+    env = gh_environment()
+
+    async def spawn_and_track() -> asyncio.subprocess.Process:
         proc = await asyncio.create_subprocess_exec(
             exe,
             *args,
             stdin=subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=gh_environment(),
+            env=env,
             cwd=cwd,
             start_new_session=os.name == "posix",
         )
+        if os.name == "posix":
+            # A Ctrl-C or hangup that cannot unwind kills Git's groups; gh's too.
+            track_process_group(proc)
+        return proc
+
+    spawn = asyncio.create_task(spawn_and_track())
+    try:
+        proc = await asyncio.shield(spawn)
+    except asyncio.CancelledError:
+        await kill_when_spawned(spawn)
+        raise
     except OSError as exc:
         raise GhError(f"could not run gh: {exc.strerror}") from exc
-    if os.name == "posix":
-        # A Ctrl-C or hangup that cannot unwind kills Git's groups; gh's too.
-        track_process_group(proc)
     try:
         return await _finish(proc, args, timeout_s=timeout_s, max_bytes=max_bytes)
     finally:
@@ -458,6 +478,65 @@ async def gh_api(path: str, *, etag: str | None = None, now: datetime | None = N
     return response
 
 
+_GH_GRAPHQL_FIELDS: Final = frozenset({"query", "operationName"})
+# GraphQL's ignored tokens (whitespace, commas, a byte-order mark, and comments), then
+# the tokens a document is made of: block strings, strings, names, punctuators, and
+# numbers. Anything else does not lex, and the document is refused.
+_GRAPHQL_IGNORED: Final = re.compile(r"(?:[\s,﻿]|#[^\n\r]*)+")
+_GRAPHQL_TOKEN: Final = re.compile(
+    r'"""(?:\\"""|[^"]|"(?!""))*"""'
+    r'|"(?:\\.|[^"\\\n\r])*"'
+    r"|[A-Za-z_][A-Za-z0-9_]*"
+    r"|\.\.\.|[!$&():=@\[\]{}|]"
+    r"|-?[0-9][0-9A-Za-z.+-]*"
+)
+
+
+# Every document the plugin sends is a module constant or one of the core batch sizes, about
+# 40 in all, and lexing one on the event loop took 67 to 131 µs, and 1.4 ms for the
+# 25-core batch (measured 2026-11-11), so each answer is kept.
+@functools.lru_cache(maxsize=64)
+def _is_one_read_only_query(document: str) -> bool:
+    """Whether *document* defines exactly one operation, a query, besides fragments.
+
+    It reads the document's top-level definitions, not its first word, so a second
+    ``mutation`` or ``subscription`` after a query is refused, as is anything that is not
+    an executable definition or does not lex. A refused document is never sent.
+    """
+
+    operations: list[str] = []
+    depth = 0
+    starting = True
+    position = 0
+    while position < len(document):
+        ignored = _GRAPHQL_IGNORED.match(document, position)
+        if ignored is not None:
+            position = ignored.end()
+            continue
+        match = _GRAPHQL_TOKEN.match(document, position)
+        if match is None:
+            return False
+        position = match.end()
+        token = match.group()
+        if depth == 0 and starting:
+            if token == "{":
+                operations.append("query")
+            elif token in {"query", "mutation", "subscription"}:
+                operations.append(token)
+            elif token != "fragment":
+                return False
+            starting = False
+        if token in {"{", "("}:
+            depth += 1
+        elif token in {"}", ")"}:
+            depth -= 1
+            if depth < 0:
+                return False
+            if depth == 0 and token == "}":
+                starting = True
+    return depth == 0 and starting and operations == ["query"]
+
+
 async def gh_graphql(
     query: str,
     variables: Mapping[str, str | int | bool | None],
@@ -470,12 +549,13 @@ async def gh_graphql(
     GraphQL can return HTTP 200 with errors and partial data. No caller receives that
     partial data, especially a cursor it could mistakenly persist as completed work.
     """
-    if not query.lstrip().startswith("query"):
+    if not _is_one_read_only_query(query):
         raise ValueError("only a fixed GraphQL query is supported")
     args = ["api", "graphql", "--hostname", GH_HOSTNAME, "--method", "POST", "--include"]
     args.extend(("-f", f"query={query}"))
     for name, value in variables.items():
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
+        # gh reads ``query`` and ``operationName`` as the request itself, not as variables.
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) or name in _GH_GRAPHQL_FIELDS:
             raise ValueError("invalid GraphQL variable name")
         if value is None:
             continue

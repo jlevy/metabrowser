@@ -84,10 +84,12 @@ from metabrowser.builtin_plugins.github.pull_record import (
     CommitStatus,
     Comparison,
     IssueComment,
+    PullObservationSuperseded,
     PullRecord,
     PullRefreshStamp,
     PullRequest,
     PullSide,
+    RecordAbsence,
     RecordTooLargeError,
     Review,
     ReviewComment,
@@ -784,7 +786,12 @@ def _comparison_of(endpoints: PullEndpoints) -> Comparison:
     )
 
 
-async def _write(published: PublishedSource | ListedRepository, record: PullRecord) -> PullRecord:
+async def _write(
+    published: PublishedSource | ListedRepository,
+    record: PullRecord,
+    *,
+    expected: PullRecord | RecordAbsence | None = None,
+) -> PullRecord:
     try:
         final = fit_record(record)
         if not isinstance(published, ListedRepository):
@@ -796,6 +803,8 @@ async def _write(published: PublishedSource | ListedRepository, record: PullReco
                 published.slug,
                 final,
                 metadata_only=isinstance(published, ListedRepository),
+                store_id=None if isinstance(published, ListedRepository) else published.store_id,
+                expected=expected,
             )
         )
     except RecordTooLargeError as exc:
@@ -807,8 +816,28 @@ async def _write(published: PublishedSource | ListedRepository, record: PullReco
         ) from exc
 
 
-async def _with_comparison(published: PublishedSource, record: PullRecord) -> PullRecord:
+class NeedsDeepening(Exception):
+    """Optional work found an uncertain merge base, which only a reader's request deepens."""
+
+
+async def _with_comparison(
+    published: PublishedSource,
+    record: PullRecord,
+    *,
+    expected: PullRecord | RecordAbsence,
+    exact_base: bool = False,
+    published_records: list[PullRecord] | None = None,
+    optional: bool = False,
+) -> PullRecord:
     """Compute Files changed and write the record.
+
+    *published_records* is told the pending record this writes before deepening, so a
+    failure after it stamps the observation that is on disk.
+
+    *optional* work publishes only a computed comparison: where this would write the
+    comparison's absence it raises :class:`PullDataError` instead, and an uncertain merge
+    base is neither written nor deepened but raises :class:`NeedsDeepening`, since
+    deepening fetches more than the pull request's head and base.
 
     A comparison that cannot be computed is left out and named in the record's
     ``unavailable``. One whose merge base is uncertain writes that record first, so a
@@ -831,11 +860,16 @@ async def _with_comparison(published: PublishedSource, record: PullRecord) -> Pu
             head=pull.head.sha,
             base_sha=pull.base.sha,
             base_branch=pull.base.ref,
-            open_pull=pull.state == "open",
+            open_pull=pull.state == "open" and not exact_base,
         )
     except BaseUncertainError as uncertain:
+        if optional:
+            raise NeedsDeepening from uncertain
         log.debug("pull request %s has an uncertain merge base; deepening", pull.number)
-        await _write(published, without(uncertain.state))
+        # A write another writer won raises, so the second write expects the first.
+        expected = await _write(published, without(uncertain.state), expected=expected)
+        if published_records is not None:
+            published_records.append(expected)
         try:
             endpoints = await deepen_until_certain(
                 published,
@@ -848,27 +882,73 @@ async def _with_comparison(published: PublishedSource, record: PullRecord) -> Pu
             # Why it could not be settled goes to the log. What the reader needs is that
             # the base is uncertain, whatever stopped the deepening.
             log.debug("deepening pull request %s stopped: %s (%s)", pull.number, exc, exc.state)
-            return await _write(published, without(uncertain.state))
+            return await _write(published, without(uncertain.state), expected=expected)
     except PullRefError as exc:
+        if optional:
+            raise _fetch_failure(exc) from exc
         log.debug("pull request %s has no comparison: %s", pull.number, exc)
-        return await _write(published, without(exc.state))
+        return await _write(published, without(exc.state), expected=expected)
     return await _write(
         published,
         record.model_copy(
-            update={"comparison": _comparison_of(endpoints), "unavailable": unavailable}
+            update={
+                "comparison": _comparison_of(endpoints),
+                "unavailable": {
+                    part: state for part, state in unavailable.items() if part != "comparison"
+                },
+            }
         ),
+        expected=expected,
     )
+
+
+async def prepare_pull_comparison(
+    published: PublishedSource,
+    record: PullRecord,
+    *,
+    optional: bool = False,
+) -> PullRecord | None:
+    """Prepare the cached observation without repeating its GitHub metadata reads.
+
+    *optional* work publishes nothing but a computed comparison, and raises
+    :class:`PullDataError` or :class:`NeedsDeepening` for anything else (see
+    :func:`_with_comparison`).
+    """
+    if record.comparison is not None:
+        return record
+    try:
+        pull = record.pull
+        if not await has_commit(published, pull.head.sha):
+            fetched = await fetch_pull_head(
+                published,
+                record.number,
+                expected_head=pull.head.sha,
+            )
+            if fetched != pull.head.sha:
+                return None
+        return await _with_comparison(
+            published,
+            record,
+            expected=record,
+            exact_base=True,
+            optional=optional,
+        )
+    except PullRefError as exc:
+        raise _fetch_failure(exc) from exc
+    except GitError as exc:
+        raise _git_failure(record.number, exc) from exc
 
 
 async def _refresh(
     published: PublishedSource | ListedRepository,
     number: int,
     *,
+    cached: PullRecord | RecordAbsence,
     on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
     observe_reader: Callable[[str], None] | None = None,
+    published_records: list[PullRecord] | None = None,
 ) -> PullRecord:
     owner, repo = _owner_and_repo(published)
-    cached = await asyncio.to_thread(read_pull_record, published.home, published.slug, number)
     # An existing full record always retains the original two-check refresh path.
     progress = on_core if not isinstance(cached, PullRecord) else None
     for attempt in range(_READ_ATTEMPTS):
@@ -904,7 +984,8 @@ async def _refresh(
             )
         if isinstance(published, ListedRepository):
             # Merge against the latest shared comparison inside the publication lock,
-            # not the cache snapshot taken before the network read.
+            # not the cache snapshot taken before the network read: a checkout's read is
+            # the newest metadata, and the merge keeps a mirror's comparison that fits it.
             return await _write(published, record)
         pull = record.pull
         try:
@@ -921,7 +1002,9 @@ async def _refresh(
             raise PullDataError(
                 "head_mismatch", "its head kept moving while it was read; open it again"
             )
-        return await _with_comparison(published, record)
+        return await _with_comparison(
+            published, record, expected=cached, published_records=published_records
+        )
     raise AssertionError("unreachable")
 
 
@@ -981,6 +1064,7 @@ async def refresh_pull_request(
     recovery_pair: tuple[str, str] | None = None,
     on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
     observe_reader: Callable[[str], None] | None = None,
+    adopt_current: bool = False,
 ) -> PullRecord:
     """Read pull request *number* of *published* from GitHub and cache it; see the module.
 
@@ -988,21 +1072,42 @@ async def refresh_pull_request(
     source is published first if it has never been (:func:`~.checkout.claim_source`).
     A checkout preserves a shared comparison only for the same reader and unchanged
     comparison inputs; otherwise its record has no comparison, ``no_store``. Raises only
-    :class:`PullDataError`. A failure leaves any previous record in place. How it ended is
+    :class:`PullDataError` on failure. If another writer published a mirror's record
+    first, raises :class:`PullObservationSuperseded` with that record and stamps nothing;
+    with *adopt_current* it returns that record instead.
+    A failure leaves any previous record in place. How it ended is
     kept beside the record either way; see :func:`last_refresh`.
     """
 
+    cached: PullRecord | RecordAbsence = "not_cached"
+    # What this refresh itself published before it failed, which its failure stamp
+    # then describes.
+    published_records: list[PullRecord] = []
     try:
         try:
             if isinstance(published, ListedRepository):
                 published = await claim_source(published)
-            elif recover:
+            cached = await asyncio.to_thread(
+                read_pull_record, published.home, published.slug, number
+            )
+            if recover and not isinstance(published, ListedRepository):
                 await _recover_comparison(published, number, recovery_pair)
             record = await _refresh(
-                published, number, on_core=on_core, observe_reader=observe_reader
+                published,
+                number,
+                cached=cached,
+                on_core=on_core,
+                observe_reader=observe_reader,
+                published_records=published_records,
             )
         except GitError as exc:
             raise _git_failure(number, exc) from exc
+    except PullObservationSuperseded as exc:
+        if on_core is not None:
+            await on_core(None, None)
+        if adopt_current:
+            return exc.current
+        raise
     except PullDataError as exc:
         # A failed attempt cannot serve a provisional core while its stamp is written.
         if on_core is not None:
@@ -1013,19 +1118,23 @@ async def refresh_pull_request(
             "reset_at": exc.reset_at,
             "at": utc_stamp(utc_now()),
         }
-        await asyncio.to_thread(_keep_stamp, published, number, stamp)
+        observed = published_records[-1] if published_records else cached
+        await run_lock_section(partial(_keep_stamp, published, number, stamp, observed))
         raise
     succeeded = {"outcome": "succeeded", "at": record.fetched_at}
-    await asyncio.to_thread(_keep_stamp, published, number, succeeded)
+    await run_lock_section(partial(_keep_stamp, published, number, succeeded, record))
     return record
 
 
 def _keep_stamp(
-    published: PublishedSource | ListedRepository, number: int, fields: dict[str, Any]
+    published: PublishedSource | ListedRepository,
+    number: int,
+    fields: dict[str, Any],
+    expected: PullRecord | RecordAbsence,
 ) -> None:
     try:
         stamp = PullRefreshStamp.model_validate(fields)
-        write_pull_refresh(published.home, published.slug, number, stamp)
+        write_pull_refresh(published.home, published.slug, number, stamp, expected=expected)
     except (PrivateStorageError, OSError, ValidationError) as exc:
         # Only the report of the refresh is lost; the record, if any, is written.
         log.debug("could not keep how pull request %s's refresh ended: %s", number, exc)
@@ -1080,7 +1189,18 @@ async def open_pull_request(
     if usable and isinstance(record, PullRecord) and fetch == "if_missing":
         return _pin(number, record)
     try:
-        fresh = await refresh_pull_request(published, number)
+        fresh = await refresh_pull_request(published, number, adopt_current=False)
+    except PullObservationSuperseded as exc:
+        # Another writer's record names a head this refresh did not fetch; pin it only
+        # when the store has it.
+        try:
+            if await has_commit(published, exc.current.pull.head.sha):
+                return _pin(number, exc.current)
+        except GitError as error:
+            raise _git_failure(number, error) from error
+        if usable and isinstance(record, PullRecord):
+            return _pin(number, record)
+        raise PullDataError("head_mismatch", "the cached head changed during this open") from exc
     except PullDataError as exc:
         if not usable or not isinstance(record, PullRecord):
             raise
@@ -1089,6 +1209,7 @@ async def open_pull_request(
 
 
 __all__ = [
+    "NeedsDeepening",
     "PullDataError",
     "PullDataState",
     "last_refresh",

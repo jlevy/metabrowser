@@ -45,6 +45,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PullRequest,
     read_pull_record,
 )
+from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -131,6 +132,12 @@ def _stamp(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _source_of(published: PublishedSource | ListedRepository) -> str:
+    return (
+        published.source if isinstance(published, ListedRepository) else published.source.normalized
+    )
+
+
 def _job_prefix(published: PublishedSource | ListedRepository) -> str:
     """What a refresh's key starts with: the store a mirror fetches into, or a checkout's slug."""
 
@@ -141,6 +148,55 @@ def written_without_store(record: PullRecord) -> bool:
     """Whether *record* was written by a server with no store, so it has no Files changed."""
 
     return record.unavailable.get("comparison") == "no_store"
+
+
+def record_revision(dumped: dict[str, Any]) -> str:
+    """Reader-owned content identity, unaffected by refresh time and provider ETags."""
+
+    content = {key: value for key, value in dumped.items() if key not in {"fetched_at", "etags"}}
+    return hashlib.sha256(
+        json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def cached_comparison_record(
+    published: PublishedSource | ListedRepository,
+    reader: str | None,
+    number: int,
+    revision: str | None = None,
+) -> PullRecord | None:
+    """The cached record a comparison may be prepared from without reading GitHub again.
+
+    That is a record of *published*'s source by the observed *reader*, fetched within the
+    freshness window, with no failed refresh recorded since, and of *revision* when one is
+    named. Without an observed reader nothing is admitted: a record another account read
+    is refreshed first. Blocking and bounded; run it off the event loop.
+    """
+
+    record = read_pull_record(published.home, published.slug, number)
+    if (
+        not isinstance(record, PullRecord)
+        or record.source != _source_of(published)
+        or reader is None
+        or record.reader != reader
+        or (revision is not None and record_revision(record.model_dump(mode="json")) != revision)
+    ):
+        return None
+    now = pulls.utc_now()
+    window = timedelta(seconds=FRESHNESS_WINDOW_S)
+    if now - _parse_stamp(record.fetched_at) > window:
+        return None
+    last = pulls.last_refresh(published, number)
+    if (
+        last is not None
+        and last.outcome != "succeeded"
+        and (
+            now - _parse_stamp(last.at) <= window
+            or (last.reset_at is not None and now < _parse_stamp(last.reset_at))
+        )
+    ):
+        return None
+    return record
 
 
 @dataclass(eq=False)
@@ -156,6 +212,9 @@ class ServedPull:
     fetched_at: str | None = None
     last: PullRefreshOutcome | None = None
     without_store: bool = False
+    # Set when another writer published this job's record first: how a refresh last ended
+    # is then the stamp beside the record, read each time, not anything this job kept.
+    outcome_on_disk: bool = field(default=False, repr=False)
     _last_attempt: datetime | None = field(default=None, repr=False)
     _refreshing: bool = field(default=False, repr=False)
     core_preview: PullCorePreview | None = field(default=None, repr=False)
@@ -192,6 +251,11 @@ class ServedPull:
         self._recoveries[pair] = None
         return True
 
+    @property
+    def recovery_pending(self) -> bool:
+        """Whether an explicit refresh joined another producer and still needs work."""
+        return bool(self._recoveries)
+
     def discard_recovery(self, pair: tuple[str, str] | None) -> None:
         """A refused job must not leave new network work for a later automatic refresh."""
         self._recoveries.pop(pair, None)
@@ -205,6 +269,18 @@ class ServedPull:
         """Whether its refresh is running now, so its state is about to change."""
 
         return self._refreshing
+
+    def outcome(self) -> PullRefreshOutcome | None:
+        """How the last refresh ended, as the pull route reports it. Blocking and bounded.
+
+        Normally this job's own outcome. After another writer published first it is the
+        stamp on disk, read again on each call: usually that writer's own success, written
+        just after its record, and never a success claimed for this job.
+        """
+
+        if self.outcome_on_disk:
+            return last_refresh(self.published, self.number)
+        return self.last
 
     def is_stale(self, now: datetime, *, window_s: float) -> bool:
         """Older than *window_s*, and not tried within it or before GitHub's limit lifts.
@@ -370,16 +446,32 @@ class ServedPull:
                             recovery_pair=pair,
                             on_core=progress,
                             observe_reader=observe_reader,
+                            adopt_current=False,
                         )
                     else:
                         record = (
                             await pulls.refresh_pull_request(
-                                published, self.number, recover=True, recovery_pair=pair
+                                published,
+                                self.number,
+                                recover=True,
+                                recovery_pair=pair,
+                                adopt_current=False,
                             )
                             if recover
-                            else await pulls.refresh_pull_request(published, self.number)
+                            else await pulls.refresh_pull_request(
+                                published, self.number, adopt_current=False
+                            )
                         )
+                except pulls.PullObservationSuperseded as exc:
+                    # Another writer's record is what this server now shows, and this
+                    # refresh published nothing. Its writer stamps how it ended just after
+                    # the record, possibly after this, so the outcome is read from disk
+                    # until this job's next refresh (see outcome()).
+                    self.fetched_at = exc.current.fetched_at
+                    self.without_store = written_without_store(exc.current)
+                    self.outcome_on_disk = True
                 except pulls.PullDataError as exc:
+                    self.outcome_on_disk = False
                     self.last = PullRefreshOutcome(
                         outcome=exc.state,
                         message=str(exc),
@@ -387,6 +479,7 @@ class ServedPull:
                         at=_stamp(pulls.utc_now()),
                     )
                 else:
+                    self.outcome_on_disk = False
                     self.fetched_at = record.fetched_at
                     self.without_store = written_without_store(record)
                     if record.comparison is not None:
@@ -481,10 +574,7 @@ class ServedPulls:
 
     @property
     def source(self) -> str:
-        published = self.published
-        if isinstance(published, ListedRepository):
-            return published.source
-        return published.source.normalized
+        return _source_of(self.published)
 
     @property
     def git_dir(self) -> Path | None:
@@ -502,8 +592,14 @@ class ServedPulls:
                 window.cancel()
             self.core_hold_until = None
             self.core_failure = None
-            self.observed_reader = None
-            self.core_catalog_identity = None
+            # The reader is the gh account this server observed for the source, not a
+            # property of the store: attaching one, or a claimed slug, keeps it, so the
+            # reader-scoped checks go on applying where no refresh follows the bind. The
+            # catalog it was observed with stays too, so a catalog another account writes
+            # later still changes the reader (`observe_catalog`).
+            if _source_of(published) != self.source:
+                self.observed_reader = None
+                self.core_catalog_identity = None
         self.published = published
         for held in self._kept.values():
             held.bind(published)
@@ -610,7 +706,9 @@ __all__ = [
     "PullRefreshOutcome",
     "ServedPull",
     "ServedPulls",
+    "cached_comparison_record",
     "last_refresh",
+    "record_revision",
     "served_pull",
     "written_without_store",
 ]

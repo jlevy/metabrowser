@@ -214,13 +214,20 @@ async def _take_fetch_lock(published: PublishedSource) -> CacheLock:
         waited += FETCH_LOCK_RETRY_S
 
 
+@dataclass(frozen=True, slots=True)
+class _ExactFetch:
+    oid: str
+    ref: str | None = None
+
+
 async def fetch_into_store(
     published: PublishedSource,
     specs: list[str],
     *,
     deepen: int | None = None,
     timeout_s: float | None = None,
-) -> None:
+    exact: _ExactFetch | None = None,
+) -> str | None:
     """``git fetch --atomic`` *specs* from the source's origin into its published store.
 
     Every fetch this module makes is this one command: the pull-request ref and the base
@@ -236,6 +243,9 @@ async def fetch_into_store(
     only what the checkout lacks. *deepen* asks for that many more commits below the
     store's boundary, which the store first takes over as its own file, since Git would
     write it through a link into the checkout. *timeout_s* lowers the acquisition deadline.
+    An *exact* cache load rechecks for its commit under the fetch lock. If it
+    needed to fetch a ref, its result is read before another fetch can move it.
+    A mutable refresh or repair does not take this shortcut.
     Raises :class:`~metabrowser.cache.lender.LenderGoneError` when the checkout has gone.
     """
 
@@ -246,6 +256,8 @@ async def fetch_into_store(
     remote_url = acquire.remote_url_for(published.source)
     lock = await _take_fetch_lock(published)
     try:
+        if exact is not None and await has_commit(published, exact.oid):
+            return exact.oid
         # To the end even when cancelled: the lock is released on the way out.
         removed = await finish_despite_cancel(
             asyncio.to_thread(remove_interrupted_fetch_leftovers, published.git_dir)
@@ -281,6 +293,7 @@ async def fetch_into_store(
             # Checked and undone to the end even when cancelled: the lock is released
             # on the way out, and a fold must not stay in the store.
             await finish_despite_cancel(_undo_a_fold(target, before, written, lock.descriptor))
+        return await ref_commit(published, exact.ref) if exact is not None and exact.ref else None
     finally:
         lock.release()
 
@@ -338,11 +351,14 @@ async def _fetch(
     *,
     deepen: int | None = None,
     timeout_s: float | None = None,
-) -> None:
+    exact: _ExactFetch | None = None,
+) -> str | None:
     """:func:`fetch_into_store`, with Git's failure as a typed :class:`PullRefError`."""
 
     try:
-        await fetch_into_store(published, specs, deepen=deepen, timeout_s=timeout_s)
+        return await fetch_into_store(
+            published, specs, deepen=deepen, timeout_s=timeout_s, exact=exact
+        )
     except LenderGoneError as exc:
         raise PullRefError("lender_missing", str(exc)) from exc
     except RecordError as exc:
@@ -420,27 +436,41 @@ async def base_branch_usable(published: PublishedSource, base_branch: str) -> bo
 
 
 async def fetch_pull_head(
-    published: PublishedSource, number: int, *, base_branch: str | None = None
+    published: PublishedSource,
+    number: int,
+    *,
+    base_branch: str | None = None,
+    expected_head: str | None = None,
 ) -> str | None:
     """Fetch ``refs/pull/<n>/head`` (and *base_branch*, if valid) and return the head.
 
+    Pass *expected_head* only when loading an already observed snapshot. A commit
+    present under the fetch lock suffices for that load. A foreground metadata
+    refresh leaves it unset to fetch the moving base branch and head.
     ``None`` means the fetch succeeded but the ref is not in the store.
     """
 
+    if expected_head is not None and not is_full_revision(expected_head):
+        raise ValueError("not a full commit ID")
     ref = pull_head_ref(number)
     specs = [f"+{ref}:{ref}"]
     if base_branch is not None and await base_branch_usable(published, base_branch):
         specs.append(f"+refs/heads/{base_branch}:{BRANCH_MIRROR_PREFIX}{base_branch}")
+    if expected_head is not None:
+        return await _fetch(published, specs, exact=_ExactFetch(expected_head, ref))
     await _fetch(published, specs)
     return await ref_commit(published, ref)
 
 
 async def fetch_commit(published: PublishedSource, oid: str) -> None:
-    """Fetch one commit by ID, which the origin may still serve without any ref naming it."""
+    """Fetch one commit by ID, which the origin may still serve without any ref naming it.
+
+    A commit the store has, checked again under the fetch lock, is not fetched.
+    """
 
     if not is_full_revision(oid):
         raise ValueError("not a full commit ID")
-    await _fetch(published, [oid])
+    await _fetch(published, [oid], exact=_ExactFetch(oid))
 
 
 async def fetch_objects(

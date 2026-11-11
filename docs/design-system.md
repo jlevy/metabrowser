@@ -131,6 +131,9 @@ abbreviation, color, or weight.
 A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
 in `data-tip-text`. Freshness sentences such as “Fetched 2 min ago via GitHub CLI”
 retain their sentence formatter.
+When a summary shows created or opened and updated ages, omit the updated age when its
+displayed label matches the closed or merged age beside it, or else the created or
+opened age, and add the exact updated time to the tooltip of the age it repeats.
 
 ## Typography
 
@@ -535,6 +538,8 @@ Build a chip group with `metabrowser.filterControls.groupHtml` and `bind`, inclu
 outside a filter bar: an exclusive choice is the same control whatever it chooses.
 A consumer may repaint the group from its state on every change, and `bind` puts focus
 back on the chosen chip, so the arrow keys keep working.
+Show a Rendered | Source chooser only for a file with both formats available.
+A file that falls back permanently to Source has no format chooser.
 
 `test_a_toggle_cannot_fork_the_family` fails when a stylesheet or a source states a
 toggle’s ARIA outside this family, and
@@ -632,7 +637,7 @@ unsettled rather than consistently offset.
 | Git history row | Subject, author, and age | Graph gutter, ref chips |
 | File and folder header | Path, file size, and folder summary | Parent button, badges, copy and print buttons, a summary still loading |
 | Pull request row, in [the Pulls tab](#the-pulls-tab) | Title and age | State icon |
-| Diff file bar | Change letter, path, change stats, and notes | Chevron, View file controls, copy button |
+| Diff file bar | Change letter, path, change stats, and notes | Chevron, Markdown **Rendered** \| **Source** chooser, View file controls, copy button |
 
 The row keeps `align-items: center`, and each text child opts in with
 `align-self: baseline`. A box aligned to the baseline would sit its bottom edge on the
@@ -990,14 +995,22 @@ file-header copy affordance, present wherever a filename is.
 Its content is left-aligned reading order — chevron, kind letter, filename in the
 shell’s file-path typography, then the stat pair beside the name — and the whole bar is
 one activation surface, the folder-row rule applied to a section header: clicking
-anywhere toggles, with only the copy and View file controls opting out.
-On a page that shows a pinned revision, the bar ends with quiet text actions that open
-the file at a side of the change: **View file**, and **View at parent** or **View at
-base** where the old side exists.
-They stay visible rather than revealing on hover, because they are how a reader leaves
-the diff for the file.
+anywhere toggles, with only the copy control, the View file controls, and a Markdown
+file’s **Rendered** | **Source** chooser opting out.
+On a pull request’s Changes, a changed Markdown file’s bar carries that chooser, a
+joined chip pair, after the chevron, and beside it a small spinner that keeps its place
+in the bar and appears only after the loading-state delay while the rendered view is on
+its way. A file that falls back permanently to Source loses the chooser and the spinner,
+and its bar lays out as any other file’s, with a long path truncated on one line.
+On a page that shows a pinned revision, and on a pull request’s Changes beside a
+checkout, the bar ends with quiet text actions that open the file at a side of the
+change: **View file**, and **View at parent** or **View at base** where the old side
+exists. They stay visible rather than revealing on hover, because they are how a reader
+leaves the diff for the file.
 They are [text actions](#control-families), so each is a link or a button by whether it
 first switches the served pin, and looks the same either way.
+A pull request’s are always links: a side the page does not show opens on its revision
+page and never switches the pin.
 A collapsed section keeps the section’s own border as its single line.
 
 ### Diff Change Surfaces
@@ -1084,8 +1097,14 @@ A cached page stays readable during refresh.
 The header pairs the shared spinner with `Refreshing…` on a cached page or
 `Loading details…` on a description preview.
 Its freshness copy names GitHub CLI and the fetch age.
-The Checks tab uses the same heading, status badges, and detail links for check runs and
-status contexts. Use a shared small gray spinner beside each active section’s status
+The Checks tab uses the same heading and status badges for check runs and status
+contexts. A check row is its status badge, its plain name, its action, and its
+description. The action says where it opens: **View action on GitHub** for a GitHub
+Actions run, **View on GitHub** for another page on a GitHub host, and **View details**
+for the check’s own site, and its accessible name adds the check’s name.
+A check whose address is not http(s) has no action.
+A run’s app is its description, except GitHub Actions beside an Actions link, which
+already says so. Use a shared small gray spinner beside each active section’s status
 after the page has rendered.
 Idle and failed sections use static notices.
 
@@ -1130,14 +1149,16 @@ Until its render arrives a text shows as plain text in the same face and size.
 
 | Element | Primitive | Why |
 | --- | --- | --- |
-| Title | `--page-title-font-size`, `--weight-bold`, sans | The number beside it uses normal text ink and regular weight at the same size |
+| Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)). The number beside it uses normal text ink and regular weight at the same size |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome |
 | Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
 | Base and head branch | `.git-ref.git-ref-remote`, at `--ui-small-font-size` | The [ref chip](#branch-chips), smaller than the actor and action; the list uses the same remote-ref ink |
 | Label | Hairline box with `--radius-tag` | A name the pull request carries, the corner tag-like chips use |
 | Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
-| Link | `--link`, underline on hover, the focus ring | As the freshness row’s link is |
+| Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
+| GitHub action: View on GitHub, a check’s action on GitHub, a conversation commit hash | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows, and the same in each of the three. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
+| Conversation commit hash | `.git-commit-sha` at `--ui-small-font-size`, its row’s size | A [revision](#git-commit-summary) sits one step below the sans beside it, but below this 12px row the ramp’s next step is `--micro-font-size`, 10px |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |
 | Note about the content | [`.notice`](#notices) | `warning` when a text, list, or hunk was cut or a part could not be read; `error` when Changes cannot be drawn; no severity for the offer of newer changes, which carries its own control |
@@ -1177,6 +1198,11 @@ An address naming a changed file opens its owner’s tree if needed.
 Moving to another PR closes a tree opened only for that address; trees the reader opened
 stay open.
 
+A pull request’s title is always bold in normal text ink, wherever it appears: the
+page’s heading, a Pulls row, the page’s stack menu, and a search result.
+A row or menu item is a link, so the title sets its own ink and weight, and no visited,
+hover, focus, selected, or current state changes them.
+The PR number beside a title keeps its regular weight.
 The metadata line gives the PR number normal row size and text ink.
 Usernames and the repository summary use the same small metadata size and bold normal
 text ink. Branch names use the small shared remote-ref chip.
@@ -1231,7 +1257,7 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
 | Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current | [One Row Contract](#one-chevron-one-row-contract) |
 | State icon | The 16px alignment box around `--icon-glyph` | [One Glyph Size](#one-glyph-size) |
-| Title | `--nav-font-size`, full contrast, cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity |
+| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity, and a pull request’s title is bold wherever it appears |
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
 | Username and repository summary | `--ui-small-font-size`; username uses `.actor-name` | Secondary context stays the same size; usernames remain bold in normal text ink |

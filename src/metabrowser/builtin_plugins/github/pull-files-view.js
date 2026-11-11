@@ -439,6 +439,7 @@ export function mountFileTree(host) {
       },
       page: host.page,
       open: host.open,
+      routable: (path) => host.href(path) !== null,
       leave: host.leave,
     },
     {

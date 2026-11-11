@@ -1370,6 +1370,30 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert '"mb-delayed-loading"' in panel
     assert 'class: "spinner spinner-sm"' in panel
     assert 'class: "btn github-pulls-more"' in panel
+    # A pull request's title is bold in normal text ink wherever it appears. A row and a
+    # stack menu item are links, so the title sets both itself; in headless Chrome its
+    # computed weight is 700 in the text ink for a normal, visited, hovered, focused and
+    # selected row, and for a stack member at rest, hovered and current.
+    assert "A pull request’s title is always bold in normal text ink" in doc
+    assert 'h("span", { class: "github-pulls-title" }, [row.title])' in panel
+    assert 'h("span", { class: "github-pull-stack-member-title" })' in page
+    titles = (".github-pulls-title", ".github-pull-stack-member-title")
+    for title in titles:
+        assert github[title]["color"] == "var(--text)", title
+        assert github[title]["font-weight"] == "var(--weight-bold)", title
+    for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"):
+        if selector not in titles and any(title in selector for title in titles):
+            assert not {"color", "font-weight"} & declarations.keys(), selector
+    # The page's heading and a search result's label already are; the number beside a
+    # title keeps its regular weight.
+    assert 'class: "page-heading github-pull-title' in page
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    assert shell[".page-heading"]["font-weight"] == "var(--weight-bold)"
+    label = shell[".search-palette-label"]
+    assert (label["color"], label["font-weight"]) == ("var(--text)", "var(--weight-bold)")
+    assert github[".github-pull-number"]["font-weight"] == "var(--weight-normal)"
+    for number in (".github-pulls-number", ".github-pull-stack-member-number"):
+        assert "font-weight" not in github[number], number
 
 
 def test_the_pull_request_page_carries_the_shells_primitives() -> None:
@@ -1397,6 +1421,22 @@ def test_the_pull_request_page_carries_the_shells_primitives() -> None:
     assert (title_glyph["width"], title_glyph["height"]) == ("1em", "1em")
     # Links take the link token rather than the browser's blue.
     assert github[".github-pull-header a"]["color"] == "var(--link)"
+    # A GitHub action (View on GitHub, a check's action on GitHub, a conversation commit
+    # hash) is quiet: muted at rest, the link token on hover and focus, at its row's size.
+    for place in (".github-pull-header", ".github-pull-checks", ".github-pull-commit"):
+        action = f"{place} .github-pull-external-action"
+        assert github[action] == {"color": "var(--muted)"}, action
+        for state in (":hover", ":focus-visible"):
+            assert github[action + state]["color"] == "var(--link)", action + state
+    assert page.count('"github-pull-external-action"') == 2, "the header's and a check's"
+    assert '"github-pull-commit-id git-commit-sha github-pull-external-action"' in page
+    # A check's own site is an ordinary link, so it never reads as the description after it.
+    assert github[".github-pull-checks a"]["color"] == "var(--link)"
+    # A hash matches its 12 px row; the ramp's next step below is the 10 px micro size.
+    assert github[".github-pull-commit"]["font-size"] == "var(--ui-small-font-size)"
+    assert github[".github-pull-commit .git-commit-sha"]["font-size"] == (
+        "var(--ui-small-font-size)"
+    )
     # A button that moves the pin looks as a link does: no primitive's border or fill.
     action = github[".github-pull-text-action"]
     assert (action["color"], action["border"], action["background"]) == (

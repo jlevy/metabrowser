@@ -1190,6 +1190,10 @@
       }
     }
   },
+  "pull_routes": {
+    "comparison": "/api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef",
+    "snapshot": "/api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=0123456789abcdef"
+  },
   "patch": {
     "status": 200,
     "body": {
