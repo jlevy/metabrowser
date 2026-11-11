@@ -81,13 +81,21 @@ file and reading position.
 
 A served folder can show Pulls and Conversation without a comparison store.
 Opening **Changes** prepares a missing comparison automatically.
-When a checkout’s Conversation has a current PR record, Metabrowser can start the same
-work in the background.
-It uses the record’s exact head and base and reuses Git objects already in the store.
 Metabrowser reuses a healthy cached store or creates one that borrows the checkout’s
 objects and fetches what it lacks into the cache.
 Git runs in the store and leaves the served folder and Commits tab on your checkout.
 If preparation fails, **Changes** reports the reason and offers a retry.
+
+Only **Changes** creates that store.
+The first one fetches every branch and tag the checkout lacks, and once it exists each
+later refresh of a PR fetches that PR into it, so reading Conversation never starts that
+cost: a Conversation-only session runs no Git at all.
+The trade-off is that the first **Changes** on a checkout without a store waits for it.
+Once the checkout has a store, from an earlier **Changes** in this session or another,
+Conversation can prepare the comparison of a PR record fetched within the last minute in
+the background. That work fetches only the PR’s head and base, says nothing on
+Conversation, and gives way to anything you ask for: opening **Changes** takes it over,
+and any other refresh stops it.
 See [Beside a Checkout](#beside-a-checkout) for the URL-based borrowing workflow.
 
 ## Keep Pulls Up to Date

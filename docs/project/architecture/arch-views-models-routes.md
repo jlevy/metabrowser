@@ -253,6 +253,25 @@ refresh of the page is on its way.
 `comparison: true` without `retry: true` is refused.
 Acquisition leaves the source folder and its pin unchanged, and a request joining a
 metadata refresh retains the comparison action for that job.
+The comparison request prepares the cached record without reading GitHub only while that
+record is current, was read by the account this server observed, and has no failed
+refresh recorded since; otherwise it refreshes the record first, as before.
+It writes a refresh stamp only when it fails.
+On a checkout whose store is already attached,
+`{"number": n, "prepare_comparison": "<record_revision>"}` asks for that exact cached
+record’s comparison as optional work.
+It stands alone: no other field may accompany it.
+It starts only while no other pull job of the checkout runs, the record is current and
+was written with no store, and its revision is the one named, and otherwise answers
+`200` with `refresh: "not_due"`. It fetches only the pull request’s head and base, holds
+no network slot, and records no outcome; a failed revision is not tried again.
+While it runs, the envelope carries `"preparing_comparison": true`, and the page polls
+at the slow rate on Conversation.
+A reader’s comparison request for the same pull request promotes it, a metadata refresh
+of it cancels the idle part, and a refresh of another pull request cancels it.
+The page sends it once per record revision, from a visible Conversation at its own
+address, after `REFRESH_ASK_MS` and an idle callback, and only for a `stale` envelope of
+a fresh record without a store, which only a server with a store answers.
 For an explicitly selected missing record, `retry: true` may include `wait_core: true`,
 which is refused with comparison or recovery arguments.
 The POST waits at most two seconds for a verified core or terminal outcome; one waiter
@@ -305,9 +324,11 @@ A pair opens when it is the local record’s current comparison, or one of the 1
 recent earlier pairs retained in `<n>.snapshots.json` for the record’s reader and for
 the store that computed it (see
 [Repository Sources](arch-repository-sources-and-provider-mirrors.md)). A Markdown
-document of at most 64 KiB and 16,384 `[` renders inert, with its relative links and up
-to 64 images in the same Git tree and the rest as links; Source opens in 2 MiB windows
-that end on a line or a character.
+document of at most 64 KiB renders inert while its estimated render work is within 400
+ms (`_DOCUMENT_WORK_MS` in `pull_snapshot.py`, which records the measurement), one
+render at a time per server, with its relative links and up to 64 images in the same Git
+tree and the rest as links; otherwise, and for Source, it opens in 2 MiB windows that
+end on a line or a character.
 The page applies the reader’s theme, type, and width with the shell’s own first-paint
 scripts, allowed by hash, and runs no other script.
 Each outcome has its own code: `snapshot_expired` (410) for a pair not admitted,
@@ -578,7 +599,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-diff-no-hunks.tryscript.md` |
 | `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md`, `cli-api-diff-view-file.tryscript.md`, `cli-api-diff-no-hunks.tryscript.md`, `cli-checkout-overlay.txt` |
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-checkout-overlay.txt` |
-| `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt` |
+| `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt`, `cli-github-checkout.txt` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pull-timeline` | covered | `--api --data` | `cli-github-pull-timeline.txt` |
 | `/api/plugin/github/pull-snapshot` | covered | `--api` | `cli-github-pull-snapshot.txt` |
@@ -753,7 +774,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `github.pull-checks-tab` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage` | `/api/plugin/github/pull` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-timeline` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage` | `/api/plugin/github/pull-timeline` | `node tests/dom/github-pull-timeline-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.selected-core-preview` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pull-core-preview-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
-| `github.checkout-comparison-fetch` | interaction | `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-checkout-comparison-session.js` | `cli-ui-github-checkout-comparison.tryscript.md` |
+| `github.checkout-comparison-fetch` | interaction | `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-checkout-comparison-session.js`, `node tests/dom/github-pull-idle-comparison-behavior.js` | `cli-ui-github-checkout-comparison.tryscript.md` |
 | `github.displayed-comparison-repair` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-prefetch` | interaction | `builtin_plugins/github/comparison-prefetch.js#createComparisonPrefetch` | `/api/plugin/diff/comparison` | `node tests/dom/github-pull-prefetch-session.js` | `cli-ui-github-pull-prefetch.tryscript.md` |
 | `github.pull-page-inert-markup` | interaction | `static/inert-html.js#sanitizeNodes`, `static/inert-html.js#allowedAttributes`, `static/inert-html.js#imageLink`, `builtin_plugins/github/pull-page.js#safeLink`, `builtin_plugins/github/pull-page.js#gitPathWire` | `/api/plugin/github/pull-markdown` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |

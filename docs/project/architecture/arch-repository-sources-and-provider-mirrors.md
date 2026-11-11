@@ -627,14 +627,17 @@ fetched, and compared from, only when the store lists it under exactly that name
 one kept under another spelling shares that ref’s file; otherwise the comparison starts
 from `base.sha`. What it writes gets the mirror update’s case-fold check, and a fold
 puts every branch and tag back.
-An open pull request’s base branch is fetched in the same command into the
-`refs/remotes/origin/<base>` the mirror update writes, so its merge base is taken
+An open pull request’s base branch is fetched by a refresh in the same command into the
+`refs/remotes/origin/<base>` the mirror update writes, so a refresh takes its merge base
 against the base branch as it is now.
 A closed or merged pull request compares from the API’s `base.sha`, fetched by ID when
 no mirrored ref reaches it.
 The fetched head must be the head the API reported; one full re-read covers a push
 between the two, and a second mismatch is `head_mismatch`. Preparation from cached PR
 metadata can reuse the exact head commit already in the store.
+It compares an open pull request from the record’s observed `base.sha`, recorded as
+`base_from: base_sha`, and never fetches the moving base branch; the next refresh
+recomputes the comparison against the base branch.
 When that head or the API’s base commit is missing, the fetch rechecks for the object
 under the store’s fetch lock before reaching the origin.
 A head fetch for this preparation captures the ref while it still holds the lock.
@@ -1241,9 +1244,13 @@ run concurrently.
 A same-source waiter retries without blocking the event loop and checks
 for the published alias after taking the reservation.
 The owner holds the reservation through alias publication.
-Staging Git writers inherit both the reservation and the staging liveness descriptor, so
-another process cannot start a competing fetch or sweep the staging directory while
-those writers are alive.
+Staging Git writers inherit the staging liveness descriptor, so no process sweeps the
+staging directory while those writers are alive.
+They do not inherit the reservation: only a live owner holds it, so a killed owner’s
+orphaned fetch, which can never publish, keeps no other process waiting.
+A waiter tells its caller once that it is waiting, and gives up after
+`RESERVATION_WAIT_S` (`cache/acquire.py`), the owner’s worst case of two attempts, with
+an error that names the lock file.
 A warm open reads the published store without taking the reservation.
 
 A refresh holds its store’s fetch side lock, `locks/stores/<store-key>.fetch.lock`,

@@ -354,8 +354,10 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     jobs it is refused, ``too_many``, answered ``429``, and nothing starts. ``pull`` is the
     envelope as of that moment: with a job running, ``refreshing`` is true, and it is
     ``pending`` while no record is cached yet.
-    With ``prepare_comparison``, a checkout may prepare the named cached record revision
-    at idle priority. Its envelope adds ``preparing_comparison`` while it remains optional.
+    With ``prepare_comparison``, a checkout whose store is attached may prepare the named
+    cached record revision as optional work: only while no other pull job of the
+    checkout runs, with no network slot, and ended by any reader's refresh. Its envelope
+    adds ``preparing_comparison`` while it remains optional.
     """
 
     from metabrowser.builtin_plugins.github.pull_route import (

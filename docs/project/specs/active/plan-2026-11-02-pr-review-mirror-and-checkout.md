@@ -365,14 +365,8 @@ metab ~/src/repo --api '/api/plugin/github/pulls?state=open'
 
 ### Shared Loading Contract for PR Review
 
-The implementation uses the existing refresh coordinator for checkout preparation and a
-source-keyed lease for cold acquisition across processes.
-Checkout idle preparation starts from a current record’s exact base and head.
-It does no GitHub metadata read and the same key serves foreground demand.
-Disk manifest misses share an active load; readers still validate the persisted entry
-against its epoch after restart.
-
-**Status:** Planned.
+**Status:** Implemented for checkouts; manifests and full-file documents share their
+loads, and idle preparation is limited as described below.
 The automatic Changes request can land independently.
 The checkout’s **Files** tab continues to read live files and **Commits** continues to
 read local refs, including unpushed commits.
@@ -383,13 +377,28 @@ eligible local objects and persists any missing remote objects it fetches.
 This does not copy the working tree, move the served pin, or change the borrowing-only
 policy of a folder server.
 
+The implementation uses the existing refresh coordinator for checkout preparation and a
+source-keyed lease for cold acquisition across processes.
+Disk manifest misses share an active load; readers still validate the persisted entry
+against its epoch after restart.
+
 A caller asks the cache for an authorized value by key.
 The cache returns a usable value, joins the current load, or registers the one load
 before starting I/O. Opening Changes supplies foreground demand.
-Idle preparation uses the same path at lower priority, after the initial Files work and
-only for likely next selections.
-Foreground demand promotes a queued load for that key.
-Cap concurrency and measure startup and selection before expanding idle work.
+Idle preparation uses the same key, so foreground demand for the same pull request
+promotes it without a second producer.
+It starts from a current record’s exact base and head, makes no GitHub metadata read,
+and records no outcome.
+It runs only where a store is already attached, only while no other pull job of the
+checkout runs, and holds no network slot; any reader’s refresh of another pull request
+cancels it. Measured 2026-11-11 with a logging Git and a local origin: when idle work
+could acquire the first store, one idle request cost 21 Git calls fetching every branch
+the checkout lacked, and each later Conversation refresh then ran 18 to 22 Git calls
+with one or two origin fetches.
+With the store condition a Conversation-only session runs none, and an idle request in
+an attached store fetches only the pull request’s head and base commit.
+The trade-off: the first Changes on a checkout without a store pays the acquisition, as
+it did before idle preparation existed.
 A cache observation can still report pending without starting I/O. Browser reads stay
 side-effect free, and validated preparation requests submit work to the loader.
 [Guava LoadingCache](https://guava.dev/releases/33.4.8-jre/api/docs/com/google/common/cache/LoadingCache.html)

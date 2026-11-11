@@ -632,11 +632,14 @@ handlers in `sidekick.py` that import the rest only when called:
 
 ### Coalescing GitHub Reads
 
-**Status:** Planned.
-Refresh jobs already coalesce many same-resource calls.
-Measure remaining overlapping `gh` reads before adding a private in-flight wrapper to
-the validated REST and read-only GraphQL methods.
-The key identifies the exact invocation and response contract.
+**Status:** Measured; no wrapper added.
+Refresh jobs already coalesce same-resource calls: each read belongs to the one job of
+what it reads. Measured 2026-11-11 across the GitHub plugin’s server-flow tests (440
+tests, a fake `gh` on `PATH`): 3 of 1,523 `gh api` launches overlapped an identical one
+in flight, all in one test that runs same-second refreshes at once on purpose.
+That is not a real browser session; a measurement there that finds overlap is the reason
+to add a private in-flight wrapper to the validated REST and read-only GraphQL methods,
+on the terms below. The key identifies the exact invocation and response contract.
 Include the GitHub host, proven effective credential scope, method, path and query or
 GraphQL operation and typed variables, pagination, API version, conditional headers, and
 response limits.
