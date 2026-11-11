@@ -26,9 +26,10 @@ from metabrowser.cache.repository_store import open_revision
 from metabrowser.content_sniff import SNIFF_PREFIX_BYTES, ContentClass, classify_prefix
 from metabrowser.file_extensions import BROWSER_TEXT_EXTS
 from metabrowser.git.process import GitError, RepositoryStoreTarget
-from metabrowser.git.tree_source import GitPath, display_segment, read_store_blob
+from metabrowser.git.tree_source import GitPath, read_store_blob
 from metabrowser.git.wire import is_full_revision
 from metabrowser.http_caching import store_tag
+from metabrowser.invisible_chars import display_segment
 from metabrowser.view_routes import format_pull_href
 
 _ROUTE: Final = "/api/plugin/github/pull-snapshot"
