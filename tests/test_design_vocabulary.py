@@ -1385,6 +1385,13 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert 'group.classList.toggle("mb-refreshing-group", next.refreshing);' in files
     assert 'group.setAttribute("aria-busy", String(next.loading || next.refreshing));' in files
     assert "spinner.hidden = !next.loading;" in files
+    # A file the comparison does not hold is muted ink, so its name breathes as a muted line.
+    muted_name = github[".mb-refreshing-group .github-pull-file-muted > .mb-refreshing-text"]
+    assert muted_name == {
+        "--mb-refreshing-to": "var(--refreshing-muted-lift-opacity)",
+        "color": "var(--text)",
+        "opacity": "var(--refreshing-muted-rest-opacity)",
+    }
     # A pull request's title is bold in normal text ink wherever it appears. A row and a
     # stack menu item are links, so the title sets both itself; in headless Chrome its
     # computed weight is 700 in the text ink for a normal, visited, hovered, focused and

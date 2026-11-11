@@ -604,6 +604,14 @@
 .github-pull-file-muted {
   color: var(--muted);
 }
+/* A file the comparison does not hold is muted ink, which cannot dim and keep 4.5:1, so while
+   its list refreshes its name breathes as a muted line does (docs/design-system.md,
+   "Refreshing Content"): primary ink at muted's contrast, lifting toward full ink. */
+.mb-refreshing-group .github-pull-file-muted > .mb-refreshing-text {
+  --mb-refreshing-to: var(--refreshing-muted-lift-opacity);
+  color: var(--text);
+  opacity: var(--refreshing-muted-rest-opacity);
+}
 .github-pull-file-name {
   flex: 0 1 auto;
   min-width: 0;

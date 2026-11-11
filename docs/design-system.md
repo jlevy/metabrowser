@@ -2573,6 +2573,8 @@ The container carries `aria-busy="true"` for as long as it breathes.
 - **One container per surface:** the pull request page’s age line, a changed-files
   tree’s folder and file names, the Pulls connection row’s age, and the titles of the
   rows whose own data GitHub is being read for.
+  A tree’s file that the comparison does not hold is muted, and its name breathes as a
+  muted line does.
 - **Opacity only**, so the compositor runs it.
   Measured in headless Chrome 152 on 2026-11-11 with the real stylesheets: no
   compositing failure, and in the 2.7 s after the class went on, no style, layout,
