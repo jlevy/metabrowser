@@ -397,3 +397,32 @@ def test_dynamic_render_emits_image_and_math_wrappers(math_and_image_root: Path)
         asset["entry_point"] and asset["loading"] in {"stylesheet", "classic"}
         for asset in katex_assets
     ), "KaTeX manifest closure has no browser entry points"
+
+
+def test_plain_code_shows_fences_escaped_and_leaves_other_renders_highlighted() -> None:
+    """Review G on #348: plain code reaches no lexer, and neither render answers the other.
+
+    KPress keeps renders by path and hash, so each order is checked: a highlighted render
+    first, then the plain one of the same file, then the highlighted one again.
+    """
+    source = "```python\ndef f(a):\n    return [a < 1]\n```\n"
+
+    def render(*, plain: bool) -> str:
+        rendered = kpress_adapter.render_kpress_view(
+            source_text=source,
+            source_path="docs/plain-code.md",
+            kind="markdown",
+            view="document",
+            ext=".md",
+            mtime_hash="plain-code-" + "0" * 29,
+            size=len(source),
+            include_toc="off",
+            plain_code=plain,
+        )
+        return str(rendered["html"])
+
+    highlighted = render(plain=False)
+    plain = render(plain=True)
+    assert '<span class="' in highlighted
+    assert '<span class="' not in plain and "return [a &lt; 1]" in plain
+    assert render(plain=False) == highlighted and render(plain=True) == plain

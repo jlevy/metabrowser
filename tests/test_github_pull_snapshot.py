@@ -753,7 +753,6 @@ def test_the_render_bound_counts_the_whole_document(separator: bytes) -> None:
         _repeat(b"- [ ] a\n"),
         _repeat(b"# h\n"),
         _repeat(b"- a\n"),
-        _repeat(b"def f(a, b):\n    return [a * 2]\n", b"```python\n"),
         _repeat(b"*a"),
         _repeat(b"$a$"),
         (b"[" * 16384 + b"$a$" * _CAP)[:_CAP],
@@ -762,8 +761,6 @@ def test_the_render_bound_counts_the_whole_document(separator: bytes) -> None:
         (b"$a$ " * 2200 + b"a\n\n" * _CAP)[:_CAP],
         _repeat(b"> - [ ] a\n"),
         _repeat(b"- - [ ] a\n"),
-        _repeat(b"a,", b"```ruby\n"),
-        _repeat(b"$ " + b"a;" * 100 + b"\n", b"```console\n"),
     ],
     ids=[
         "brackets",
@@ -772,7 +769,6 @@ def test_the_render_bound_counts_the_whole_document(separator: bytes) -> None:
         "tasks",
         "headings",
         "list",
-        "python",
         "emphasis",
         "math-run",
         "brackets-then-math",
@@ -781,12 +777,10 @@ def test_the_render_bound_counts_the_whole_document(separator: bytes) -> None:
         "math-then-paragraphs",
         "quoted-tasks",
         "nested-tasks",
-        "ruby-tokens",
-        "console-commands",
     ],
 )
 def test_each_measured_costly_shape_at_the_cap_opens_as_source(body: bytes) -> None:
-    """Reviews A4 and F1 to F3: what took 0.5 to 6.4 s at 64 KiB is refused before it renders."""
+    """Reviews A4, F1, and F2: what took 0.5 to 6.4 s at 64 KiB is refused before it renders."""
     assert len(body) == _CAP
     assert _work(body) > pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
     path = GitPath.from_display("README.md")
@@ -794,64 +788,68 @@ def test_each_measured_costly_shape_at_the_cap_opens_as_source(body: bytes) -> N
     assert pull_snapshot._render_document(body, path, "c" * 40, snapshot) is None  # pyright: ignore[reportPrivateUsage]
 
 
-_CODE = b"a," * 20000
+@pytest.mark.parametrize(
+    "body",
+    [b"- [ ] a\r" * 1025, b"-\n  [ ] a\n" * 1025, b"> - > - [ ] a\n" * 1025],
+    ids=["cr-tasks", "blank-first-tasks", "quote-in-list-tasks"],
+)
+def test_task_items_past_the_count_open_as_source_however_written(body: bytes) -> None:
+    """Review F2: a task is one behind any container, on its own line, or after a `\\r`."""
+    assert _work(body) > pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
+    path = GitPath.from_display("README.md")
+    snapshot = Snapshot(7, "a" * 40, "b" * 40, "s", "head")
+    assert pull_snapshot._render_document(body, path, "c" * 40, snapshot) is None  # pyright: ignore[reportPrivateUsage]
+
+
+def _fence(language: bytes, code: bytes) -> bytes:
+    return b"```" + language + b"\n" + code + b"\n```\n"
 
 
 @pytest.mark.parametrize(
     "body",
     [
-        b"```console\n" + b"[a@]" * 1000 + b"\n```\n",
-        b"```console\n" + b"a" * 800 + b"@" * 800 + b"\n```\n",
-        b"```console\n()(" + b"[a@])" * 200 + b"\n```\n",
-        _repeat(b"> " + b"a," * 32 + b"\n", b"> ```ruby\n"),
-        _repeat(b"  " + b"a," * 32 + b"\n", b"- ```ruby\n"),
-        b"- ```text\n```\n```\n```ruby\n" + _CODE + b"\n```\n",
-        # Python, which lexes a backtick as one error token and goes on, where Ruby would
-        # lex the rest as one string.
-        b"```python\n> ```\n" + _CODE + b"\n```\n",
-        b"```python\n    ```\n" + _CODE + b"\n```\n",
-        b"```python\n```text\n" + _CODE + b"\n```\n",
-        b"```python\n- ```\n" + _CODE + b"\n```\n",
-        b"```ruby\n" + b"a," * 8000 + b"\n```\n",
-        _repeat(b"> $ " + b"a;" * 100 + b"\n", b"> ```console\n"),
-        b"   ```console\n   " + b"[a@]" * 1000 + b"\n```\n",
-        b"```console\n(x) " + b"[a@]" * 1000 + b"\n```\n",
-        b"- [ ] a\r" * 1025,
-        b"-\n  [ ] a\n" * 1025,
-        b"> - > - [ ] a\n" * 1025,
+        _fence(b"console", b"(x)(a)" + b"b" * 800 + b"@" * 800),
+        _fence(b"console", b"[a@]" * 1000),
+        _fence(b"devicetree", b"aaaaaaa," * 6058),
+        _fence(b"systemd", b"aaaaaaa," * 6058),
+        _fence(b"registry", b"aaaaaaa," * 6058),
+        _fence(b"make", (b"a" * 63 + b",") * 1020),
+        _fence(b"ruby", b"a " * 12700),
+        b"> ```ruby\n" + (b"> " + b"a," * 32 + b"\n") * 300,
     ],
     ids=[
-        "prompt-brackets",
-        "prompt-word",
-        "prompt-parentheses",
+        "console-prompt-after-venv",
+        "console-prompt-brackets",
+        "devicetree",
+        "systemd",
+        "registry",
+        "make",
+        "spaced-ruby",
         "quoted-ruby",
-        "listed-ruby",
-        "fence-in-list-ends-with-it",
-        "quoted-line-in-a-fence",
-        "indented-line-in-a-fence",
-        "info-line-in-a-fence",
-        "listed-line-in-a-fence",
-        "token-dense-ruby",
-        "quoted-console",
-        "indented-console-prompt",
-        "prompt-after-venv",
-        "cr-tasks",
-        "blank-first-tasks",
-        "quote-in-list-tasks",
     ],
 )
-def test_shapes_a_line_scan_could_misread_open_as_source(body: bytes) -> None:
-    """What the estimate reads line by line is read the way the renderer reads it.
+def test_fenced_code_renders_plain_whatever_language_it_names(
+    body: bytes, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review G1 to G3: an author's fence never reaches a lexer on this page.
 
-    One line in a ``console`` fence costs 5.5 to 11.5 s in Pygments' prompt pattern;
-    highlighted code in a quote, a list item, or a fence the scan cannot tell has ended
-    costs what it costs anywhere; and a task is one behind any container, or on its own
-    line, or after a carriage return.
+    Each took 12 to 79 s to highlight within the earlier estimate, and some held the
+    interpreter throughout, for classes the inert page then dropped. Shown as escaped plain
+    code, each is admitted by the text's own charges and renders like any text.
     """
-    assert _work(body) > pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
+    from kpress.format import markdown as kpress_markdown
+
+    def refuse(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("the revision page highlighted an author's fence")
+
+    monkeypatch.setattr(kpress_markdown, "highlight", refuse)
+    assert _work(body) <= pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
     path = GitPath.from_display("README.md")
     snapshot = Snapshot(7, "a" * 40, "b" * 40, "s", "head")
-    assert pull_snapshot._render_document(body, path, "c" * 40, snapshot) is None  # pyright: ignore[reportPrivateUsage]
+    page = pull_snapshot._render_document(body, path, "c" * 40, snapshot)  # pyright: ignore[reportPrivateUsage]
+    assert page is not None and '<pre class="kpress-code">' in page
+    # Highlighted code came through the inert render as a classless span a token.
+    assert "<span" not in page.split('<pre class="kpress-code">', 1)[1]
 
 
 def test_ordinary_documents_are_within_the_render_bound() -> None:
@@ -867,8 +865,6 @@ def test_ordinary_documents_are_within_the_render_bound() -> None:
         # Console transcripts, which render in 43 to 73 ms; review F3 found them refused.
         (root / "tests" / "golden" / "cli-ui-github-pull-page.tryscript.md").read_bytes()[:_CAP],
         (root / "tests" / "golden" / "cli-api-cache.tryscript.md").read_bytes()[:_CAP],
-        # Inline code at a line's start, which opens no fence: what follows is still prose.
-        (b"```python `x` names the language.\n" + prose)[:_CAP],
     ):
         assert _work(body) <= pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
 
