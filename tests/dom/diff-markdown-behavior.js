@@ -488,6 +488,52 @@ async function main() {
   calls[5].resolve(ready);
   await new Promise(setImmediate);
   assert.equal(d.rendered.hidden, true);
+
+  // A sanitizer that failed to load is loaded again by the retry its message offers.
+  let attempts = 0;
+  const retried = [];
+  const root2 = make("div");
+  const view2 = createMarkdownViews({
+    controls: {
+      groupHtml: (spec) => spec,
+      bind(_container, { onChange }) {
+        sharedChange = onChange;
+        return () => {};
+      },
+    },
+    load: (id) => new Promise((resolve) => retried.push({ id, resolve })),
+    async ensureInert() {
+      attempts += 1;
+      return attempts === 1 ? undefined : inert;
+    },
+    async loadStyles() {},
+    mutate: (change) => change(),
+    now: time.now,
+    later: time.later,
+    cancel: time.cancel,
+  });
+  const section2 = make("section");
+  root2.append(section2);
+  const bar2 = make("div");
+  const source2 = make("div");
+  source2.id = "e";
+  section2.append(bar2, source2);
+  bar2.append(make("button"));
+  view2.add({ section: section2, bar: bar2, source: source2, id: "e" });
+  const [, control2] = bar2.children;
+  const [, fallback2, rendered2] = section2.children;
+  view2.observe(root2, null);
+  observer.notify([{ target: section2, isIntersecting: true }]);
+  retried[0].resolve(ready);
+  await new Promise(setImmediate);
+  assert.match(fallback2.textContent, /retry/);
+  await control2.children[0].click();
+  assert.equal(retried.length, 2);
+  retried[1].resolve(ready);
+  await new Promise(setImmediate);
+  assert.equal(attempts, 2, "the failed load was not kept");
+  assert.equal(rendered2.hidden, false);
+  view2.dispose();
   console.log("diff Markdown view OK");
 }
 

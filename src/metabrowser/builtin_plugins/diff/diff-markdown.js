@@ -477,8 +477,16 @@ export function createMarkdownViews(deps) {
         return;
       }
       inertReady ??= deps.ensureInert();
-      const inert = await inertReady;
+      /** @type {MetabrowserInertHtmlRuntime | undefined} */
+      let inert;
+      try {
+        inert = await inertReady;
+      } catch {
+        inert = undefined;
+      }
       if (inert === undefined) {
+        // Not kept: the retry the message offers loads it again.
+        inertReady = undefined;
         throw new Error("The untrusted Markdown sanitizer is unavailable.");
       }
       if (projection.assets !== undefined) {
