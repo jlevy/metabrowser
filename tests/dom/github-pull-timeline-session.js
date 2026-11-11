@@ -169,6 +169,7 @@ function mount(mountPullPage, envelope) {
     markdown,
     timelines,
     body: () => container.querySelector(".github-pull-body"),
+    status: () => container.querySelector(".github-pull-status"),
     frame() {
       const ready = [...frames.values()];
       frames.clear();
@@ -212,10 +213,9 @@ function order(body) {
 }
 
 async function run() {
-  const { mountPullPage, REFRESH_ASK_MS, FAST_POLL_MS, SLOW_POLL_MS, TIMELINE_RETRY_MS } =
-    await import(
-      pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
-    );
+  const { mountPullPage, FAST_POLL_MS, SLOW_POLL_MS, TIMELINE_RETRY_MS } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
+  );
   const session = mount(mountPullPage, fixture());
   await session.handle.ready;
   await settle();
@@ -234,9 +234,11 @@ async function run() {
   assert.equal(session.timelines.length, 0, "the useful Conversation paints first");
   session.frame();
   const [first] = session.timelines;
-  const spinner = body.querySelector(".github-pull-timeline-loading");
-  assert.equal(spinner?.getAttribute("aria-label"), "Loading commits…");
-  assert.ok(spinner?.classes.has("mb-delayed-loading") && spinner.querySelector(".spinner"));
+  // Commits join a conversation already shown: the age breathes, and nothing spins.
+  assert.equal(body.querySelector(".spinner"), null);
+  const age = session.status().querySelector(".github-pull-freshness");
+  assert.ok(age.classes.has("mb-refreshing"));
+  assert.equal(age.getAttribute("aria-busy"), "true");
   assert.deepEqual(first.request, { number: 7, record_revision: firstRevision });
   assert.ok(
     session.marks.indexOf("githubPull:conversationReady") <
@@ -260,7 +262,7 @@ async function run() {
   ]);
   await settle();
   const interleaved = order(body);
-  assert.equal(body.querySelector(".github-pull-timeline-loading"), null);
+  assert.equal(age.getAttribute("aria-busy"), null, "the commits arrived");
   assert.deepEqual(interleaved.slice(0, 8), [
     "body",
     `issue_comment/${wideId}`,
@@ -336,7 +338,7 @@ async function run() {
       record_revision: firstRevision,
       cached_only: true,
     });
-    assert.equal(stale.body().querySelector(".github-pull-timeline-loading"), null);
+    assert.equal(stale.body().querySelector(".spinner"), null);
     if (outcome === "hit") {
       cached.answer("complete", [commit]);
       await settle();
@@ -346,7 +348,8 @@ async function run() {
       await settle();
       assert.deepEqual(order(stale.body()), original);
     }
-    stale.timer(REFRESH_ASK_MS);
+    // A page opened by a click asks for its stale record's refresh at once.
+    stale.timer(0);
     stale.frame();
     stale.frame();
     assert.equal(stale.timelines.length, 1);
@@ -356,7 +359,7 @@ async function run() {
     stale.frame();
     stale.frame();
     assert.equal(stale.timelines.length, 1);
-    assert.equal(stale.body().querySelector(".github-pull-timeline-loading"), null);
+    assert.equal(stale.body().querySelector(".spinner"), null);
     const settledRevision = outcome === "replaced" ? nextRevision : firstRevision;
     stale.replace({ ...fixture(), record_revision: settledRevision });
     stale.timer(FAST_POLL_MS);

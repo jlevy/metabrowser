@@ -165,6 +165,7 @@ ADMITTED_GIT_TESTS := \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cli_github_stacks_golden.py \
 	tests/test_cli_github_pull_files_golden.py \
+	tests/test_cli_github_pulls_prefetch_golden.py \
 	tests/test_github_pull_files.py \
 	tests/test_cache_async_locks.py \
 	tests/test_cli_no_serve_surface.py \
@@ -244,6 +245,7 @@ GOLDEN_DRIVERS := \
 	tests/test_cli_github_pulls_golden.py \
 	tests/test_cli_github_stacks_golden.py \
 	tests/test_cli_github_pull_files_golden.py \
+	tests/test_cli_github_pulls_prefetch_golden.py \
 	tests/test_cli_checkout_golden.py \
 	tests/test_cli_github_checkout_golden.py \
 	tests/test_diff_comparison_cache.py

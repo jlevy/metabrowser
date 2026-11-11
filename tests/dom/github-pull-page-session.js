@@ -82,6 +82,8 @@ function summarizeState(model) {
     message: model.message,
     canRefresh: model.canRefresh,
     freshness: model.freshness,
+    // Shown content is refreshing, by the breathing age and never a spinner; said only when so.
+    ...(model.revalidating ? { revalidating: true } : {}),
     failure: model.failure,
     browse: browseCode(model),
     headOffer: model.headOffer === null ? null : model.headOffer.ref,
@@ -105,6 +107,7 @@ function summarize(model) {
     message: model.message,
     canRefresh: model.canRefresh,
     freshness: model.freshness,
+    ...(model.revalidating ? { revalidating: true } : {}),
     failure: model.failure,
     header:
       pull === null
@@ -943,6 +946,91 @@ async function main() {
   background.server.refresh.push(recorded.refresh_again);
   steps.push(await background.step("the reader stayed: it asks", async () => background.fireAsk()));
 
+  // A page left open keeps refreshing: once its refresh has landed and the record goes stale
+  // again, it asks again, at once, showing the plain age and offering nothing to press, rather
+  // than staying stale.
+  const leftOpen = createPage(runtime, { number: 7, tab: "", brief: true });
+  /** Printed with the second part: tryscript compiles one block's output as one regex. */
+  const leftOpenStory = [];
+  leftOpen.clock.now = page.clock.now;
+  leftOpen.server.pull = recorded.stale;
+  await leftOpen.controller.start();
+  leftOpen.server.refresh.push(recorded.refresh_again);
+  leftOpenStory.push(
+    await leftOpen.step("a page left open asks for its refresh", () => leftOpen.fireAsk()),
+  );
+  leftOpen.server.pull = recorded.refreshed;
+  leftOpenStory.push(await leftOpen.step("the refresh lands", async () => leftOpen.fire()));
+  leftOpen.clock.now = Date.parse("2026-09-17T12:07:30Z");
+  const staleAgain = { ...recorded.refreshed.body, state: "stale" };
+  leftOpen.server.pull = { status: 200, etag: '"stale again"', body: staleAgain };
+  const wentStale = await leftOpen.step("a minute on, its record goes stale again", async () =>
+    leftOpen.fire(),
+  );
+  assert(
+    wentStale.paint.revalidating === true &&
+      wentStale.paint.canRefresh === false &&
+      wentStale.paint.freshness === "Fetched 1 min ago via GitHub CLI",
+    `a page left open went stale without refreshing: ${JSON.stringify(wentStale.paint)}`,
+  );
+  leftOpenStory.push(wentStale);
+  leftOpen.server.refresh.push({
+    status: 202,
+    etag: null,
+    body: { pull: { ...staleAgain, refreshing: true } },
+  });
+  leftOpenStory.push(
+    await leftOpen.step("it asks for the next refresh at once", async () => leftOpen.fireAsk(0)),
+  );
+  leftOpen.controller.dispose();
+
+  // GitHub's rate limit refused the page's refresh. It is a hold, not a failure: the page
+  // offers no Refresh, names when it will ask again, which is not before `reset_at` and not
+  // within a freshness window of the refused attempt, and asks at that time, at once.
+  const held = createPage(runtime, { number: 7, tab: "", brief: true });
+  /** Printed with the second part, as `leftOpen` is. */
+  const rateLimitedStory = [];
+  held.clock.now = page.clock.now;
+  held.server.pull = recorded.stale;
+  await held.controller.start();
+  held.server.refresh.push(recorded.refresh_again);
+  rateLimitedStory.push(await held.step("a stale page asks for its refresh", () => held.fireAsk()));
+  const refusedAt = held.clock.now + 2000;
+  const limited = {
+    ...recorded.stale.body,
+    last_refresh: {
+      outcome: "rate_limited",
+      message: "GitHub's API rate limit is exhausted",
+      reset_at: new Date(refusedAt + 30_000).toISOString(),
+      at: new Date(refusedAt).toISOString(),
+    },
+  };
+  held.clock.now = refusedAt + 10_000;
+  held.server.pull = { status: 200, etag: '"rate limited"', body: limited };
+  const holding = await held.step("GitHub's rate limit refused it", async () => held.fire());
+  const named = new Date(refusedAt + 60_000).toISOString().replace(".000Z", "Z");
+  assert(
+    holding.paint.canRefresh === false &&
+      holding.paint.failure === `GitHub rate limit · next check at ${named}`,
+    `a held page offers Refresh or names another time: ${JSON.stringify(holding)}`,
+  );
+  rateLimitedStory.push(holding);
+  held.clock.now = refusedAt + 40_000;
+  const waking = await held.step("still held, it wakes at the time it named", async () =>
+    held.fire(),
+  );
+  assert(waking.timer === 20_000, `a held page does not wake at the lift: ${waking.timer}`);
+  rateLimitedStory.push(waking);
+  held.clock.now = refusedAt + 60_000;
+  rateLimitedStory.push(
+    await held.step("at the time it named, its poll asks again at once", async () => held.fire()),
+  );
+  held.server.refresh.push(recorded.refresh_again);
+  rateLimitedStory.push(
+    await held.step("and sends that ask with no wait", async () => held.fireAsk(0)),
+  );
+  held.controller.dispose();
+
   // A reader walking past a stale page, holding Back or a key, spends no refresh on it.
   const walkedPast = createPage(runtime, { number: 7, tab: "", brief: true });
   walkedPast.clock.now = page.clock.now;
@@ -957,31 +1045,44 @@ async function main() {
   );
   assert(walkedPast.timersLeft() === 0, "a disposed page left a timer running");
 
-  // A page whose refresh failed a moment ago: its own request is not due, and it asks once
-  // per visible period, not on every poll. A reader's press still goes through.
+  // A page whose refresh failed a moment ago: its own request is not due, and it asks again
+  // once a freshness window has passed while it is still stale, not on every poll and not on
+  // every return to the tab. A reader's press still goes through.
   const failing = createPage(runtime, { number: 8, tab: "", brief: true });
+  /** Printed with the second part, as `leftOpen` is. */
+  const failingStory = [];
   failing.clock.now = Date.parse("2026-09-17T12:30:30Z");
   failing.server.pull = recorded.failed;
   failing.server.refresh.push(recorded.not_due);
   await failing.controller.start();
-  steps.push(
+  failingStory.push(
     await failing.step("a stale page asks once, and its refresh is not due", async () =>
       failing.fireAsk(),
     ),
   );
-  steps.push(await failing.step("its next poll asks nothing", async () => failing.fire()));
+  failingStory.push(await failing.step("its next poll asks nothing", async () => failing.fire()));
   failing.setVisible(false);
   await failing.controller.onVisibilityChange();
   failing.setVisible(true);
-  steps.push(
-    await failing.step("shown again, it may ask once more", async () =>
+  failingStory.push(
+    await failing.step("shown again within the window, it asks nothing", async () =>
       failing.controller.onVisibilityChange(),
     ),
   );
+  failing.clock.now += 60_000;
+  failingStory.push(
+    await failing.step("a window later and still stale, its poll asks again at once", async () =>
+      failing.fire(),
+    ),
+  );
   failing.server.refresh.push(recorded.not_due);
-  steps.push(await failing.step("the reader stayed again: it asks", async () => failing.fireAsk()));
+  failingStory.push(
+    await failing.step("that ask is sent with no wait, and is not due", async () =>
+      failing.fireAsk(0),
+    ),
+  );
   failing.server.refresh.push(recorded.failed_again);
-  steps.push(
+  failingStory.push(
     await failing.step("a reader's Refresh is always taken", () =>
       failing.controller.requestRefresh(),
     ),
@@ -1310,6 +1411,9 @@ async function main() {
       `${pathname} is #${number}'s ${tab || "conversation"}: ${runtime.onPageRoute(pathname, number, tab)}`,
   );
   const second = {
+    leftOpen: leftOpenStory,
+    failing: failingStory,
+    rateLimited: rateLimitedStory,
     checkActions,
     filesUnavailable,
     checkout,

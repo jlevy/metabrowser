@@ -241,6 +241,34 @@ async function main() {
   stories["a list asked for and not yet arrived"] = describe(recorded.pending);
   stories["a list that stopped part-way"] = describe(recorded.stopped);
   stories["a list the pull request has changed since"] = describe(recorded.stale);
+  // Rows already listed are never covered by progress, and a stale list says nothing of being
+  // stale: its refresh, asked for or running, is `refreshing`, which the paint breathes on the
+  // names, with no line; the spinner (`loading`) is only for a list with no rows yet.
+  const shownRows = tree.visibleRows(whole, tree.initialExpansion(recorded.filled, LARGE));
+  const quietStale = { ...recorded.stale, last_refresh: null };
+  const shows = (envelope, rows, asking) => {
+    const model = tree.describeFileTree(envelope, {
+      number: 106,
+      expanded: true,
+      rows,
+      rowsVersion: 1,
+      asking,
+      error: null,
+      formatTime,
+    });
+    return {
+      line: model.line,
+      loading: model.loading,
+      refreshing: model.refreshing,
+      notice: model.notice?.text ?? null,
+    };
+  };
+  stories["a stale list's rows are never covered by progress"] = {
+    "its refresh about to be asked for": shows(quietStale, shownRows, false),
+    "its refresh asked for": shows(quietStale, shownRows, true),
+    "its refresh running": shows({ ...quietStale, refreshing: true }, shownRows, false),
+    "no rows yet, while listing": shows(recorded.pending, [], true),
+  };
   stories["a server with no GitHub repository"] = describe(recorded.not_github);
   stories["each way a refresh can fail"] = Object.fromEntries(
     Object.keys(recorded)

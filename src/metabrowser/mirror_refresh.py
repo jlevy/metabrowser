@@ -508,10 +508,16 @@ def followed_outcome(
     return recorded.last_outcome if rewritten else "failed"
 
 
+def _never() -> bool:
+    return False
+
+
 @dataclass(eq=False, slots=True)
 class _TurnWaiter:
     goes_first: Callable[[], bool]
     turn: asyncio.Future[None]
+    background: Callable[[], bool] = _never
+    preempt: Callable[[], object] | None = None
 
 
 class StoreTurn:
@@ -528,21 +534,41 @@ class StoreTurn:
     the order they asked, so neither starves the other, and after
     :data:`MAX_FIRST_IN_A_ROW` of them in a row ahead of a waiting job, the oldest other job
     goes, so they starve nothing. One that went when nothing else waited is not counted.
+
+    A background job, one whose *background* is true when a turn is given, is optional
+    work a reader is not waiting for: it goes only when no other job waits, it is never
+    counted against :data:`MAX_FIRST_IN_A_ROW`, and when any other job starts waiting
+    while it holds the turn, its *preempt* is called, which cancels it. So a reader's job
+    waits at the store for the background job to unwind, never for it to finish. A
+    background job promoted to a reader's (*background* false from then on) is neither.
     """
 
     def __init__(self) -> None:
         self._waiting: list[_TurnWaiter] = []
         self._taken = False
+        self._holder: _TurnWaiter | None = None
         self._first_in_a_row = 0
 
     @asynccontextmanager
-    async def __call__(self, goes_first: Callable[[], bool]) -> AsyncGenerator[None]:
+    async def __call__(
+        self,
+        goes_first: Callable[[], bool],
+        *,
+        background: Callable[[], bool] = _never,
+        preempt: Callable[[], object] | None = None,
+    ) -> AsyncGenerator[None]:
         """Hold the turn for the block, once it comes."""
 
-        waiter = _TurnWaiter(goes_first, asyncio.get_running_loop().create_future())
+        waiter = _TurnWaiter(
+            goes_first, asyncio.get_running_loop().create_future(), background, preempt
+        )
         self._waiting.append(waiter)
         if not self._taken:
             self._give()
+        elif not background():
+            holder = self._holder
+            if holder is not None and holder.preempt is not None and holder.background():
+                holder.preempt()
         try:
             await waiter.turn
         except asyncio.CancelledError:
@@ -559,23 +585,31 @@ class StoreTurn:
 
     def _pass(self) -> None:
         self._taken = False
+        self._holder = None
         self._give()
 
     def _give(self) -> None:
         # One that was cancelled and has not run yet is still listed.
         waiting = [waiter for waiter in self._waiting if not waiter.turn.done()]
-        first = next((waiter for waiter in waiting if waiter.goes_first()), None)
-        other = next((waiter for waiter in waiting if not waiter.goes_first()), None)
+        foreground = [waiter for waiter in waiting if not waiter.background()]
+        first = next((waiter for waiter in foreground if waiter.goes_first()), None)
+        other = next((waiter for waiter in foreground if not waiter.goes_first()), None)
         first_is_due = other is None or self._first_in_a_row < MAX_FIRST_IN_A_ROW
         chosen = first if first is not None and first_is_due else other
-        if chosen is None:
+        if chosen is not None:
+            # Only a first that went ahead of a waiting job counts. One that went ahead of
+            # nothing kept nobody waiting, and counting it would give the next contention to
+            # the other.
+            went_ahead = chosen is first and other is not None
+            self._first_in_a_row = self._first_in_a_row + 1 if went_ahead else 0
+        elif waiting:
+            # Only background jobs wait; they leave the count as it was.
+            chosen = waiting[0]
+        else:
             return
-        # Only a first that went ahead of a waiting job counts. One that went ahead of nothing
-        # kept nobody waiting, and counting it would give the next contention to the other.
-        went_ahead = chosen is first and other is not None
-        self._first_in_a_row = self._first_in_a_row + 1 if went_ahead else 0
         self._waiting.remove(chosen)
         self._taken = True
+        self._holder = chosen
         chosen.turn.set_result(None)
 
 
@@ -596,6 +630,12 @@ class RefreshCoordinator:
     def running(self, key: str) -> bool:
         job = self._jobs.get(key)
         return job is not None and not job.done()
+
+    def job(self, key: str) -> asyncio.Task[None] | None:
+        """The live job for *key*, for a caller that waits for it without owning it."""
+
+        job = self._jobs.get(key)
+        return job if job is not None and not job.done() else None
 
     def start(
         self, key: str, work: Callable[[], Awaitable[None]], *, network: bool = True
@@ -717,6 +757,8 @@ class MirrorSession:
         self._store_turn = StoreTurn()
         # The keys of the pull-request jobs started, some of which may have ended.
         self._pull_jobs: set[str] = set()
+        # The keys of background pull-request jobs not yet promoted; each removes its own.
+        self._background_pulls: set[str] = set()
 
     # ── The attended pull request ───────────────────────────────
 
@@ -915,7 +957,7 @@ class MirrorSession:
     def companion_refreshing(self) -> bool:
         return self.companion is not None and self._coordinator.running(self.companion.key)
 
-    def request_pull_refresh(self, number: int) -> PullJobStart:
+    def request_pull_refresh(self, number: int, *, background: bool = False) -> PullJobStart:
         """Start or join the refresh of pull request *number*, whichever it is.
 
         One that is not running starts only while fewer than :data:`MAX_PULL_JOBS` are
@@ -924,13 +966,23 @@ class MirrorSession:
         code on a pull request's head behind its refresh. It is one over and not one per
         attended switch: while a job of an earlier attended number holds that place, the
         new number is refused like any other until a job ends.
+
+        A *background* job, a prefetch's, counts toward neither bound, takes no network
+        slot, and gives way at the store turn (:class:`StoreTurn`). A reader's request that
+        joins one promotes it: from then on it is the reader's, and counts.
         """
 
         pulls = self.pull_requests
         assert pulls is not None
         key = pulls.key(number)
         if self._coordinator.running(key):
+            if not background and key in self._background_pulls:
+                self._background_pulls.discard(key)
+                self._pull_jobs.add(key)
             return "joined"
+        if background:
+            self._background_pulls.add(key)
+            return self._coordinator.start(key, partial(self._pull_job, number), network=False)
         self._pull_jobs = {job for job in self._pull_jobs if self._coordinator.running(job)}
         bound = MAX_PULL_JOBS + 1 if number == self._pull_request else MAX_PULL_JOBS
         if len(self._pull_jobs) >= bound:
@@ -947,10 +999,21 @@ class MirrorSession:
     async def _pull_job(self, number: int) -> None:
         pulls = self.pull_requests
         assert pulls is not None
+        key = pulls.key(number)
+
+        def background() -> bool:
+            return key in self._background_pulls
+
         try:
+            # A background job takes no network slot; one promoted while it waited takes one
+            # as any reader's does, since the slot is asked for once the turn has come.
             async with (
-                self._store_turn(lambda: number == self._pull_request),
-                self._coordinator.slot(),
+                self._store_turn(
+                    lambda: number == self._pull_request,
+                    background=background,
+                    preempt=partial(self._coordinator.cancel, key),
+                ),
+                contextlib.nullcontext() if background() else self._coordinator.slot(),
             ):
                 # Asked for here, not when the job was started: a job waiting its turn
                 # holds nothing the set's bound could drop.
@@ -960,6 +1023,8 @@ class MirrorSession:
             raise
         except Exception:
             log.exception("refreshing the data served beside the mirror failed")
+        finally:
+            self._background_pulls.discard(key)
         try:
             # Its fetch can move a ref the pin was resolved from, such as a pull
             # request's head, which status then reports as newer.

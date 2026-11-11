@@ -195,6 +195,20 @@ def _reset_served_source() -> Generator[None, None, None]:  # pyright: ignore[re
 
 
 @pytest.fixture(autouse=True)
+def _reset_rate_budget() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
+    """Start every test with no observed GitHub rate budget and no hold, as a new process.
+
+    The governor keeps them per process, so a refusal one test replays would otherwise hold
+    background work in every test after it until the replayed reset time.
+    """
+    from metabrowser.builtin_plugins.github import gh_budget
+
+    gh_budget.forget()
+    yield
+    gh_budget.forget()
+
+
+@pytest.fixture(autouse=True)
 def _restore_environment() -> Generator[None, None, None]:  # pyright: ignore[reportUnusedFunction]
     """Put back whatever a test, or the code it ran, changed in ``os.environ``.
 

@@ -228,6 +228,22 @@ repository, or `not_cached`, `schema_mismatch`, or `unreadable`), `pending` (no 
 yet, and a refresh is running), `current`, or `stale`, plus the pin and the ref it came
 from (`pin_ref`), `refreshing`, how its last refresh ended (`last_refresh`), and
 `comparison_route`, the `github/pull-comparison` of the record’s merge-base endpoints.
+The record is checked against the catalog’s row of its number, by the same source and
+reader: it is `current` while a scan within the window, or the next one running for at
+most `SCAN_GRACE_S` past it, has not seen it change, and `stale` when the row is newer
+or names another head at the same time, with `head_moved` when the row names another
+head; otherwise the one-minute window decides.
+An open pull request’s record read longer ago than the window is `stale` though the
+catalog vouches for it, since `updated_at` does not move for checks, statuses, or
+mergeability; its automatic refresh reads those alone.
+`verified_at` is the newest moment it was known to describe GitHub’s pull request and
+`verified_by` says how (`catalog` or `fetch`); `checks_pending` says its checks,
+statuses, or mergeability are still settling, for the page to say.
+`cli-github-pulls-prefetch.txt` pins each verdict.
+The entity tag leaves out `verified_at` and `verified_by`, which move with every scan;
+`x-metabrowser-verified: <verified_by> <verified_at>` carries them on a `200` and a
+`304` alike, followed by ` scanning` on a catalog verdict while the next scan runs,
+which the page polls fast for.
 That route names a cached pull request and requires two full commit IDs with
 `merge_base`, then forwards to the diff comparison implementation with the PR’s prepared
 manifest. It acquires nothing; its build and store parameters identify the same answer
@@ -458,8 +474,11 @@ bounded.
 
 `rows` is newest first by number, with at most `limit` rows (default 100, maximum 1,000,
 zero for status alone), below `after`. `next_after` continues cached rows only.
-A per-filter `generation` changes when existing content or the leading prefix changes;
-older appends and count-only changes preserve it.
+Each row carries `head_oid`, the head commit GitHub reported with it, which records and
+changed-files lists are checked against, or null for a row written before the catalog
+read heads.
+A per-filter `generation` changes when existing content or the leading prefix
+changes; older appends and count-only changes preserve it.
 A client replaces a held window only after it has collected that window under one
 source, reader, and generation.
 The ETag covers the bounded envelope and rows.
@@ -521,9 +540,12 @@ See
 files from the cache alone, with the same `state` values.
 A list is from the local comparison (`listed_from: "comparison"`, current while the
 record’s head is its `head`) when the store holds both of the record’s comparison
-commits, and otherwise from GitHub’s list (`"github"`, current while the pull request’s
-`updated_at`, from its record or a cached list row, is no newer than `fetched_at`, or
+commits, and otherwise from GitHub’s list (`"github"`, current while the `head` and
+`base_ref` it names, observed before its first page, are the pull request’s as last
+known from the newer of its record and cached list row; a list or source that names no
+head is current while the pull request’s `updated_at` is no newer than `fetched_at`, or
 within the window when neither knows).
+A GitHub list read for a head that has since moved is due again at once after a success.
 `fetched` is the rows held; `complete` is false while GitHub’s list fills or after it
 stopped part-way, `last_page` is the page count GitHub’s `Link` gave, `capped` says
 GitHub stopped at its 3,000 files, and `truncated` that an item was left out.
@@ -559,6 +581,30 @@ Workers admitted before the refusal can still publish later; admission does not 
 those jobs. This fallback does not promise persistence across server restarts or memory
 eviction. See
 [Changed files of a pull request](arch-repository-sources-and-provider-mirrors.md#changed-files-of-a-pull-request).
+
+`POST github/pulls-prefetch` takes `records` and `files`, each at most 16 distinct
+pull-request numbers in a visible page’s order of priority, and `changed`, which adds
+the numbers this server most recently answered `github/pull` for.
+It replaces the repository’s background lane queue and starts or joins the lane, `202`
+with `prefetch: "started"` or `"joined"` and `github/pulls-prefetch` as its
+`status_route`; `200` with `"not_due"` when nothing was named, or `"deferred"` with a
+`reason` (`below_floor` or `rate_hold`) when the rate-limit governor admits no
+background work. The lane runs one item at a time and reads each again before it runs: a
+record that is missing (named only) or that the catalog says changed, and a files list
+the files route would refresh automatically.
+It stops at the governor, at 8 record refreshes per catalog publication or 40 an hour,
+at 20 GitHub file lists an hour, or when a reader’s job preempts its job, which gives
+its place in the caps back; it does not stop merely because a reader’s work runs, which
+it cannot delay. `GET github/pulls-prefetch` reports the lane from server memory:
+`running`, `queued`, the `records` and `files` caps with their use, the `governor`
+(`floor`, `admits`, `reason`, `held_until`, and each resource `observed` from GitHub’s
+rate-limit headers), and the outcomes of the last 16 items (`recent`). A background job
+takes no network slot, waits at a store turn behind every other job and is cancelled
+when one starts waiting, and a reader’s request for its pull request joins and promotes
+it. `cli-github-pulls-prefetch.txt` pins a run that refreshes, skips, and defers, with
+the `gh` calls each made.
+See
+[Background prefetch](arch-repository-sources-and-provider-mirrors.md#background-prefetch-and-the-rate-limit-governor).
 
 ### Planned plugin registration surfaces
 
@@ -630,7 +676,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/diff/document` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-diff-no-hunks.tryscript.md` |
 | `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md`, `cli-api-diff-view-file.tryscript.md`, `cli-api-diff-no-hunks.tryscript.md`, `cli-checkout-overlay.txt` |
-| `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-checkout-overlay.txt` |
+| `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-checkout-overlay.txt`, `cli-github-pulls-prefetch.txt` |
 | `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt`, `cli-github-checkout-idle.txt` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pull-timeline` | covered | `--api --data` | `cli-github-pull-timeline.txt` |
@@ -644,6 +690,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/github/stacks-refresh` | covered | `--api` | `cli-github-stacks.txt` |
 | `/api/plugin/github/pull-files` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt` |
 | `/api/plugin/github/pull-files-refresh` | covered | `--api` | `cli-github-pull-files.tryscript.md`, `cli-github-pull-files-refresh.txt`, `cli-github-pull-files-failures.txt` |
+| `/api/plugin/github/pulls-prefetch` | covered | `--api` | `cli-github-pulls-prefetch.txt` |
 | `/api/plugin/structured/parsed` | covered | `--api` | `cli-api-plugins.tryscript.md` |
 | `/view` | covered | `--show PATH`, `--show /view/...` | `cli-show.tryscript.md` |
 | `/commit` | covered | `--show /commit/<rev>[/<inner>]` | `cli-api-git.tryscript.md` |
@@ -831,6 +878,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `github.pulls-tab-host` | interaction | `static/pulls-nav.js#createPullsNav`, `static/pulls-nav.js#tabForAddress`, `static/pulls-nav.js#pullAddress`, `static/pulls-nav.js#registerKeys` | `local-only` | `node tests/dom/pulls-nav-session.js` | `cli-ui-pulls-nav.tryscript.md` |
 | `github.pulls-panel` | interaction | `builtin_plugins/github/pulls-panel.js#describePulls`, `builtin_plugins/github/pulls-panel.js#describeRow`, `builtin_plugins/github/pulls-panel.js#refreshFailure`, `builtin_plugins/github/pulls-panel.js#createPullsController`, `builtin_plugins/github/pull-state.js#displayState` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-refresh`, `/api/plugin/github/pull` | `node tests/dom/github-pulls-panel-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.pulls-watch` | interaction | `builtin_plugins/github/pulls-panel.js#createPullsController` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-refresh` | `node tests/dom/github-pulls-catalog-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
+| `github.background-freshness` | interaction | `builtin_plugins/github/pulls-panel.js#createPullsController`, `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-prefetch`, `/api/plugin/github/pulls-refresh`, `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pulls-prefetch-behavior.js` | `cli-ui-github-pulls-prefetch.tryscript.md` |
 | `github.visible-core-window` | interaction | `builtin_plugins/github/pulls-panel.js#mountPullsPanel` | `/api/plugin/github/pulls`, `/api/plugin/github/pull-cores-prepare`, `/api/plugin/github/pull` | `node tests/dom/github-pulls-viewport-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.pulls-file-selection` | interaction | `builtin_plugins/github/pulls-panel.js#mountPullsPanel` | `/api/plugin/github/pulls`, `/api/plugin/github/pull-files` | `node tests/dom/github-pulls-file-selection-session.js` | `cli-ui-github-pulls-panel.tryscript.md` |
 | `github.native-stack-ui` | interaction | `builtin_plugins/github/pull-stacks.js#createStackController`, `builtin_plugins/github/pull-stacks.js#createStackIndex`, `builtin_plugins/github/pull-stacks.js#stackMembership`, `builtin_plugins/github/pull-stacks.js#memberRoute` | `/api/plugin/github/stacks`, `/api/plugin/github/stacks-refresh` | `node tests/dom/github-pull-stacks-behavior.js` | `cli-ui-github-pulls-panel.tryscript.md` |
@@ -878,6 +926,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `github.pulls-panel-paint` | paint-exempt | `builtin_plugins/github/pulls-panel.js#mountPullsPanel`, `builtin_plugins/github/pulls-panel.js#mountPullsLanding`, `builtin_plugins/github/pull-state.js#pullStateIcon` | `local-only` | — | Building the list’s DOM, moving focus, bringing a row into view, what a sticky header covers, truncating a title, and when an `IntersectionObserver` says the list’s end is near need a rendered page. Every decision they act on is a session owner above: which rows, marks, and notices (`github.pulls-panel`), which tab and when the view is told (`github.pulls-tab-host`), and what a row’s open asks for (`github.pulls-reader-fetch`). The panel session builds the list in a stand-in for the DOM and pins its tree roles with each row’s place and the list’s size, a title written as markup painted as one text node, an append that builds and keys only the rows it adds, and ages told again as time passes (`tests/dom/github-pulls-panel-session.js`, its `paint`); `tests/test_pulls_nav.py` pins that a folder’s shell draws nothing, and `tests/test_design_vocabulary.py` the design system’s primitives in the markup. The list at its cap, a held key, and how it looks in both themes were measured and judged in Chrome; the numbers are beside `WINDOW_ROWS` in `builtin_plugins/github/pulls-panel.js` |
 | `shell.nav-panel-scroll` | paint-exempt | `static/main-tabs.js#activateNavPanel` | `local-only` | — | The main panels share a scroller. The deferred tab controller keeps each panel’s offset and tells the panel that leaves. `tests/dom/preview-pane-state-session.js` checks that switching saves and restores the offset and notifies the panel that leaves. See `navigation.main-tab-destinations` and `github.pulls-tab-host`. |
 | `github.pull-page-paint` | paint-exempt | `builtin_plugins/github/pull-page.js#mountPullPage` | `local-only` | — | Building the page’s DOM, observing which texts scroll into view, reading where a block sits and setting the pane’s scroll, loading the diff plugin and mounting its view, and the shell’s `app.js` callbacks the page host calls (load the plugin, render into the pane, `history.pushState`) need a rendered page. Every decision they act on is a session owner above: what a route, a tab link, the link to the served pull request, or a history landing does to the pane, and which superseded page is disposed (`navigation.pull-page-history`), whether the conversation repaints or asks again and what Files changed keeps (`github.pull-page-paint-decisions`), what of a text’s HTML is inserted (`github.pull-page-inert-markup`), and where a landing puts the pane and for how long (`github.pull-page-place`). The route grammar, the shell and plugin wiring for the `pull-request` kind, that only an inert template is parsed, that a text is asked for one pane ahead of the pane that scrolls, and what a reader’s place is wired to are pinned in `tests/test_pull_page_route.py`; the browser walkthrough is in the v0.12 QA runbook |
+| `shell.refreshing-text-motion` | paint-exempt | `static/styles.css` | `local-only` | — | How text that a refresh is checking breathes is paint: the opacity the compositor draws each frame, that it draws it with no style, layout, or paint work on the main thread, and what starting it costs, none of which a browserless session can run. Which text breathes, and which status text is marked `aria-busy`, are decisions pinned browserlessly against the production code: the page’s age line (`github.pull-page`, `github.selected-core-preview`, `github.pull-timeline`) in `tests/dom/github-pull-core-preview-behavior.js`, `tests/dom/github-pull-stack-mount-behavior.js`, and `tests/dom/github-pull-timeline-session.js`; a changed-files tree’s names (`github.pull-files-tree`) in `tests/dom/github-pull-files-focus-behavior.js`, run by `tests/test_github_pull_files_tree_session.py`, and `tests/dom/github-pull-files-tree-session.js`; the Pulls connection row (`github.pulls-panel`, `github.pulls-watch`) in `tests/dom/github-pulls-panel-session.js` and `tests/dom/github-pulls-catalog-behavior.js`; and which Pulls titles breathe — an admitted core batch’s, until it settles, is replaced, or the panel goes offline — and the beat they are aligned to (`github.visible-core-window`) in `tests/dom/github-pulls-viewport-behavior.js`. `tests/test_design_vocabulary.py` pins that the keyframes change opacity alone, after the loading quiet period, with a reduced-motion override, that primary ink keeps 4.5:1 at its dimmest and a muted line rests at muted’s contrast in both themes, that no usable row or tree group is marked busy, and that no pull-request surface says “may be out of date”. The headless Chrome 152 run (no compositing failure; no main-thread style, layout, or paint for 2.7 s while the compositor drew 165 frames; 2.5 ms to start 120 breathing elements) is recorded beside the tokens in `static/styles.css` |
 
 ## Adding something
 

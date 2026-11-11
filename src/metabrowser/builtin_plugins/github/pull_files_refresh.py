@@ -57,6 +57,7 @@ from metabrowser.builtin_plugins.github.pull_list import (
     PULL_FILES_SCHEMA,
     FilePageMark,
     FileStatus,
+    KnownHead,
     ListedRepository,
     LocalComparison,
     PullFileList,
@@ -210,6 +211,7 @@ def _assembled(
     fetched_at: str,
     generation: str,
     final: bool,
+    known: KnownHead,
 ) -> PullFileList:
     """Pages joined into one list: each path once, where it first appeared."""
 
@@ -232,7 +234,8 @@ def _assembled(
             listed_from="github",
             fetched_at=fetched_at,
             reader=reader,
-            head=None,
+            head=known[0],
+            base_ref=known[1],
             pages=len(pages),
             last_page=last_page,
             complete=final and not has_next,
@@ -258,9 +261,17 @@ async def _write(repository: ListedRepository, listed: PullFileList) -> None:
 
 
 async def _from_github(
-    repository: ListedRepository, number: int, login: str, slot: Slot, generation: str
+    repository: ListedRepository,
+    number: int,
+    login: str,
+    slot: Slot,
+    generation: str,
+    known_head: Callable[[], KnownHead] | None,
 ) -> PullFileList:
     reader = f"gh:{login}"
+    # Observed before the first page, so a push during the read can only make the list look
+    # older than it is, which costs one more refresh and never passes a stale list as current.
+    known: KnownHead = await asyncio.to_thread(known_head) if known_head else (None, None)
     cached = await asyncio.to_thread(read_pull_files, repository.home, repository.slug, number)
     previous = (
         cached
@@ -290,6 +301,7 @@ async def _from_github(
             fetched_at=fetched_at,
             generation=generation,
             final=False,
+            known=known,
         )
         # Never fewer rows than the file holds, so a reread does not shrink what a reader has.
         if len(partial.rows) > held:
@@ -311,6 +323,7 @@ async def _from_github(
         fetched_at=fetched_at,
         generation=generation,
         final=True,
+        known=known,
     )
     async with slot():
         if await active_account() != login:
@@ -391,13 +404,20 @@ async def _from_comparison(
 
 
 async def refresh_pull_files(
-    repository: ListedRepository, number: int, *, local: LocalComparison | None, slot: Slot
+    repository: ListedRepository,
+    number: int,
+    *,
+    local: LocalComparison | None,
+    slot: Slot,
+    known_head: Callable[[], KnownHead] | None = None,
 ) -> PullFileList:
     """List pull request *number*'s changed files and cache them; see the module.
 
     *local* names the store and commits of the record's comparison, when the store holds
     both. *slot* is one of the coordinator's network slots, held for one ``gh`` request at a
-    time. Raises only :class:`PullDataError`; how it ended is kept beside the list either way.
+    time. *known_head* reads, blocking, the head and base branch the pull request has as last
+    known, which GitHub's list then names. Raises only :class:`PullDataError`; how it ended
+    is kept beside the list either way.
     """
 
     reader: str | None = None
@@ -428,7 +448,7 @@ async def refresh_pull_files(
             async with slot():
                 login = await active_account()
             reader = f"gh:{login}"
-            listed = await _from_github(repository, number, login, slot, generation)
+            listed = await _from_github(repository, number, login, slot, generation, known_head)
     except PullDataError as exc:
         if held is not None and exc.state == "rate_limited":
             # This attempt stopped at the already saved hold, before any provider request.

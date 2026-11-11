@@ -1004,6 +1004,7 @@ def catalog_entries(
                         "author": item.get("user"),
                         "baseRefName": item["base"]["ref"],
                         "headRefName": item["head"]["ref"],
+                        "headRefOid": item["head"]["sha"],
                         "headRepository": {"nameWithOwner": head["full_name"]} if head else None,
                         "labels": {
                             "nodes": [

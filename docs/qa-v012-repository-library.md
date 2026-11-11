@@ -1587,9 +1587,11 @@ address.
    `forker wants to merge 2 commits into octo:topic from forker:count-to-two`, the
    opened and updated times, **View on GitHub**, **Browse code**, and the `enhancement`
    label. The status line reads `Fetched … via GitHub CLI`. The records were fetched on
-   2026-09-17, so it first adds `may be out of date` and offers **Refresh**, and the
-   freshness row at the foot of the navigation pane refreshes on its own and links
-   **Pull request #7**.
+   2026-09-17, so the page refreshes the record by itself: nothing spins, nothing says
+   `may be out of date`, and no **Refresh** is offered meanwhile; the age gently
+   breathes (it stays still with the system’s reduced-motion setting on) until it reads
+   `Fetched just now via GitHub CLI`. The freshness row at the foot of the navigation
+   pane refreshes on its own and links **Pull request #7**.
 2. The description shows as plain text at first, then after a moment as Markdown
    (**two** in bold). The conversation lists, in time order, maintainer’s **reviewed**
    review, the comment `Thanks. CI is green; one question inline.`, and the **approved**
@@ -1608,9 +1610,14 @@ address.
 5. Click `src/app.txt:2`. The file opens at `/view/g1-c3Jj/g1-YXBwLnR4dA#L2` from the
    served head, `one` and `two`, with line 2 highlighted.
    Back returns to the pull-request page.
-6. Click **Refresh** while the record is stale.
-   The status line shows a spinner with `Refreshing…` and then
-   `Fetched just now via GitHub CLI`. The conversation stays visible and in place.
+6. Open **Changes**, where **Refresh** is offered even while the record is current, and
+   click it. Nothing spins: the age breathes until it reads
+   `Fetched just now via GitHub CLI`, and the diff stays visible and in place.
+   Return to **Conversation** and leave the page open and visible for more than a
+   minute. Each time the record goes stale again, the age breathes briefly while the page
+   refreshes it by itself and then reads `Fetched just now via GitHub CLI`; the page
+   never shows a spinner over the conversation, never says `may be out of date`, and
+   offers no **Refresh** while it refreshes.
 7. Open `/pull/8/files`. The same server shows pull request 8’s cached comparison;
    browsing it does not change the served code pin.
    Confirm the code banner is unchanged.
@@ -1645,11 +1652,12 @@ Only application-owned avatars may load from `avatars.githubusercontent.com`; ch
 status links you click open in a new tab.
 No image or resource authored in the conversation loads remotely.
 
-**Fail:** a text of the pull request rendered as HTML other than through the Markdown
-renderer; an image, stylesheet, or other resource from a comment loading, or an `id`
-from one in the page; a link that opens in the same tab or keeps an opener; a
-`javascript:` link; a diff that moves to a newer head on its own; a blank page on a
-reload or back.
+**Fail:** a spinner or `may be out of date` over the cached page while it refreshes; a
+page left open that stops refreshing; a text of the pull request rendered as HTML other
+than through the Markdown renderer; an image, stylesheet, or other resource from a
+comment loading, or an `id` from one in the page; a link that opens in the same tab or
+keeps an opener; a `javascript:` link; a diff that moves to a newer head on its own; a
+blank page on a reload or back.
 
 With the network, a signed-in `gh`, and a Git the floor admits (read-only), open a real
 public pull request, for example `pallets/markupsafe#507`, and repeat steps 1 to 6:
