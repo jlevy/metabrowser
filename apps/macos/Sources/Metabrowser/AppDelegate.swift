@@ -32,14 +32,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         installTerminationSignals()
         setup = settings.usable()
         runtimeModel.setup = setup
+        // AppKit delivers launch folders (`open -a`, Open With) after this method and
+        // before applicationDidFinishLaunching. Marking the search as running now makes
+        // such a folder wait for it, instead of opening Settings as if none was found.
+        if setup == nil { beginDiscovery() }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let setup {
             AppLog.app.info("using saved runtime \(setup.runtime.executable, privacy: .public)")
             openPendingFolders()
-        } else {
-            Task { await discoverRuntime() }
         }
     }
 
@@ -229,12 +231,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Runtime
 
-    /// Searches the documented locations for `metab`; on success, saves the result and
-    /// opens any folder that was waiting for it.
-    private func discoverRuntime() async {
+    /// Marks a search as running before returning, so a folder requested in the same
+    /// run-loop turn waits for it, then runs the search.
+    private func beginDiscovery() {
         guard !runtimeModel.isSearching else { return }
         runtimeModel.isSearching = true
         runtimeModel.notice = nil
+        Task { await discoverRuntime() }
+    }
+
+    /// Searches the documented locations for `metab`; on success, saves the result and
+    /// opens any folder that was waiting for it. Started only by `beginDiscovery`.
+    private func discoverRuntime() async {
         let report = await RuntimeDiscovery.discover(.live(saved: settings.load()?.runtime))
         runtimeModel.isSearching = false
         runtimeModel.tried = report.tried
@@ -264,7 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             runtimeWindow = RuntimeWindowController(
                 model: runtimeModel,
                 actions: RuntimeActions(
-                    findAgain: { [weak self] in Task { await self?.discoverRuntime() } },
+                    findAgain: { [weak self] in self?.beginDiscovery() },
                     choose: { [weak self] in self?.chooseRuntime() },
                     runDoctor: { [weak self] in Task { await self?.runDoctor() } },
                     revealLogs: { [weak self] in self?.revealLogsFolder(nil) }))
