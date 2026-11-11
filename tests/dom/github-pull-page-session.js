@@ -125,7 +125,10 @@ function summarize(model) {
         ? null
         : {
             counts: model.checks.counts,
-            items: model.checks.items.map((item) => `[${item.label}] ${item.name} -> ${item.url}`),
+            items: model.checks.items.map(
+              (item) =>
+                `[${item.label}] ${item.name}${item.detail === null ? "" : ` (${item.detail})`} -> ${item.action === null ? "no action" : `${item.action.label} ${item.action.href}`}`,
+            ),
           },
     notes: model.notes,
     browse: browseCode(model),
@@ -1083,6 +1086,62 @@ async function main() {
     "//evil.example/x",
   ].map((href) => ({ href, followed: runtime.safeLink(href, base) }));
 
+  // Where each check's action goes, decided in the model: a GitHub Actions run, another
+  // github.com page and a check's own site each say where they open, an address a page
+  // may not follow has no action, and only an Actions link stands in for the app's name.
+  const variedChecks = structuredClone(recorded.current.body);
+  variedChecks.record.check_runs.push(
+    {
+      id: 1,
+      name: "coverage",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://github.com/octo/demo/runs/123",
+      app: "Codecov",
+    },
+    {
+      id: 2,
+      name: "lint",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://ci.example/runs/2",
+      app: "GitHub Actions",
+    },
+    {
+      id: 3,
+      name: "gist",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://gist.github.com/octo/abc",
+      app: "Gist bot",
+    },
+    {
+      id: 4,
+      name: "proxied",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://github.com:8443/octo/demo/actions/runs/9",
+      app: "Proxy",
+    },
+    {
+      id: 5,
+      name: "credentialed",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://bot@github.com/octo/demo/runs/5",
+      app: "Bot",
+    },
+  );
+  variedChecks.record.status.statuses.push({
+    context: "legacy-ci",
+    state: "success",
+    description: "Passed",
+    target_url: "ftp://ci.example/7",
+  });
+  const checkActions = runtime
+    .describePull(variedChecks, { number: 7, tab: "checks", nowMs: page.clock.now })
+    .checks.items.map(({ name, detail, action }) => ({ name, detail, action }));
+
   // The page's own defense, played on what KPress alone made of the hostile comment: the
   // nodes rebuilt from the template the page parses it into.
   const inert = serialize(
@@ -1102,7 +1161,8 @@ async function main() {
   ].map(([when, mounted, next]) => `${when}: ${runtime.filesAction(mounted, next)}`);
 
   // What Files changed says instead, for a record whose comparison could not be made and
-  // for one whose merge base the store's shallow history cannot settle.
+  // for one whose merge base the store's shallow history cannot settle. A record without a
+  // store says it on Changes once the page's attempt to prepare one failed.
   const filesUnavailable = Object.fromEntries(
     [
       "fetch_failed",
@@ -1116,7 +1176,12 @@ async function main() {
       const answer = structuredClone(recorded.current.body);
       answer.record.comparison = null;
       answer.record.unavailable = { comparison: why };
-      const model = runtime.describePull(answer, { number: 7, tab: "", nowMs: page.clock.now });
+      const model = runtime.describePull(answer, {
+        number: 7,
+        tab: "files",
+        nowMs: page.clock.now,
+        comparisonAttempted: true,
+      });
       return [why, { files: model.filesUnavailable, notes: model.notes }];
     }),
   );
@@ -1124,7 +1189,7 @@ async function main() {
   // A checkout's page: the server has no pin and no store, so the record has no comparison,
   // there is no Browse code, and the page says only when the checkout's HEAD is the pull
   // request's head. Its review comments name their files as text, since nothing is served
-  // at the pull request's commits.
+  // at the pull request's commits. Its Changes is read after a failed attempt.
   const onCheckout = structuredClone(recorded.current.body);
   onCheckout.pin = null;
   onCheckout.pin_ref = null;
@@ -1140,8 +1205,9 @@ async function main() {
     ].map(([when, checkoutHead]) => {
       const model = runtime.describePull(onCheckout, {
         number: 7,
-        tab: "",
+        tab: "files",
         nowMs: page.clock.now,
+        comparisonAttempted: true,
         checkoutHead,
       });
       return [
@@ -1243,7 +1309,14 @@ async function main() {
     ([pathname, number, tab]) =>
       `${pathname} is #${number}'s ${tab || "conversation"}: ${runtime.onPageRoute(pathname, number, tab)}`,
   );
-  const second = { filesUnavailable, checkout, hunks, place: placeStory(runtime), pageRoutes };
+  const second = {
+    checkActions,
+    filesUnavailable,
+    checkout,
+    hunks,
+    place: placeStory(runtime),
+    pageRoutes,
+  };
   const part = process.argv.indexOf("--part");
   const wanted = part === -1 ? "1" : process.argv[part + 1];
   const chosen = wanted === "all" ? { ...first, ...second } : wanted === "2" ? second : first;

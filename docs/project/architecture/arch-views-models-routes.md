@@ -69,7 +69,7 @@ Built-in kinds, as registered by the manifests in `src/metabrowser/builtin_plugi
 | `unknown-jsonl` | Other `.jsonl` | Log, Raw JSON | File envelope |
 | `image` | Browser image extensions | Image | File envelope; raw asset |
 | `binary` | Non-text files | Bytes | Bounded byte-chunk hook |
-| `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `github/pull-timeline` for Conversation commits; `github/pull-comparison` for Files changed, at one changed file for `/pull/<n>/files/<path>` |
+| `pull-request` | No file; the shell selects it for `/pull/<n>[/files[/<path>]]` | Pull request | `github/pull` envelope; `github/pull-markdown` per text; `github/pull-timeline` for Conversation commits; `github/pull-comparison` for Files changed, at one changed file for `/pull/<n>/files/<path>`; `github/pull-rendered-diff` per changed Markdown file |
 | `pull-request-list` | No file; the shell mounts it in the Pulls tab, and in the pane at `/pulls` | Pull requests | `github/pulls` envelope; `github/pulls-refresh` for resumable catalog warming; `github/pull` for a row’s record |
 
 Two kinds are also **containers** — folder-like entries whose children are addressable
@@ -165,21 +165,17 @@ reservation and its invariants, is in
 | `/_debug/tasks`, `/_debug/inventory` | Opt-in local task and inventory-provider diagnostics when `METABROWSER_DEBUG=1` |
 
 Plugin hooks currently registered: `diff/document`, `diff/children`, `diff/comparison`,
-`folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, `github/pull`,
-`github/pull-refresh`, `github/pull-markdown`, `github/pull-timeline`,
-`github/pull-comparison`, `github/pulls`, `github/pulls-refresh`,
-`github/pull-cores-prepare`, `github/stacks`, `github/stacks-refresh`,
-`github/pull-files`, `github/pull-files-refresh`. On a `GitRevisionSubject`,
-`diff/comparison` honors the pin through `GitLocation` and `GitDiffSource.content` reads
-blobs through the shared cat-file pool; patch `document`/`children`, `binary/chunk`,
-`structured/parsed`, and `agent-log/charts` honor `GitPath` and follow in-tree relative
-symlink blobs.
-`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or
-`merge_base`, and reports it in the document.
+`folder/*`, `binary/chunk`, `agent-log/charts`, `structured/parsed`, and `github/*`. On
+a `GitRevisionSubject`, `diff/comparison` honors the pin through `GitLocation` and
+`GitDiffSource.content` reads blobs through the shared cat-file pool; patch
+`document`/`children`, `binary/chunk`, `structured/parsed`, and `agent-log/charts` honor
+`GitPath` and follow in-tree relative symlink blobs.
+`diff/comparison?left=&right=` takes `base_policy=direct` (the default) or `merge_base`,
+and reports it in the document.
 
 On a page that shows a pinned revision, the diff view’s file bars offer **View file** at
-each side of a change that exists, for a commit’s diff and a pull request’s Files
-changed alike, and it adds no route.
+each side of a change that exists, for a commit’s diff and a pull request’s Changes.
+For a commit’s diff it adds no route.
 The comparison document already says everything it needs: `resolved.left` and
 `resolved.right` are the two commits (the parent and the commit, or the merge base and
 the head), and each change’s `old` and `new` are the path at each and its `entry_type`,
@@ -198,8 +194,20 @@ A switch the server does not make (`selection_pending`, `selection_not_found`,
 `selection_fetch_failed`, or any other refusal) is said under the file bar and the page
 stays.
 A patch file’s snapshots are not commits and a served folder’s page has no pin, so
-neither carries the control: a folder has no route that reads a file at a commit, and
-its working-tree file is not that file.
+neither carries the control on a commit’s diff: its working-tree file is not that file.
+
+A pull request’s Changes never switches the pin, on a mirror or beside a checkout.
+Its comparison carries the envelope’s `snapshot_route`, the `GET github/pull-snapshot`
+address of that base and head, and the diff plugin appends only `side` and `path`; it
+names no GitHub route of its own.
+Its `rendered_route` is likewise the server’s, to which the plugin appends only `file`.
+A side at the commit a pinned page shows keeps its `/view/` link, so the file opens in
+the app’s own viewer.
+Every other side is a link to its revision page, including both sides beside a checkout,
+whose page has no pin and which then imports `/static/git-path.js` on demand.
+A side whose commit is not the end the route itself names has no control, and a route
+that is not a same-origin plugin route gives no revision links while the diff still
+shows.
 
 Back and forward bring a pin’s page back without asking the server for it, from the
 back/forward cache or the HTTP cache, so after a pin switch the page can name a commit
@@ -234,9 +242,44 @@ it failed; it is a POST with a JSON object body for the same reason
 `/api/source/refresh` is, and plugin data routes are one path segment, hence the name.
 On a served checkout, `{"number": n, "retry": true, "comparison": true}` also acquires
 the store its Files changed needs.
+The page sends it once when **Changes** opens at its own address on a record without a
+store, and shows progress only while that request is on its way or still to be sent.
+Because `retry` bypasses the server’s window, the page itself holds that request after a
+recorded failure newer than the record that another attempt would repeat (the store’s
+acquisition, or an origin that cannot be read), and until a rate limit’s `reset_at`,
+when the page reads again and asks.
+**Retry changes** overrides a hold.
+A Pulls-tab file walk that will settle on Changes, at a file the route can address,
+shows progress until its address moves there; the route’s confirmation, too, wakes the
+page at a hold’s lift.
+Changes shown while the address names another tab, as a cancelled walk leaves it, sends
+nothing and offers **Fetch changes**. Neither button is shown while another refresh of
+the page is on its way.
 `comparison: true` without `retry: true` is refused.
 Acquisition leaves the source folder and its pin unchanged, and a request joining a
 metadata refresh retains the comparison action for that job.
+The comparison request prepares the cached record without reading GitHub only while that
+record is current, was read by the account this server observed, and has no failed
+refresh recorded since; otherwise it refreshes the record first, as before.
+It writes a refresh stamp only when it fails.
+On a checkout whose store is already attached,
+`{"number": n, "prepare_comparison": "<record_revision>"}` asks for that exact cached
+record’s comparison as optional work.
+It stands alone: no other field may accompany it.
+It starts only while no other pull job of the checkout runs, the record is current and
+was written with no store, and its revision is the one named, and otherwise answers
+`200` with `refresh: "not_due"`. It fetches only the pull request’s head and base, never
+deepens a shallow store, holds no network slot, and records no outcome; a failed
+revision is not tried again.
+While it runs, the envelope carries `"preparing_comparison": true`, and the page polls
+at the slow rate on Conversation.
+A reader’s comparison request for the same pull request promotes it: a failure is then
+the reader’s, without a second fetch, and a merge base that needs deepening is deepened.
+A metadata refresh of it, automatic or not, cancels the idle part, and a refresh of
+another pull request cancels it.
+The page sends it once per record revision, from a visible Conversation at its own
+address, after `REFRESH_ASK_MS` and an idle callback, and only for a `stale` envelope of
+a fresh record without a store, which only a server with a store answers.
 For an explicitly selected missing record, `retry: true` may include `wait_core: true`,
 which is refused with comparison or recovery arguments.
 The POST waits at most two seconds for a verified core or terminal outcome; one waiter
@@ -282,8 +325,51 @@ The envelope’s `comparison_route` names `GET github/pull-comparison` with the 
 number, immutable endpoints, and build and store tokens.
 This route reads only the managed store and uses the diff plugin’s comparison service;
 it never acquires one.
-A request with `"retry": true` is a reader’s own action, a press of **Fetch** or
-**Refresh**, and only that can add a pull request to the cache.
+The envelope’s `rendered_route` names `GET github/pull-rendered-diff` for the same
+endpoints and store token; a page appends `file`, one manifest file ID, and `prefetch=1`
+on a request it sends before the reader asks, which also starts the projection process.
+After the same admission check as `github/pull-snapshot` it answers `markdown-diff-v1`
+(`diff/markdown_projection.py`): `ready` with rendered blocks, each `context`, `removed`
+or `added` with changed words marked and a `source_only` flag when its source says more
+than its render, and the file’s own `source_only`; or `unsupported` or `too_large` with
+no blocks. Refusals have their own codes: `invalid_rendered_diff` (400),
+`snapshot_expired` (410), `snapshot_unavailable` and `rendered_objects_unavailable`
+(409), and `rendered_diff_busy` (429) past four loads waiting for its one projection at
+a time. Projections run in one child process once it is ready
+(`diff/markdown_projection_worker.py`), which stops after ten idle minutes, and the
+answers of the last 32 files are kept.
+The page loads `diff-markdown.js` beside the comparison and falls back to the source
+diff when a projection is unsupported or over budget.
+The envelope’s `snapshot_route` names `GET github/pull-snapshot` for the same endpoints
+and store token; a page appends `side` and `path`. It opens a full file from the exact
+displayed base or head without changing the served pin or checkout, and never fetches.
+A pair opens when it is the local record’s current comparison, or one of the 16 most
+recent earlier pairs retained in `<n>.snapshots.json` for the record’s reader and for
+the store that computed it (see
+[Repository Sources](arch-repository-sources-and-provider-mirrors.md)). A Markdown
+document of at most 64 KiB renders inert, its code blocks unhighlighted, while its
+estimated render work is within 400 ms (`_DOCUMENT_WORK_MS` in `pull_snapshot.py`, which
+records the measurement), one render at a time per server, with its relative links and
+up to 64 images in the same Git tree and the rest as links; otherwise, and for Source,
+it opens in 2 MiB windows that end on a line or a character.
+The page applies the reader’s theme, interface font, reading font, and reading width
+with the shell’s own first-paint scripts and the width default they read, allowed by
+hash, and runs no other script.
+A Markdown document sits in the in-app inert render’s KPress frame, which carries the
+width and reading font to its text, and gets its prose classes on the server
+(`inert_html.kpress_prose`, the browser’s `kpressProse`), so tables and code blocks are
+styled as in the app.
+A `<details>` chevron is the shell’s glyph served from this origin, since the page
+admits no `data:` image.
+Each outcome has its own code: `snapshot_expired` (410) for a pair not admitted,
+`snapshot_unavailable` (409) when admission cannot be decided now,
+`snapshot_objects_unavailable` (409) and `snapshot_objects_expired` (410) for objects
+the store lacks on the current or an earlier pair, `file_not_found` and `not_a_file`
+(404), `invalid_snapshot` (400), `download_too_large` (413), `unsupported_image` (415),
+and `invalid_offset` (416). A request with `"retry": true` is a reader’s own action, a
+press of **Fetch**, **Refresh**, **Retry changes**, or **Fetch changes**, or the one
+comparison request a page on **Changes** sends by itself for a record without a store.
+Only those can add a pull request to the cache.
 Any other is the page’s own, sent when it is visible and its record is stale: with no
 record it answers `200` with `refresh: "not_cached"`, inside the window or before a rate
 limit’s `reset_at` it answers `200` with `not_due`, and each starts nothing.
@@ -543,9 +629,11 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-diff-no-hunks.tryscript.md` |
 | `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md`, `cli-api-diff-view-file.tryscript.md`, `cli-api-diff-no-hunks.tryscript.md`, `cli-checkout-overlay.txt` |
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-checkout-overlay.txt` |
-| `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt` |
+| `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt`, `cli-github-checkout-idle.txt` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pull-timeline` | covered | `--api --data` | `cli-github-pull-timeline.txt` |
+| `/api/plugin/github/pull-snapshot` | covered | `--api` | `cli-github-pull-snapshot.txt` |
+| `/api/plugin/github/pull-rendered-diff` | covered | `--api` | `cli-github-pull-rendered.txt` |
 | `/api/plugin/github/pull-comparison` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-checkout.txt` |
 | `/api/plugin/github/pulls` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt` |
 | `/api/plugin/github/pulls-refresh` | covered | `--api` | `cli-github-pulls.tryscript.md`, `cli-github-pulls-refresh.txt`, `cli-github-pulls-failures.txt` |
@@ -718,6 +806,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `github.pull-timeline` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage` | `/api/plugin/github/pull-timeline` | `node tests/dom/github-pull-timeline-session.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.selected-core-preview` | interaction | `builtin_plugins/github/pull-page.js#describePull`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pull-core-preview-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.checkout-comparison-fetch` | interaction | `builtin_plugins/github/pull-page.js#createPullController`, `builtin_plugins/github/pull-page.js#describePull` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-checkout-comparison-session.js` | `cli-ui-github-checkout-comparison.tryscript.md` |
+| `github.idle-comparison-preparation` | interaction | `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pull-idle-comparison-behavior.js` | `cli-ui-github-checkout-comparison.tryscript.md` |
 | `github.displayed-comparison-repair` | interaction | `builtin_plugins/github/pull-page.js#mountPullPage`, `builtin_plugins/github/pull-page.js#createPullController` | `/api/plugin/github/pull`, `/api/plugin/github/pull-refresh` | `node tests/dom/github-pull-page-mount-behavior.js` | `cli-ui-github-pull-page.tryscript.md` |
 | `github.pull-prefetch` | interaction | `builtin_plugins/github/comparison-prefetch.js#createComparisonPrefetch` | `/api/plugin/diff/comparison` | `node tests/dom/github-pull-prefetch-session.js` | `cli-ui-github-pull-prefetch.tryscript.md` |
 | `github.pull-page-inert-markup` | interaction | `static/inert-html.js#sanitizeNodes`, `static/inert-html.js#allowedAttributes`, `static/inert-html.js#imageLink`, `builtin_plugins/github/pull-page.js#safeLink`, `builtin_plugins/github/pull-page.js#gitPathWire` | `/api/plugin/github/pull-markdown` | `node tests/dom/github-pull-page-session.js` | `cli-ui-github-pull-page.tryscript.md` |
@@ -729,7 +818,9 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `diff.layout-fit` | interaction | `builtin_plugins/diff/diff-view.js#tooNarrowForSplit`, `builtin_plugins/diff/diff-view.js#opensTooNarrowForSplit`, `builtin_plugins/diff/diff-view.js#drawnLayout`, `builtin_plugins/diff/diff-view.js#setLayout`, `builtin_plugins/diff/diff-view.js#mountDiffView` | `local-only` | `node tests/dom/diff-layout-fit-session.js` | `cli-ui-diff-layout-fit.tryscript.md` |
 | `diff.file-jump` | interaction | `builtin_plugins/diff/diff-view.js#jumpToFile`, `builtin_plugins/diff/diff-view.js#jumpPlacement`, `builtin_plugins/diff/diff-view.js#reservedRows`, `builtin_plugins/diff/diff-view.js#failDeferred`, `builtin_plugins/diff/diff-view.js#observeHydration`, `builtin_plugins/diff/diff-view.js#createHydrationScheduler`, `builtin_plugins/diff/diff-view.js#patchRows`, `builtin_plugins/diff/diff-view.js#firstScreenBudget` | `/api/plugin/diff/comparison` | `node tests/dom/diff-file-jump-session.js` | `cli-ui-diff-file-jump.tryscript.md` |
 | `diff.view-file-sides` | data | `/api/plugin/diff/comparison` | `owned-route` | `metab changesroot --api '/api/plugin/diff/comparison?revision=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&file=src/new_name.py'` | `cli-api-diff-view-file.tryscript.md` |
-| `diff.view-file` | interaction | `builtin_plugins/diff/diff-view-file.js#viewFileSides`, `builtin_plugins/diff/diff-view-file.js#sidePathForAddress`, `builtin_plugins/diff/diff-view-file.js#describeViewFile`, `builtin_plugins/diff/diff-view-file.js#createViewFileOpener`, `builtin_plugins/diff/diff-view-file.js#switchRefusal`, `builtin_plugins/diff/diff-view.js#renderViewFileControl`, `builtin_plugins/diff/index.js#viewFileHost`, `builtin_plugins/diff/index.js#viewFileOpener`, `static/git-path.js#gitPathWire` | `/api/plugin/diff/comparison`, `/api/plugin/diff/document`, `/api/source/pin` | `node tests/dom/diff-view-file-session.js` | `cli-ui-diff-view-file.tryscript.md` |
+| `diff.view-file` | interaction | `builtin_plugins/diff/diff-view-file.js#viewFileSides`, `builtin_plugins/diff/diff-view-file.js#sidePathForAddress`, `builtin_plugins/diff/diff-view-file.js#describeViewFile`, `builtin_plugins/diff/diff-view-file.js#createViewFileOpener`, `builtin_plugins/diff/diff-view-file.js#switchRefusal`, `builtin_plugins/diff/diff-view.js#renderViewFileControl`, `builtin_plugins/diff/index.js#viewFileHost`, `builtin_plugins/diff/index.js#viewFileOpener`, `builtin_plugins/diff/index.js#snapshotHost`, `static/git-path.js#gitPathWire` | `/api/plugin/diff/comparison`, `/api/plugin/diff/document`, `/api/source/pin`, `/api/plugin/github/pull-comparison`, `/api/plugin/github/pull-snapshot` | `node tests/dom/diff-view-file-session.js` | `cli-ui-diff-view-file.tryscript.md` |
+| `github.pull-rendered-diff` | data | `/api/plugin/github/pull-rendered-diff` | `owned-route` | `metab <PATH>/pull/7 --api '/api/plugin/github/pull-rendered-diff?number=7&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=33e7810f4188efa2734a80a37188f67877ace69d&store=<STORE>&file=f3'` | `cli-github-pull-rendered.txt` |
+| `diff.markdown-rendered-view` | interaction | `builtin_plugins/diff/diff-markdown.js#createMarkdownViews`, `builtin_plugins/diff/diff-markdown.js#supportsMarkdownChange`, `builtin_plugins/diff/diff-markdown.js#firstScreenMarkdown`, `builtin_plugins/diff/diff-markdown.js#snapshotTargets`, `builtin_plugins/diff/diff-markdown.js#sanitizeBlock`, `builtin_plugins/diff/diff-markdown.js#appendBlocks` | `/api/plugin/github/pull-rendered-diff`, `/api/plugin/github/pull-snapshot` | `node tests/dom/diff-markdown-session.js` | `cli-ui-diff-markdown.tryscript.md` |
 | `navigation.pull-page-history` | interaction | `static/pull-route.js#pullHistoryAction`, `static/pull-route.js#createPullPageHost`, `static/pull-route.js#parsePulls`, `static/pull-route.js#pullsHref` | `local-only` | `node tests/dom/navigation-route-behavior.js` | `cli-ui-navigation.tryscript.md` |
 | `navigation.main-tab-destinations` | interaction | `static/main-tabs.js#openMainTab`, `static/main-tabs.js#bindShortcuts`, `static/navigation.js#createController` | `local-only` | `node tests/dom/preview-pane-state-session.js` | `cli-ui-file-lifecycle.tryscript.md` |
 | `navigation.quick-search-pulls` | interaction | `static/search-controller.js#createPullProvider`, `static/search-palette.js#create` | `/api/plugin/github/pulls`, `/api/plugin/github/pulls-refresh` | `node tests/dom/quick-search-pulls-session.js` | `cli-ui-quick-search.tryscript.md` |
@@ -773,7 +864,7 @@ SSE transport whose emitted snapshot is already owned by its data routes.
 | `navigation.filter-layout` | paint-exempt | `static/styles.css` | `local-only` | — | CSS geometry and disclosure motion require rendered layout; focused selectors and accessibility state are pinned in `tests/test_browser_filter_ui.py` and `tests/test_tree_keyboard_integration.py` |
 | `document.floating-ui-frame` | paint-exempt | `static/styles.css` | `local-only` | — | Where the `position: fixed` TOC drawer, its toggle, and its backdrop land while the preview pane scrolls is browser layout, and the repository has no browser harness to measure it. `tests/test_preview_frame_contract.py` pins by stylesheet text what places them: the shell wraps the scrolling `#preview-pane` in a non-scrolling `.preview-frame.kpress-frame` that declares a transform, and no rule in the shell’s, a built-in plugin’s, or KPress’s stylesheet gives the pane or an element between it and the TOC a property that makes a containing block for fixed descendants. Computed styles and rules a script adds are not checked. That the toggle stays in view at any scroll depth, in a trusted folder and a served mirror, is step 5 of section 5.9 of the v0.12 QA runbook |
 | `diff.layout-fit-browser` | paint-exempt | `builtin_plugins/diff/styles.css` | `local-only` | — | At what width Split’s columns overflow a file’s body is layout, and when a `ResizeObserver` reports a width is the browser’s. Which layout each width draws is a session owner above (`diff.layout-fit`). The width measured in Chrome is recorded beside `SPLIT_MIN_WIDTH_EM` in `builtin_plugins/diff/diff-view.js`, and `tests/test_diff_browser_js.py` pins that constant to the `min-width` in the stylesheet |
-| `diff.view-file-browser` | paint-exempt | `builtin_plugins/diff/styles.css` | `local-only` | — | What the browser does with a View file link is the browser’s: following it, opening it in a new tab, and copying its address. Where the controls sit in the bar, and that their text shares the path’s baseline, is layout. Every decision they act on is a session owner above (`diff.view-file`): which sides a bar offers, each link’s address, and that no handler takes a link’s click. `tests/test_diff_view_file_session.py` asks Git whether each address the session offers is a file at its commit, and `tests/test_design_vocabulary.py` pins the size that puts the text on the baseline; the browser walkthrough is section 5.11 of the v0.12 QA runbook |
+| `diff.view-file-browser` | paint-exempt | `builtin_plugins/diff/styles.css` | `local-only` | — | What the browser does with a View file link is the browser’s: following it, opening it in a new tab, and copying its address. Where the controls sit in the bar, and that their text shares the path’s baseline, is layout. Every decision they act on is a session owner above (`diff.view-file`): which sides a bar offers, each link’s address, a pull request’s revision-page links and that its Changes never switches the pin, and that no handler takes a link’s click. `tests/test_diff_view_file_session.py` asks Git whether each address the session offers, a revision page’s included, is a file at its commit, and `tests/test_design_vocabulary.py` pins the size that puts the text on the baseline; the browser walkthrough is section 5.11 of the v0.12 QA runbook |
 | `source.mirror-heading-layout` | paint-exempt | `static/styles.css` | `local-only` | — | Which part of a heading gives up its width as a pane narrows, that the note is whole or absent and takes nothing from the address, where it and the commit’s copy control sit, that a long name is cut at its end in both headings, and how a tooltip wraps a path and a commit ID are layout, which needs a rendered page. So is where any tooltip lands: only a mirror’s line of one wraps, and a folder’s tooltips are placed as before. What the headings and tooltips say, and what the copy control copies, is a session owner above (`source.mirror-heading`), and the name, origin, and location are `/api/source/status`. `tests/test_browser_client_filestore.py` pins by stylesheet text what orders it: the note’s zero flex basis, its margin against the breadcrumb’s gap, the basis its text must fit, the direction a mirror’s name is cut in, and that the one tooltip every page uses declares nothing about wrapping. The widths measured in Chrome, for a mirror’s heading and for a folder’s tooltips against the branch below, are recorded beside the note’s rule and the tooltip’s in `static/styles.css` |
 | `shell.page-connections-browser` | paint-exempt | `static/navigation.js` | `local-only` | — | Whether a browser keeps a page for Back, the `persisted` it reports on `pagehide` and `pageshow`, how long it keeps a kept page’s open requests, and how many connections it opens to a host are the browser’s. The decision made on them is a session owner above (`shell.page-connections`), and `tests/test_page_connections_session.py` holds each behavior of it. `explorations/page-connections/README.md` records the Chrome run: before, the sixth page opened in a tab waited 55 to 56 s for a connection and a page left for a minute was loaded again on Back; after, no request waited behind an event stream, and every landing was restored with `persisted` true at its scroll position |
 | `source.line-pitch` | paint-exempt | `static/styles.css` | `local-only` | — | How tall a line of a Source view is drawn is layout: the line height the browser gives the code’s box, which is the parent’s for an inline box in a block and the box’s own for a block. Code that is not highlighted, which is a file or a loaded window past the highlight bound, is drawn 21px to a line at the default sizes, as it was before the gutter made it a grid item, and highlighted code 18px; the gutter’s numbers take the line height of the code beside them. `tests/test_source_line_anchors.py` pins by stylesheet text the one property both columns take their line height from and the rule that sets it to the `<pre>`’s for unhighlighted code, and `tests/dom/syntax-token-sdk-behavior.js` pins that the production renderer writes the class that rule selects on unhighlighted code and on no other. Computed styles are not checked. The heights measured in Chrome against 0.11.0, and the rounding that differs under zoom, are recorded beside the rule in `static/styles.css` |

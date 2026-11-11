@@ -576,7 +576,8 @@ function makePullShell(pathname) {
     await shell.host.open({ number: 7, tab: "files", file: "docs/a b.md" });
     shell.location.pathname = "/pull/7/files/src/b.py";
     shell.host.onHistory("/pull/7/files/src/b.py", false);
-    // A walk of the files jumped the page itself: only the address moves when it stops.
+    // Confirm the tab after the walk commits its address and keep the existing file jump.
+    const beforeJumped = shell.log.length;
     await shell.host.open({
       number: 7,
       tab: "files",
@@ -584,6 +585,11 @@ function makePullShell(pathname) {
       replace: true,
       jumped: true,
     });
+    invariant(
+      "a settled file walk confirms the tab after committing its address",
+      shell.log.slice(beforeJumped),
+      ["#7 writes its place", "replace /pull/7/files/src/c.py", '#7 tab "files"'],
+    );
     await shell.host.open({ number: 7, tab: "" });
     const other = shell.host.open({ number: 8, tab: "files", file: "x.py", replace: true });
     shell.mounts[1].resolve(shell.page(8));

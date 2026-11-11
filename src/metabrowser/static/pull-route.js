@@ -256,11 +256,14 @@
      * A route's place on a page that holds the pane: its tab, or the one file it names.
      *
      * @param {Handle | null} handle
-     * @param {Readonly<{tab: string, file?: string}>} route
+     * @param {Readonly<{tab: string, file?: string, jumped?: boolean}>} route
      * @param {boolean} restore Whether the current history entry owns a saved place.
      */
     function land(handle, route, restore) {
-      if (restore) {
+      if (route.jumped === true) {
+        // The walk already moved the diff. Confirm its tab after the URL owns it.
+        handle?.setTab?.(route.tab);
+      } else if (restore) {
         handle?.land?.(route);
       } else if (route.file && typeof handle?.showFile === "function") {
         handle.showFile(route.file);
@@ -324,9 +327,7 @@
       mine.ready = true;
       notifyPage();
       if (mine.pendingRoute) {
-        if (mine.pendingRoute.jumped !== true) {
-          land(handle, mine.pendingRoute, mine.restore);
-        }
+        land(handle, mine.pendingRoute, mine.restore);
       } else if (file) {
         land(handle, { tab: "files", file }, restore);
       }
@@ -344,10 +345,7 @@
     async function show(route, how = {}) {
       const current = shown();
       if (current !== null && current.number === route.number) {
-        // A walk of the Pulls tab's files jumped the page there itself, key by key.
-        if (route.jumped !== true) {
-          land(current.handle, route, how.restore !== false);
-        }
+        land(current.handle, route, how.restore !== false);
         return { status: "opened" };
       }
       if (page !== null && page.number === route.number && deps.isCurrent(page.claim)) {

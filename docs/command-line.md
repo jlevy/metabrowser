@@ -382,10 +382,21 @@ This is the reference for the commands; for the workflow in a browser, see
 A local checkout is identified by its github.com `origin` and readable `HEAD`; linked
 worktrees and served subdirectories work too.
 The local path keeps serving the working folder.
-Its **Fetch changes** action acquires a comparison store only when requested, without
-writing to the checkout or falling back to a full clone if borrowing is refused.
+Opening **Changes** prepares a missing comparison automatically.
+The server reuses a healthy cached store or borrows objects from the checkout.
+If borrowing is refused, it reports the reason and offers a retry; it never falls back
+to a full clone. The checkout stays untouched.
 The URL-based [`--checkout` option](#beside-a-checkout) instead serves a managed pin and
 retains the fallback cases documented below.
+
+The request that opening **Changes** sends is also a one-shot command, where
+`comparison.json` contains `{"number": 123, "retry": true, "comparison": true}`. It
+waits for the preparation and prints the record, with its `comparison_route`, under
+`after:`:
+
+```shell
+metab ~/src/repo --api /api/plugin/github/pull-refresh --data comparison.json
+```
 
 With the optional [gh-stack extension](installation.md#git-and-github-setup), native
 stack membership is shared by the Pulls list and opened PRs.
@@ -463,6 +474,8 @@ model: pull envelope; state=current pull_state=merged fetched_at=2026-11-02T21:4
 minute of its fetch, `stale` after, or `absent` with a reason.
 Its `comparison_route` serves the **Changes** diff, from the merge base to the head.
 Issue it with `--api` to get the diff.
+Its `snapshot_route` opens one file at either end: append `&side=base` or `&side=head`
+and `&path=` with the path’s wire form, and `&mode=download` for its bytes alone.
 `--diff` does not open an `https://` source, so this route is the way to read one.
 `--format json` prints the envelope alone, for a tool such as `jq`:
 

@@ -81,6 +81,12 @@ def source_pull_refresh(slug: str, number: int) -> str:
     return source_pull_record(slug, number).removesuffix(".json") + ".refresh.json"
 
 
+def source_pull_snapshots(slug: str, number: int) -> str:
+    """Return ``sources/<slug>/pulls/<n>.snapshots.json``: its retained revision pairs."""
+
+    return source_pull_record(slug, number).removesuffix(".json") + ".snapshots.json"
+
+
 def source_pull_list_refresh(slug: str, name: PullListName) -> str:
     """Return ``sources/<slug>/pulls/list-<name>.refresh.json``: its refresh outcome."""
 
@@ -148,6 +154,7 @@ __all__ = [
     "source_pull_list_refresh",
     "source_pull_record",
     "source_pull_refresh",
+    "source_pull_snapshots",
     "source_pull_timeline",
     "source_pulls_directory",
     "source_record",

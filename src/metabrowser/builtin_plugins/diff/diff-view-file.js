@@ -11,6 +11,12 @@
 // selector's own request, `POST /api/source/pin`, naming the address so the answer
 // says where the page goes.
 //
+// A pull request's comparison names a route that opens a file at either end without
+// changing the pin (`snapshotHref`, the GitHub plugin's revision page). On its page every
+// side at another commit than the page shows is a link there, on a mirror and beside a
+// checkout alike, and nothing switches the pin; a side at the commit the page shows keeps
+// its `/view/` link, so the file opens in the app's own viewer.
+//
 // Only a regular file's side gets a control. A submodule's side is a commit of another
 // repository, which the view has nothing to show for. A symbolic link's side would open
 // the file the link points at, while the diff shows the link's own text, so it is left
@@ -36,7 +42,7 @@
  * @property {"base" | "head"} side
  * @property {string} commit
  * @property {string} path
- * @property {string} href The file's `/view/` address on a pin.
+ * @property {string} href The file address at the requested revision.
  * @property {"link" | "switch"} mode A link opens an address the page already has; a
  *   switch changes the served pin first.
  * @property {string} label The control's text.
@@ -49,6 +55,9 @@
  *
  * @typedef {object} ViewFileHost
  * @property {string} pin The full ID of the commit the page shows.
+ * @property {(side: ViewFileSide) => string | null} [snapshotHref] A side's address on a
+ *   route that opens it without changing the pin; null for a side the route does not
+ *   serve. A host with it never switches the pin.
  * @property {(path: string | Uint8Array) => string | null} href The `/view/` address of
  *   a path on a pin; null for a path no tree entry has.
  * @property {(body: {oid: string, view: string}) => Promise<{status: number, body: unknown}>} switchPin
@@ -236,9 +245,22 @@ export function createViewFileOpener(host, options = {}) {
     /** @type {ViewFileAction[]} */
     const found = [];
     for (const side of viewFileSides(change, resolved)) {
-      const href = host.href(side.address);
-      if (href !== null) {
-        found.push(describeViewFile(side, href, host));
+      const shown = side.commit === host.pin ? host.href(side.address) : null;
+      if (shown !== null) {
+        found.push(describeViewFile(side, shown, host));
+      } else if (host.snapshotHref !== undefined) {
+        const href = host.snapshotHref(side);
+        if (href !== null) {
+          found.push({
+            ...describeViewFile(side, href, { pin: side.commit }),
+            detail: `Open ${side.path} at ${short(side.commit)} without changing this page's commit`,
+          });
+        }
+      } else {
+        const href = host.href(side.address);
+        if (href !== null) {
+          found.push(describeViewFile(side, href, host));
+        }
       }
     }
     return found;

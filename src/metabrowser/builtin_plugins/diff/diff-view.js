@@ -24,6 +24,8 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {(<T extends Element>(element: T) => T) | undefined} [ownDelegate]
  * @property {NonNullable<MetabrowserPublicSdk["filterControls"]> | undefined} [filterControls]
  * @property {Pick<MetabrowserPublicSdk["perf"], "measure" | "measureAsync"> | undefined} [perf]
+ * @property {MetabrowserPublicSdk["ensureAsset"]} [ensureAsset]
+ * @property {MetabrowserPublicSdk["loadKpressAssets"]} [loadKpressAssets]
  * @property {{get: <T>(name: string, fallback: T) => T, set: (name: string, value: unknown) => boolean} | undefined} [prefs]
  */
 
@@ -54,6 +56,7 @@ import { highlightFileSyntax, syntaxInputBytes } from "./diff-syntax.js";
  * @property {FileViewState[]} files
  * @property {number} generation
  * @property {ReturnType<typeof createHydrationScheduler>} hydration
+ * @property {{controller: ReturnType<import("./diff-markdown.js").createMarkdownViews>, supports: typeof import("./diff-markdown.js").supportsMarkdownChange} | null} markdown
  * @property {IntersectionObserver | null} hydrationObserver
  * @property {boolean} awaitingWidth Nothing is drawn until the first report of a width.
  * @property {"unified" | "split"} chosenLayout What the reader chose, whatever fits.
@@ -2383,6 +2386,9 @@ function renderFileSection(change, patch, context, view, draw) {
   // button stays the semantic trigger for focus and keyboard, whose
   // synthesized click bubbles here. Only the copy and View file
   // controls opt out.
+  const markdown = view.markdown?.supports(change)
+    ? view.markdown.controller.add({ section, bar, toggle, source: body, id: String(change.id) })
+    : null;
   let expanded = true;
   /** @param {boolean} next */
   const setExpanded = (next) => {
@@ -2392,13 +2398,16 @@ function renderFileSection(change, patch, context, view, draw) {
     toggle.classList.toggle("collapsed", !expanded);
     body.classList.toggle("diff-file-body-collapsed", !expanded);
     section.classList.toggle("diff-file-collapsed", !expanded);
+    markdown?.setExpanded(expanded);
     view.notifyCurrentFile();
   };
   bar.addEventListener("click", (event) => {
     const origin = /** @type {{closest?: (selector: string) => unknown}} */ (event.target);
     if (
       typeof origin?.closest === "function" &&
-      (origin.closest("[data-mb-copy]") || origin.closest(".diff-file-view"))
+      (origin.closest("[data-mb-copy]") ||
+        origin.closest(".diff-file-view") ||
+        origin.closest(".diff-markdown-control"))
     ) {
       return;
     }
@@ -2536,7 +2545,13 @@ function measureInContainer(root, container) {
  * @param {HTMLElement} container
  * @param {Record<string, unknown>} document_
  * @param {DiffViewApi} [api]
- * @param {{showSummary?: boolean, viewFile?: import("./diff-view-file.js").ViewFileOpenerFactory | null}} [options]
+ * @param {{
+ *   showSummary?: boolean,
+ *   viewFile?: import("./diff-view-file.js").ViewFileOpenerFactory | null,
+ *   renderMarkdown?: (fileId: string, signal: AbortSignal) => Promise<unknown>,
+ *   markdownViews?: Pick<typeof import("./diff-markdown.js"), "createMarkdownViews" | "supportsMarkdownChange">,
+ *   isSnapshotTarget?: (value: string, image: boolean) => boolean
+ * }} [options]
  *   *viewFile* makes the opener for a page that can open a file at a commit; without it
  *   the bars carry no View file control. The plugin imports diff-view-file.js for such a
  *   page alone, so this module names it only in types.
@@ -2568,6 +2583,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     generation: 1,
     hydration: /** @type {MountedDiffState["hydration"]} */ (/** @type {unknown} */ (null)),
     hydrationObserver: null,
+    markdown: null,
     insistedOnSplit: false,
     layout: drawnLayout(chosenLayout, narrow, false),
     layoutControl: null,
@@ -2589,6 +2605,34 @@ export function mountDiffView(container, document_, api, options = {}) {
     yielders: new Set(),
   };
   view.hydration = createHydrationScheduler(hydrationHost(view));
+  if (
+    options.renderMarkdown &&
+    options.markdownViews &&
+    api?.filterControls &&
+    typeof IntersectionObserver === "function"
+  ) {
+    view.markdown = {
+      supports: options.markdownViews.supportsMarkdownChange,
+      controller: options.markdownViews.createMarkdownViews({
+        load: options.renderMarkdown,
+        controls: api.filterControls,
+        ...(options.isSnapshotTarget === undefined
+          ? {}
+          : { isSnapshotTarget: options.isSnapshotTarget }),
+        async ensureInert() {
+          await api?.ensureAsset?.("inert-html");
+          return window.MetabrowserInertHtml;
+        },
+        loadStyles: (assets) => api?.loadKpressAssets?.(assets) ?? Promise.resolve(),
+        mutate(change) {
+          const anchor = view.pinned === null ? placeOfTopFile(view, true) : null;
+          change();
+          holdPlace(view, anchor);
+          view.notifyCurrentFile();
+        },
+      }),
+    };
+  }
   if (options.viewFile) {
     view.viewFile = options.viewFile({
       released() {
@@ -2651,6 +2695,11 @@ export function mountDiffView(container, document_, api, options = {}) {
     file_count: manifest.files.length,
   });
   observeHydration(view);
+  if (view.markdown !== null) {
+    const pane = scrollerOf(view);
+    const observerRoot = pane === view.root.ownerDocument?.scrollingElement ? null : pane;
+    view.markdown.controller.observe(view.root, observerRoot);
+  }
   // Drawing changes the root's height, which this also reports, so it waits for a task of its
   // own: done in the callback, it would be a ResizeObserver loop error. A width is one frame
   // late at the moment it crosses the limit, and the first draw above is not late at all.
@@ -2781,6 +2830,7 @@ export function mountDiffView(container, document_, api, options = {}) {
     view.hydrationObserver?.disconnect();
     view.hydrationObserver = null;
     view.hydration.dispose();
+    view.markdown?.controller.dispose();
     view.deferred.clear();
     view.deferredBySection.clear();
     view.pinListeners?.abort();

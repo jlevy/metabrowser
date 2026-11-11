@@ -24,7 +24,11 @@ three things; see `docs/development.md`.
 from __future__ import annotations
 
 import re
+import threading
+from collections.abc import Callable
+from contextvars import ContextVar
 from functools import cache
+from html import escape
 from importlib.metadata import version as distribution_version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -52,6 +56,42 @@ def _runtime() -> Any:
 
         _kpress_runtime = runtime
     return _kpress_runtime
+
+
+# Whether KPress renders in this context highlight fenced code. Pygments' lexers can cost
+# far more than their input's size: review G of #348 found 15 of 594 quadratic in a
+# line's length (48 KB of `devicetree` took 79 s) and the shell session prompt pattern
+# cubic (one 1.6 KB `console` line took 12 s), which no estimate over the text bounds. A
+# render of Markdown an untrusted author wrote therefore asks for plain code: each fence
+# escaped, as KPress shows one that names no language.
+_PLAIN_CODE: ContextVar[bool] = ContextVar("kpress_plain_code", default=False)
+_plain_code_installed = False
+_plain_code_lock = threading.Lock()
+
+
+def _install_plain_code() -> None:
+    """Make KPress's fence highlighter answer :data:`_PLAIN_CODE`, once per process.
+
+    KPress has no option for it, and its fences call
+    ``kpress.format.markdown._highlight_code``, so that function is wrapped. A KPress
+    without it raises :class:`KPressRenderError`, so a render that asked for plain code
+    fails rather than highlighting.
+    """
+    global _plain_code_installed
+    with _plain_code_lock:
+        if _plain_code_installed:
+            return
+        from kpress.format import markdown as kpress_markdown
+
+        highlight = getattr(kpress_markdown, "_highlight_code", None)
+        if not callable(highlight):
+            raise KPressRenderError("this KPress has no fence highlighter to turn off")
+
+        def highlight_unless_plain(code: str, language: str) -> str:
+            return escape(code) if _PLAIN_CODE.get() else str(highlight(code, language))
+
+        kpress_markdown._highlight_code = highlight_unless_plain  # pyright: ignore[reportPrivateUsage]
+        _plain_code_installed = True
 
 
 # Keep the top-level section spine visible while scroll-follow opens the active branch.
@@ -142,15 +182,22 @@ def render_kpress_view(
     frontmatter_error: str | None = None,
     profile: str | None = None,
     include_toc: Literal["auto", "on", "off"] = "auto",
+    plain_code: bool = False,
 ) -> dict[str, Any]:
     """Render a Metabrowser file through KPress.
 
     ``include_toc="off"`` suppresses the table of contents for a document
     embedded inside Metabrowser's own navigation; see the README panel in the
-    folder Overview.
+    folder Overview. ``plain_code`` shows fenced code escaped rather than
+    highlighted (see :data:`_PLAIN_CODE`).
     """
 
     runtime = _runtime()
+    if plain_code:
+        _install_plain_code()
+        # KPress keeps renders by this hash among the rest, so a plain render never
+        # answers a highlighted request, or the reverse.
+        mtime_hash = f"{mtime_hash}:plain-code"
     # KPress defaults to font_mode="custom", which uses vendored PT Serif /
     # Source Sans reader faces. Host fonts apply only when font_mode="host".
     request = runtime.KPressRenderRequest(
@@ -173,12 +220,15 @@ def render_kpress_view(
         include_toc=include_toc,
         toc_collapse_depth=_TOC_COLLAPSE_DEPTH,
     )
+    plain = _PLAIN_CODE.set(plain_code)
     try:
         return cast("dict[str, Any]", runtime.render_view(request))
     except runtime.KPressInvalidRequestError as exc:
         raise KPressInvalidRequestError(str(exc)) from exc
     except runtime.KPressRenderError as exc:
         raise KPressRenderError(str(exc)) from exc
+    finally:
+        _PLAIN_CODE.reset(plain)
 
 
 def get_kpress_static_asset(rel_path: str) -> KPressAsset:
@@ -300,7 +350,9 @@ def document_stylesheets() -> dict[str, Any]:
     return _assets_loading(cast("dict[str, Any]", rendered["assets"]), frozenset({"stylesheet"}))
 
 
-def inert_render(rendered: dict[str, Any]) -> dict[str, Any]:
+def inert_render(
+    rendered: dict[str, Any], *, rewrite_local: Callable[[str, bool], str | None] | None = None
+) -> dict[str, Any]:
     """*rendered* for a page that must not trust it: allowlisted HTML and no scripts.
 
     Under the untrusted profile (active content off) a document's author is not the
@@ -314,13 +366,17 @@ def inert_render(rendered: dict[str, Any]) -> dict[str, Any]:
     KPress's table of contents leaves the HTML too, since its script cannot run; ``toc``
     says whether KPress drew one, and the model's ``headings`` -- its entries -- point at
     the headings' ``user-content-`` anchors, for the page to draw its own from them.
+
+    *rewrite_local* is passed to :func:`~metabrowser.inert_html.harden_document`: a page
+    that shows a document from outside the served tree, such as a pull request's revision
+    file, gives it to write each reference inside the document as an address there.
     """
 
     from metabrowser.inert_html import harden_document
 
     inert = dict(rendered)
     html, inert["toc"] = _without_kpress_toc(str(rendered.get("html", "")))
-    inert["html"], anchors = harden_document(html)
+    inert["html"], anchors = harden_document(html, rewrite_local=rewrite_local)
     assets = rendered.get("assets")
     if isinstance(assets, dict):
         inert["assets"] = _assets_loading(

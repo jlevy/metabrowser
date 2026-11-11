@@ -627,13 +627,21 @@ fetched, and compared from, only when the store lists it under exactly that name
 one kept under another spelling shares that ref’s file; otherwise the comparison starts
 from `base.sha`. What it writes gets the mirror update’s case-fold check, and a fold
 puts every branch and tag back.
-An open pull request’s base branch is fetched in the same command into the
-`refs/remotes/origin/<base>` the mirror update writes, so its merge base is taken
+An open pull request’s base branch is fetched by a refresh in the same command into the
+`refs/remotes/origin/<base>` the mirror update writes, so a refresh takes its merge base
 against the base branch as it is now.
 A closed or merged pull request compares from the API’s `base.sha`, fetched by ID when
 no mirrored ref reaches it.
 The fetched head must be the head the API reported; one full re-read covers a push
-between the two, and a second mismatch is `head_mismatch`.
+between the two, and a second mismatch is `head_mismatch`. Preparation from cached PR
+metadata can reuse the exact head commit already in the store.
+It compares an open pull request from the record’s observed `base.sha`, recorded as
+`base_from: base_sha`, and never fetches the moving base branch; the next refresh
+recomputes the comparison against the base branch.
+When that head or the API’s base commit is missing, the fetch rechecks for the object
+under the store’s fetch lock before reaching the origin.
+A head fetch for this preparation captures the ref while it still holds the lock.
+Explicit refreshes still fetch the moving refs.
 
 The record lives at `sources/<slug>/pulls/<n>.json`
 (`cache/paths.py: source_pull_record`), written by the home’s private atomic file write
@@ -721,7 +729,23 @@ A pin by commit ID that is the tip of a fetched pull-request head is served unde
 head and attends to it, whichever page asked: a commit page does this as View file does.
 How each refresh ended is kept beside the record in `pulls/<n>.refresh.json`, so the
 route and a later command report it, and a failed one is tried again after a window, not
-on every poll or by the next command, and after `rate_limited` not before `reset_at`.
+on every poll or by the next command, and after `rate_limited` not before `reset_at`. A
+mirror’s record write also keeps `pulls/<n>.snapshots.json`
+(`cache.paths.source_pull_snapshots`), the comparison pairs earlier records named, so a
+revision-file link opened at an earlier base and head (`GET github/pull-snapshot`) keeps
+opening after a refresh moves the record on.
+It is a JSON array of at most 16 `{store, reader, base, head}` pairs, oldest first, read
+with a 16 KiB bound; the largest valid file is 5,553 bytes.
+It holds one reader’s pairs, and any record write by another reader starts it over, with
+a store or without (a checkout’s metadata write), and whether or not it has a
+comparison; each pair names the store that computed it and opens only there.
+Record writes change it under the source alias lock, by atomic replacement, and only a
+store-backed one adds pairs: before the record is replaced its pair is kept, and after,
+the new pair.
+A file that cannot be read now is left as it was, and one this format never
+writes starts over, each with a debug log; the record is published either way.
+Removing the file only expires earlier links with `410 snapshot_expired`; the record’s
+own pair keeps opening.
 `POST /api/plugin/github/pull-refresh` with `{"number": <n>}` starts or joins the job
 and returns `202` at once, naming `/api/plugin/github/pull?number=<n>` as its
 `status_route`; a one-shot `--api` waits for the job, prints that route, and exits 1
@@ -953,7 +977,10 @@ Metadata reads create nothing, and metadata refreshes can publish an unattached 
 A healthy store already attached to that source is reused without acquisition or a cache
 timestamp write.
 
-An explicit Files changed Fetch may acquire a store with the checkout as its lender.
+Selecting **Changes** starts one comparison attempt after the metadata settles if its
+record lacks a store.
+The browser sends `retry: true` and `comparison: true` to the PR refresh route.
+The server acquires the store with the checkout as its lender.
 The pull record then uses the same store API and comparison service as a managed URL.
 The served folder root and Commits tab stay unchanged; no Git process runs in the
 checkout, and the checkout is never written.
@@ -965,13 +992,13 @@ acquire the store. Jobs take their turn at the store before consuming a network 
 An acquisition failure preserves the last pull record and reports a typed refresh
 outcome. `GET` routes never acquire or fetch.
 
-Files changed offers Refresh even while its record is fresh.
+**Changes** offers Refresh for a displayed comparison even while its record is fresh.
 The reader’s action sends `retry: true` and `recovery: {base, head}` for the comparison
-still displayed. Automatic refresh remains stale-only.
+still displayed. Automatic metadata refresh remains stale-only.
 Metadata updates do not replace displayed changes: a successful repair remounts that
 same comparison once and restores its scroll position; a failed or waiting job leaves it
 in place. The existing newer-changes action remains the way to select a newer head.
-A checkout with `no_store` instead offers Fetch changes.
+The browser offers a retry after comparison preparation fails.
 
 The server validates complete object IDs and a pair issued by that PR in this session
 before permitting repair.
@@ -1212,10 +1239,28 @@ The fixed lock order is:
 
 Network work and long-running Git processes hold none of these locks, and a local
 checkout is never a lock target.
-A refresh instead holds its store’s fetch side lock,
-`locks/stores/<store-key>.fetch.lock`, across the fetch.
-It is only tried without blocking: a refresh that finds it busy reports that another
-refresh is running and does not wait.
+A cold open takes a source acquisition reservation at
+`locks/sources/<source-key>.acquire.lock` after the provider’s first-clone admission.
+The key is the digest of the normalized source identity, so opens for other sources can
+run concurrently.
+A same-source waiter retries without blocking the event loop and checks
+for the published alias after taking the reservation.
+The owner holds the reservation through alias publication.
+Staging Git writers inherit the staging liveness descriptor, so no process sweeps the
+staging directory while those writers are alive.
+They do not inherit the reservation: only a live owner holds it, so a killed owner’s
+orphaned fetch, which can never publish, keeps no other process waiting.
+A waiter tells its caller once that it is waiting, and gives up after
+`RESERVATION_WAIT_S` (`cache/acquire.py`), the owner’s worst case of two attempts, with
+an error that names the lock file.
+A served checkout’s comparison request waits for another process’s reservation before it
+takes a network slot, and reports a wait that gives up as `refreshing_elsewhere`. A warm
+open reads the published store without taking the reservation.
+
+A refresh holds its store’s fetch side lock, `locks/stores/<store-key>.fetch.lock`,
+across the fetch.
+It is only tried without blocking: a refresh that finds it busy reports
+that another refresh is running and does not wait.
 The Git processes that write the store inherit the lock’s descriptor, so it stays held
 for as long as any of them runs, even when the server that took it was killed; Ctrl-C’s
 immediate exit kills those process groups first, and a graceful shutdown cancels them
@@ -1272,7 +1317,9 @@ The recoveries are in [After a crash](#after-a-crash).
 
 #### Acquisition
 
-Staging holds only its own liveness lock, the network work holds no hierarchy lock, and
+The table shows staging and publication locks.
+The source acquisition reservation described above wraps these transitions for a cold
+open. Staging holds its liveness lock, network work holds no hierarchy lock, and
 publication holds the alias lock and the store lock together.
 
 | From | Event | To | Locks held | Network | Effect |

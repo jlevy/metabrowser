@@ -725,7 +725,7 @@ $ node tests/dom/navigation-route-behavior.js
     "two keys' opens replace the entry, and a click's pushes": ["claim 1 (pull-request)","mount /pull/7","#7 writes its place","replace /pull/8","#7 disposed","claim 2 (pull-request)","mount /pull/8","#8 writes its place","replace /pull/9","#8 disposed","claim 3 (pull-request)","mount /pull/9","#9 writes its place","push /pull/10","#9 disposed","claim 4 (pull-request)","mount /pull/10"],
     "a file's page is no page until it mounts": null,
     "the shown page is handed to its own number only": [true,true,true],
-    "a file's address lands on the file": ["claim 1 (pull-request)","mount /pull/7/files","#7 restores the file src/app.py","#7 writes its place","replace /pull/7/files/src/b.py","#7 shows the file src/b.py","#7 writes its place","push /pull/7/files/docs/a%20b.md","#7 shows the file docs/a b.md","#7 restores the file src/b.py","#7 writes its place","replace /pull/7/files/src/c.py","#7 writes its place","push /pull/7","#7 tab \"\"","#7 writes its place","replace /pull/8/files/x.py","#7 disposed","claim 2 (pull-request)","mount /pull/8/files","#8 shows the file x.py"],
+    "a file's address lands on the file": ["claim 1 (pull-request)","mount /pull/7/files","#7 restores the file src/app.py","#7 writes its place","replace /pull/7/files/src/b.py","#7 shows the file src/b.py","#7 writes its place","push /pull/7/files/docs/a%20b.md","#7 shows the file docs/a b.md","#7 restores the file src/b.py","#7 writes its place","replace /pull/7/files/src/c.py","#7 tab \"files\"","#7 writes its place","push /pull/7","#7 tab \"\"","#7 writes its place","replace /pull/8/files/x.py","#7 disposed","claim 2 (pull-request)","mount /pull/8/files","#8 shows the file x.py"],
     "the served pull request's page opens": {"status":"opened"},
     "the served pull request's page replaces the other": ["claim 1 (pull-request)","mount /pull/8/files","#8 writes its place","push /pull/7/files","#8 disposed","claim 2 (pull-request)","mount /pull/7/files"],
     "the served pull request is shown": 7,
@@ -758,6 +758,7 @@ $ node tests/dom/navigation-route-behavior.js
     "a hash-only landing applies no target": [null]
   }
 }
+? 0
 ```
 
 The asset loader session pins lazy construction, dependency order, concurrent request

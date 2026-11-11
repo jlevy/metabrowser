@@ -268,7 +268,100 @@ async function run() {
     results.push({ scenario, focus: expected });
     view.dispose();
   }
+  await walkClaims(mountFileTree);
   return results;
+}
+
+/**
+ * The view tells the tree which files the route can address, so a walk claims it will settle
+ * on Changes only where an address will confirm it.
+ *
+ * @param {Function} mountFileTree
+ */
+async function walkClaims(mountFileTree) {
+  globalThis.window = {
+    setTimeout: () => Symbol(),
+    clearTimeout() {},
+    requestAnimationFrame: () => 1,
+    cancelAnimationFrame() {},
+  };
+  document.body = new Element("body");
+  document.activeElement = document.body;
+  const parent = new Element("li");
+  const owner = new Element("a");
+  document.body.append(parent);
+  parent.append(owner);
+  const files = ["a.py", "b.py", "c\\d.py"];
+  const claims = [];
+  const view = mountFileTree({
+    decorateExternalLink: require("./sdk-ref-fixture.js").refHelpers(document).decorateExternalLink,
+    number: 7,
+    autoExpandFiles: 3000,
+    current: null,
+    shown: true,
+    scrollRoot: document.body,
+    chevron: () => null,
+    // As the route's encoder answers: no address for a segment with a backslash.
+    href: (file) => (file.includes("\\") ? null : `/${file}`),
+    request: async () => ({
+      status: 200,
+      etag: null,
+      body: {
+        state: "current",
+        reason: null,
+        number: 7,
+        listed_from: "github",
+        source: "https://github.com/octo/demo",
+        generation: "0".repeat(32),
+        fetched_at: "2026-11-03T00:00:00Z",
+        reader: "gh:test",
+        head: null,
+        base: null,
+        fresh_for_s: 60,
+        refreshing: false,
+        last_refresh: null,
+        fetched: files.length,
+        pages: 1,
+        last_page: null,
+        complete: true,
+        capped: false,
+        truncated: false,
+        offset: 0,
+        limit: 3000,
+        rows: files.map((file) => ({
+          path: file,
+          display: file,
+          previous_path: null,
+          previous_display: null,
+          status: "modified",
+          additions: 1,
+          deletions: 0,
+        })),
+      },
+    }),
+    formatTime: (value) => value,
+    page: () => ({
+      fileForPath: () => ({ kind: "file" }),
+      showFile: (file, how) => {
+        claims.push([file, how?.settling === true]);
+        return { kind: "jumped" };
+      },
+    }),
+    open() {},
+    leave() {},
+    focusedIn() {},
+  });
+  view.attach(parent, owner);
+  view.controller.expand();
+  await settle();
+  view.controller.focused("a.py");
+  view.controller.move(1, { repeat: true });
+  view.controller.move(1, { repeat: true });
+  assert.deepEqual(claims, [
+    ["b.py", true],
+    ["c\\d.py", false],
+  ]);
+  view.dispose();
 }
 run()
   .then((result) => process.stdout.write(`${JSON.stringify(result)}\n`))

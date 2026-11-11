@@ -37,6 +37,10 @@ only what is listed here and drops the rest.
 
 ``static/inert-html.js`` applies the same rules in the browser (``sanitizeNodes``), and
 ``tests/test_inert_html.py`` proves the two allowlists are the same.
+
+:func:`kpress_prose` is that module's ``kpressProse`` for a page that draws hardened HTML
+on the server: KPress's two wrappers unwrapped, and the classes KPress's stylesheets set a
+code block and a table by, chosen by element and never read from the document.
 """
 
 from __future__ import annotations
@@ -44,6 +48,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import Counter
+from collections.abc import Callable
 from html import escape
 from html.parser import HTMLParser
 from typing import Final
@@ -406,10 +411,14 @@ class _Heading:
         self.text: list[str] = []
 
 
+type RewriteLocal = Callable[[str, bool], str | None]
+
+
 class _Hardener(HTMLParser):
-    def __init__(self, base: str | None) -> None:
+    def __init__(self, base: str | None, rewrite_local: RewriteLocal | None) -> None:
         super().__init__(convert_charrefs=True)
         self.base = base
+        self.rewrite_local = rewrite_local
         self.out: list[str] = []
         # Depth inside a dropped element; nothing is written while it is above zero.
         self.dropped = 0
@@ -431,18 +440,38 @@ class _Hardener(HTMLParser):
         values = dict(attrs)
         if tag == "img":
             if keeps_image(values.get("src"), self.base):
-                self.out.append(_open_tag("img", allowed_attributes("img", values, self.base)))
-                return
-            href, text = image_link(values.get("src"), values.get("alt"), self.base)
+                kept = allowed_attributes("img", values, self.base)
+                if self.rewrite_local is None:
+                    self.out.append(_open_tag("img", kept))
+                    return
+                original = dict(kept)["src"]
+                src = self.rewrite_local(original, True)
+                if src is not None:
+                    kept = [(name, src if name == "src" else value) for name, value in kept]
+                    self.out.append(_open_tag("img", kept))
+                    return
+                # An image the rewrite does not keep is a link to where it leads as one,
+                # an address the rewrite wrote and so kept as it is.
+                href = self.rewrite_local(original, False)
+                text = image_link(None, values.get("alt"), self.base)[1]
+                link = None if href is None else [("href", href)]
+            else:
+                href, text = image_link(values.get("src"), values.get("alt"), self.base)
+                link = None if href is None else allowed_attributes("a", {"href": href}, self.base)
             self._text(text)
-            if href is None:
+            if link is None:
                 self.out.append(f"<span>{escape(text, quote=False)}</span>")
             else:
-                link = allowed_attributes("a", {"href": href}, self.base)
                 self.out.append(f"{_open_tag('a', link)}{escape(text, quote=False)}</a>")
             return
         if tag in ALLOWED_TAGS:
-            self.out.append(_open_tag(tag, allowed_attributes(tag, values, self.base)))
+            kept = allowed_attributes(tag, values, self.base)
+            if tag == "a" and self.rewrite_local is not None:
+                href = dict(kept).get("href")
+                if href is not None and is_inside(href):
+                    scoped = self.rewrite_local(href, False)
+                    kept = [] if scoped is None else [("href", scoped)]
+            self.out.append(_open_tag(tag, kept))
             if tag in _HEADINGS and self.base is None:
                 heading = _Heading(len(self.out) - 1, tag, values.get("id"))
                 self.headings.append(heading)
@@ -497,19 +526,124 @@ def harden(html: str, link_base: str | None = None) -> str:
     return _harden(html, link_base)[0]
 
 
-def harden_document(html: str) -> tuple[str, dict[str, str]]:
+def harden_document(
+    html: str, *, rewrite_local: RewriteLocal | None = None
+) -> tuple[str, dict[str, str]]:
     """:func:`harden` for a document inside the served tree, and its heading anchors:
-    each ``id`` a heading had in *html*, mapped to the anchor that replaces it."""
+    each ``id`` a heading had in *html*, mapped to the anchor that replaces it.
 
-    return _harden(html, None)
+    *rewrite_local*, when given, is asked for every reference inside the tree that
+    survives the allowlist, with whether it is an image's: it answers the address to
+    write instead, which is kept as written, or ``None``. A link it drops keeps its text
+    and loses its ``href``; an image it drops becomes a link to the address it answers for
+    the same reference as a link, or, without one, its alt text. A page that serves a
+    document from somewhere other than the served tree, such as a pull request's revision,
+    uses it to keep every reference in that tree.
+    """
+
+    return _harden(html, None, rewrite_local)
 
 
-def _harden(html: str, link_base: str | None) -> tuple[str, dict[str, str]]:
-    hardener = _Hardener(link_base)
+def _harden(
+    html: str, link_base: str | None, rewrite_local: RewriteLocal | None = None
+) -> tuple[str, dict[str, str]]:
+    hardener = _Hardener(link_base, rewrite_local)
     hardener.feed(html)
     hardener.close()
     replaced = hardener.anchor_headings()
     return "".join(hardener.out), replaced
+
+
+class _Element:
+    __slots__ = ("attributes", "children", "css_class", "tag")
+
+    def __init__(self, tag: str, attributes: list[tuple[str, str | None]]) -> None:
+        self.tag = tag
+        self.attributes = attributes
+        self.children: list[_Element | str] = []
+        self.css_class: str | None = None
+
+
+class _Tree(HTMLParser):
+    """Hardened HTML as a tree. It is this module's own output, so it nests."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.root = _Element("", [])
+        self.open = [self.root]
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        element = _Element(tag, attrs)
+        self.open[-1].children.append(element)
+        if tag not in _VOID:
+            self.open.append(element)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.open[-1].children.append(_Element(tag, attrs))
+
+    def handle_endtag(self, tag: str) -> None:
+        for depth in range(len(self.open) - 1, 0, -1):
+            if self.open[depth].tag == tag:
+                del self.open[depth:]
+                return
+
+    def handle_data(self, data: str) -> None:
+        self.open[-1].children.append(data)
+
+
+def _without_render_wrappers(blocks: list[_Element | str]) -> list[_Element | str]:
+    for _ in range(2):
+        present = [node for node in blocks if not isinstance(node, str) or node.strip()]
+        only = present[0] if len(present) == 1 else None
+        if not isinstance(only, _Element) or only.tag != "div":
+            break
+        blocks = only.children
+    return blocks
+
+
+def _name_by_element(parent: _Element | None, nodes: list[_Element | str]) -> None:
+    for node in nodes:
+        if isinstance(node, str):
+            continue
+        if node.tag == "pre":
+            node.css_class = "kpress-code"
+        elif node.tag == "table":
+            node.css_class = "kpress-table"
+            if parent is not None and parent.tag == "div":
+                parent.css_class = "kpress-table-wrap"
+        _name_by_element(node, node.children)
+
+
+def _serialize(nodes: list[_Element | str]) -> str:
+    out: list[str] = []
+    for node in nodes:
+        if isinstance(node, str):
+            out.append(escape(node, quote=False))
+            continue
+        kept = [(name, value or "") for name, value in node.attributes]
+        if node.css_class is not None:
+            kept = [("class", node.css_class), *kept]
+        out.append(_open_tag(node.tag, kept))
+        if node.tag not in _VOID:
+            out.append(f"{_serialize(node.children)}</{node.tag}>")
+    return "".join(out)
+
+
+def kpress_prose(html: str) -> str:
+    """*html*, this module's hardened output, as the content of a ``.kpress-prose`` element.
+
+    ``static/inert-html.js`` ``kpressProse`` on the server: up to two lone wrapper
+    ``<div>``s, KPress's own with their classes gone, are unwrapped, each ``pre`` gets
+    ``kpress-code``, each ``table`` ``kpress-table``, and a table's parent ``<div>`` inside
+    the prose ``kpress-table-wrap``. The caller writes the ``.kpress-prose`` element.
+    """
+
+    tree = _Tree()
+    tree.feed(html)
+    tree.close()
+    blocks = _without_render_wrappers(tree.root.children)
+    _name_by_element(None, blocks)
+    return _serialize(blocks)
 
 
 __all__ = [
@@ -525,6 +659,7 @@ __all__ = [
     "image_link",
     "is_inside",
     "keeps_image",
+    "kpress_prose",
     "link_href",
     "outside_link",
 ]

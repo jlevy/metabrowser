@@ -12,5 +12,5 @@ def test_current_failed_comparisons_can_be_retried_explicitly() -> None:
             "base_uncertain",
         ],
         "automaticReadsFetch": False,
-        "noStoreKeepsOwnAction": True,
+        "noStoreSkipsPrematureRetry": True,
     }

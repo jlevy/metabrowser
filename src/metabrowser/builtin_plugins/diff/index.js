@@ -25,7 +25,15 @@ setChangeLoader((revision, path, options) => fetchComparison(revision, options, 
 // `git diff` spells it, or `left..right` directly. No Git ref name contains `..`, so
 // neither spelling can be mistaken for a revision.
 
-/** @param {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string}} comparison */
+/**
+ * @typedef {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string, snapshot_route?: string, rendered_route?: string}} Comparison
+ *   *route* is the plugin route that answers the comparison, *snapshot_route* the one
+ *   that opens a file at either end of it, and *rendered_route* the one that renders a
+ *   changed Markdown file of it: all come from the server that issued them, so this plugin
+ *   spells none.
+ */
+
+/** @param {Comparison} comparison */
 function comparisonKey(comparison) {
   if (comparison.route !== undefined) {
     pluginComparisonRoute(comparison.route);
@@ -59,6 +67,79 @@ function pluginComparisonRoute(route) {
     throw new Error("The comparison route is not a same-origin plugin route.");
   }
   return { plugin: match[1], hook: match[2], params: Object.fromEntries(url.searchParams) };
+}
+
+/**
+ * The rendered Markdown layer of a comparison that names a rendered route, or null. Its
+ * module is imported now, beside the diff's own request and the View file opener, so it
+ * is usually loaded before the comparison answers (a cold import took 1.2-4.2 ms); a
+ * mount waits for it, and mounts its views only when the manifest lists a Markdown file.
+ * A failed import leaves every file in Source.
+ *
+ * diff-markdown.js is an on-demand tier: a pull request's Changes loads it, and no other
+ * diff does: 25,267 bytes, 7,861 gzipped.
+ *
+ * @param {Comparison | undefined} comparison
+ */
+function markdownLayer(comparison) {
+  const route = comparison?.rendered_route;
+  if (typeof route !== "string") {
+    return null;
+  }
+  let target;
+  try {
+    target = pluginComparisonRoute(route);
+  } catch (error) {
+    console.error(
+      "metabrowser diff: rendered Markdown unavailable",
+      { hook: "diff/markdown" },
+      error,
+    );
+    return null;
+  }
+  const { plugin, hook, params } = target;
+  return {
+    module: import("./diff-markdown.js").catch((error) => {
+      console.error("metabrowser diff: Markdown view unavailable", error);
+      return null;
+    }),
+    /** @param {string} fileId @param {AbortSignal} [signal] @param {boolean} [ahead] */
+    load: (fileId, signal, ahead = false) =>
+      mb.fetchPluginData(
+        plugin,
+        hook,
+        { ...params, file: fileId, ...(ahead ? { prefetch: "1" } : {}) },
+        signal === undefined ? undefined : { signal },
+      ),
+  };
+}
+
+/**
+ * Ask the server for the first screen's projections while the reader is still on another
+ * tab, one at a time, so Changes finds them computed. The answers are the server's to
+ * keep; a page leaving stops the rest.
+ *
+ * @param {NonNullable<ReturnType<typeof markdownLayer>>} markdown
+ * @param {unknown} payload
+ * @param {AbortSignal} [signal]
+ */
+async function prefetchMarkdown(markdown, payload, signal) {
+  const views = await markdown.module;
+  const files = /** @type {{manifest?: {files?: unknown}} | null | undefined} */ (payload)?.manifest
+    ?.files;
+  if (views === null || !Array.isArray(files)) {
+    return;
+  }
+  for (const fileId of views.firstScreenMarkdown(files)) {
+    if (signal?.aborted) {
+      return;
+    }
+    try {
+      await markdown.load(fileId, signal, true);
+    } catch {
+      return;
+    }
+  }
 }
 
 /** @param {string} key @param {{signal?: AbortSignal}} [options] @param {string} [file] */
@@ -151,27 +232,91 @@ function viewFileHost() {
 }
 
 /**
- * What makes this page's View file opener, or null on a page with no pin.
+ * What makes this page's View file opener, or null when nothing on the page can open a
+ * file at a commit: no pin and no snapshot route.
  *
- * diff-view-file.js loads here, for a pinned page's first diff, and not with the plugin's
- * module tree: a served folder has no controls and never calls it. As a static import it
- * was a seventh module on a served folder's first diff view, which the plugin could not
- * evaluate without. Without it the view requests the six modules v0.11.0 did. Measured
- * 2026-11-02 in Chrome 152 on a pinned page's first diff: 4,135 bytes transferred and
- * 11,161 decoded. A pin pays that one local request, which render starts beside the diff's
- * own, and in that measurement it finished before the comparison did. Its controls still
- * arrive with the mount. A failed import is the view's to report: render says the diff did
- * not load, and logs which request failed.
+ * diff-view-file.js loads here, for the first diff that has controls, and not with the
+ * plugin's module tree: a served folder's commit diffs have none and never call it. As a
+ * static import it was a seventh module on a served folder's first diff view, which the
+ * plugin could not evaluate without. Without it the view requests the six modules v0.11.0
+ * did. Measured 2026-11-02 in Chrome 152 on a pinned page's first diff: 4,135 bytes
+ * transferred and 11,161 decoded. A page with controls pays that one local request, which
+ * render starts beside the diff's own, and in that measurement it finished before the
+ * comparison did. Its controls still arrive with the mount. A failed import is the view's
+ * to report: render says the diff did not load, and logs which request failed.
  *
+ * A comparison that names a *snapshot_route*, as a pull request's does on a mirror and
+ * beside a checkout, opens each side through it, and a page on a folder then loads the
+ * route codec as well. A side at the commit a pinned page shows keeps its `/view/` link
+ * (see diff-view-file.js).
+ *
+ * @param {Comparison | undefined} comparison
  * @returns {Promise<import("./diff-view-file.js").ViewFileOpenerFactory | null>}
  */
-async function viewFileOpener() {
+async function viewFileOpener(comparison) {
+  const snapshots = snapshotHost(comparison);
   const host = viewFileHost();
-  if (host === null) {
+  if (snapshots === null && host === null) {
     return null;
   }
+  if (snapshots !== null && !window.MetabrowserGitPath) {
+    const codec = "/static/git-path.js";
+    await import(codec);
+  }
   const { createViewFileOpener } = await import("./diff-view-file.js");
-  return (options) => createViewFileOpener(host, options);
+  /** @type {import("./diff-view-file.js").ViewFileHost} */
+  const page = host ?? {
+    pin: "",
+    href: () => null,
+    onRestored: () => () => {},
+    switchPin: () => Promise.resolve({ status: 400, body: null }),
+    navigate: () => {},
+  };
+  return (options) =>
+    createViewFileOpener(snapshots === null ? page : { ...page, ...snapshots }, options);
+}
+
+/**
+ * How a comparison's sides open without changing the served pin, or null when the
+ * comparison names no route for it. The server spells the route; this adds the side and
+ * its path, and offers a side only at the commit the route itself names for that end, so
+ * a control's label and the file it opens are at one commit.
+ *
+ * A route that is not a same-origin plugin route, or names no ends, gives no revision
+ * links and is logged; the diff itself still renders.
+ *
+ * @param {Comparison | undefined} comparison
+ * @returns {Pick<import("./diff-view-file.js").ViewFileHost, "snapshotHref"> | null}
+ */
+function snapshotHost(comparison) {
+  const route = comparison?.snapshot_route;
+  if (typeof route !== "string") {
+    return null;
+  }
+  let params;
+  try {
+    ({ params } = pluginComparisonRoute(route));
+  } catch (error) {
+    console.error(
+      "metabrowser diff: revision links unavailable",
+      { hook: "diff/view-file" },
+      error,
+    );
+    return null;
+  }
+  if (typeof params.left !== "string" || typeof params.right !== "string") {
+    return null;
+  }
+  const ends = { base: params.left, head: params.right };
+  return {
+    snapshotHref(side) {
+      const path = window.MetabrowserGitPath?.wire(side.address);
+      if (side.commit !== ends[side.side] || !path) {
+        return null;
+      }
+      return `${route}&${new URLSearchParams({ side: side.side, path })}`;
+    },
+  };
 }
 
 /** @param {HTMLElement} container @param {string} message */
@@ -200,8 +345,9 @@ mb.registerView("diff", "diff", {
     // Asked for now, so its request overlaps the diff's own instead of following it. Its
     // failure waits for the mount below, and may never reach it: a diff that fails first
     // answers for itself, and the rejection still needs a handler.
-    const opener = viewFileOpener();
+    const opener = viewFileOpener(ctx.comparison);
     void opener.catch(() => {});
+    const markdown = markdownLayer(ctx.comparison);
     let payload;
     try {
       payload = revision
@@ -273,12 +419,29 @@ mb.registerView("diff", "diff", {
     if (signal?.aborted) {
       return null;
     }
+    const markdownViews = markdown === null ? null : await markdown.module;
+    if (signal?.aborted) {
+      return null;
+    }
+    const files = /** @type {{files: Record<string, unknown>[]}} */ (result.document.manifest)
+      .files;
+    const rendered =
+      markdown !== null &&
+      markdownViews !== null &&
+      files.some((file) => markdownViews.supportsMarkdownChange(file));
     // A commit comparison already carries these totals beside its revision,
     // author, and age. Direct diff documents and two-endpoint comparisons own
     // their aggregate summary.
     return mountDiffView(container, result.document, mb, {
       showSummary: !ctx.revision,
       viewFile,
+      ...(!rendered
+        ? {}
+        : {
+            markdownViews,
+            renderMarkdown: (fileId, signal) => markdown.load(fileId, signal),
+            isSnapshotTarget: markdownViews.snapshotTargets(ctx.comparison?.snapshot_route),
+          }),
     });
   },
   /**
@@ -287,10 +450,22 @@ mb.registerView("diff", "diff", {
    * `render` as `ctx.raw`, and a Back onto the page is answered by the browser's cache,
    * because this request's address is the one `render` would ask.
    *
-   * @param {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string}} comparison
+   * A comparison that names a rendered route also has its first screen's Markdown
+   * projections asked for, after the comparison answers and without holding it back.
+   *
+   * @param {Comparison} comparison
    * @param {AbortSignal} [signal]
    * @returns {Promise<unknown>}
    */
-  prefetch: (comparison, signal) =>
-    fetchComparison(comparisonKey(comparison), signal === undefined ? undefined : { signal }),
+  prefetch: (comparison, signal) => {
+    const options = signal === undefined ? undefined : { signal };
+    const answer = fetchComparison(comparisonKey(comparison), options);
+    const markdown = markdownLayer(comparison);
+    return markdown === null
+      ? answer
+      : answer.then((payload) => {
+          void prefetchMarkdown(markdown, payload, signal);
+          return payload;
+        });
+  },
 });
