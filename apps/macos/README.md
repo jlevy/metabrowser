@@ -253,9 +253,9 @@ Do not hand one out as a release.
 | `Package.swift` | SwiftPM only: no Xcode project and no package dependencies. Swift 6 language mode with main-actor default isolation. |
 | `Sources/ShellCore/Supervision/` | Spawning a server, recognizing it as ready, and stopping it. |
 | `Sources/ShellCore/Runtime/` | Finding `metab`, the child environment, short commands, and saved settings. |
-| `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, folder identity and window titles, and the navigation policy. |
+| `Sources/ShellCore/{Logs,Folders,Web}/` | Server logs, recent folders, folder identity and window titles, the navigation policy, and downloads. |
 | `Sources/Metabrowser/` | The AppKit app: lifecycle, menus, folder sessions, windows, and the SwiftUI status and settings views. |
-| `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children. |
+| `Tests/ShellCoreTests/` | Swift Testing tests of everything in `ShellCore`, with fake processes and fake machines, plus the real `posix_spawn` path with `/bin/sh` children and real `WKDownload`s from a local server. |
 | `Resources/Info.plist` | The bundle’s property list. |
 | `AppIcon/`, `scripts/build-icon.sh`, `Resources/AppIcon*.icns` | The app icon’s SVG masters and renderer, and the icons they build: `AppIcon.icns` for official builds and `AppIcon-Dev.icns` for development builds. See [AppIcon/README.md](AppIcon/README.md). |
 | `VERSION` | The app’s version, set nowhere else. |
@@ -263,8 +263,9 @@ Do not hand one out as a release.
 | `scripts/release.sh`, `notarize.sh`, `make-dmg.sh`, `check-dmg.sh` | The release pipeline and its steps. |
 | `packaging/metabrowser-app.rb.template` | The Homebrew cask, filled in by each release. |
 
-`ShellCore` holds everything that can be tested without a window; it imports no AppKit
-or WebKit. The app target is the platform behavior the brief exempts from the CLI parity
+`ShellCore` holds everything that can be tested without a window; it imports no AppKit.
+It imports WebKit only for what its tests can run in a `WKWebView` without a window:
+downloads. The app target is the platform behavior the brief exempts from the CLI parity
 rule: finding a runtime before one exists, windows, menus, the Dock, and file events.
 
 ### A Folder’s Server
@@ -377,8 +378,11 @@ Terminal launch.
   new tab of the folder’s window.
 - **Downloads:** `WKDownload` with a save panel that opens in Downloads.
   Choosing the destination is user intent, so no Downloads privacy prompt appears.
-  A confirmed Replace removes the existing file first, since `WKDownload` refuses a
-  destination that exists.
+  A confirmed Replace keeps the existing file until the new one is complete:
+  `WKDownload` refuses a destination that exists, so the download goes to a staging file
+  on the same volume and is renamed over the original when it finishes
+  (`StagedDownload`). A download that fails leaves the original as it was, and an alert
+  says so.
 - **Browser features:** Back and Forward (Command-\[ and Command-\]), Reload, zoom
   (persisted), Print through `printOperation`, Find through `NSTextFinder` with a find
   bar container, JavaScript `alert`, `confirm`, and `prompt` as sheets, and file inputs.

@@ -233,7 +233,7 @@ final class BrowserWindowController: NSWindowController, NSWindowDelegate, NSMen
 
 // MARK: - Navigation policy, new windows, downloads, and dialogs
 
-extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate {
     func webView(
         _ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
         decisionHandler: @escaping @MainActor (WKNavigationActionPolicy) -> Void
@@ -315,42 +315,40 @@ extension BrowserWindowController: WKNavigationDelegate, WKUIDelegate, WKDownloa
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
-        download.delegate = self
+        download.delegate = Self.downloads
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        download.delegate = self
+        download.delegate = Self.downloads
     }
 
-    /// A save panel opened in Downloads. Choosing the destination is user intent, so
-    /// saving raises no Downloads-folder privacy prompt.
-    func download(
-        _ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String,
-        completionHandler: @escaping @MainActor (URL?) -> Void
-    ) {
-        guard let window else { return completionHandler(nil) }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = suggestedFilename
-        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-        panel.beginSheetModal(for: window) { result in
-            guard result == .OK, let destination = panel.url else { return completionHandler(nil) }
-            // The panel already asked whether to replace an existing file, and WKDownload
-            // refuses a destination that exists, so a confirmed Replace removes it first.
-            if FileManager.default.fileExists(atPath: destination.path(percentEncoded: false)) {
-                do {
-                    try FileManager.default.removeItem(at: destination)
-                } catch {
-                    AppLog.app.error("could not replace \(destination.path, privacy: .public): \(error, privacy: .public)")
-                    return completionHandler(nil)
-                }
+    /// Every window's downloads: a save panel opened in Downloads, as a sheet on the window
+    /// that started the download. Choosing the destination is user intent, so saving raises
+    /// no Downloads-folder privacy prompt. A file the panel confirmed replacing stays until
+    /// the new one is complete (`DownloadCoordinator`).
+    static let downloads = DownloadCoordinator(
+        chooseDestination: { download, suggestedFilename, answer in
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = suggestedFilename
+            panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            let chosen: (NSApplication.ModalResponse) -> Void = { answer($0 == .OK ? panel.url : nil) }
+            if let window = download.webView?.window {
+                panel.beginSheetModal(for: window, completionHandler: chosen)
+            } else {
+                panel.begin(completionHandler: chosen)
             }
-            completionHandler(destination)
-        }
-    }
-
-    func download(_ download: WKDownload, didFailWithError error: any Error, resumeData: Data?) {
-        AppLog.app.error("download failed: \(error.localizedDescription, privacy: .public)")
-    }
+        },
+        reportFailure: { download, failure in
+            AppLog.app.error("download failed: \(failure.message, privacy: .public)")
+            let alert = NSAlert()
+            alert.messageText = "Download failed"
+            alert.informativeText = failure.message
+            if let window = download.webView?.window {
+                alert.beginSheetModal(for: window)
+            } else {
+                alert.runModal()
+            }
+        })
 
     func webView(
         _ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
