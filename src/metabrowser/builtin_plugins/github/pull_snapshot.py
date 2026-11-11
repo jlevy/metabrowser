@@ -10,8 +10,8 @@ A pair opens when it is the record's current comparison, or one of the pairs ret
 this reader and this store (:mod:`.pull_snapshot_cache`). Nothing else is ever read: no
 fetch starts, the served pin and checkout stay as they are. A Markdown document renders
 inert, and its relative links and supported images stay in the same Git tree. Every
-response carries :func:`_headers`: a policy under which only the page's own two
-preference scripts run.
+response carries :func:`_headers`: a policy under which only the page's own three
+preference scripts run (:func:`_page_scripts`).
 
 Outcomes, each with a stable ``code``, answered as JSON for ``mode=image`` or an
 ``Accept: application/json`` request and as a short page otherwise:
@@ -71,7 +71,7 @@ from metabrowser.git.tree_source import (
 )
 from metabrowser.git.wire import is_full_revision
 from metabrowser.http_caching import store_tag
-from metabrowser.inert_html import fragment_link
+from metabrowser.inert_html import fragment_link, kpress_prose
 from metabrowser.loading_cache import LoadingCache
 from metabrowser.settings import TEXT_PREVIEW_CHUNK_BYTES
 from metabrowser.view_routes import format_pull_href
@@ -444,7 +444,9 @@ def _render_markdown(body: bytes, path: GitPath, oid: str, snapshot: Snapshot) -
             images += 1
         return target
 
-    return str(kpress_adapter.inert_render(rendered, rewrite_local=rewrite)["html"])
+    # The prose content the in-app inert render builds from the same HTML (kpressProse):
+    # KPress's wrappers out, and its code and table classes back, by element.
+    return kpress_prose(str(kpress_adapter.inert_render(rendered, rewrite_local=rewrite)["html"]))
 
 
 def _highlighted_bytes(body: bytes) -> int:
@@ -559,11 +561,13 @@ def _page(
         )
     styles = ""
     if document:
-        # The frame the in-app inert render puts around the same HTML
-        # (builtin_plugins/markdown/inert-render.js): the host class bridges the reader's
-        # width (`--doc-measure`) into KPress's measure, and KPress's prose classes carry
-        # the reading font (`--kpress-host-font-prose`). The page writes these classes;
-        # the document's own were removed with the rest of its attributes.
+        # The frame the in-app inert render puts around the same prose
+        # (builtin_plugins/markdown/inert-render.js), whose content `_render_markdown`
+        # already built as its `kpressProse` does: the host class bridges the reader's width
+        # (`--doc-measure`) into KPress's measure, and KPress's prose classes carry the
+        # reading font (`--kpress-host-font-prose`). The page writes every class; the
+        # document's own were removed with the rest of its attributes. The in-app render's
+        # own table of contents and link enhancer are not here.
         content = (
             '<div class="metabrowser-kpress-host"><article class="kpress kpress-doc kpress-inert"'
             ' data-kpress-card="on"><div class="kpress-doc-layout">'

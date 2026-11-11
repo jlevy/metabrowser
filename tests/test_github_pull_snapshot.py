@@ -922,6 +922,29 @@ def test_the_revision_page_scripts_apply_the_readers_preferences(
     assert seen["chosen"]["style"] == {"--doc-max-chars": "80"}
 
 
+def test_the_disclosure_chevron_loads_from_this_origin(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """Review E1: the page's styles draw a summary's chevron with nothing its policy refuses.
+
+    KPress and the shell spell the chevron as a ``data:`` mask; this page's stylesheet puts
+    the same glyph, served from this origin, on both rules that draw it.
+    """
+    _, client = pinned_pull
+    css = client.get("/plugin-static/github/pull-snapshot.css").text
+    assert (
+        ".pull-snapshot-content .kpress summary::before,\n"
+        ".pull-snapshot-content .metabrowser-kpress-host .kpress details > summary::after {\n"
+        '  mask-image: url("disclosure-chevron.svg");'
+    ) in css
+    chevron = client.get("/plugin-static/github/disclosure-chevron.svg")
+    assert chevron.status_code == 200
+    assert chevron.headers["content-type"] == "image/svg+xml"
+    assert '<path d="m9 18 6-6-6-6"/>' in chevron.text
+    shell = (Path(__file__).parents[1] / "src/metabrowser/static/styles.css").read_text()
+    assert "m9 18 6-6-6-6" in shell, "the shell still draws the same glyph"
+
+
 def test_rendered_markdown_in_a_checkout_reads_the_head_blob_not_the_working_tree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:

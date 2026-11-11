@@ -505,6 +505,7 @@ async def _keep_comparison_failure(
     else:
         if not kept:
             return
+    companion.outcome_on_disk = False
     companion.last = PullRefreshOutcome(
         outcome=error.state, message=message, reset_at=error.reset_at, at=at
     )
