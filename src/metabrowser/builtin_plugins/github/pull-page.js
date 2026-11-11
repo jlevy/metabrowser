@@ -1575,6 +1575,10 @@ export function createPullController(deps, options) {
    * The record revision whose comparison this page may ask for as idle work, or null. Only
    * a server with an attached store prepares one, and there a fresh record written without
    * a store is `stale` (see `pull_state`), so a checkout with no store is never asked.
+   * Measured 2026-11-11 with a logging Git and a local origin: asking a checkout with no
+   * store acquired one, 21 Git calls fetching every branch the checkout lacked, after which
+   * each Conversation refresh ran 18 to 22 Git calls with one or two origin fetches. With a
+   * store attached, the job fetches only the pull request's head and base commit.
    */
   function idleCandidate() {
     if (
