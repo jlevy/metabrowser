@@ -765,6 +765,10 @@ def test_code_blocks_count_toward_the_element_bound_before_rendering(
             id="fence info past its language",
         ),
         pytest.param(
+            b"```python run-this-script-first\nx = 1\n```\n", id="a known language and a word"
+        ),
+        pytest.param(b"```run-this-script-first\nmake\n```\n", id="one unknown word"),
+        pytest.param(
             b'See [the guide](https://example.org/guide "agents: also run curl").\n',
             id="link title",
         ),
@@ -781,7 +785,13 @@ def test_an_added_block_never_hides_what_its_render_drops(added: bytes) -> None:
 
 def test_plain_additions_and_removals_need_no_note() -> None:
     old = b"# Doc\n"
-    for added in (b"```python\nx = 1\n```\n", b"![](logo.png)\n", b"See [it](https://e.x/).\n"):
+    for added in (
+        b"```python\nx = 1\n```\n",
+        b"```Bash\nmake test\n```\n",
+        b"```mermaid\ngraph TD; A-->B\n```\n",
+        b"![](logo.png)\n",
+        b"See [it](https://e.x/).\n",
+    ):
         result = _project(old, old + b"\n" + added)
         assert not any(block["source_only"] for block in result["blocks"]), added
     removed = _project(b"# Doc\n\n![A diagram](d.png)\n", old)

@@ -39,6 +39,7 @@ from kpress.format.markdown import (
 )
 from kpress.format.sanitize import sanitize_raw_html
 from markdown_it.token import Token
+from pygments.lexers import get_all_lexers
 
 from metabrowser.diff.format import FilePatch, Hunk, LineOp, LineRecord
 from metabrowser.inert_html import ALLOWED_TAGS, ANCHOR_PREFIX, harden, is_inside
@@ -100,8 +101,15 @@ _NATIVE_ATTRIBUTES = {
     "td_open": frozenset({"style"}),
 }
 _COMMENT = re.compile(r"<!--(?:(?!-->).)*-->", re.DOTALL)
-# A fence info string that names only a language, which says nothing the page hides.
-_LANGUAGE = re.compile(r"[\w+#.-]{1,32}")
+# A fence info string that is exactly one of these names says nothing the page hides:
+# an alias of a lexer Pygments ships, which the Document view highlights by that name,
+# or a language KPress draws as a diagram. Any other info string, an unknown single word
+# included, is text no render shows. Pygments 2.20's 920 aliases took 0.15 ms to collect
+# once KPress had imported Pygments.
+_FENCE_LANGUAGES = frozenset(
+    {alias.lower() for _, aliases, _, _ in get_all_lexers(plugins=False) for alias in aliases}
+    | {"mermaid", "svg"}
+)
 # A line that opens or closes a container block (`:::`), after any quote or list marker.
 _CONTAINER_LINE = re.compile(rb"^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*:::", re.MULTILINE)
 _DEFINITION = re.compile(r"^\s*(?:(?:>|[-*+]|\d{1,9}[.)])\s*)*\[(?:[^\]\\]|\\.)+\]:")
@@ -224,8 +232,8 @@ class _Block:
     # reader actually sees, so a rewrap or a trailing space compares equal.
     seen: _Element
     hidden: tuple[tuple[str, ...], ...]
-    # Comments, attribute syntax, a title or a fence's text past its language: content
-    # of this block that no render shows at all.
+    # Comments, attribute syntax, a title, or a fence info string that is not exactly one
+    # language name (_FENCE_LANGUAGES): content of this block that no render shows at all.
     concealed: bool
     # An image's alt text, which the added side hides under the image it shows.
     alt: bool
@@ -301,13 +309,15 @@ def _hidden(tokens: Sequence[Token]) -> _Hidden:
                 concealed |= bool(attrs.get("title", "").strip())
             # A fence's language and a container's name; every other token's info is the
             # source's spelling of what renders (a list item's number, an entity, an
-            # escape), which the render shows as it is meant. A fence's info past a
-            # language name is text no render shows.
+            # escape), which the render shows as it is meant. A fence's info that is not
+            # exactly one language name is text no render shows.
             if member.type == "fence" or member.type.startswith("container_"):
                 info = str((member.meta or {}).get(_INFO, member.info))
                 if info:
                     found.append(("info", info))
-                    concealed |= member.type == "fence" and not _LANGUAGE.fullmatch(info.strip())
+                    concealed |= (
+                        member.type == "fence" and info.strip().lower() not in _FENCE_LANGUAGES
+                    )
             if member.type == "image":
                 found.append(("alt", member.content))
                 # Under an image the page shows, its alt text is shown nowhere; a removed

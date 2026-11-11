@@ -475,9 +475,10 @@ link and image destinations and titles, each destination with the label it belon
 alt text under a shown image, HTML comments, attribute syntax, fence info strings, and
 reference definitions inside quotes and lists.
 A changed block whose signature differs carries a note naming Source; so does an added
-block that holds a title, alt text, a fence’s words past its language, a comment, or
-attribute syntax, a block moved past others whose signature changed, and any block whose
-label points somewhere new anywhere in the document.
+block that holds a title, alt text, a fence info string other than exactly one known
+language name (a Pygments lexer alias, or `mermaid` or `svg`, which KPress draws as
+diagrams), a comment, or attribute syntax, a block moved past others whose signature
+changed, and any block whose label points somewhere new anywhere in the document.
 The file carries **Source shows additional changes** whenever any source change has no
 visible counterpart, a whitespace-only or rewrap edit included.
 Edited blocks pair with the neighbor they resemble (at least half their words shared),
