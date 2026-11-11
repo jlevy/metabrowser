@@ -7,19 +7,22 @@
 # Every size is rendered from the vector master by AppIcon/render-svg.swift. The script needs
 # only the Swift toolchain and macOS frameworks.
 #
-# Usage: scripts/build-icon.sh [--review] [--sister SISTER.svg]
+# Usage: scripts/build-icon.sh [--check | --review] [--sister SISTER.svg]
+#   --check           only check that the renderer refuses every file in AppIcon/rejects/
 #   --review          also write review images to AppIcon/review/ (ignored by git)
 #   --sister FILE     with --review, add side-by-side comparisons with the sister app's icon
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 review=0
+check_only=0
 sister=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --check) check_only=1 ;;
     --review) review=1 ;;
     --sister) sister="$2"; shift ;;
-    *) echo "usage: scripts/build-icon.sh [--review] [--sister SISTER.svg]" >&2; exit 2 ;;
+    *) echo "usage: scripts/build-icon.sh [--check | --review] [--sister SISTER.svg]" >&2; exit 2 ;;
   esac
   shift
 done
@@ -27,6 +30,30 @@ done
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 swiftc -O AppIcon/render-svg.swift -o "$work/render-svg"
+
+# The renderer must refuse every file in AppIcon/rejects/, each with the reason its first
+# line names, and promptly: an unsupported attribute once rendered without one, and a
+# malformed path once hung the renderer instead of stopping it.
+for fixture in AppIcon/rejects/*.svg; do
+  reason="$(sed -n '1s/^<!-- render-svg refuses: \(.*\) -->$/\1/p' "$fixture")"
+  [[ -n "$reason" ]] || { echo "$fixture: its first line must be <!-- render-svg refuses: REASON -->" >&2; exit 1; }
+  "$work/render-svg" --internal 16 "$fixture" "$work/rejected.png" 16 2>"$work/rejected.txt" &
+  renderer=$!
+  (sleep 10 && kill -9 "$renderer" 2>/dev/null) &
+  watchdog=$!
+  if wait "$renderer"; then
+    echo "$fixture: render-svg accepted it; it must refuse it: $reason" >&2
+    exit 1
+  fi
+  kill "$watchdog" 2>/dev/null || true
+  grep -qF -- "$reason" "$work/rejected.txt" || {
+    echo "$fixture: render-svg must refuse it with \"$reason\", not: $(cat "$work/rejected.txt")" >&2
+    exit 1
+  }
+done
+echo "render-svg refuses all $(ls AppIcon/rejects/*.svg | wc -l | tr -d ' ') files in AppIcon/rejects/"
+[[ "$check_only" == 0 ]] || exit 0
+
 swiftc -O AppIcon/make-glyphs.swift -o "$work/make-glyphs"
 
 # Every master comes from its parameter file and the variant's base.

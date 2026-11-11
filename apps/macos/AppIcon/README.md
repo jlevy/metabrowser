@@ -44,6 +44,7 @@ The mark is 241.654 units wide, balanced on `centroidX` 262.598; the face runs f
 | `metabrowser-icon*.svg` | The masters, generated from the parameters and the base; edit those, not these. |
 | `make-glyphs.swift` | Builds a master from a parameter file, validates the parameters, and prints the derived dimensions. |
 | `render-svg.swift` | Renders a master to PNG at any size that divides 2048. |
+| `rejects/` | SVGs the renderer must refuse, each naming the reason in its first line. |
 | `review-sheet.swift` | Lays out the review images. |
 | `../scripts/build-icon.sh` | Regenerates every master, builds `Resources/AppIcon.icns` and `Resources/AppIcon-Dev.icns`, and with `--review`, the review images. |
 
@@ -52,6 +53,7 @@ The mark is 241.654 units wide, balanced on `centroidX` 262.598; the face runs f
 ```shell
 scripts/build-icon.sh                   # from apps/macos: every master and both .icns files
 scripts/build-icon.sh --review          # also AppIcon/review/ (git ignores it), with a release .icns per variant in review/icns/
+scripts/build-icon.sh --check           # only check that the renderer refuses every file in AppIcon/rejects/
 ```
 
 Add `--sister FILE.svg`, the sister app’s v6 release export, to include side-by-side
@@ -272,10 +274,13 @@ The review’s color sheet shows all three pairs.
 ## The Renderer
 
 `render-svg.swift` implements the SVG subset these masters use and stops with an error
-on anything else. It renders once at 2048 px and box-filters down to each size, which
-keeps filter radii in proportion at small sizes and halves the antialiasing error where
-edges abut. Its coverage rasterizer is exact horizontally and samples 16 sub-scanlines
-per row.
+on anything else: an element, an attribute (on the root, a shape, a mask, a gradient
+stop, or a filter primitive), or path data it does not render as written.
+Every run of `scripts/build-icon.sh` first checks that it refuses each file in
+`rejects/` with the reason that file names, within 10 seconds.
+It renders once at 2048 px and box-filters down to each size, which keeps filter radii
+in proportion at small sizes and halves the antialiasing error where edges abut.
+Its coverage rasterizer is exact horizontally and samples 16 sub-scanlines per row.
 
 The alternatives were measured against Figma’s own 1024 px export of the sister app’s
 icon, letters excluded.

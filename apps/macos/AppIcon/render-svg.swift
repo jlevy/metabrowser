@@ -234,7 +234,9 @@ func parsePath(_ d: String) throws -> CGPath {
 
     let path = CGMutablePath()
     var index = 0
-    var command: Character = "M"
+    // The command a run of numbers repeats. Nil at the start and after a close-path, which
+    // takes no numbers, so a stray number there is an error rather than a loop.
+    var command: Character?
     var point = CGPoint.zero
     var start = CGPoint.zero
     func number() throws -> CGFloat {
@@ -243,18 +245,21 @@ func parsePath(_ d: String) throws -> CGPath {
         return CGFloat(v)
     }
     while index < tokens.count {
+        let before = index
         if let c = tokens[index].first, tokens[index].count == 1, c.isLetter {
             command = c
             index += 1
         }
-        let relative = command.isLowercase
+        guard let current = command else { throw RenderError("path data has a number with no command at token \(index)") }
+        var next: Character? = current  // numbers that follow repeat it
+        let relative = current.isLowercase
         let base = relative ? point : .zero
-        switch command.uppercased().first! {
+        switch current.uppercased().first! {
         case "M":
             point = CGPoint(x: base.x + (try number()), y: base.y + (try number()))
             path.move(to: point)
             start = point
-            command = relative ? "l" : "L"
+            next = relative ? "l" : "L"
         case "L":
             point = CGPoint(x: base.x + (try number()), y: base.y + (try number()))
             path.addLine(to: point)
@@ -276,9 +281,13 @@ func parsePath(_ d: String) throws -> CGPath {
         case "Z":
             path.closeSubpath()
             point = start
+            next = nil
         default:
-            throw RenderError("unsupported path command \(command)")
+            throw RenderError("unsupported path command \(current)")
         }
+        // Every pass consumes a token, so malformed data ends in an error, never a hang.
+        guard index > before else { throw RenderError("path data does not advance at token \(index)") }
+        command = next
     }
     return path
 }
@@ -344,6 +353,26 @@ let allowed: [String: Set<String>] = [
     "mask": ["id", "maskUnits", "x", "y", "width", "height"],
 ]
 
+// What each filter primitive may carry: the attributes the renderer reads. A primitive
+// subregion (x, y, width, height) or any presentation attribute would be ignored, so it
+// is an error.
+let primitiveAttributes: [String: Set<String>] = [
+    "feFlood": ["flood-color", "flood-opacity", "result"],
+    "feColorMatrix": ["in", "type", "values", "result"],
+    "feMorphology": ["in", "radius", "operator", "result"],
+    "feOffset": ["in", "dx", "dy", "result"],
+    "feGaussianBlur": ["in", "stdDeviation", "result"],
+    "feComposite": ["in", "in2", "operator", "k1", "k2", "k3", "k4", "result"],
+    "feBlend": ["in", "in2", "mode", "result"],
+]
+
+/// Rejects any attribute of `element` outside `names`.
+func requireOnly(_ names: Set<String>, on element: XMLElement) throws {
+    for a in element.attributes ?? [] where !names.contains(a.name ?? "") {
+        throw RenderError("unsupported attribute \(a.name ?? "") on <\(element.name ?? "")>")
+    }
+}
+
 // MARK: - Renderer
 
 final class Renderer {
@@ -364,6 +393,7 @@ final class Renderer {
     func render() throws -> Layer {
         var layer = Layer(width, height)
         var style = Style()
+        try check(document.root)
         try applyPresentation(document.root, to: &style)
         for child in document.root.children ?? [] {
             if let e = child as? XMLElement { try draw(e, style: style, into: &layer) }
@@ -482,6 +512,7 @@ final class Renderer {
             var stops: [(Float, RGBA)] = []
             for child in gradient.children ?? [] {
                 guard let stop = child as? XMLElement, stop.name == "stop" else { continue }
+                try requireOnly(["offset", "stop-color", "stop-opacity"], on: stop)
                 var color = try parseColor(attribute(stop, "stop-color") ?? "black")
                 color.a = Float(try number(stop, "stop-opacity", 1))
                 let offset = Float(try number(stop, "offset", 0))
@@ -580,6 +611,10 @@ final class Renderer {
 
         for child in filter.children ?? [] {
             guard let p = child as? XMLElement else { continue }
+            guard let names = primitiveAttributes[p.name ?? ""] else {
+                throw RenderError("unsupported filter primitive <\(p.name ?? "")>")
+            }
+            try requireOnly(names, on: p)
             var out: Layer
             switch p.name ?? "" {
             case "feFlood":
