@@ -3,9 +3,9 @@ type: is
 id: is-01m74qv6pggjrpe3kkqbtj01g3
 title: "Stack #350 (merge mode): review, fix, and merge #346, #347, #348, #349, #351"
 kind: epic
-status: in_progress
+status: closed
 priority: 1
-version: 10
+version: 11
 delegate: claude-code@spud10.local
 labels: []
 dependencies: []
@@ -18,8 +18,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-11T07:23:34.467Z
-updated_at: 2026-11-11T11:48:52.672Z
+updated_at: 2026-11-11T16:56:20.110Z
 started_at: 2026-11-11T07:23:58.705Z
+closed_at: 2026-11-11T16:56:20.109Z
+close_reason: "Stack #350 (#346, #347, #348, #349, #351) reviewed (23 published reviews, every finding dispositioned), merged to main as ab346bf8 on 2026-11-11 via gh stack merge with merge commits; post-merge CI run 43060650224 on main green. Follow-ups: mb-273l (stoppable document renderer), mb-x0sv (public KPress per-block API), mb-5rth (paired startup timing), epic mb-c93s (spinner-free refresh and prefetch)."
+resolution: null
+duplicate_of: null
 ---
 User request 2026-11-10: "can you take over this PR stack. Make sure everything is reviewed, fix all issues, and merge everything when done." Native stack #350 on main. Coordinator runs tbd shortcut review-and-merge-prs in merge mode.
 
