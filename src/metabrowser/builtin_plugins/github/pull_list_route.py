@@ -195,9 +195,15 @@ def served_repository(app: Any) -> ListedRepository | None:
     return served_checkout(app)
 
 
-def _job_key(repository: ListedRepository) -> str:
+def catalog_job_key(source: str) -> str:
+    """The coordinator key of a repository's catalog job, by its normalized source."""
+
     # Publication can disambiguate a slug; normalized source identity stays stable.
-    return f"{repository.source}:pull-catalog"
+    return f"{source}:pull-catalog"
+
+
+def _job_key(repository: ListedRepository) -> str:
+    return catalog_job_key(repository.source)
 
 
 @dataclass(frozen=True, slots=True)

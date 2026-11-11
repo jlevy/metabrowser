@@ -1,6 +1,7 @@
 """The pull routes: one pull request's, ``pull`` and ``pull-refresh``, the lists', ``pulls``
-and ``pulls-refresh``, and a pull request's changed files, ``pull-files`` and
-``pull-files-refresh``, all under ``/api/plugin/github/``.
+and ``pulls-refresh``, a pull request's changed files, ``pull-files`` and
+``pull-files-refresh``, and background prefetch, ``pulls-prefetch``, all under
+``/api/plugin/github/``.
 
 :mod:`metabrowser.builtin_plugins.github.pull_route`,
 :mod:`metabrowser.builtin_plugins.github.pull_list_route`, and
@@ -36,6 +37,7 @@ from metabrowser.source_routes import PIN_HEADER, pin_changed_response
 if TYPE_CHECKING:
     from starlette.requests import Request
 
+    from metabrowser.builtin_plugins.github.pull_freshness import RecordFreshness
     from metabrowser.builtin_plugins.github.pull_route import PullView
     from metabrowser.builtin_plugins.github.served_pull import PullCorePreview
 
@@ -117,7 +119,8 @@ async def pull_handler(request: Request) -> Response:
     The answer carries an entity tag, and a request whose ``If-None-Match`` names it is
     answered ``304`` without the record, so a page can poll it as cheaply as the status
     route. The tag covers everything but the record, which changes only with
-    ``fetched_at``. A matching ``wait_full_after`` revision may hold the cache read
+    ``fetched_at``, and the verdict's time, which a ``304`` carries in
+    ``x-metabrowser-verified``. A matching ``wait_full_after`` revision may hold the cache read
     briefly until its already-running selected refresh settles or revokes the preview.
     """
 
@@ -126,11 +129,12 @@ async def pull_handler(request: Request) -> Response:
         PullRequestError,
         envelope_etag,
         note_full_record,
-        pull_envelope,
+        pull_answer,
         pull_host,
         pull_view,
         record_stamp,
         requested_number,
+        verified_header,
     )
 
     try:
@@ -149,14 +153,16 @@ async def pull_handler(request: Request) -> Response:
         pinned_subject = get_source_session().subject
     await _resolve(request)
 
-    async def snapshot() -> tuple[PullView, tuple[int, int, int] | None, PullEnvelope]:
+    async def snapshot() -> tuple[
+        PullView, tuple[int, int, int] | None, PullEnvelope, RecordFreshness | None
+    ]:
         subject = pinned_subject if pinned_subject is not None else get_source_session().subject
         view = pull_view(pull_host(request.app), subject, number)
         stamp = await asyncio.to_thread(record_stamp, view)
-        envelope = await asyncio.to_thread(pull_envelope, view)
-        return view, stamp, envelope
+        envelope, freshness = await asyncio.to_thread(pull_answer, view)
+        return view, stamp, envelope, freshness
 
-    view, stamp, envelope = await snapshot()
+    view, stamp, envelope, freshness = await snapshot()
     preview = envelope["core_preview"]
     # Prepared and adopted observations carry catalog admission. A captured live preview
     # may already have settled while the worker was building its first envelope.
@@ -172,13 +178,20 @@ async def pull_handler(request: Request) -> Response:
         kept = view.kept
         waited = await kept.wait_for_full(preview)
         if waited or kept.core_preview is not preview:
-            view, stamp, envelope = await snapshot()
+            view, stamp, envelope, freshness = await snapshot()
     if not await _preview_current(view, envelope["core_preview"]):
         envelope["core_preview"] = None
     if envelope["record"] is not None:
         note_full_record(view)
     if view.kept is not None:
-        view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
+        view.kept.saw_record(
+            envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness
+        )
+    if view.host is not None:
+        from metabrowser.builtin_plugins.github.pull_prefetch import note_viewed
+
+        # What a prefetch's ``changed`` adds: the numbers this server answered last.
+        note_viewed(view.host.pulls, number)
     comparison = (envelope.get("record") or {}).get("comparison")
     if view.host is not None and isinstance(comparison, dict):
         served = await view.host.pulls.companion(number)
@@ -186,7 +199,11 @@ async def pull_handler(request: Request) -> Response:
     if claimed_pin is not None and (refusal := pin_changed_response(claimed_pin)) is not None:
         return refusal
     etag = envelope_etag(envelope, stamp)
-    headers = {**_NO_STORE, "etag": etag}
+    headers = {
+        **_NO_STORE,
+        "etag": etag,
+        **verified_header(envelope, scanning=view.catalog_scanning),
+    }
     if matches_if_none_match(request, etag):
         return Response(status_code=304, headers=headers)
     return JSONResponse(dict(envelope), headers=headers)
@@ -373,7 +390,7 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
     from metabrowser.builtin_plugins.github.pull_route import (
         PullRequestError,
         note_full_record,
-        pull_envelope,
+        pull_answer,
         pull_host,
         pull_view,
         refresh_request,
@@ -405,13 +422,15 @@ async def pull_refresh_handler(request: Request) -> JSONResponse:
             await served.wait_for_core()
     # Read after the start, on the loop: a job is running, whatever it does next.
     view = pull_view(host, get_source_session().subject, ask.number)
-    envelope = await asyncio.to_thread(pull_envelope, view)
+    envelope, freshness = await asyncio.to_thread(pull_answer, view)
     if not await _preview_current(view, envelope["core_preview"]):
         envelope["core_preview"] = None
     if envelope["record"] is not None:
         note_full_record(view)
     if view.kept is not None:
-        view.kept.saw_record(envelope["fetched_at"], without_store=_without_store(envelope))
+        view.kept.saw_record(
+            envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness
+        )
     # ``status_route`` is where a one-shot ``--api`` reads how the refresh ended.
     answer = {"refresh": started, "pull": dict(envelope), "status_route": status_route(ask.number)}
     if started == "too_many":
@@ -629,6 +648,58 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     return JSONResponse(answer, status_code=200 if started == "not_due" else 202, headers=_NO_STORE)
 
 
+async def pulls_prefetch_handler(request: Request) -> JSONResponse:
+    """``GET`` or ``POST /api/plugin/github/pulls-prefetch`` — see :mod:`.pull_prefetch`.
+
+    The ``POST`` body names ``records`` and ``files``, each at most 16 pull-request numbers
+    in a visible page's order of priority, and ``changed``. It replaces the repository's
+    background queue and answers ``202`` with ``prefetch`` ``started`` or ``joined`` and
+    the ``GET`` as its ``status_route``, or ``200`` with ``not_due`` or ``deferred`` and a
+    ``reason``. The ``GET`` reports the lane from memory.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_prefetch import (
+        PREFETCH_ROUTE,
+        PrefetchRequestError,
+        prefetch_envelope,
+        prefetch_request,
+        request_prefetch,
+    )
+    from metabrowser.builtin_plugins.github.pull_route import pull_host
+
+    ask = None
+    if request.method == "POST":
+        body = await _json_body(request)
+        if isinstance(body, tuple):
+            return _invalid_request(*body)
+        try:
+            ask = prefetch_request(body)
+        except PrefetchRequestError as exc:
+            return _invalid_request(str(exc))
+    elif request.query_params:
+        return _invalid_request("a prefetch report has no query parameters")
+    await _resolve(request)
+    host = pull_host(request.app)
+    if host is None or host.coordinator is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+            headers=_NO_STORE,
+        )
+    if ask is None:
+        envelope = await prefetch_envelope(host)
+        return JSONResponse(dict(envelope), headers=_NO_STORE)
+    started, reason, queued = await request_prefetch(request.app, host, ask)
+    answer: dict[str, Any] = {"prefetch": started, "queued": queued}
+    if reason is not None:
+        answer["reason"] = reason
+    if started in {"started", "joined"}:
+        answer["status_route"] = PREFETCH_ROUTE
+    return JSONResponse(
+        answer, status_code=202 if started in {"started", "joined"} else 200, headers=_NO_STORE
+    )
+
+
 async def stacks_handler(request: Request) -> Response:
     """Read optional native stack membership from the cache alone."""
     from metabrowser.builtin_plugins.github.pull_stacks_route import (
@@ -773,6 +844,7 @@ __all__ = [
     "pull_comparison_handler",
     "pull_rendered_diff_handler",
     "pulls_handler",
+    "pulls_prefetch_handler",
     "stacks_handler",
     "stacks_refresh_handler",
     "pulls_refresh_handler",

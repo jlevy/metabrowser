@@ -15,8 +15,16 @@ record is pending and slowly otherwise, with `If-None-Match` so an unchanged ans
 A visible page with nothing cached fetches its record through
 `POST /api/plugin/github/pull-refresh`. A page with an earlier failure leaves Fetch
 available, and a refused press says why.
-A stale page offers Refresh and also asks by itself, without `retry`, once a reader has
-stayed on it, once per visible period, so a page walked past asks nothing.
+A stale page refreshes itself, without `retry`, and offers nothing to press while it
+does: once a reader has stayed on it, so a page walked past asks nothing, and again each
+time it goes stale while it is left open, at once (`leftOpen`). A page whose own refresh
+is not due or failed asks again only once a freshness window has passed, and keeps
+saying why meanwhile (`failing`). GitHub’s rate limit is a hold, not a failure
+(`rateLimited`): the page offers no Refresh, names the time it asks again, not before
+`reset_at` and not within a window of the refused attempt, wakes then, and asks at once.
+`revalidating` says the content shown is being refreshed, which the paint shows by
+breathing the age line, never with a spinner, and the freshness is the plain age, never
+“may be out of date”.
 The Markdown of each text is asked for one part at a time from
 `/api/plugin/github/pull-markdown`, two at once, and a render of a record the page no
 longer shows is dropped.
@@ -455,8 +463,9 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "tab": "conversation",
         "message": null,
-        "canRefresh": true,
-        "freshness": "Fetched 5 min ago via GitHub CLI · may be out of date",
+        "canRefresh": false,
+        "freshness": "Fetched 5 min ago via GitHub CLI",
+        "revalidating": true,
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -503,7 +512,8 @@ $ node tests/dom/github-pull-page-session.js
         "tab": "conversation",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 5 min ago via GitHub CLI",
+        "freshness": "Fetched 5 min ago via GitHub CLI",
+        "revalidating": true,
         "failure": null,
         "header": "Count to two in the app #7 [Open] forker wants to merge 2 commits into octo:topic from forker:count-to-two",
         "labels": [
@@ -696,7 +706,7 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": true,
-        "freshness": "Fetched 5 min ago via GitHub CLI · may be out of date",
+        "freshness": "Fetched 5 min ago via GitHub CLI",
         "failure": null,
         "browse": "link to the root",
         "headOffer": null
@@ -709,8 +719,18 @@ $ node tests/dom/github-pull-page-session.js
         "GET /api/plugin/github/pull?number=7 (If-None-Match)"
       ],
       "timer": "slow",
-      "paints": 0,
+      "paints": 1,
       "askWaits": true,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 5 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": null,
+        "browse": "link to the root",
+        "headOffer": null
+      },
       "markdown": []
     },
     {
@@ -724,7 +744,8 @@ $ node tests/dom/github-pull-page-session.js
         "status": "stale",
         "message": null,
         "canRefresh": false,
-        "freshness": "Refreshing… · fetched 5 min ago via GitHub CLI",
+        "freshness": "Fetched 5 min ago via GitHub CLI",
+        "revalidating": true,
         "failure": null,
         "browse": "link to the root",
         "headOffer": null
@@ -742,8 +763,9 @@ $ node tests/dom/github-pull-page-session.js
       "paint": {
         "status": "stale",
         "message": null,
-        "canRefresh": true,
-        "freshness": "Fetched 5 min ago via GitHub CLI · may be out of date",
+        "canRefresh": false,
+        "freshness": "Fetched 5 min ago via GitHub CLI",
+        "revalidating": true,
         "failure": null,
         "browse": "link to the root",
         "headOffer": null
@@ -756,62 +778,6 @@ $ node tests/dom/github-pull-page-session.js
       "requests": [],
       "timer": null,
       "paints": 0,
-      "markdown": []
-    },
-    {
-      "step": "a stale page asks once, and its refresh is not due",
-      "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":8}"
-      ],
-      "timer": "slow",
-      "paints": 0,
-      "markdown": []
-    },
-    {
-      "step": "its next poll asks nothing",
-      "requests": [
-        "GET /api/plugin/github/pull?number=8 (If-None-Match)"
-      ],
-      "timer": "slow",
-      "paints": 0,
-      "markdown": []
-    },
-    {
-      "step": "shown again, it may ask once more",
-      "requests": [
-        "GET /api/plugin/github/pull?number=8 (If-None-Match)"
-      ],
-      "timer": "slow",
-      "paints": 0,
-      "askWaits": true,
-      "markdown": []
-    },
-    {
-      "step": "the reader stayed again: it asks",
-      "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":8}"
-      ],
-      "timer": "slow",
-      "paints": 0,
-      "markdown": []
-    },
-    {
-      "step": "a reader's Refresh is always taken",
-      "requests": [
-        "POST /api/plugin/github/pull-refresh {\"number\":8,\"retry\":true}"
-      ],
-      "timer": "fast",
-      "paints": 2,
-      "paint": {
-        "status": "stale",
-        "message": null,
-        "canRefresh": false,
-        "freshness": "Refreshing… · fetched 24 min ago via GitHub CLI",
-        "failure": null,
-        "browse": "switches to refs/pull/8/head",
-        "headOffer": null
-      },
-      "conversation": "repaint",
       "markdown": []
     },
     {
@@ -1014,6 +980,285 @@ says only when the checkout’s is the pull request’s head.
 ```console
 $ node tests/dom/github-pull-page-second-session.js
 {
+  "leftOpen": [
+    {
+      "step": "a page left open asks for its refresh",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "fast",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 5 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": null,
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "repaint",
+      "markdown": []
+    },
+    {
+      "step": "the refresh lands",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "current",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched just now via GitHub CLI",
+        "failure": null,
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "repaint",
+      "markdown": []
+    },
+    {
+      "step": "a minute on, its record goes stale again",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 1 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": null,
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "it asks for the next refresh at once",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "fast",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 1 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": null,
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    }
+  ],
+  "failing": [
+    {
+      "step": "a stale page asks once, and its refresh is not due",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":8}"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": true,
+        "freshness": "Fetched 24 min ago via GitHub CLI",
+        "failure": "The last refresh failed: gh could not reach api.github.com",
+        "browse": "switches to refs/pull/8/head",
+        "headOffer": null
+      },
+      "conversation": "repaint",
+      "markdown": []
+    },
+    {
+      "step": "its next poll asks nothing",
+      "requests": [
+        "GET /api/plugin/github/pull?number=8 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "markdown": []
+    },
+    {
+      "step": "shown again within the window, it asks nothing",
+      "requests": [
+        "GET /api/plugin/github/pull?number=8 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 0,
+      "markdown": []
+    },
+    {
+      "step": "a window later and still stale, its poll asks again at once",
+      "requests": [
+        "GET /api/plugin/github/pull?number=8 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 25 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": "The last refresh failed: gh could not reach api.github.com",
+        "browse": "switches to refs/pull/8/head",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "that ask is sent with no wait, and is not due",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":8}"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": true,
+        "freshness": "Fetched 25 min ago via GitHub CLI",
+        "failure": "The last refresh failed: gh could not reach api.github.com",
+        "browse": "switches to refs/pull/8/head",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "a reader's Refresh is always taken",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":8,\"retry\":true}"
+      ],
+      "timer": "fast",
+      "paints": 2,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 25 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": null,
+        "browse": "switches to refs/pull/8/head",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    }
+  ],
+  "rateLimited": [
+    {
+      "step": "a stale page asks for its refresh",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "fast",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 5 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": null,
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "repaint",
+      "markdown": []
+    },
+    {
+      "step": "GitHub's rate limit refused it",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 5 min ago via GitHub CLI",
+        "failure": "GitHub rate limit · next check at 2026-09-17T12:06:32Z",
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "still held, it wakes at the time it named",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
+      ],
+      "timer": 20000,
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 6 min ago via GitHub CLI",
+        "failure": "GitHub rate limit · next check at 2026-09-17T12:06:32Z",
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "at the time it named, its poll asks again at once",
+      "requests": [
+        "GET /api/plugin/github/pull?number=7 (If-None-Match)"
+      ],
+      "timer": "slow",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 6 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": "GitHub rate limit · next check at 2026-09-17T12:06:32Z",
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    },
+    {
+      "step": "and sends that ask with no wait",
+      "requests": [
+        "POST /api/plugin/github/pull-refresh {\"number\":7}"
+      ],
+      "timer": "fast",
+      "paints": 1,
+      "paint": {
+        "status": "stale",
+        "message": null,
+        "canRefresh": false,
+        "freshness": "Fetched 6 min ago via GitHub CLI",
+        "revalidating": true,
+        "failure": null,
+        "browse": "link to the root",
+        "headOffer": null
+      },
+      "conversation": "keep",
+      "markdown": []
+    }
+  ],
   "checkActions": [
     {
       "name": "tests (3.13)",
@@ -1421,8 +1666,8 @@ See github.com/jlevy/practical-prose and review guidelines before editing.
 Conversation paints before its commit timeline request.
 A later partial timeline interleaves commit summaries with existing cards in provider
 order, keeps unmatched and pending discussion, and retains the rendered Markdown and
-focus. The pending request uses the shared delayed spinner.
-A stale page can show a held timeline before its metadata refresh.
+focus. The pending request breathes the header’s age line and marks it busy; nothing
+spins. A stale page can show a held timeline before its metadata refresh.
 A cache miss waits for metadata settlement before asking the provider, and an old
 response cannot publish after a revision change or a tab switch.
 An explicitly retryable provider failure can try again once while the reader stays.

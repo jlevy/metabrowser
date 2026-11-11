@@ -561,9 +561,14 @@ export function fileListFailure(envelope, formatTime) {
  * What a pull request's row shows of its changed files.
  *
  * `line` is the honest count where it says more than the rows do: while the list fills, for
- * a list that stopped part-way, at GitHub's cap, or for a list that may be out of date;
- * `label` names the group for a screen reader, with the count. `notice` is a failure, a
- * list that is not there, or one cut short, with Retry when another attempt is possible.
+ * a list that stopped part-way, or at GitHub's cap; `label` names the group for a screen
+ * reader, with the count. `notice` is a failure, a list that is not there, or one cut short,
+ * with Retry when another attempt is possible.
+ *
+ * Rows already listed are never covered by progress. `loading` is the spinner for a list with
+ * no rows yet; `refreshing` is a refresh, asked for or running, of a list whose rows are shown,
+ * which the paint breathes on the rows' names (`.mb-refreshing-group`) and marks busy. A
+ * stale list says nothing of being stale: it is being refreshed, or its notice says why not.
  *
  * @typedef {{
  *   number: number,
@@ -574,6 +579,7 @@ export function fileListFailure(envelope, formatTime) {
  *   line: string | null,
  *   notice: {severity: "warning" | "error" | null, text: string, action: "retry" | null, help?: "install" | "update"} | null,
  *   loading: boolean,
+ *   refreshing: boolean,
  *   live: string,
  * }} FileTreeModel
  */
@@ -603,6 +609,7 @@ export function describeFileTree(envelope, held) {
     line: null,
     notice: null,
     loading: false,
+    refreshing: false,
     live: "",
   };
   if (envelope === null) {
@@ -661,8 +668,6 @@ export function describeFileTree(envelope, held) {
       model.line = "No changed files.";
     } else if (said.capped) {
       model.line = said.count;
-    } else if (said.status === "stale") {
-      model.line = `${said.count} · may be out of date`;
     }
     if (failure !== null) {
       model.notice = {
@@ -686,7 +691,12 @@ export function describeFileTree(envelope, held) {
     model.notice = { severity: "error", text: held.error, action: "retry" };
     model.live = held.error;
   } else if (held.asking || envelope.refreshing) {
-    model.loading = true;
+    if (held.rows.length > 0) {
+      model.loading = false;
+      model.refreshing = true;
+    } else {
+      model.loading = true;
+    }
   }
   return model;
 }
@@ -996,7 +1006,7 @@ export function createFileTreeController(deps, options) {
   }
 
   /**
-   * Ask for the list's refresh: a reader's action, or a cached list that may be out of date.
+   * Ask for the list's refresh: a reader's action, or a cached list that is stale or partial.
    *
    * @param {boolean} retry A press of Retry, which the server's window does not hold.
    */

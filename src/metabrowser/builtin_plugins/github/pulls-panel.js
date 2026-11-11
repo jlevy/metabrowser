@@ -31,6 +31,7 @@
 import { createRowExpansion } from "./pull-files-tree.js";
 import { mountFileTree } from "./pull-files-view.js";
 import {
+  alignRefreshing,
   authorLabel,
   avatarUrl,
   FAST_POLL_MS,
@@ -49,6 +50,11 @@ const PULLS_ROUTE = "/api/plugin/github/pulls";
 const REFRESH_ROUTE = "/api/plugin/github/pulls-refresh";
 const PULL_ROUTE = "/api/plugin/github/pull";
 const CORE_PREPARE_ROUTE = "/api/plugin/github/pull-cores-prepare";
+const PREFETCH_ROUTE = "/api/plugin/github/pulls-prefetch";
+// The list's first rows a prefetch names beside the anchored row's neighbours: the top open
+// pull requests a reader most often opens next. With the two neighbours that is seven, under
+// the server's eight record refreshes a scan, so one scan's changes do not crowd them out.
+export const PREFETCH_TOP_ROWS = 5;
 // Existing measured GraphQL transport bound (exp-048); queues cover the whole viewport/catalog.
 const CORE_BATCH_SIZE = 8;
 const CORE_CONTROL_TIMEOUT_MS = 2000;
@@ -175,7 +181,8 @@ const CHECKOUT_NOT_LISTED =
  *   catalogReady: boolean,
  *   window: string | null,
  *   connection: {state: "working" | "connected" | "paused" | "unavailable", text: string,
- *     reload: boolean, retrying?: true, help?: "install" | "update"} | null,
+ *     reload: boolean, retrying?: true, refreshing?: true, help?: "install" | "update"} | null,
+ *   refreshingRows?: number[],
  *   empty: string | null,
  *   loadMore: "ready" | "loading" | null,
  *   github: string | null,
@@ -318,6 +325,13 @@ function watchPaused(envelope) {
  * *rows* are the rows held so far, already described; the envelope is the last answer, whose
  * own `rows` are only a window.
  *
+ * Rows already shown are never covered by progress. While a refresh runs with rows held, the
+ * connection row keeps the plain age, "Updated 3 min ago", marked `refreshing`, which the paint
+ * breathes; `working`, with the shared spinner and "Fetching pull requests…", is only for a list
+ * with no rows yet. A stale list says nothing of being stale: it is being refreshed, or the
+ * row says why it cannot be (offline, a failure, a rate limit). *refreshingRows* are the rows
+ * whose own data GitHub is being read for now, whose titles breathe too.
+ *
  * @param {PullsEnvelope | null} envelope
  * @param {{
  *   filter: string,
@@ -331,6 +345,7 @@ function watchPaused(envelope) {
  *   checkout?: boolean,
  *   online?: boolean,
  *   requesting?: boolean,
+ *   refreshingRows?: number[],
  * }} page
  * @returns {PullsModel}
  */
@@ -412,21 +427,26 @@ export function describePulls(envelope, page) {
       state: "paused",
       text: failure.text + cached,
       reload: !heldByRate && !asking,
-      ...(asking ? { retrying: true } : {}),
+      ...(asking ? (holding ? { refreshing: true } : { retrying: true }) : {}),
     };
-  } else if (working || page.more) {
+  } else if ((working || page.more) && !holding) {
     model.connection = { state: "working", text: FETCHING, reload: false };
-  } else if (!envelope.complete && envelope.catalog_fetched > 0) {
+  } else if (!working && !envelope.complete && envelope.catalog_fetched > 0) {
     const count = new Intl.NumberFormat("en-US").format(envelope.catalog_fetched);
     model.connection = { state: "paused", text: `Catalog paused · ${count} cached`, reload: true };
   } else {
+    // Rows are shown: their age stays, and a refresh running breathes it.
     const age = relativeAge(envelope.count_at ?? envelope.fetched_at, page.nowMs);
-    const note = envelope.truncated
-      ? " · some pull requests could not be cached"
-      : envelope.state === "stale"
-        ? " · may be out of date"
-        : "";
-    model.connection = { state: "connected", text: `Updated ${age}${note}`, reload: true };
+    const note = envelope.truncated ? " · some pull requests could not be cached" : "";
+    model.connection = {
+      state: "connected",
+      text: `Updated ${age}${note}`,
+      reload: !working,
+      ...(working ? { refreshing: true } : {}),
+    };
+  }
+  if (page.refreshingRows !== undefined && page.refreshingRows.length > 0) {
+    model.refreshingRows = page.refreshingRows;
   }
   model.live = model.connection.state === "connected" ? model.listName : model.connection.text;
   const belowTotal = envelope.total === null || page.rows.length < envelope.total;
@@ -479,7 +499,7 @@ function pinChanged(response) {
 
 /**
  * @typedef {{state: string, window: {id: string, generation: string}, numbers: number[]}} CoreWindowRequest
- * @typedef {{epoch: number, pass: number, body: CoreWindowRequest, canRetry: boolean, retryDelay: number, lane: "visible" | "background", queueKey: string, done: boolean}} CoreDemand
+ * @typedef {{epoch: number, pass: number, body: CoreWindowRequest, canRetry: boolean, retryDelay: number, lane: "visible" | "background", queueKey: string, done: boolean, admitted?: boolean}} CoreDemand
  * @typedef {{status: number, etag: string | null, body: unknown}} PullsResponse
  * @typedef {{
  *   request(
@@ -618,6 +638,8 @@ export function createPullsController(deps, options = {}) {
   let coreSent = null;
   /** Last token that may still own the server window. @type {CoreDemand | null} */
   let coreHeld = null;
+  /** The rows last painted as being read from GitHub, joined. */
+  let coreRefreshingKey = "";
   let coreEpoch = 0;
   // Traversal can restart while the same accepted producer remains owned.
   let corePass = 0;
@@ -648,6 +670,20 @@ export function createPullsController(deps, options = {}) {
   // Counts describe the repository, so switching filters keeps the last accepted tallies.
   /** @type {PullFilterTotals | null} */
   let filterTotals = null;
+  // Background prefetch (`PREFETCH_ROUTE`): the scan it last asked after, by the list's
+  // `fetched_at`, and whether a request is on its way. An ask made meanwhile waits as the
+  // one pending ask, sent when that request answers and built from the panel as it is then,
+  // `changed` when any ask that waited had it; null when none waits.
+  /** @type {string | null} */
+  let prefetchedScan = null;
+  let prefetching = false;
+  /** @type {boolean | null} */
+  let prefetchPending = null;
+  // The lane's report is followed while it works: its next read, and the row it is reading.
+  /** @type {unknown} */
+  let prefetchTimer = null;
+  /** @type {number[]} */
+  let prefetchRows = [];
 
   /** @returns {HeldList} */
   function held() {
@@ -905,6 +941,8 @@ export function createPullsController(deps, options = {}) {
       deps.cancel(coreRetryTimer);
       coreRetryTimer = null;
     }
+    // The panel no longer follows the batch, so its titles stop saying GitHub is read for them.
+    noteCoreRefreshing();
   }
 
   async function sendCoreWindow() {
@@ -932,6 +970,11 @@ export function createPullsController(deps, options = {}) {
         const admitted =
           response?.status === 202 &&
           (receipt?.preparation === "started" || receipt?.preparation === "joined");
+        if (admitted) {
+          // GitHub is being read for these rows now; their titles breathe until it settles.
+          demand.admitted = true;
+          noteCoreRefreshing();
+        }
         const settled =
           response?.status === 200 &&
           (receipt?.preparation === "ready" || receipt?.preparation === "partial");
@@ -1044,6 +1087,31 @@ export function createPullsController(deps, options = {}) {
       }
     } finally {
       sendingCore = false;
+      noteCoreRefreshing();
+    }
+  }
+
+  /**
+   * The rows GitHub is being read for: an admitted batch the panel still follows, live and
+   * retrying until it settles. Offline, a selection, or an address that cancels the retry
+   * ends it, as a settled or replaced batch does.
+   */
+  function coreRefreshing() {
+    return coreWanted !== null &&
+      coreWanted.admitted === true &&
+      !coreWanted.done &&
+      coreWanted.canRetry &&
+      coreLive()
+      ? coreWanted.body.numbers
+      : [];
+  }
+
+  /** Paint again when the rows being read change, which nothing else would repaint for. */
+  function noteCoreRefreshing() {
+    const key = coreRefreshing().join(",");
+    if (key !== coreRefreshingKey) {
+      coreRefreshingKey = key;
+      render();
     }
   }
 
@@ -1051,6 +1119,7 @@ export function createPullsController(deps, options = {}) {
     cancelCoreRetry();
     coreEpoch += 1;
     coreWanted = null;
+    noteCoreRefreshing();
     void sendCoreWindow();
   }
 
@@ -1077,6 +1146,7 @@ export function createPullsController(deps, options = {}) {
       retryDelay: CORE_BUSY_RETRY_MS,
       body: { state, window: { id, generation }, numbers: rows.map((row) => row.number) },
     };
+    noteCoreRefreshing();
     void sendCoreWindow();
   }
 
@@ -1130,6 +1200,7 @@ export function createPullsController(deps, options = {}) {
       checkout,
       online: online(),
       requesting: refreshReads.size > 0,
+      refreshingRows: [...new Set([...coreRefreshing(), ...prefetchRefreshing()])],
     });
   }
 
@@ -1559,6 +1630,7 @@ export function createPullsController(deps, options = {}) {
     }
     scheduleNext();
     askIfDue();
+    prefetchAfterScan();
     if (
       warmPaused &&
       list.envelope !== null &&
@@ -1698,6 +1770,144 @@ export function createPullsController(deps, options = {}) {
       if (warming) {
         queueCores();
       }
+    }
+  }
+
+  /**
+   * Ask the server to refresh, behind the reader, what they are likely to open next: the
+   * anchored row's neighbours and the top of the list, and the changed files of the open
+   * row and its neighbours. *changed* adds what the server answered most recently that the
+   * scan just found changed. Only while shown, visible, and online; the server reads each
+   * again, admits what is due within its caps, and waits behind any reader's work.
+   *
+   * @param {boolean} changed
+   * @returns {boolean} Whether a request was sent, or waits behind the one on its way.
+   */
+  function prefetch(changed) {
+    const list = held();
+    if (
+      !live() ||
+      !online() ||
+      list.envelope === null ||
+      list.envelope.reason === "not_github" ||
+      // GitHub refused the list's own refresh, and would refuse the prefetch too.
+      (list.envelope.last_refresh !== null && list.envelope.last_refresh.outcome !== "succeeded") ||
+      list.rows.length === 0
+    ) {
+      return false;
+    }
+    if (prefetching) {
+      prefetchPending = prefetchPending === true || changed;
+      return true;
+    }
+    const at = anchor === null ? -1 : (list.keys.get(anchor) ?? -1);
+    const near = [at - 1, at + 1]
+      .filter((index) => index >= 0 && index < list.rows.length)
+      .map((index) => list.rows[index].number);
+    const top = list.rows.slice(0, PREFETCH_TOP_ROWS).map((row) => row.number);
+    // The open row's record is the page's own refresh; its files are the tree under its row.
+    const records = [...new Set([...near, ...top])].filter((number) => number !== current);
+    const files = [...new Set([...(current === null ? [] : [current]), ...near])];
+    prefetching = true;
+    void deps
+      .request("POST", PREFETCH_ROUTE, { body: { records, files, changed } })
+      .then((response) => {
+        // A lane started or joined: follow it, so the row it reads breathes while it does.
+        if (response.status === 202) {
+          watchPrefetch();
+        }
+      })
+      .catch(() => null)
+      .finally(() => {
+        prefetching = false;
+        const pending = prefetchPending;
+        prefetchPending = null;
+        if (pending !== null && !disposed) {
+          prefetch(pending);
+        }
+      });
+    return true;
+  }
+
+  /** Read the lane's report once a fast poll from now, while it has work. */
+  function watchPrefetch() {
+    if (prefetchTimer !== null || disposed) {
+      return;
+    }
+    prefetchTimer = deps.schedule(() => {
+      prefetchTimer = null;
+      void readPrefetch();
+    }, FAST_POLL_MS);
+  }
+
+  /**
+   * The row whose record the lane is reading now breathes, as a core batch's rows do; the
+   * report is read again while the lane runs or holds a queue, and only while shown.
+   */
+  async function readPrefetch() {
+    if (!coreLive() || !shown) {
+      setPrefetchRows([]);
+      return;
+    }
+    /** @type {{running?: {kind?: string, number?: number} | null, queued?: unknown[]} | null} */
+    let report = null;
+    try {
+      const response = await deps.request("GET", PREFETCH_ROUTE, {});
+      report = response.status === 200 ? /** @type {any} */ (response.body) : null;
+    } catch {
+      report = null;
+    }
+    if (disposed) {
+      return;
+    }
+    const running = report?.running ?? null;
+    setPrefetchRows(
+      running?.kind === "record" && typeof running.number === "number" ? [running.number] : [],
+    );
+    if (running !== null || (Array.isArray(report?.queued) && report.queued.length > 0)) {
+      watchPrefetch();
+    }
+  }
+
+  /** @param {number[]} rows */
+  function setPrefetchRows(rows) {
+    if (rows.join(",") !== prefetchRows.join(",")) {
+      prefetchRows = rows;
+      render();
+    }
+  }
+
+  /**
+   * The rows the lane is reading, under the rule a core batch's rows breathe by: only while
+   * the panel is live and online, so an offline panel breathes nothing it cannot finish.
+   */
+  function prefetchRefreshing() {
+    return coreLive() ? prefetchRows : [];
+  }
+
+  function stopPrefetchWatch() {
+    if (prefetchTimer !== null) {
+      deps.cancel(prefetchTimer);
+      prefetchTimer = null;
+    }
+    prefetchRows = [];
+    prefetchPending = null;
+  }
+
+  /** After a scan the server finished, once per scan: ask for what it found changed. */
+  function prefetchAfterScan() {
+    const envelope = held().envelope;
+    if (
+      envelope === null ||
+      envelope.state !== "current" ||
+      envelope.refreshing ||
+      envelope.fetched_at === null ||
+      envelope.fetched_at === prefetchedScan
+    ) {
+      return;
+    }
+    if (prefetch(true)) {
+      prefetchedScan = envelope.fetched_at;
     }
   }
 
@@ -1971,6 +2181,8 @@ export function createPullsController(deps, options = {}) {
     // held past it would otherwise fetch the row the walk left long ago.
     const walking = () => !disposed && walkingTo !== null;
     deps.open({ number, tab: "", replace, reader: { fetchAfterMs, initial, walking } });
+    // A row opens once the reader stops on it, a walk included, so its neighbours are next.
+    prefetch(false);
   }
 
   function cancelReads() {
@@ -1996,6 +2208,7 @@ export function createPullsController(deps, options = {}) {
     refreshReads.clear();
     opening += 1;
     clearWalk();
+    stopPrefetchWatch();
   }
 
   /**
@@ -2216,6 +2429,7 @@ export function createPullsController(deps, options = {}) {
     onOffline() {
       cancelWarmTimer();
       cancelCoreRetry();
+      stopPrefetchWatch();
       warmRead?.abort();
       warmRead = null;
       arrivalBaseline = null;
@@ -2352,7 +2566,7 @@ export function mountPullsPanel(container, ctx, mb) {
   // sees these rows.
   const list = h("ul", { class: "github-pulls-list", role: "tree" });
   const empty = h("p", { class: "github-pulls-empty" });
-  const connectionMessage = h("span");
+  const connectionMessage = h("span", { class: "mb-refreshing-muted" });
   const spinner = h("span", { class: "github-pulls-connection-spinner", hidden: "" }, [
     h("span", { class: "spinner spinner-sm", "aria-hidden": "true" }),
   ]);
@@ -2402,6 +2616,8 @@ export function mountPullsPanel(container, ctx, mb) {
    */
   /** @type {Map<number, PaintedRow>} */
   const painted = new Map();
+  /** The rows whose titles breathe: GitHub is being read for them. @type {Set<number>} */
+  let refreshingTitles = new Set();
   let stackIndex = createStackIndex(null);
   /** @type {import("./pull-stacks.js").StackIdentity | null} */
   let stackIdentity = null;
@@ -2906,8 +3122,22 @@ export function mountPullsPanel(container, ctx, mb) {
     queueCoreSample();
   }
 
+  /**
+   * Breathe a row's title while GitHub is read for it. Paint only: the row stays a usable
+   * link, so it is not marked busy.
+   *
+   * @param {{title: HTMLElement, info: PullRow}} entry
+   * @returns {boolean} Whether it is breathing.
+   */
+  function markRefreshing(entry) {
+    const on = refreshingTitles.has(entry.info.number);
+    entry.title.classList.toggle("mb-refreshing", on);
+    return on;
+  }
+
   /** @param {number[]} arrivals */
   function paintWindow(arrivals) {
+    let builtRefreshing = false;
     const view = tab.scrollRoot?.getBoundingClientRect();
     const listTop = view === undefined ? 0 : list.getBoundingClientRect().top;
     const focusBefore =
@@ -2962,6 +3192,7 @@ export function mountPullsPanel(container, ctx, mb) {
         entry.item.dataset.number = String(row.number);
         painted.set(row.number, entry);
         rowSizes?.observe(entry.item);
+        builtRefreshing ||= markRefreshing(entry);
       } else if (entry.key !== key) {
         patchRow(entry, row, key);
       }
@@ -2984,6 +3215,9 @@ export function mountPullsPanel(container, ctx, mb) {
       } else {
         list.insertBefore(node, cursor);
       }
+    }
+    if (builtRefreshing) {
+      alignRefreshing(list);
     }
     if (readingPlace !== null && tab.scrollRoot !== null) {
       const entry = painted.get(readingPlace.number);
@@ -3108,7 +3342,9 @@ export function mountPullsPanel(container, ctx, mb) {
     }
     for (const { chip, value, tally } of tallies) {
       const count = model.filterTotals?.[value] ?? null;
-      const pending = count === null && model.connection?.state === "working";
+      const pending =
+        count === null &&
+        (model.connection?.state === "working" || model.connection?.refreshing === true);
       tally.classList.toggle("tally-pending", pending);
       tally.classList.toggle("tally-pending-narrow", pending);
       const text = count === null ? (pending ? "" : "—") : count.toLocaleString("en-US");
@@ -3150,13 +3386,36 @@ export function mountPullsPanel(container, ctx, mb) {
     const connected = model.connection;
     const working = connected?.state === "working";
     const retrying = connected?.retrying === true;
+    const refreshing = connected?.refreshing === true;
     connection.hidden = connected === null;
     connectionText.classList.toggle("mb-delayed-loading", working);
     spinner.classList.toggle("mb-delayed-loading", retrying);
     spinner.hidden = !working && !retrying;
+    // Rows are shown: the age (or the outage being retried) breathes, and nothing spins.
+    connectionMessage.classList.toggle("mb-refreshing", refreshing);
+    // Busy is said of the status text, never of the row's Reload or help link.
+    if (working || retrying || refreshing) {
+      connectionText.setAttribute("aria-busy", "true");
+    } else {
+      connectionText.removeAttribute("aria-busy");
+    }
     const message = connected?.text ?? "";
     if (connectionMessage.textContent !== message) {
       connectionMessage.textContent = message;
+    }
+    const breathing = new Set(model.refreshingRows ?? []);
+    if (
+      breathing.size !== refreshingTitles.size ||
+      [...breathing].some((number) => !refreshingTitles.has(number))
+    ) {
+      refreshingTitles = breathing;
+      let any = false;
+      for (const entry of painted.values()) {
+        any = markRefreshing(entry) || any;
+      }
+      if (any) {
+        alignRefreshing(list);
+      }
     }
     reloadButton.setAttribute("aria-disabled", String(connected?.reload !== true));
     const help = connected?.help ?? "";

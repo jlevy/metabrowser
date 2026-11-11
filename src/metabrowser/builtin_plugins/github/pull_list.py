@@ -100,6 +100,8 @@ class PullListRow(_Model):
     """One pull request as a list shows it.
 
     ``head_repository`` is ``owner/name``, or ``None`` when a fork was deleted.
+    ``head_oid`` is the head commit GitHub reported with the row, or ``None`` for a row
+    written before the catalog read it, which the next projection upgrade rewrites.
     """
 
     number: PullNumber
@@ -116,6 +118,7 @@ class PullListRow(_Model):
     head_ref: _RowText
     head_repository: _RowText | None
     labels: tuple[_LabelName, ...] = Field(max_length=MAX_LABELS)
+    head_oid: Sha | None = None
 
     @property
     def merged(self) -> bool:
@@ -244,7 +247,9 @@ def refresh_is_due(stamp: PullRefreshStamp | None, *, now: datetime) -> bool:
 # rename or copy, the status, and the line counts; GitHub's embedded patch is dropped before
 # anything is kept. The path is the row's identity, a rename's new path, since the diff view
 # jumps to a file by its path. It is text a pull request's author wrote: it reaches no
-# filesystem call and no markup.
+# filesystem call and no markup. A list GitHub gave names the head commit and base branch it
+# describes, ``head`` and ``base_ref``, as the record or the catalog knew them just before
+# its first page was read, or ``None`` when neither did.
 #
 # Measured 2026-11-03 with gh 2.98.0, at a load average of 4 to 7, first each page by ``gh
 # api --include`` and then the whole job, ``refresh_pull_files``, on a source with no store:
@@ -278,6 +283,8 @@ type FileStatus = Literal[
     "added", "removed", "modified", "renamed", "copied", "changed", "unchanged"
 ]
 type FileListSource = Literal["github", "comparison"]
+# The head commit and base branch name a pull request has as last known, either ``None``.
+type KnownHead = tuple[str | None, str | None]
 type _FilePath = Annotated[str, StringConstraints(min_length=1, max_length=MAX_FILE_PATH_BYTES)]
 type _LineCount = Annotated[int, Field(ge=0)]
 
@@ -321,7 +328,9 @@ class PullFileList(_Model):
     header gave, which counts pages and not files. ``capped`` says GitHub stopped at the
     most files it lists, :data:`MAX_PULL_FILES`, so the pull request may have more.
     ``truncated`` says an item could not be read or had a path past
-    :data:`MAX_FILE_PATH_BYTES`, and was left out.
+    :data:`MAX_FILE_PATH_BYTES`, and was left out. ``head`` is the comparison's head for a
+    local list and the pull request's head as last known before the read for GitHub's,
+    which alone has ``base_ref``, the base branch's name then.
     """
 
     schema_version: int
@@ -334,6 +343,7 @@ class PullFileList(_Model):
     head: Sha | None
     # A comparison without a base cannot prove freshness; the route calls it stale.
     base: Sha | None = None
+    base_ref: _RowText | None = None
     pages: int = Field(ge=0, le=MAX_FILE_PAGES)
     last_page: Annotated[int, Field(ge=1)] | None
     complete: bool
@@ -353,13 +363,19 @@ class PullFileList(_Model):
         if len({row.path for row in self.rows}) != len(self.rows):
             raise ValueError("a file list names each path once")
         if self.listed_from == "comparison":
-            if self.reader is not None or self.head is None or self.marks or self.pages:
+            if (
+                self.reader is not None
+                or self.head is None
+                or self.base_ref is not None
+                or self.marks
+                or self.pages
+            ):
                 raise ValueError("a comparison's list names its head, and no reader or pages")
             if not self.complete or self.capped:
                 raise ValueError("a comparison's list is whole")
             return self
-        if self.reader is None or self.head is not None or self.base is not None or self.pages < 1:
-            raise ValueError("GitHub's list names its reader and pages, not local endpoints")
+        if self.reader is None or self.base is not None or self.pages < 1:
+            raise ValueError("GitHub's list names its reader and pages, not a merge base")
         if len(self.marks) != self.pages:
             raise ValueError("GitHub's list has one mark per page it holds")
         if sum(mark.rows for mark in self.marks) != len(self.rows):
@@ -498,6 +514,7 @@ __all__ = [
     "FilePageMark",
     "FileListSource",
     "FileStatus",
+    "KnownHead",
     "ListedRepository",
     "LocalComparison",
     "PullFileList",
