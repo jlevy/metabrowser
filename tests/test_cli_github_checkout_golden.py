@@ -183,14 +183,6 @@ def test_golden_a_checkouts_pull_requests(
     assert after["state"] == "current" and after["comparison_route"] is None
     assert after["record"]["comparison"] is None
     assert after["record"]["unavailable"] == {"comparison": "no_store"}
-    idle = session.post(
-        checkout,
-        f"{PULL}-refresh",
-        {"number": 10, "prepare_comparison": after["record_revision"]},
-    )
-    assert idle.payload()["refresh"] == "not_due", "idle work never attaches a store"
-    nine = _after(session.post(checkout, f"{PULL}-refresh", {"number": 9, "retry": True}))
-    assert nine["record"]["unavailable"] == {"comparison": "no_store"}
     shown = session.run(str(checkout), "--show", "/pull/10")
     assert shown.exit_code == 0, shown.stderr
     assert session.run(str(checkout), "--show", "/pulls").exit_code == 0
@@ -263,32 +255,6 @@ def test_golden_a_checkouts_pull_requests(
     assert compared.exit_code == 0, compared.stderr
     assert compared.payload()["manifest"]["files"]
 
-    session.say(
-        "With a store attached, an idle Conversation page may ask for a fresh record's "
-        "comparison by its revision; only that pull request's head and base are fetched"
-    )
-    wrong = session.post(checkout, f"{PULL}-refresh", {"number": 9, "prepare_comparison": "a" * 64})
-    assert wrong.payload()["refresh"] == "not_due"
-    prepared = session.post(
-        checkout,
-        f"{PULL}-refresh",
-        {"number": 9, "prepare_comparison": nine["record_revision"]},
-    )
-    assert _answered(prepared)["refresh"] == "started"
-    assert _answered(prepared)["pull"]["preparing_comparison"] is True
-    nine_route = _after(prepared)["comparison_route"]
-    assert nine_route is not None
-    repeated = session.post(
-        checkout,
-        f"{PULL}-refresh",
-        {"number": 9, "prepare_comparison": nine["record_revision"]},
-    )
-    assert repeated.payload()["refresh"] == "not_due"
-    clicked = session.post(
-        checkout, f"{PULL}-refresh", {"number": 9, "retry": True, "comparison": True}
-    )
-    assert _after(clicked)["comparison_route"] == nine_route
-
     for name, before in fingerprints.items():
         root = checkout if name == "src" else tmp_path / name
         assert fingerprint(root) == before, name
@@ -315,3 +281,63 @@ def test_golden_a_checkouts_pull_requests(
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     assert "file://" not in rendered
     check_golden("cli-github-checkout.txt", rendered)
+
+
+def test_golden_idle_comparison_preparation_on_a_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """A Conversation page's optional comparison request, as ``metab --api`` sends it.
+
+    Without a store it is never due, so Conversation alone creates none. Once a reader's
+    Changes attached one, the request names a fresh record's revision; it fetches only
+    that pull request's head and base, reads no gh, and a repeat or a stale revision is
+    not due. The reader's own Changes then answers the same comparison.
+    """
+    session = _Session(tmp_path, monkeypatch, pull_origin)
+    checkout = session.checkout("checkout", CANONICAL + ".git")
+    before = fingerprint(checkout)
+
+    session.say("Without a store, an idle comparison request is never due")
+    ten = _after(session.post(checkout, f"{PULL}-refresh", {"number": 10, "retry": True}))
+    assert ten["record"]["unavailable"] == {"comparison": "no_store"}
+    idle = session.post(
+        checkout, f"{PULL}-refresh", {"number": 10, "prepare_comparison": ten["record_revision"]}
+    )
+    assert idle.payload()["refresh"] == "not_due"
+    assert not list((session.home / "repository-stores").iterdir())
+
+    session.say("A reader's Changes on another pull request attaches a store")
+    nine = _after(session.post(checkout, f"{PULL}-refresh", {"number": 9, "retry": True}))
+    assert nine["record"]["unavailable"] == {"comparison": "no_store"}
+    changes = session.post(
+        checkout, f"{PULL}-refresh", {"number": 10, "retry": True, "comparison": True}
+    )
+    assert _after(changes)["comparison_route"] is not None
+
+    session.say(
+        "Now a fresh record's revision is due once, and fetches only that pull request; "
+        "a stale revision and a repeat are not due"
+    )
+    wrong = session.post(checkout, f"{PULL}-refresh", {"number": 9, "prepare_comparison": "a" * 64})
+    assert wrong.payload()["refresh"] == "not_due"
+    prepared = session.post(
+        checkout, f"{PULL}-refresh", {"number": 9, "prepare_comparison": nine["record_revision"]}
+    )
+    assert _answered(prepared)["refresh"] == "started"
+    assert _answered(prepared)["pull"]["preparing_comparison"] is True
+    route = _after(prepared)["comparison_route"]
+    assert route is not None
+    repeated = session.post(
+        checkout, f"{PULL}-refresh", {"number": 9, "prepare_comparison": nine["record_revision"]}
+    )
+    assert repeated.payload()["refresh"] == "not_due"
+
+    session.say("The reader's Changes answers the same comparison, with no gh read")
+    clicked = session.post(
+        checkout, f"{PULL}-refresh", {"number": 9, "retry": True, "comparison": True}
+    )
+    assert _after(clicked)["comparison_route"] == route
+    assert fingerprint(checkout) == before
+    rendered = label_home("".join(session.blocks), session.home)
+    assert str(tmp_path) not in rendered and str(session.home) not in rendered
+    check_golden("cli-github-checkout-idle.txt", rendered)

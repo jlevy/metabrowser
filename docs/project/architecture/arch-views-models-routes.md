@@ -599,7 +599,7 @@ or kind arrives with transcript evidence or the build fails.
 | `/api/plugin/diff/children` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-diff-no-hunks.tryscript.md` |
 | `/api/plugin/diff/comparison` | covered | `--api` | `cli-api-plugins.tryscript.md`, `cli-api-git.tryscript.md`, `cli-github-pull.tryscript.md`, `cli-api-diff-view-file.tryscript.md`, `cli-api-diff-no-hunks.tryscript.md`, `cli-checkout-overlay.txt` |
 | `/api/plugin/github/pull` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-checkout-overlay.txt` |
-| `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt`, `cli-github-checkout.txt` |
+| `/api/plugin/github/pull-refresh` | covered | `--api` | `cli-github-pull.tryscript.md`, `cli-github-pull-refresh.txt`, `cli-github-checkout-idle.txt` |
 | `/api/plugin/github/pull-markdown` | covered | `--api` | `cli-github-pull.tryscript.md` |
 | `/api/plugin/github/pull-timeline` | covered | `--api --data` | `cli-github-pull-timeline.txt` |
 | `/api/plugin/github/pull-snapshot` | covered | `--api` | `cli-github-pull-snapshot.txt` |
