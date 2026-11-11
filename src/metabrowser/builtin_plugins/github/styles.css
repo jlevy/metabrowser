@@ -530,6 +530,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* A pull request's title is bold in normal text ink wherever it appears
+   (docs/design-system.md, "The Pulls Tab"). Set on the title, not inherited from the row,
+   so no state of the row's link (visited, hover, focus, selected) can change it. */
+.github-pulls-title {
+  color: var(--text);
+  font-weight: var(--weight-bold);
+}
 .github-pulls-meta {
   grid-column: 3 / -1;
   color: var(--muted);
@@ -752,6 +759,8 @@
 }
 .github-pull-stack-member-title {
   overflow-wrap: anywhere;
+  color: var(--text);
+  font-weight: var(--weight-bold);
 }
 .github-pull-stack-member[aria-current="page"] {
   background: var(--hover-bg);
