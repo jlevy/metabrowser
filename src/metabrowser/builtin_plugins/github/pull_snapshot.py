@@ -34,6 +34,7 @@ import asyncio
 import base64
 import hashlib
 import os
+import re
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -42,6 +43,7 @@ from html import escape
 from pathlib import Path, PurePosixPath
 from typing import Final, Literal, cast
 from urllib.parse import quote, unquote_to_bytes, urlencode, urlsplit
+from weakref import WeakKeyDictionary
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
@@ -70,6 +72,7 @@ from metabrowser.git.tree_source import (
 from metabrowser.git.wire import is_full_revision
 from metabrowser.http_caching import store_tag
 from metabrowser.inert_html import fragment_link
+from metabrowser.loading_cache import LoadingCache
 from metabrowser.settings import TEXT_PREVIEW_CHUNK_BYTES
 from metabrowser.view_routes import format_pull_href
 
@@ -85,21 +88,63 @@ _IMAGE_TYPES: Final = {
     ".avif": "image/avif",
 }
 # The largest Markdown file rendered as a document; a larger one opens as Source. A pull
-# request's author writes it, so the bound is the worst render at that size. Measured
-# 2026-11-11 with `_render_markdown` on one thread, three adjacent runs each, load average
-# 4.7 to 5.5 (other test runs on the machine): at 64 KiB a run of `[` took 4.0 to 4.1 s,
-# blocks of 200 `[` took 3.4 s split by blank lines and 3.9 s split by `\n\x0b\n`, a
-# 2,000-column table 1.3 s, a run of `*a` 0.5 s, nested `<div>` 0.45 s, and a run of `<`
-# 0.4 s. Review B of #347 measured 16.99 s for the `[` run at the earlier 256 KiB bound.
-# KPress keeps each render by path and object ID, so a reload does not pay it again. The
-# in-app pinned viewer renders larger files: its Markdown is the served repository's.
+# request's author writes it, so _DOCUMENT_WORK_MS below bounds what its render costs;
+# this cap bounds the document the estimate reads and the page it makes. Review B of #347
+# measured 16.99 s for a run of `[` at the earlier 256 KiB cap. KPress keeps each render
+# by path and object ID, so a reload does not pay it again. The in-app pinned viewer
+# renders larger files: its Markdown is the served repository's.
 _DOCUMENT_BYTES: Final = 64 * 1024
-# The `[` a rendered document may hold; one with more opens as Source. The render costs
-# about 60 µs per `[`, closed or not, in one block or many (same measurement: 16 KiB of `[`
-# took 1.0 s, 32 KiB 2.0 s, 64 KiB 4.1 s, and 6,553 `[a](b.md)` links 0.35 s), so the
-# whole document's count bounds it, which no per-block count does. 16,384 is about 1 s, and
-# above the 6,553 shortest links a 64 KiB file holds.
-_DOCUMENT_OPENERS: Final = 16 * 1024
+# The whole document's render work a page may spend, as an estimate in milliseconds; a
+# document estimated above it opens as Source. Measured 2026-11-11 with `_render_markdown`
+# on one thread, three adjacent runs per shape with the fastest kept, load average 1.9 to
+# 4.7: ordinary prose costs 0.5 µs a byte (24 ms at 64 KiB), but what the renderer spends
+# grows with constructs a pull request's author can repeat, linearly in all of them but
+# task lists, and splitting the text into paragraphs does not lower it. So the estimate
+# charges each construct the most it was measured to cost, over the whole document:
+# - per `[` whose next bracket on its line is not a `]`, 280 µs (followed by inline
+#   content: `[*a*a` took 1.8 s for 6,554, as much with one `]` at the end, and `[<a`
+#   168 µs each);
+# - per `[` its line closes before another opens, 60 µs (a bare run 60 µs each,
+#   `[*a*a]` 44 µs, a line of prose with a link 0.1 ms);
+# - per `$`, 90 µs (inline math, 2.7 s for 32,768);
+# - per `|`, 40 µs (a table, 1.2 to 1.3 s for 32,768 at any width);
+# - per line that starts a block (a heading, list item, quote, table row, setext rule, or
+#   container), 55 µs (16,384 headings 0.73 s, list items 0.88 s);
+# - per byte of fenced code that names a language, 15 µs (KPress highlights it: 64 KiB
+#   of Python 0.9 s, of YAML 0.49 s, of an unknown language 18 ms);
+# - per other inline delimiter, 20 µs (`*a` runs 0.48 s, autolinks 0.29 s, code spans
+#   0.35 s).
+# Task-list items cost more than linearly (1,024 took 0.19 s, 2,048 0.55 s, 8,192 6.4 s),
+# so at most _TASK_ITEMS are admitted, each charged 190 µs. The worst admitted render of
+# 41 shapes, each grown to the bound: 373 ms (inline math), then 369 ms (list items),
+# 366 ms (ordered items), and 353 ms (a wide table); every mix tried stayed under it
+# (`[*a*a` with one `]` at the end, 350 ms), and 64 KiB of prose with a link on each line
+# renders in 107 ms. Of 447 local Markdown files up to 64 KiB, from nine repositories,
+# one opens as Source: 45 KiB of highlighted YAML, estimated 848 ms, which rendered in
+# 211 ms. Before, 16,384 `[` admitted a 64 KiB task list that took 6.4 s, inline math
+# 2.7 s, and a table 1.2 s. The estimate covers the constructs measured; it is not a
+# deadline, which only a renderer that can be stopped could give.
+_DOCUMENT_WORK_MS: Final = 400
+_TASK_ITEMS: Final = 1024
+_UNPAIRED_OPENER_US: Final = 280
+_PAIRED_OPENER_US: Final = 60
+_HEAVY_US: Final = ((b"$", 90), (b"|", 40))
+_DELIMITERS: Final = b"*_`~<>!]&:^=+{}"
+_DELIMITER_US: Final = 20
+_BLOCK_LINE_US: Final = 55
+_HIGHLIGHTED_BYTE_US: Final = 15
+_TASK_ITEM_US: Final = 190
+_BYTE_US: Final = 0.5
+_BLOCK_LINE: Final = re.compile(rb"^[ \t]*(?:[#>|=+*:-]|[0-9]+[.)])", re.MULTILINE)
+_TASK_ITEM: Final = re.compile(rb"^[ \t]*(?:[-*+]|[0-9]+[.)])[ \t]+\[[ xX]\]", re.MULTILINE)
+_FENCE: Final = re.compile(rb"^[ \t]{0,3}(`{3,}|~{3,})[ \t]*([^\s`]*)", re.MULTILINE)
+# A `[` whose line holds a `]` before any other bracket. The lookahead stops at the next
+# bracket, so each scan ends where the next begins, and the whole count is linear.
+_PAIRED_OPENER: Final = re.compile(rb"\[(?=[^\[\]\n]*\])")
+# Full-file renders at once in one server: each holds the interpreter for up to the bound
+# above, so a second would only slow both and every other request. A request finds one
+# running and waits for it, rather than opening as Source.
+_DOCUMENT_RENDERS: Final = 1
 # The images one document keeps; the rest become links to their own pages. Each kept image
 # is one request to this route, and a browser requests every unsized lazy image of a page
 # at once (review B of #347 counted 18,216 of 18,216 in headless Chrome). Measured
@@ -396,6 +441,87 @@ def _render_markdown(body: bytes, path: GitPath, oid: str, snapshot: Snapshot) -
     return str(kpress_adapter.inert_render(rendered, rewrite_local=rewrite)["html"])
 
 
+def _highlighted_bytes(body: bytes) -> int:
+    """Bytes inside fenced code blocks that name a language, which KPress highlights."""
+    total = 0
+    # The open fence's marker, where its content starts, and whether it names a language.
+    opened: tuple[bytes, int, bool] | None = None
+    for match in _FENCE.finditer(body):
+        marker, info = match.group(1), match.group(2)
+        if opened is None:
+            opened = (marker, match.end(), bool(info))
+        elif marker[0] == opened[0][0] and len(marker) >= len(opened[0]) and not info:
+            if opened[2]:
+                total += match.start() - opened[1]
+            opened = None
+    if opened is not None and opened[2]:
+        total += len(body) - opened[1]
+    return total
+
+
+def _document_work_ms(body: bytes) -> float:
+    """The render work *body* may cost, at the most each construct was measured to cost.
+
+    Infinite past :data:`_TASK_ITEMS` task-list items, whose cost grows faster than their
+    count. Blocking and linear in *body*; run it off the event loop with the render.
+    """
+    tasks = len(_TASK_ITEM.findall(body))
+    if tasks > _TASK_ITEMS:
+        return float("inf")
+    work = _BYTE_US * len(body) + _TASK_ITEM_US * tasks
+    paired = len(_PAIRED_OPENER.findall(body))
+    work += _PAIRED_OPENER_US * paired + _UNPAIRED_OPENER_US * (body.count(b"[") - paired)
+    work += sum(cost * body.count(char) for char, cost in _HEAVY_US)
+    work += _DELIMITER_US * sum(body.count(bytes((char,))) for char in _DELIMITERS)
+    work += _BLOCK_LINE_US * len(_BLOCK_LINE.findall(body))
+    work += _HIGHLIGHTED_BYTE_US * _highlighted_bytes(body)
+    return work / 1000
+
+
+def _render_document(body: bytes, path: GitPath, oid: str, snapshot: Snapshot) -> str | None:
+    """The inert document, or ``None`` when its work is over the bound or it cannot render."""
+    if _document_work_ms(body) > _DOCUMENT_WORK_MS:
+        return None
+    try:
+        return _render_markdown(body, path, oid, snapshot)
+    except (kpress_adapter.KPressRenderError, kpress_adapter.KPressInvalidRequestError):
+        return None
+
+
+@dataclass(eq=False, slots=True)
+class _Documents:
+    """One event loop's document renders: one load per document, at most a few at once."""
+
+    loads: LoadingCache[tuple[Snapshot, GitPath, str], str | None]
+    renders: asyncio.Semaphore
+
+
+# Per event loop, since a semaphore belongs to the loop that first waits on it.
+_DOCUMENTS: WeakKeyDictionary[asyncio.AbstractEventLoop, _Documents] = WeakKeyDictionary()
+
+
+async def _document(snapshot: Snapshot, path: GitPath, oid: str, body: bytes) -> str | None:
+    """Render *body* once however many requests ask for it, waiting for a free render.
+
+    KPress keeps the finished render by path and object ID, so nothing is kept here. Each
+    request reads its own blob first: a load shared with another request must not use a
+    tree that request closes when it ends.
+    """
+    loop = asyncio.get_running_loop()
+    documents = _DOCUMENTS.get(loop)
+    if documents is None:
+        documents = _DOCUMENTS[loop] = _Documents(
+            LoadingCache(max_values=0), asyncio.Semaphore(_DOCUMENT_RENDERS)
+        )
+    renders = documents.renders
+
+    async def load() -> str | None:
+        async with renders:
+            return await asyncio.to_thread(_render_document, body, path, oid, snapshot)
+
+    return await documents.loads.get((snapshot, path, oid), load)
+
+
 def _page(
     snapshot: Snapshot,
     path: GitPath,
@@ -647,15 +773,7 @@ async def _file(
         )
     markdown = ext in _MARKDOWN and size <= _DOCUMENT_BYTES
     if mode == "document" and markdown:
-        body = await tree.read_blob(path)
-        try:
-            document = (
-                await asyncio.to_thread(_render_markdown, body, path, entry.oid, snapshot)
-                if body.count(b"[") <= _DOCUMENT_OPENERS
-                else None
-            )
-        except (kpress_adapter.KPressRenderError, kpress_adapter.KPressInvalidRequestError):
-            document = None
+        document = await _document(snapshot, path, entry.oid, await tree.read_blob(path))
         if document is not None:
             return _page(snapshot, path, document, markdown=True, document=True)
         # Its Source, with no Document link to come back to.

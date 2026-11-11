@@ -534,8 +534,8 @@ def test_a_markdown_document_keeps_its_references_in_its_tree(
     assert 'href="#user-content-readme"' in content
     source = client.get(at + _wire("README.md") + "&mode=source").text
     assert 'aria-current="page">Source' in source and "![logo](logo.png)" in source
-    # A document with more `[` than the render budget opens as its Source.
-    monkeypatch.setattr(pull_snapshot, "_DOCUMENT_OPENERS", 5)
+    # A document whose render work is over the bound opens as its Source.
+    monkeypatch.setattr(pull_snapshot, "_DOCUMENT_WORK_MS", 0.001)
     over = client.get(at + _wire("README.md")).text
     assert "<pre><code># Readme" in over and ">Document</a>" not in over
 
@@ -650,3 +650,116 @@ def test_a_pages_images_repeat_no_record_read_or_revision_resolution(
         answer = client.get(image)
         assert answer.status_code == 200 and answer.content.startswith(b"\x89PNG")
     assert (len(reads), len(opens)) == (1, 1)
+
+
+# ── Bounded Markdown documents ───────────────────────────────────
+
+_CAP = pull_snapshot._DOCUMENT_BYTES  # pyright: ignore[reportPrivateUsage]
+
+
+def _work(body: bytes) -> float:
+    return pull_snapshot._document_work_ms(body)  # pyright: ignore[reportPrivateUsage]
+
+
+def _repeat(unit: bytes, head: bytes = b"") -> bytes:
+    return (head + unit * (_CAP // len(unit) + 1))[:_CAP]
+
+
+@pytest.mark.parametrize(
+    "separator", [b"\n\x0b\n", b"\n\x0c\n", b"\n\n", b"\n \t\n"], ids=["vt", "ff", "blank", "ws"]
+)
+def test_the_render_bound_counts_the_whole_document(separator: bytes) -> None:
+    """Review C1 on #348: no line, blank or not, resets the count.
+
+    The old per-block rule reset on any line ``bytes.strip`` emptied, which ``\\x0b`` and
+    ``\\x0c`` lines are, though CommonMark keeps them inside the paragraph.
+    """
+    body = separator.join([b"[" * 200] * 40) + b"x"
+    assert _work(body) > pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        _repeat(b"["),
+        _repeat(b"$a$ "),
+        _repeat(b"|a|b|\n", b"|a|b|\n|-|-|\n"),
+        _repeat(b"- [ ] a\n"),
+        _repeat(b"# h\n"),
+        _repeat(b"- a\n"),
+        _repeat(b"def f(a, b):\n    return [a * 2]\n", b"```python\n"),
+        _repeat(b"*a"),
+    ],
+    ids=["brackets", "math", "table", "tasks", "headings", "list", "python", "emphasis"],
+)
+def test_each_measured_costly_shape_at_the_cap_opens_as_source(body: bytes) -> None:
+    """Review A4: what took 0.5 to 6.4 s at 64 KiB is refused before it renders."""
+    assert len(body) == _CAP
+    assert _work(body) > pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
+    path = GitPath.from_display("README.md")
+    snapshot = Snapshot(7, "a" * 40, "b" * 40, "s", "head")
+    assert pull_snapshot._render_document(body, path, "c" * 40, snapshot) is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_ordinary_documents_are_within_the_render_bound() -> None:
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    prose = b"Ordinary prose line with words, `code`, and a [link](a.md).\n" * 2000
+    for body in (
+        prose[:_CAP],
+        (root / "README.md").read_bytes()[:_CAP],
+        (root / "CHANGELOG.md").read_bytes()[:_CAP],
+        (root / "docs" / "reviewing-pull-requests.md").read_bytes()[:_CAP],
+    ):
+        assert _work(body) <= pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
+
+
+def test_overlapping_documents_share_one_render_and_wait_for_the_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Review B5 on #348: a busy render no longer turns a document into its Source.
+
+    One full-file render runs at a time; a request for the same document joins it, and one
+    for another waits for it. Each estimate runs in the worker thread with its render
+    (review D4).
+    """
+    import asyncio
+    import threading
+
+    renders: list[str] = []
+    estimated_off_loop: list[bool] = []
+    running = 0
+    most = 0
+    real_work = pull_snapshot._document_work_ms  # pyright: ignore[reportPrivateUsage]
+
+    def work(body: bytes) -> float:
+        estimated_off_loop.append(threading.current_thread() is not threading.main_thread())
+        return real_work(body)
+
+    def render(body: bytes, _path: GitPath, oid: str, _snapshot: Snapshot) -> str:
+        nonlocal running, most
+        running += 1
+        most = max(most, running)
+        renders.append(oid)
+        threading.Event().wait(0.05)
+        running -= 1
+        return f"<p>{body.decode()}</p>"
+
+    monkeypatch.setattr(pull_snapshot, "_document_work_ms", work)
+    monkeypatch.setattr(pull_snapshot, "_render_markdown", render)
+    snapshot = Snapshot(7, "a" * 40, "b" * 40, "s", "head")
+    path = GitPath.from_display("README.md")
+
+    async def run() -> list[str | None]:
+        return list(
+            await asyncio.gather(
+                pull_snapshot._document(snapshot, path, "1" * 40, b"one"),  # pyright: ignore[reportPrivateUsage]
+                pull_snapshot._document(snapshot, path, "1" * 40, b"one"),  # pyright: ignore[reportPrivateUsage]
+                pull_snapshot._document(snapshot, path, "2" * 40, b"two"),  # pyright: ignore[reportPrivateUsage]
+            )
+        )
+
+    assert asyncio.run(run()) == ["<p>one</p>", "<p>one</p>", "<p>two</p>"]
+    assert sorted(renders) == ["1" * 40, "2" * 40] and most == 1
+    assert estimated_off_loop and all(estimated_off_loop)
