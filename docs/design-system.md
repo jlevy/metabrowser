@@ -1100,8 +1100,8 @@ Its freshness copy names GitHub CLI and the fetch age.
 The Checks tab uses the same heading and status badges for check runs and status
 contexts. A check row is its status badge, its plain name, its action, and its
 description. The action says where it opens: **View action on GitHub** for a GitHub
-Actions run, **View on GitHub** for another github.com page, and **View details** for
-the check’s own site, and its accessible name adds the check’s name.
+Actions run, **View on GitHub** for another page on a GitHub host, and **View details**
+for the check’s own site, and its accessible name adds the check’s name.
 A check whose address is not http(s) has no action.
 A run’s app is its description, except GitHub Actions beside an Actions link, which
 already says so. Use a shared small gray spinner beside each active section’s status
@@ -1157,7 +1157,7 @@ Until its render arrives a text shows as plain text in the same face and size.
 | Opened, updated, commented | `metabrowser.formatAge` with relative style, exact time in the tooltip | [Age](#age); condensed navigation uses compact style |
 | File of a review comment | Sans, bold, `--nav-font-size` | The diff bar’s path typography. A path is chrome |
 | Link, including a check’s action off GitHub | `--link`, underline on hover, the focus ring | As the freshness row’s link is, so a check’s action never reads as the muted description after it |
-| GitHub action: View on GitHub, a check’s action on GitHub, a conversation commit hash | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows, and the same wherever the page links to GitHub |
+| GitHub action: View on GitHub, a check’s action on GitHub, a conversation commit hash | `.github-pull-external-action`: `--muted`, with the leading GitHub mark in the same ink; `--link` on hover and focus | Quiet beside the metadata it follows, and the same in each of the three. A check is GitHub’s by the rule that gives a link the GitHub mark, so its look and its mark agree |
 | Conversation commit hash | `.git-commit-sha` at `--ui-small-font-size`, its row’s size | A [revision](#git-commit-summary) sits one step below the sans beside it, but below this 12px row the ramp’s next step is `--micro-font-size`, 10px |
 | Browse code, and a review comment’s file | [Text action](#control-families): a link, or `.github-pull-text-action` on a button where it first serves the pull request’s head | The look of the Link row in both forms, so moving the pin never looks like something else |
 | Section title | [`.section-heading`](#section-headings) |  |

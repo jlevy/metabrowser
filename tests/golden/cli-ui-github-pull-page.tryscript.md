@@ -44,11 +44,13 @@ repository, so both sides are bare branch names.
 The last lines show which links a rendered text keeps (made absolute against the pull
 request’s github.com page, http and https only), and the `/view/` address a review
 comment’s file opens at.
-`checkActions` is where each check’s link opens, for the recorded checks and three the
-session adds: a GitHub Actions run says **View action on GitHub**, another github.com
-page **View on GitHub**, and a check’s own site **View details**; each link’s accessible
-name adds its check’s name; an address a page may not follow, here `ftp:`, has no link;
-and a run’s app is its description unless an Actions link already says so.
+`checkActions` is where each check’s link opens, for the recorded checks and six the
+session adds: a GitHub Actions run says **View action on GitHub**, another page on a
+host the shell marks as GitHub’s, here a gist, **View on GitHub**, and a check’s own
+site **View details**, as does a github.com address with a port or credentials, which
+the shell does not mark; each link’s accessible name adds its check’s name; an address a
+page may not follow, here `ftp:`, has no link; and a run’s app is its description unless
+an Actions link already says so.
 Each check line of a paint gives its status, name, description, and link the same way.
 `hunks` is what a review comment shows of its diff hunk, which ends at the commented
 line: the last eight lines, or back to the start of a multi-line comment’s range, with
@@ -987,6 +989,31 @@ $ node tests/dom/github-pull-page-session.js
       "followed": "https://evil.example/x"
     }
   ],
+  "wire": "g1-c3Jj/g1-YXBwLnR4dA",
+  "pageDefense": "<p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<a href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span>image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n",
+  "filesChanged": [
+    "nothing open yet: mount",
+    "open on the record's comparison: keep",
+    "open on an older head: offer",
+    "no comparison in the record: unavailable"
+  ]
+}
+? 0
+```
+
+The session is printed in two parts, by `github-pull-page-session.js` and by
+`github-pull-page-second-session.js`, which runs the same session whole, because
+tryscript matches a command’s expected output as one regular expression, and the
+transcript in one block is larger than V8 compiles.
+The second part is what the Changes tab says when the comparison is unavailable, a
+server with no store among them, the page on a checkout, the review comments’ hunks, and
+the reader’s place.
+A checkout’s page has no pin, so no Browse code and no switch, and it
+says only when the checkout’s is the pull request’s head.
+
+```console
+$ node tests/dom/github-pull-page-second-session.js
+{
   "checkActions": [
     {
       "name": "tests (3.13)",
@@ -1029,6 +1056,36 @@ $ node tests/dom/github-pull-page-session.js
       }
     },
     {
+      "name": "gist",
+      "detail": "Gist bot",
+      "action": {
+        "kind": "github",
+        "href": "https://gist.github.com/octo/abc",
+        "label": "View on GitHub",
+        "name": "View on GitHub: gist"
+      }
+    },
+    {
+      "name": "proxied",
+      "detail": "Proxy",
+      "action": {
+        "kind": "external",
+        "href": "https://github.com:8443/octo/demo/actions/runs/9",
+        "label": "View details",
+        "name": "View details: proxied"
+      }
+    },
+    {
+      "name": "credentialed",
+      "detail": "Bot",
+      "action": {
+        "kind": "external",
+        "href": "https://bot@github.com/octo/demo/runs/5",
+        "label": "View details",
+        "name": "View details: credentialed"
+      }
+    },
+    {
       "name": "docs/readthedocs.org:demo",
       "detail": "Read the Docs build succeeded!",
       "action": {
@@ -1044,31 +1101,6 @@ $ node tests/dom/github-pull-page-session.js
       "action": null
     }
   ],
-  "wire": "g1-c3Jj/g1-YXBwLnR4dA",
-  "pageDefense": "<p>Rebased on <code>topic</code>; see <a href=\"https://github.com/octo/demo/pull/docs/new.md\" target=\"_blank\" rel=\"noopener noreferrer\">the docs</a>.</p>\n\n<a href=\"https://example.com/badge.png\" target=\"_blank\" rel=\"noopener noreferrer\">build badge</a> <span>image</span>\n<a href=\"https://example.com/x\" target=\"_blank\" rel=\"noopener noreferrer\">x</a>\n\n<div>video</div><span>copy</span><div>fake dialog</div><p>styled</p>\n",
-  "filesChanged": [
-    "nothing open yet: mount",
-    "open on the record's comparison: keep",
-    "open on an older head: offer",
-    "no comparison in the record: unavailable"
-  ]
-}
-? 0
-```
-
-The session is printed in two parts, by `github-pull-page-session.js` and by
-`github-pull-page-second-session.js`, which runs the same session whole, because
-tryscript matches a command’s expected output as one regular expression, and the
-transcript in one block is larger than V8 compiles.
-The second part is what the Changes tab says when the comparison is unavailable, a
-server with no store among them, the page on a checkout, the review comments’ hunks, and
-the reader’s place.
-A checkout’s page has no pin, so no Browse code and no switch, and it
-says only when the checkout’s is the pull request’s head.
-
-```console
-$ node tests/dom/github-pull-page-second-session.js
-{
   "filesUnavailable": {
     "fetch_failed": {
       "files": "Changes are unavailable: the pull request's base could not be compared with its head.",

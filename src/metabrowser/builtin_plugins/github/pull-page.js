@@ -237,8 +237,9 @@ const TRUNCATED = Object.freeze({
 
 /**
  * Where a check's details open, decided once for its link text, its look and its icon.
- * `actions` is a GitHub Actions run, `github` any other page on github.com, and `external`
- * the check's own site. `name` is the link's accessible name: its text, then the check's.
+ * `actions` is a GitHub Actions run, `github` any other page the shell marks as GitHub's,
+ * and `external` the check's own site. `name` is the link's accessible name: its text,
+ * then the check's.
  *
  * @typedef {{kind: "actions" | "github" | "external", href: string, label: string, name: string}} CheckAction
  */
@@ -672,8 +673,20 @@ const CHECK_ACTION_LABELS = {
   github: "View on GitHub",
   external: "View details",
 };
-// GitHub serves a run's job page under the repository's /actions/ path.
+// GitHub serves a run's job page under the repository's /actions/ path on github.com.
 const ACTIONS_PATH = /^\/[^/]+\/[^/]+\/actions\//;
+// The hosts whose links the shell marks with GitHub's icon: `githubHosts` and
+// `githubDestination` in static/plugin-sdk-views.js, which also leave out an address with
+// a port or credentials. A check is GitHub's by the same rule, so its look and its mark
+// agree; the Checks session asserts that they do for each kind of address.
+const GITHUB_HOSTS = new Set([
+  "github.com",
+  "www.github.com",
+  "cli.github.com",
+  "docs.github.com",
+  "gist.github.com",
+  "api.github.com",
+]);
 const ACTIONS_APP = "GitHub Actions";
 
 /**
@@ -690,12 +703,12 @@ function checkAction(name, url, base) {
   if (href === null) {
     return null;
   }
-  const { hostname, pathname } = new URL(href);
+  const { hostname, pathname, port, username, password } = new URL(href);
   /** @type {CheckAction["kind"]} */
   const kind =
-    hostname !== "github.com" && hostname !== "www.github.com"
+    !GITHUB_HOSTS.has(hostname) || port || username || password
       ? "external"
-      : ACTIONS_PATH.test(pathname)
+      : (hostname === "github.com" || hostname === "www.github.com") && ACTIONS_PATH.test(pathname)
         ? "actions"
         : "github";
   const label = CHECK_ACTION_LABELS[kind];
