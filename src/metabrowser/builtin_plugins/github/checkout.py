@@ -319,10 +319,13 @@ _COMPARISON_WANTED: set[str] = set()
 
 
 def _checkout_busy(coordinator: RefreshCoordinator, repository: CheckoutRepository) -> bool:
-    """Whether any pull job of this checkout, a background one included, is queued or running."""
+    """Whether a reader's pull job of this checkout is queued or running.
+
+    A background job is not one: it gives way at the checkout's turn, and the optional
+    comparison waiting there as a reader's work preempts it (:class:`StoreTurn`).
+    """
     prefix = _job_prefix(repository)
-    jobs = (*_PULL_JOBS, *_checkout_state(repository).background)
-    return any(job.startswith(prefix) and coordinator.running(job) for job in jobs)
+    return any(job.startswith(prefix) and coordinator.running(job) for job in _PULL_JOBS)
 
 
 def comparison_preparing(
@@ -386,10 +389,13 @@ def start_pull_refresh(
     """Start or join a checkout's pull refresh; only *comparison* may acquire a store.
 
     With *eager_revision* the start is optional: the comparison of that cached record
-    revision, prepared in a store already attached, and only while no other pull job of
-    the checkout is queued or running. Anything else is ``not_due``. Every other start is
-    a reader's, and ends the optional job: one for the same pull request promotes it, and
-    cancels its idle phase when it asks for metadata; one for another cancels it.
+    revision, prepared in a store already attached, and only while no reader's pull job of
+    the checkout is queued or running. Anything else is ``not_due``. A background job of
+    another pull request does not stop it, and gives way to it at the store; one of the
+    same pull request, which fetches and compares, is promoted and joined instead. Every
+    other start is a reader's, and ends the optional job: one for the same pull request
+    promotes it, and cancels its idle phase when it asks for metadata; one for another
+    cancels it.
 
     A *background* start, a prefetch's, is a metadata refresh that counts toward no bound,
     takes no network slot, and gives way at the checkout's turn (:class:`StoreTurn`); it
@@ -404,6 +410,12 @@ def start_pull_refresh(
         state.eager = eager = None
     if eager_revision is not None:
         _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
+        if key in state.background and coordinator.running(key):
+            # The open pull request's own prefetch. With a store its read fetches and
+            # compares, so it is promoted to the reader's, which nothing preempts.
+            state.background.discard(key)
+            _PULL_JOBS.add(key)
+            return "joined"
         if (
             eager is not None
             or state.pulls.git_dir is None
@@ -787,10 +799,11 @@ async def _pull_job(
     state = _checkout_state(repository)
     eager = state.eager if state.eager is not None and state.eager.number == number else None
     try:
-        # An idle job starts only on a quiet checkout, so it has the turn at once, and it
-        # holds no network slot. Waiting at the store keeps none either. Promotion moves
-        # an idle job's place in the store queue without starting another producer. A
-        # background job gives way to any other and is cancelled when one waits.
+        # An idle job starts only when no reader's job runs, so it has the turn at once or
+        # once a background holder unwinds, and it holds no network slot. Waiting at the
+        # store keeps none either. Promotion moves an idle job's place in the store queue
+        # without starting another producer. A background job gives way to any other,
+        # an idle one included, and is cancelled when one waits.
         async with state.turn(
             lambda: eager is None or eager.mode == "foreground",
             background=lambda: key in state.background,

@@ -607,6 +607,72 @@ def test_a_readers_request_never_waits_for_idle_comparison_work(
 
 
 @pytest.mark.usefixtures("fresh_checkout_state")
+@pytest.mark.parametrize("prefetched", [12, 10])
+def test_a_running_prefetch_does_not_cost_the_open_pull_request_its_idle_comparison(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin, prefetched: int
+) -> None:
+    """Review A4: a background job is no reader's, so it does not make the checkout busy.
+
+    Before, the open pull request's idle comparison was ``not_due`` while the Pulls panel's
+    prefetch ran, and its page, which asks once a record revision, never asked again. Now
+    another pull request's prefetch gives way to it at the store, and the open one's own
+    prefetch, which fetches and compares, is promoted to the reader's.
+    """
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github.served_pull import ServedPull
+    from metabrowser.mirror_refresh import RefreshCoordinator
+
+    events: list[str] = []
+    repository, started, release = _idle_job_stand(tmp_path, monkeypatch, pull_origin, events)
+    prefetching = asyncio.Event()
+
+    async def refresh(companion: ServedPull) -> None:
+        events.append(f"refresh {companion.number}")
+        prefetching.set()
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            events.append(f"refresh {companion.number} cancelled")
+            raise
+
+    monkeypatch.setattr(ServedPull, "refresh", refresh)
+
+    def start(number: int, **kwargs: Any) -> str:
+        return checkout_module.start_pull_refresh(coordinator, repository, number, **kwargs)
+
+    async def run() -> None:
+        state = checkout_module._checkout_state(repository)  # pyright: ignore[reportPrivateUsage]
+        key = checkout_module.checkout_job_key(repository, prefetched)
+        try:
+            assert start(prefetched, background=True) == "started"
+            await asyncio.wait_for(prefetching.wait(), 5)
+            if prefetched == 10:
+                assert start(10, comparison=True, eager_revision="a" * 64) == "joined"
+                assert key not in state.background, "the open pull request's prefetch counts"
+                coordinator.cancel(key)
+            else:
+                assert start(10, comparison=True, eager_revision="a" * 64) == "started"
+                await asyncio.wait_for(started.wait(), 5)
+                assert checkout_module.comparison_preparing(coordinator, repository, 10)
+                release.set()
+            await coordinator.drain(timeout_s=5)
+        finally:
+            release.set()
+            await coordinator.aclose()
+
+    coordinator = RefreshCoordinator()
+    asyncio.run(run())
+    assert (
+        events
+        == {
+            # The idle job's wait at the store preempts the other pull request's prefetch.
+            12: ["refresh 12", "refresh 12 cancelled", "idle 10 starts", "idle 10 ends"],
+            10: ["refresh 10", "refresh 10 cancelled"],
+        }[prefetched]
+    )
+
+
+@pytest.mark.usefixtures("fresh_checkout_state")
 def test_idle_comparison_is_never_queued_with_or_ahead_of_a_readers_job(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
 ) -> None:
