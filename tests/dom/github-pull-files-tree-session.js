@@ -313,6 +313,9 @@ async function controllerStory(tree) {
   const reads = [];
   const requests = [];
   const jumps = [];
+  // Each jump says whether a walk will settle there, and a cancelled walk says so.
+  const settling = [];
+  let cancelled = 0;
   const opens = [];
   let model = null;
   let nextTimer = 0;
@@ -352,9 +355,13 @@ async function controllerStory(tree) {
       markMuted() {},
       page: () => ({
         fileForPath: () => ({ kind: "file" }),
-        showFile: (path) => {
+        showFile: (path, how) => {
           jumps.push(path);
+          settling.push(how?.settling === true);
           return { kind: "jumped" };
+        },
+        walkCancelled: () => {
+          cancelled += 1;
         },
       }),
       open: (route) => opens.push(route),
@@ -420,6 +427,9 @@ async function controllerStory(tree) {
   if (opens.length !== 1 || !opens[0].replace || !opens[0].jumped) {
     throw Error("a key's stop must replace one entry");
   }
+  if (settling.length === 0 || settling.some((will) => !will) || cancelled !== 0) {
+    throw Error("a walk's jumps will settle, and its stop cancels nothing");
+  }
   story.push({
     step: "held keys jump every file but replace history once on release",
     jumps: jumps.length,
@@ -463,6 +473,9 @@ async function controllerStory(tree) {
   if (controller.snapshot().walking !== null || opens.length !== 0) {
     throw Error("a later route must cancel the old walk");
   }
+  if (cancelled !== 1) {
+    throw Error("a cancelled walk must tell the page it will not settle");
+  }
   look("a later route cancels a pending file walk");
   startWalk();
   controller.setShown(false);
@@ -470,6 +483,15 @@ async function controllerStory(tree) {
   if (controller.snapshot().walking !== null || opens.length !== 0) {
     throw Error("a hidden panel must cancel the old walk");
   }
+  if (cancelled !== 2) {
+    throw Error("hiding the panel must tell the page the walk will not settle");
+  }
+  startWalk();
+  controller.activateAnchor();
+  if (cancelled !== 2 || opens.length !== 1) {
+    throw Error("Enter during a walk opens the file, which the page then owns");
+  }
+  opens.length = 0;
   look("hiding the panel cancels a pending file walk");
   controller.collapse();
   if (timers.size !== 0) {

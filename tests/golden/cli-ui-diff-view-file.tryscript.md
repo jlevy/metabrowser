@@ -3,6 +3,8 @@ cwd: ../..
 sandbox: false
 env:
   TZ: "UTC"
+patterns:
+  STORE: '[0-9a-f]{16}'
 ---
 # Golden Test: View File From a Diff
 
@@ -23,6 +25,15 @@ goes where the answer says.
 A switch the server does not make says why under the bar, and the page stays.
 One switch runs at a time, and a page that is leaving after one asks nothing more until
 the browser brings it back; a diff unmounted before the answer goes nowhere.
+
+A pull request’s Changes never switches the pin.
+Its comparison names the route that opens a file at either end of it,
+`GET github/pull-snapshot`, and every side at another commit than the page shows is a
+link there, on a mirror and beside a checkout alike.
+A side at the commit the page shows keeps its `/view/` link.
+A side whose commit is not that end of the comparison has no control.
+Beside a checkout the page has no pin, and the diff plugin imports the route codec its
+shell did not load.
 
 This browserless session loads the production `builtin_plugins/diff/index.js` with its
 modules and `static/navigation.js`, and plays the server’s side from
@@ -244,29 +255,90 @@ $ node tests/dom/diff-view-file-session.js
       }
     },
     {
-      "step": "a pull request's Files changed opens the merge base and the head",
+      "step": "a pull request's Changes at its head opens the base on its revision page",
       "requests": [
-        "GET /api/plugin/diff/comparison?left=0dcf612c09184fad5b83f7c80e65dd3a6fb48e99&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base"
+        "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
       ],
       "bars": {
         "M README.md": [
-          "[View at base] button[type=button] · Switch to a5232ab93056 and open README.md",
+          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-UkVBRE1FLm1k · Open README.md at a5232ab93056 without changing this page's commit",
           "[View file] link /view/g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b5eb94, the commit this page shows"
         ],
         "A added.txt": [
           "[View file] link /view/g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b5eb94, the commit this page shows"
         ],
         "D gone.txt": [
-          "[View at base] button[type=button] · Switch to a5232ab93056 and open gone.txt"
+          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-Z29uZS50eHQ · Open gone.txt at a5232ab93056 without changing this page's commit"
         ],
         "M latin1-�.txt": [
-          "[View at base] button[type=button] · Switch to a5232ab93056 and open latin1-�.txt",
+          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at a5232ab93056 without changing this page's commit",
           "[View file] link /view/g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b5eb94, the commit this page shows"
         ],
         "M link": [],
         "R100 src/old_name.py → src/new_name.py": [
-          "[View at base] button[type=button] · Switch to a5232ab93056 and open src/old_name.py",
+          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-c3Jj%2Fg1-b2xkX25hbWUucHk · Open src/old_name.py at a5232ab93056 without changing this page's commit",
           "[View file] link /view/g1-c3Jj/g1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b5eb94, the commit this page shows"
+        ],
+        "M vendor/lib": []
+      }
+    },
+    {
+      "step": "a revision page is a link the browser follows",
+      "requests": [],
+      "prevented": false,
+      "follows": "/api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-UkVBRE1FLm1k"
+    },
+    {
+      "step": "beside a checkout both sides open on their revision page",
+      "requests": [
+        "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
+      ],
+      "modules": [
+        "/static/git-path.js"
+      ],
+      "codecLoaded": true,
+      "bars": {
+        "M README.md": [
+          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-UkVBRE1FLm1k · Open README.md at a5232ab93056 without changing this page's commit",
+          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b5eb94 without changing this page's commit"
+        ],
+        "A added.txt": [
+          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b5eb94 without changing this page's commit"
+        ],
+        "D gone.txt": [
+          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-Z29uZS50eHQ · Open gone.txt at a5232ab93056 without changing this page's commit"
+        ],
+        "M latin1-�.txt": [
+          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at a5232ab93056 without changing this page's commit",
+          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b5eb94 without changing this page's commit"
+        ],
+        "M link": [],
+        "R100 src/old_name.py → src/new_name.py": [
+          "[View at base] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=base&path=g1-c3Jj%2Fg1-b2xkX25hbWUucHk · Open src/old_name.py at a5232ab93056 without changing this page's commit",
+          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-c3Jj%2Fg1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b5eb94 without changing this page's commit"
+        ],
+        "M vendor/lib": []
+      }
+    },
+    {
+      "step": "a side at another commit than its end of the comparison has no control",
+      "requests": [
+        "GET /api/plugin/github/pull-comparison?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&base_policy=merge_base&store=0123456789abcdef"
+      ],
+      "bars": {
+        "M README.md": [
+          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-UkVBRE1FLm1k · Open README.md at 6ac4c8b5eb94 without changing this page's commit"
+        ],
+        "A added.txt": [
+          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-YWRkZWQudHh0 · Open added.txt at 6ac4c8b5eb94 without changing this page's commit"
+        ],
+        "D gone.txt": [],
+        "M latin1-�.txt": [
+          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-bGF0aW4xLekudHh0 · Open latin1-�.txt at 6ac4c8b5eb94 without changing this page's commit"
+        ],
+        "M link": [],
+        "R100 src/old_name.py → src/new_name.py": [
+          "[View file] link /api/plugin/github/pull-snapshot?number=7&left=a5232ab93056074aa3dd87c7b3c28ca84081a6a0&right=6ac4c8b5eb94eecbdb621d629b31066f050c75f1&store=[STORE]&side=head&path=g1-c3Jj%2Fg1-bmV3X25hbWUucHk · Open src/new_name.py at 6ac4c8b5eb94 without changing this page's commit"
         ],
         "M vendor/lib": []
       }

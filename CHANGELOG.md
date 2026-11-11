@@ -9,6 +9,11 @@ All notable changes to Metabrowser are documented here.
   changing the checkout.
   If preparation fails, the tab reports the reason and offers a retry.
 
+- In a pull request’s **Changes**, **View file** and **View at base** open the file at
+  that exact commit on its own page, and no longer switch the commit the server serves.
+  A link stays valid after the pull request moves on, for the last 16 comparisons.
+  A file at the commit a mirror’s page shows still opens in the app’s viewer.
+
 ## 0.12.0
 
 - Configuration and repository-cache contract names use `metabrowser.config` and

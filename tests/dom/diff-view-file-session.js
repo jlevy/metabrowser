@@ -7,7 +7,9 @@
 // and one on a folder, answered a page left open from it. They are recorded in
 // tests/fixtures/diff-view-file-responses.json; tests/test_diff_view_file_session.py
 // replays that story against real stores and fails when the recording drifts, so this
-// session never runs on an envelope a test wrote by hand.
+// session never runs on an envelope a test wrote by hand. The two routes a pull request's
+// page names, its comparison's and the one that opens its revision files, are recorded as
+// the server's own `snapshot_route` spells them, with a stand-in for the store's token.
 //
 // builtin_plugins/diff/index.js loads whole, as the shell loads the plugin, with its
 // modules: it reads the page's pin, validates the document, and mounts the diff view,
@@ -38,8 +40,18 @@ const loadedModules = [];
 // the step is over.
 let viewFileModuleUnavailable = false;
 const UNAVAILABLE = "?unavailable";
+// The route codec a page imports on demand when its shell did not load it: the address a
+// browser asks the server for, which here is the file the server serves at it.
+const CODEC = "/static/git-path.js";
 registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (specifier === CODEC) {
+      loadedModules.push(CODEC);
+      return {
+        url: pathToFileURL(path.join(__dirname, "../../src/metabrowser/static/git-path.js")).href,
+        shortCircuit: true,
+      };
+    }
     const resolved = nextResolve(specifier, context);
     return viewFileModuleUnavailable && resolved.url.endsWith("/diff-view-file.js")
       ? { ...resolved, url: `${resolved.url}${UNAVAILABLE}` }
@@ -593,17 +605,66 @@ async function main() {
   await open(recorded.page, { revision: ids.first, raw: Promise.resolve(recorded.root.body) });
   step("a root commit has only its own side", { bars: bars(container) });
 
-  // The pull-request page names the record's two commits and the view asks for them.
-  const pull = { left: ids.base, right: ids.second, base_policy: "merge_base" };
-  pluginData.set(pluginRoute("diff", "comparison", pull), recorded.pull.body);
-  await open(recorded.page, { comparison: pull });
+  // A pull request's page names the route that opens a file at either end of its
+  // comparison without changing the pin, and its comparison's own route; the server spells
+  // both (tests/test_diff_view_file_session.py records them). The comparison's base is the
+  // merge base, as a pull request's record names it.
+  const routes = recorded.pull_routes;
+  const merged = recorded.pull.body.resolved.left.id;
+  const comparisonTarget = new URL(routes.comparison, "http://metabrowser.invalid");
+  pluginData.set(
+    pluginRoute("github", "pull-comparison", Object.fromEntries(comparisonTarget.searchParams)),
+    recorded.pull.body,
+  );
+  const pullPage = {
+    left: merged,
+    right: ids.second,
+    base_policy: "merge_base",
+    route: routes.comparison,
+    snapshot_route: routes.snapshot,
+  };
+  const noSwitch = () =>
+    assert(
+      !requests.some((request) => request.startsWith("POST")),
+      "a pull request's View file never asks the server to switch its pin",
+    );
+
+  // On a mirror serving the pull request's head, the head is the commit the page shows.
+  // The only page that mounts a two-endpoint comparison is a pull request's, and it always
+  // names these routes, so no comparison here switches the pin.
+  await open(recorded.page, { comparison: pullPage });
+  noSwitch();
   assert(
     control(container, readme, "View at base")
       .getAttribute("data-tip-text")
       .includes(ids.first.slice(0, 12)),
     "the base side is the merge base, not the base branch's tip",
   );
-  step("a pull request's Files changed opens the merge base and the head", {
+  step("a pull request's Changes at its head opens the base on its revision page", {
+    bars: bars(container),
+  });
+  const atBase = control(container, readme, "View at base");
+  step("a revision page is a link the browser follows", {
+    prevented: atBase.click(),
+    follows: atBase.getAttribute("href"),
+  });
+
+  // Beside a checkout the page has no pin and its shell no route codec: both sides open on
+  // their revision page, and the codec is asked for once, with the module.
+  const codec = globalThis.window.MetabrowserGitPath;
+  delete globalThis.window.MetabrowserGitPath;
+  await open(null, { comparison: pullPage });
+  noSwitch();
+  step("beside a checkout both sides open on their revision page", {
+    codecLoaded: globalThis.window.MetabrowserGitPath !== undefined,
+    bars: bars(container),
+  });
+  globalThis.window.MetabrowserGitPath = codec;
+
+  // A side whose commit is not that end of the comparison is not served by the route.
+  await open(null, { comparison: { ...pullPage, left: ids.base } });
+  noSwitch();
+  step("a side at another commit than its end of the comparison has no control", {
     bars: bars(container),
   });
 

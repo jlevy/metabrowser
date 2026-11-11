@@ -1266,6 +1266,57 @@ _FONT_SETS: tuple[dict[str, str], ...] = (
 )
 _DEFAULT_FONT_SET = _FONT_SETS[0]["value"]
 
+# The theme, reading font, and font set a page paints with on its first frame, from the
+# preference cookies (see the index shell below, which explains the keys). It reads the
+# reading width from `window.MetabrowserDocumentWidth`, so a page embeds
+# :data:`_DOCUMENT_WIDTH_SCRIPT` before it. Pages outside the shell that show a reader's
+# content, such as a pull request's revision file, embed both through
+# :func:`page_preference_scripts`.
+_THEME_BOOTSTRAP_SCRIPT = """
+  (function () {
+    function cookie(name) {
+      try {
+        var parts = document.cookie.split("; ");
+        for (var i = 0; i < parts.length; i++) {
+          if (parts[i].indexOf(name + "=") === 0) {
+            return decodeURIComponent(parts[i].slice(name.length + 1));
+          }
+        }
+      } catch (_e) {}
+      return null;
+    }
+    var mode = cookie("metabrowser.themeMode") || "system";
+    if (mode !== "light" && mode !== "dark") mode = "system";
+    var dark = false;
+    try {
+      dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    } catch (_e) {}
+    var resolved = mode === "dark" || (mode === "system" && dark) ? "dark" : "light";
+    var de = document.documentElement;
+    de.setAttribute("data-theme-mode", mode);
+    de.setAttribute("data-theme", resolved);
+    de.setAttribute("data-kpress-resolved-theme", resolved);
+    de.setAttribute("data-prose-font", cookie("metabrowser.proseFont") === "sans" ? "sans" : "serif");
+    var fontSets = __FONT_VALUES__;
+    var fontPref = cookie("metabrowser.interfaceFont");
+    de.setAttribute("data-app-font", fontSets.indexOf(fontPref) >= 0 ? fontPref : "__FONT_DEFAULT__");
+    // Reading width is also pre-paint. The exact browserless-tested state
+    // machine is embedded above this bootstrap, so cookie normalization has
+    // one implementation rather than a second copy of its bounds here.
+    var width = window.MetabrowserDocumentWidth;
+    de.style.setProperty("--doc-max-chars", String(width.readStored(cookie)));
+  })();
+  """.replace("__FONT_VALUES__", _json.dumps([s["value"] for s in _FONT_SETS])).replace(
+    "__FONT_DEFAULT__", _DEFAULT_FONT_SET
+)
+
+
+def page_preference_scripts() -> tuple[str, ...]:
+    """The inline scripts, in order, that apply the reader's display preferences."""
+
+    return (_DOCUMENT_WIDTH_SCRIPT, _THEME_BOOTSTRAP_SCRIPT)
+
+
 # Prefetched-tier scheduling. The chain waits for the first idle callback so it
 # does not compete with the tree render, and the timeout is the floor: on a
 # large tree the main thread is busy for seconds, and a source view that never
@@ -1524,45 +1575,8 @@ async def index(
     # on this host (each folder server lands on its own port). Runs before the
     # stylesheet applies so the page paints in the right theme, reading font, and
     # font set on the first frame (no flash). The keys mirror app.js constants;
-    # the font-set placeholders are filled from _FONT_SETS just below.
-    theme_bootstrap = """<script>
-  (function () {
-    function cookie(name) {
-      try {
-        var parts = document.cookie.split("; ");
-        for (var i = 0; i < parts.length; i++) {
-          if (parts[i].indexOf(name + "=") === 0) {
-            return decodeURIComponent(parts[i].slice(name.length + 1));
-          }
-        }
-      } catch (_e) {}
-      return null;
-    }
-    var mode = cookie("metabrowser.themeMode") || "system";
-    if (mode !== "light" && mode !== "dark") mode = "system";
-    var dark = false;
-    try {
-      dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    } catch (_e) {}
-    var resolved = mode === "dark" || (mode === "system" && dark) ? "dark" : "light";
-    var de = document.documentElement;
-    de.setAttribute("data-theme-mode", mode);
-    de.setAttribute("data-theme", resolved);
-    de.setAttribute("data-kpress-resolved-theme", resolved);
-    de.setAttribute("data-prose-font", cookie("metabrowser.proseFont") === "sans" ? "sans" : "serif");
-    var fontSets = __FONT_VALUES__;
-    var fontPref = cookie("metabrowser.interfaceFont");
-    de.setAttribute("data-app-font", fontSets.indexOf(fontPref) >= 0 ? fontPref : "__FONT_DEFAULT__");
-    // Reading width is also pre-paint. The exact browserless-tested state
-    // machine is embedded above this bootstrap, so cookie normalization has
-    // one implementation rather than a second copy of its bounds here.
-    var width = window.MetabrowserDocumentWidth;
-    de.style.setProperty("--doc-max-chars", String(width.readStored(cookie)));
-  })();
-  </script>"""
-    theme_bootstrap = theme_bootstrap.replace(
-        "__FONT_VALUES__", _json.dumps([s["value"] for s in _FONT_SETS])
-    ).replace("__FONT_DEFAULT__", _DEFAULT_FONT_SET)
+    # _THEME_BOOTSTRAP_SCRIPT fills the font-set placeholders from _FONT_SETS.
+    theme_bootstrap = f"<script>{_THEME_BOOTSTRAP_SCRIPT}</script>"
     app_font_options = "".join(
         f'<option value="{s["value"]}">{s["label"]}</option>' for s in _FONT_SETS
     )

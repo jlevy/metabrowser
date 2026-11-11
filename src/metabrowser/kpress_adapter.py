@@ -317,6 +317,10 @@ def inert_render(
     KPress's table of contents leaves the HTML too, since its script cannot run; ``toc``
     says whether KPress drew one, and the model's ``headings`` -- its entries -- point at
     the headings' ``user-content-`` anchors, for the page to draw its own from them.
+
+    *rewrite_local* is passed to :func:`~metabrowser.inert_html.harden_document`: a page
+    that shows a document from outside the served tree, such as a pull request's revision
+    file, gives it to write each reference inside the document as an address there.
     """
 
     from metabrowser.inert_html import harden_document

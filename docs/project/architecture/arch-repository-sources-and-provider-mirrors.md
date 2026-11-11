@@ -726,7 +726,21 @@ A pin by commit ID that is the tip of a fetched pull-request head is served unde
 head and attends to it, whichever page asked: a commit page does this as View file does.
 How each refresh ended is kept beside the record in `pulls/<n>.refresh.json`, so the
 route and a later command report it, and a failed one is tried again after a window, not
-on every poll or by the next command, and after `rate_limited` not before `reset_at`.
+on every poll or by the next command, and after `rate_limited` not before `reset_at`. A
+mirror’s record write also keeps `pulls/<n>.snapshots.json`
+(`cache.paths.source_pull_snapshots`), the comparison pairs earlier records named, so a
+revision-file link opened at an earlier base and head (`GET github/pull-snapshot`) keeps
+opening after a refresh moves the record on.
+It is a JSON array of at most 16 `{store, reader, base, head}` pairs, oldest first, read
+with a 16 KiB bound; the largest valid file is 5,553 bytes.
+It holds one reader’s pairs, and a write by another reader starts it over whether or not
+that write has a comparison; each pair names the store that computed it and opens only
+there. Only a store-backed write changes it, under the source alias lock, by atomic
+replacement: before the record is replaced its pair is kept, and after, the new pair.
+A file that cannot be read now is left as it was, and one this format never writes
+starts over, each with a debug log; the record is published either way.
+Removing the file only expires earlier links with `410 snapshot_expired`; the record’s
+own pair keeps opening.
 `POST /api/plugin/github/pull-refresh` with `{"number": <n>}` starts or joins the job
 and returns `202` at once, naming `/api/plugin/github/pull?number=<n>` as its
 `status_route`; a one-shot `--api` waits for the job, prints that route, and exits 1
