@@ -237,6 +237,7 @@ _FOLDER_ROUTES = (
     "/api/activity",
     "/api/git/repo",
     "/api/source/status",
+    "/api/identity",
 )
 
 

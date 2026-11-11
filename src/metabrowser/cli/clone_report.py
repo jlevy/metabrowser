@@ -45,7 +45,7 @@ from metabrowser.cache.paths import CACHE_ROOT
 from metabrowser.cache.records import canonical_now
 from metabrowser.cli.common import maybe_cli_logging
 from metabrowser.git.progress import GitProgress, ProgressStage
-from metabrowser.git.tree_source import display_segment
+from metabrowser.invisible_chars import display_segment
 from metabrowser.paths_safe import tilde_path
 
 # Without a terminal, how long after the last line the next status line is written.

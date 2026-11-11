@@ -12,6 +12,7 @@ patterns:
   COUNT: '\d+'
 before: >-
   mkdir -p shellroot &&
+  mkdir "$(printf 'odd\342\200\256name')" &&
   printf '# Sample\n\nHello.\n' > shellroot/README.md &&
   printf '{"path": "README.md", "view": "document", "source_text": "# Overridden\\n\\nBody.\\n"}\n'
   > shellroot/render.json &&
@@ -134,6 +135,76 @@ status: 200
   "pull_request": null,
   "selection_state": null,
   "selection_href": null
+}
+? 0
+```
+
+## Test: what a window of the server is called
+
+`/api/identity` names the served subject: the folder’s own name, its path, and that it
+is a local folder rather than a cached mirror.
+The shell’s `<title>` is its `title`, so a browser tab and a window of the native app
+read `shellroot • Metabrowser`. The sandbox is outside the home directory, so the path
+is absolute, and `--api` prints the served root as `<ROOT>`.
+
+```console
+$ metab shellroot --api /api/identity
+api: /api/identity
+status: 200
+{
+  "short_name": "shellroot",
+  "full_name": "<ROOT>",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "shellroot • Metabrowser"
+}
+? 0
+```
+
+Under the home directory the path has it as `~`, and the home directory itself is `~`.
+
+```console
+$ HOME=$PWD metab shellroot --api /api/identity
+api: /api/identity
+status: 200
+{
+  "short_name": "shellroot",
+  "full_name": "~/shellroot",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "shellroot • Metabrowser"
+}
+? 0
+```
+
+```console
+$ HOME=$PWD/shellroot metab shellroot --api /api/identity
+api: /api/identity
+status: 200
+{
+  "short_name": "~",
+  "full_name": "~",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "~ • Metabrowser"
+}
+? 0
+```
+
+A name is display text.
+This folder’s name holds U+202E RIGHT-TO-LEFT OVERRIDE, which would reverse what a title
+shows after it, so the name and the path show U+FFFD in its place.
+
+```console
+$ HOME=$PWD metab "$(printf 'odd\342\200\256name')" --api /api/identity
+api: /api/identity
+status: 200
+{
+  "short_name": "odd�name",
+  "full_name": "~/odd�name",
+  "kind": "folder",
+  "kind_label": "Local folder",
+  "title": "odd�name • Metabrowser"
 }
 ? 0
 ```
@@ -392,6 +463,14 @@ status: 200
     },
     {
       "path": "/api/git/summary",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "kind": "api"
+    },
+    {
+      "path": "/api/identity",
       "methods": [
         "GET",
         "HEAD"
@@ -732,7 +811,7 @@ status: 200
       "kind": "debug"
     }
   ],
-  "count": 58
+  "count": 59
 }
 ? 0
 ```

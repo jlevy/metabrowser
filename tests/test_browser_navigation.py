@@ -78,7 +78,7 @@ def test_direct_view_routes_serve_the_shell_for_safe_targets(tmp_path: Path) -> 
     ):
         response = client.get(route)
         assert response.status_code == 200, route
-        assert "<title>Metabrowser</title>" in response.text
+        assert f"<title>{tmp_path.name} \u2022 Metabrowser</title>" in response.text
         assert "/static/navigation.js?v=" in response.text
 
 
@@ -114,7 +114,7 @@ def test_view_routes_round_trip_an_undecodable_posix_filename(tmp_path: Path) ->
     server._set_root_dir(tmp_path)
     response = TestClient(server.app).get("/view/a%FFb.md")
     assert response.status_code == 200
-    assert "<title>Metabrowser</title>" in response.text
+    assert f"<title>{tmp_path.name} \u2022 Metabrowser</title>" in response.text
 
 
 @pytest.mark.skipif(os.name == "nt", reason="a Windows name cannot hold a backslash")
@@ -138,7 +138,7 @@ def test_view_routes_round_trip_a_posix_backslash_filename(tmp_path: Path) -> No
     server._set_root_dir(tmp_path)
     response = TestClient(server.app).get("/view/a%5Cb.md")
     assert response.status_code == 200
-    assert "<title>Metabrowser</title>" in response.text
+    assert f"<title>{tmp_path.name} \u2022 Metabrowser</title>" in response.text
 
 
 def test_direct_view_route_rejects_symlinks_outside_root(tmp_path: Path) -> None:
@@ -173,7 +173,7 @@ def test_bare_origin_redirects_to_the_canonical_served_root(tmp_path: Path) -> N
     assert redirect.headers["location"] == "/view/"
     followed = client.get("/")
     assert followed.status_code == 200
-    assert "<title>Metabrowser</title>" in followed.text
+    assert f"<title>{tmp_path.name} \u2022 Metabrowser</title>" in followed.text
 
 
 def test_header_root_link_uses_the_canonical_view_route(tmp_path: Path) -> None:

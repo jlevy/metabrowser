@@ -98,7 +98,7 @@ def test_github_fixture_canonical_urls_reload_and_resources_are_safe() -> None:
     ):
         response = client.get(route)
         assert response.status_code == 200, route
-        assert "<title>Metabrowser</title>" in response.text
+        assert "<title>github-markdown-repo \u2022 Metabrowser</title>" in response.text
 
     resource = client.get("/raw?path=assets%2Fmap.svg")
     assert resource.status_code == 200

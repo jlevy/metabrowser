@@ -1,7 +1,7 @@
 {
   "folder": {
     "kind": "filesystem",
-    "title": "Metabrowser",
+    "title": "squares • Metabrowser",
     "heading": "<span class=\"path\"><span class=\"path-base\">squares</span></span>",
     "dataset": {
       "servedRoot": "~/wrk/squares"
@@ -19,7 +19,7 @@
   },
   "mirror": {
     "kind": "git_revision",
-    "title": "Metabrowser",
+    "title": "squares • Metabrowser",
     "heading": "<span class=\"path\"><span class=\"path-base\">squares</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision\">42382ea2303b</span>",
     "dataset": {
       "servedRoot": "squares",
@@ -42,7 +42,7 @@
   },
   "hostile": {
     "kind": "git_revision",
-    "title": "Metabrowser",
+    "title": "a<b>&�x • Metabrowser",
     "heading": "<span class=\"path\"><span class=\"path-base\">a&lt;b&gt;&amp;�x</span></span><span class=\"header-revision header-ref\">topic</span><span class=\"header-revision\">42382ea2303b</span>",
     "dataset": {
       "servedRoot": "a<b>&�x",

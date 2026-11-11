@@ -37,8 +37,9 @@ from metabrowser.cache.resolve import list_mirror_refs, ref_tip, resolve_pin
 from metabrowser.cache.update import update_store
 from metabrowser.cache.urls import GitSource
 from metabrowser.git.process import RepositoryStoreTarget, repository_store_target
-from metabrowser.git.tree_source import GitRevisionSubject, display_segment
+from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.home import PrivateStorageError
+from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import (
     MirrorDisplay,
     MirrorRef,
@@ -74,7 +75,7 @@ def repository_name(address: str) -> str:
 
     *address* is a source's normalized address, which the origin's owner chose. A
     percent-escape is decoded, so a name reads as it is written, and the result goes
-    through :func:`~metabrowser.git.tree_source.display_segment`: bytes that are not
+    through :func:`~metabrowser.invisible_chars.display_segment`: bytes that are not
     UTF-8, controls, and characters drawn as nothing become U+FFFD. It is cut at
     :data:`REPOSITORY_NAME_MAX_CHARS`. Text to show, never a path to open.
     """

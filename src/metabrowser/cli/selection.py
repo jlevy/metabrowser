@@ -38,7 +38,8 @@ from metabrowser.cache.urls import RepositorySelection
 from metabrowser.cli.common import maybe_cli_logging
 from metabrowser.errors import CLIError
 from metabrowser.git.process import GitError, repository_store_target
-from metabrowser.git.tree_source import GitPath, GitRevisionSubject, display_segment
+from metabrowser.git.tree_source import GitPath, GitRevisionSubject
+from metabrowser.invisible_chars import display_segment
 from metabrowser.mirror_refresh import OpenedSelection, SelectionOpener
 from metabrowser.view_routes import VIEW_ROUTE_PREFIX, format_pull_href
 

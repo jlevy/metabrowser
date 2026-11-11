@@ -115,6 +115,43 @@ status: 200
 ? 0
 ```
 
+## Test: a window of a mirror is called by its repository, its origin, and its ref
+
+`/api/identity` names a mirror as a checkout would be called, then its origin and what
+it is pinned to, and never by where the mirror is kept.
+A `file://` origin is its path, absolute here because the sandbox is outside the home
+directory.
+
+```console
+$ METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/identity
+api: /api/identity
+status: 200
+{
+  "short_name": "origin",
+  "full_name": "[CWD]/origin.git@topic",
+  "kind": "mirror",
+  "kind_label": "Cached mirror",
+  "title": "origin • Metabrowser"
+}
+? 0
+```
+
+With the home directory set to the sandbox the origin is under it, and has it as `~`.
+
+```console
+$ HOME=$PWD METABROWSER_CONFIG_DIR=$PWD/config METABROWSER_CACHE_DIR=$PWD/home metab file://$PWD/origin.git --api /api/identity
+api: /api/identity
+status: 200
+{
+  "short_name": "origin",
+  "full_name": "~/origin.git@topic",
+  "kind": "mirror",
+  "kind_label": "Cached mirror",
+  "title": "origin • Metabrowser"
+}
+? 0
+```
+
 ## Test: pinning a branch
 
 The branch resolves in the mirror, the served subject is replaced, and the generation
