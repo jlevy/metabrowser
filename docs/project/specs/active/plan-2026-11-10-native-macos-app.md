@@ -15,7 +15,7 @@ The app should feel like a first-class Mac app (fast to switch between folders, 
 about which window is which, easy to download and install) while `metab` stays the
 product and every capability stays runnable and testable from the command line.
 
-This plan turns two research briefs into tracked work:
+This plan turns three research briefs into tracked work:
 
 - [Native macOS App for Metabrowser](../../research/research-2026-11-08-macos-app-packaging.md)
   chose the shell (a hand-written Swift app), the layering, the runtime strategy, and
@@ -23,6 +23,9 @@ This plan turns two research briefs into tracked work:
 - [Server Topology, Lifecycle, and Agent Handoff](../../research/research-2026-11-10-native-app-server-topology.md)
   chose how the app uses servers: a process per root behind a registry, warm folders,
   app-owned servers, native tabs, and one front door for agents.
+- [Setup Flows for `metab` and the Native macOS App](../../research/research-2026-11-11-uv-and-macos-app-install.md)
+  chose how users get both installed: the CLI first and then the app, or the app first
+  with a first-run flow that makes the same CLI install.
 
 It also uses a sister app as a guide: an earlier Electron app by the same author, in a
 private repository, with an end-to-end macOS build, signing, and download pipeline and a
@@ -191,8 +194,9 @@ One command produces a downloadable release, adapted from the sister app’s pip
   held in a protected environment.
   Adding it, and gating the existing `publish.yml` to `v*` tags so a macOS tag never
   triggers a PyPI publish, both wait for the user’s approval of workflow changes.
-- **What a downloader needs:** until the app-managed runtime exists (Phase 5), the app
-  uses a `metab` CLI install and shows the install command when it finds none.
+- **What a downloader needs:** the app uses a `metab` CLI install and shows the install
+  command when it finds none; Phase 5 adds a first-run flow that makes that install for
+  the user.
 - **Status:** built and tested end to end with ad-hoc signing on
   `claude/macos-release-build`. This Mac has no Developer ID identity, so the first real
   release needs one installed, plus notary credentials.
@@ -264,23 +268,34 @@ user decides to merge it.
 - [ ] Persist recent and added roots in `metab`, served by a roots route (`mb-a5ru`).
 - [ ] An optional MCP stdio adapter over registered routes (`mb-5lgp`).
 
-### Phase 5: Runtime and Updates
+### Phase 5: Setup, Runtime, and Updates
 
-- [ ] The WebKit measurement gate against the Chrome-measured bounds (`mb-etqi`).
-- [ ] An app-managed runtime from a bundled uv and a hash-pinned `pylock.toml`
+The two standard setup flows come first; see the
+[setup flows brief](../../research/research-2026-11-11-uv-and-macos-app-install.md).
+
+- [ ] Flow 1, CLI first: `uv tool install metabrowser`, then the DMG or the cask,
+  documented in the installation guide and checked end to end on clean accounts.
+  The app gets a required minimum `metab` version (later, the host-protocol version),
+  names the exact upgrade command, notices `uv tool upgrade`, offers to restart running
+  servers, and flags a launch from the disk image (beads to be filed).
+- [ ] Flow 2, app first with no CLI: copyable commands for only the missing steps,
+  continuing by itself when `metab` appears; then an “Install for me” button that runs
+  the user’s uv, or a signed uv inside the app, to make Flow 1’s CLI install (beads to
+  be filed).
+- [ ] Narrowed: an optional app-private runtime from a bundled uv and a hash-pinned
+  `pylock.toml`, for offline, managed, or hash-pinned setups, built only on demand
   (`mb-lrcd`).
+- [ ] The WebKit measurement gate against the Chrome-measured bounds (`mb-etqi`).
 - [ ] Updates: cask upgrades and an in-app notice, Sparkle later (`mb-fl72`). Each
   installed copy has one updater, and an update replaces the bundle whole.
-- [ ] `metab` installs, reports, and removes the app from the notarized release ZIP,
-  verifying it itself because a command-line download carries no quarantine (`mb-92d9`;
-  see the
-  [uv and app install brief](../../research/research-2026-11-11-uv-and-macos-app-install.md)).
-- [ ] Publish the stapled app ZIP and a release manifest beside the DMG (`mb-5jr9`).
-- [ ] Find the app by bundle id from `metab`, filtered to Applications folders
-  (`mb-56nq`).
-- [ ] A clean-account matrix for a command-line-installed app (`mb-5fp7`).
+- [ ] A clean-account matrix for both flows, on macOS 15 and 26, admin and standard
+  accounts, with and without the Command Line Tools (`mb-5fp7`).
 - [ ] Optional: a separate bundle id for release-rehearsal builds (`mb-nneo`).
 - [ ] The project-plugin trust spec (`mb-m1mw`).
+- [ ] Later, once both flows pass: `metab` installs, reports, and removes the app from
+  the notarized release ZIP, verifying it itself because a command-line download carries
+  no quarantine (`mb-92d9`), with the ZIP and a release manifest beside the DMG
+  (`mb-5jr9`) and a bundle-id lookup filtered to Applications folders (`mb-56nq`).
 
 ### Phase 6: Measured Follow-Ups
 
@@ -323,7 +338,7 @@ user decides to merge it.
 - Research:
   [Native macOS App](../../research/research-2026-11-08-macos-app-packaging.md),
   [Server Topology, Lifecycle, and Agent Handoff](../../research/research-2026-11-10-native-app-server-topology.md),
-  [Installing the Native App Through uv and `metab`](../../research/research-2026-11-11-uv-and-macos-app-install.md)
+  [Setup Flows for `metab` and the Native macOS App](../../research/research-2026-11-11-uv-and-macos-app-install.md)
 - Code: `apps/macos/README.md`, `skills/metabrowser/SKILL.md`,
   [Views, Models, and Routes](../../architecture/arch-views-models-routes.md)
 - tbd guidelines: `macos-webview-shell-patterns`, `desktop-python-runtime-patterns`,
