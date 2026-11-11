@@ -169,8 +169,9 @@ type Admission = Literal["current", "retained", "refused", "unknown"]
 
 @cache
 def _page_scripts() -> tuple[str, ...]:
-    # The shell's own first-paint preference scripts, so this page paints in the reader's
-    # theme, reading font, and width. Imported late: the server imports every plugin.
+    # The shell's own first-paint preference scripts and the width default they read, so
+    # this page paints in the reader's theme, fonts, and reading width. Imported late: the
+    # server imports every plugin.
     from metabrowser.server import page_preference_scripts
 
     return page_preference_scripts()
@@ -558,6 +559,16 @@ def _page(
         )
     styles = ""
     if document:
+        # The frame the in-app inert render puts around the same HTML
+        # (builtin_plugins/markdown/inert-render.js): the host class bridges the reader's
+        # width (`--doc-measure`) into KPress's measure, and KPress's prose classes carry
+        # the reading font (`--kpress-host-font-prose`). The page writes these classes;
+        # the document's own were removed with the rest of its attributes.
+        content = (
+            '<div class="metabrowser-kpress-host"><article class="kpress kpress-doc kpress-inert"'
+            ' data-kpress-card="on"><div class="kpress-doc-layout">'
+            f'<div class="kpress-prose kpress-long-text">{content}</div></div></article></div>'
+        )
         for asset in kpress_adapter.document_stylesheets().get("assets", []):
             href = asset.get("public_url")
             if isinstance(href, str) and href.startswith("/kpress-static/"):

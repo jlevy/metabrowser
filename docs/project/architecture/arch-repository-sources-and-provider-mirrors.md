@@ -736,12 +736,14 @@ revision-file link opened at an earlier base and head (`GET github/pull-snapshot
 opening after a refresh moves the record on.
 It is a JSON array of at most 16 `{store, reader, base, head}` pairs, oldest first, read
 with a 16 KiB bound; the largest valid file is 5,553 bytes.
-It holds one reader’s pairs, and a write by another reader starts it over whether or not
-that write has a comparison; each pair names the store that computed it and opens only
-there. Only a store-backed write changes it, under the source alias lock, by atomic
-replacement: before the record is replaced its pair is kept, and after, the new pair.
-A file that cannot be read now is left as it was, and one this format never writes
-starts over, each with a debug log; the record is published either way.
+It holds one reader’s pairs, and any record write by another reader starts it over, with
+a store or without (a checkout’s metadata write), and whether or not it has a
+comparison; each pair names the store that computed it and opens only there.
+Record writes change it under the source alias lock, by atomic replacement, and only a
+store-backed one adds pairs: before the record is replaced its pair is kept, and after,
+the new pair.
+A file that cannot be read now is left as it was, and one this format never
+writes starts over, each with a debug log; the record is published either way.
 Removing the file only expires earlier links with `410 snapshot_expired`; the record’s
 own pair keeps opening.
 `POST /api/plugin/github/pull-refresh` with `{"number": <n>}` starts or joins the job

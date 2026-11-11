@@ -2,11 +2,12 @@
 
 ``sources/<slug>/pulls/<n>.snapshots.json`` keeps the comparison pairs a mirror's records
 named before the current one, so a revision page opened at an earlier base and head
-keeps opening after a refresh moves the record on. Only a store-backed record write
-changes it, under the source alias lock, by atomic replacement. It holds one reader's
-pairs: a write by another reader starts it over, whether or not that write has a
-comparison of its own, and admission also requires the record's reader. Each pair names
-the store that computed it, and is admitted only for that store.
+keeps opening after a refresh moves the record on. Record writes change it, under the
+source alias lock, by atomic replacement, and only a store-backed one adds pairs. It holds
+one reader's pairs: any write by another reader starts it over, a checkout's metadata
+write without a store included, whether or not that write has a comparison of its own,
+and admission also requires the record's reader. Each pair names the store that computed
+it, and is admitted only for that store.
 
 Admission reads it with :func:`read_snapshot_bindings`, which fails closed: a file it
 cannot read now admits nothing and says so, and a malformed one retains nothing. A writer
@@ -138,6 +139,15 @@ def retain_replaced_pair(
             ),
         )
     _save(home, slug, record.number, previous, kept)
+
+
+def retain_reader(home: Path, slug: str, number: int, reader: str) -> None:
+    """Keep only *reader*'s pairs, for a record write that has no store to add one.
+
+    The caller holds the source alias publication lock.
+    """
+    previous = _history_for_write(home, slug, number)
+    _save(home, slug, number, previous, tuple(pair for pair in previous if pair.reader == reader))
 
 
 def retain_snapshot_binding(home: Path, slug: str, store: str, record: PullRecord) -> None:

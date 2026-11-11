@@ -737,6 +737,7 @@ function isFilesEnvelope(value) {
  *   markMuted(id: string): void,
  *   page(): FilePage | null,
  *   open(route: {file: string, replace: boolean, jumped: boolean}): void,
+ *   routable?(path: string): boolean,
  *   leave(): void,
  * }} FileTreeDependencies
  */
@@ -1121,8 +1122,10 @@ export function createFileTreeController(deps, options) {
       mute(path);
       return;
     }
-    // The address follows once the walk stops, so the page shows what it will ask for.
-    if (page.showFile(path, { settling: true }).kind === "not_in_comparison") {
+    // The address follows once the walk stops, so the page shows what it will ask for. A
+    // path the route cannot encode gets no address, so nothing would end that claim.
+    const settling = deps.routable?.(path) === true;
+    if (page.showFile(path, { settling }).kind === "not_in_comparison") {
       mute(path);
     }
   }

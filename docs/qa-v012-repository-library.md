@@ -2012,6 +2012,8 @@ Serve the stand-in of 5.7 (`--serve 7 8475`) and open
 9. Click **View at base** on `src/app.txt`: a revision page opens at
    `/api/plugin/github/pull-snapshot?…&side=base…` with the heading `src/app.txt`, the
    commit `f92fd713acd5…`, and the file reading `one` only, in the reader’s theme.
+   In DevTools, `<html>` carries `data-theme`, `data-prose-font`, and a
+   `--doc-max-chars` matching the settings menu’s width, and the console is empty.
    Its **Pull request #7 Changes** link returns to Changes, where the status line still
    names the head and nothing offers **Switch to the head**.
 

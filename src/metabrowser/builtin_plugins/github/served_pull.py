@@ -436,12 +436,21 @@ class ServedPull:
                     else:
                         record = (
                             await pulls.refresh_pull_request(
-                                published, self.number, recover=True, recovery_pair=pair
+                                published,
+                                self.number,
+                                recover=True,
+                                recovery_pair=pair,
+                                adopt_current=False,
                             )
                             if recover
-                            else await pulls.refresh_pull_request(published, self.number)
+                            else await pulls.refresh_pull_request(
+                                published, self.number, adopt_current=False
+                            )
                         )
                 except pulls.PullObservationSuperseded as exc:
+                    # Another writer's record is what this server now shows, and this
+                    # refresh published nothing: how a refresh last ended is the stamp
+                    # on disk, never a success claimed for this one.
                     self.fetched_at = exc.current.fetched_at
                     self.without_store = written_without_store(exc.current)
                     stamp = await asyncio.to_thread(pulls.last_refresh, published, self.number)
