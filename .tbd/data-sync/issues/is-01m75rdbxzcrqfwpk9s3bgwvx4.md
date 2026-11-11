@@ -3,9 +3,9 @@ type: is
 id: is-01m75rdbxzcrqfwpk9s3bgwvx4
 title: "PR 1: no spinner or 'may be out of date' over rendered PR content; subtle refresh animation"
 kind: feature
-status: in_progress
+status: closed
 priority: 1
-version: 14
+version: 15
 delegate: claude-code@spud10.local
 labels: []
 dependencies:
@@ -22,8 +22,12 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-11T16:52:44.094Z
-updated_at: 2026-11-11T19:38:57.154Z
+updated_at: 2026-11-11T21:51:25.931Z
 started_at: 2026-11-11T16:54:28.208Z
+closed_at: 2026-11-11T21:51:25.923Z
+close_reason: "Merged to main in 93badac9 via native stack #356 (2026-11-11): PR #354, no spinner or 'may be out of date' over rendered PR content, re-ask per staleness episode, subtle refresh animation. Review A addressed (issuecomment-6805478391)."
+resolution: null
+duplicate_of: null
 ---
 
 ## Notes
