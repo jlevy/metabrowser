@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import difflib
-from collections.abc import Sequence
+import random
+from collections.abc import Callable, Sequence
 
 import pytest
 
+from metabrowser.diff import markdown_projection
 from metabrowser.diff.format import FilePatch, Hunk, LineOp, LineRecord
 from metabrowser.diff.markdown_projection import (
     MARKDOWN_DIFF_MAX_BYTES,
@@ -372,6 +374,22 @@ def _changed(result: MarkdownDiffProjection) -> list[MarkdownDiffBlock]:
             b"Use [Mirror][a] or [Official][b].\n\n[a]: https://good.example\n[b]: https://evil.example\n",
             ["Official"],
             id="labels swapped through reference definitions",
+        ),
+        pytest.param(
+            b"Get the [Official installer](https://good.example/i.sh) or the "
+            b"[Mirror site](https://evil.example/i.sh) today.\n",
+            b"Get the [Mirror\nsite](https://good.example/i.sh) or the [Official\n"
+            b"installer](https://evil.example/i.sh) today.\n",
+            ["Official"],
+            id="labels swapped and rewrapped",
+        ),
+        pytest.param(
+            b"Get the [Official  \ninstaller](https://good.example/i.sh) or the [Mirror  \n"
+            b"site](https://evil.example/i.sh) today.\n",
+            b"Get the [Mirror site](https://good.example/i.sh) or the "
+            b"[Official installer](https://evil.example/i.sh) today.\n",
+            ["Mirror"],
+            id="labels swapped across hard breaks",
         ),
     ],
 )
@@ -870,3 +888,133 @@ def test_container_lines_are_bounded_before_parsing(monkeypatch: pytest.MonkeyPa
         _Unexpected("parsed a run of container lines past their budget"),
     )
     assert _project(None, b"# Doc\n\n" + b":::\n" * 300)["status"] == "too_large"
+
+
+def test_a_moved_and_edited_block_whose_rewrapped_label_points_elsewhere_is_flagged() -> None:
+    middle = b"".join(b"Paragraph %d stays.\n\n" % index for index in range(4))
+    old = b"Download [the installer](https://good.example/install.sh).\n\n" + middle
+    new = middle + b"Download [the\ninstaller](https://evil.example/install.sh) now.\n"
+    result = _project(old, new)
+    assert result["source_only"] is True
+    assert [(block["kind"], block["source_only"]) for block in _changed(result)] == [
+        ("removed", True),
+        ("added", True),
+    ]
+
+
+@pytest.mark.parametrize("count", [17, 24])
+def test_a_long_run_of_edited_blocks_keeps_its_word_marks(count: int) -> None:
+    # More edited blocks than an alignment compares, as a find-and-replace makes.
+    paragraphs = [f"Step {index} says the reviewer reads part {index}." for index in range(count)]
+    old = ("\n\n".join(paragraphs) + "\n").encode()
+    new = (
+        "\n\n".join(text.replace("the reviewer", "this reviewer") for text in paragraphs) + "\n"
+    ).encode()
+    result = _project(old, new)
+    marked = [
+        block for block in result["blocks"] if "<del>" in block["html"] or "<ins>" in block["html"]
+    ]
+    assert len(marked) == 2 * count
+
+
+@pytest.mark.parametrize("added", [16, 15])
+def test_block_alignment_compares_a_bounded_number_of_words(
+    monkeypatch: pytest.MonkeyPatch, added: int
+) -> None:
+    compared: list[int] = []
+
+    class Counting(difflib.SequenceMatcher[str]):
+        def __init__(
+            self,
+            isjunk: Callable[[str], bool] | None,
+            a: Sequence[str],
+            b: Sequence[str],
+            autojunk: bool = True,
+        ) -> None:
+            super().__init__(isjunk, a, b, autojunk)
+            self.words = len(a) * len(b)
+
+        def ratio(self) -> float:
+            compared.append(self.words)
+            return super().ratio()
+
+    monkeypatch.setattr(markdown_projection, "SequenceMatcher", Counting)
+    rng = random.Random(11)
+
+    def side(paragraphs: int) -> bytes:
+        # Three runs of edited 250-word paragraphs over two words, 24 KB a side: every
+        # pair passes the quick bounds, and each full comparison is the slowest there is.
+        return "".join(
+            f"# S{run}\n\n"
+            + "".join(
+                " ".join(rng.choice("ab") for _ in range(250)) + "\n\n" for _ in range(paragraphs)
+            )
+            for run in range(3)
+        ).encode()
+
+    result = _project(side(16), side(added))
+    assert result["status"] == "ready"
+    assert sum(compared) <= markdown_projection._MAX_PAIR_WORK  # pyright: ignore[reportPrivateUsage]
+    if added == 16:
+        shown = [block["kind"] for block in result["blocks"] if block["kind"] != "context"]
+        assert shown == ["removed", "added"] * 48, "the runs pair in order"
+
+
+def test_an_unchanged_block_beside_an_insertion_raises_no_notice() -> None:
+    # README.md at b8ef5242: two items inserted after a loose list item.
+    head = (
+        b"- **Scalable browsing of large file trees.** Unlike a Finder or IDE/VSCode tree, the\n"
+        b"  file and recent views keep file ages, file and folder counts, and aggregate disk usage\n"
+        b"  visible while you browse.\n"
+        b"  And the streaming architecture easily scales to 100,000 files or more in a folder.\n"
+        b"\n"
+    )
+    inserted = (
+        b"- **Folder overviews with exact file tallies.** Every directory opens with a compact\n"
+        b"  Files summary that compares file counts and byte totals, percentages, and normalized\n"
+        b"  bars across semantic groups such as Code, Documentation, Data, Logs, Archives, and\n"
+        b"  Media. Expand a family to inspect exact extensions, or inspect bounded No extension and\n"
+        b"  Other types details without losing the conserved total or ignored-file subset.\n"
+        b"\n"
+        b"- **A visual Treemap for every folder.** Size the same live file hierarchy by bytes or\n"
+        b"  file count, include or exclude ignored files, and move through nested folders without\n"
+        b"  leaving the Treemap.\n"
+        b"  Colors and file identities stay consistent with Overview and the navigation filters.\n"
+        b"\n"
+    )
+    tail = (
+        b"- **Quick File navigation.** Press `/` or `T` to open a fuzzy finder over every\n"
+        b"  non-gitignored file under the root, then jump straight to it by name or path fragment.\n"
+        b"\n"
+        b"- **A fast, framework-free frontend.** Metabrowser ships direct CSS and JavaScript with\n"
+        b"  no browser framework.\n"
+    )
+    result = _project(head + tail, head + inserted + tail)
+    assert result["status"] == "ready"
+    assert result["source_only"] is False
+    assert [block["kind"] for block in _changed(result)] == ["added", "added"]
+
+
+@pytest.mark.parametrize(
+    "word",
+    ["txt", "text", "plaintext", "math", "jsonl", "jsonc", "yml", "gitignore", "patch", "h", "kt"],
+)
+def test_an_added_fence_named_by_a_common_single_word_needs_no_note(word: str) -> None:
+    old = b"# Doc\n"
+    result = _project(old, old + b"\n```" + word.encode() + b"\nbody\n```\n")
+    assert not any(block["source_only"] for block in result["blocks"]), word
+
+
+def test_an_item_appended_to_a_tight_list_raises_no_notice() -> None:
+    # README.md at 269320b2: the last item's blank line moves to the new item, so only
+    # blank lines differ in the block beside it.
+    old = b"Views for:\n\n- JSONL streams, with timelines.\n- Text, source code, and images.\n\nAfter.\n"
+    new = (
+        b"Views for:\n\n- JSONL streams, with timelines.\n- Text, source code, and images.\n"
+        b"- HTML documents in a sandboxed preview.\n\nAfter.\n"
+    )
+    result = _project(old, new)
+    assert result["source_only"] is False
+    assert [block["kind"] for block in _changed(result)] == ["added"]
+    alone = _project(b"- One.\n- Two.\n\nAfter.\n", b"- One.\n- Two.\n\n\nAfter.\n")
+    assert alone["source_only"] is True, "a blank line is still named when nothing else changed"

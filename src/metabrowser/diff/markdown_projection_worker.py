@@ -57,7 +57,8 @@ _MAX_FRAME = 16 * 1024 * 1024
 # about 2 s under heavier load); it is given far longer before it counts as failed.
 _START_TIMEOUT_S = 30.0
 # A projection answers within its budgets in well under a second (the slowest input
-# measured inside every budget took 222 ms); a child that has not after this is stopped.
+# measured inside every budget took 222-268 ms); a child that has not after this is
+# stopped.
 _PROJECTION_TIMEOUT_S = 10.0
 # Starts that did not last before the worker settles on its thread for good.
 _MAX_STARTS = 3
@@ -232,9 +233,12 @@ class ProjectionWorker:
         if ready.get("ready") is True and self._process is process:
             self._ready = True
             self._starts = 0
+            # Counted from the start, not the first answer: a page's prefetch starts the
+            # child, and its answers may all come from the thread or the route's cache.
+            self._touch()
 
     def _touch(self) -> None:
-        """Note a projection, and stop the child once none has come for _IDLE_S."""
+        """Note a start or a projection, and stop the child once _IDLE_S passes without one."""
 
         loop = asyncio.get_running_loop()
         self._used = loop.time()

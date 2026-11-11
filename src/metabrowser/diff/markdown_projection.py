@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from difflib import SequenceMatcher
@@ -50,12 +51,12 @@ MARKDOWN_DIFF_VERSION = "markdown-diff-v1"
 # Markdown-touching first-parent commits made, each at most this many combined bytes:
 # p50 12 ms, p90 31-33 ms, max 49-51 ms, against p50 26-27 ms, p90 52-54 ms and max
 # 87-89 ms in adjacent runs of the earlier two-parse pipeline with highlighting.
-# The slowest input found inside every budget is a 48 KiB side of `<`, 222 ms; `&#`
-# took 188 ms and `<!-` 167 ms, the same at 128-byte, 1 KiB and 4 KiB lines, and in a
-# worker process they delay no other request. Line length changed no measured cost
-# (tables, prose and code at 1-23 KiB lines are linear in bytes), so lines are not
-# bounded on their own. Bytes alone do not bound MarkdownIt's link-label scan: a 45 KiB
-# nested bracket pair took 2.17 s.
+# The slowest input found inside every budget is a 48 KiB side of `<`, 222 ms (258-268 ms
+# at load average 17-18, as at round 2 of #349); `&#` took 188 ms and `<!-` 167 ms, the
+# same at 128-byte, 1 KiB and 4 KiB lines, and in a worker process they delay no other
+# request. Line length changed no measured cost (tables, prose and code at 1-23 KiB
+# lines are linear in bytes), so lines are not bounded on their own. Bytes alone do not
+# bound MarkdownIt's link-label scan: a 45 KiB nested bracket pair took 2.17 s.
 MARKDOWN_DIFF_MAX_BYTES = 48 * 1024
 # A side's `[` count: nested openers parsed in 15 ms at 256, 31 ms at 512, 62 ms at 1,024.
 _MAX_LINK_OPENERS = 256
@@ -102,13 +103,15 @@ _NATIVE_ATTRIBUTES = {
 }
 _COMMENT = re.compile(r"<!--(?:(?!-->).)*-->", re.DOTALL)
 # A fence info string that is exactly one of these names says nothing the page hides:
-# an alias of a lexer Pygments ships, which the Document view highlights by that name,
-# or a language KPress draws as a diagram. Any other info string, an unknown single word
-# included, is text no render shows. Pygments 2.20's 920 aliases took 0.15 ms to collect
-# once KPress had imported Pygments.
+# an alias of a lexer Pygments ships, which the Document view highlights by that name, a
+# language KPress draws as a diagram, or a common single word too short to carry an
+# instruction (review F of #349 found these among added fences elsewhere). Any other info
+# string, an unknown single word included, is text no render shows. Pygments 2.20's 920
+# aliases took 0.15 ms to collect once KPress had imported Pygments.
 _FENCE_LANGUAGES = frozenset(
     {alias.lower() for _, aliases, _, _ in get_all_lexers(plugins=False) for alias in aliases}
     | {"mermaid", "svg"}
+    | {"txt", "text", "plaintext", "math", "jsonl", "jsonc", "yml", "gitignore", "patch", "h", "kt"}
 )
 # A line that opens or closes a container block (`:::`), after any quote or list marker.
 _CONTAINER_LINE = re.compile(rb"^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*:::", re.MULTILINE)
@@ -332,6 +335,11 @@ def _hidden(tokens: Sequence[Token]) -> _Hidden:
             elif open_links and member.type in {"text", "code_inline"}:
                 for _, label in open_links:
                     label.append(member.content)
+            elif open_links and member.type in {"softbreak", "hardbreak"}:
+                # A label wrapped across source lines is the same label once its
+                # whitespace collapses, as the page shows it.
+                for _, label in open_links:
+                    label.append(" ")
     return _Hidden(tuple(found), concealed, alt, tuple(links))
 
 
@@ -931,33 +939,79 @@ def _shifted2(
 # Adjacent edited blocks pair when they share at least half their words (difflib's ratio
 # over word tokens): an edited sentence shares far more, and a deleted block beside an
 # edited one far less ("Never deploy on Friday." against "Run the tests first, always."
-# is 0.0; "Run the tests first." against it is 0.89). A run of more blocks than this on
-# either side is shown whole rather than compared block against block.
+# is 0.0; "Run the tests first." against it is 0.89).
 _PAIR_RATIO = 0.5
+# Runs of at most this many blocks a side are aligned block against block, unless each
+# block already resembles the one in its place. Past it, or past _MAX_PAIR_WORK, a run of
+# equal length pairs in order where the quick bound allows (_in_order), so a longer
+# find-and-replace keeps its marks, and an unequal run is shown whole.
 _PAIR_RUN = 16
+# The word pairs one projection's alignments may compare with difflib's ratio, len(a) *
+# len(b) a comparison: two 256-word comparisons. Over the 434 real pairs alignments spend
+# p99 74,127 and at most 108,908, so none reaches it. Words drawn from two letters pass
+# every quick bound and are ratio's slowest input (review F of #349): three runs of 16
+# such 250-word paragraphs a side, 24 KB, took 3.7 s compared in full and now take
+# 21.7-22.2 ms in order, against 18.7-19.1 ms at round 2. Against runs of 15 they take
+# 26.1-26.3 ms, against 11.5-11.8 ms shown whole at round 2 (load average 17-18).
+_MAX_PAIR_WORK = 2 * _MAX_INLINE_WORDS * _MAX_INLINE_WORDS
+
+
+def _filled(lines: Sequence[bytes]) -> list[bytes]:
+    return [line for line in lines if line.strip()]
 
 
 def _words(block: _Block) -> list[str]:
     return re.findall(r"\w+", _text(block.node))[:_MAX_INLINE_WORDS]
 
 
-def _align(old: Sequence[_Block], new: Sequence[_Block]) -> list[tuple[int, int]]:
-    """The pairs of a run, in order, that maximize the shared words of paired blocks."""
+def _quick(a: Counter[str], b: Counter[str]) -> float:
+    """difflib's quick_ratio from word counts: the most ratio could be, in linear time."""
+
+    size = a.total() + b.total()
+    return 2 * (a & b).total() / size if size else 1.0
+
+
+def _in_order(old: Sequence[_Block], new: Sequence[_Block]) -> list[tuple[int, int]]:
+    """An equal-length run's blocks paired in order, where the quick bound allows it."""
+
+    if len(old) != len(new):
+        return []
+    return [
+        (index, index)
+        for index, (before, after) in enumerate(zip(old, new, strict=True))
+        if before.node.tag == after.node.tag
+        and _quick(Counter(_words(before)), Counter(_words(after))) >= _PAIR_RATIO
+    ]
+
+
+def _align(
+    old: Sequence[_Block], new: Sequence[_Block], budget: int
+) -> tuple[list[tuple[int, int]] | None, int]:
+    """The pairs of a run, in order, that maximize the shared words of paired blocks, and
+    the work spent; no pairs when the run is too long or the budget runs out."""
 
     if max(len(old), len(new)) > _PAIR_RUN:
-        return []
+        return None, 0
     old_words, new_words = [_words(block) for block in old], [_words(block) for block in new]
+    old_counts, new_counts = [Counter(a) for a in old_words], [Counter(b) for b in new_words]
+    spent = 0
 
-    def similarity(left: int, right: int) -> float:
+    def similarity(left: int, right: int) -> float | None:
+        nonlocal spent
         if old[left].node.tag != new[right].node.tag:
             return 0.0
         a, b = old_words[left], new_words[right]
         if not a and not b:
             return 1.0
-        matcher = SequenceMatcher(None, a, b, autojunk=False)
-        if matcher.real_quick_ratio() < _PAIR_RATIO or matcher.quick_ratio() < _PAIR_RATIO:
+        if (
+            2 * min(len(a), len(b)) / (len(a) + len(b)) < _PAIR_RATIO
+            or _quick(old_counts[left], new_counts[right]) < _PAIR_RATIO
+        ):
             return 0.0
-        ratio = matcher.ratio()
+        if spent + len(a) * len(b) > budget:
+            return None
+        spent += len(a) * len(b)
+        ratio = SequenceMatcher(None, a, b, autojunk=False).ratio()
         return ratio if ratio >= _PAIR_RATIO else 0.0
 
     # Needleman-Wunsch over the run: the best total similarity of the first i old and
@@ -966,6 +1020,8 @@ def _align(old: Sequence[_Block], new: Sequence[_Block]) -> list[tuple[int, int]
     for i in range(1, len(old) + 1):
         for j in range(1, len(new) + 1):
             paired = similarity(i - 1, j - 1)
+            if paired is None:
+                return None, spent
             best[i][j] = max(
                 best[i - 1][j],
                 best[i][j - 1],
@@ -981,7 +1037,7 @@ def _align(old: Sequence[_Block], new: Sequence[_Block]) -> list[tuple[int, int]
         else:
             pairs.append((i - 1, j - 1))
             i, j = i - 1, j - 1
-    return pairs[::-1]
+    return pairs[::-1], spent
 
 
 @dataclass(slots=True)
@@ -998,10 +1054,15 @@ class _Projector:
     rebound: frozenset[str] = frozenset()
     # The inline word diffs' quadratic work so far, against _MAX_INLINE_WORK.
     work: int = 0
+    # The alignments' word comparisons so far, against _MAX_PAIR_WORK.
+    pair_work: int = 0
     blocks: list[MarkdownDiffBlock] = field(default_factory=list)
     references: list[LocalReference] = field(default_factory=list)
     # A source change with no visible counterpart in the blocks around it.
     notice: bool = False
+    # A changed blank line inside a block that is otherwise the same: a source change
+    # worth the notice only when nothing visible changed.
+    blank: bool = False
     # Blocks shown whole, removed (True) or added, with where each was emitted.
     moved: list[tuple[bool, _Block, int]] = field(default_factory=list)
 
@@ -1076,6 +1137,21 @@ class _Projector:
                 self.emit("context", wrapped(new[stop_right].node, False, stop_right))
             left, right = stop_left + 1, stop_right + 1
 
+    def source(self, block: _Block, old_side: bool) -> list[bytes]:
+        return (self.old_lines if old_side else self.new_lines)[block.start : block.end]
+
+    def align(self, old: Sequence[_Block], new: Sequence[_Block]) -> list[tuple[int, int]]:
+        """Pair a run's blocks by likeness within the budget, or else in order."""
+
+        in_order = _in_order(old, new)
+        if in_order and len(in_order) == len(old):
+            # Each block resembles the one in its place, as a find-and-replace leaves
+            # them: no block needs comparing with every other.
+            return in_order
+        pairs, spent = _align(old, new, _MAX_PAIR_WORK - self.pair_work)
+        self.pair_work += spent
+        return in_order if pairs is None else pairs
+
     def differs(self, old: Sequence[_Block], new: Sequence[_Block]) -> bool:
         """Whether the source of these blocks changed in a way their renders do not show."""
 
@@ -1093,19 +1169,24 @@ class _Projector:
             return
         if len(old) == len(new) and all(a.seen == b.seen for a, b in zip(old, new, strict=True)):
             # Rendered alike once whitespace collapses: a rewrap, a trailing space, a
-            # renumbered item, or a change only the source shows.
+            # renumbered item, or a change only the source shows. A block whose filled
+            # source lines are byte for byte the same, which a hunk beside it brought
+            # into the run, has nothing for the notice to name; if only its blank lines
+            # differ, which a diff may give to either neighbour of an insertion, that
+            # counts as a blank line no block holds does (see blank).
             self.consume(old, new)
-            self.notice = True
             for index, (before, after) in enumerate(zip(old, new, strict=True)):
-                self.emit(
-                    "context",
-                    wrap(after.node, False, index),
-                    source_only=self.differs([before], [after]),
-                )
+                hidden = self.differs([before], [after])
+                lines = self.source(before, True), self.source(after, False)
+                if hidden or _filled(lines[0]) != _filled(lines[1]):
+                    self.notice = True
+                elif lines[0] != lines[1]:
+                    self.blank = True
+                self.emit("context", wrap(after.node, False, index), source_only=hidden)
             return
         if len(old) == len(new) == 1 and self.pair(old[0], new[0], wrap):
             return
-        pairs = _align(old, new) if len(old) + len(new) > 2 else []
+        pairs = self.align(old, new) if len(old) + len(new) > 2 else []
         if pairs:
             # Adjacent edited blocks pair only with a block of the same kind that shares
             # most of its words, so each is shown, marked and flagged as itself; the rest
@@ -1268,7 +1349,10 @@ def _project(
         projector.notice
         or unmapped
         or any(block["source_only"] for block in projector.blocks)
-        or (not has_visual_change and bool(projector.removed or projector.added))
+        or (
+            not has_visual_change
+            and (projector.blank or bool(projector.removed or projector.added))
+        )
     )
     return PreparedMarkdownDiff(
         {
