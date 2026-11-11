@@ -10,7 +10,7 @@ const MARKDOWN = /\.(?:md|markdown|mdown|mkd)$/i;
 /** @typedef {"rendered" | "source"} Mode */
 /** @typedef {{kind: "context" | "removed" | "added", html: string}} Block */
 /** @typedef {{
- *   section: HTMLElement, source: HTMLElement, rendered: HTMLElement,
+ *   section: HTMLElement, bar: HTMLElement, source: HTMLElement, rendered: HTMLElement,
  *   progress: HTMLElement, fallback: HTMLElement, control: HTMLElement,
  *   id: string, mode: Mode, pending: boolean, expanded: boolean,
  *   state: "idle" | "ready" | "unavailable"
@@ -231,6 +231,7 @@ export function createMarkdownViews(deps) {
   /** @param {FileView} file */
   function drawControl(file) {
     const restoreFocus = file.control.contains(document.activeElement);
+    file.control.hidden = file.state === "unavailable";
     file.control.innerHTML = deps.controls.groupHtml({
       key: file.source.id,
       label: "Markdown diff format",
@@ -247,9 +248,12 @@ export function createMarkdownViews(deps) {
       const mode = button.dataset.chipValue;
       button.setAttribute("aria-controls", mode === "rendered" ? file.rendered.id : file.source.id);
       button.disabled = mode === "rendered" && file.state === "unavailable";
-      if (restoreFocus && mode === file.mode) {
+      if (restoreFocus && !file.control.hidden && mode === file.mode) {
         button.focus();
       }
+    }
+    if (restoreFocus && file.control.hidden) {
+      /** @type {HTMLElement | null} */ (file.bar.firstElementChild)?.focus();
     }
   }
 
@@ -404,6 +408,7 @@ export function createMarkdownViews(deps) {
       /** @type {FileView} */
       const file = {
         section,
+        bar,
         source,
         rendered,
         progress: loading,

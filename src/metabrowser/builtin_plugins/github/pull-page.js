@@ -2979,6 +2979,8 @@ export function mountPullPage(container, ctx, mb) {
     const children = [];
     const pull = model.pull;
     if (pull !== null) {
+      const createdAge = age(pull.created);
+      const updatedAge = age(pull.updated);
       children.push(
         h("h1", { class: "page-heading github-pull-title github-pull-title-with-state" }, [
           pullStateIcon(pull.state, { named: false }),
@@ -2991,15 +2993,17 @@ export function mountPullPage(container, ctx, mb) {
         paintStateRow(pull),
         h("div", { class: "github-pull-quiet" }, [
           "Opened ",
-          age(pull.created),
-          " · updated ",
-          age(pull.updated),
+          createdAge,
+          ...(createdAge.textContent === updatedAge.textContent ? [] : [" · updated ", updatedAge]),
           ...(pull.closed && pull.closedLabel ? [` · ${pull.closedLabel} `, age(pull.closed)] : []),
           " · ",
-          mb.decorateExternalLink(outside(mb, pull.htmlUrl, "", ["View on GitHub"]), {
-            icon: "github",
-            position: "before",
-          }),
+          mb.decorateExternalLink(
+            outside(mb, pull.htmlUrl, "", ["View on GitHub"], "github-pull-external-action"),
+            {
+              icon: "github",
+              position: "before",
+            },
+          ),
           model.browse === null ? null : " · ",
           model.browse === null ? null : browseControl(model.browse),
         ]),
@@ -3150,7 +3154,16 @@ export function mountPullPage(container, ctx, mb) {
             event.committed_at !== null && Number.isFinite(Date.parse(event.committed_at))
               ? h("span", { class: "github-pull-quiet" }, ["committed ", age(event.committed_at)])
               : null,
-            outside(mb, href, "", [event.oid.slice(0, 7)], "github-pull-commit-id git-commit-sha"),
+            mb.decorateExternalLink(
+              outside(
+                mb,
+                href,
+                "",
+                [event.oid.slice(0, 7)],
+                "github-pull-commit-id git-commit-sha github-pull-external-action",
+              ),
+              { icon: "github", position: "before" },
+            ),
           ]);
         ordered.push(row);
         inserts.set(event.oid, row);
@@ -3325,12 +3338,30 @@ export function mountPullPage(container, ctx, mb) {
       );
       const rows = h("ul", { class: "github-pull-checks" });
       for (const item of summary.items) {
+        const githubAction = /^https:\/\/github\.com\/[^/]+\/[^/]+\/actions\//i.test(
+          item.url ?? "",
+        );
+        const action = item.url
+          ? outside(
+              mb,
+              item.url,
+              pull.htmlUrl,
+              [githubAction ? "View action on GitHub" : "View details"],
+              "github-pull-external-action",
+            )
+          : null;
+        if (githubAction && action !== null) {
+          mb.decorateExternalLink(action, { icon: "github", position: "before" });
+        }
         rows.append(
           h("li", {}, [
             badge(item.tone, item.label, "check"),
             " ",
-            outside(mb, item.url, pull.htmlUrl, [item.name]),
-            item.detail ? h("span", { class: "github-pull-quiet" }, [` ${item.detail}`]) : null,
+            h("span", {}, [item.name]),
+            action,
+            item.detail && item.detail !== "GitHub Actions"
+              ? h("span", { class: "github-pull-quiet" }, [item.detail])
+              : null,
           ]),
         );
       }

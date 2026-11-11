@@ -131,6 +131,8 @@ abbreviation, color, or weight.
 A plugin reaches the same primitive as `metabrowser.formatAge` and puts the exact time
 in `data-tip-text`. Freshness sentences such as “Fetched 2 min ago via GitHub CLI”
 retain their sentence formatter.
+When a summary shows created or opened and updated ages, omit the updated age when its
+displayed label matches the created or opened age.
 
 ## Typography
 
@@ -535,6 +537,8 @@ Build a chip group with `metabrowser.filterControls.groupHtml` and `bind`, inclu
 outside a filter bar: an exclusive choice is the same control whatever it chooses.
 A consumer may repaint the group from its state on every change, and `bind` puts focus
 back on the chosen chip, so the arrow keys keep working.
+Show a Rendered | Source chooser only for a file with both formats available.
+A file that falls back permanently to Source has no format chooser.
 
 `test_a_toggle_cannot_fork_the_family` fails when a stylesheet or a source states a
 toggle’s ARIA outside this family, and
@@ -1056,6 +1060,11 @@ tip on **Split** saying why; the stored choice is not touched, so Split returns 
 there is room, and choosing **Split** there draws it with a sideways scroll.
 
 ## The Pull Request Page
+
+PR header and check actions use muted link text with a leading GitHub icon in the same
+color. A check row shows its status badge, plain check name, and a separate “View action
+on GitHub” link. Conversation commit hashes use the metadata size, with the GitHub icon
+before the hash.
 
 The page at `/pull/<n>` shows one cached pull request.
 It has almost no vocabulary of its own: it places the shell’s primitives, and a text of

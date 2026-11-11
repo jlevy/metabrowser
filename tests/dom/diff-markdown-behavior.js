@@ -193,6 +193,8 @@ async function main() {
       progress,
       fallback,
       state,
+      control: bar.children[1],
+      toggle: bar.firstElementChild,
       get renderedChoice() {
         return bar.children[1].children[0];
       },
@@ -251,7 +253,8 @@ async function main() {
   await new Promise(setImmediate);
   assert.equal(c.sourceChoice.attributes.get("aria-checked"), "true");
   assert.equal(c.renderedChoice.disabled, true);
-  assert.equal(document.activeElement, c.sourceChoice);
+  assert.equal(c.control.hidden, true, "a source-only file has no format chooser");
+  assert.equal(document.activeElement, c.toggle, "a removed chooser returns focus to the file");
   assert.equal(c.fallback.hidden, false);
 
   await a.renderedChoice.click();

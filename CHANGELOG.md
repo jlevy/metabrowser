@@ -4,6 +4,12 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- Pull-request metadata omits repeated opened and updated ages.
+  Conversation commit hashes match the surrounding metadata size.
+  GitHub actions use a separate muted link after the check name, and the PR’s GitHub
+  link shares that muted styling.
+  A diff with only Source available hides its format chooser.
+
 - Opening a pull request’s **Changes** tab fetches a missing comparison automatically.
   A served checkout reuses a healthy cached store or borrows Git objects without
   changing the checkout.
