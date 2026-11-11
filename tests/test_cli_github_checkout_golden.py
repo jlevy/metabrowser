@@ -338,6 +338,12 @@ def test_golden_idle_comparison_preparation_on_a_checkout(
     )
     assert _after(clicked)["comparison_route"] == route
     assert fingerprint(checkout) == before
-    rendered = label_home("".join(session.blocks), session.home)
+    from urllib.parse import parse_qs, urlsplit
+
+    labels = Labels()
+    query = parse_qs(urlsplit(route).query)
+    labels.add(query["build"][0], "<BUILD>")
+    labels.add(query["store"][0], "<STORE_TAG>")
+    rendered = label_home(labels.apply("".join(session.blocks)), session.home)
     assert str(tmp_path) not in rendered and str(session.home) not in rendered
     check_golden("cli-github-checkout-idle.txt", rendered)
