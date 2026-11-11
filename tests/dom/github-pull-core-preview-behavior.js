@@ -460,18 +460,27 @@ async function run() {
   assert.equal(markdownRequests, 0, "preview stays plain and never asks for full-record Markdown");
   const model = page.describePull(preview, { number: 7, tab: "", nowMs: Date.now() });
   assert.equal(model.browse, null);
-  assert.equal(model.canFetchComparison, false);
+  assert.equal(model.canRetryComparison, false);
   assert.equal(model.comparison, null);
   assert.equal(model.contentReady, true);
   assert.equal(model.corePreview, true);
   const preparedCore = { ...preview.core_preview, comparison_state: "not_started" };
   const filesPage = { number: 7, tab: "files", nowMs: Date.now() };
+  const idleCore = {
+    ...preview,
+    state: "absent",
+    refreshing: false,
+    core_preview: preparedCore,
+    last_refresh: null,
+  };
+  const failedCore = {
+    ...idleCore,
+    last_refresh: { outcome: "network_error", message: "offline" },
+  };
+  assert.equal(page.describePull(idleCore, filesPage).changesPending, true);
   assert.equal(
-    page.describePull(
-      { ...preview, state: "absent", refreshing: false, core_preview: preparedCore },
-      filesPage,
-    ).filesUnavailable,
-    "Changes have not been fetched.",
+    page.describePull(failedCore, filesPage).filesUnavailable,
+    "Changes are unavailable because the full pull request could not be loaded.",
   );
   assert.equal(
     page.describePull({ ...preview, core_preview: preparedCore }, filesPage).filesUnavailable,
@@ -569,12 +578,7 @@ async function run() {
   checksView.dispose();
   window.location.pathname = "/pull/7";
   for (const refreshing of [true, false]) {
-    current = {
-      ...preview,
-      state: refreshing ? "pending" : "absent",
-      refreshing,
-      core_preview: preparedCore,
-    };
+    current = refreshing ? { ...preview, core_preview: preparedCore } : failedCore;
     const changes = new Element("main");
     const view = page.mountPullPage(
       changes,
@@ -590,7 +594,9 @@ async function run() {
     assert.equal(body.querySelector(".spinner") !== null, refreshing);
     assert.match(
       body.textContent,
-      refreshing ? /Changes are still being prepared/ : /Changes have not been fetched/,
+      refreshing
+        ? /Changes are still being prepared/
+        : /Changes are unavailable because the full pull request could not be loaded/,
     );
     view.dispose();
   }

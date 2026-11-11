@@ -548,12 +548,22 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "failedAssetsRecover": True,
         "failedRenderRecovers": True,
         "staleRetryIsInert": True,
-        "checkoutFetchIsExplicit": True,
+        "checkoutFetchIsAutomatic": True,
         "displayedComparisonRepair": True,
         "bridgeAfterPaint": True,
         "bridgeFramesOwned": True,
         "hiddenReadiness": True,
         "markdownOwnership": True,
+    }
+
+
+def test_idle_comparison_is_route_owned_and_promotes_on_changes() -> None:
+    assert run_session("github-pull-idle-comparison-behavior.js") == {
+        "changesBeforeIdle": ["foreground"],
+        "hiddenUntilVisible": ["idle", "foreground"],
+        "afterLateIdleReply": "Changes ready",
+        "afterIdleRefusal": ["idle", "foreground"],
+        "disposed": [],
     }
 
 

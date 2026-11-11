@@ -24,6 +24,7 @@ three things; see `docs/development.md`.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from functools import cache
 from importlib.metadata import version as distribution_version
 from pathlib import Path
@@ -300,7 +301,9 @@ def document_stylesheets() -> dict[str, Any]:
     return _assets_loading(cast("dict[str, Any]", rendered["assets"]), frozenset({"stylesheet"}))
 
 
-def inert_render(rendered: dict[str, Any]) -> dict[str, Any]:
+def inert_render(
+    rendered: dict[str, Any], *, rewrite_local: Callable[[str, bool], str | None] | None = None
+) -> dict[str, Any]:
     """*rendered* for a page that must not trust it: allowlisted HTML and no scripts.
 
     Under the untrusted profile (active content off) a document's author is not the
@@ -320,7 +323,7 @@ def inert_render(rendered: dict[str, Any]) -> dict[str, Any]:
 
     inert = dict(rendered)
     html, inert["toc"] = _without_kpress_toc(str(rendered.get("html", "")))
-    inert["html"], anchors = harden_document(html)
+    inert["html"], anchors = harden_document(html, rewrite_local=rewrite_local)
     assets = rendered.get("assets")
     if isinstance(assets, dict):
         inert["assets"] = _assets_loading(

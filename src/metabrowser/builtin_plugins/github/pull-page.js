@@ -178,8 +178,10 @@ const TRUNCATED = Object.freeze({
  *   pin: string | null,
  *   pin_ref: string | null,
  *   fetched_at: string | null,
+ *   fresh_for_s: number,
  *   record_revision: string | null,
  *   refreshing: boolean,
+ *   preparing_comparison?: true,
  *   last_refresh: {outcome: string, message: string | null, reset_at: string | null, at: string} | null,
  *   comparison_route: string | null,
  *   record: Record<string, any> | null,
@@ -254,7 +256,7 @@ const TRUNCATED = Object.freeze({
  *   message: string | null,
  *   refreshing: boolean,
  *   canRefresh: boolean,
- *   canFetchComparison: boolean,
+ *   canRetryComparison: boolean,
  *   freshness: string | null,
  *   failure: string | null,
  *   failureHelp?: "install" | "update",
@@ -704,7 +706,7 @@ function notes(record, forChecks) {
     said.push("Some text was cut to keep this pull request's data within its size limit.");
   }
   for (const [part, why] of Object.entries(record.unavailable ?? {})) {
-    if (checkPart(part) !== forChecks) {
+    if (checkPart(part) !== forChecks || (part === "comparison" && why === "no_store")) {
       continue;
     }
     said.push(
@@ -729,7 +731,7 @@ export function filesUnavailableText(why) {
     return "Changes are not shown: this checkout's history is too shallow to know what this pull request changed. Metabrowser does not guess. A refresh with the network available fetches more history.";
   }
   if (why === "no_store") {
-    return "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged.";
+    return "Changes could not be fetched.";
   }
   if (why === "comparison_timeout") {
     return "Changes are unavailable: checking this pull request's history took too long. Refresh to try again.";
@@ -794,7 +796,7 @@ function describeCore(pull) {
  * @param {PullEnvelope | null} envelope
  * *checkoutHead* is the served checkout's `HEAD`, on a folder, which has no pin.
  *
- * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, refreshPending?: boolean, comparisonPending?: boolean, waitForReader?: boolean, checkoutHead?: string | null}} page
+ * @param {{number: number, tab: string, nowMs: number, error?: string | null, fetching?: boolean, refreshPending?: boolean, comparisonAttempted?: boolean, waitForReader?: boolean, checkoutHead?: string | null}} page
  * @returns {PullModel}
  */
 export function describePull(envelope, page) {
@@ -809,7 +811,7 @@ export function describePull(envelope, page) {
     message: page.error ?? null,
     refreshing: false,
     canRefresh: false,
-    canFetchComparison: false,
+    canRetryComparison: false,
     freshness: null,
     failure: null,
     pull: null,
@@ -831,7 +833,9 @@ export function describePull(envelope, page) {
     return model;
   }
   model.status = envelope.state;
-  model.refreshing = envelope.refreshing || page.refreshPending === true;
+  model.refreshing =
+    (envelope.refreshing && (page.tab === "files" || !envelope.preparing_comparison)) ||
+    page.refreshPending === true;
   const last = envelope.last_refresh;
   if (last !== null && last.outcome !== "succeeded" && !envelope.refreshing) {
     model.failure = `The last refresh failed: ${last.message ?? SETUP_FAILURES[last.outcome] ?? last.outcome.replaceAll("_", " ")}`;
@@ -861,13 +865,14 @@ export function describePull(envelope, page) {
       !envelope.refreshing &&
       !page.fetching;
     model.changesPending =
-      envelope.refreshing &&
-      (preview.comparison_state === "pending" || preview.comparison_state === "not_started");
+      model.refreshing ||
+      (page.tab === "files" &&
+        envelope.state === "absent" &&
+        envelope.last_refresh === null &&
+        !page.error);
     model.filesUnavailable = model.changesPending
       ? "Changes are still being prepared."
-      : preview.comparison_state === "no_store" && model.refreshing
-        ? "Changes have not been fetched. The description is available while the remaining pull-request details load."
-        : "Changes have not been fetched.";
+      : "Changes are unavailable because the full pull request could not be loaded.";
     return model;
   }
   if (record === null) {
@@ -935,11 +940,14 @@ export function describePull(envelope, page) {
     model.checkoutAtHead = "This checkout's HEAD is this pull request's head.";
   }
   const withoutStore = record.unavailable?.comparison === "no_store";
-  model.changesPending = withoutStore && page.comparisonPending === true;
+  if (withoutStore && page.tab === "files") {
+    model.changesPending = model.refreshing || (!page.comparisonAttempted && !page.error);
+    model.canRetryComparison = !model.changesPending;
+    model.canRefresh = false;
+  }
   model.filesUnavailable = model.changesPending
     ? "Fetching changes…"
     : filesUnavailableText(record.unavailable?.comparison ?? null);
-  model.canFetchComparison = withoutStore && !envelope.refreshing;
   const comparison = record.comparison;
   if (comparison && typeof comparison.base === "string" && typeof comparison.head === "string") {
     model.comparison = {
@@ -1025,6 +1033,9 @@ export function isEnvelope(value) {
  *   cancel(handle: unknown): void,
  *   now(): number,
  *   isVisible(): boolean,
+ *   ownsChanges?(): boolean,
+ *   ownsConversation?(): boolean,
+ *   scheduleComparison?(callback: () => void): () => void,
  *   render(model: PullModel, identity: import("./pull-stacks.js").StackIdentity | null): void,
  *   renderMarkdown(part: string, rendered: Record<string, any>): void,
  *   timelineStateChanged?(): void,
@@ -1075,9 +1086,13 @@ export function createPullController(deps, options) {
   let readerAsked = false;
   /** Asked for by a reader's selection, and the ask is on its way. */
   let fetching = false;
-  /** @type {"metadata" | "comparison" | null} */
-  let refreshPending = null;
-  let comparisonAdmitted = false;
+  let refreshPending = false;
+  // A refused automatic comparison stays a retry, even when later GETs clear the error.
+  let comparisonAttempted = false;
+  /** @type {string | null} */
+  let idleAttemptedRevision = null;
+  /** @type {(() => void) | null} */
+  let cancelComparison = null;
   // Only this page's acknowledged selected refresh can opt in to a settlement read.
   let waitForFull = false;
   /** Markdown by part, for the record content revision `markdownFor`. @type {Map<string, Record<string, any>>} */
@@ -1107,9 +1122,9 @@ export function createPullController(deps, options) {
       tab,
       nowMs: deps.now(),
       error,
-      fetching: fetching || refreshPending !== null,
-      refreshPending: refreshPending !== null,
-      comparisonPending: refreshPending === "comparison" || comparisonAdmitted,
+      fetching: fetching || refreshPending,
+      refreshPending,
+      comparisonAttempted,
       waitForReader: reader !== null && !readerAsked && envelope?.reason !== "not_github",
       checkoutHead: options.checkoutHead ?? null,
     });
@@ -1120,7 +1135,7 @@ export function createPullController(deps, options) {
         next.contentReady = false;
       }
       next.canRefresh = false;
-      next.canFetchComparison = false;
+      next.canRetryComparison = false;
     }
     return next;
   }
@@ -1139,6 +1154,11 @@ export function createPullController(deps, options) {
       painted = key;
       deps.render(next, identity);
     }
+  }
+
+  function cancelIdleComparison() {
+    cancelComparison?.();
+    cancelComparison = null;
   }
 
   function clearTimer() {
@@ -1205,14 +1225,12 @@ export function createPullController(deps, options) {
     }
     shownRequest = request;
     envelope = next;
-    if (!next.refreshing) {
-      comparisonAdmitted = false;
-    }
     if (next.record !== null || !next.refreshing) {
       waitForFull = false;
     }
     const revision = next.record === null ? null : next.record_revision;
     if (revision !== markdownFor) {
+      cancelIdleComparison();
       // Another record: its texts may differ, so nothing rendered from the last one
       // is shown again. The page asks again for the parts a reader sees.
       markdownFor = revision;
@@ -1275,10 +1293,16 @@ export function createPullController(deps, options) {
         : Math.max(0, FAST_POLL_MS - Math.max(0, deps.now() - waitStarted)),
     );
     fetchForReader();
+    fetchSelectedChanges();
     render();
     if (
       deps.isVisible() &&
       envelope?.state === "stale" &&
+      !(
+        envelope.record?.unavailable?.comparison === "no_store" &&
+        (tab === "files" ||
+          (tab === "" && deps.ownsConversation?.() === true && hasFreshComparisonMetadata()))
+      ) &&
       !envelope.refreshing &&
       !fetching &&
       !refreshAskedWhileVisible
@@ -1287,6 +1311,7 @@ export function createPullController(deps, options) {
       askAfter(() => void askForRefresh({ number: options.number }), REFRESH_ASK_MS);
     }
     deps.timelineStateChanged?.();
+    fetchIdleChanges();
   }
 
   /**
@@ -1319,15 +1344,20 @@ export function createPullController(deps, options) {
    * page's own request says nothing to the reader, whose page still shows what it did and
    * still offers Refresh.
    *
-   * @param {{number: number, retry?: boolean, wait_core?: boolean, comparison?: boolean, recovery?: {base: string, head: string}}} ask
+   * @param {{number: number, retry?: boolean, wait_core?: boolean, comparison?: boolean, prepare_comparison?: string, recovery?: {base: string, head: string}}} ask
    */
   async function askForRefresh(ask) {
-    inFlightRefreshes += 1;
+    const idle = ask.prepare_comparison !== undefined;
+    if (!idle) {
+      inFlightRefreshes += 1;
+    }
     if (ask.retry) {
-      refreshPending = ask.comparison ? "comparison" : "metadata";
+      refreshPending = true;
       render();
     }
-    cancelAsk();
+    if (!idle) {
+      cancelAsk();
+    }
     const request = ++sent;
     // A bounded core wait must not shift the first ordinary poll by its response time.
     const fastSince = ask.wait_core === true ? deps.now() : null;
@@ -1340,9 +1370,6 @@ export function createPullController(deps, options) {
         isEnvelope(body.pull)
       ) {
         if (accept(body.pull, request)) {
-          if (ask.comparison) {
-            comparisonAdmitted = response.status === 202 && body.pull.refreshing;
-          }
           waitForFull =
             response.status === 202 &&
             ask.wait_core === true &&
@@ -1353,7 +1380,9 @@ export function createPullController(deps, options) {
           // The answer changed; the next poll must not be answered by a 304.
           etag = null;
         }
-        error = null;
+        if (!idle) {
+          error = null;
+        }
       } else if (ask.retry) {
         const said = body !== null && typeof body.error === "string" ? body.error : null;
         error = `The refresh was refused (${said ?? `HTTP ${response.status}`}).`;
@@ -1363,11 +1392,14 @@ export function createPullController(deps, options) {
         error = "The refresh request failed.";
       }
     }
-    inFlightRefreshes -= 1;
+    if (!idle) {
+      inFlightRefreshes -= 1;
+    }
     if (ask.retry) {
-      refreshPending = null;
+      refreshPending = false;
     }
     if (!disposed) {
+      fetchSelectedChanges();
       render();
       scheduleNext(
         fastSince === null
@@ -1375,11 +1407,12 @@ export function createPullController(deps, options) {
           : FAST_POLL_MS - (Math.max(0, deps.now() - fastSince) % FAST_POLL_MS),
       );
       deps.timelineStateChanged?.();
+      fetchIdleChanges();
     }
   }
 
   /**
-   * A reader's own press of Fetch or Refresh. Files names the comparison still displayed,
+   * A reader's own press of Refresh. Files names the comparison still displayed,
    * which can be older than the latest metadata the page has polled.
    * @param {{base: string, head: string} | undefined} [recovery]
    */
@@ -1397,10 +1430,81 @@ export function createPullController(deps, options) {
     }
   }
 
-  /** An explicit Fetch for Files changed; opening the tab alone never acquires a store. */
+  function ownsSelectedChanges() {
+    return !disposed && tab === "files" && deps.isVisible() && deps.ownsChanges?.() !== false;
+  }
+
+  function fetchComparison() {
+    comparisonAttempted = true;
+    return askForRefresh({ number: options.number, retry: true, comparison: true });
+  }
+
+  /** Open Changes as soon as the selected pull's record can name the comparison. */
+  function fetchSelectedChanges() {
+    if (
+      ownsSelectedChanges() &&
+      hasPolled &&
+      !polling &&
+      !fetching &&
+      inFlightRefreshes === 0 &&
+      !comparisonAttempted &&
+      error === null &&
+      envelope !== null &&
+      (envelope.preparing_comparison === true ||
+        (!envelope.refreshing && envelope.record?.unavailable?.comparison === "no_store"))
+    ) {
+      void fetchComparison();
+    }
+  }
+
+  function hasFreshComparisonMetadata() {
+    return (
+      envelope?.fetched_at != null &&
+      deps.now() - Date.parse(envelope.fetched_at) <= envelope.fresh_for_s * 1000
+    );
+  }
+
+  function idleCandidate() {
+    if (
+      disposed ||
+      tab !== "" ||
+      !deps.isVisible() ||
+      deps.ownsConversation?.() !== true ||
+      !hasPolled ||
+      polling ||
+      fetching ||
+      askTimer !== null ||
+      inFlightRefreshes > 0 ||
+      error !== null ||
+      envelope === null ||
+      envelope.refreshing ||
+      envelope.record?.unavailable?.comparison !== "no_store" ||
+      envelope.record_revision === idleAttemptedRevision ||
+      !hasFreshComparisonMetadata()
+    ) {
+      return null;
+    }
+    return envelope.record_revision;
+  }
+
+  /** Only the activated Conversation page can name one idle candidate. */
+  function fetchIdleChanges() {
+    const revision = idleCandidate();
+    if (revision === null || cancelComparison !== null || !deps.scheduleComparison) {
+      return;
+    }
+    cancelComparison = deps.scheduleComparison(() => {
+      cancelComparison = null;
+      if (idleCandidate() === revision) {
+        idleAttemptedRevision = revision;
+        void askForRefresh({ number: options.number, prepare_comparison: revision });
+      }
+    });
+  }
+
   async function requestComparison() {
-    if (!disposed && model().canFetchComparison) {
-      await askForRefresh({ number: options.number, retry: true, comparison: true });
+    if (ownsSelectedChanges() && inFlightRefreshes === 0 && model().canRetryComparison) {
+      await fetchComparison();
     }
   }
 
@@ -1468,7 +1572,10 @@ export function createPullController(deps, options) {
       return;
     }
     tab = next;
+    cancelIdleComparison();
+    fetchSelectedChanges();
     render();
+    fetchIdleChanges();
   }
 
   function pump() {
@@ -1535,6 +1642,7 @@ export function createPullController(deps, options) {
     if (!deps.isVisible()) {
       clearTimer();
       cancelAsk();
+      cancelIdleComparison();
       refreshAskedWhileVisible = false;
       if (fetching) {
         fetching = false;
@@ -1549,6 +1657,7 @@ export function createPullController(deps, options) {
     disposed = true;
     clearTimer();
     cancelAsk();
+    cancelIdleComparison();
     queue.length = 0;
   }
 
@@ -1565,7 +1674,11 @@ export function createPullController(deps, options) {
     },
     poll: () => poll(),
     timelineAllowed: () =>
-      hasPolled && askTimer === null && inFlightRefreshes === 0 && envelope?.refreshing === false,
+      hasPolled &&
+      askTimer === null &&
+      inFlightRefreshes === 0 &&
+      (envelope?.refreshing === false || envelope?.preparing_comparison === true),
+    fetchIdleChanges,
     requestRefresh,
     requestComparison,
     switchToHead,
@@ -2866,6 +2979,8 @@ export function mountPullPage(container, ctx, mb) {
     const children = [];
     const pull = model.pull;
     if (pull !== null) {
+      const createdAge = age(pull.created);
+      const updatedAge = age(pull.updated);
       children.push(
         h("h1", { class: "page-heading github-pull-title github-pull-title-with-state" }, [
           pullStateIcon(pull.state, { named: false }),
@@ -2878,15 +2993,17 @@ export function mountPullPage(container, ctx, mb) {
         paintStateRow(pull),
         h("div", { class: "github-pull-quiet" }, [
           "Opened ",
-          age(pull.created),
-          " · updated ",
-          age(pull.updated),
+          createdAge,
+          ...(createdAge.textContent === updatedAge.textContent ? [] : [" · updated ", updatedAge]),
           ...(pull.closed && pull.closedLabel ? [` · ${pull.closedLabel} `, age(pull.closed)] : []),
           " · ",
-          mb.decorateExternalLink(outside(mb, pull.htmlUrl, "", ["View on GitHub"]), {
-            icon: "github",
-            position: "before",
-          }),
+          mb.decorateExternalLink(
+            outside(mb, pull.htmlUrl, "", ["View on GitHub"], "github-pull-external-action"),
+            {
+              icon: "github",
+              position: "before",
+            },
+          ),
           model.browse === null ? null : " · ",
           model.browse === null ? null : browseControl(model.browse),
         ]),
@@ -2905,7 +3022,8 @@ export function mountPullPage(container, ctx, mb) {
         h("h1", { class: "page-heading github-pull-title" }, [`Pull request #${model.number}`]),
       );
     }
-    const freshness = model.freshness;
+    const freshness =
+      model.tab === "files" && model.changesPending && model.refreshing ? null : model.freshness;
     const status = h("div", { class: "github-pull-status", "data-status": model.status }, [
       model.refreshing && freshness !== null ? progress(freshness) : freshness,
     ]);
@@ -3036,7 +3154,16 @@ export function mountPullPage(container, ctx, mb) {
             event.committed_at !== null && Number.isFinite(Date.parse(event.committed_at))
               ? h("span", { class: "github-pull-quiet" }, ["committed ", age(event.committed_at)])
               : null,
-            outside(mb, href, "", [event.oid.slice(0, 7)], "github-pull-commit-id git-commit-sha"),
+            mb.decorateExternalLink(
+              outside(
+                mb,
+                href,
+                "",
+                [event.oid.slice(0, 7)],
+                "github-pull-commit-id git-commit-sha github-pull-external-action",
+              ),
+              { icon: "github", position: "before" },
+            ),
           ]);
         ordered.push(row);
         inserts.set(event.oid, row);
@@ -3211,12 +3338,30 @@ export function mountPullPage(container, ctx, mb) {
       );
       const rows = h("ul", { class: "github-pull-checks" });
       for (const item of summary.items) {
+        const githubAction = /^https:\/\/github\.com\/[^/]+\/[^/]+\/actions\//i.test(
+          item.url ?? "",
+        );
+        const action = item.url
+          ? outside(
+              mb,
+              item.url,
+              pull.htmlUrl,
+              [githubAction ? "View action on GitHub" : "View details"],
+              "github-pull-external-action",
+            )
+          : null;
+        if (githubAction && action !== null) {
+          mb.decorateExternalLink(action, { icon: "github", position: "before" });
+        }
         rows.append(
           h("li", {}, [
             badge(item.tone, item.label, "check"),
             " ",
-            outside(mb, item.url, pull.htmlUrl, [item.name]),
-            item.detail ? h("span", { class: "github-pull-quiet" }, [` ${item.detail}`]) : null,
+            h("span", {}, [item.name]),
+            action,
+            item.detail && item.detail !== "GitHub Actions"
+              ? h("span", { class: "github-pull-quiet" }, [item.detail])
+              : null,
           ]),
         );
       }
@@ -3451,14 +3596,12 @@ export function mountPullPage(container, ctx, mb) {
       const message = notice(model.corePreview || model.changesPending ? null : "error", [
         model.changesPending ? progress(model.filesUnavailable) : model.filesUnavailable,
       ]);
-      if (model.canFetchComparison) {
-        const fetchChanges = h(
-          "button",
-          { type: "button", class: "btn github-pull-fetch-changes" },
-          ["Fetch changes"],
-        );
-        fetchChanges.addEventListener("click", () => void controller.requestComparison());
-        message.append(fetchChanges);
+      if (model.canRetryComparison) {
+        const retry = h("button", { type: "button", class: "btn github-pull-retry-changes" }, [
+          "Retry changes",
+        ]);
+        retry.addEventListener("click", () => void controller.requestComparison());
+        message.append(retry);
       }
       body.replaceChildren(message);
       return;
@@ -3770,6 +3913,29 @@ export function mountPullPage(container, ctx, mb) {
       cancel: (handle) => window.clearTimeout(/** @type {number} */ (handle)),
       now: () => Date.now(),
       isVisible: () => document.visibilityState === "visible",
+      ownsChanges: () => onPageRoute(window.location.pathname, number, "files"),
+      ownsConversation: () =>
+        active &&
+        mb.sourceKind() === "filesystem" &&
+        onPageRoute(window.location.pathname, number, ""),
+      scheduleComparison(callback) {
+        /** @type {number | undefined} */
+        let idle;
+        // Wait until the reader stops on this page, as with a stale metadata refresh.
+        const timer = window.setTimeout(() => {
+          if (typeof window.requestIdleCallback === "function") {
+            idle = window.requestIdleCallback(callback);
+          } else {
+            callback();
+          }
+        }, REFRESH_ASK_MS);
+        return () => {
+          window.clearTimeout(timer);
+          if (idle !== undefined) {
+            window.cancelIdleCallback(idle);
+          }
+        };
+      },
       render(model, identity) {
         stackIdentity = identity;
         mb.perf.measure("githubPull:render", () => paint(model), { number });
@@ -3836,6 +4002,7 @@ export function mountPullPage(container, ctx, mb) {
     }
     active = true;
     followTimeline();
+    controller.fetchIdleChanges();
     if (pane === null) {
       return;
     }

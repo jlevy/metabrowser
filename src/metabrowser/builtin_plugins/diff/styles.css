@@ -408,3 +408,101 @@
   line-height: 1.5;
   white-space: nowrap;
 }
+
+.metabrowser-diff-host .diff-file-bar-markdown {
+  flex-wrap: wrap;
+}
+
+.metabrowser-diff-host .diff-file-bar-markdown .diff-file-toggle {
+  flex: 0 1 auto;
+}
+
+.metabrowser-diff-host .diff-markdown-control {
+  display: flex;
+  flex: none;
+  margin-block: 2px;
+}
+
+.metabrowser-diff-host .diff-markdown-control + .diff-file-view,
+.metabrowser-diff-host .diff-markdown-control + .diff-file-copy {
+  margin-inline-start: auto;
+}
+
+.metabrowser-diff-host .diff-markdown-control .chip:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+.metabrowser-diff-host .diff-markdown-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.metabrowser-diff-host
+  :is(
+    .diff-markdown-control,
+    .diff-markdown-progress,
+    .diff-markdown-fallback,
+    .diff-markdown,
+    .diff-file-body
+  )[hidden] {
+  display: none;
+}
+
+.metabrowser-diff-host .diff-markdown {
+  max-inline-size: calc(var(--doc-measure) + 2 * var(--content-padding-x));
+  padding-block: 4px;
+  overflow-wrap: anywhere;
+}
+
+.metabrowser-diff-host .diff-markdown-block {
+  padding: 4px var(--content-padding-x);
+  border-inline-start: var(--diff-change-gutter-width) solid transparent;
+}
+
+.metabrowser-diff-host .diff-markdown-block .kpress-prose {
+  margin: 0;
+}
+
+.metabrowser-diff-host .diff-markdown-block img {
+  max-inline-size: 100%;
+  block-size: auto;
+}
+
+.metabrowser-diff-host .diff-markdown-added {
+  border-inline-start-color: var(--diff-add-gutter);
+  background: var(--diff-add-row-bg);
+}
+
+.metabrowser-diff-host .diff-markdown-removed {
+  border-inline-start-color: var(--diff-del-gutter);
+  background: var(--diff-del-row-bg);
+}
+
+.metabrowser-diff-host .diff-markdown-added ins {
+  background: var(--diff-add-inner-bg);
+  text-decoration: underline;
+}
+
+.metabrowser-diff-host .diff-markdown-removed del {
+  background: var(--diff-del-inner-bg);
+  text-decoration: line-through;
+  text-decoration-color: var(--diff-del-gutter);
+}
+
+@media (forced-colors: active) {
+  .metabrowser-diff-host :is(.diff-markdown-added, .diff-markdown-removed) {
+    border-inline-start-color: CanvasText;
+  }
+  .metabrowser-diff-host .diff-markdown-removed del {
+    text-decoration-color: CanvasText;
+  }
+}
+
+.metabrowser-diff-host .diff-markdown-context > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+  padding: 4px var(--content-padding-x);
+}

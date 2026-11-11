@@ -131,8 +131,8 @@ Metabrowser reads repository stack metadata without changing local stack trackin
 GitHub. If the extension or API is unavailable, PR browsing still works and stack labels
 are omitted unless a matching cached snapshot is available.
 
-See [reviewing pull requests](reviewing-pull-requests.md) for Fetch changes, cached
-reads, and refreshing after setup.
+See [reviewing pull requests](reviewing-pull-requests.md) for comparisons, cached reads,
+and refreshing after setup.
 
 ## Run a Source Checkout
 

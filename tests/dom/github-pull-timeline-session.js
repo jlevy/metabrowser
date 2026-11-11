@@ -282,7 +282,7 @@ async function run() {
   assert.equal(link.textContent, firstCommit.slice(0, 7));
   assert.equal(link.getAttribute("target"), "_blank");
   assert.equal(link.getAttribute("rel"), "noopener noreferrer");
-  assert.equal(link.children.at(-1).getAttribute("data-external-kind"), "github");
+  assert.equal(link.children.at(0).getAttribute("data-external-kind"), "github");
   assert.ok(session.marks.includes("githubPull:timelineReady"));
 
   // The last published result is still shown if this exact record starts refreshing.

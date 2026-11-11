@@ -1,6 +1,6 @@
 # Feature: General Diff Rendering
 
-**Date:** 2026-08-17 (last updated 2026-09-14)
+**Date:** 2026-08-17 (last updated 2026-11-09)
 
 **Author:** Metabrowser maintainers
 
@@ -352,10 +352,9 @@ plane — which sharpens the core/plugin split above: PR *refs* ride the Git tra
 through the repository service, while PR metadata and conversation remain provider
 plugin territory.
 
-A documentation-heavy PR also shows where Metabrowser can be better than the hosting
-site rather than merely equal: the manifest’s rich-view hint plus content-at-revision
-means a changed Markdown file can be read rendered at the head revision, not only as
-patch text. A hosted site shows the diff of a document; this shows the document.
+Documentation changes can use both a rendered diff and a link to the complete document
+at either revision. See
+[Rendered Diffs and Revision File Links](#rendered-diffs-and-revision-file-links).
 
 The annotation layer is deliberately not built here, but the comparison model reserves
 its anchor shape — comparison and file-change IDs, side, immutable content identity,
@@ -417,9 +416,8 @@ that already exists rather than adding one:
    ordered view descriptors, the shell mounts them lazily as tabs, and `preferredViewId`
    picks one. In comparison context a changed file’s descriptor list gains comparison
    views, and **Diff** becomes the context default.
-   Every later presentation — Before, After, rendered-at-revision for Markdown, an
-   inline diff inside the rendered document — is another tab from the same diff layout,
-   not a new mechanism.
+   The PR Markdown design below places the Rendered and Source choices in each file
+   header so a single Changes page can mix different presentations.
 3. **The context is addressable, on its own route.** A comparison scopes what the tree
    shows and what the tabs mean, so it lives in the URL like every other selection.
    The grammar is decided and documented in
@@ -442,8 +440,138 @@ View phasing for a changed text file, all tabs from one diff layout:
 | Phase | Tabs |
 | --- | --- |
 | First | **Diff** (unified source), After |
-| Next | Before; **Rendered** at the head revision for Markdown |
-| Later | Split and inline presentations; the diff shown inside the rendered document |
+| Planned for PR Markdown | **Rendered** redline by default, **Source** for the existing diff, and links to the full base and head files |
+| Later | Equivalent rendered comparisons for other eligible document types |
+
+### Rendered Diffs and Revision File Links
+
+The implementation links directly to each admitted revision file and keeps the server’s
+current subject in place.
+The first projection supports ordinary Markdown blocks when the parser’s source ranges
+agree with KPress’s complete render.
+Raw HTML, footnotes, unsupported mappings, and over-budget documents remain readable in
+Source.
+
+**Status:** Planned for PR Changes in checkout and managed sessions.
+The rendered and source views follow GitHub’s prose-review pattern.
+Markdown is the first eligible format.
+Later formats can register a renderer that supplies an equivalent bounded, inert
+comparison projection.
+[GitHub’s rendered prose diffs](https://docs.github.com/en/repositories/working-with-files/using-files/working-with-non-code-files#rendering-differences-in-prose-documents)
+
+#### File Controls
+
+Place a compact **Rendered | Source** toggle immediately to the right of the filename in
+each eligible file bar.
+Use the existing keyboard and focus conventions.
+Changing modes keeps the file expanded, preserves its selection, and leaves focus on the
+control. On narrow panes the controls may wrap with the file header.
+**Rendered** is the initial mode for supported Markdown.
+A file is eligible when each existing side is a supported regular Markdown document.
+A missing side is empty.
+Type changes and paths without a renderer use Source.
+**Source** uses the existing diff and its Unified or Split preference, source anchors,
+and exact line text.
+Keep the reader’s choice while reviewing that file in the displayed comparison.
+Keep the full-page **View file** and **View at base** links separate from the
+presentation toggle.
+
+Defaulting to Rendered does not eagerly mount every document.
+The file bar can paint with the manifest.
+Render the selected file and prepare nearby eligible files through the existing
+visibility and priority policy.
+Use the standard progress indicator for a pending projection.
+Check measured input-byte and work budgets before starting a rich projection and cap the
+resulting node count before mounting it.
+Reveal unchanged context as the reader needs it.
+If a projection is unsupported, unavailable, or exceeds its budget, show the source diff
+with a concise reason.
+A late render must not switch the file back after the reader selects Source.
+
+#### Redlines in Rendered Markdown
+
+First verify that the Markdown adapter can provide a versioned projection with original
+source ranges for eligible blocks and text runs.
+The current KPress adapter exposes rendered content and headings.
+This plan does not assume it already exposes those mappings.
+A format opts in only after its adapter can map changes reliably and keep its projection
+inert. Keep the existing source diff as the fallback when that contract cannot be met.
+
+Render each side from its complete Markdown snapshot using the normal Markdown pipeline
+and its untrusted policy.
+Use the authoritative source patch and the parser’s source ranges to map changes to
+rendered blocks. Align matched blocks in document order.
+Within an unambiguous prose match, mark changed text runs while preserving formatting
+and whitespace. For structural changes or ambiguous matches, show the old and new blocks
+as removed and added.
+Keep a visible note for source-only changes when the rendered text appears unchanged,
+such as a changed link destination.
+Source remains the exact review surface for those changes.
+
+Reuse the diff design tokens for green and red bars on the left of changed regions.
+Use light green for inserted text and a light red background with strikethrough for
+removed text. Include semantic insertion and deletion cues so color is not the only
+signal, including in dark and high-contrast themes.
+Keep normal Markdown layout for unchanged context.
+Wrap changes with safe text operations over the rendered structure.
+Avoid diffing serialized HTML or injecting diff syntax into Markdown.
+Preserve valid structure around lists, tables, code fences, headings, and links.
+Keep removed links and assets inert.
+Namespace heading, footnote, and fragment IDs by comparison, file, and side before
+combining projections, and rewrite their references within that scope.
+Use Source when a structural edit cannot be represented with trustworthy block-level
+markers.
+
+#### Full File at the Reviewed Revision
+
+Open the complete file in the normal Document or Source view at the comparison’s exact
+snapshot.
+The base link uses the resolved merge base and old path, and the head link uses
+the resolved head and new path.
+Handle rename and copy paths on their respective sides.
+An addition or deletion has only the side that exists.
+Keep the comparison and scroll position on Back, and leave the live checkout and server
+pin in place in both source modes.
+
+Authorize the initial file address against the displayed comparison and its admitted
+store. Publish a bounded, owner-local snapshot binding for a reloadable link, scoped to
+the source and both resolved commits.
+Retain the binding and required cache roots under the repository’s retention policy.
+The currently displayed pair or the in-memory issued-comparison set alone cannot
+authorize reopening after a restart.
+An expired or unreadable binding gives a typed unavailable state.
+A read address grants no authority to fetch arbitrary revisions.
+Repair still requires the existing admitted fetch path.
+
+Carry the immutable source and explicit untrusted policy through every secondary read.
+Links, raw reads, images, fragments, document embeds, adapters, Source, and export must
+resolve in that snapshot or be disabled.
+The live checkout’s trust and root must never leak into a snapshot request.
+The revision Markdown renderer currently consults the served session’s active-content
+flag. The scoped viewer must take its trust policy from the admitted snapshot.
+If the original snapshot is unavailable, show that state instead of resolving a branch
+or reading the live file.
+Read full blobs from the
+[shared Git cache](plan-2026-11-02-pr-review-mirror-and-checkout.md#shared-loading-contract-for-pr-review).
+Do not fetch diff patches from GitHub or cache a duplicate copy of the repository.
+
+#### Acceptance
+
+Exercise the same changed Markdown in a managed mirror and an existing checkout whose
+live file has different bytes.
+Verify default Rendered mode, redline meaning, source fidelity, focus, added and deleted
+sides, a rename, and correct link and asset resolution in both immutable snapshots.
+Include two tabs on old and new comparisons across a force-push and server restart, an
+expired binding, an offline cached reopen, and hostile Markdown on a trusted folder
+server. Test duplicate headings and footnotes across files, reference links, format-only
+edits, and repeated identical blocks.
+Check that secondary reads cannot escape the revision’s source and trust scope.
+Test large and structurally ambiguous documents, and measure first diff content,
+requests, and main-thread work against the Source default on a documentation-heavy
+comparison before widening automatic preparation.
+Expose the snapshot and projection through the CLI/API parity path and add goldens for
+mode selection, fallback, and exact file-side bytes.
+Browser tests cover paint, focus, and history restoration.
 
 ### The format is defined standalone, up front
 

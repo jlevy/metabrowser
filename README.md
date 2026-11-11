@@ -171,8 +171,8 @@ To review GitHub pull requests, open a repository URL or an existing checkout an
 **Pulls**, or open a pull-request URL directly.
 Fetching fresh GitHub metadata needs [`gh`](https://cli.github.com/) signed in; cached
 metadata remains readable without it.
-[Reviewing pull requests](docs/reviewing-pull-requests.md) explains Fetch changes,
-refreshing, and the difference between a working folder and cached code.
+[Reviewing pull requests](docs/reviewing-pull-requests.md) explains automatic comparison
+fetching, refreshing, and the difference between a working folder and cached code.
 
 ```shell
 metab https://github.com/owner/repo

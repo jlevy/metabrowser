@@ -71,27 +71,26 @@ async function run() {
     nowMs: Date.parse("2026-09-17T12:00:30Z"),
   };
   assert.equal(describePull(noStore, options).canRefresh, false);
-  assert.equal(describePull(noStore, options).canFetchComparison, true);
-  assert.equal(
-    describePull(
-      {
-        ...noStore,
-        last_refresh: {
-          outcome: "network_error",
-          message: null,
-          reset_at: null,
-          at: "2026-09-17T12:00:00Z",
-        },
+  assert.equal(describePull(noStore, options).canRetryComparison, false);
+  const failed = describePull(
+    {
+      ...noStore,
+      last_refresh: {
+        outcome: "network_error",
+        message: null,
+        reset_at: null,
+        at: "2026-09-17T12:00:00Z",
       },
-      options,
-    ).canRefresh,
-    true,
+    },
+    { ...options, comparisonAttempted: true },
   );
+  assert.equal(failed.canRefresh, false, "only Retry changes can prepare the missing store");
+  assert.equal(failed.canRetryComparison, true);
   process.stdout.write(
     `${JSON.stringify({
       manualFailuresRetry: cases,
       automaticReadsFetch: false,
-      noStoreKeepsOwnAction: true,
+      noStoreSkipsPrematureRetry: true,
     })}\n`,
   );
 }

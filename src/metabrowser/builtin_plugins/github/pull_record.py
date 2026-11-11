@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal
@@ -292,6 +293,14 @@ class PullRecord(_Model):
 type RecordAbsence = Literal["not_cached", "schema_mismatch", "unreadable"]
 
 
+class PullObservationSuperseded(Exception):
+    """A different process published the record first."""
+
+    def __init__(self, current: PullRecord) -> None:
+        super().__init__("a newer pull-request observation is already cached")
+        self.current = current
+
+
 class RecordTooLargeError(Exception):
     """A record would be larger than :data:`MAX_PULL_RECORD_BYTES`; nothing was written."""
 
@@ -486,7 +495,13 @@ def _metadata_record(record: PullRecord, current: PullRecord | RecordAbsence) ->
 
 
 def write_pull_record(
-    home: Path, slug: str, record: PullRecord, *, metadata_only: bool = False
+    home: Path,
+    slug: str,
+    record: PullRecord,
+    *,
+    metadata_only: bool = False,
+    store_id: str | None = None,
+    expected: PullRecord | RecordAbsence | None = None,
 ) -> PullRecord:
     """Publish and return *record* under its source's alias lock. Blocking.
 
@@ -498,17 +513,32 @@ def write_pull_record(
     Raises :class:`RecordTooLargeError`, or the home's ``PrivateStorageError`` or an
     ``OSError`` when the cache cannot take it, a slug no source holds among them.
     """
+    from metabrowser.builtin_plugins.github.pull_snapshot_cache import retain_snapshot_binding
+
     data = serialize_pull_record(record)
     # Do not create a lock or any source path for an unclaimed source. Check again
     # under the lock before creating the pulls directory or publishing the record.
     _require_published_source(home, slug)
     with source_alias_lock(home, slug):
         ensure_pulls_directory(home, slug)
-        if metadata_only:
+        if expected is not None or metadata_only or store_id is not None:
             current = read_pull_record(home, slug, record.number)
+            if expected is not None and isinstance(current, PullRecord) and current != expected:
+                raise PullObservationSuperseded(current)
+        else:
+            current = "not_cached"
+        if metadata_only:
             record = fit_record(_metadata_record(record, current))
             data = serialize_pull_record(record)
+        if store_id is not None:
+            # The current record still authorizes its exact pair if history cannot be saved.
+            with suppress(PrivateStorageError, OSError):
+                if isinstance(current, PullRecord) and current.reader == record.reader:
+                    retain_snapshot_binding(home, slug, store_id, current)
         write_private_file_atomic(home, source_pull_record(slug, record.number), data)
+        if store_id is not None and record.comparison is not None:
+            with suppress(PrivateStorageError, OSError):
+                retain_snapshot_binding(home, slug, store_id, record)
     return record
 
 
@@ -597,10 +627,21 @@ def read_refresh_stamp(home: Path, relative: str) -> PullRefreshStamp | None:
         return None
 
 
-def write_pull_refresh(home: Path, slug: str, number: int, stamp: PullRefreshStamp) -> None:
-    """Publish *stamp* atomically beside the record. Blocking; run it off the event loop."""
-
-    write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
+def write_pull_refresh(
+    home: Path,
+    slug: str,
+    number: int,
+    stamp: PullRefreshStamp,
+    *,
+    expected: PullRecord | RecordAbsence | None = None,
+) -> bool:
+    """Keep the outcome only while the observation it describes is current."""
+    _require_published_source(home, slug)
+    with source_alias_lock(home, slug):
+        if expected is not None and read_pull_record(home, slug, number) != expected:
+            return False
+        write_refresh_stamp(home, slug, source_pull_refresh(slug, number), stamp)
+        return True
 
 
 def read_pull_refresh(home: Path, slug: str, number: int) -> PullRefreshStamp | None:

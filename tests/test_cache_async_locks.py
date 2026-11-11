@@ -21,9 +21,13 @@ from pathlib import Path
 
 import pytest
 
+from metabrowser.cache import acquire as acquire_module
 from metabrowser.cache.acquire import acquire_source
+from metabrowser.cache.identity import source_identity
 from metabrowser.cache.locks import (
     CacheLock,
+    LockBusyError,
+    LockOrder,
     LockOrderError,
     application_cache_lock,
     held_locks,
@@ -33,6 +37,7 @@ from metabrowser.cache.locks import (
 )
 from metabrowser.cancellable_thread import run_acquiring_thread
 from metabrowser.home import ensure_home
+from tests.admitted_git import required_admitted_git
 from tests.child_io import read_line
 from tests.required_tools import needs_git
 from tests.test_cache_acquire import _allow_installed_git, _file_source, _origin
@@ -191,6 +196,117 @@ def test_work_a_cancelled_task_abandoned_is_released_when_it_finishes() -> None:
 
 
 # ── Acquisition ────────────────────────────────────────────────────
+
+
+@requires_git
+def test_cold_source_waiter_reuses_another_process_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version = _allow_installed_git(monkeypatch)
+    home = tmp_path / "home"
+    source = _file_source(_origin(tmp_path))
+    other = tmp_path / "other"
+    other.mkdir()
+    other_source = _file_source(_origin(other))
+    source_id = source_identity(source.transport, source.normalized)
+    child = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            textwrap.dedent(
+                """
+                import asyncio
+                import ast
+                import select
+                import sys
+                from pathlib import Path
+                from metabrowser.cache import acquire
+                from metabrowser.cache.urls import classify_root_argument
+
+                if sys.argv[3]:
+                    acquire.require_acquisition_git = lambda: ast.literal_eval(sys.argv[3])
+
+                def phase(name):
+                    if name == "reading the default branch":
+                        print("staging", flush=True)
+                        if not select.select([sys.stdin], [], [], 30)[0]:
+                            raise TimeoutError("the waiting process did not resume acquisition")
+                        if not sys.stdin.readline():
+                            raise EOFError("the waiting process disappeared")
+
+                answer = asyncio.run(
+                    acquire.acquire_source(
+                        classify_root_argument(sys.argv[1]), home=Path(sys.argv[2]), on_phase=phase
+                    )
+                )
+                assert answer.fetched
+                print(answer.store_key, flush=True)
+                """
+            ),
+            source.normalized,
+            str(home),
+            repr(version) if required_admitted_git() is None else "",
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert read_line(child).strip() == "staging"
+        real_claim = acquire_module.source_acquisition_lock
+
+        async def scenario() -> str:
+            loop = asyncio.get_running_loop()
+            busy = asyncio.Event()
+            phases: list[str] = []
+
+            def observed_claim(
+                home: Path, key: str, *, order: LockOrder | None = None
+            ) -> CacheLock:
+                try:
+                    return real_claim(home, key, order=order)
+                except LockBusyError:
+                    if key == source_id:
+                        loop.call_soon_threadsafe(busy.set)
+                    raise
+
+            monkeypatch.setattr(acquire_module, "source_acquisition_lock", observed_claim)
+            cancelled = asyncio.create_task(acquire_source(source, home=home))
+            await asyncio.wait_for(busy.wait(), CHILD_TIMEOUT)
+            cancelled.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await cancelled
+
+            busy.clear()
+            waiting = asyncio.create_task(acquire_source(source, home=home, on_phase=phases.append))
+            await asyncio.wait_for(busy.wait(), CHILD_TIMEOUT)
+            independent = await asyncio.wait_for(
+                acquire_source(other_source, home=home), CHILD_TIMEOUT
+            )
+            assert independent.fetched
+            assert child.poll() is None
+            assert not waiting.done()
+            assert child.stdin is not None
+            child.stdin.write("\n")
+            child.stdin.flush()
+
+            published = await asyncio.wait_for(waiting, CHILD_TIMEOUT)
+            assert not published.fetched
+            assert phases == []
+            assert independent.store_key != published.store_key
+            return published.store_key
+
+        store_key = asyncio.run(scenario())
+        stdout, stderr = child.communicate(timeout=CHILD_TIMEOUT)
+        assert child.returncode == 0, stderr
+        assert stdout.strip() == store_key
+    finally:
+        if child.poll() is None:
+            child.kill()
+        child.communicate(timeout=CHILD_TIMEOUT)
+    assert list((home / "staging").iterdir()) == []
+    assert held_locks() == ()
 
 
 @requires_git

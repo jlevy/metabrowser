@@ -14,7 +14,9 @@ descriptor is opened. Network work and long-running Git processes call
 :func:`require_no_hierarchy_locks` first.
 
 Side locks sit outside the order and are only ever tried without blocking. A staging
-entry lock marks one owner's liveness. A store's fetch lock marks the one refresh that may
+entry lock marks one owner's liveness. A source acquisition lock reserves a cold miss
+through publication; other callers retry it and recheck for the published store. A
+store's fetch lock marks the one refresh that may
 fetch into that published store; it is held across network work, which is why it cannot be
 a hierarchy lock. The Git processes that write the store inherit its descriptor, so it
 stays held for as long as any of them runs, even after the process that took it has
@@ -60,7 +62,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Final, Self
 
-from metabrowser.cache.identity import is_slug, is_store_key
+from metabrowser.cache.identity import is_identity, is_slug, is_store_key, store_key
 from metabrowser.cancellable_thread import run_acquiring_thread, run_cancellable_thread
 from metabrowser.home import (
     PrivateStorageError,
@@ -111,6 +113,7 @@ class LockKind(StrEnum):
     SOURCE_ALIAS = "source_alias"
     REPOSITORY_STORE = "repository_store"
     STAGING_ENTRY = "staging_entry"
+    SOURCE_ACQUISITION = "source_acquisition"
     STORE_FETCH = "store_fetch"
 
 
@@ -581,6 +584,23 @@ def staging_entry_lock(home: Path, entry: str, *, order: LockOrder | None = None
     return _entry_lock(home, LockKind.STAGING_ENTRY, "staging", entry, order=order)
 
 
+def source_acquisition_lock(
+    home: Path, source_id: str, *, order: LockOrder | None = None
+) -> CacheLock:
+    """Try the cold-load reservation for a canonical source, outside the hierarchy."""
+
+    _require(is_identity(source_id), "source identity")
+    key = store_key(source_id)
+    return _acquire(
+        home,
+        LockKind.SOURCE_ACQUISITION,
+        key,
+        f"{LOCKS_DIRECTORY}/sources/{key}.acquire.lock",
+        blocking=False,
+        order=order,
+    )
+
+
 def store_fetch_lock(home: Path, store_key: str, *, order: LockOrder | None = None) -> CacheLock:
     """Try the fetch side lock of one published store without blocking.
 
@@ -625,6 +645,7 @@ __all__ = [
     "lock_order",
     "repository_store_lock",
     "require_no_hierarchy_locks",
+    "source_acquisition_lock",
     "source_alias_lock",
     "staging_entry_lock",
     "store_fetch_lock",

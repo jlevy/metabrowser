@@ -181,6 +181,9 @@
 .github-pull-commit-id {
   white-space: nowrap;
 }
+.github-pull-commit .git-commit-sha {
+  font-size: var(--ui-small-font-size);
+}
 .github-pull-reply {
   margin-left: var(--content-padding-x);
 }
@@ -321,7 +324,26 @@
   list-style: none;
 }
 .github-pull-checks li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
   padding: 3px 0;
+  font-size: var(--ui-small-font-size);
+}
+.github-pull-commit .github-pull-external-action,
+.github-pull-header .github-pull-external-action,
+.github-pull-checks .github-pull-external-action {
+  color: var(--muted);
+  font-size: var(--ui-small-font-size);
+}
+.github-pull-commit .github-pull-external-action:hover,
+.github-pull-header .github-pull-external-action:hover,
+.github-pull-checks .github-pull-external-action:hover,
+.github-pull-commit .github-pull-external-action:focus-visible,
+.github-pull-header .github-pull-external-action:focus-visible,
+.github-pull-checks .github-pull-external-action:focus-visible {
+  color: var(--link);
 }
 .github-pull-merge[data-state="conflicting"] {
   color: var(--status-error);

@@ -633,7 +633,12 @@ against the base branch as it is now.
 A closed or merged pull request compares from the API’s `base.sha`, fetched by ID when
 no mirrored ref reaches it.
 The fetched head must be the head the API reported; one full re-read covers a push
-between the two, and a second mismatch is `head_mismatch`.
+between the two, and a second mismatch is `head_mismatch`. Preparation from cached PR
+metadata can reuse the exact head commit already in the store.
+When that head or the API’s base commit is missing, the fetch rechecks for the object
+under the store’s fetch lock before reaching the origin.
+A head fetch for this preparation captures the ref while it still holds the lock.
+Explicit refreshes still fetch the moving refs.
 
 The record lives at `sources/<slug>/pulls/<n>.json`
 (`cache/paths.py: source_pull_record`), written by the home’s private atomic file write
@@ -953,7 +958,10 @@ Metadata reads create nothing, and metadata refreshes can publish an unattached 
 A healthy store already attached to that source is reused without acquisition or a cache
 timestamp write.
 
-An explicit Files changed Fetch may acquire a store with the checkout as its lender.
+Selecting **Changes** starts one comparison attempt after the metadata settles if its
+record lacks a store.
+The browser sends `retry: true` and `comparison: true` to the PR refresh route.
+The server acquires the store with the checkout as its lender.
 The pull record then uses the same store API and comparison service as a managed URL.
 The served folder root and Commits tab stay unchanged; no Git process runs in the
 checkout, and the checkout is never written.
@@ -965,13 +973,13 @@ acquire the store. Jobs take their turn at the store before consuming a network 
 An acquisition failure preserves the last pull record and reports a typed refresh
 outcome. `GET` routes never acquire or fetch.
 
-Files changed offers Refresh even while its record is fresh.
+**Changes** offers Refresh for a displayed comparison even while its record is fresh.
 The reader’s action sends `retry: true` and `recovery: {base, head}` for the comparison
-still displayed. Automatic refresh remains stale-only.
+still displayed. Automatic metadata refresh remains stale-only.
 Metadata updates do not replace displayed changes: a successful repair remounts that
 same comparison once and restores its scroll position; a failed or waiting job leaves it
 in place. The existing newer-changes action remains the way to select a newer head.
-A checkout with `no_store` instead offers Fetch changes.
+The browser offers a retry after comparison preparation fails.
 
 The server validates complete object IDs and a pair issued by that PR in this session
 before permitting repair.
@@ -1212,10 +1220,22 @@ The fixed lock order is:
 
 Network work and long-running Git processes hold none of these locks, and a local
 checkout is never a lock target.
-A refresh instead holds its store’s fetch side lock,
-`locks/stores/<store-key>.fetch.lock`, across the fetch.
-It is only tried without blocking: a refresh that finds it busy reports that another
-refresh is running and does not wait.
+A cold open takes a source acquisition reservation at
+`locks/sources/<source-key>.acquire.lock` after the provider’s first-clone admission.
+The key is the digest of the normalized source identity, so opens for other sources can
+run concurrently.
+A same-source waiter retries without blocking the event loop and checks
+for the published alias after taking the reservation.
+The owner holds the reservation through alias publication.
+Staging Git writers inherit both the reservation and the staging liveness descriptor, so
+another process cannot start a competing fetch or sweep the staging directory while
+those writers are alive.
+A warm open reads the published store without taking the reservation.
+
+A refresh holds its store’s fetch side lock, `locks/stores/<store-key>.fetch.lock`,
+across the fetch.
+It is only tried without blocking: a refresh that finds it busy reports
+that another refresh is running and does not wait.
 The Git processes that write the store inherit the lock’s descriptor, so it stays held
 for as long as any of them runs, even when the server that took it was killed; Ctrl-C’s
 immediate exit kills those process groups first, and a graceful shutdown cancels them
@@ -1272,7 +1292,9 @@ The recoveries are in [After a crash](#after-a-crash).
 
 #### Acquisition
 
-Staging holds only its own liveness lock, the network work holds no hierarchy lock, and
+The table shows staging and publication locks.
+The source acquisition reservation described above wraps these transitions for a cold
+open. Staging holds its liveness lock, network work holds no hierarchy lock, and
 publication holds the alias lock and the store lock together.
 
 | From | Event | To | Locks held | Network | Effect |

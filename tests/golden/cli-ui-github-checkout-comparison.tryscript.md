@@ -7,31 +7,37 @@ env:
 # Golden Test: Fetch Changes Beside a Checkout
 
 The production pull controller consumes the checkout route replies recorded by
-`tests/test_cli_github_checkout_golden.py`. Opening Files changed starts no fetch.
-The explicit Fetch changes action requests a comparison; polling then receives its store
-route while the folder stays unpinned, with no Browse code or head-switch action.
-A second click during the job sends nothing.
+`tests/test_cli_github_checkout_golden.py`. Conversation reads metadata and a visible
+Changes tab starts a comparison automatically.
+Polling receives its store route while the folder stays unpinned, with no Browse code or
+head-switch action. Leaving and returning to Changes during the job sends no duplicate
+request.
 
 ```console
 $ node tests/dom/github-checkout-comparison-session.js
 [
   {
-    "step": "opening Files changed acquires nothing",
+    "step": "Conversation reads without acquiring a comparison",
     "requests": [
       {
         "method": "GET",
         "route": "/api/plugin/github/pull?number=10"
       }
     ],
-    "canFetchChanges": true,
+    "changesPending": false,
+    "canRetryChanges": false,
     "refreshing": false,
     "comparison": null,
     "browse": null,
     "headOffer": null
   },
   {
-    "step": "Fetch changes starts the explicit comparison job",
+    "step": "visible Changes starts the comparison automatically",
     "requests": [
+      {
+        "method": "GET",
+        "route": "/api/plugin/github/pull?number=10"
+      },
       {
         "method": "POST",
         "route": "/api/plugin/github/pull-refresh",
@@ -42,7 +48,8 @@ $ node tests/dom/github-checkout-comparison-session.js
         }
       }
     ],
-    "canFetchChanges": false,
+    "changesPending": true,
+    "canRetryChanges": false,
     "refreshing": true,
     "comparison": null,
     "browse": null,
@@ -56,7 +63,8 @@ $ node tests/dom/github-checkout-comparison-session.js
         "route": "/api/plugin/github/pull?number=10"
       }
     ],
-    "canFetchChanges": false,
+    "changesPending": false,
+    "canRetryChanges": false,
     "refreshing": false,
     "comparison": {
       "left": "c691256511d05858850bc7684ae062fea0d41132",
@@ -68,6 +76,16 @@ $ node tests/dom/github-checkout-comparison-session.js
     "headOffer": null
   }
 ]
+? 0
+```
+
+An idle, visible Conversation can prepare the comparison from its cached record.
+A reader opening Changes promotes that job.
+An idle refusal leaves Changes free to start its own request.
+
+```console
+$ node tests/dom/github-pull-idle-comparison-behavior.js
+{"changesBeforeIdle":["foreground"],"hiddenUntilVisible":["idle","foreground"],"afterLateIdleReply":"Changes ready","afterIdleRefusal":["idle","foreground"],"disposed":[]}
 ? 0
 ```
 

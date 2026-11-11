@@ -83,12 +83,11 @@ After initial Files work is idle, both repository modes prepare catalog metadata
 lightweight descriptions in the background; the local cache keeps them across restarts.
 Full discussion and checks remain selection-driven.
 
-A folder server keeps its filesystem root and does not fetch Git objects merely because
-a pull request is opened.
-If **Changes** has no comparison store, **Fetch changes** explicitly opens a healthy
-published store, including an existing full store, or acquires an overlay that borrows
-the checkout’s objects without writing to it.
-Borrowing refusal does not silently start a full clone.
+A folder server keeps its filesystem root.
+Opening **Changes** prepares a missing comparison automatically.
+It opens a healthy published store, including an existing full store, or acquires an
+overlay that borrows the checkout’s objects without writing to it.
+If preparation fails, **Changes** reports the reason and offers a retry.
 
 For a URL-backed server, `--checkout <path>` explicitly supplies a lender for its
 managed store. The choice is remembered; a URL open does not infer a lender from the

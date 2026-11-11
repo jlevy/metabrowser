@@ -329,6 +329,10 @@ def test_lock_files_are_where_the_fixture_places_them(tmp_path: Path) -> None:
             lambda: locks.repository_store_lock(home, store),
             {"<store-key>": store},
         ),
+        "source_acquisition": (
+            lambda: locks.source_acquisition_lock(home, f"sha256:{store}"),
+            {"<source-key>": store},
+        ),
         "staging_entry": (lambda: locks.staging_entry_lock(home, "e1"), {"<entry>": "e1"}),
         "store_fetch": (
             lambda: locks.store_fetch_lock(home, store),

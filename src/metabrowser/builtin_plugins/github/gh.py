@@ -1,6 +1,7 @@
 """Run ``gh`` with fixed arguments, an isolated environment, and hard bounds.
 
-``gh`` owns GitHub authentication; Metabrowser never reads, stores, or logs a token.
+``gh`` owns GitHub authentication. Metabrowser forwards the inherited subprocess
+environment without retrieving or logging credentials from gh.
 Every run gets no stdin, prompts and update checks off, no colour, and no inherited
 ``GH_DEBUG``, ``GH_HOST``, ``GH_REPO``, ``CLICOLOR_FORCE``, or ``GH_FORCE_TTY``; a
 deadline and an output cap; and its own process group, so a timeout or cancellation
@@ -9,9 +10,10 @@ repository data or, for ``auth status``, the account's scopes.
 
 :func:`gh_api` issues one ``gh api --hostname github.com --include`` request and returns
 the status, headers, and body; :func:`gh_account` reads the active github.com login.
-Both raise :class:`GhError` with a typed ``state`` a user can act on. Nothing here
-paginates or caches: callers name every page, as ``gh api --paginate`` and ``--cache``
-would hide the page cap, the ETags, and the rate-limit headers.
+Both raise :class:`GhError` with a typed ``state`` a user can act on. Validated API reads
+may share in-flight output. Callers still name every page, as ``gh api --paginate`` and ``--cache``
+would hide the page cap, the ETags, and the rate-limit headers. Completed responses
+are never retained here.
 """
 
 from __future__ import annotations
@@ -26,10 +28,12 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal
 
 from metabrowser.git.process import (
+    _kill_when_spawned,
     forget_process_group,
     terminate_git_process,
     track_process_group,
@@ -225,33 +229,139 @@ async def _read_capped(stream: asyncio.StreamReader | None, limit: int) -> tuple
 
 
 async def _run(
-    args: Sequence[str], *, timeout_s: float, max_bytes: int, cwd: Path | None = None
+    args: Sequence[str],
+    *,
+    timeout_s: float,
+    max_bytes: int,
+    cwd: Path | None = None,
+    executable: str | None = None,
+    environment: dict[str, str] | None = None,
 ) -> _Completed:
-    """Run ``gh`` once. Raises only for a missing gh, a deadline, or too much output."""
+    """Run gh once with the admitted launch inputs."""
 
-    exe = gh_executable()
+    exe = executable if executable is not None else gh_executable()
     if exe is None:
         raise GhUnavailableError
-    try:
+    env = environment if environment is not None else gh_environment()
+
+    async def spawn_and_track() -> asyncio.subprocess.Process:
         proc = await asyncio.create_subprocess_exec(
             exe,
             *args,
             stdin=subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env=gh_environment(),
+            env=env,
             cwd=cwd,
             start_new_session=os.name == "posix",
         )
+        if os.name == "posix":
+            # A Ctrl-C or hangup that cannot unwind kills Git's groups; gh's too.
+            track_process_group(proc)
+        return proc
+
+    spawn = asyncio.create_task(spawn_and_track())
+    try:
+        proc = await asyncio.shield(spawn)
+    except asyncio.CancelledError:
+        await _kill_when_spawned(spawn)
+        raise
     except OSError as exc:
         raise GhError(f"could not run gh: {exc.strerror}") from exc
-    if os.name == "posix":
-        # A Ctrl-C or hangup that cannot unwind kills Git's groups; gh's too.
-        track_process_group(proc)
     try:
         return await _finish(proc, args, timeout_s=timeout_s, max_bytes=max_bytes)
     finally:
         forget_process_group(proc)
+
+
+type _ReadKey = tuple[asyncio.AbstractEventLoop, str, Path, tuple[str, ...], float, int]
+
+
+@dataclass(eq=False, repr=False, slots=True)
+class _ReadFlight:
+    environment: dict[str, str]
+    task: asyncio.Task[_Completed]
+    waiters: int = 0
+
+
+_api_reads: dict[_ReadKey, list[_ReadFlight]] = {}
+
+
+def _forget_read(key: _ReadKey, flight: _ReadFlight, task: asyncio.Task[_Completed]) -> None:
+    if not task.cancelled():
+        task.exception()
+    flights = _api_reads.get(key)
+    if flights is not None and flight in flights:
+        flights.remove(flight)
+        if not flights:
+            del _api_reads[key]
+
+
+async def _run_api(args: Sequence[str], *, max_bytes: int) -> _Completed:
+    env = gh_environment()
+    timeout_s = GH_API_TIMEOUT_S
+    # gh's documented precedence pins github.com authentication to the launch
+    # environment only with an explicit token. A saved login does not prove that its
+    # external config or keyring credentials are still the same.
+    # https://cli.github.com/manual/gh_help_environment
+    if not (env.get("GH_TOKEN") or env.get("GITHUB_TOKEN")):
+        return await _run(args, timeout_s=timeout_s, max_bytes=max_bytes, environment=env)
+    exe = gh_executable()
+    if exe is None:
+        raise GhUnavailableError
+    try:
+        cwd = Path.cwd()
+    except OSError:
+        return await _run(
+            args, timeout_s=timeout_s, max_bytes=max_bytes, executable=exe, environment=env
+        )
+
+    loop = asyncio.get_running_loop()
+    argv = tuple(args)
+    key = (loop, exe, cwd, argv, timeout_s, max_bytes)
+    while True:
+        flights = _api_reads.setdefault(key, [])
+        # Compare the inherited launch maps in memory. Credential values are only
+        # carried in these maps, never copied into keys or used to produce a digest.
+        flight = next((entry for entry in flights if entry.environment == env), None)
+        if flight is None:
+            admitted: asyncio.Future[None] = loop.create_future()
+
+            async def produce(ready: asyncio.Future[None]) -> _Completed:
+                # A task factory may start a coroutine before create_task returns.
+                await ready
+                return await _run(
+                    argv,
+                    timeout_s=timeout_s,
+                    max_bytes=max_bytes,
+                    cwd=cwd,
+                    executable=exe,
+                    environment=env,
+                )
+
+            task = loop.create_task(produce(admitted))
+            flight = _ReadFlight(env, task)
+            flights.append(flight)
+            task.add_done_callback(partial(_forget_read, key, flight))
+            admitted.set_result(None)
+        elif flight.task.done():
+            _forget_read(key, flight, flight.task)
+            continue
+        elif flight.task.cancelling():
+            # Keep the producer registered until it has reaped its child. This
+            # wait does not deliver the abandoned result or forward cancellation.
+            await asyncio.wait((flight.task,))
+            continue
+        break
+
+    flight.waiters += 1
+    try:
+        return await asyncio.shield(flight.task)
+    finally:
+        flight.waiters -= 1
+        if flight.waiters == 0 and not flight.task.done() and not flight.task.cancelling():
+            flight.task.cancel()
+            await asyncio.wait((flight.task,))
 
 
 async def _finish(
@@ -448,7 +558,7 @@ async def gh_api(path: str, *, etag: str | None = None, now: datetime | None = N
             raise ValueError("not an ETag")
         args += ["-H", f"If-None-Match: {etag}"]
     args.append(path)
-    completed = await _run(args, timeout_s=GH_API_TIMEOUT_S, max_bytes=GH_API_MAX_BYTES)
+    completed = await _run_api(args, max_bytes=GH_API_MAX_BYTES)
     response = parse_included_response(completed.stdout)
     if response is None:
         raise _failure_without_response(completed)
@@ -483,7 +593,7 @@ async def gh_graphql(
             args.extend(("-f", f"{name}={value}"))
         else:
             args.extend(("-F", f"{name}={json.dumps(value)}"))
-    completed = await _run(args, timeout_s=GH_API_TIMEOUT_S, max_bytes=max_bytes)
+    completed = await _run_api(args, max_bytes=max_bytes)
     response = parse_included_response(completed.stdout)
     if response is None:
         raise _failure_without_response(completed)

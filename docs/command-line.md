@@ -382,8 +382,10 @@ This is the reference for the commands; for the workflow in a browser, see
 A local checkout is identified by its github.com `origin` and readable `HEAD`; linked
 worktrees and served subdirectories work too.
 The local path keeps serving the working folder.
-Its **Fetch changes** action acquires a comparison store only when requested, without
-writing to the checkout or falling back to a full clone if borrowing is refused.
+Opening **Changes** prepares a missing comparison automatically.
+The server reuses a healthy cached store or borrows objects from the checkout.
+If borrowing is refused, it reports the reason and offers a retry.
+The checkout stays untouched.
 The URL-based [`--checkout` option](#beside-a-checkout) instead serves a managed pin and
 retains the fallback cases documented below.
 

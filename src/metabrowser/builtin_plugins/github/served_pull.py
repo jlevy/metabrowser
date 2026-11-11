@@ -192,6 +192,11 @@ class ServedPull:
         self._recoveries[pair] = None
         return True
 
+    @property
+    def recovery_pending(self) -> bool:
+        """Whether an explicit refresh joined another producer and still needs work."""
+        return bool(self._recoveries)
+
     def discard_recovery(self, pair: tuple[str, str] | None) -> None:
         """A refused job must not leave new network work for a later automatic refresh."""
         self._recoveries.pop(pair, None)
@@ -370,6 +375,7 @@ class ServedPull:
                             recovery_pair=pair,
                             on_core=progress,
                             observe_reader=observe_reader,
+                            adopt_current=False,
                         )
                     else:
                         record = (
@@ -379,6 +385,20 @@ class ServedPull:
                             if recover
                             else await pulls.refresh_pull_request(published, self.number)
                         )
+                except pulls.PullObservationSuperseded as exc:
+                    self.fetched_at = exc.current.fetched_at
+                    self.without_store = written_without_store(exc.current)
+                    stamp = await asyncio.to_thread(pulls.last_refresh, published, self.number)
+                    self.last = (
+                        None
+                        if stamp is None
+                        else PullRefreshOutcome(
+                            outcome=stamp.outcome,
+                            message=stamp.message,
+                            reset_at=stamp.reset_at,
+                            at=stamp.at,
+                        )
+                    )
                 except pulls.PullDataError as exc:
                     self.last = PullRefreshOutcome(
                         outcome=exc.state,

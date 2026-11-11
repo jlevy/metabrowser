@@ -1032,10 +1032,8 @@ $ node tests/dom/github-pull-page-second-session.js
       ]
     },
     "no_store": {
-      "files": "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged.",
-      "notes": [
-        "Changes could not be read (no store)."
-      ]
+      "files": "Changes could not be fetched.",
+      "notes": []
     },
     "comparison_timeout": {
       "files": "Changes are unavailable: checking this pull request's history took too long. Refresh to try again.",
@@ -1056,21 +1054,21 @@ $ node tests/dom/github-pull-page-second-session.js
       "headOffer": null,
       "checkoutAtHead": "This checkout's HEAD is this pull request's head.",
       "comparison": null,
-      "files": "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
+      "files": "Changes could not be fetched."
     },
     "HEAD is elsewhere": {
       "browse": null,
       "headOffer": null,
       "checkoutAtHead": null,
       "comparison": null,
-      "files": "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
+      "files": "Changes could not be fetched."
     },
     "no repository context": {
       "browse": null,
       "headOffer": null,
       "checkoutAtHead": null,
       "comparison": null,
-      "files": "Changes have not been fetched. Fetch changes to compare this pull request while keeping your checkout unchanged."
+      "files": "Changes could not be fetched."
     },
     "a mirror's page, whatever it is handed": {
       "browse": "switches to refs/pull/7/head",
@@ -1299,12 +1297,13 @@ text badge below the heading.
 The production mount keeps the displayed comparison through waiting and failed repairs,
 and remounts it once after success even if metadata has advanced to another head.
 Pending and disposed controls cannot issue duplicate requests.
-Asset and render failures retain their local Retry action; a checkout with no store
-retains its explicit Fetch changes.
+Asset and render failures retain their local Retry action.
+Opening Changes beside a checkout starts an acquisition and offers Retry changes after a
+refusal.
 
 ```console
 $ node tests/dom/github-pull-page-mount-behavior.js
-{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsExplicit":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true}
+{"titleStateAndTextBadge":true,"failedAssetsRecover":true,"failedRenderRecovers":true,"staleRetryIsInert":true,"checkoutFetchIsAutomatic":true,"displayedComparisonRepair":true,"bridgeAfterPaint":true,"bridgeFramesOwned":true,"hiddenReadiness":true,"markdownOwnership":true}
 ? 0
 ```
 

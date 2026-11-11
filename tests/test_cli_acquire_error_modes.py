@@ -91,11 +91,14 @@ def test_git_failures_during_acquisition_are_the_same_cli_error_in_every_mode(
             cwd: Path | None = None,
             git_dir: Path | None = None,
             timeout_s: float | None = None,
+            pass_fds: tuple[int, ...] = (),
             kind: str = kind,
         ) -> bytes:
             if args[0] == "init":
                 raise _git_failure(kind, args)
-            return await real_run(args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s)
+            return await real_run(
+                args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s, pass_fds=pass_fds
+            )
 
         monkeypatch.setattr(acquire_module, "_run", fail_init)
         result = runner.invoke(_app, [url, *MODES[mode]])
@@ -129,10 +132,13 @@ def test_every_mode_reports_one_message_per_failure_kind(
         cwd: Path | None = None,
         git_dir: Path | None = None,
         timeout_s: float | None = None,
+        pass_fds: tuple[int, ...] = (),
     ) -> bytes:
         if args[0] == "init":
             raise _git_failure("timeout", args)
-        return await real_run(args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s)
+        return await real_run(
+            args, cwd=cwd, git_dir=git_dir, timeout_s=timeout_s, pass_fds=pass_fds
+        )
 
     monkeypatch.setattr(acquire_module, "_run", time_out_init)
     messages = {

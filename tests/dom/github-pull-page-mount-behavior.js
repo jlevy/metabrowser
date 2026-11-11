@@ -809,13 +809,21 @@ async function run() {
     ),
   );
   const posts = [];
+  const comparisonAsk = { number: 10, retry: true, comparison: true };
+  let resolveComparison;
   globalThis.fetch = async (_route, options = {}) => {
-    const answer = options.method === "POST" ? checkout.started : checkout.before;
     if (options.method === "POST") {
       posts.push(JSON.parse(options.body));
+      if (posts.length === 1) {
+        return new Promise((resolve) => {
+          resolveComparison = resolve;
+        });
+      }
     }
+    const answer = options.method === "POST" ? checkout.started : checkout.before;
     return { status: answer.status, headers: { get: () => null }, json: async () => answer.body };
   };
+  window.location.pathname = "/pull/10";
   const checkoutContainer = new Element("main");
   const checkoutHandle = page.mountPullPage(
     checkoutContainer,
@@ -829,7 +837,7 @@ async function run() {
       ensureAsset: async () => {},
       ensureKindAssets: async () => {},
       getRegisteredView: () => {
-        throw new Error("no comparison exists before Fetch");
+        throw new Error("no comparison exists before acquisition");
       },
       ...require("./sdk-ref-fixture.js").refHelpers(document),
       formatAge: () => ({ label: "now", className: "age" }),
@@ -840,19 +848,40 @@ async function run() {
     },
   );
   await settle();
-  assert.deepEqual(posts, []);
-  const fetchChanges = [...checkoutContainer.descendants()].find(
-    (element) => element.tag === "button" && element.textContent === "Fetch changes",
-  );
-  assert.ok(fetchChanges, "Files changed offers explicit Fetch");
-  fetchChanges.events.get("click")();
+  assert.deepEqual(posts, [], "a staged Changes mount cannot fetch after the route moved away");
+  window.location.pathname = "/pull/10/files/src/app.txt";
+  checkoutHandle.land({ tab: "files", file: "src/app.txt" });
   await settle();
-  assert.deepEqual(posts, [{ number: 10, retry: true, comparison: true }]);
-  assert.equal(checkoutContainer.querySelector(".github-pull-fetch-changes"), null);
+  const checkoutBody = checkoutContainer.querySelector(".github-pull-body");
+  assert.deepEqual(posts, [comparisonAsk]);
+  assert.match(checkoutBody.textContent, /Fetching changes/);
+  assert.ok(checkoutBody.querySelector(".spinner"));
+  assert.equal(checkoutBody.querySelector(".github-pull-retry-changes"), null);
+  resolveComparison({
+    status: 429,
+    headers: { get: () => null },
+    json: async () => ({ error: "server busy" }),
+  });
+  await settle();
+  const [checkoutPollId, checkoutPoll] = timers.entries().next().value;
+  timers.delete(checkoutPollId);
+  checkoutPoll();
+  await settle();
+  assert.deepEqual(posts, [comparisonAsk], "polling does not retry a refused acquisition");
+  assert.match(checkoutBody.textContent, /Changes could not be fetched/);
+  assert.equal(checkoutBody.querySelector(".spinner"), null);
+  const retryChanges = checkoutBody.querySelector(".github-pull-retry-changes");
+  assert.equal(retryChanges?.textContent, "Retry changes");
+  retryChanges.events.get("click")();
+  retryChanges.events.get("click")();
+  await settle();
+  assert.deepEqual(posts, [comparisonAsk, comparisonAsk], "only one explicit retry is admitted");
+  assert.equal(checkoutBody.querySelector(".github-pull-retry-changes"), null);
   checkoutHandle.dispose();
-  fetchChanges.events.get("click")();
+  retryChanges.events.get("click")();
   await settle();
-  assert.equal(posts.length, 1, "a disposed Fetch button starts nothing");
+  assert.equal(posts.length, 2, "a disposed Retry button starts nothing");
+  window.location.pathname = "/pull/7/files";
   globalThis.fetch = async () => ({
     status: initial.status,
     headers: { get: () => null },
@@ -996,7 +1025,7 @@ async function run() {
     failedAssetsRecover: true,
     failedRenderRecovers: true,
     staleRetryIsInert: true,
-    checkoutFetchIsExplicit: true,
+    checkoutFetchIsAutomatic: true,
     displayedComparisonRepair: true,
     bridgeAfterPaint: true,
     bridgeFramesOwned: true,

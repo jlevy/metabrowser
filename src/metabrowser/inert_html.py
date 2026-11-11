@@ -44,6 +44,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections import Counter
+from collections.abc import Callable
 from html import escape
 from html.parser import HTMLParser
 from typing import Final
@@ -406,10 +407,14 @@ class _Heading:
         self.text: list[str] = []
 
 
+type RewriteLocal = Callable[[str, bool], str | None]
+
+
 class _Hardener(HTMLParser):
-    def __init__(self, base: str | None) -> None:
+    def __init__(self, base: str | None, rewrite_local: RewriteLocal | None) -> None:
         super().__init__(convert_charrefs=True)
         self.base = base
+        self.rewrite_local = rewrite_local
         self.out: list[str] = []
         # Depth inside a dropped element; nothing is written while it is above zero.
         self.dropped = 0
@@ -431,7 +436,14 @@ class _Hardener(HTMLParser):
         values = dict(attrs)
         if tag == "img":
             if keeps_image(values.get("src"), self.base):
-                self.out.append(_open_tag("img", allowed_attributes("img", values, self.base)))
+                kept = allowed_attributes("img", values, self.base)
+                if self.rewrite_local is not None:
+                    src = self.rewrite_local(dict(kept)["src"], True)
+                    if src is None:
+                        self.handle_data(values.get("alt") or "image")
+                        return
+                    kept = [(name, src if name == "src" else value) for name, value in kept]
+                self.out.append(_open_tag("img", kept))
                 return
             href, text = image_link(values.get("src"), values.get("alt"), self.base)
             self._text(text)
@@ -442,7 +454,13 @@ class _Hardener(HTMLParser):
                 self.out.append(f"{_open_tag('a', link)}{escape(text, quote=False)}</a>")
             return
         if tag in ALLOWED_TAGS:
-            self.out.append(_open_tag(tag, allowed_attributes(tag, values, self.base)))
+            kept = allowed_attributes(tag, values, self.base)
+            if tag == "a" and self.rewrite_local is not None:
+                href = dict(kept).get("href")
+                if href is not None and is_inside(href):
+                    scoped = self.rewrite_local(href, False)
+                    kept = [] if scoped is None else [("href", scoped)]
+            self.out.append(_open_tag(tag, kept))
             if tag in _HEADINGS and self.base is None:
                 heading = _Heading(len(self.out) - 1, tag, values.get("id"))
                 self.headings.append(heading)
@@ -497,15 +515,19 @@ def harden(html: str, link_base: str | None = None) -> str:
     return _harden(html, link_base)[0]
 
 
-def harden_document(html: str) -> tuple[str, dict[str, str]]:
+def harden_document(
+    html: str, *, rewrite_local: RewriteLocal | None = None
+) -> tuple[str, dict[str, str]]:
     """:func:`harden` for a document inside the served tree, and its heading anchors:
     each ``id`` a heading had in *html*, mapped to the anchor that replaces it."""
 
-    return _harden(html, None)
+    return _harden(html, None, rewrite_local)
 
 
-def _harden(html: str, link_base: str | None) -> tuple[str, dict[str, str]]:
-    hardener = _Hardener(link_base)
+def _harden(
+    html: str, link_base: str | None, rewrite_local: RewriteLocal | None = None
+) -> tuple[str, dict[str, str]]:
+    hardener = _Hardener(link_base, rewrite_local)
     hardener.feed(html)
     hardener.close()
     replaced = hardener.anchor_headings()
