@@ -183,6 +183,14 @@ def test_golden_a_checkouts_pull_requests(
     assert after["state"] == "current" and after["comparison_route"] is None
     assert after["record"]["comparison"] is None
     assert after["record"]["unavailable"] == {"comparison": "no_store"}
+    idle = session.post(
+        checkout,
+        f"{PULL}-refresh",
+        {"number": 10, "prepare_comparison": after["record_revision"]},
+    )
+    assert idle.payload()["refresh"] == "not_due", "idle work never attaches a store"
+    nine = _after(session.post(checkout, f"{PULL}-refresh", {"number": 9, "retry": True}))
+    assert nine["record"]["unavailable"] == {"comparison": "no_store"}
     shown = session.run(str(checkout), "--show", "/pull/10")
     assert shown.exit_code == 0, shown.stderr
     assert session.run(str(checkout), "--show", "/pulls").exit_code == 0
@@ -254,6 +262,32 @@ def test_golden_a_checkouts_pull_requests(
     compared = session.get(checkout, route)
     assert compared.exit_code == 0, compared.stderr
     assert compared.payload()["manifest"]["files"]
+
+    session.say(
+        "With a store attached, an idle Conversation page may ask for a fresh record's "
+        "comparison by its revision; only that pull request's head and base are fetched"
+    )
+    wrong = session.post(checkout, f"{PULL}-refresh", {"number": 9, "prepare_comparison": "a" * 64})
+    assert wrong.payload()["refresh"] == "not_due"
+    prepared = session.post(
+        checkout,
+        f"{PULL}-refresh",
+        {"number": 9, "prepare_comparison": nine["record_revision"]},
+    )
+    assert _answered(prepared)["refresh"] == "started"
+    assert _answered(prepared)["pull"]["preparing_comparison"] is True
+    nine_route = _after(prepared)["comparison_route"]
+    assert nine_route is not None
+    repeated = session.post(
+        checkout,
+        f"{PULL}-refresh",
+        {"number": 9, "prepare_comparison": nine["record_revision"]},
+    )
+    assert repeated.payload()["refresh"] == "not_due"
+    clicked = session.post(
+        checkout, f"{PULL}-refresh", {"number": 9, "retry": True, "comparison": True}
+    )
+    assert _after(clicked)["comparison_route"] == nine_route
 
     for name, before in fingerprints.items():
         root = checkout if name == "src" else tmp_path / name

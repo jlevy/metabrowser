@@ -315,6 +315,263 @@ gh api repos/octo/demo/issues/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/comments?per_page=100&page=1
 gh api repos/octo/demo/pulls/10/reviews?per_page=100&page=1
 gh auth status
+# metab checkout --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pull": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 10,
+    "pin": null,
+    "pin_ref": null,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "record_revision": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38",
+    "fresh_for_s": 60.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": null,
+    "snapshot_route": null,
+    "record": {
+      "schema_version": 2,
+      "projection_version": 1,
+      "source": "https://github.com/octo/demo",
+      "number": 10,
+      "fetched_at": "2026-09-17T12:00:00Z",
+      "reader": "gh:octo-reader",
+      "etags": {
+        "repos/octo/demo/pulls/10": "W/\"834290f720c663d55774891f093a7b77e296b675ff12cece8a9063b429073af7\"",
+        "repos/octo/demo/issues/10/comments?per_page=100&page=1": "W/\"3ca900254595a4252fe8210df7ad12e7e1c80935d21d9bdbf6054cf92b779d91\"",
+        "repos/octo/demo/pulls/10/reviews?per_page=100&page=1": "W/\"aaed24104d56430f749ca52d38dac89318e6ef13eaff22e50730d564709f774d\"",
+        "repos/octo/demo/pulls/10/comments?per_page=100&page=1": "W/\"e0af241df992737c49edf94e2feee1a361f52281e026b6e99a9625d59db8a2eb\"",
+        "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/check-runs?per_page=100&page=1": "W/\"433f41b1ceaa4a91aafd83e4b0f6ff015ce992d25bf2e539a8d28e820c5009fb\"",
+        "repos/octo/demo/commits/7a7d6596e515735d244dc1d942463c95851e139c/status?per_page=100&page=1": "W/\"8a58570908e9ed041d7b732da2e4753a3aa75191dfbba6053eca47d318b1a322\""
+      },
+      "pull": {
+        "number": 10,
+        "title": "WIP: draft the next page",
+        "body": "Not ready.",
+        "body_truncated": false,
+        "state": "open",
+        "draft": true,
+        "merged": false,
+        "merged_by": null,
+        "merged_by_avatar_url": null,
+        "commits": 1,
+        "merge_commit_sha": null,
+        "mergeable": "conflicting",
+        "labels": [],
+        "author": "maintainer",
+        "author_avatar_url": null,
+        "created_at": "2026-09-16T10:57:23Z",
+        "updated_at": "2026-09-16T17:39:01Z",
+        "merged_at": null,
+        "closed_at": null,
+        "base": {
+          "ref": "topic",
+          "sha": "c691256511d05858850bc7684ae062fea0d41132",
+          "repository": "octo/demo"
+        },
+        "head": {
+          "ref": "wip",
+          "sha": "7a7d6596e515735d244dc1d942463c95851e139c",
+          "repository": "octo/demo"
+        },
+        "html_url": "https://github.com/octo/demo/pull/10"
+      },
+      "issue_comments": [],
+      "reviews": [],
+      "review_comments": [],
+      "check_runs": [],
+      "status": {
+        "state": "pending",
+        "statuses": []
+      },
+      "comparison": null,
+      "truncated": {
+        "issue_comments": false,
+        "reviews": false,
+        "review_comments": false,
+        "check_runs": false,
+        "statuses": false,
+        "text": false
+      },
+      "unavailable": {
+        "comparison": "no_store"
+      }
+    },
+    "core_preview": null
+  },
+  "status_route": "/api/plugin/github/pull?number=10"
+}
+--- stderr ---
+--- body ---
+{"number": 10, "prepare_comparison": "0560d60b8b671ff9e80c4d84f3823eb66dea5ce4ff24e1f9098b428fd335bd38"}
+--- gh ---
+# metab checkout --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "state": "pending",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 9,
+    "pin": null,
+    "pin_ref": null,
+    "fetched_at": null,
+    "record_revision": null,
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": null,
+    "comparison_route": null,
+    "snapshot_route": null,
+    "record": null,
+    "core_preview": null
+  },
+  "status_route": "/api/plugin/github/pull?number=9"
+}
+after: /api/plugin/github/pull?number=9
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 9,
+  "pin": null,
+  "pin_ref": null,
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "e5b376be98011a24b8bad5224e8ab5a53b7facaf3925b7609bc2b3fc4e127b04",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": null,
+  "snapshot_route": null,
+  "record": {
+    "schema_version": 2,
+    "projection_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 9,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/9": "W/\"a178168d2a4d92e37b78ec5fd832dbb8b7eedbb34fd1ed80970d56e688875753\"",
+      "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
+      "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
+      "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
+      "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
+      "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
+    },
+    "pull": {
+      "number": 9,
+      "title": "spam",
+      "body": "",
+      "body_truncated": false,
+      "state": "closed",
+      "draft": false,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 1,
+      "merge_commit_sha": null,
+      "mergeable": "unknown",
+      "labels": [
+        "invalid"
+      ],
+      "author": null,
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": "2026-09-16T19:00:00Z",
+      "base": {
+        "ref": "topic",
+        "sha": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "spam",
+        "sha": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+        "repository": null
+      },
+      "html_url": "https://github.com/octo/demo/pull/9"
+    },
+    "issue_comments": [],
+    "reviews": [],
+    "review_comments": [],
+    "check_runs": [
+      {
+        "id": 51401654787,
+        "name": "tests (3.13)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions"
+      },
+      {
+        "id": 51401654788,
+        "name": "docs",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions"
+      }
+    ],
+    "status": {
+      "state": "success",
+      "statuses": [
+        {
+          "context": "docs/readthedocs.org:demo",
+          "state": "success",
+          "description": "Read the Docs build succeeded!",
+          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+        }
+      ]
+    },
+    "comparison": null,
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {
+      "comparison": "no_store"
+    }
+  },
+  "core_preview": null
+}
+--- stderr ---
+--- body ---
+{"number": 9, "retry": true}
+--- gh ---
+gh auth status
+gh api repos/octo/demo/pulls/9
+gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1
+gh api repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1
+gh api repos/octo/demo/issues/9/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/9/comments?per_page=100&page=1
+gh api repos/octo/demo/pulls/9/reviews?per_page=100&page=1
+gh auth status
 # metab checkout --show /pull/10
 exit: 0
 --- stdout ---
@@ -1489,4 +1746,764 @@ status: 200
   }
 }
 --- stderr ---
+--- gh ---
+## With a store attached, an idle Conversation page may ask for a fresh record's comparison by its revision; only that pull request's head and base are fetched
+# metab checkout --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pull": {
+    "state": "stale",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 9,
+    "pin": null,
+    "pin_ref": null,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "record_revision": "e5b376be98011a24b8bad5224e8ab5a53b7facaf3925b7609bc2b3fc4e127b04",
+    "fresh_for_s": 60.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": null,
+    "snapshot_route": null,
+    "record": {
+      "schema_version": 2,
+      "projection_version": 1,
+      "source": "https://github.com/octo/demo",
+      "number": 9,
+      "fetched_at": "2026-09-17T12:00:00Z",
+      "reader": "gh:octo-reader",
+      "etags": {
+        "repos/octo/demo/pulls/9": "W/\"a178168d2a4d92e37b78ec5fd832dbb8b7eedbb34fd1ed80970d56e688875753\"",
+        "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
+        "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
+        "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
+        "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
+        "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
+      },
+      "pull": {
+        "number": 9,
+        "title": "spam",
+        "body": "",
+        "body_truncated": false,
+        "state": "closed",
+        "draft": false,
+        "merged": false,
+        "merged_by": null,
+        "merged_by_avatar_url": null,
+        "commits": 1,
+        "merge_commit_sha": null,
+        "mergeable": "unknown",
+        "labels": [
+          "invalid"
+        ],
+        "author": null,
+        "author_avatar_url": null,
+        "created_at": "2026-09-16T10:57:23Z",
+        "updated_at": "2026-09-16T17:39:01Z",
+        "merged_at": null,
+        "closed_at": "2026-09-16T19:00:00Z",
+        "base": {
+          "ref": "topic",
+          "sha": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+          "repository": "octo/demo"
+        },
+        "head": {
+          "ref": "spam",
+          "sha": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+          "repository": null
+        },
+        "html_url": "https://github.com/octo/demo/pull/9"
+      },
+      "issue_comments": [],
+      "reviews": [],
+      "review_comments": [],
+      "check_runs": [
+        {
+          "id": 51401654787,
+          "name": "tests (3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+          "app": "GitHub Actions"
+        },
+        {
+          "id": 51401654788,
+          "name": "docs",
+          "status": "in_progress",
+          "conclusion": null,
+          "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+          "app": "GitHub Actions"
+        }
+      ],
+      "status": {
+        "state": "success",
+        "statuses": [
+          {
+            "context": "docs/readthedocs.org:demo",
+            "state": "success",
+            "description": "Read the Docs build succeeded!",
+            "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+          }
+        ]
+      },
+      "comparison": null,
+      "truncated": {
+        "issue_comments": false,
+        "reviews": false,
+        "review_comments": false,
+        "check_runs": false,
+        "statuses": false,
+        "text": false
+      },
+      "unavailable": {
+        "comparison": "no_store"
+      }
+    },
+    "core_preview": null
+  },
+  "status_route": "/api/plugin/github/pull?number=9"
+}
+--- stderr ---
+--- body ---
+{"number": 9, "prepare_comparison": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+--- gh ---
+# metab checkout --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "state": "stale",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 9,
+    "pin": null,
+    "pin_ref": null,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "record_revision": "e5b376be98011a24b8bad5224e8ab5a53b7facaf3925b7609bc2b3fc4e127b04",
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": null,
+    "snapshot_route": null,
+    "record": {
+      "schema_version": 2,
+      "projection_version": 1,
+      "source": "https://github.com/octo/demo",
+      "number": 9,
+      "fetched_at": "2026-09-17T12:00:00Z",
+      "reader": "gh:octo-reader",
+      "etags": {
+        "repos/octo/demo/pulls/9": "W/\"a178168d2a4d92e37b78ec5fd832dbb8b7eedbb34fd1ed80970d56e688875753\"",
+        "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
+        "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
+        "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
+        "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
+        "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
+      },
+      "pull": {
+        "number": 9,
+        "title": "spam",
+        "body": "",
+        "body_truncated": false,
+        "state": "closed",
+        "draft": false,
+        "merged": false,
+        "merged_by": null,
+        "merged_by_avatar_url": null,
+        "commits": 1,
+        "merge_commit_sha": null,
+        "mergeable": "unknown",
+        "labels": [
+          "invalid"
+        ],
+        "author": null,
+        "author_avatar_url": null,
+        "created_at": "2026-09-16T10:57:23Z",
+        "updated_at": "2026-09-16T17:39:01Z",
+        "merged_at": null,
+        "closed_at": "2026-09-16T19:00:00Z",
+        "base": {
+          "ref": "topic",
+          "sha": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+          "repository": "octo/demo"
+        },
+        "head": {
+          "ref": "spam",
+          "sha": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+          "repository": null
+        },
+        "html_url": "https://github.com/octo/demo/pull/9"
+      },
+      "issue_comments": [],
+      "reviews": [],
+      "review_comments": [],
+      "check_runs": [
+        {
+          "id": 51401654787,
+          "name": "tests (3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+          "app": "GitHub Actions"
+        },
+        {
+          "id": 51401654788,
+          "name": "docs",
+          "status": "in_progress",
+          "conclusion": null,
+          "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+          "app": "GitHub Actions"
+        }
+      ],
+      "status": {
+        "state": "success",
+        "statuses": [
+          {
+            "context": "docs/readthedocs.org:demo",
+            "state": "success",
+            "description": "Read the Docs build succeeded!",
+            "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+          }
+        ]
+      },
+      "comparison": null,
+      "truncated": {
+        "issue_comments": false,
+        "reviews": false,
+        "review_comments": false,
+        "check_runs": false,
+        "statuses": false,
+        "text": false
+      },
+      "unavailable": {
+        "comparison": "no_store"
+      }
+    },
+    "core_preview": null,
+    "preparing_comparison": true
+  },
+  "status_route": "/api/plugin/github/pull?number=9"
+}
+after: /api/plugin/github/pull?number=9
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 9,
+  "pin": null,
+  "pin_ref": null,
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "ab195089308bb1b911b4af52095d9c9e5d4b5a04d8281285218837be606e7aba",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
+  "record": {
+    "schema_version": 2,
+    "projection_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 9,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/9": "W/\"a178168d2a4d92e37b78ec5fd832dbb8b7eedbb34fd1ed80970d56e688875753\"",
+      "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
+      "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
+      "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
+      "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
+      "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
+    },
+    "pull": {
+      "number": 9,
+      "title": "spam",
+      "body": "",
+      "body_truncated": false,
+      "state": "closed",
+      "draft": false,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 1,
+      "merge_commit_sha": null,
+      "mergeable": "unknown",
+      "labels": [
+        "invalid"
+      ],
+      "author": null,
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": "2026-09-16T19:00:00Z",
+      "base": {
+        "ref": "topic",
+        "sha": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "spam",
+        "sha": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+        "repository": null
+      },
+      "html_url": "https://github.com/octo/demo/pull/9"
+    },
+    "issue_comments": [],
+    "reviews": [],
+    "review_comments": [],
+    "check_runs": [
+      {
+        "id": 51401654787,
+        "name": "tests (3.13)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions"
+      },
+      {
+        "id": 51401654788,
+        "name": "docs",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions"
+      }
+    ],
+    "status": {
+      "state": "success",
+      "statuses": [
+        {
+          "context": "docs/readthedocs.org:demo",
+          "state": "success",
+          "description": "Read the Docs build succeeded!",
+          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+        }
+      ]
+    },
+    "comparison": {
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+      "base_commit": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+      "base_from": "base_sha"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {}
+  },
+  "core_preview": null
+}
+--- stderr ---
+--- body ---
+{"number": 9, "prepare_comparison": "e5b376be98011a24b8bad5224e8ab5a53b7facaf3925b7609bc2b3fc4e127b04"}
+--- gh ---
+# metab checkout --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 200
+{
+  "refresh": "not_due",
+  "pull": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 9,
+    "pin": null,
+    "pin_ref": null,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "record_revision": "ab195089308bb1b911b4af52095d9c9e5d4b5a04d8281285218837be606e7aba",
+    "fresh_for_s": 60.0,
+    "refreshing": false,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
+    "snapshot_route": "/api/plugin/github/pull-snapshot?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
+    "record": {
+      "schema_version": 2,
+      "projection_version": 1,
+      "source": "https://github.com/octo/demo",
+      "number": 9,
+      "fetched_at": "2026-09-17T12:00:00Z",
+      "reader": "gh:octo-reader",
+      "etags": {
+        "repos/octo/demo/pulls/9": "W/\"a178168d2a4d92e37b78ec5fd832dbb8b7eedbb34fd1ed80970d56e688875753\"",
+        "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
+        "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
+        "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
+        "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
+        "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
+      },
+      "pull": {
+        "number": 9,
+        "title": "spam",
+        "body": "",
+        "body_truncated": false,
+        "state": "closed",
+        "draft": false,
+        "merged": false,
+        "merged_by": null,
+        "merged_by_avatar_url": null,
+        "commits": 1,
+        "merge_commit_sha": null,
+        "mergeable": "unknown",
+        "labels": [
+          "invalid"
+        ],
+        "author": null,
+        "author_avatar_url": null,
+        "created_at": "2026-09-16T10:57:23Z",
+        "updated_at": "2026-09-16T17:39:01Z",
+        "merged_at": null,
+        "closed_at": "2026-09-16T19:00:00Z",
+        "base": {
+          "ref": "topic",
+          "sha": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+          "repository": "octo/demo"
+        },
+        "head": {
+          "ref": "spam",
+          "sha": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+          "repository": null
+        },
+        "html_url": "https://github.com/octo/demo/pull/9"
+      },
+      "issue_comments": [],
+      "reviews": [],
+      "review_comments": [],
+      "check_runs": [
+        {
+          "id": 51401654787,
+          "name": "tests (3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+          "app": "GitHub Actions"
+        },
+        {
+          "id": 51401654788,
+          "name": "docs",
+          "status": "in_progress",
+          "conclusion": null,
+          "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+          "app": "GitHub Actions"
+        }
+      ],
+      "status": {
+        "state": "success",
+        "statuses": [
+          {
+            "context": "docs/readthedocs.org:demo",
+            "state": "success",
+            "description": "Read the Docs build succeeded!",
+            "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+          }
+        ]
+      },
+      "comparison": {
+        "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+        "head": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+        "base_commit": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+        "base_from": "base_sha"
+      },
+      "truncated": {
+        "issue_comments": false,
+        "reviews": false,
+        "review_comments": false,
+        "check_runs": false,
+        "statuses": false,
+        "text": false
+      },
+      "unavailable": {}
+    },
+    "core_preview": null
+  },
+  "status_route": "/api/plugin/github/pull?number=9"
+}
+--- stderr ---
+--- body ---
+{"number": 9, "prepare_comparison": "e5b376be98011a24b8bad5224e8ab5a53b7facaf3925b7609bc2b3fc4e127b04"}
+--- gh ---
+# metab checkout --api /api/plugin/github/pull-refresh --data request.json
+exit: 0
+--- stdout ---
+api: /api/plugin/github/pull-refresh
+status: 202
+{
+  "refresh": "started",
+  "pull": {
+    "state": "current",
+    "reason": null,
+    "source": "https://github.com/octo/demo",
+    "number": 9,
+    "pin": null,
+    "pin_ref": null,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "record_revision": "ab195089308bb1b911b4af52095d9c9e5d4b5a04d8281285218837be606e7aba",
+    "fresh_for_s": 60.0,
+    "refreshing": true,
+    "last_refresh": {
+      "outcome": "succeeded",
+      "message": null,
+      "reset_at": null,
+      "at": "2026-09-17T12:00:00Z"
+    },
+    "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
+    "snapshot_route": "/api/plugin/github/pull-snapshot?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
+    "record": {
+      "schema_version": 2,
+      "projection_version": 1,
+      "source": "https://github.com/octo/demo",
+      "number": 9,
+      "fetched_at": "2026-09-17T12:00:00Z",
+      "reader": "gh:octo-reader",
+      "etags": {
+        "repos/octo/demo/pulls/9": "W/\"a178168d2a4d92e37b78ec5fd832dbb8b7eedbb34fd1ed80970d56e688875753\"",
+        "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
+        "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
+        "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
+        "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
+        "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
+      },
+      "pull": {
+        "number": 9,
+        "title": "spam",
+        "body": "",
+        "body_truncated": false,
+        "state": "closed",
+        "draft": false,
+        "merged": false,
+        "merged_by": null,
+        "merged_by_avatar_url": null,
+        "commits": 1,
+        "merge_commit_sha": null,
+        "mergeable": "unknown",
+        "labels": [
+          "invalid"
+        ],
+        "author": null,
+        "author_avatar_url": null,
+        "created_at": "2026-09-16T10:57:23Z",
+        "updated_at": "2026-09-16T17:39:01Z",
+        "merged_at": null,
+        "closed_at": "2026-09-16T19:00:00Z",
+        "base": {
+          "ref": "topic",
+          "sha": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+          "repository": "octo/demo"
+        },
+        "head": {
+          "ref": "spam",
+          "sha": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+          "repository": null
+        },
+        "html_url": "https://github.com/octo/demo/pull/9"
+      },
+      "issue_comments": [],
+      "reviews": [],
+      "review_comments": [],
+      "check_runs": [
+        {
+          "id": 51401654787,
+          "name": "tests (3.13)",
+          "status": "completed",
+          "conclusion": "success",
+          "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+          "app": "GitHub Actions"
+        },
+        {
+          "id": 51401654788,
+          "name": "docs",
+          "status": "in_progress",
+          "conclusion": null,
+          "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+          "app": "GitHub Actions"
+        }
+      ],
+      "status": {
+        "state": "success",
+        "statuses": [
+          {
+            "context": "docs/readthedocs.org:demo",
+            "state": "success",
+            "description": "Read the Docs build succeeded!",
+            "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+          }
+        ]
+      },
+      "comparison": {
+        "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+        "head": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+        "base_commit": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+        "base_from": "base_sha"
+      },
+      "truncated": {
+        "issue_comments": false,
+        "reviews": false,
+        "review_comments": false,
+        "check_runs": false,
+        "statuses": false,
+        "text": false
+      },
+      "unavailable": {}
+    },
+    "core_preview": null
+  },
+  "status_route": "/api/plugin/github/pull?number=9"
+}
+after: /api/plugin/github/pull?number=9
+status: 200
+{
+  "state": "current",
+  "reason": null,
+  "source": "https://github.com/octo/demo",
+  "number": 9,
+  "pin": null,
+  "pin_ref": null,
+  "fetched_at": "2026-09-17T12:00:00Z",
+  "record_revision": "ab195089308bb1b911b4af52095d9c9e5d4b5a04d8281285218837be606e7aba",
+  "fresh_for_s": 60.0,
+  "refreshing": false,
+  "last_refresh": {
+    "outcome": "succeeded",
+    "message": null,
+    "reset_at": null,
+    "at": "2026-09-17T12:00:00Z"
+  },
+  "comparison_route": "/api/plugin/github/pull-comparison?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
+  "snapshot_route": "/api/plugin/github/pull-snapshot?number=9&left=f92fd713acd521d4ebb62fb9f345ec927b8b6d1b&right=0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd&store=<STORE_TAG>",
+  "record": {
+    "schema_version": 2,
+    "projection_version": 1,
+    "source": "https://github.com/octo/demo",
+    "number": 9,
+    "fetched_at": "2026-09-17T12:00:00Z",
+    "reader": "gh:octo-reader",
+    "etags": {
+      "repos/octo/demo/pulls/9": "W/\"a178168d2a4d92e37b78ec5fd832dbb8b7eedbb34fd1ed80970d56e688875753\"",
+      "repos/octo/demo/issues/9/comments?per_page=100&page=1": "W/\"8e3fb7499c48198e2722d4bf87b6c307d9dd9f38dc4d767cb6d084933715125a\"",
+      "repos/octo/demo/pulls/9/reviews?per_page=100&page=1": "W/\"7f0bc5191955ee595d16f9154007d0dc93786fa2ababd3d3aeb87531c7dbc19a\"",
+      "repos/octo/demo/pulls/9/comments?per_page=100&page=1": "W/\"d3923abb607ffe393dc70a9b0bb679b48cf6c97b158f065d3879327d52e2bbe4\"",
+      "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/check-runs?per_page=100&page=1": "W/\"9d896926c34fed29e7ea8b7d6720a3bf34b3092b36ce69595693cd87c39c8277\"",
+      "repos/octo/demo/commits/0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd/status?per_page=100&page=1": "W/\"955c010f49492dffc671eb66fd59042f2a5f78427d63ccb457d71cf2cae4f2bd\""
+    },
+    "pull": {
+      "number": 9,
+      "title": "spam",
+      "body": "",
+      "body_truncated": false,
+      "state": "closed",
+      "draft": false,
+      "merged": false,
+      "merged_by": null,
+      "merged_by_avatar_url": null,
+      "commits": 1,
+      "merge_commit_sha": null,
+      "mergeable": "unknown",
+      "labels": [
+        "invalid"
+      ],
+      "author": null,
+      "author_avatar_url": null,
+      "created_at": "2026-09-16T10:57:23Z",
+      "updated_at": "2026-09-16T17:39:01Z",
+      "merged_at": null,
+      "closed_at": "2026-09-16T19:00:00Z",
+      "base": {
+        "ref": "topic",
+        "sha": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+        "repository": "octo/demo"
+      },
+      "head": {
+        "ref": "spam",
+        "sha": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+        "repository": null
+      },
+      "html_url": "https://github.com/octo/demo/pull/9"
+    },
+    "issue_comments": [],
+    "reviews": [],
+    "review_comments": [],
+    "check_runs": [
+      {
+        "id": 51401654787,
+        "name": "tests (3.13)",
+        "status": "completed",
+        "conclusion": "success",
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654787",
+        "app": "GitHub Actions"
+      },
+      {
+        "id": 51401654788,
+        "name": "docs",
+        "status": "in_progress",
+        "conclusion": null,
+        "details_url": "https://github.com/octo/demo/actions/runs/18062895276/job/51401654788",
+        "app": "GitHub Actions"
+      }
+    ],
+    "status": {
+      "state": "success",
+      "statuses": [
+        {
+          "context": "docs/readthedocs.org:demo",
+          "state": "success",
+          "description": "Read the Docs build succeeded!",
+          "target_url": "https://demo--7.org.readthedocs.build/en/7/"
+        }
+      ]
+    },
+    "comparison": {
+      "base": "f92fd713acd521d4ebb62fb9f345ec927b8b6d1b",
+      "head": "0fe10aeb84bee6fe05150d6d9f6da3f4d68549bd",
+      "base_commit": "c1063e6e9a97345a8c7e1dc275c7fd858c91d7b3",
+      "base_from": "base_sha"
+    },
+    "truncated": {
+      "issue_comments": false,
+      "reviews": false,
+      "review_comments": false,
+      "check_runs": false,
+      "statuses": false,
+      "text": false
+    },
+    "unavailable": {}
+  },
+  "core_preview": null
+}
+--- stderr ---
+--- body ---
+{"number": 9, "retry": true, "comparison": true}
 --- gh ---
