@@ -1,5 +1,6 @@
 // A pending file belongs to its Files visit, and survives replacement within that visit.
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { Element, recorded, root, settle, perf } = require("./github-pull-page-mount-behavior.js");
@@ -234,11 +235,89 @@ async function run() {
   await settle();
   assert.deepEqual(walked, ["src/app.txt"], "confirming a settled walk's tab does not jump again");
   walk.dispose();
+
+  // The same walk over a pull request without a store: Changes shows progress while the
+  // walk will settle, not an action the settled address makes needless, and the request
+  // waits for the address. A walk cancelled before it settles leaves the page to the reader.
+  const checkout = JSON.parse(
+    fs.readFileSync(
+      path.join(root, "tests/fixtures/github-checkout-comparison-responses.json"),
+      "utf8",
+    ),
+  );
+  const unstored = () => {
+    setup();
+    window.location.pathname = "/pull/10";
+    const posts = [];
+    globalThis.fetch = async (_route, options = {}) => {
+      if (options.method === "POST") {
+        posts.push(JSON.parse(options.body));
+      }
+      const answer = options.method === "POST" ? checkout.started : checkout.before;
+      return { status: answer.status, headers: { get: () => null }, json: async () => answer.body };
+    };
+    const container = new Element("main");
+    const handle = mountPullPage(
+      container,
+      { number: 10, tab: "", reader: { initial: checkout.before, fetchAfterMs: 0 } },
+      {
+        perf,
+        ensureAsset: async () => {},
+        ensureKindAssets: async () => {},
+        getRegisteredView: () => {
+          throw new Error("no comparison exists before acquisition");
+        },
+        ...require("./sdk-ref-fixture.js").refHelpers(document),
+        formatAge: () => ({ label: "now", className: "age" }),
+        formatTimestamp: () => "now",
+        navigation: { href: () => "/view/" },
+        sourceKind: () => "filesystem",
+        icons: { toggle: "" },
+      },
+    );
+    const body = () => container.querySelector(".github-pull-body");
+    const paint = () => ({
+      text: body().textContent,
+      spinner: body().querySelector(".spinner") !== null,
+      fetch: body().querySelector(".github-pull-fetch-changes") !== null,
+      posts: posts.length,
+    });
+    return { handle, paint };
+  };
+  for (const cancelled of [false, true]) {
+    const { handle, paint } = unstored();
+    await handle.ready;
+    await settle();
+    handle.showFile("src/app.txt", { settling: true });
+    await settle();
+    const during = paint();
+    assert.match(during.text, /Fetching changes/, "the walk will settle on Changes");
+    assert.equal(during.spinner, true);
+    assert.equal(during.fetch, false, "no Fetch changes the settled address makes needless");
+    assert.equal(during.posts, 0, "the request waits for the address");
+    if (cancelled) {
+      handle.walkCancelled();
+      await settle();
+      const left = paint();
+      assert.match(left.text, /Changes have not been fetched/);
+      assert.equal(left.spinner, false, "a cancelled walk leaves nothing on its way");
+      assert.equal(left.fetch, true, "and the reader can still fetch");
+      assert.equal(left.posts, 0);
+    } else {
+      window.location.pathname = "/pull/10/files/src/app.txt";
+      handle.setTab("files");
+      await settle();
+      assert.equal(paint().posts, 1, "the settled walk's address asks once");
+      assert.equal(paint().spinner, true);
+    }
+    handle.dispose();
+  }
   return {
     abandonedJump: false,
     unavailableRetainsSelection: true,
     replacementRetainsSelection: true,
     settledWalkJumpsOnce: true,
+    unsettledWalkShowsProgress: true,
   };
 }
 run()

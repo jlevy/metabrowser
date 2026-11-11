@@ -714,7 +714,8 @@ function isFilesEnvelope(value) {
  *
  * @typedef {{
  *   fileForPath(path: string): {kind: string},
- *   showFile(path: string): {kind: string},
+ *   showFile(path: string, how?: {settling?: boolean}): {kind: string},
+ *   walkCancelled?(): void,
  * }} FilePage
  */
 
@@ -1063,13 +1064,23 @@ export function createFileTreeController(deps, options) {
     void ask(false);
   }
 
-  function clearWalk() {
+  /**
+   * End the walk. One that jumped the page told it the walk would settle there, so a walk
+   * that ends any other way than by opening its file says it will not.
+   *
+   * @param {boolean} [opening] Whether an address for the walk's file is about to open.
+   */
+  function clearWalk(opening = false) {
     if (walkTimer !== null) {
       deps.cancel(walkTimer);
       walkTimer = null;
     }
+    const jumped = walkJumped && walkPath !== null;
     walkPath = null;
     walkJumped = false;
+    if (jumped && !opening) {
+      deps.page()?.walkCancelled?.();
+    }
   }
 
   /** @param {string} path */
@@ -1110,7 +1121,8 @@ export function createFileTreeController(deps, options) {
       mute(path);
       return;
     }
-    if (page.showFile(path).kind === "not_in_comparison") {
+    // The address follows once the walk stops, so the page shows what it will ask for.
+    if (page.showFile(path, { settling: true }).kind === "not_in_comparison") {
       mute(path);
     }
   }
@@ -1119,8 +1131,9 @@ export function createFileTreeController(deps, options) {
   function settleWalk() {
     const path = walkPath;
     const jumped = walkJumped;
-    clearWalk();
-    if (path !== null && !disposed) {
+    const opening = path !== null && !disposed;
+    clearWalk(opening);
+    if (opening) {
       deps.open({ file: path, replace: true, jumped });
     }
   }
@@ -1156,7 +1169,7 @@ export function createFileTreeController(deps, options) {
    * @param {string} path
    */
   function openFile(path) {
-    clearWalk();
+    clearWalk(true);
     markCurrent(path);
     const page = deps.page();
     if (page !== null && page.fileForPath(path).kind === "not_in_comparison") {
@@ -1265,7 +1278,7 @@ export function createFileTreeController(deps, options) {
     /** The diff reported its position; this can be feedback from the active walk itself. */
     followCurrent,
     /** Another route, focused tree, or panel owns the next navigation. */
-    cancelWalk: clearWalk,
+    cancelWalk: () => clearWalk(),
     /**
      * Move by a key, over the rows a reader sees, folders and files alike. Clamped at the ends,
      * where it opens nothing again.
