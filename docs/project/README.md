@@ -44,6 +44,10 @@ links to the document that covers each in depth.
 
 ## Active Feature Plans
 
+- [Native macOS app](specs/active/plan-2026-11-10-native-macos-app.md) — folder identity
+  and window titles, the icon and release pipeline adapted from a sister app, warm
+  folder switching, host mode and the agent front door, and the app-managed runtime,
+  tracked under epic `mb-1apq`
 - [v0.12 thin mirror for Git and GitHub browsing](specs/active/plan-2026-09-23-v012-thin-mirror.md)
   — the original mirror design and its delivery record; the checkout plan below extends
   it with borrowed stores and explicit recovery
