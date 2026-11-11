@@ -87,7 +87,7 @@ function rig(panel, { cached = 6000, automatic = true, filter = "open" } = {}) {
         if (route === "/api/plugin/github/pulls-prefetch") {
           // Background prefetch is the prefetch behavior's subject, not this one's.
           prefetches.push(options.body);
-          return Promise.resolve({ status: 202, etag: null, body: { prefetch: "started" } });
+          return Promise.resolve({ status: 200, etag: null, body: { prefetch: "not_due" } });
         }
         const request = { method, route, body: options.body, signal: options.signal };
         requests.push(request);

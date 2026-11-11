@@ -13,6 +13,8 @@ It names the anchored row’s neighbours and the top five rows, leaving out the 
 whose record is its page’s own refresh, and the changed files of the open row and its
 neighbours. A scan still running asks nothing of its own; a list whose refresh failed, a
 hidden panel, and an offline page ask nothing at all.
+While the lane the panel started is reading a row’s record, that row’s title breathes,
+as a core batch’s rows do.
 
 The pull-request page says when the repository’s list last checked a record apart from
 when the record was read.
@@ -60,6 +62,10 @@ $ node tests/dom/github-pulls-prefetch-behavior.js
     ],
     "changed": false
   },
+  "breathingWhileRead": [
+    111
+  ],
+  "breathingAfter": [],
   "quiet": {
     "refreshing": 1,
     "failed": 0,

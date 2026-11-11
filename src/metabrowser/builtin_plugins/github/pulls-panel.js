@@ -675,6 +675,11 @@ export function createPullsController(deps, options = {}) {
   /** @type {string | null} */
   let prefetchedScan = null;
   let prefetching = false;
+  // The lane's report is followed while it works: its next read, and the row it is reading.
+  /** @type {unknown} */
+  let prefetchTimer = null;
+  /** @type {number[]} */
+  let prefetchRows = [];
 
   /** @returns {HeldList} */
   function held() {
@@ -1181,7 +1186,7 @@ export function createPullsController(deps, options = {}) {
       checkout,
       online: online(),
       requesting: refreshReads.size > 0,
-      refreshingRows: coreRefreshing(),
+      refreshingRows: [...new Set([...coreRefreshing(), ...prefetchRows])],
     });
   }
 
@@ -1789,11 +1794,73 @@ export function createPullsController(deps, options = {}) {
     prefetching = true;
     void deps
       .request("POST", PREFETCH_ROUTE, { body: { records, files, changed } })
+      .then((response) => {
+        // A lane started or joined: follow it, so the row it reads breathes while it does.
+        if (response.status === 202) {
+          watchPrefetch();
+        }
+      })
       .catch(() => null)
       .finally(() => {
         prefetching = false;
       });
     return true;
+  }
+
+  /** Read the lane's report once a fast poll from now, while it has work. */
+  function watchPrefetch() {
+    if (prefetchTimer !== null || disposed) {
+      return;
+    }
+    prefetchTimer = deps.schedule(() => {
+      prefetchTimer = null;
+      void readPrefetch();
+    }, FAST_POLL_MS);
+  }
+
+  /**
+   * The row whose record the lane is reading now breathes, as a core batch's rows do; the
+   * report is read again while the lane runs or holds a queue, and only while shown.
+   */
+  async function readPrefetch() {
+    if (!live()) {
+      setPrefetchRows([]);
+      return;
+    }
+    /** @type {{running?: {kind?: string, number?: number} | null, queued?: unknown[]} | null} */
+    let report = null;
+    try {
+      const response = await deps.request("GET", PREFETCH_ROUTE, {});
+      report = response.status === 200 ? /** @type {any} */ (response.body) : null;
+    } catch {
+      report = null;
+    }
+    if (disposed) {
+      return;
+    }
+    const running = report?.running ?? null;
+    setPrefetchRows(
+      running?.kind === "record" && typeof running.number === "number" ? [running.number] : [],
+    );
+    if (running !== null || (Array.isArray(report?.queued) && report.queued.length > 0)) {
+      watchPrefetch();
+    }
+  }
+
+  /** @param {number[]} rows */
+  function setPrefetchRows(rows) {
+    if (rows.join(",") !== prefetchRows.join(",")) {
+      prefetchRows = rows;
+      render();
+    }
+  }
+
+  function stopPrefetchWatch() {
+    if (prefetchTimer !== null) {
+      deps.cancel(prefetchTimer);
+      prefetchTimer = null;
+    }
+    prefetchRows = [];
   }
 
   /** After a scan the server finished, once per scan: ask for what it found changed. */
@@ -2110,6 +2177,7 @@ export function createPullsController(deps, options = {}) {
     refreshReads.clear();
     opening += 1;
     clearWalk();
+    stopPrefetchWatch();
   }
 
   /**

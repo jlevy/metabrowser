@@ -72,9 +72,16 @@ function panelRig(panel, { current = null } = {}) {
   };
   const prefetches = [];
   const opened = [];
+  const timers = new Map();
+  let model = null;
+  // What the lane reports when the panel follows it: the item running, and the queue.
+  state.report = { running: null, queued: [] };
   const controller = panel.createPullsController(
     {
       async request(method, route, options) {
+        if (route === PREFETCH && method === "GET") {
+          return { status: 200, etag: null, body: state.report };
+        }
         if (route === PREFETCH) {
           prefetches.push(options.body);
           return { status: 202, etag: null, body: { prefetch: "started", queued: 1 } };
@@ -87,13 +94,19 @@ function panelRig(panel, { current = null } = {}) {
         }
         return { status: 200, etag: null, body: listEnvelope(state, route) };
       },
-      schedule: () => Symbol(),
-      cancel() {},
+      schedule(callback, delayMs) {
+        const id = Symbol();
+        timers.set(id, { callback, delayMs });
+        return id;
+      },
+      cancel: (id) => timers.delete(id),
       now: () => state.now,
       isVisible: () => state.visible,
       isOnline: () => state.online,
       formatTime: (at) => at,
-      render() {},
+      render(painted) {
+        model = painted;
+      },
       markCurrent() {},
       markAnchor() {},
       reveal() {},
@@ -104,7 +117,21 @@ function panelRig(panel, { current = null } = {}) {
     },
     { filter: "open", current },
   );
-  return { state, prefetches, opened, controller };
+  return {
+    state,
+    prefetches,
+    opened,
+    controller,
+    model: () => model,
+    async fire(delayMs) {
+      const entries = [...timers.entries()].filter(([, timer]) => timer.delayMs === delayMs);
+      for (const [id, timer] of entries) {
+        timers.delete(id);
+        timer.callback();
+      }
+      await settle();
+    },
+  };
 }
 
 /** A pull envelope the catalog vouched for, from the recorded page answers. */
@@ -224,6 +251,23 @@ function pageRig(page, envelope) {
   assert.deepEqual(shown.opened, [110]);
   assert.equal(facts.afterLanding.changed, false);
   assert.deepEqual(facts.afterLanding.files, [110, 111, 109]);
+
+  // The panel follows the lane it started: the row whose record it reads breathes, until
+  // the lane has nothing left.
+  const { FAST_POLL_MS } = await import(
+    pathToFileURL(path.join(root, "src/metabrowser/builtin_plugins/github/pull-page.js")).href
+  );
+  shown.state.report = {
+    running: { kind: "record", number: 111 },
+    queued: [{ kind: "record", number: 109 }],
+  };
+  await shown.fire(FAST_POLL_MS);
+  facts.breathingWhileRead = shown.model().refreshingRows ?? [];
+  shown.state.report = { running: null, queued: [] };
+  await shown.fire(FAST_POLL_MS);
+  facts.breathingAfter = shown.model().refreshingRows ?? [];
+  assert.deepEqual(facts.breathingWhileRead, [111]);
+  assert.deepEqual(facts.breathingAfter, []);
   shown.controller.dispose();
 
   // A scan still running, a list whose refresh failed, a hidden panel, and offline.

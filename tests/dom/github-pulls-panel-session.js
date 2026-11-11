@@ -126,7 +126,7 @@ function createPage() {
       if (route === PREFETCH_ROUTE) {
         // Background work the server admits on its own terms; the panel reads nothing from
         // the answer, so the session answers at once and only the request counts.
-        return Promise.resolve({ status: 202, etag: null, body: { prefetch: "started" } });
+        return Promise.resolve({ status: 200, etag: null, body: { prefetch: "not_due" } });
       }
       return new Promise((resolve, reject) => {
         const request = { route, method, etag: options.etag, resolve, reject };
@@ -815,9 +815,9 @@ async function paintStory(panel, selection = false) {
           })
         : route === PREFETCH_ROUTE
           ? Promise.resolve({
-              status: 202,
+              status: 200,
               headers: { get: () => null },
-              json: async () => ({ prefetch: "started" }),
+              json: async () => ({ prefetch: "not_due" }),
             })
           : new Promise((resolve) => {
               answers.push({ route, init, resolve });
