@@ -123,3 +123,38 @@ def test_an_open_with_no_usable_record_refuses_a_winner_whose_head_it_lacks(
     with pytest.raises(pulls.PullDataError) as refused:
         asyncio.run(pulls.open_pull_request(stand.published, 7, fetch="always"))
     assert winners and refused.value.state == "head_mismatch"
+
+
+def test_a_refresh_failing_after_its_own_pending_write_stamps_that_failure(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review B3 on #348: the failure stamp describes the record this refresh wrote.
+
+    An uncertain merge base is written first, then deepening fails in Git. Before, the
+    stamp expected the record from before the refresh, so it was refused and the stamp
+    kept the previous success.
+    """
+    from datetime import timedelta
+
+    from metabrowser.cache.pull_refs import BaseUncertainError
+    from metabrowser.git.process import GitCommandError
+    from tests.github_pull_fixture import FETCHED_AT
+
+    first = stand.refresh(7)
+
+    async def uncertain(*_args: Any, **_kwargs: Any) -> Any:
+        raise BaseUncertainError(base_commit=first.pull.base.sha, base_from="base_sha")
+
+    async def offline(*_args: Any, **_kwargs: Any) -> Any:
+        raise GitCommandError(["fetch"], 128, "could not resolve host")
+
+    monkeypatch.setattr(pulls, "comparison_endpoints", uncertain)
+    monkeypatch.setattr(pulls, "deepen_until_certain", offline)
+    monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT + timedelta(minutes=10))
+    with pytest.raises(pulls.PullDataError) as failed:
+        asyncio.run(pulls.refresh_pull_request(stand.published, 7))
+    record = stand.record(7)
+    assert isinstance(record, PullRecord)
+    assert record.unavailable["comparison"] == "base_uncertain"
+    stamp = read_pull_refresh(stand.published.home, stand.published.slug, 7)
+    assert stamp is not None and stamp.outcome == failed.value.state == "git_failed"

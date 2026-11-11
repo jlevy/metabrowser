@@ -822,8 +822,12 @@ async def _with_comparison(
     *,
     expected: PullRecord | RecordAbsence,
     exact_base: bool = False,
+    published_records: list[PullRecord] | None = None,
 ) -> PullRecord:
     """Compute Files changed and write the record.
+
+    *published_records* is told the pending record this writes before deepening, so a
+    failure after it stamps the observation that is on disk.
 
     A comparison that cannot be computed is left out and named in the record's
     ``unavailable``. One whose merge base is uncertain writes that record first, so a
@@ -852,6 +856,8 @@ async def _with_comparison(
         log.debug("pull request %s has an uncertain merge base; deepening", pull.number)
         # A write another writer won raises, so the second write expects the first.
         expected = await _write(published, without(uncertain.state), expected=expected)
+        if published_records is not None:
+            published_records.append(expected)
         try:
             endpoints = await deepen_until_certain(
                 published,
@@ -912,6 +918,7 @@ async def _refresh(
     cached: PullRecord | RecordAbsence,
     on_core: Callable[[PullRequest | None, str | None], Awaitable[None]] | None = None,
     observe_reader: Callable[[str], None] | None = None,
+    published_records: list[PullRecord] | None = None,
 ) -> PullRecord:
     owner, repo = _owner_and_repo(published)
     # An existing full record always retains the original two-check refresh path.
@@ -967,7 +974,9 @@ async def _refresh(
             raise PullDataError(
                 "head_mismatch", "its head kept moving while it was read; open it again"
             )
-        return await _with_comparison(published, record, expected=cached)
+        return await _with_comparison(
+            published, record, expected=cached, published_records=published_records
+        )
     raise AssertionError("unreachable")
 
 
@@ -1043,6 +1052,9 @@ async def refresh_pull_request(
     """
 
     cached: PullRecord | RecordAbsence = "not_cached"
+    # What this refresh itself published before it failed, which its failure stamp
+    # then describes.
+    published_records: list[PullRecord] = []
     try:
         try:
             if isinstance(published, ListedRepository):
@@ -1053,7 +1065,12 @@ async def refresh_pull_request(
             if recover and not isinstance(published, ListedRepository):
                 await _recover_comparison(published, number, recovery_pair)
             record = await _refresh(
-                published, number, cached=cached, on_core=on_core, observe_reader=observe_reader
+                published,
+                number,
+                cached=cached,
+                on_core=on_core,
+                observe_reader=observe_reader,
+                published_records=published_records,
             )
         except GitError as exc:
             raise _git_failure(number, exc) from exc
@@ -1073,7 +1090,8 @@ async def refresh_pull_request(
             "reset_at": exc.reset_at,
             "at": utc_stamp(utc_now()),
         }
-        await run_lock_section(partial(_keep_stamp, published, number, stamp, cached))
+        observed = published_records[-1] if published_records else cached
+        await run_lock_section(partial(_keep_stamp, published, number, stamp, observed))
         raise
     succeeded = {"outcome": "succeeded", "at": record.fetched_at}
     await run_lock_section(partial(_keep_stamp, published, number, succeeded, record))
