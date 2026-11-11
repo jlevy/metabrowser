@@ -547,7 +547,14 @@ def write_pull_record(
             if (
                 observed is not None
                 and isinstance(current, PullRecord)
-                and not same_observation(current, observed)
+                and current != observed
+                and (
+                    not same_observation(current, observed)
+                    # A writer that changes only the comparison of the same read loses
+                    # to one that computed it: it adopts that comparison rather than
+                    # replacing it with its own failure or pending base.
+                    or (current.comparison is not None and same_observation(record, observed))
+                )
             ):
                 raise PullObservationSuperseded(current)
         else:
