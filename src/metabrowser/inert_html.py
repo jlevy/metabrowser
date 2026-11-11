@@ -37,6 +37,10 @@ only what is listed here and drops the rest.
 
 ``static/inert-html.js`` applies the same rules in the browser (``sanitizeNodes``), and
 ``tests/test_inert_html.py`` proves the two allowlists are the same.
+
+:func:`kpress_prose` is that module's ``kpressProse`` for a page that draws hardened HTML
+on the server: KPress's two wrappers unwrapped, and the classes KPress's stylesheets set a
+code block and a table by, chosen by element and never read from the document.
 """
 
 from __future__ import annotations
@@ -550,6 +554,98 @@ def _harden(
     return "".join(hardener.out), replaced
 
 
+class _Element:
+    __slots__ = ("attributes", "children", "css_class", "tag")
+
+    def __init__(self, tag: str, attributes: list[tuple[str, str | None]]) -> None:
+        self.tag = tag
+        self.attributes = attributes
+        self.children: list[_Element | str] = []
+        self.css_class: str | None = None
+
+
+class _Tree(HTMLParser):
+    """Hardened HTML as a tree. It is this module's own output, so it nests."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.root = _Element("", [])
+        self.open = [self.root]
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        element = _Element(tag, attrs)
+        self.open[-1].children.append(element)
+        if tag not in _VOID:
+            self.open.append(element)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.open[-1].children.append(_Element(tag, attrs))
+
+    def handle_endtag(self, tag: str) -> None:
+        for depth in range(len(self.open) - 1, 0, -1):
+            if self.open[depth].tag == tag:
+                del self.open[depth:]
+                return
+
+    def handle_data(self, data: str) -> None:
+        self.open[-1].children.append(data)
+
+
+def _without_render_wrappers(blocks: list[_Element | str]) -> list[_Element | str]:
+    for _ in range(2):
+        present = [node for node in blocks if not isinstance(node, str) or node.strip()]
+        only = present[0] if len(present) == 1 else None
+        if not isinstance(only, _Element) or only.tag != "div":
+            break
+        blocks = only.children
+    return blocks
+
+
+def _name_by_element(parent: _Element | None, nodes: list[_Element | str]) -> None:
+    for node in nodes:
+        if isinstance(node, str):
+            continue
+        if node.tag == "pre":
+            node.css_class = "kpress-code"
+        elif node.tag == "table":
+            node.css_class = "kpress-table"
+            if parent is not None and parent.tag == "div":
+                parent.css_class = "kpress-table-wrap"
+        _name_by_element(node, node.children)
+
+
+def _serialize(nodes: list[_Element | str]) -> str:
+    out: list[str] = []
+    for node in nodes:
+        if isinstance(node, str):
+            out.append(escape(node, quote=False))
+            continue
+        kept = [(name, value or "") for name, value in node.attributes]
+        if node.css_class is not None:
+            kept = [("class", node.css_class), *kept]
+        out.append(_open_tag(node.tag, kept))
+        if node.tag not in _VOID:
+            out.append(f"{_serialize(node.children)}</{node.tag}>")
+    return "".join(out)
+
+
+def kpress_prose(html: str) -> str:
+    """*html*, this module's hardened output, as the content of a ``.kpress-prose`` element.
+
+    ``static/inert-html.js`` ``kpressProse`` on the server: up to two lone wrapper
+    ``<div>``s, KPress's own with their classes gone, are unwrapped, each ``pre`` gets
+    ``kpress-code``, each ``table`` ``kpress-table``, and a table's parent ``<div>`` inside
+    the prose ``kpress-table-wrap``. The caller writes the ``.kpress-prose`` element.
+    """
+
+    tree = _Tree()
+    tree.feed(html)
+    tree.close()
+    blocks = _without_render_wrappers(tree.root.children)
+    _name_by_element(None, blocks)
+    return _serialize(blocks)
+
+
 __all__ = [
     "ALLOWED_ATTRIBUTES",
     "ANCHOR_PREFIX",
@@ -563,6 +659,7 @@ __all__ = [
     "image_link",
     "is_inside",
     "keeps_image",
+    "kpress_prose",
     "link_href",
     "outside_link",
 ]

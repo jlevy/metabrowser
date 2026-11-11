@@ -71,9 +71,10 @@ function pluginComparisonRoute(route) {
 
 /**
  * The rendered Markdown layer of a comparison that names a rendered route, or null. Its
- * module is imported now, beside the diff's own request and the View file opener, and a
- * mount awaits it only when the manifest lists a Markdown file. A failed import leaves
- * every file in Source.
+ * module is imported now, beside the diff's own request and the View file opener, so it
+ * is usually loaded before the comparison answers (a cold import took 1.2-4.2 ms); a
+ * mount waits for it, and mounts its views only when the manifest lists a Markdown file.
+ * A failed import leaves every file in Source.
  *
  * diff-markdown.js is an on-demand tier: a pull request's Changes loads it, and no other
  * diff does: 25,267 bytes, 7,861 gzipped.

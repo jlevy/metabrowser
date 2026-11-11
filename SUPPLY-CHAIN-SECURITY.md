@@ -244,6 +244,18 @@ Starlette and Uvicorn already depend on AnyIO; no new transitive records appear.
 No unrelated lock versions change.
 The normal full verification gate audits the complete lock.
 
+### Direct Pygments Requirement (November 11, 2026)
+
+`diff/markdown_projection.py` reads the lexer aliases Pygments ships to decide which
+fence info strings name a language, so `pygments>=2.20.0` is now declared directly.
+KPress already requires Pygments, and so does pytest, so the lock gains no package and
+no version changes: the delta is the two lines that name Pygments among this project’s
+requirements. The locked release, 2.20.0, was published on March 29, 2026, so it
+satisfies the 14-day cool-off without an exception.
+Its source is [pygments/pygments](https://github.com/pygments/pygments), its license is
+BSD-2-Clause, and its Python requirement, `>=3.9`, covers this project’s supported
+range. Its registry artifact hashes in `uv.lock` are unchanged.
+
 ### Automated Checks
 
 `devtools/check_supply_chain.py` checks only safeguards that span configuration files:

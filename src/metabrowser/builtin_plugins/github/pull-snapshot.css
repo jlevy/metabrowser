@@ -27,3 +27,10 @@
   max-width: 100%;
   height: auto;
 }
+
+/* KPress and the shell draw a <details> chevron with a data: mask, and this page's policy
+   loads images from its own origin only. The same chevron, served from here. */
+.pull-snapshot-content .kpress summary::before,
+.pull-snapshot-content .metabrowser-kpress-host .kpress details > summary::after {
+  mask-image: url("disclosure-chevron.svg");
+}

@@ -10,10 +10,11 @@ child, at the same 35-37 projections in 1.5 s. The repository budgets 50 ms for 
 unrelated request's delay (``inventory_engine/providers/python_inventory.py``), and a
 request with more wake-ups pays the switch interval at each.
 
-The child costs memory while it runs: 65-66 MB resident once it is ready, 68.5-68.7 MB
-after the 20 largest of this repository's 434 real Markdown pairs, and 70.2-70.4 MB after
-all of them (two runs, development Mac, macOS ``ps`` RSS). That is why it starts only
-when a server projects a second file, or a page asks ahead for its first screen.
+The child costs memory while it runs: 56-66 MB resident once it is ready and 63-70 MB
+after all 434 of this repository's real Markdown pairs (macOS ``ps`` RSS, two runs each
+in two reviews of #349, under different loads). It starts only when a server projects a
+second file, or a page asks ahead for its first screen, and it stops after ten idle
+minutes.
 
 The child is this module run with ``python -m``, so it never imports the server's main
 module, and it speaks length-prefixed JSON over its standard input and output: plain
@@ -36,6 +37,7 @@ import signal
 import sys
 import threading
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any, BinaryIO, Literal, cast
 
 from metabrowser.diff.format import FilePatch
@@ -59,6 +61,10 @@ _START_TIMEOUT_S = 30.0
 _PROJECTION_TIMEOUT_S = 10.0
 # Starts that did not last before the worker settles on its thread for good.
 _MAX_STARTS = 3
+# A child no projection has used for this long is stopped; the next one starts it again,
+# and runs in a thread while it does. A start took 0.23-0.24 s to ready (review E of
+# #349), against 56-63 MB kept resident for as long as the server runs.
+_IDLE_S = 600.0
 
 
 def _gil_enabled() -> bool:
@@ -160,7 +166,11 @@ class ProjectionWorker:
 
     def __init__(self, *, processes: bool = True, command: Sequence[str] | None = None) -> None:
         self._processes = processes and _gil_enabled()
-        self._command = tuple(command or (sys.executable, "-m", __name__))
+        # Isolated mode: no working directory or script directory on the module path, and
+        # no PYTHON* variable or user site-packages, so the child runs only installed code
+        # wherever the server was started (a checkout of the reviewed pull request
+        # included). It starts in the package's own directory, as cache/probe.py's does.
+        self._command = tuple(command or (sys.executable, "-I", "-m", __name__))
         self._process: asyncio.subprocess.Process | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._lock: asyncio.Lock | None = None
@@ -169,6 +179,8 @@ class ProjectionWorker:
         self._starts = 0
         self._requests = 0
         self._counted: asyncio.AbstractEventLoop | None = None
+        self._used = 0.0
+        self._idle_timer: asyncio.TimerHandle | None = None
 
     @property
     def ready(self) -> bool:
@@ -203,8 +215,11 @@ class ProjectionWorker:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
+                cwd=Path(__file__).resolve().parent,
             )
         except OSError:
+            # The next projection may try again, up to the start limit.
+            self._starting = None
             return
         self._process = process
         _CHILDREN.add(process.pid)
@@ -218,6 +233,25 @@ class ProjectionWorker:
             self._ready = True
             self._starts = 0
 
+    def _touch(self) -> None:
+        """Note a projection, and stop the child once none has come for _IDLE_S."""
+
+        loop = asyncio.get_running_loop()
+        self._used = loop.time()
+        if self._idle_timer is None:
+            self._idle_timer = loop.call_later(_IDLE_S, self._idle)
+
+    def _idle(self) -> None:
+        self._idle_timer = None
+        loop = self._loop
+        if loop is None or self._process is None:
+            return
+        waited = loop.time() - self._used
+        if waited < _IDLE_S or (self._lock is not None and self._lock.locked()):
+            self._idle_timer = loop.call_later(max(_IDLE_S - waited, 0.0), self._idle)
+            return
+        self.stop()
+
     def _kill(self, process: asyncio.subprocess.Process) -> None:
         if self._process is process:
             self._process, self._ready, self._starting = None, False, None
@@ -229,6 +263,9 @@ class ProjectionWorker:
     def stop(self) -> None:
         """Stop the child; the next start begins a new one."""
 
+        if self._idle_timer is not None:
+            self._idle_timer.cancel()
+            self._idle_timer = None
         if self._process is not None:
             self._kill(self._process)
         if self._starting is not None:
@@ -257,9 +294,27 @@ class ProjectionWorker:
         failure: Literal["unsupported", "too_large"] = "unsupported"
         async with lock:
             try:
+                if process.returncode is not None:
+                    raise ConnectionError("the child exited while idle")
                 process.stdin.write(_frame(_encode(old, new, patch, namespace)))
                 await process.stdin.drain()
-                return _decode(await asyncio.wait_for(_read(process.stdout), _PROJECTION_TIMEOUT_S))
+            except ConnectionError:
+                # Gone before this request reached it: not this input's doing, so the
+                # request runs in a thread and the next one starts a child again.
+                self._kill(process)
+                return await asyncio.to_thread(
+                    prepare_markdown_diff, old=old, new=new, patch=patch, namespace=namespace
+                )
+            except BaseException:
+                # A request cut off part-way leaves the child's input out of step.
+                self._kill(process)
+                raise
+            try:
+                answer = _decode(
+                    await asyncio.wait_for(_read(process.stdout), _PROJECTION_TIMEOUT_S)
+                )
+                self._touch()
+                return answer
             except TimeoutError:
                 failure = "too_large"
             except (ConnectionError, asyncio.IncompleteReadError, ValueError, KeyError):

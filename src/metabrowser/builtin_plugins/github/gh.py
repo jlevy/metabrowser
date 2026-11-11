@@ -21,6 +21,7 @@ same-second refreshes at once on purpose (measured 2026-11-11).
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -491,6 +492,10 @@ _GRAPHQL_TOKEN: Final = re.compile(
 )
 
 
+# Every document the plugin sends is a module constant or one of the core batch sizes, about
+# 40 in all, and lexing one on the event loop took 67 to 131 µs, and 1.4 ms for the
+# 25-core batch (measured 2026-11-11), so each answer is kept.
+@functools.lru_cache(maxsize=64)
 def _is_one_read_only_query(document: str) -> bool:
     """Whether *document* defines exactly one operation, a query, besides fragments.
 

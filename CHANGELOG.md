@@ -30,7 +30,8 @@ All notable changes to Metabrowser are documented here.
   A link stays valid after the pull request moves on, for the last 16 comparisons.
   A file at the commit a mirror’s page shows still opens in the app’s viewer.
   A Markdown file whose rendering would cost more than a few hundred milliseconds, such
-  as a long task list or tens of kilobytes of highlighted code, opens as Source.
+  as a long task list, thousands of very short lines, or a long run of highlighted code,
+  opens as Source.
 
 - A pull request’s **Changes** shows Markdown files **Rendered** by default: changed
   blocks are shown as removed and added, with changed words marked, and a changed list

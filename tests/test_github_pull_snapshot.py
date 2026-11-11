@@ -757,6 +757,13 @@ def test_the_render_bound_counts_the_whole_document(separator: bytes) -> None:
         _repeat(b"*a"),
         _repeat(b"$a$"),
         (b"[" * 16384 + b"$a$" * _CAP)[:_CAP],
+        _repeat(b"a\n\n"),
+        _repeat(b"a\\\n"),
+        (b"$a$ " * 2200 + b"a\n\n" * _CAP)[:_CAP],
+        _repeat(b"> - [ ] a\n"),
+        _repeat(b"- - [ ] a\n"),
+        _repeat(b"a,", b"```ruby\n"),
+        _repeat(b"$ " + b"a;" * 100 + b"\n", b"```console\n"),
     ],
     ids=[
         "brackets",
@@ -769,11 +776,78 @@ def test_the_render_bound_counts_the_whole_document(separator: bytes) -> None:
         "emphasis",
         "math-run",
         "brackets-then-math",
+        "paragraphs",
+        "backslash-breaks",
+        "math-then-paragraphs",
+        "quoted-tasks",
+        "nested-tasks",
+        "ruby-tokens",
+        "console-commands",
     ],
 )
 def test_each_measured_costly_shape_at_the_cap_opens_as_source(body: bytes) -> None:
-    """Review A4: what took 0.5 to 6.4 s at 64 KiB is refused before it renders."""
+    """Reviews A4 and F1 to F3: what took 0.5 to 6.4 s at 64 KiB is refused before it renders."""
     assert len(body) == _CAP
+    assert _work(body) > pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
+    path = GitPath.from_display("README.md")
+    snapshot = Snapshot(7, "a" * 40, "b" * 40, "s", "head")
+    assert pull_snapshot._render_document(body, path, "c" * 40, snapshot) is None  # pyright: ignore[reportPrivateUsage]
+
+
+_CODE = b"a," * 20000
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b"```console\n" + b"[a@]" * 1000 + b"\n```\n",
+        b"```console\n" + b"a" * 800 + b"@" * 800 + b"\n```\n",
+        b"```console\n()(" + b"[a@])" * 200 + b"\n```\n",
+        _repeat(b"> " + b"a," * 32 + b"\n", b"> ```ruby\n"),
+        _repeat(b"  " + b"a," * 32 + b"\n", b"- ```ruby\n"),
+        b"- ```text\n```\n```\n```ruby\n" + _CODE + b"\n```\n",
+        # Python, which lexes a backtick as one error token and goes on, where Ruby would
+        # lex the rest as one string.
+        b"```python\n> ```\n" + _CODE + b"\n```\n",
+        b"```python\n    ```\n" + _CODE + b"\n```\n",
+        b"```python\n```text\n" + _CODE + b"\n```\n",
+        b"```python\n- ```\n" + _CODE + b"\n```\n",
+        b"```ruby\n" + b"a," * 8000 + b"\n```\n",
+        _repeat(b"> $ " + b"a;" * 100 + b"\n", b"> ```console\n"),
+        b"   ```console\n   " + b"[a@]" * 1000 + b"\n```\n",
+        b"```console\n(x) " + b"[a@]" * 1000 + b"\n```\n",
+        b"- [ ] a\r" * 1025,
+        b"-\n  [ ] a\n" * 1025,
+        b"> - > - [ ] a\n" * 1025,
+    ],
+    ids=[
+        "prompt-brackets",
+        "prompt-word",
+        "prompt-parentheses",
+        "quoted-ruby",
+        "listed-ruby",
+        "fence-in-list-ends-with-it",
+        "quoted-line-in-a-fence",
+        "indented-line-in-a-fence",
+        "info-line-in-a-fence",
+        "listed-line-in-a-fence",
+        "token-dense-ruby",
+        "quoted-console",
+        "indented-console-prompt",
+        "prompt-after-venv",
+        "cr-tasks",
+        "blank-first-tasks",
+        "quote-in-list-tasks",
+    ],
+)
+def test_shapes_a_line_scan_could_misread_open_as_source(body: bytes) -> None:
+    """What the estimate reads line by line is read the way the renderer reads it.
+
+    One line in a ``console`` fence costs 5.5 to 11.5 s in Pygments' prompt pattern;
+    highlighted code in a quote, a list item, or a fence the scan cannot tell has ended
+    costs what it costs anywhere; and a task is one behind any container, or on its own
+    line, or after a carriage return.
+    """
     assert _work(body) > pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
     path = GitPath.from_display("README.md")
     snapshot = Snapshot(7, "a" * 40, "b" * 40, "s", "head")
@@ -790,6 +864,11 @@ def test_ordinary_documents_are_within_the_render_bound() -> None:
         (root / "README.md").read_bytes()[:_CAP],
         (root / "CHANGELOG.md").read_bytes()[:_CAP],
         (root / "docs" / "reviewing-pull-requests.md").read_bytes()[:_CAP],
+        # Console transcripts, which render in 43 to 73 ms; review F3 found them refused.
+        (root / "tests" / "golden" / "cli-ui-github-pull-page.tryscript.md").read_bytes()[:_CAP],
+        (root / "tests" / "golden" / "cli-api-cache.tryscript.md").read_bytes()[:_CAP],
+        # Inline code at a line's start, which opens no fence: what follows is still prose.
+        (b"```python `x` names the language.\n" + prose)[:_CAP],
     ):
         assert _work(body) <= pull_snapshot._DOCUMENT_WORK_MS  # pyright: ignore[reportPrivateUsage]
 
@@ -801,10 +880,20 @@ def test_overlapping_documents_share_one_render_and_wait_for_the_slot(
 
     One full-file render runs at a time; a request for the same document joins it, and one
     for another waits for it. Each estimate runs in the worker thread with its render
-    (review D4).
+    (review D4), and a kept page is served without reading its blob again (review F5).
     """
     import asyncio
     import threading
+    from collections.abc import Awaitable, Callable
+
+    reads: list[bytes] = []
+
+    def reader(body: bytes) -> Callable[[], Awaitable[bytes]]:
+        async def read() -> bytes:
+            reads.append(body)
+            return body
+
+        return read
 
     renders: list[str] = []
     estimated_off_loop: list[bool] = []
@@ -833,20 +922,21 @@ def test_overlapping_documents_share_one_render_and_wait_for_the_slot(
     async def run() -> list[str | None]:
         return list(
             await asyncio.gather(
-                pull_snapshot._document(snapshot, path, "1" * 40, b"one"),  # pyright: ignore[reportPrivateUsage]
-                pull_snapshot._document(snapshot, path, "1" * 40, b"one"),  # pyright: ignore[reportPrivateUsage]
-                pull_snapshot._document(snapshot, path, "2" * 40, b"two"),  # pyright: ignore[reportPrivateUsage]
+                pull_snapshot._document(snapshot, path, "1" * 40, reader(b"one")),  # pyright: ignore[reportPrivateUsage]
+                pull_snapshot._document(snapshot, path, "1" * 40, reader(b"one")),  # pyright: ignore[reportPrivateUsage]
+                pull_snapshot._document(snapshot, path, "2" * 40, reader(b"two")),  # pyright: ignore[reportPrivateUsage]
             )
         )
 
     async def run_and_reload() -> tuple[list[str | None], str | None]:
         first = await run()
-        return first, await pull_snapshot._document(snapshot, path, "1" * 40, b"one")  # pyright: ignore[reportPrivateUsage]
+        return first, await pull_snapshot._document(snapshot, path, "1" * 40, reader(b"one"))  # pyright: ignore[reportPrivateUsage]
 
     pages, reloaded = asyncio.run(run_and_reload())
     assert pages == ["<p>one</p>", "<p>one</p>", "<p>two</p>"] and reloaded == "<p>one</p>"
     # The reload is the kept page: the hardening after KPress's own cache does not run again.
     assert sorted(renders) == ["1" * 40, "2" * 40] and most == 1
+    assert sorted(reads) == [b"one", b"one", b"two"]
     assert estimated_off_loop and all(estimated_off_loop)
 
 
@@ -920,6 +1010,29 @@ def test_the_revision_page_scripts_apply_the_readers_preferences(
         "data-app-font": "system",
     }
     assert seen["chosen"]["style"] == {"--doc-max-chars": "80"}
+
+
+def test_the_disclosure_chevron_loads_from_this_origin(
+    pinned_pull: tuple[_Stand, TestClient],
+) -> None:
+    """Review E1: the page's styles draw a summary's chevron with nothing its policy refuses.
+
+    KPress and the shell spell the chevron as a ``data:`` mask; this page's stylesheet puts
+    the same glyph, served from this origin, on both rules that draw it.
+    """
+    _, client = pinned_pull
+    css = client.get("/plugin-static/github/pull-snapshot.css").text
+    assert (
+        ".pull-snapshot-content .kpress summary::before,\n"
+        ".pull-snapshot-content .metabrowser-kpress-host .kpress details > summary::after {\n"
+        '  mask-image: url("disclosure-chevron.svg");'
+    ) in css
+    chevron = client.get("/plugin-static/github/disclosure-chevron.svg")
+    assert chevron.status_code == 200
+    assert chevron.headers["content-type"] == "image/svg+xml"
+    assert '<path d="m9 18 6-6-6-6"/>' in chevron.text
+    shell = (Path(__file__).parents[1] / "src/metabrowser/static/styles.css").read_text()
+    assert "m9 18 6-6-6-6" in shell, "the shell still draws the same glyph"
 
 
 def test_rendered_markdown_in_a_checkout_reads_the_head_blob_not_the_working_tree(
@@ -1015,7 +1128,7 @@ def test_one_git_diff_hydrates_the_markdown_files_after_the_one_asked_for() -> N
     from metabrowser.builtin_plugins.github import pull_rendered_diff
     from metabrowser.diff.format import Availability, ContentRefKind, EntryType, FilePatch
 
-    def change(file_id: str, path: str) -> Any:
+    def change(file_id: str, path: str, changed: int | None = 4) -> Any:
         side = SimpleNamespace(
             entry_type=EntryType.file,
             content=SimpleNamespace(kind=ContentRefKind.git_object),
@@ -1028,10 +1141,15 @@ def test_one_git_diff_hydrates_the_markdown_files_after_the_one_asked_for() -> N
             binary=False,
             old=side,
             new=side,
+            additions=changed,
+            deletions=None if changed is None else 0,
         )
 
     files = [change(f"f{index}", f"docs/{index}.md") for index in range(20)]
     files.insert(3, change("code", "src/app.py"))
+    # A rewrite past what a projection answers, and a file whose lines nobody counted.
+    files.insert(5, change("rewrite", "docs/rewrite.md", changed=8_000))
+    files.insert(6, change("uncounted", "docs/uncounted.md", changed=None))
     asked: list[list[str]] = []
 
     class Source:
@@ -1052,8 +1170,11 @@ def test_one_git_diff_hydrates_the_markdown_files_after_the_one_asked_for() -> N
             assert patch is not None and patch.file_id == file_id
 
     asyncio.run(run())
-    assert asked[0] == [f"f{index}" for index in range(16)], "sixteen Markdown files, code skipped"
+    assert asked[0] == [f"f{index}" for index in range(16)], (
+        "sixteen small Markdown files; code, a large rewrite and an uncounted file skipped"
+    )
     assert asked[1:] == [["f16", "f17", "f18", "f19"]]
+    assert "rewrite" not in {file_id for batch in asked for file_id in batch}
 
 
 def test_a_request_ahead_of_changes_starts_the_projection_process(
@@ -1082,3 +1203,96 @@ def test_a_request_ahead_of_changes_starts_the_projection_process(
     assert starts == [], "one request does not start a child"
     assert client.get(f"{address}&prefetch=1").json()["status"] == "ready"
     assert starts == ["start"]
+
+
+def test_the_rendered_route_answers_an_undecided_pair_and_a_busy_slot(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+
+    stand, client = pinned_pull
+    stand.refresh(8)
+    envelope = client.get("/api/plugin/github/pull", params={"number": 8}).json()
+    file = next(
+        change
+        for change in client.get(envelope["comparison_route"]).json()["manifest"]["files"]
+        if change["new"]["path"] == "docs/guide.md"
+    )
+    address = f"{envelope['rendered_route']}&file={file['id']}"
+    with monkeypatch.context() as patch:
+        patch.setattr(pull_snapshot, "_ADMITTED", OrderedDict())
+        patch.setattr(pull_snapshot, "read_pull_record", lambda *_a, **_k: "unreadable")
+        undecided = client.get(address)
+    assert undecided.status_code == 409
+    assert undecided.json() == {"code": "snapshot_unavailable"}
+    assert undecided.headers["cache-control"] == "no-store"
+
+    class Busy:
+        async def run(self, _load: object) -> object:
+            raise pull_rendered_diff._Busy  # pyright: ignore[reportPrivateUsage]
+
+    application: Any = client.app
+    # The app outlives this test, so the stand-in slot is removed after it.
+    monkeypatch.setattr(application.state, "pull_rendered_diff_slot", Busy(), raising=False)
+    busy = client.get(address)
+    assert busy.status_code == 429
+    assert busy.json() == {"code": "rendered_diff_busy"}
+
+
+def test_the_projection_slot_runs_one_load_keeps_four_waiting_and_refuses_the_rest() -> None:
+    import asyncio
+
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+
+    slot = pull_rendered_diff._Slot()  # pyright: ignore[reportPrivateUsage]
+    busy = pull_rendered_diff._Busy  # pyright: ignore[reportPrivateUsage]
+
+    async def run() -> None:
+        gate = asyncio.Event()
+        running: list[int] = []
+        finished: list[int] = []
+
+        async def load(index: int) -> int:
+            running.append(index)
+            assert len(running) - len(finished) == 1, "one load at a time"
+            await gate.wait()
+            finished.append(index)
+            return index
+
+        tasks = [
+            asyncio.create_task(slot.run(lambda index=index: load(index))) for index in range(5)
+        ]
+        await asyncio.sleep(0.01)
+        assert running == [0], "one runs and four wait"
+        with pytest.raises(busy):
+            await slot.run(lambda: load(99))
+        tasks[2].cancel()
+        await asyncio.sleep(0.01)
+        late = asyncio.create_task(slot.run(lambda: load(5)))
+        await asyncio.sleep(0.01)
+        assert not late.done(), "a cancelled waiter's place goes to the next"
+        gate.set()
+        results = await asyncio.gather(*tasks, late, return_exceptions=True)
+        assert results[:2] == [0, 1] and results[3:] == [3, 4, 5]
+        assert isinstance(results[2], asyncio.CancelledError)
+        assert finished == [0, 1, 3, 4, 5]
+
+    asyncio.run(run())
+
+
+def test_kept_patches_are_bounded_by_their_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+    from metabrowser.diff.format import FilePatch, Hunk, LineOp, LineRecord
+
+    monkeypatch.setattr(pull_rendered_diff, "_KEPT_LINES", 10)
+    patches = pull_rendered_diff._Patches()  # pyright: ignore[reportPrivateUsage]
+
+    def patch(lines: int) -> FilePatch:
+        records = tuple(LineRecord(op=LineOp.add, text="x") for _ in range(lines))
+        hunk = Hunk(old_start=0, old_count=0, new_start=1, new_count=lines, lines=records)
+        return FilePatch(file_id="f", hunks=(hunk,), truncated=False)
+
+    for index in range(5):
+        patches._keep(("k", str(index)), patch(4))  # pyright: ignore[reportPrivateUsage]
+    assert list(patches._kept) == [("k", "3"), ("k", "4")]  # pyright: ignore[reportPrivateUsage]
+    assert patches._lines == 8  # pyright: ignore[reportPrivateUsage]

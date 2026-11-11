@@ -26,6 +26,13 @@ class LoadingCache[K: Hashable, V]:
         self._ready: OrderedDict[K, V] = OrderedDict()
         self._loading: dict[K, asyncio.Task[V]] = {}
 
+    def kept(self, key: K) -> tuple[V] | None:
+        """The value kept for *key*, in a tuple, or ``None`` when none is kept. Starts nothing."""
+        if key not in self._ready:
+            return None
+        self._ready.move_to_end(key)
+        return (self._ready[key],)
+
     async def get(self, key: K, load: Callable[[], Awaitable[V]]) -> V:
         if key in self._ready:
             self._ready.move_to_end(key)

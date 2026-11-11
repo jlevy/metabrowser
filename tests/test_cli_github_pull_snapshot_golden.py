@@ -6,8 +6,8 @@ This drives it in-process, as ``tests/test_cli_github_pull_golden.py`` drives th
 the pull routes, and writes ``tests/golden/cli-github-pull-snapshot.txt``: the pair the
 envelope's ``snapshot_route`` names opens on both sides, every refusal has its own code,
 ``<n>.snapshots.json`` keeps the pair a refresh replaced, and that earlier pair still
-opens after the head moved. The page's two preference scripts are the shell's own and
-are pinned by its goldens, so each is shown here by name.
+opens after the head moved. The page's three preference scripts are the shell's two and
+the width default they read, pinned by the shell's goldens, so each is shown by name.
 """
 
 from __future__ import annotations

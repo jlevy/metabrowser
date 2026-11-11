@@ -49,6 +49,7 @@ dependencies = [
     "prettyfmt>=0.4.1",
     "psutil>=7.2.2",
     "pydantic>=2.13.4",
+    "pygments>=2.20.0",
     "python-dotenv>=1.2.2",
     "pyyaml>=6.0.3",
     "ruamel.yaml>=0.19.1",
