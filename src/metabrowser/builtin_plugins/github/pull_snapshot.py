@@ -32,18 +32,17 @@ from __future__ import annotations
 
 import asyncio
 import base64
-import functools
 import hashlib
 import os
 import re
 import threading
 from collections import OrderedDict
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from functools import cache
 from html import escape
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Final, Literal, cast
+from typing import Final, Literal, cast
 from urllib.parse import quote, unquote_to_bytes, urlencode, urlsplit
 from weakref import WeakKeyDictionary
 
@@ -78,9 +77,6 @@ from metabrowser.loading_cache import LoadingCache
 from metabrowser.settings import TEXT_PREVIEW_CHUNK_BYTES
 from metabrowser.view_routes import format_pull_href
 
-if TYPE_CHECKING:
-    from pygments.lexer import Lexer
-
 _MARKDOWN: Final = frozenset({".md", ".markdown", ".mdown", ".mkd"})
 # What an `<img>` on this page shows. The formats the browser decodes as pictures only:
 # an SVG is a document, so it is offered as a link to its own page instead.
@@ -103,9 +99,8 @@ _DOCUMENT_BYTES: Final = 64 * 1024
 # on one thread, three adjacent runs per shape with the fastest kept, load average 1.9 to
 # 4.7: ordinary prose costs 0.5 µs a byte (24 ms at 64 KiB), but what the renderer spends
 # grows with constructs a pull request's author can repeat, linearly in all of them but
-# task lists and a shell session's prompt pattern, and splitting the text into paragraphs
-# does not lower it. So the estimate charges each construct the most it was measured to
-# cost, over the whole document:
+# task lists, and splitting the text into paragraphs does not lower it. So the estimate
+# charges each construct the most it was measured to cost, over the whole document:
 # - per `[` whose next bracket on its line is not a `]`, 280 µs (followed by inline
 #   content: `[*a*a` took 1.8 s for 6,554, as much with one `]` at the end, and `[<a`
 #   168 µs each);
@@ -117,29 +112,26 @@ _DOCUMENT_BYTES: Final = 64 * 1024
 #   container), 55 µs (16,384 headings 0.73 s, list items 0.88 s);
 # - per line, 26 µs more (64 KiB of one-character paragraphs took 0.75 s, of lines that
 #   end in a backslash 0.55 s);
-# - per token of fenced code a lexer highlights, a run of word characters or any other
-#   byte that is not a space, 31 µs (Ruby `a,`, a token a byte, 30.7 µs), where an unknown
-#   language and plain text cost what any text does;
-# - for a shell session (`console`), only the tokens of the commands its prompt pattern
-#   finds, plus 0.012 µs per step that pattern may backtrack over each line, which
-#   `_prompt_steps` bounds (one 4 KB line of `[a@]` took 11.3 s, and the bound held for
-#   every line shape measured);
 # - per other inline delimiter, 20 µs (`*a` runs 0.48 s, autolinks 0.29 s, code spans
 #   0.35 s).
+# Fenced code renders as escaped plain text (`_render_markdown`) and is charged as the
+# text it is. Highlighting it cost what no estimate over the text bounds, for classes
+# the inert page then dropped: review G found a 1.6 KB `console` line that took 12 s, and
+# 48 KB of `devicetree` that took 79 s.
 # Task-list items cost more than linearly (1,024 took 0.19 s, 2,048 0.55 s, 8,192 6.4 s),
 # so at most _TASK_ITEMS are admitted, behind any container, each charged 190 µs.
-# Re-measured the same day for review F at load average 16 to 19, where 64 KiB of prose
+# Re-measured the same day for review G at load average 12 to 20, where 64 KiB of prose
 # took 28 to 30 ms, over about 200 shapes and mixes each grown to the bound: the worst
-# admitted render is 451 ms (Ruby `a,`), then 445 ms (the same in a list item), 441 ms
-# (Python `a.b `), and 436 ms (Ruby after lines that end in a backslash); a `console`
-# line of the costliest prompt shape, 365 ms; inline math, 398 ms. Scaled to the quiet
-# run's prose, the worst is about 360 to 390 ms. Of this repository's 346 Markdown files
-# up to 64 KiB and the 64 under node_modules, none opens as Source, its console
-# transcripts rendering in 43 to 73 ms; of 441 from nine other repositories, one does:
-# 52 KiB of model settings, estimated 481 ms, which rendered in 246 ms. Before, 16,384
-# `[` admitted a 64 KiB task list that took 6.4 s, and before review F admitted documents
-# took up to 1.2 s and a `console` line 11 s. The estimate covers the constructs
-# measured; it is not a deadline, which only a renderer that can be stopped could give.
+# admitted render is 417 ms (lines that end in a backslash), then 415 ms (the same mixed
+# with inline math), 410 ms (a wide table), and 406 ms (inline math). Scaled to the quiet
+# run's prose, the worst is about 335 to 350 ms. One fence of any language reviews F and
+# G timed renders in 4 to 10 ms at the bound, and the most fences, short ones one after
+# another, in 129 ms. Of this repository's 346 Markdown files up to 64 KiB, the 64
+# under node_modules, and 441 from nine other repositories, none opens as Source. Before,
+# 16,384 `[` admitted a 64 KiB task list that took 6.4 s, and before reviews F and G
+# admitted documents took up to 1.2 s and highlighted fences 79 s. The estimate covers
+# the constructs measured; it is not a deadline, which only a renderer that can be
+# stopped could give.
 _DOCUMENT_WORK_MS: Final = 400
 _TASK_ITEMS: Final = 1024
 _UNPAIRED_OPENER_US: Final = 280
@@ -148,9 +140,7 @@ _HEAVY_US: Final = ((b"$", 90), (b"|", 40))
 _DELIMITERS: Final = b"*_`~<>!]&:^=+{}"
 _DELIMITER_US: Final = 20
 _BLOCK_LINE_US: Final = 55
-_CODE_TOKEN_US: Final = 31
 _LINE_US: Final = 26
-_PROMPT_STEP_US: Final = 0.012
 _TASK_ITEM_US: Final = 190
 _BYTE_US: Final = 0.5
 _BLOCK_LINE: Final = re.compile(rb"^[ \t]*(?:[#>|=+*:-]|[0-9]+[.)])", re.MULTILINE)
@@ -160,17 +150,6 @@ _BLOCK_LINE: Final = re.compile(rb"^[ \t]*(?:[#>|=+*:-]|[0-9]+[.)])", re.MULTILI
 _TASK_ITEM: Final = re.compile(
     rb"^(?:[ \t>]*+(?:[-*+]|[0-9]{1,9}[.)])[ \t]++)*+[ \t>]*+\[[ xX]\]", re.MULTILINE
 )
-# A line that may open or close a fenced code block, after any container prefix of quote
-# markers, list markers, and indentation: the prefix, the fence marker, and the rest of
-# the line, whose first word names the language KPress highlights.
-_FENCE: Final = re.compile(
-    rb"^((?:[ \t>]|[-*+][ \t]|[0-9]{1,9}[.)][ \t])*+)(`{3,}+|~{3,}+)([^\n]*)", re.MULTILINE
-)
-_LIST_MARKER: Final = re.compile(rb"[-*+][ \t]|[0-9]{1,9}[.)][ \t]")
-# What a highlighter counts as a token: a run of word characters, or any other byte that
-# is not a space.
-_CODE_TOKEN: Final = re.compile(rb"\w+|[^\w\s]")
-_LEADING_WORD: Final = re.compile(r"\w*")
 # A `[` whose line holds a `]` before any other bracket. The lookahead stops at the next
 # bracket, so each scan ends where the next begins, and the whole count is linear.
 _PAIRED_OPENER: Final = re.compile(rb"\[(?=[^\[\]\n]*\])")
@@ -466,6 +445,9 @@ def _render_markdown(body: bytes, path: GitPath, oid: str, snapshot: Snapshot) -
         mtime_hash=oid,
         size=len(body),
         include_toc="off",
+        # Its author is untrusted and highlighting unbounded (`kpress_adapter`), and the
+        # inert page drops the highlighting's classes anyway.
+        plain_code=True,
     )
     images = 0
 
@@ -483,192 +465,11 @@ def _render_markdown(body: bytes, path: GitPath, oid: str, snapshot: Snapshot) -
     return kpress_prose(str(kpress_adapter.inert_render(rendered, rewrite_local=rewrite)["html"]))
 
 
-@functools.lru_cache(maxsize=128)
-def _lexer(language: str) -> type[Lexer] | None:
-    """The Pygments lexer KPress highlights a fence naming *language* with, or ``None``."""
-    from pygments.lexers import find_lexer_class_by_name
-    from pygments.util import ClassNotFound
-
-    try:
-        lexer = find_lexer_class_by_name(language)
-    except ClassNotFound:
-        return None
-    # Plain text and output, which emit each line whole, cost what any text does.
-    return None if lexer.__module__ == "pygments.lexers.special" else lexer
-
-
-@dataclass(frozen=True, slots=True)
-class _Opener:
-    """A line that may open a fenced code block, as far as a closing line must match it."""
-
-    marker: bytes
-    # The prefix up to its last quote marker, list markers as spaces: a closing line in
-    # the same container has exactly this.
-    head: bytes
-    # How far past *head* a closing line may be indented, or ``None`` when tabs leave it
-    # unknown and no closing line is believed.
-    indent: int | None
-    language: str
-
-
-def _opener(prefix: bytes, marker: bytes, language: str) -> _Opener:
-    cut = prefix.rfind(b">") + 1
-    head = _LIST_MARKER.sub(lambda match: b" " * len(match.group()), prefix)[:cut]
-    if b"\t" in prefix:
-        return _Opener(marker, head, None, language)
-    # The container this line is in starts its content at most where the fence starts, and
-    # a closing line may be indented up to three spaces past that start: so up to three
-    # spaces in any container, or as far as the fence itself. A line indented less than
-    # the container ends it, and the fence with it.
-    return _Opener(marker, head, max(len(prefix) - cut, 3), language)
-
-
-def _closes(opener: _Opener, prefix: bytes, marker: bytes) -> bool:
-    """Whether a closing fence line with *prefix* and *marker* surely closes *opener*."""
-    cut = prefix.rfind(b">") + 1
-    return (
-        opener.indent is not None
-        and marker[:1] == opener.marker[:1]
-        and len(marker) >= len(opener.marker)
-        and b"\t" not in prefix
-        and _LIST_MARKER.search(prefix) is None
-        and prefix[:cut] == opener.head
-        and len(prefix) - cut <= opener.indent
-    )
-
-
-def _fenced(body: bytes) -> Iterator[tuple[tuple[_Opener, ...], bytes]]:
-    """Each run of lines a fenced code block may hold, with every opener it may follow.
-
-    A scan of fence lines alone cannot see where a quote or list item ends, which ends a
-    fence inside it. So it errs only toward charging more: a fence closes only on a line
-    that surely closes every opener it may follow, and a line that may open another fence
-    inside one adds that opener, whose language then charges the rest as well.
-    """
-    opened: list[_Opener] = []
-    start = 0
-    for match in _FENCE.finditer(body):
-        prefix, marker, rest = match.groups()
-        if marker[:1] == b"`" and b"`" in rest:
-            # Inline code, not a fence: a backtick fence's info string holds no backtick.
-            continue
-        words = rest.decode("utf-8", "replace").split(maxsplit=1)
-        if opened and not rest.strip(b" \t"):
-            still = [opener for opener in opened if not _closes(opener, prefix, marker)]
-            if len(still) < len(opened):
-                yield tuple(opened), body[start : match.start()]
-                opened, start = still, match.end()
-            continue
-        if opened:
-            yield tuple(opened), body[start : match.start()]
-        opened.append(_opener(prefix, marker, words[0].lower() if words else ""))
-        start = match.end()
-    if opened:
-        yield tuple(opened), body[start:]
-
-
-def _prompt_steps(line: str) -> int:
-    """A bound on what Pygments' shell session prompt pattern backtracks over *line*.
-
-    The pattern tries where a leading word ends, which ``)`` of a leading parenthesis,
-    which ``@`` or ``:`` of the first word, which ``]``, and where the rest of the line
-    begins: the product of those counts bounds it. A line that starts with no word, ``[``,
-    or ``(`` costs it nothing more than its length.
-    """
-    first = line.split(maxsplit=1)
-    found = _LEADING_WORD.match(line)
-    word_end = found.end() if found is not None else 0
-    if not first or not (word_end or line[0] in "[("):
-        return 0
-    word = first[0]
-    choices = (word.count(")") + 1) if line[0] == "(" else 1
-    choices *= (word_end + 1) * (word.count("@") + word.count(":") + 1)
-    return choices * (line.count("]") + 1) * len(line)
-
-
-def _session_work_us(lexer: type[Lexer], code: str, budget_us: float) -> float:
-    """What a shell session lexer may spend on *code*: its prompt pattern, then commands.
-
-    The lexer drops a leading ``(venv)`` from each line, matches its prompt pattern
-    against the rest, and lexes only the commands it finds, emitting each other line
-    whole. Each line is read as it stands and without its leading spaces and quote
-    markers, which the renderer removes for a fence in a quote, a list item, or indented;
-    the costlier reading counts. Its matching is charged by :func:`_prompt_steps`, and
-    each command's tokens as any code's. A line whose matching would cost more than a line
-    is charged as a command without being matched.
-    """
-    venv = getattr(lexer, "_venv", None)
-    prompt = getattr(lexer, "_ps1rgx", None)
-    continued: str = getattr(lexer, "_ps2", "")
-    bare_continuation = bool(getattr(lexer, "_bare_continuation", False))
-
-    def readings(line: str) -> tuple[str, ...]:
-        seen: dict[str, None] = {}
-        for text in (line, line.lstrip(" \t>")):
-            text += "\n"
-            found = venv.match(text) if venv is not None else None
-            seen[text[found.end() :] if found is not None else text] = None
-        return tuple(seen)
-
-    lines = [readings(line) for line in code.split("\n")]
-    steps = [max(_prompt_steps(reading) for reading in line) for line in lines]
-    work = _PROMPT_STEP_US * sum(steps)
-    if work > budget_us:
-        return work
-    tokens = 0
-    continuation = False
-    for line, line_steps in zip(lines, steps, strict=True):
-        commands: list[str] = []
-        for reading in line:
-            if prompt is None or line_steps * _PROMPT_STEP_US > _LINE_US:
-                commands.append(reading)
-            elif (found := prompt.match(reading)) is not None:
-                commands.append(found.group(2))
-            elif continuation or (
-                bare_continuation and continued and reading.startswith(continued)
-            ):
-                commands.append(reading)
-        command = max(commands, key=len, default=None)
-        continuation = command is not None and command.endswith("\\\n")
-        if command is not None:
-            tokens += len(_CODE_TOKEN.findall(command.encode()))
-    return work + _CODE_TOKEN_US * tokens
-
-
-def _highlight_work_us(body: bytes, budget_us: float) -> float:
-    """The highlighting work of *body*'s fenced code, by the lexer each fence names.
-
-    An unknown name or plain text costs what any text does; a shell session, what
-    :func:`_session_work_us` finds; any other lexer, :data:`_CODE_TOKEN_US` a token. A run
-    of lines that may follow several openers is charged the most any of them would cost.
-    Past *budget_us* it stops counting.
-    """
-    from pygments.lexers.shell import ShellSessionBaseLexer
-
-    total = 0.0
-    for openers, code in _fenced(body):
-        most = 0.0
-        for opener in openers:
-            lexer = _lexer(opener.language) if opener.language else None
-            if lexer is None:
-                continue
-            if issubclass(lexer, ShellSessionBaseLexer):
-                text = code.decode("utf-8", "replace")
-                most = max(most, _session_work_us(lexer, text, budget_us - total))
-            else:
-                most = max(most, _CODE_TOKEN_US * len(_CODE_TOKEN.findall(code)))
-        total += most
-        if total > budget_us:
-            break
-    return total
-
-
 def _document_work_ms(body: bytes) -> float:
     """The render work *body* may cost, at the most each construct was measured to cost.
 
     Infinite past :data:`_TASK_ITEMS` task-list items, whose cost grows faster than their
-    count. Blocking and linear in *body*: a shell session’s prompt pattern runs only on
-    lines it backtracks little over. Run it off the event loop with the render.
+    count. Blocking and linear in *body*; run it off the event loop with the render.
     """
     # Every line ending is one, as the renderer reads it.
     body = body.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
@@ -682,9 +483,6 @@ def _document_work_ms(body: bytes) -> float:
     work += _DELIMITER_US * sum(body.count(bytes((char,))) for char in _DELIMITERS)
     work += _BLOCK_LINE_US * len(_BLOCK_LINE.findall(body))
     work += _LINE_US * body.count(b"\n")
-    budget = _DOCUMENT_WORK_MS * 1000
-    if work <= budget:
-        work += _highlight_work_us(body, budget - work)
     return work / 1000
 
 

@@ -348,11 +348,11 @@ A pair opens when it is the local record’s current comparison, or one of the 1
 recent earlier pairs retained in `<n>.snapshots.json` for the record’s reader and for
 the store that computed it (see
 [Repository Sources](arch-repository-sources-and-provider-mirrors.md)). A Markdown
-document of at most 64 KiB renders inert while its estimated render work is within 400
-ms (`_DOCUMENT_WORK_MS` in `pull_snapshot.py`, which records the measurement), one
-render at a time per server, with its relative links and up to 64 images in the same Git
-tree and the rest as links; otherwise, and for Source, it opens in 2 MiB windows that
-end on a line or a character.
+document of at most 64 KiB renders inert, its code blocks unhighlighted, while its
+estimated render work is within 400 ms (`_DOCUMENT_WORK_MS` in `pull_snapshot.py`, which
+records the measurement), one render at a time per server, with its relative links and
+up to 64 images in the same Git tree and the rest as links; otherwise, and for Source,
+it opens in 2 MiB windows that end on a line or a character.
 The page applies the reader’s theme, interface font, reading font, and reading width
 with the shell’s own first-paint scripts and the width default they read, allowed by
 hash, and runs no other script.

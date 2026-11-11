@@ -204,3 +204,41 @@ def test_a_comparison_of_an_older_read_does_not_discard_a_newer_refresh(
     assert isinstance(on_disk, PullRecord) and on_disk.fetched_at == stamp
     assert companion.fetched_at == stamp
     assert companion.last is not None and companion.last["at"] == stamp
+
+
+@pytest.mark.parametrize("failure", ["fetch_failed", "base_uncertain"])
+def test_a_failed_comparison_of_the_same_read_keeps_a_computed_one(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """Review G5 on #348: E2's rule lets a newer read in, not a comparison's failure.
+
+    Two servers read the same record. One computes its comparison; the other's then fails,
+    in Git or after writing its pending uncertain base. Before, that failure replaced the
+    computed comparison on disk; now the failing writer adopts it.
+    """
+    from metabrowser.cache.pull_refs import BaseUncertainError, PullRefError
+
+    first = stand.refresh(7)
+    published = stand.published
+    observed = first.model_copy(
+        update={"comparison": None, "unavailable": {**first.unavailable, "comparison": "no_store"}}
+    )
+    write_pull_record(published.home, published.slug, observed)
+    computed = asyncio.run(pulls.prepare_pull_comparison(published, observed))
+    assert computed is not None and computed.comparison is not None
+
+    async def endpoints(_published: Any, **kwargs: Any) -> Any:
+        if failure == "fetch_failed":
+            raise PullRefError("fetch_failed", "Git could not fetch the base")
+        raise BaseUncertainError(base_commit=kwargs["base_sha"], base_from="base_sha")
+
+    async def deepen(*_args: Any, **_kwargs: Any) -> Any:
+        raise PullRefError("network_error", "the origin could not be reached")
+
+    monkeypatch.setattr(pulls, "comparison_endpoints", endpoints)
+    monkeypatch.setattr(pulls, "deepen_until_certain", deepen)
+    with pytest.raises(pulls.PullObservationSuperseded) as superseded:
+        asyncio.run(pulls.prepare_pull_comparison(published, observed))
+    assert superseded.value.current.comparison == computed.comparison
+    on_disk = stand.record(7)
+    assert isinstance(on_disk, PullRecord) and on_disk.comparison == computed.comparison
