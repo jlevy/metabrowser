@@ -1,6 +1,6 @@
 # Research: Server Topology, Lifecycle, and Agent Handoff for the Native App
 
-**Date:** 2026-11-10
+**Date:** 2026-11-10 (last updated 2026-11-11)
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
@@ -262,11 +262,16 @@ private call), plus Apple documentation and Apple DTS forum posts.
   A web view removed from its window is suspended by default
   (`WKPreferences.inactiveSchedulingPolicy`), which would stop its event stream, so a
   sidebar switcher must change that policy.
-- **Cookies are shared across ports.** Every `127.0.0.1` server shares one cookie jar
-  (RFC 6265 §8.5). Preferences stored as cookies therefore carry across servers today,
-  and a session cookie with a fixed name would collide.
-  Name cookies by port or boot id, or give a root with a different trust profile its own
-  `WKWebsiteDataStore`.
+- **Cookies are shared across ports.** A cookie is scoped by host and path, not port
+  (RFC 6265 §8.5), and two ports on one host are the same site, so `SameSite` does not
+  separate them either.
+  A browser, or a web data store, therefore keeps one cookie jar for every `127.0.0.1`
+  server it visits: preferences stored as cookies carry across servers today, and a
+  cookie any one server sets is sent to all the others.
+  A per-server name, by port or boot id, only keeps two servers’ cookies from colliding.
+  It isolates nothing, and `HttpOnly` hides a cookie from scripts, not from the server
+  it is sent to. Only a separate jar isolates a token; see Tokens across ports under
+  Where This Breaks.
 - **Window tabs are free.** With `tabbingMode` automatic and one shared
   `tabbingIdentifier`, macOS supplies the tab bar, Merge All Windows, Move Tab to New
   Window, tab dragging, and the system “prefer tabs” setting.
@@ -459,7 +464,8 @@ about 0.5 GB with eight warm folders.
 4. **Ownership:** servers the app starts are its children; servers the CLI starts have
    an idle exit; nothing ever signals a server it did not start; no login item yet.
 5. **Windows:** native tabs across roots, a tabs-or-windows preference, per-request
-   overrides, and a quick switcher over open, warm, and recent roots.
+   overrides, and a quick switcher over open, warm, and recent roots, listed by a
+   `metab` route.
 6. **Control:** one CLI front door that carries intents, not content: present, close,
    identity, and later open.
    Agents keep reading through `--api` in their own process.
@@ -473,10 +479,10 @@ about 0.5 GB with eight warm folders.
   quit.
 - Use one `tabbingIdentifier` with a tabs-or-windows preference, and discard the web
   views of background tabs beyond a small number.
-- Add a quick switcher (open, warm, and recent roots, searchable) and register folders
-  with `NSDocumentController` so the Dock and File menu show recents.
-  Until Phase 2 serves the roots list from a route, the switcher’s membership and order
-  are a named shell-only exemption in the parity table.
+- Register folders with `NSDocumentController` so the Dock and File menu show recents;
+  macOS keeps, orders, and caps that list.
+  The quick switcher waits for Phase 2: its membership and order are data semantics,
+  which `AGENTS.md` assigns to a `metab` route with a golden, not to a shell.
 - Restore the last session lazily: recreate its tabs, start the front tab’s server, then
   the others one at a time, and none in a protected location until its tab is selected.
   The launch gate that serializes starts becomes the crawl scheduler.
@@ -493,7 +499,8 @@ extended).
   OS chooses), a JSON ready line after bind, a token on stdin, exit on stdin EOF,
   `--idle-exit`, and the control verbs only (identity, present, clients, close) on an
   owner-only Unix socket, whose path must fit macOS’s 104-byte limit.
-  Content routes stay on loopback behind the page token.
+  Content routes stay on loopback behind the page token, isolated from other ports as
+  Tokens across ports under Where This Breaks describes.
 - **Routes:** identity and health; `present`, which pushes a `navigate` event to the
   most recently visible of the root’s connected pages; `clients`; and `close`.
 - **Registry:** one owner-only state file per live process, written after bind and
@@ -504,10 +511,15 @@ extended).
 - **App:** register the `metabrowser://` scheme (the spike’s `Info.plist` declares none
   and its delegate drops non-file URLs), a rendezvous handler that replies with what it
   did, and the owner and version shown per window.
+  The handler starts a server for a root it is not already serving only after the user
+  confirms that root in the app (see “Show X” End to End).
 
 **Phase 2: roots as state.** Recent and added roots move from the app’s defaults into
-`metab` state with provenance, served by a route so a browser tab gets the same
-switcher. Apply the security policy chosen for adding roots.
+`metab` state with provenance, served by a route.
+The quick switcher arrives here, listing that route’s roots with live servers from the
+registry, so the app and a browser tab show the same list.
+Apply the security policy chosen for adding roots, which also decides which persisted
+roots may skip Phase 1’s confirmation.
 Add the optional MCP stdio adapter, with each tool naming one route.
 
 **Phase 3: measured.** A rootless, pre-imported spare process with an `open` verb, which
@@ -553,8 +565,8 @@ than replaced. A persisted index follows if re-walks remain common.
 | Persisted roots | list, add, and remove over routes | goldens |
 | Idle exit, stdin EOF, ready line | serve flags | a reference-host test |
 | The MCP adapter | each tool names one registered route | `devtools/check_parity.py` |
-| The Phase 0 quick switcher’s membership and order | an interim shell-only exemption, replaced by the roots route in Phase 2 | `ShellCore` tests |
-| Tabs, web-view discarding, window fronting, LaunchServices delivery, consent sheets | shell-only exemptions, each named | the QA playbook and `ShellCore` tests |
+| The quick switcher’s membership and order (Phase 2) | the roots route, with live servers from the registry listing | the goldens above; the shell only draws the list |
+| Tabs, web-view discarding, window fronting, LaunchServices delivery, consent sheets, the Dock and File menu recents (macOS keeps that list) | shell-only exemptions, each named | the QA playbook and `ShellCore` tests |
 
 Fleet policy (warm caps, restore order) stays in the shell until a second shell needs
 it.
@@ -573,6 +585,11 @@ it.
    starts one as its own child (so privacy prompts name the app, with a stable
    identity), presents the target, fronts its tab, and replies with the root, URL,
    owner, and where it was delivered.
+   A root that already has a live server, the app’s own or one it attaches to, needs no
+   confirmation; for any other root the app starts a server only after the user confirms
+   that root in the app, and otherwise replies that the user declined.
+   Any process of the user’s can open the socket, so the request can no more admit a
+   root by itself than the link in step 6 can.
 4. **No app, root live:** `metab` calls `present` on that server.
    A connected page navigates; with none, `metab` opens the browser.
 5. **Nothing running, no app:** `metab` starts a server detached in its own session with
@@ -606,9 +623,21 @@ one command that opens the native app whenever it is installed, but that command
 - **Log-heavy folders are expensive to keep warm** until the activity tracker stops
   re-polling every candidate (`mb-z46o`); a fixed warm count would let a few such
   folders use a core between them.
-- **Tokens across ports:** a cookie-borne token would reach every sibling server,
-  including one serving untrusted content.
-  Name cookies per server, or give odd-trust roots their own data store.
+- **Tokens across ports:** a cookie-borne token reaches every service that the same
+  browser or data store visits on that host, Metabrowser or not, including a sibling
+  server serving untrusted content, and a page on any of those ports can set a cookie
+  the others receive. Naming the cookie per server changes neither.
+  - **In the app:** give each trust profile its own `WKWebsiteDataStore`, so a token
+    travels only among servers that share a profile.
+  - **In an ordinary browser:** one jar serves every port, so the browser credential
+    must not be a host-wide cookie.
+    The candidates are a distinct loopback host name per server with host-only cookies
+    (whether each engine resolves such names to loopback needs a probe, and the Host
+    allowlist must admit them), or a token kept in origin-scoped storage
+    (`sessionStorage` is keyed by scheme, host, and port) and sent in a request header.
+    Neither a navigation nor `EventSource` can send such a header, so the second needs
+    another gate for the first page load and the event stream.
+    Host mode chooses one before it issues browser tokens.
 - **A browser cannot be fronted:** `present` can navigate a hidden browser tab; only the
   app can raise a window.
 - **The case for consolidating now:** one process would open any folder in milliseconds,

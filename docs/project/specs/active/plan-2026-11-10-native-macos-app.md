@@ -50,7 +50,9 @@ What fits is adapted to a modern native toolchain; nothing names or ships that a
 - The Mac App Store: its sandbox rules out serving arbitrary folders and downloaded
   code.
 - Choosing the security model for agent-added roots; it is weighed in the briefs and
-  decided before Phase 4.
+  decided before Phase 4, which persists added roots.
+  Phase 3 does not wait for it, because its front door starts a server for a new root
+  only after the user confirms that root in the app.
 
 ## Background
 
@@ -251,7 +253,6 @@ user decides to merge it.
 - [ ] Fix the activity tracker’s idle cost first (`mb-z46o`).
 - [ ] Keep folders warm after their windows close (`mb-e7im`).
 - [ ] Native tabs across folders with a tabs-or-windows preference (`mb-ssed`).
-- [ ] Quick folder switcher and Dock and File menu recents (`mb-9lf4`).
 - [ ] Lazy session restore (`mb-lc8c`).
 - [ ] Open a file from `open -a` and select it inside its folder (`mb-tssz`).
 - [ ] Health-check servers before attaching; send stderr straight to the log
@@ -259,19 +260,34 @@ user decides to merge it.
 
 ### Phase 3: Host Mode, the Registry, and the Agent Front Door
 
+No root is admitted on an agent’s request alone.
+Socket ownership authenticates the user, not the agent, so a request through the front
+door, by rendezvous or by link, may present a root the app already has open or warm, or
+one with a live server the app can attach to.
+For any other root, the app starts a server as its own child only after the user
+confirms that root in the app.
+
 - [ ] Host mode: a ready line after bind, sticky ports, a stdin token, stdin-EOF exit,
-  and idle exit (`mb-qzny`), generalizing the VS Code host design (`mb-x4y5`).
+  and idle exit (`mb-qzny`), generalizing the VS Code host design (`mb-x4y5`). A browser
+  credential cannot be a host-wide cookie, which every port on the host receives; the
+  topology brief’s Tokens across ports names the candidates.
 - [ ] The live-server registry with a per-root find-or-start lock (`mb-5xi4`).
 - [ ] Control verbs on an owner-only socket: identity, present, clients, close
   (`mb-1zyp`).
 - [ ] Pages follow `navigate` events and reload once on a new boot id (`mb-54r1`).
-- [ ] The agent front door, `metab TARGET --present` (`mb-idri`).
-- [ ] The app’s `metabrowser://` scheme, rendezvous handler, and attach (`mb-rtgh`).
+- [ ] The agent front door, `metab TARGET --present`, which reports a declined
+  confirmation as blocked (`mb-idri`).
+- [ ] The app’s `metabrowser://` scheme, rendezvous handler, and attach, with that
+  confirmation (`mb-rtgh`).
 - [ ] The skill uses the front door and documents sandbox settings (`mb-ko5d`).
 
-### Phase 4: Roots as State and the MCP Adapter
+### Phase 4: Roots as State, the Switcher, and the MCP Adapter
 
-- [ ] Persist recent and added roots in `metab`, served by a roots route (`mb-a5ru`).
+- [ ] Persist recent and added roots in `metab`, served by a roots route; the chosen
+  security model decides which of them skip Phase 3’s confirmation (`mb-a5ru`).
+- [ ] Quick folder switcher, listing the roots route’s roots with live servers from the
+  registry, and Dock and File menu recents (`mb-9lf4`). The switcher’s membership and
+  order come from `metab`, so it needs no shell-only exemption.
 - [ ] An optional MCP stdio adapter over registered routes (`mb-5lgp`).
 
 ### Phase 5: Setup, Runtime, and Updates
@@ -282,13 +298,16 @@ The two standard setup flows come first; see the
 - [ ] Flow 1, CLI first: `uv tool install metabrowser`, then the DMG or the cask,
   documented in the installation guide and checked end to end on clean accounts.
   The app gets a required minimum `metab` version (later, the host-protocol version),
-  names the exact upgrade command, notices `uv tool upgrade`, offers to restart running
-  servers (`mb-895s`), and flags a launch from the disk image (`mb-3n79`). The
-  installation guide covers both flows (`mb-2hqz`).
+  names the exact upgrade command, notices `uv tool upgrade`, and offers to restart the
+  servers it started from the old version (`mb-895s`). An upgrade run in Terminal can
+  reach a running server before the app notices; the setup brief records that gap.
+  The app also flags a launch from the disk image (`mb-3n79`). The installation guide
+  covers both flows (`mb-2hqz`).
 - [ ] Flow 2, app first with no CLI: copyable commands for only the missing steps,
   continuing by itself when `metab` appears; then an “Install for me” button that runs
   the user’s uv, or a signed uv inside the app, to make Flow 1’s CLI install (`mb-su30`,
-  then `mb-34oi`).
+  then `mb-34oi`). Its Reinstall and Remove stop the app’s servers on that install
+  before changing it.
 - [ ] Narrowed: an optional app-private runtime from a bundled uv and a hash-pinned
   `pylock.toml`, for offline, managed, or hash-pinned setups, built only on demand
   (`mb-lrcd`).

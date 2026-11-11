@@ -46,7 +46,8 @@ product. Dev and release builds have separate bundle ids,
 - **Give the app a version policy.** One required minimum, below which the app shows the
   exact upgrade command and starts nothing.
   Graceful fallbacks above it: the folder identity route’s 404 fallback is the pattern.
-  After an upgrade, restart servers rather than run new code in old processes.
+  Stop the app’s servers before any change the app makes to the install, and offer to
+  restart them after an upgrade made in Terminal, which may already have reached them.
   The host-protocol version replaces the minimum once host mode exists.
 - **Flow 2 today stops at a copyable `uv tool install metabrowser`,** which assumes uv
   is installed and needs a manual Find Again.
@@ -373,9 +374,17 @@ kept in short form:
      installation guide’s reviewed-release rule, with a Copy button.
    - **Feature fallbacks above it,** like the identity route’s 404 handling, each
      logged.
+   - **Stop before changing.** Before the app changes an install itself (Reinstall,
+     Remove, or any later upgrade button), it stops the servers it started from that
+     install, and restarts them after a reinstall or an upgrade.
+     It names any other live server that the 2026-11-10 brief’s registry lists for that
+     install, and does not signal it: the app never signals a server it did not start.
    - **Notice upgrades.** Recheck the version when a folder opens if the runtime’s
-     executable or environment changed, and offer to restart running servers instead of
-     letting them import new code.
+     executable or environment changed, and offer to restart the servers the app started
+     from the old version.
+     That shortens the time old servers run against new files but cannot end it: an
+     upgrade made in Terminal rewrites the environment while they run, before the app
+     notices or the user agrees (see Where This Breaks).
 3. **Flag a translocated or disk-image launch** on first run with a “Move to
    Applications” notice.
    There is no supported detection API, so use a path heuristic, a read-only volume or
@@ -394,8 +403,9 @@ kept in short form:
      terminal” that runs `uv tool update-shell`. Stream uv’s output into a progress
      view. On failure, show uv’s last lines, Retry, and the command to run by hand.
    - Repair and removal: Settings offers Reinstall (`uv tool install --reinstall`) and
-     Remove (`uv tool uninstall metabrowser`) for an install the app made, and says that
-     the Python and the cache stay in uv’s folders.
+     Remove (`uv tool uninstall metabrowser`) for an install the app made, stops the
+     app’s servers first (recommendation 2), and says that the Python and the cache stay
+     in uv’s folders.
 6. **Narrow `mb-lrcd` to (iii) as an optional mode** for offline, managed, or
    hash-pinned setups, built only when such a user appears.
    (ii) replaces it as the default answer for a Mac with no CLI, and the runtime builder
@@ -445,8 +455,9 @@ The later install mode keeps the parity rows its own bead needs (a status mode w
    `uv tool upgrade metabrowser` works on it afterwards.
 5. **Skew:** with a `metab` below the minimum, the app starts no server and shows the
    exact upgrade command.
-   After a compatible upgrade, the next folder opened runs the new version, and no
-   running server imports the new code.
+   After a compatible upgrade, the next folder opened runs the new version, and the app
+   offers to restart every server it started from the old one.
+   No server the app started runs across a reinstall or removal the app makes.
 6. **No quarantine:** no file written by either flow’s install carries
    `com.apple.quarantine`.
 
@@ -458,6 +469,15 @@ The later install mode keeps the parity rows its own bead needs (a status mode w
 - **Managed Macs:** uv’s Python is sometimes killed (uv#16726), PyPI or GitHub may be
   blocked, and TLS interception needs uv’s system-certificate setting (earlier brief).
   These are the users (iii) is for.
+- **An upgrade under a running server:** `uv tool upgrade` run in Terminal rewrites the
+  environment in place, so until the app notices and the user restarts, a running server
+  can load new code beside old.
+  It imports some handlers only when a request first needs them
+  (`builtin_plugins/github/sidekick.py`) and serves its static assets from the installed
+  package (`server.py`). The app cannot close that window for a CLI install it does not
+  own. The app-private runtime (iii) could, if each server runs from its own versioned
+  environment (the earlier brief’s `envs/<lock-sha>`) and an environment stays until its
+  last server exits.
 - **Proxies set only in shell startup files** never reach a Finder-launched app; (ii)
   then fails where Terminal succeeds, so its failure view must offer the command.
 - **A bundled uv and an older user uv:** a receipt written by the app’s uv may carry

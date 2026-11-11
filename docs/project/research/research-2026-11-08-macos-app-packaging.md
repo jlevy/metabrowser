@@ -4,7 +4,8 @@
 
 **Author:** Joshua Levy (github.com/jlevy) with LLM assistance
 
-**Status:** Complete; its agent-controlled server questions are taken further in the
+**Status:** Complete; its agent-controlled server questions are taken further, and its
+per-instance cookie name corrected, in the
 [2026-11-10 addendum](#2026-11-10-addendum-server-topology-and-agent-handoff)
 
 Supersedes, for macOS,
@@ -1288,6 +1289,13 @@ What it adds to this brief:
   prompt yet, so a prompt decision is treated as denied
   ([bug 319907](https://bugs.webkit.org/show_bug.cgi?id=319907)); whether Safari ships
   it is unknown.
+- **Cookie scope:** the per-instance cookie name this brief gives the session token
+  (under What Metabrowser Requires of a Host and in layering item 1) prevents collisions
+  but isolates nothing.
+  A cookie ignores the port and `SameSite` treats two ports on one host as the same
+  site, so every server the browser visits on `127.0.0.1` receives it.
+  The later brief gives each trust profile its own web data store in the app, and has
+  host mode choose a browser credential that is not a host-wide cookie.
 
 ## References
 
