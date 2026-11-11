@@ -16,9 +16,9 @@ below, on public pull requests read with ``gh api`` on 2026-09-23.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import stat
-from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Final, Literal
@@ -47,6 +47,8 @@ from metabrowser.home import (
     ensure_private_directory,
     write_private_file_atomic,
 )
+
+log = logging.getLogger(__name__)
 
 # 2 added the pull request's commit count and who merged it.
 PULL_RECORD_SCHEMA: Final = 2
@@ -293,6 +295,14 @@ class PullRecord(_Model):
 type RecordAbsence = Literal["not_cached", "schema_mismatch", "unreadable"]
 
 
+class PullObservationSuperseded(Exception):
+    """A different process published the record first."""
+
+    def __init__(self, current: PullRecord) -> None:
+        super().__init__("a newer pull-request observation is already cached")
+        self.current = current
+
+
 class RecordTooLargeError(Exception):
     """A record would be larger than :data:`MAX_PULL_RECORD_BYTES`; nothing was written."""
 
@@ -495,28 +505,45 @@ def write_pull_record(
     store_id: str | None = None,
     expected: PullRecord | RecordAbsence | None = None,
 ) -> PullRecord:
-    """Publish and return *record* under its source's alias lock. Blocking.
+    """Publish *record* under its source's alias lock and return what was written. Blocking.
 
     Every writer takes the same lock. A metadata-only writer merges a compatible
-    comparison from the latest shared record inside that publication boundary. Readers
-    remain lock-free and see the old or the complete new record. Async callers use
-    ``run_lock_section`` so cancellation abandons a queued lock wait.
+    comparison from the latest shared record inside that publication boundary, and
+    returns that merged record. Readers remain lock-free and see the old or the complete
+    new record. Async callers use ``run_lock_section`` so cancellation abandons a queued
+    lock wait.
+
+    *expected* is what the caller read of the record before the work that produced
+    *record*: a record, or ``"not_cached"`` for no file. When the file under the lock is
+    a different record, another writer published first, and nothing is written; this
+    raises :class:`PullObservationSuperseded` with that record. A read that failed
+    (``"unreadable"``, ``"schema_mismatch"``) observed nothing of the disk, so it is no
+    expectation, and neither is ``None``.
+
+    *store_id* names the store a mirror computed *record*'s comparison in. The pair it
+    replaces and its own pair are kept in the bounded history the revision route admits
+    (:mod:`.pull_snapshot_cache`); a history that cannot be read or saved is left as it
+    was and logged, and the record is still published.
 
     Raises :class:`RecordTooLargeError`, or the home's ``PrivateStorageError`` or an
     ``OSError`` when the cache cannot take it, a slug no source holds among them.
     """
-    from metabrowser.builtin_plugins.github.pull_snapshot_cache import retain_snapshot_binding
+    from metabrowser.builtin_plugins.github.pull_snapshot_cache import (
+        retain_replaced_pair,
+        retain_snapshot_binding,
+    )
 
     data = serialize_pull_record(record)
     # Do not create a lock or any source path for an unclaimed source. Check again
     # under the lock before creating the pulls directory or publishing the record.
     _require_published_source(home, slug)
+    observed = expected if isinstance(expected, PullRecord) or expected == "not_cached" else None
     with source_alias_lock(home, slug):
         ensure_pulls_directory(home, slug)
-        if expected is not None or metadata_only or store_id is not None:
+        if observed is not None or metadata_only or store_id is not None:
             current = read_pull_record(home, slug, record.number)
-            if expected is not None and isinstance(current, PullRecord) and current != expected:
-                return current
+            if observed is not None and isinstance(current, PullRecord) and current != observed:
+                raise PullObservationSuperseded(current)
         else:
             current = "not_cached"
         if metadata_only:
@@ -524,14 +551,22 @@ def write_pull_record(
             data = serialize_pull_record(record)
         if store_id is not None:
             # The current record still authorizes its exact pair if history cannot be saved.
-            with suppress(PrivateStorageError, OSError):
-                if isinstance(current, PullRecord) and current.reader == record.reader:
-                    retain_snapshot_binding(home, slug, store_id, current)
+            try:
+                retain_replaced_pair(home, slug, store_id, current, record)
+            except (PrivateStorageError, OSError) as exc:
+                _history_not_kept(record.number, exc)
         write_private_file_atomic(home, source_pull_record(slug, record.number), data)
         if store_id is not None and record.comparison is not None:
-            with suppress(PrivateStorageError, OSError):
+            try:
                 retain_snapshot_binding(home, slug, store_id, record)
+            except (PrivateStorageError, OSError) as exc:
+                _history_not_kept(record.number, exc)
     return record
+
+
+def _history_not_kept(number: int, exc: Exception) -> None:
+    # The record is published either way; only older revision links can expire early.
+    log.debug("could not keep pull request %s's revision history: %s", number, exc)
 
 
 def read_pull_record(
@@ -646,6 +681,7 @@ __all__ = [
     "MAX_TEXT_BYTES",
     "MAX_TITLE_BYTES",
     "PULL_RECORD_SCHEMA",
+    "PullObservationSuperseded",
     "PullRefreshStamp",
     "Reader",
     "CheckRun",

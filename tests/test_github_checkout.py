@@ -461,6 +461,20 @@ def test_checkout_comparison_fetch_uses_only_the_overlay(
     assert compared.exit_code == 0, compared.stderr
     assert compared.payload()["manifest"]["files"]
     assert fingerprint(read_only_checkout) == before
+    # A revision file opens from the store beside the checkout and leaves it as it was.
+    from metabrowser.git.tree_source import GitPath
+
+    revision = _api(
+        root,
+        after["snapshot_route"]
+        + "&side=head&mode=download&path="
+        + GitPath.from_display("docs/draft.md").to_wire(),
+        None,
+        request,
+    )
+    assert revision.exit_code == 0, revision.stderr
+    assert revision.stdout.endswith("# Draft\n\n"), revision.stdout
+    assert fingerprint(read_only_checkout) == before
 
     # A fresh server adopts the persisted store without acquisition or a timestamp write.
     checkout_module._RESOLVED.clear()  # pyright: ignore[reportPrivateUsage]

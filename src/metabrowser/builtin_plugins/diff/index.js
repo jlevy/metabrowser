@@ -25,7 +25,14 @@ setChangeLoader((revision, path, options) => fetchComparison(revision, options, 
 // `git diff` spells it, or `left..right` directly. No Git ref name contains `..`, so
 // neither spelling can be mistaken for a revision.
 
-/** @param {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string}} comparison */
+/**
+ * @typedef {{left: string, right: string, base_policy: "direct" | "merge_base", route?: string, snapshot_route?: string}} Comparison
+ *   *route* is the plugin route that answers the comparison, and *snapshot_route* the one
+ *   that opens a file at either end of it: both come from the server that issued them, so
+ *   this plugin spells neither.
+ */
+
+/** @param {Comparison} comparison */
 function comparisonKey(comparison) {
   if (comparison.route !== undefined) {
     pluginComparisonRoute(comparison.route);
@@ -151,75 +158,75 @@ function viewFileHost() {
 }
 
 /**
- * What makes this page's View file opener, or null on a page with no pin.
+ * What makes this page's View file opener, or null when nothing on the page can open a
+ * file at a commit: no pin and no snapshot route.
  *
- * diff-view-file.js loads here, for a pinned page's first diff, and not with the plugin's
- * module tree: a served folder has no controls and never calls it. As a static import it
- * was a seventh module on a served folder's first diff view, which the plugin could not
- * evaluate without. Without it the view requests the six modules v0.11.0 did. Measured
- * 2026-11-02 in Chrome 152 on a pinned page's first diff: 4,135 bytes transferred and
- * 11,161 decoded. A pin pays that one local request, which render starts beside the diff's
- * own, and in that measurement it finished before the comparison did. Its controls still
- * arrive with the mount. A failed import is the view's to report: render says the diff did
- * not load, and logs which request failed.
+ * diff-view-file.js loads here, for the first diff that has controls, and not with the
+ * plugin's module tree: a served folder's commit diffs have none and never call it. As a
+ * static import it was a seventh module on a served folder's first diff view, which the
+ * plugin could not evaluate without. Without it the view requests the six modules v0.11.0
+ * did. Measured 2026-11-02 in Chrome 152 on a pinned page's first diff: 4,135 bytes
+ * transferred and 11,161 decoded. A page with controls pays that one local request, which
+ * render starts beside the diff's own, and in that measurement it finished before the
+ * comparison did. Its controls still arrive with the mount. A failed import is the view's
+ * to report: render says the diff did not load, and logs which request failed.
  *
- * @param {string} revision
+ * A comparison that names a *snapshot_route*, as a pull request's does on a mirror and
+ * beside a checkout, opens each side through it, and a page on a folder then loads the
+ * route codec as well. A side at the commit a pinned page shows keeps its `/view/` link
+ * (see diff-view-file.js).
+ *
+ * @param {Comparison | undefined} comparison
  * @returns {Promise<import("./diff-view-file.js").ViewFileOpenerFactory | null>}
  */
-async function viewFileOpener(revision) {
-  if (revision.startsWith("/")) {
-    const { plugin, hook, params } = pluginComparisonRoute(revision);
-    const fullOid = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-    if (
-      plugin === "github" &&
-      hook === "pull-comparison" &&
-      fullOid.test(params.left) &&
-      fullOid.test(params.right) &&
-      /^[0-9a-f]{16}$/.test(params.store) &&
-      /^[1-9][0-9]*$/.test(params.number)
-    ) {
-      if (!window.MetabrowserGitPath) {
-        const codec = "/static/git-path.js";
-        await import(codec);
-      }
-      const { createViewFileOpener } = await import("./diff-view-file.js");
-      return (options) =>
-        createViewFileOpener(
-          {
-            pin: "",
-            href: () => null,
-            snapshotHref(side) {
-              if (side.commit !== (side.side === "base" ? params.left : params.right)) {
-                return null;
-              }
-              const path = window.MetabrowserGitPath?.wire(side.address);
-              if (!path) {
-                return null;
-              }
-              const query = new URLSearchParams({
-                number: params.number,
-                left: params.left,
-                right: params.right,
-                store: params.store,
-                side: side.side,
-                path,
-              });
-              return `/api/plugin/github/pull-snapshot?${query}`;
-            },
-            onRestored: () => () => {},
-            switchPin: () => Promise.resolve({ status: 400, body: null }),
-            navigate: () => {},
-          },
-          options,
-        );
-    }
-  }
+async function viewFileOpener(comparison) {
+  const snapshots = snapshotHost(comparison);
   const host = viewFileHost();
-  if (host === null) {
+  if (snapshots === null && host === null) {
     return null;
   }
+  if (snapshots !== null && !window.MetabrowserGitPath) {
+    const codec = "/static/git-path.js";
+    await import(codec);
+  }
   const { createViewFileOpener } = await import("./diff-view-file.js");
-  return (options) => createViewFileOpener(host, options);
+  /** @type {import("./diff-view-file.js").ViewFileHost} */
+  const page = host ?? {
+    pin: "",
+    href: () => null,
+    onRestored: () => () => {},
+    switchPin: () => Promise.resolve({ status: 400, body: null }),
+    navigate: () => {},
+  };
+  return (options) =>
+    createViewFileOpener(snapshots === null ? page : { ...page, ...snapshots }, options);
+}
+
+/**
+ * How a comparison's sides open without changing the served pin, or null when the
+ * comparison names no route for it. The server spells the route; this adds the side and
+ * its path, and offers only a side at that end of the comparison.
+ *
+ * @param {Comparison | undefined} comparison
+ * @returns {Pick<import("./diff-view-file.js").ViewFileHost, "snapshotHref"> | null}
+ */
+function snapshotHost(comparison) {
+  const route = comparison?.snapshot_route;
+  if (typeof route !== "string") {
+    return null;
+  }
+  // Same origin and a plugin's route, or no controls at all.
+  pluginComparisonRoute(route);
+  const ends = { base: comparison?.left, head: comparison?.right };
+  return {
+    snapshotHref(side) {
+      const path = window.MetabrowserGitPath?.wire(side.address);
+      if (side.commit !== ends[side.side] || !path) {
+        return null;
+      }
+      return `${route}&${new URLSearchParams({ side: side.side, path })}`;
+    },
+  };
 }
 
 /** @param {HTMLElement} container @param {string} message */
@@ -248,7 +255,7 @@ mb.registerView("diff", "diff", {
     // Asked for now, so its request overlaps the diff's own instead of following it. Its
     // failure waits for the mount below, and may never reach it: a diff that fails first
     // answers for itself, and the rejection still needs a handler.
-    const opener = viewFileOpener(revision);
+    const opener = viewFileOpener(ctx.comparison);
     void opener.catch(() => {});
     let payload;
     try {

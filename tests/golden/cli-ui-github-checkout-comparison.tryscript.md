@@ -73,6 +73,7 @@ $ node tests/dom/github-checkout-comparison-session.js
       "left": "c691256511d05858850bc7684ae062fea0d41132",
       "right": "7a7d6596e515735d244dc1d942463c95851e139c",
       "route": "/api/plugin/github/pull-comparison?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&base_policy=merge_base&build=<BUILD>&store=<STORE_TAG>",
+      "snapshot_route": "/api/plugin/github/pull-snapshot?number=10&left=c691256511d05858850bc7684ae062fea0d41132&right=7a7d6596e515735d244dc1d942463c95851e139c&store=<STORE_TAG>",
       "headMoved": false
     }
   },

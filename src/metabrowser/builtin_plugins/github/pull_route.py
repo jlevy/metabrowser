@@ -15,7 +15,9 @@ reports one of:
 ``refreshing`` says whether the pull request's refresh job is running, and
 ``last_refresh`` how its last one ended. ``pin`` is the commit the server serves and
 ``pin_ref`` the ref it was resolved from; the record's ``pull.head.sha`` and
-``comparison_route`` name the head the record was read at. They differ when the pin is
+``comparison_route`` name the head the record was read at. ``snapshot_route`` opens a file
+of that comparison's base or head without changing the pin; a page completes it with
+``side`` and ``path`` (:func:`snapshot_route`). They differ when the pin is
 another pull request or a branch, when the URL selected a commit inside the pull request,
 and when a refresh found a newer head than the pin, which status reports as ``latest``
 for the page to offer rather than switching under a reader.
@@ -46,6 +48,7 @@ from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from typing import Any, Final, Literal, TypedDict
+from urllib.parse import urlencode
 
 from metabrowser.builtin_plugins.github import pulls
 from metabrowser.builtin_plugins.github.checkout import (
@@ -110,6 +113,7 @@ class PullEnvelope(TypedDict):
     refreshing: bool
     last_refresh: PullRefreshOutcome | None
     comparison_route: str | None
+    snapshot_route: str | None
     record: dict[str, Any] | None
     core_preview: PullCorePreview | None
 
@@ -149,6 +153,20 @@ def _without_store(dumped: dict[str, Any]) -> dict[str, Any]:
 
     unavailable = {**dumped.get("unavailable", {}), "comparison": "no_store"}
     return {**dumped, "comparison": None, "unavailable": unavailable}
+
+
+SNAPSHOT_ROUTE: Final = "/api/plugin/github/pull-snapshot"
+
+
+def snapshot_route(number: int, base: str, head: str, *, store: str) -> str:
+    """The revision-file route of one comparison, the one spelling of its address.
+
+    A page appends ``side`` (``base`` or ``head``) and ``path`` (a Git path's wire form)
+    to open one file; the route itself adds ``mode`` and ``offset`` to its own links.
+    """
+
+    query = urlencode({"number": number, "left": base, "right": head, "store": store})
+    return f"{SNAPSHOT_ROUTE}?{query}"
 
 
 def comparison_route(record: PullRecord, *, store: str) -> str | None:
@@ -340,6 +358,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
             refreshing=False,
             last_refresh=None,
             comparison_route=None,
+            snapshot_route=None,
             record=None,
             core_preview=None,
         )
@@ -353,11 +372,14 @@ def pull_envelope(view: PullView) -> PullEnvelope:
     if not has_store and isinstance(record, PullRecord) and dumped is not None:
         dumped = _without_store(dumped)
         record = record.model_copy(update={"comparison": None})
-    route = (
-        comparison_route(record, store=store_tag(served.git_dir))
-        if isinstance(record, PullRecord) and served.git_dir is not None
-        else None
-    )
+    route = snapshots = None
+    if isinstance(record, PullRecord) and served.git_dir is not None:
+        store = store_tag(served.git_dir)
+        route = comparison_route(record, store=store)
+        if record.comparison is not None:
+            snapshots = snapshot_route(
+                record.number, record.comparison.base, record.comparison.head, store=store
+            )
     preview = view.core_preview
     if view.core_admission is not None and not view.core_admission.catalog_matches(view.number):
         preview = None
@@ -382,6 +404,7 @@ def pull_envelope(view: PullView) -> PullEnvelope:
         refreshing=view.refreshing,
         last_refresh=view.kept.last if view.kept is not None else served.last_refresh(view.number),
         comparison_route=route,
+        snapshot_route=snapshots,
         record=dumped if isinstance(record, PullRecord) else None,
         core_preview=preview if not isinstance(record, PullRecord) else None,
     )
@@ -645,6 +668,7 @@ def status_route(number: int) -> str:
 __all__ = [
     "NUMBER_REQUIRED",
     "PULL_ROUTE",
+    "SNAPSHOT_ROUTE",
     "PullEnvelope",
     "PullHost",
     "PullRefreshStart",
@@ -662,6 +686,7 @@ __all__ = [
     "record_stamp",
     "refresh_request",
     "requested_number",
+    "snapshot_route",
     "start_refresh",
     "status_route",
 ]
