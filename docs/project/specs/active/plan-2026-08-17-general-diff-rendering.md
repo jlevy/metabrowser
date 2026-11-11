@@ -476,14 +476,23 @@ alt text under a shown image, HTML comments, attribute syntax, fence info string
 reference definitions inside quotes and lists.
 A changed block whose signature differs carries a note naming Source; so does an added
 block that holds a title, alt text, a fence info string other than exactly one known
-language name (a Pygments lexer alias, or `mermaid` or `svg`, which KPress draws as
-diagrams), a comment, or attribute syntax, a block moved past others whose signature
-changed, and any block whose label points somewhere new anywhere in the document.
+language name (a Pygments lexer alias, `mermaid` or `svg`, which KPress draws as
+diagrams, or a common single word such as `txt`, `yml` or `gitignore`), a comment, or
+attribute syntax, a block moved past others whose signature changed, and any block whose
+label points somewhere new anywhere in the document.
 The file carries **Source shows additional changes** whenever any source change has no
 visible counterpart, a whitespace-only or rewrap edit included.
 Edited blocks pair with the neighbor they resemble (at least half their words shared),
 and a mark’s span occurs exactly once in the changed source lines; where the same words
 stand on an untouched line beside it, the mark may sit on that copy.
+A run whose blocks each resemble the one in their place pairs in order.
+Otherwise runs of up to 16 blocks a side are aligned block against block, within a
+budget of word comparisons per file; past either limit an equal run pairs in order where
+the blocks could share half their words, and an unequal run is shown whole.
+A block whose source lines are unchanged, which a hunk beside it brought into a run,
+raises no notice; one whose only difference is a blank line, which a diff may give to
+either neighbour of an insertion, raises it only when nothing visible changed, like a
+blank line no block holds.
 
 A Markdown file on screen when Changes mounts waits for its projection with Source
 hidden for the app’s 50 ms loading-state delay, so an answer within it paints Rendered
