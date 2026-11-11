@@ -5,7 +5,7 @@ title: "App icon: an MB mark in the sister app's style"
 kind: feature
 status: in_progress
 priority: 1
-version: 9
+version: 10
 spec_path: docs/project/specs/active/plan-2026-11-10-native-macos-app.md
 delegate: claude-code@spud10.local
 labels: []
@@ -16,7 +16,7 @@ parent_id: is-01m748xpx7bjg68tfaf3q4nxmj
 hold: null
 hold_until: null
 created_at: 2026-11-11T03:04:45.303Z
-updated_at: 2026-11-11T07:42:24.441Z
+updated_at: 2026-11-11T14:44:35.048Z
 started_at: 2026-11-11T03:18:43.016Z
 ---
 Phase 1. A full, modern icon matching the sister app's Figma-designed v6 icon: its squircle, rim bevel, panel sheen, and inset letter shadows, copied from its SVG masters. The mark is a hand-drawn half-M (|\/) followed by a clean B whose stem completes the M, built on Reddit Mono Bold's construction, in light shades of Metabrowser's JavaScript yellow-green and Markdown purple. Release and canary variants, SVG masters, every icns size, a reproducible build script, and inline review with the user.
@@ -30,3 +30,5 @@ Draft on branch claude/macos-app-icon (latest 1a847b97; b-over default at feac58
 - Build: apps/macos/scripts/build-icon.sh (byte-identical output, runs under macOS bash 3.2); review images with --review [--sister SVG].
 - Pending after feedback: final junction pick, small-size masters (16/32), deleting scripts/generate-icon.swift once build-app.sh copies the .icns files.
 - Folder is AppIcon/, not Icon/: the user's global gitignore ignores any path named Icon.
+
+2026-11-11: Merged into claude/macos-app-spike and pushed to jlevy/metabrowser#341 at 21dae3c3 (not to be merged into main until the user says so).
