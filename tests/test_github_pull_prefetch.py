@@ -100,6 +100,8 @@ def _verdict(kind: str) -> RecordFreshness:
         return RecordFreshness("changed", FETCHED, "fetch", False, False, _stamp(NOW))
     if kind == "current":
         return RecordFreshness("current", _stamp(NOW), "catalog", False, False)
+    if kind == "checks":
+        return RecordFreshness("checks", _stamp(NOW), "catalog", False, False)
     return RecordFreshness("unverified", FETCHED, "fetch", False, False)
 
 
@@ -107,7 +109,11 @@ def _verdict(kind: str) -> RecordFreshness:
 def stand(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[tuple[_Host, dict[int, str], list[int]]]:
-    """A host, each number's verdict (absent: no record), and the catalog's revision."""
+    """A host, each number's verdict (absent: no record), and the catalog's publication.
+
+    A publication is one scan's ``fetched_at``; ``host.pages`` is the checkpoint's revision,
+    which moves with each page a scan publishes.
+    """
 
     gh_budget.forget()
     host = _Host(tmp_path)
@@ -122,14 +128,20 @@ def stand(
         return SimpleNamespace(fetched_at=FETCHED, unavailable={}), _verdict(kind)
 
     monkeypatch.setattr(pull_route, "record_and_freshness", record_and_freshness)
+    pages = [1]
     monkeypatch.setattr(
         pull_prefetch,
         "read_catalog",
-        lambda *_: SimpleNamespace(epoch="e", revision=revision[0]),
+        lambda *_: SimpleNamespace(
+            epoch="e",
+            revision=pages[0],
+            fetched_at=_stamp(NOW + timedelta(minutes=revision[0])),
+        ),
     )
     monkeypatch.setattr(pull_prefetch, "_repository_hold", lambda *_: False)
     monkeypatch.setattr(pulls, "utc_now", lambda: clock[0])
     host.clock = clock  # pyright: ignore[reportAttributeAccessIssue]
+    host.pages = pages  # pyright: ignore[reportAttributeAccessIssue]
     yield host, verdicts, revision
     gh_budget.forget()
 
@@ -159,14 +171,16 @@ def test_named_records_are_read_when_missing_or_changed_and_skipped_otherwise(
     stand: tuple[_Host, dict[int, str], list[int]],
 ) -> None:
     host, verdicts, _revision = stand
-    verdicts.update({8: "current", 7: "changed", 6: "unverified"})
-    assert _run(host, PrefetchRequest(records=(9, 8, 7, 6))) == ("started", None, 4)
+    verdicts.update({8: "current", 7: "changed", 6: "unverified", 5: "checks"})
+    assert _run(host, PrefetchRequest(records=(9, 8, 7, 6, 5))) == ("started", None, 5)
     assert host.started == [9, 7]
+    # Only an open pull request's checks are due for 5, which its own visible page reads.
     assert _recent(host) == [
         ("record", 9, "refreshed"),
         ("record", 8, "skipped:current"),
         ("record", 7, "refreshed"),
         ("record", 6, "skipped:unverified"),
+        ("record", 5, "skipped:checks"),
     ]
 
 
@@ -198,9 +212,15 @@ def test_a_scan_refreshes_at_most_its_cap_and_a_new_scan_starts_another(
     assert len(_recent(host)) == RECORDS_PER_SCAN + 1
     assert _report(host)["records"]["scan_used"] == RECORDS_PER_SCAN  # pyright: ignore[reportArgumentType]
 
-    revision[0] = 2
+    # Review A9: another page of the same scan is the same publication, and the cap holds.
     for number in numbers[:RECORDS_PER_SCAN]:
         del host.pulls.held[number]
+    host.pages[0] += 1  # pyright: ignore[reportAttributeAccessIssue]
+    _run(host, PrefetchRequest(records=numbers[RECORDS_PER_SCAN:]))
+    assert len(host.started) == RECORDS_PER_SCAN
+    assert _recent(host)[-1] == ("record", numbers[RECORDS_PER_SCAN], "deferred:scan_cap")
+
+    revision[0] = 2
     _run(host, PrefetchRequest(records=numbers[RECORDS_PER_SCAN:]))
     assert host.started[RECORDS_PER_SCAN:] == list(numbers[RECORDS_PER_SCAN:])
 
@@ -262,6 +282,12 @@ def test_a_rate_limit_hold_defers_everything(
 def test_a_preempted_job_is_said_so_and_a_new_request_replaces_the_queue(
     stand: tuple[_Host, dict[int, str], list[int]],
 ) -> None:
+    """Review B2: a preempted job gives its place in the caps back, and the lane stops.
+
+    What it had queued would wait behind the reader's job too; the page's next ask says
+    what is wanted then.
+    """
+
     host, verdicts, _revision = stand
     verdicts.update({7: "changed", 8: "changed", 9: "changed"})
 
@@ -281,8 +307,14 @@ def test_a_preempted_job_is_said_so_and_a_new_request_replaces_the_queue(
         await host.coordinator.drain(timeout_s=10)
 
     asyncio.run(scenario())
+    assert host.started == [7]
+    assert _recent(host) == [("record", 7, "preempted")]
+    records = _report(host)["records"]
+    assert (records["scan_used"], records["hour_used"]) == (0, 0)
+    assert not lane_of(host.pulls).queue  # pyright: ignore[reportArgumentType]
+    _run(host, PrefetchRequest(records=(9,)))
     assert host.started == [7, 9]
-    assert _recent(host) == [("record", 7, "preempted"), ("record", 9, "refreshed")]
+    assert _recent(host)[-1] == ("record", 9, "refreshed")
 
 
 def test_files_are_listed_within_their_own_cap(

@@ -22,16 +22,22 @@ admits it (:mod:`.gh_budget`) and the caps have room. It stops, dropping the res
 the governor refuses or a cap is reached; the page asks again later. A job is started under
 the pull request's own key, so a reader's request for it joins and promotes it, and as a
 background job it takes no network slot, waits at a store turn behind a reader's job, and
-is cancelled when one starts waiting (:mod:`.checkout`, :mod:`metabrowser.mirror_refresh`):
-the lane never stops for a reader's work, which it cannot delay.
+is cancelled when one starts waiting (:mod:`.checkout`, :mod:`metabrowser.mirror_refresh`).
+A preempted job gives its place in the caps back, and the lane stops there: what it had
+queued would wait behind the reader too, and the page's next ask says what is wanted then.
 
 The caps, measured against the fake ``gh`` in ``tests/golden/cli-github-pulls-prefetch.txt``: a
-background record refresh asks for at most 8 core points (two account checks, the pull,
-and five parts of a page each; a ``304`` is free and an account check is not), and a
-one-page files list for 3 (two account checks and the page). So :data:`RECORDS_PER_HOUR`
-and :data:`FILES_PER_HOUR` spend at most 40 × 8 + 20 × 3 = 380 core points an hour, 7.6% of
-a 5,000-point limit. :data:`RECORDS_PER_SCAN` keeps one scan's changes from spending most
-of an hour's records at once.
+background record refresh asks for at most 8 core points when each part fits on one page
+(two account checks, the pull, and five parts; a ``304`` is free and an account check is
+not), and a one-page files list for 3 (two account checks and the page). A part of more
+than 100 comments, reviews, or check runs costs a point a page more. The lanes are kept
+in memory, one per repository a server process serves, so at one page a part
+:data:`RECORDS_PER_HOUR` and :data:`FILES_PER_HOUR` spend at most 40 × 8 + 20 × 3 = 380 core
+points an hour for each repository in each process, 7.6% of a 5,000-point limit. What
+bounds the account as a whole is the governor's floor, read from GitHub's own count of
+what remains (:mod:`.gh_budget`). :data:`RECORDS_PER_SCAN` keeps one scan's changes from
+spending most of an hour's records at once; a scan is one publication of the catalog,
+its ``fetched_at``, however many pages it read.
 
 ``GET`` reports the lane from memory: the running item, the queue, the caps and their
 use, the governor, and the last :data:`MAX_RECENT` outcomes.
@@ -40,6 +46,7 @@ use, the governor, and the last :data:`MAX_RECENT` outcomes.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections import OrderedDict, deque
 from collections.abc import Mapping
@@ -255,6 +262,7 @@ _STOPS: Final = frozenset(
         "failed:rate_limited",
         "failed:network_error",
         "failed:unexpected",
+        "preempted",
     }
 )
 
@@ -279,6 +287,13 @@ async def _run_lane(app: Any, host: PullHost, lane: Lane) -> None:
         lane.note(item, outcome)
         if outcome in _STOPS:
             lane.queue.clear()
+
+
+def _refund(starts: deque[datetime], at: datetime) -> None:
+    """Give back the start counted *at*, if the hour has not already pruned it."""
+
+    with contextlib.suppress(ValueError):
+        starts.remove(at)
 
 
 async def _wait(host: PullHost, key: str) -> bool:
@@ -306,11 +321,8 @@ async def _record(host: PullHost, lane: Lane, item: Item) -> ItemOutcome:
         if not item.named:
             return "skipped:not_cached"
     elif freshness is None or freshness.verdict != "changed":
-        return (
-            "skipped:current"
-            if freshness is not None and freshness.verdict == "current"
-            else "skipped:unverified"
-        )
+        # `checks`: only an open pull request's checks are due, which its visible page reads.
+        return f"skipped:{freshness.verdict if freshness is not None else 'unverified'}"
     else:
         companion = await served.companion(item.number)
         companion.saw_record(
@@ -322,7 +334,8 @@ async def _record(host: PullHost, lane: Lane, item: Item) -> ItemOutcome:
     if not verdict.admitted:
         return f"deferred:{verdict.reason}"
     catalog = await asyncio.to_thread(read_catalog, served.home, served.slug)
-    scan = f"{catalog.epoch}:{catalog.revision}" if catalog is not None else None
+    # One publication, however many pages its scan read: the revision moves with each page.
+    scan = f"{catalog.epoch}:{catalog.fetched_at}" if catalog is not None else None
     if scan != lane.scan:
         lane.scan, lane.scan_used = scan, 0
     now = pulls.utc_now()
@@ -336,6 +349,11 @@ async def _record(host: PullHost, lane: Lane, item: Item) -> ItemOutcome:
     lane.scan_used += 1
     lane.record_starts.append(now)
     if not await _wait(host, host.job_key(item.number)):
+        # A reader's job cancelled it: what it spent is in the governor's observations, and
+        # the place it took in the caps is given back.
+        if lane.scan == scan:
+            lane.scan_used -= 1
+        _refund(lane.record_starts, now)
         return "preempted"
     outcome = (await served.companion(item.number)).outcome()
     # An outcome from before this job says nothing of it, as after an unexpected error.
@@ -377,6 +395,8 @@ async def _files(app: Any, host: PullHost, lane: Lane, item: Item) -> ItemOutcom
     if local is None:
         lane.file_starts.append(now)
     if not await _wait(host, files_job_key(view.repository, item.number)):
+        if local is None:
+            _refund(lane.file_starts, now)
         return "preempted"
     stamp = await asyncio.to_thread(
         read_files_refresh, view.repository.home, view.repository.slug, item.number
