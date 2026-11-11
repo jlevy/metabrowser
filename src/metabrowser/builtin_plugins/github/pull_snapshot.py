@@ -90,9 +90,8 @@ _IMAGE_TYPES: Final = {
 # The largest Markdown file rendered as a document; a larger one opens as Source. A pull
 # request's author writes it, so _DOCUMENT_WORK_MS below bounds what its render costs;
 # this cap bounds the document the estimate reads and the page it makes. Review B of #347
-# measured 16.99 s for a run of `[` at the earlier 256 KiB cap. KPress keeps each render
-# by path and object ID, so a reload does not pay it again. The in-app pinned viewer
-# renders larger files: its Markdown is the served repository's.
+# measured 16.99 s for a run of `[` at the earlier 256 KiB cap. The in-app pinned
+# viewer renders larger files: its Markdown is the served repository's.
 _DOCUMENT_BYTES: Final = 64 * 1024
 # The whole document's render work a page may spend, as an estimate in milliseconds; a
 # document estimated above it opens as Source. Measured 2026-11-11 with `_render_markdown`
@@ -145,6 +144,12 @@ _PAIRED_OPENER: Final = re.compile(rb"\[(?=[^\[\]\n]*\])")
 # above, so a second would only slow both and every other request. A request finds one
 # running and waits for it, rather than opening as Source.
 _DOCUMENT_RENDERS: Final = 1
+# Rendered pages kept per event loop, so a reload or Back does not repeat the work. KPress
+# keeps its own render by path and object ID, but the hardening after it ran again: 25 to
+# 87 ms per reload of a document at the bound, measured 2026-11-11 with the shapes above
+# (load average near 16). The largest admitted page measured 1.1 MB of HTML (links, each
+# rewritten to this route), so eight are at most about 9 MB.
+_DOCUMENT_PAGES: Final = 8
 # The images one document keeps; the rest become links to their own pages. Each kept image
 # is one request to this route, and a browser requests every unsized lazy image of a page
 # at once (review B of #347 counted 18,216 of 18,216 in headless Chrome). Measured
@@ -503,7 +508,7 @@ _DOCUMENTS: WeakKeyDictionary[asyncio.AbstractEventLoop, _Documents] = WeakKeyDi
 async def _document(snapshot: Snapshot, path: GitPath, oid: str, body: bytes) -> str | None:
     """Render *body* once however many requests ask for it, waiting for a free render.
 
-    KPress keeps the finished render by path and object ID, so nothing is kept here. Each
+    The last :data:`_DOCUMENT_PAGES` pages are kept, the refusals among them. Each
     request reads its own blob first: a load shared with another request must not use a
     tree that request closes when it ends.
     """
@@ -511,7 +516,7 @@ async def _document(snapshot: Snapshot, path: GitPath, oid: str, body: bytes) ->
     documents = _DOCUMENTS.get(loop)
     if documents is None:
         documents = _DOCUMENTS[loop] = _Documents(
-            LoadingCache(max_values=0), asyncio.Semaphore(_DOCUMENT_RENDERS)
+            LoadingCache(max_values=_DOCUMENT_PAGES), asyncio.Semaphore(_DOCUMENT_RENDERS)
         )
     renders = documents.renders
 

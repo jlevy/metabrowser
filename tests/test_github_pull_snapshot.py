@@ -534,8 +534,12 @@ def test_a_markdown_document_keeps_its_references_in_its_tree(
     assert 'href="#user-content-readme"' in content
     source = client.get(at + _wire("README.md") + "&mode=source").text
     assert 'aria-current="page">Source' in source and "![logo](logo.png)" in source
-    # A document whose render work is over the bound opens as its Source.
+    # A document whose render work is over the bound opens as its Source; the page kept
+    # from the render above is dropped first.
+    from weakref import WeakKeyDictionary
+
     monkeypatch.setattr(pull_snapshot, "_DOCUMENT_WORK_MS", 0.001)
+    monkeypatch.setattr(pull_snapshot, "_DOCUMENTS", WeakKeyDictionary())
     over = client.get(at + _wire("README.md")).text
     assert "<pre><code># Readme" in over and ">Document</a>" not in over
 
@@ -689,8 +693,21 @@ def test_the_render_bound_counts_the_whole_document(separator: bytes) -> None:
         _repeat(b"- a\n"),
         _repeat(b"def f(a, b):\n    return [a * 2]\n", b"```python\n"),
         _repeat(b"*a"),
+        _repeat(b"$a$"),
+        (b"[" * 16384 + b"$a$" * _CAP)[:_CAP],
     ],
-    ids=["brackets", "math", "table", "tasks", "headings", "list", "python", "emphasis"],
+    ids=[
+        "brackets",
+        "math",
+        "table",
+        "tasks",
+        "headings",
+        "list",
+        "python",
+        "emphasis",
+        "math-run",
+        "brackets-then-math",
+    ],
 )
 def test_each_measured_costly_shape_at_the_cap_opens_as_source(body: bytes) -> None:
     """Review A4: what took 0.5 to 6.4 s at 64 KiB is refused before it renders."""
@@ -760,6 +777,12 @@ def test_overlapping_documents_share_one_render_and_wait_for_the_slot(
             )
         )
 
-    assert asyncio.run(run()) == ["<p>one</p>", "<p>one</p>", "<p>two</p>"]
+    async def run_and_reload() -> tuple[list[str | None], str | None]:
+        first = await run()
+        return first, await pull_snapshot._document(snapshot, path, "1" * 40, b"one")  # pyright: ignore[reportPrivateUsage]
+
+    pages, reloaded = asyncio.run(run_and_reload())
+    assert pages == ["<p>one</p>", "<p>one</p>", "<p>two</p>"] and reloaded == "<p>one</p>"
+    # The reload is the kept page: the hardening after KPress's own cache does not run again.
     assert sorted(renders) == ["1" * 40, "2" * 40] and most == 1
     assert estimated_off_loop and all(estimated_off_loop)
