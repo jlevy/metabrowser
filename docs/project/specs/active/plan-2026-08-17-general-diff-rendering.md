@@ -471,11 +471,18 @@ with math and diagrams off, and code blocks are not highlighted, because the ine
 render drops the highlighting classes; the Document view renders all three.
 
 Whatever a block’s source says that its render does not show is its hidden signature:
-link and image destinations and titles, alt text under a shown image, HTML comments,
-attribute syntax, fence info strings, and reference definitions inside quotes and lists.
-A changed block whose signature differs carries a note naming Source, and the file
-carries **Source shows additional changes** whenever any source change has no visible
-counterpart, a whitespace-only or rewrap edit included.
+link and image destinations and titles, each destination with the label it belongs to,
+alt text under a shown image, HTML comments, attribute syntax, fence info strings, and
+reference definitions inside quotes and lists.
+A changed block whose signature differs carries a note naming Source; so does an added
+block that holds a title, alt text, a fence’s words past its language, a comment, or
+attribute syntax, a block moved past others whose signature changed, and any block whose
+label points somewhere new anywhere in the document.
+The file carries **Source shows additional changes** whenever any source change has no
+visible counterpart, a whitespace-only or rewrap edit included.
+Edited blocks pair with the neighbor they resemble (at least half their words shared),
+and a mark’s span occurs exactly once in the changed source lines; where the same words
+stand on an untouched line beside it, the mark may sit on that copy.
 
 A Markdown file on screen when Changes mounts waits for its projection with Source
 hidden for the app’s 50 ms loading-state delay, so an answer within it paints Rendered

@@ -58,9 +58,16 @@ MARKDOWN_DIFF_VERSION = "markdown-diff-v1"
 MARKDOWN_DIFF_MAX_BYTES = 48 * 1024
 # A side's `[` count: nested openers parsed in 15 ms at 256, 31 ms at 512, 62 ms at 1,024.
 _MAX_LINK_OPENERS = 256
+# A side's lines that open or close a `:::` container. KPress's container rules rescan
+# each one, and a run of them parses into a handful of tokens, so the token budget cannot
+# refuse it early: 256 lines took 11.5 ms, 1,024 took 42 ms, and 11,000 (44 KB) took
+# 456 ms to refuse (load average 19). A real document holds a few dozen.
+_MAX_CONTAINER_LINES = 256
 # Tokens plus inline children per side. Dense inline Markdown costs about 11 us a token:
 # 2,324 took 26 ms, 4,662 took 52 ms and 9,324 took 103 ms. Of the 434 real pairs, 6
-# exceed it, generated tables and reference lists.
+# exceed it, generated tables and reference lists. The refusal comes after the parse:
+# 44 KB of one-line headings took 148 ms to refuse, of setext headings 130 ms, and of
+# thematic breaks 88 ms (load average 19).
 _MAX_TOKENS = 2_000
 # Rendered elements and text nodes, both sides together. The 383 real pairs that project
 # hold p50 478, p90 1,355 and at most 2,355; 6 more exceed it. Highlighting, now gone,
@@ -79,6 +86,8 @@ _MAX_INLINE_WORK = 4 * _MAX_INLINE_WORDS * _MAX_INLINE_WORDS
 
 _VOID = frozenset({"br", "hr", "img"})
 _CONTAINERS = frozenset({"bullet_list_open", "ordered_list_open", "blockquote_open"})
+# Blocks whose lines can hold a link reference definition that renders nothing.
+_HOLDERS = _CONTAINERS | {"list_item_open"}
 # Native attributes the render shows; every other token attribute is source-only.
 _SHOWN_ATTRIBUTES = frozenset({"start", "style"})
 # The attributes MarkdownIt writes itself; an attribute outside these came from KPress's
@@ -91,6 +100,10 @@ _NATIVE_ATTRIBUTES = {
     "td_open": frozenset({"style"}),
 }
 _COMMENT = re.compile(r"<!--(?:(?!-->).)*-->", re.DOTALL)
+# A fence info string that names only a language, which says nothing the page hides.
+_LANGUAGE = re.compile(r"[\w+#.-]{1,32}")
+# A line that opens or closes a container block (`:::`), after any quote or list marker.
+_CONTAINER_LINE = re.compile(rb"^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*:::", re.MULTILINE)
 _DEFINITION = re.compile(r"^\s*(?:(?:>|[-*+]|\d{1,9}[.)])\s*)*\[(?:[^\]\\]|\\.)+\]:")
 _WORDS = re.compile(r"\w+(?:[-’']\w+)*|[^\w\s]+|\s+")
 _SPACE = re.compile(r"\s+")
@@ -211,8 +224,13 @@ class _Block:
     # reader actually sees, so a rewrap or a trailing space compares equal.
     seen: _Element
     hidden: tuple[tuple[str, ...], ...]
-    # Comments or attribute syntax: content of this block that no render shows at all.
+    # Comments, attribute syntax, a title or a fence's text past its language: content
+    # of this block that no render shows at all.
     concealed: bool
+    # An image's alt text, which the added side hides under the image it shows.
+    alt: bool
+    # Each link's or image's rendered label and destination, in order.
+    links: tuple[tuple[str, str], ...]
     # The items of a list, or the blocks of a quote, when each maps to one element.
     children: tuple[_Block, ...] | None = None
 
@@ -246,12 +264,27 @@ def _shape(node: _Element, *, collapse: bool) -> _Element:
     )
 
 
-def _hidden(tokens: Sequence[Token]) -> tuple[tuple[tuple[str, ...], ...], bool]:
-    """What these tokens' source says that their render does not show."""
+@dataclass(frozen=True, slots=True)
+class _Hidden:
+    entries: tuple[tuple[str, ...], ...]
+    concealed: bool
+    alt: bool
+    links: tuple[tuple[str, str], ...]
+
+
+def _hidden(tokens: Sequence[Token]) -> _Hidden:
+    """What these tokens' source says that their render does not show.
+
+    Each link's destination is also kept with its rendered label, so a destination that
+    moves to another label is seen even when the destinations keep their order.
+    """
 
     found: list[tuple[str, ...]] = []
-    concealed = False
+    links: list[tuple[str, str]] = []
+    concealed = alt = False
     for token in tokens:
+        # The label of each link being read, as its text arrives.
+        open_links: list[tuple[str, list[str]]] = []
         for member in (token, *(token.children or ())):
             if member.type in {"html_block", "html_inline"}:
                 found.append(("comment", member.content.strip()))
@@ -264,15 +297,50 @@ def _hidden(tokens: Sequence[Token]) -> tuple[tuple[tuple[str, ...], ...], bool]
             if attrs:
                 found.append((member.type, *(f"{name}={attrs[name]}" for name in sorted(attrs))))
                 concealed |= not attrs.keys() <= _NATIVE_ATTRIBUTES.get(member.type, frozenset())
-            # A list item's info is the number its source wrote, which no render shows
-            # in place of the list's own count; anything else with an info is a fence or
-            # a container, whose info is source-only.
-            info = (member.meta or {}).get(_INFO, member.info)
-            if info and member.type != "list_item_open":
-                found.append(("info", str(info)))
+                # The inert render drops a title, so it is shown nowhere.
+                concealed |= bool(attrs.get("title", "").strip())
+            # A fence's language and a container's name; every other token's info is the
+            # source's spelling of what renders (a list item's number, an entity, an
+            # escape), which the render shows as it is meant. A fence's info past a
+            # language name is text no render shows.
+            if member.type == "fence" or member.type.startswith("container_"):
+                info = str((member.meta or {}).get(_INFO, member.info))
+                if info:
+                    found.append(("info", info))
+                    concealed |= member.type == "fence" and not _LANGUAGE.fullmatch(info.strip())
             if member.type == "image":
                 found.append(("alt", member.content))
-    return tuple(found), concealed
+                # Under an image the page shows, its alt text is shown nowhere; a removed
+                # image is shown as its alt text.
+                alt |= bool(member.content.strip())
+                links.append((" ".join(member.content.split()), attrs.get("src", "")))
+            elif member.type == "link_open":
+                open_links.append((attrs.get("href", ""), []))
+            elif member.type == "link_close" and open_links:
+                href, label = open_links.pop()
+                links.append((" ".join("".join(label).split()), href))
+            elif open_links and member.type in {"text", "code_inline"}:
+                for _, label in open_links:
+                    label.append(member.content)
+    return _Hidden(tuple(found), concealed, alt, tuple(links))
+
+
+def _rebound(old: Sequence[_Block], new: Sequence[_Block]) -> frozenset[str]:
+    """Labels whose link lost a destination and gained another between the two sides."""
+
+    def destinations(blocks: Sequence[_Block]) -> dict[str, set[str]]:
+        found: dict[str, set[str]] = {}
+        for block in blocks:
+            for label, href in block.links:
+                found.setdefault(label, set()).add(href)
+        return found
+
+    before, after = destinations(old), destinations(new)
+    return frozenset(
+        label
+        for label in before.keys() & after.keys()
+        if before[label] - after[label] and after[label] - before[label]
+    )
 
 
 def _close(tokens: Sequence[Token], index: int) -> int:
@@ -358,16 +426,24 @@ def _block(
 ) -> _Block:
     first, stop = span
     start, end = _map(tokens[first], offset, after)
-    hidden, concealed = _hidden(tokens[first:stop])
-    # A link reference definition inside a quote or a list renders nothing where it is
-    # written, and one that repeats a label renders nothing at all, title included.
-    definitions = tuple(
-        ("definition", line.strip())
-        for line in lines[start - offset : end - offset]
-        if _DEFINITION.match(line)
-    )
-    if definitions:
-        hidden, concealed = (*hidden, *definitions), True
+    signature = _hidden(tokens[first:stop])
+    hidden, concealed = signature.entries, signature.concealed
+    if tokens[first].type in _HOLDERS:
+        # A link reference definition inside a quote or a list renders nothing where it
+        # is written, and one that repeats a label renders nothing at all, title
+        # included. It is a line no block inside the container covers: a fence's or a
+        # paragraph's own lines are what they render.
+        covered: set[int] = set()
+        for token in tokens[first + 1 : stop - 1]:
+            if token.map is not None and token.nesting >= 0 and token.type not in _HOLDERS:
+                covered.update(range(token.map[0] + offset, token.map[1] + offset))
+        definitions = tuple(
+            ("definition", lines[line - offset].strip())
+            for line in range(start, end)
+            if line not in covered and _DEFINITION.match(lines[line - offset])
+        )
+        if definitions:
+            hidden, concealed = (*hidden, *definitions), True
     children: tuple[_Block, ...] | None = None
     if descend and tokens[first].type in _CONTAINERS:
         inner = _slices(tokens, first + 1, stop - 1, tokens[first].level + 1)
@@ -396,6 +472,8 @@ def _block(
         _shape(node, collapse=True),
         hidden,
         concealed,
+        signature.alt,
+        signature.links,
         children,
     )
 
@@ -683,7 +761,9 @@ def _inline_change(
     """Mark the changed words of a block whose only change is within one text node.
 
     Each side's changed span must occur exactly once in that side's changed source
-    lines, so a mark can never sit on a repeated phrase the source did not touch.
+    lines, so the marked text is text those lines changed. Where the same words also
+    stand on an untouched line beside it, the mark may sit on that copy instead: the
+    rendered texts are equal either way, and the redline is still a true edit of them.
     """
 
     if old.tag != new.tag:
@@ -829,13 +909,69 @@ def _html(
     return f"{start}{inner()}</{tag}>"
 
 
-def _shifted(
-    wrap: Callable[[_Element, bool, int], _Element], by: int
+def _shifted2(
+    wrap: Callable[[_Element, bool, int], _Element], left: int, right: int
 ) -> Callable[[_Element, bool, int], _Element]:
     def at(node: _Element, old_side: bool, index: int) -> _Element:
-        return wrap(node, old_side, by + index)
+        return wrap(node, old_side, (left if old_side else right) + index)
 
     return at
+
+
+# Adjacent edited blocks pair when they share at least half their words (difflib's ratio
+# over word tokens): an edited sentence shares far more, and a deleted block beside an
+# edited one far less ("Never deploy on Friday." against "Run the tests first, always."
+# is 0.0; "Run the tests first." against it is 0.89). A run of more blocks than this on
+# either side is shown whole rather than compared block against block.
+_PAIR_RATIO = 0.5
+_PAIR_RUN = 16
+
+
+def _words(block: _Block) -> list[str]:
+    return re.findall(r"\w+", _text(block.node))[:_MAX_INLINE_WORDS]
+
+
+def _align(old: Sequence[_Block], new: Sequence[_Block]) -> list[tuple[int, int]]:
+    """The pairs of a run, in order, that maximize the shared words of paired blocks."""
+
+    if max(len(old), len(new)) > _PAIR_RUN:
+        return []
+    old_words, new_words = [_words(block) for block in old], [_words(block) for block in new]
+
+    def similarity(left: int, right: int) -> float:
+        if old[left].node.tag != new[right].node.tag:
+            return 0.0
+        a, b = old_words[left], new_words[right]
+        if not a and not b:
+            return 1.0
+        matcher = SequenceMatcher(None, a, b, autojunk=False)
+        if matcher.real_quick_ratio() < _PAIR_RATIO or matcher.quick_ratio() < _PAIR_RATIO:
+            return 0.0
+        ratio = matcher.ratio()
+        return ratio if ratio >= _PAIR_RATIO else 0.0
+
+    # Needleman-Wunsch over the run: the best total similarity of the first i old and
+    # first j new blocks.
+    best = [[0.0] * (len(new) + 1) for _ in range(len(old) + 1)]
+    for i in range(1, len(old) + 1):
+        for j in range(1, len(new) + 1):
+            paired = similarity(i - 1, j - 1)
+            best[i][j] = max(
+                best[i - 1][j],
+                best[i][j - 1],
+                best[i - 1][j - 1] + paired if paired else 0.0,
+            )
+    pairs: list[tuple[int, int]] = []
+    i, j = len(old), len(new)
+    while i and j:
+        if best[i][j] == best[i - 1][j]:
+            i -= 1
+        elif best[i][j] == best[i][j - 1]:
+            j -= 1
+        else:
+            pairs.append((i - 1, j - 1))
+            i, j = i - 1, j - 1
+    return pairs[::-1]
 
 
 @dataclass(slots=True)
@@ -848,12 +984,16 @@ class _Projector:
     old_ids: dict[str, str]
     new_ids: dict[str, str]
     nodes: int
+    # Labels whose links point somewhere new anywhere in the document (see _rebound).
+    rebound: frozenset[str] = frozenset()
     # The inline word diffs' quadratic work so far, against _MAX_INLINE_WORK.
     work: int = 0
     blocks: list[MarkdownDiffBlock] = field(default_factory=list)
     references: list[LocalReference] = field(default_factory=list)
     # A source change with no visible counterpart in the blocks around it.
     notice: bool = False
+    # Blocks shown whole, removed (True) or added, with where each was emitted.
+    moved: list[tuple[bool, _Block, int]] = field(default_factory=list)
 
     def emit(
         self,
@@ -926,6 +1066,13 @@ class _Projector:
                 self.emit("context", wrapped(new[stop_right].node, False, stop_right))
             left, right = stop_left + 1, stop_right + 1
 
+    def differs(self, old: Sequence[_Block], new: Sequence[_Block]) -> bool:
+        """Whether the source of these blocks changed in a way their renders do not show."""
+
+        return [entry for block in old for entry in block.hidden] != [
+            entry for block in new for entry in block.hidden
+        ] or any(label in self.rebound for block in (*old, *new) for label, _ in block.links)
+
     def group(
         self,
         old: Sequence[_Block],
@@ -943,23 +1090,39 @@ class _Projector:
                 self.emit(
                     "context",
                     wrap(after.node, False, index),
-                    source_only=before.hidden != after.hidden,
+                    source_only=self.differs([before], [after]),
                 )
             return
         if len(old) == len(new) == 1 and self.pair(old[0], new[0], wrap):
             return
-        if len(old) == len(new) > 1 and all(
-            a.node.tag == b.node.tag for a, b in zip(old, new, strict=True)
-        ):
-            # Adjacent edited blocks of the same kinds pair in order, so each is shown,
-            # marked and flagged as itself rather than as one undivided run.
-            for index, (before, after) in enumerate(zip(old, new, strict=True)):
-                self.group([before], [after], _shifted(wrap, index))
+        pairs = _align(old, new) if len(old) + len(new) > 2 else []
+        if pairs:
+            # Adjacent edited blocks pair only with a block of the same kind that shares
+            # most of its words, so each is shown, marked and flagged as itself; the rest
+            # are shown whole.
+            left = right = 0
+            for stop_left, stop_right in (*pairs, (len(old), len(new))):
+                self.whole(old[left:stop_left], new[right:stop_right], _shifted2(wrap, left, right))
+                if stop_left < len(old):
+                    self.group(
+                        [old[stop_left]], [new[stop_right]], _shifted2(wrap, stop_left, stop_right)
+                    )
+                left, right = stop_left + 1, stop_right + 1
+            return
+        self.whole(old, new, wrap)
+
+    def whole(
+        self,
+        old: Sequence[_Block],
+        new: Sequence[_Block],
+        wrap: Callable[[_Element, bool, int], _Element],
+    ) -> None:
+        """Show blocks as removed and added in full."""
+
+        if not old and not new:
             return
         if old and new:
-            source_only = [entry for block in old for entry in block.hidden] != [
-                entry for block in new for entry in block.hidden
-            ]
+            source_only = self.differs(old, new)
             if " ".join(" ".join(_text(block.node).split()) for block in old) == " ".join(
                 " ".join(_text(block.node).split()) for block in new
             ):
@@ -967,12 +1130,37 @@ class _Projector:
                 # yet named in the notice in case a structure renders alike.
                 self.notice = True
         else:
-            source_only = any(block.concealed for block in (*old, *new))
+            # An added link shows its destination on hover; a comment, attribute syntax,
+            # a title, an added image's alt text, or a label whose link moved elsewhere
+            # in the document does not show.
+            source_only = (
+                any(block.concealed for block in old)
+                or any(block.concealed or block.alt for block in new)
+                or any(label in self.rebound for block in (*old, *new) for label, _ in block.links)
+            )
         self.consume(old, new)
         for index, block in enumerate(old):
+            self.moved.append((True, block, len(self.blocks)))
             self.emit("removed", wrap(block.node, True, index), source_only=source_only)
         for index, block in enumerate(new):
+            self.moved.append((False, block, len(self.blocks)))
             self.emit("added", wrap(block.node, False, index), source_only=source_only)
+
+    def flag_moves(self) -> None:
+        """Flag a block removed in one place and added in another, its text unchanged,
+        when its source changed in a way neither render shows."""
+
+        removed: dict[str, list[tuple[_Block, int]]] = {}
+        for old_side, block, at in self.moved:
+            if old_side:
+                removed.setdefault(" ".join(_text(block.node).split()), []).append((block, at))
+        for old_side, block, at in self.moved:
+            if old_side:
+                continue
+            for before, where in removed.get(" ".join(_text(block.node).split()), []):
+                if self.differs([before], [block]):
+                    self.blocks[where]["source_only"] = True
+                    self.blocks[at]["source_only"] = True
 
     def pair(
         self, old: _Block, new: _Block, wrap: Callable[[_Element, bool, int], _Element]
@@ -1019,7 +1207,7 @@ class _Projector:
         if inline is None or not self.spend(inline.nodes):
             return False
         self.work += inline.work
-        source_only = old.hidden != new.hidden
+        source_only = self.differs([old], [new])
         self.consume([old], [new])
         self.emit("removed", wrap(inline.old, True, 0), source_only=source_only)
         self.emit("added", wrap(inline.new, False, 0), source_only=source_only)
@@ -1034,6 +1222,8 @@ def _project(
         raise _OverBudget("Markdown input bytes")
     if max(before.count(b"["), after.count(b"[")) > _MAX_LINK_OPENERS:
         raise _OverBudget("Markdown link-label work")
+    if max(len(_CONTAINER_LINE.findall(data)) for data in (before, after)) > _MAX_CONTAINER_LINES:
+        raise _OverBudget("Markdown container lines")
     old_lines, new_lines = _lines(old), _lines(new)
     if patch.truncated or any(
         b"\0" in data or b"\r" in data.replace(b"\r\n", b"") for data in (before, after)
@@ -1054,8 +1244,10 @@ def _project(
         _namespace_ids(old_blocks, namespace, "old"),
         _namespace_ids(new_blocks, namespace, "new"),
         old_nodes + new_nodes,
+        _rebound(old_blocks, new_blocks),
     )
     projector.walk(old_blocks, new_blocks)
+    projector.flag_moves()
     # A blank separator beside an already visible addition or deletion adds no
     # information to the notice. Standalone whitespace changes still point to Source.
     has_visual_change = any(block["kind"] != "context" for block in projector.blocks)
