@@ -355,11 +355,10 @@ async def _fetch(
 ) -> str | None:
     """:func:`fetch_into_store`, with Git's failure as a typed :class:`PullRefError`."""
 
-    fetch = functools.partial(
-        fetch_into_store, published, specs, deepen=deepen, timeout_s=timeout_s
-    )
     try:
-        return await (fetch() if exact is None else fetch(exact=exact))
+        return await fetch_into_store(
+            published, specs, deepen=deepen, timeout_s=timeout_s, exact=exact
+        )
     except LenderGoneError as exc:
         raise PullRefError("lender_missing", str(exc)) from exc
     except RecordError as exc:
@@ -463,16 +462,15 @@ async def fetch_pull_head(
     return await ref_commit(published, ref)
 
 
-async def fetch_commit(published: PublishedSource, oid: str, *, if_missing: bool = False) -> None:
+async def fetch_commit(published: PublishedSource, oid: str) -> None:
     """Fetch one commit by ID, which the origin may still serve without any ref naming it.
 
-    With *if_missing*, recheck under the fetch lock before contacting the origin.
-    An explicit repair can still fetch a commit whose descendants may be missing.
+    A commit the store has, checked again under the fetch lock, is not fetched.
     """
 
     if not is_full_revision(oid):
         raise ValueError("not a full commit ID")
-    await _fetch(published, [oid], exact=_ExactFetch(oid) if if_missing else None)
+    await _fetch(published, [oid], exact=_ExactFetch(oid))
 
 
 async def fetch_objects(
@@ -507,7 +505,7 @@ async def comparison_endpoints(
             base_from = "base_branch"
     if base_commit is None:
         if not await has_commit(published, base_sha):
-            await fetch_commit(published, base_sha, if_missing=True)
+            await fetch_commit(published, base_sha)
         base_commit = base_sha
     return await _endpoints_from(published, head, base_commit, base_from)
 

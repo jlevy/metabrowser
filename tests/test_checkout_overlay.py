@@ -245,10 +245,11 @@ def test_offline_an_uncertain_merge_base_stays_typed_and_no_guess_is_shown(
         *,
         deepen: int | None = None,
         timeout_s: float | None = None,
-    ) -> None:
+        exact: Any = None,
+    ) -> str | None:
         if deepen is not None:
             raise git_process.GitCommandError(["fetch"], 128, "unable to access")
-        await real_fetch(published, specs, deepen=deepen, timeout_s=timeout_s)
+        return await real_fetch(published, specs, deepen=deepen, timeout_s=timeout_s, exact=exact)
 
     merge_heavy.monkeypatch.setattr(pull_refs, "fetch_into_store", offline_once_deepening)
     envelope = merge_heavy.pull()
@@ -268,9 +269,9 @@ def test_a_depth_1_checkout_has_an_empty_answer_that_is_uncertain_then_certain(
     rounds: list[int | None] = []
     real_fetch = pull_refs.fetch_into_store
 
-    async def counted(published: Any, specs: list[str], **kwargs: Any) -> None:
+    async def counted(published: Any, specs: list[str], **kwargs: Any) -> str | None:
         rounds.append(kwargs.get("deepen"))
-        await real_fetch(published, specs, **kwargs)
+        return await real_fetch(published, specs, **kwargs)
 
     monkeypatch.setattr(pull_refs, "fetch_into_store", counted)
     envelope = merge_heavy.pull("--checkout", str(checkout))
