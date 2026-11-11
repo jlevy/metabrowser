@@ -187,6 +187,10 @@ meets its upper edge.
 | `metabrowser-icon` | point 38.674 below the cap line | 210.697 to 275.599 | 21.437 | 218.373 | 0 |
 | `sym-drop19-gap26` | point 19.337 below the cap line | 191.360 to 256.261 | 26 | 233.654 | +15.281 |
 | `sym-drop19-gap31` | point 19.337 below the cap line | 191.360 to 256.261 | 31.464 | 239.118 | +20.745 |
+| `sym-drop19-gap34` | point 19.337 below the cap line | 191.360 to 256.261 | 34 | 241.654 | +23.281 |
+| `sym-drop19-gap37` | point 19.337 below the cap line | 191.360 to 256.261 | 37 | 244.654 | +26.281 |
+| `sym-drop19-gap40` | point 19.337 below the cap line | 191.360 to 256.261 | 40 | 247.654 | +29.281 |
+| `sym-drop19-gap43` | point 19.337 below the cap line | 191.360 to 256.261 | 43 | 250.654 | +32.281 |
 | `sym-drop0-gap26` | point on the cap line | 172.023 to 236.924 | 26 | 244.373 | +26 |
 | `sym-drop0-gap31` | point on the cap line | 172.023 to 236.924 | 31.464 | 249.837 | +31.464 |
 | `sym-flat6-gap31` | flat top 6.293 wide | 172.023 to 225.571 | 31.464 | 256.129 | +37.757 |
