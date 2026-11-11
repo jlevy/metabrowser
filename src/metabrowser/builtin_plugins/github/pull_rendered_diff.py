@@ -6,7 +6,7 @@ import asyncio
 import base64
 import hashlib
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from starlette.requests import Request
@@ -14,7 +14,6 @@ from starlette.responses import JSONResponse
 
 from metabrowser.builtin_plugins.github.pull_route import PullRequestError, requested_number
 from metabrowser.builtin_plugins.github.pull_snapshot import Snapshot, admitted_snapshot
-from metabrowser.cache.loading import LoadingCache, LoadingCacheBusyError
 from metabrowser.diff.adapters.base import DiffSourceError
 from metabrowser.diff.adapters.git import GitDiffSource
 from metabrowser.diff.format import (
@@ -41,6 +40,7 @@ from metabrowser.git.tree_source import (
     read_store_blob,
 )
 from metabrowser.git.wire import is_full_revision
+from metabrowser.loading_cache import LoadingCache
 
 if TYPE_CHECKING:
     from metabrowser.cache.acquire import PublishedSource
@@ -59,6 +59,8 @@ _MAX_HTML_BYTES = 256 * 1024
 # 30 runs), so each later file of the batch answers without a subprocess.
 _PATCH_BATCH = 16
 _PATCH_ENTRIES = 64
+# Loads that wait for the projection slot before more are refused (see _Slot).
+_MAX_WAITING = 4
 
 
 def _fallback(status: Status = "unsupported") -> dict[str, Any]:
@@ -68,6 +70,39 @@ def _fallback(status: Status = "unsupported") -> dict[str, Any]:
         "blocks": [],
         "source_only": False,
     }
+
+
+class _Busy(Exception):
+    """More loads wait for the projection slot than the route keeps waiting."""
+
+
+class _Slot:
+    """One load at a time per server; a few more wait their turn, and the rest are refused.
+
+    Under the GIL a second projection thread doubled every other request's delay (35 to
+    74-84 ms for eight wake-ups) and projected no more per second (37 in 1.5 s with one
+    thread, 37-38 with two); the child process runs one projection at a time anyway. A
+    page asks for one file at a time and keeps its request when the file scrolls away, so
+    each open Changes tab holds at most one place; past four waiting, a load would wait
+    four projections, and the page's own retry serves the reader better.
+    """
+
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._waiting = 0
+
+    async def run[T](self, load: Callable[[], Awaitable[T]]) -> T:
+        if self._waiting >= _MAX_WAITING:
+            raise _Busy
+        self._waiting += 1
+        try:
+            await self._lock.acquire()
+        finally:
+            self._waiting -= 1
+        try:
+            return await load()
+        finally:
+            self._lock.release()
 
 
 def projection_worker(state: Any) -> ProjectionWorker:
@@ -218,26 +253,28 @@ async def pull_rendered_diff_handler(request: Request) -> JSONResponse:
     ):
         return JSONResponse({"code": "invalid_rendered_diff"}, status_code=400, headers=_NO_STORE)
     snapshot = Snapshot(number, base, head, params.get("store", ""), "head")
-    published = await admitted_snapshot(request, snapshot)
+    published, admission = await admitted_snapshot(request, snapshot)
+    if admission == "unknown":
+        return JSONResponse({"code": "snapshot_unavailable"}, status_code=409, headers=_NO_STORE)
     if published is None:
         return JSONResponse({"code": "snapshot_expired"}, status_code=410, headers=_NO_STORE)
 
     state = request.app.state
     cache = getattr(state, "pull_rendered_diff_cache", None)
     if cache is None:
-        # One load at a time: under the GIL a second thread doubled every other
-        # request's delay (35 to 74-84 ms for eight wake-ups) and projected no more per
-        # second (37 in 1.5 s with one thread, 37-38 with two). The client asks for one
-        # file at a time and retries a refused one.
-        cache = state.pull_rendered_diff_cache = LoadingCache(max_values=32, max_loads=1)
+        cache = state.pull_rendered_diff_cache = LoadingCache(max_values=32)
     cache = cast("LoadingCache[tuple[str, ...], dict[str, Any]]", cache)
+    slot = getattr(state, "pull_rendered_diff_slot", None)
+    if slot is None:
+        slot = state.pull_rendered_diff_slot = _Slot()
+    slot = cast("_Slot", slot)
     key = (published.store_id, snapshot.store, str(number), base, head, file_id)
     namespace = "diff-" + hashlib.sha256("\0".join(key).encode()).hexdigest()[:20]
     try:
         answer = await cache.get(
-            key, lambda: _project(published, snapshot, file_id, namespace, state)
+            key, lambda: slot.run(lambda: _project(published, snapshot, file_id, namespace, state))
         )
-    except LoadingCacheBusyError:
+    except _Busy:
         return JSONResponse({"code": "rendered_diff_busy"}, status_code=429, headers=_NO_STORE)
     except (DiffSourceError, GitError):
         return JSONResponse(

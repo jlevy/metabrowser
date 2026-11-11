@@ -627,14 +627,17 @@ fetched, and compared from, only when the store lists it under exactly that name
 one kept under another spelling shares that ref’s file; otherwise the comparison starts
 from `base.sha`. What it writes gets the mirror update’s case-fold check, and a fold
 puts every branch and tag back.
-An open pull request’s base branch is fetched in the same command into the
-`refs/remotes/origin/<base>` the mirror update writes, so its merge base is taken
+An open pull request’s base branch is fetched by a refresh in the same command into the
+`refs/remotes/origin/<base>` the mirror update writes, so a refresh takes its merge base
 against the base branch as it is now.
 A closed or merged pull request compares from the API’s `base.sha`, fetched by ID when
 no mirrored ref reaches it.
 The fetched head must be the head the API reported; one full re-read covers a push
 between the two, and a second mismatch is `head_mismatch`. Preparation from cached PR
 metadata can reuse the exact head commit already in the store.
+It compares an open pull request from the record’s observed `base.sha`, recorded as
+`base_from: base_sha`, and never fetches the moving base branch; the next refresh
+recomputes the comparison against the base branch.
 When that head or the API’s base commit is missing, the fetch rechecks for the object
 under the store’s fetch lock before reaching the origin.
 A head fetch for this preparation captures the ref while it still holds the lock.
@@ -726,7 +729,23 @@ A pin by commit ID that is the tip of a fetched pull-request head is served unde
 head and attends to it, whichever page asked: a commit page does this as View file does.
 How each refresh ended is kept beside the record in `pulls/<n>.refresh.json`, so the
 route and a later command report it, and a failed one is tried again after a window, not
-on every poll or by the next command, and after `rate_limited` not before `reset_at`.
+on every poll or by the next command, and after `rate_limited` not before `reset_at`. A
+mirror’s record write also keeps `pulls/<n>.snapshots.json`
+(`cache.paths.source_pull_snapshots`), the comparison pairs earlier records named, so a
+revision-file link opened at an earlier base and head (`GET github/pull-snapshot`) keeps
+opening after a refresh moves the record on.
+It is a JSON array of at most 16 `{store, reader, base, head}` pairs, oldest first, read
+with a 16 KiB bound; the largest valid file is 5,553 bytes.
+It holds one reader’s pairs, and any record write by another reader starts it over, with
+a store or without (a checkout’s metadata write), and whether or not it has a
+comparison; each pair names the store that computed it and opens only there.
+Record writes change it under the source alias lock, by atomic replacement, and only a
+store-backed one adds pairs: before the record is replaced its pair is kept, and after,
+the new pair.
+A file that cannot be read now is left as it was, and one this format never
+writes starts over, each with a debug log; the record is published either way.
+Removing the file only expires earlier links with `410 snapshot_expired`; the record’s
+own pair keeps opening.
 `POST /api/plugin/github/pull-refresh` with `{"number": <n>}` starts or joins the job
 and returns `202` at once, naming `/api/plugin/github/pull?number=<n>` as its
 `status_route`; a one-shot `--api` waits for the job, prints that route, and exits 1
@@ -1227,9 +1246,13 @@ run concurrently.
 A same-source waiter retries without blocking the event loop and checks
 for the published alias after taking the reservation.
 The owner holds the reservation through alias publication.
-Staging Git writers inherit both the reservation and the staging liveness descriptor, so
-another process cannot start a competing fetch or sweep the staging directory while
-those writers are alive.
+Staging Git writers inherit the staging liveness descriptor, so no process sweeps the
+staging directory while those writers are alive.
+They do not inherit the reservation: only a live owner holds it, so a killed owner’s
+orphaned fetch, which can never publish, keeps no other process waiting.
+A waiter tells its caller once that it is waiting, and gives up after
+`RESERVATION_WAIT_S` (`cache/acquire.py`), the owner’s worst case of two attempts, with
+an error that names the lock file.
 A warm open reads the published store without taking the reservation.
 
 A refresh holds its store’s fetch side lock, `locks/stores/<store-key>.fetch.lock`,

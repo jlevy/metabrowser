@@ -849,6 +849,14 @@ async function run() {
   );
   await settle();
   assert.deepEqual(posts, [], "a staged Changes mount cannot fetch after the route moved away");
+  const stagedBody = checkoutContainer.querySelector(".github-pull-body");
+  assert.match(stagedBody.textContent, /Changes have not been fetched/);
+  assert.equal(stagedBody.querySelector(".spinner"), null, "nothing is on its way to spin for");
+  assert.equal(
+    stagedBody.querySelector(".github-pull-fetch-changes")?.textContent,
+    "Fetch changes",
+    "the reader can still fetch what the address does not ask for",
+  );
   window.location.pathname = "/pull/10/files/src/app.txt";
   checkoutHandle.land({ tab: "files", file: "src/app.txt" });
   await settle();
@@ -869,6 +877,11 @@ async function run() {
   await settle();
   assert.deepEqual(posts, [comparisonAsk], "polling does not retry a refused acquisition");
   assert.match(checkoutBody.textContent, /Changes could not be fetched/);
+  assert.match(
+    checkoutContainer.querySelector(".github-pull-message")?.textContent ?? "",
+    /server busy/,
+    "the refusal's reason outlasts the read that cleared its error",
+  );
   assert.equal(checkoutBody.querySelector(".spinner"), null);
   const retryChanges = checkoutBody.querySelector(".github-pull-retry-changes");
   assert.equal(retryChanges?.textContent, "Retry changes");

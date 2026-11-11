@@ -1102,7 +1102,8 @@ async function main() {
   ].map(([when, mounted, next]) => `${when}: ${runtime.filesAction(mounted, next)}`);
 
   // What Files changed says instead, for a record whose comparison could not be made and
-  // for one whose merge base the store's shallow history cannot settle.
+  // for one whose merge base the store's shallow history cannot settle. A record without a
+  // store says it on Changes once the page's attempt to prepare one failed.
   const filesUnavailable = Object.fromEntries(
     [
       "fetch_failed",
@@ -1116,7 +1117,12 @@ async function main() {
       const answer = structuredClone(recorded.current.body);
       answer.record.comparison = null;
       answer.record.unavailable = { comparison: why };
-      const model = runtime.describePull(answer, { number: 7, tab: "", nowMs: page.clock.now });
+      const model = runtime.describePull(answer, {
+        number: 7,
+        tab: "files",
+        nowMs: page.clock.now,
+        comparisonAttempted: true,
+      });
       return [why, { files: model.filesUnavailable, notes: model.notes }];
     }),
   );
@@ -1124,7 +1130,7 @@ async function main() {
   // A checkout's page: the server has no pin and no store, so the record has no comparison,
   // there is no Browse code, and the page says only when the checkout's HEAD is the pull
   // request's head. Its review comments name their files as text, since nothing is served
-  // at the pull request's commits.
+  // at the pull request's commits. Its Changes is read after a failed attempt.
   const onCheckout = structuredClone(recorded.current.body);
   onCheckout.pin = null;
   onCheckout.pin_ref = null;
@@ -1140,8 +1146,9 @@ async function main() {
     ].map(([when, checkoutHead]) => {
       const model = runtime.describePull(onCheckout, {
         number: 7,
-        tab: "",
+        tab: "files",
         nowMs: page.clock.now,
+        comparisonAttempted: true,
         checkoutHead,
       });
       return [

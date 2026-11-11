@@ -33,7 +33,7 @@
         "name": "source_acquisition",
         "path": "locks/sources/<source-key>.acquire.lock",
         "acquisition": "tried without blocking before staging a cache miss; a caller that waits retries, then rechecks the published alias under this reservation",
-        "why_outside_the_hierarchy": "The reservation is held across the cold fetch and inherited by Git writers. The source alias and store hierarchy locks are only taken at publication."
+        "why_outside_the_hierarchy": "The reservation is held across the cold fetch by the owner process alone; its Git writers inherit only the staging entry lock, so a dead owner's orphaned fetch keeps no waiter out. The source alias and store hierarchy locks are only taken at publication."
       },
       {
         "name": "staging_entry",

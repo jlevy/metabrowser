@@ -437,20 +437,27 @@ class _Hardener(HTMLParser):
         if tag == "img":
             if keeps_image(values.get("src"), self.base):
                 kept = allowed_attributes("img", values, self.base)
-                if self.rewrite_local is not None:
-                    src = self.rewrite_local(dict(kept)["src"], True)
-                    if src is None:
-                        self.handle_data(values.get("alt") or "image")
-                        return
+                if self.rewrite_local is None:
+                    self.out.append(_open_tag("img", kept))
+                    return
+                original = dict(kept)["src"]
+                src = self.rewrite_local(original, True)
+                if src is not None:
                     kept = [(name, src if name == "src" else value) for name, value in kept]
-                self.out.append(_open_tag("img", kept))
-                return
-            href, text = image_link(values.get("src"), values.get("alt"), self.base)
+                    self.out.append(_open_tag("img", kept))
+                    return
+                # An image the rewrite does not keep is a link to where it leads as one,
+                # an address the rewrite wrote and so kept as it is.
+                href = self.rewrite_local(original, False)
+                text = image_link(None, values.get("alt"), self.base)[1]
+                link = None if href is None else [("href", href)]
+            else:
+                href, text = image_link(values.get("src"), values.get("alt"), self.base)
+                link = None if href is None else allowed_attributes("a", {"href": href}, self.base)
             self._text(text)
-            if href is None:
+            if link is None:
                 self.out.append(f"<span>{escape(text, quote=False)}</span>")
             else:
-                link = allowed_attributes("a", {"href": href}, self.base)
                 self.out.append(f"{_open_tag('a', link)}{escape(text, quote=False)}</a>")
             return
         if tag in ALLOWED_TAGS:
@@ -519,7 +526,16 @@ def harden_document(
     html: str, *, rewrite_local: RewriteLocal | None = None
 ) -> tuple[str, dict[str, str]]:
     """:func:`harden` for a document inside the served tree, and its heading anchors:
-    each ``id`` a heading had in *html*, mapped to the anchor that replaces it."""
+    each ``id`` a heading had in *html*, mapped to the anchor that replaces it.
+
+    *rewrite_local*, when given, is asked for every reference inside the tree that
+    survives the allowlist, with whether it is an image's: it answers the address to
+    write instead, which is kept as written, or ``None``. A link it drops keeps its text
+    and loses its ``href``; an image it drops becomes a link to the address it answers for
+    the same reference as a link, or, without one, its alt text. A page that serves a
+    document from somewhere other than the served tree, such as a pull request's revision,
+    uses it to keep every reference in that tree.
+    """
 
     return _harden(html, None, rewrite_local)
 
