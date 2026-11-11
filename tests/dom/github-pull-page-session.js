@@ -125,7 +125,10 @@ function summarize(model) {
         ? null
         : {
             counts: model.checks.counts,
-            items: model.checks.items.map((item) => `[${item.label}] ${item.name} -> ${item.url}`),
+            items: model.checks.items.map(
+              (item) =>
+                `[${item.label}] ${item.name}${item.detail === null ? "" : ` (${item.detail})`} -> ${item.action === null ? "no action" : `${item.action.label} ${item.action.href}`}`,
+            ),
           },
     notes: model.notes,
     browse: browseCode(model),
@@ -1083,6 +1086,38 @@ async function main() {
     "//evil.example/x",
   ].map((href) => ({ href, followed: runtime.safeLink(href, base) }));
 
+  // Where each check's action goes, decided in the model: a GitHub Actions run, another
+  // github.com page and a check's own site each say where they open, an address a page
+  // may not follow has no action, and only an Actions link stands in for the app's name.
+  const variedChecks = structuredClone(recorded.current.body);
+  variedChecks.record.check_runs.push(
+    {
+      id: 1,
+      name: "coverage",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://github.com/octo/demo/runs/123",
+      app: "Codecov",
+    },
+    {
+      id: 2,
+      name: "lint",
+      status: "completed",
+      conclusion: "success",
+      details_url: "https://ci.example/runs/2",
+      app: "GitHub Actions",
+    },
+  );
+  variedChecks.record.status.statuses.push({
+    context: "legacy-ci",
+    state: "success",
+    description: "Passed",
+    target_url: "ftp://ci.example/7",
+  });
+  const checkActions = runtime
+    .describePull(variedChecks, { number: 7, tab: "checks", nowMs: page.clock.now })
+    .checks.items.map(({ name, detail, action }) => ({ name, detail, action }));
+
   // The page's own defense, played on what KPress alone made of the hostile comment: the
   // nodes rebuilt from the template the page parses it into.
   const inert = serialize(
@@ -1228,6 +1263,7 @@ async function main() {
       canRefresh: notGithub.canRefresh,
     },
     links,
+    checkActions,
     wire: runtime.gitPathWire("src/app.txt"),
     pageDefense: inert,
     filesChanged: files,

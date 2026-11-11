@@ -4,11 +4,13 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
-- Pull-request metadata omits repeated opened and updated ages.
+- A pull request’s header leaves out an updated age that reads the same as its opened,
+  merged, or closed age, and keeps the exact updated time in that age’s tooltip.
   Conversation commit hashes match the surrounding metadata size.
-  GitHub actions use a separate muted link after the check name, and the PR’s GitHub
-  link shares that muted styling.
-  A diff with only Source available hides its format chooser.
+  A check on **Checks** shows its name, then a link that says where its details open:
+  **View action on GitHub**, **View on GitHub**, or **View details** on the check’s own
+  site. Links to GitHub, including the pull request’s **View on GitHub**, are muted with
+  a leading GitHub mark.
 
 - Opening a pull request’s **Changes** tab fetches a missing comparison automatically.
   A served checkout reuses a healthy cached store or borrows Git objects without
@@ -35,6 +37,7 @@ All notable changes to Metabrowser are documented here.
   item or quoted paragraph is shown on its own.
   **Source** remains one click away, and is used for files with raw HTML, task lists,
   footnotes, or more than 48 KiB of Markdown.
+  A file that can only be shown as Source has no **Rendered** | **Source** chooser.
   When the source changed in a way the rendered view cannot show, such as a link
   destination or an HTML comment, the file and the block say so.
   The first screen is rendered in the background while you read **Conversation**.

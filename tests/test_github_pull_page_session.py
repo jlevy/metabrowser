@@ -554,6 +554,8 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
         "bridgeFramesOwned": True,
         "hiddenReadiness": True,
         "markdownOwnership": True,
+        "checkRows": True,
+        "headerAges": True,
     }
 
 

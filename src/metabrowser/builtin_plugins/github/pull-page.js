@@ -236,7 +236,15 @@ const TRUNCATED = Object.freeze({
  */
 
 /**
- * @typedef {{name: string, detail: string | null, tone: string, label: string, url: string | null}} CheckItem
+ * Where a check's details open, decided once for its link text, its look and its icon.
+ * `actions` is a GitHub Actions run, `github` any other page on github.com, and `external`
+ * the check's own site. `name` is the link's accessible name: its text, then the check's.
+ *
+ * @typedef {{kind: "actions" | "github" | "external", href: string, label: string, name: string}} CheckAction
+ */
+
+/**
+ * @typedef {{name: string, detail: string | null, tone: string, label: string, action: CheckAction | null}} CheckItem
  */
 
 /**
@@ -659,24 +667,64 @@ function reviewComments(record) {
     }));
 }
 
-/** @param {Record<string, any>} record */
-function checks(record) {
+const CHECK_ACTION_LABELS = {
+  actions: "View action on GitHub",
+  github: "View on GitHub",
+  external: "View details",
+};
+// GitHub serves a run's job page under the repository's /actions/ path.
+const ACTIONS_PATH = /^\/[^/]+\/[^/]+\/actions\//;
+const ACTIONS_APP = "GitHub Actions";
+
+/**
+ * A check's action, or `null` when its address is not one a page may follow (absent, or
+ * not http(s)), so that no link text names an action that does not exist.
+ *
+ * @param {string} name
+ * @param {unknown} url
+ * @param {string} base
+ * @returns {CheckAction | null}
+ */
+function checkAction(name, url, base) {
+  const href = safeLink(typeof url === "string" ? url : null, base);
+  if (href === null) {
+    return null;
+  }
+  const { hostname, pathname } = new URL(href);
+  /** @type {CheckAction["kind"]} */
+  const kind =
+    hostname !== "github.com" && hostname !== "www.github.com"
+      ? "external"
+      : ACTIONS_PATH.test(pathname)
+        ? "actions"
+        : "github";
+  const label = CHECK_ACTION_LABELS[kind];
+  return { kind, href, label, name: `${label}: ${name}` };
+}
+
+/** @param {Record<string, any>} record @param {string} base The pull request's page. */
+function checks(record, base) {
   /** @type {CheckItem[]} */
   const items = [];
   for (const run of list(record.check_runs)) {
+    const name = text(run.name);
+    const action = checkAction(name, run.details_url, base);
+    const app = typeof run.app === "string" ? run.app : null;
     items.push({
-      name: text(run.name),
-      detail: typeof run.app === "string" ? run.app : null,
+      name,
+      // An Actions link already says where the run is; any other app is named.
+      detail: app === ACTIONS_APP && action?.kind === "actions" ? null : app,
       ...checkRunResult(run),
-      url: typeof run.details_url === "string" ? run.details_url : null,
+      action,
     });
   }
   for (const status of list(record.status?.statuses)) {
+    const name = text(status.context);
     items.push({
-      name: text(status.context),
+      name,
       detail: typeof status.description === "string" ? status.description : null,
       ...commitStatusResult(status),
-      url: typeof status.target_url === "string" ? status.target_url : null,
+      action: checkAction(name, status.target_url, base),
     });
   }
   if (items.length === 0) {
@@ -981,7 +1029,7 @@ export function describePull(envelope, page) {
   model.pull = describeCore(pull);
   model.timeline = timeline(record);
   model.reviewComments = reviewComments(record);
-  model.checks = checks(record);
+  model.checks = checks(record, model.pull.htmlUrl);
   model.checkNotes = notes(record, true);
   model.notes = notes(record, false);
   const head = text(pull.head?.sha);
@@ -2839,21 +2887,46 @@ export function mountPullPage(container, ctx, mb) {
       : null;
 
   /**
-   * An age, from the one primitive, with the exact time in its tooltip.
+   * An age, from the one primitive, with the exact time in its tooltip. `also` is a time
+   * the row leaves out because its age reads the same as this one; its exact time joins
+   * this tooltip, so leaving the age out loses nothing.
    *
    * @param {string} iso
+   * @param {{label: string, iso: string} | null} [also]
    */
-  const age = (iso) => {
+  const age = (iso, also = null) => {
     const at = Date.parse(iso);
     if (!Number.isFinite(at)) {
       return h("span", {}, [iso]);
     }
     const { label, className } = mb.formatAge(at / 1000, { style: "relative" });
-    return h(
-      "span",
-      { class: `github-pull-age ${className}`, "data-tip-text": mb.formatTimestamp(at / 1000) },
-      [label],
+    const exact = (/** @type {number} */ ms) => mb.formatTimestamp(ms / 1000);
+    const alsoAt = also === null ? Number.NaN : Date.parse(also.iso);
+    const tip =
+      also !== null && Number.isFinite(alsoAt)
+        ? `${exact(at)} · ${also.label} ${exact(alsoAt)}`
+        : exact(at);
+    return h("span", { class: `github-pull-age ${className}`, "data-tip-text": tip }, [label]);
+  };
+
+  /**
+   * A check's action. A GitHub destination is the quiet GitHub action, its mark leading;
+   * the check's own site is an ordinary link, so it never reads as the description after
+   * it. The accessible name adds the check's, so a list of links tells the rows apart.
+   *
+   * @param {CheckAction} action
+   */
+  const checkLink = (action) => {
+    const github = action.kind !== "external";
+    const link = outside(
+      mb,
+      action.href,
+      "",
+      [action.label],
+      github ? "github-pull-external-action" : "",
     );
+    link.setAttribute("aria-label", action.name);
+    return github ? mb.decorateExternalLink(link, { icon: "github", position: "before" }) : link;
   };
 
   /**
@@ -3187,8 +3260,14 @@ export function mountPullPage(container, ctx, mb) {
     const children = [];
     const pull = model.pull;
     if (pull !== null) {
-      const createdAge = age(pull.created);
-      const updatedAge = age(pull.updated);
+      // The updated age is left out where it reads the same as the merged or closed age
+      // beside it, or else the opened age; its exact time joins the tooltip of the age it
+      // repeats. A merged pull request was usually last updated by its merge.
+      const updated = age(pull.updated).textContent;
+      const closedAt = pull.closed && pull.closedLabel ? pull.closed : null;
+      const repeatsClosed = closedAt !== null && age(closedAt).textContent === updated;
+      const repeatsOpened = !repeatsClosed && age(pull.created).textContent === updated;
+      const also = { label: "updated", iso: pull.updated };
       children.push(
         h("h1", { class: "page-heading github-pull-title github-pull-title-with-state" }, [
           pullStateIcon(pull.state, { named: false }),
@@ -3201,9 +3280,11 @@ export function mountPullPage(container, ctx, mb) {
         paintStateRow(pull),
         h("div", { class: "github-pull-quiet" }, [
           "Opened ",
-          createdAge,
-          ...(createdAge.textContent === updatedAge.textContent ? [] : [" · updated ", updatedAge]),
-          ...(pull.closed && pull.closedLabel ? [` · ${pull.closedLabel} `, age(pull.closed)] : []),
+          age(pull.created, repeatsOpened ? also : null),
+          ...(repeatsClosed || repeatsOpened ? [] : [" · updated ", age(pull.updated)]),
+          ...(closedAt === null
+            ? []
+            : [` · ${pull.closedLabel} `, age(closedAt, repeatsClosed ? also : null)]),
           " · ",
           mb.decorateExternalLink(
             outside(mb, pull.htmlUrl, "", ["View on GitHub"], "github-pull-external-action"),
@@ -3546,30 +3627,13 @@ export function mountPullPage(container, ctx, mb) {
       );
       const rows = h("ul", { class: "github-pull-checks" });
       for (const item of summary.items) {
-        const githubAction = /^https:\/\/github\.com\/[^/]+\/[^/]+\/actions\//i.test(
-          item.url ?? "",
-        );
-        const action = item.url
-          ? outside(
-              mb,
-              item.url,
-              pull.htmlUrl,
-              [githubAction ? "View action on GitHub" : "View details"],
-              "github-pull-external-action",
-            )
-          : null;
-        if (githubAction && action !== null) {
-          mb.decorateExternalLink(action, { icon: "github", position: "before" });
-        }
         rows.append(
           h("li", {}, [
             badge(item.tone, item.label, "check"),
             " ",
             h("span", {}, [item.name]),
-            action,
-            item.detail && item.detail !== "GitHub Actions"
-              ? h("span", { class: "github-pull-quiet" }, [item.detail])
-              : null,
+            item.action === null ? null : checkLink(item.action),
+            item.detail ? h("span", { class: "github-pull-quiet" }, [item.detail]) : null,
           ]),
         );
       }
