@@ -1,6 +1,7 @@
 """The pull routes: one pull request's, ``pull`` and ``pull-refresh``, the lists', ``pulls``
-and ``pulls-refresh``, and a pull request's changed files, ``pull-files`` and
-``pull-files-refresh``, all under ``/api/plugin/github/``.
+and ``pulls-refresh``, a pull request's changed files, ``pull-files`` and
+``pull-files-refresh``, and background prefetch, ``pulls-prefetch``, all under
+``/api/plugin/github/``.
 
 :mod:`metabrowser.builtin_plugins.github.pull_route`,
 :mod:`metabrowser.builtin_plugins.github.pull_list_route`, and
@@ -184,6 +185,11 @@ async def pull_handler(request: Request) -> Response:
         view.kept.saw_record(
             envelope["fetched_at"], without_store=_without_store(envelope), freshness=freshness
         )
+    if view.host is not None:
+        from metabrowser.builtin_plugins.github.pull_prefetch import note_viewed
+
+        # What a prefetch's ``changed`` adds: the numbers this server answered last.
+        note_viewed(view.host.pulls, number)
     comparison = (envelope.get("record") or {}).get("comparison")
     if view.host is not None and isinstance(comparison, dict):
         served = await view.host.pulls.companion(number)
@@ -636,6 +642,58 @@ async def pulls_refresh_handler(request: Request) -> JSONResponse:
     return JSONResponse(answer, status_code=200 if started == "not_due" else 202, headers=_NO_STORE)
 
 
+async def pulls_prefetch_handler(request: Request) -> JSONResponse:
+    """``GET`` or ``POST /api/plugin/github/pulls-prefetch`` — see :mod:`.pull_prefetch`.
+
+    The ``POST`` body names ``records`` and ``files``, each at most 16 pull-request numbers
+    in a visible page's order of priority, and ``changed``. It replaces the repository's
+    background queue and answers ``202`` with ``prefetch`` ``started`` or ``joined`` and
+    the ``GET`` as its ``status_route``, or ``200`` with ``not_due`` or ``deferred`` and a
+    ``reason``. The ``GET`` reports the lane from memory.
+    """
+
+    from metabrowser.builtin_plugins.github.pull_prefetch import (
+        PREFETCH_ROUTE,
+        PrefetchRequestError,
+        prefetch_envelope,
+        prefetch_request,
+        request_prefetch,
+    )
+    from metabrowser.builtin_plugins.github.pull_route import pull_host
+
+    ask = None
+    if request.method == "POST":
+        body = await _json_body(request)
+        if isinstance(body, tuple):
+            return _invalid_request(*body)
+        try:
+            ask = prefetch_request(body)
+        except PrefetchRequestError as exc:
+            return _invalid_request(str(exc))
+    elif request.query_params:
+        return _invalid_request("a prefetch report has no query parameters")
+    await _resolve(request)
+    host = pull_host(request.app)
+    if host is None or host.coordinator is None:
+        return JSONResponse(
+            {"error": "this server serves no GitHub repository", "code": "not_github"},
+            status_code=409,
+            headers=_NO_STORE,
+        )
+    if ask is None:
+        envelope = await prefetch_envelope(host)
+        return JSONResponse(dict(envelope), headers=_NO_STORE)
+    started, reason, queued = await request_prefetch(request.app, host, ask)
+    answer: dict[str, Any] = {"prefetch": started, "queued": queued}
+    if reason is not None:
+        answer["reason"] = reason
+    if started in {"started", "joined"}:
+        answer["status_route"] = PREFETCH_ROUTE
+    return JSONResponse(
+        answer, status_code=202 if started in {"started", "joined"} else 200, headers=_NO_STORE
+    )
+
+
 async def stacks_handler(request: Request) -> Response:
     """Read optional native stack membership from the cache alone."""
     from metabrowser.builtin_plugins.github.pull_stacks_route import (
@@ -780,6 +838,7 @@ __all__ = [
     "pull_comparison_handler",
     "pull_rendered_diff_handler",
     "pulls_handler",
+    "pulls_prefetch_handler",
     "stacks_handler",
     "stacks_refresh_handler",
     "pulls_refresh_handler",

@@ -4950,3 +4950,86 @@ def test_cached_comparison_uses_observed_base_instead_of_a_stale_mirror(stand: _
     assert prepared is not None and prepared.comparison is not None
     assert prepared.comparison.base == prepared.comparison.base_commit == base
     assert stand.calls() == []
+
+
+# ── A reader's refresh is never queued behind a prefetch ────────────────
+
+
+_PREFETCH_ROUTE = "/api/plugin/github/pulls-prefetch"
+# Each gh request a prefetch of pull request 8 makes is held this long, so its refresh holds
+# the store's turn for seconds, as a real one does (4.7 to 7.0 s, MAX_PULL_JOBS's note).
+_SLOW_S = 2.0
+
+
+def _until(client: TestClient, number: int, *, deadline_s: float = 30.0) -> float:
+    """Poll the pull route as a page does until *number* has a record; when that was.
+
+    Then wait for its job to end, which observes the mirror after the record is written,
+    so the next step does not find a reader's job still running.
+    """
+
+    deadline = time.monotonic() + deadline_s
+    while _read(client, number).json()["record"] is None:
+        assert time.monotonic() < deadline, f"pull request {number} was not read"
+        time.sleep(0.01)
+    read = time.monotonic()
+    while _read(client, number).json()["refreshing"]:
+        assert time.monotonic() < deadline, f"pull request {number}'s job did not end"
+        time.sleep(0.01)
+    return read
+
+
+def test_a_readers_refresh_is_never_queued_behind_a_prefetch(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The prefetch holding the store's turn is cancelled, so the reader waits for it to
+    unwind, not to end. Measured in the same test, against the same refresh with nothing in
+    the background, so the bound is relative and not a machine's speed.
+
+    On 2026-11-11, at a load average of 16 to 23: 0.46 to 0.47 s behind the prefetch against
+    0.63 to 0.72 s alone in four runs, and 4.61 to 4.71 s in three runs with the store turn's
+    preemption switched off, which is the wait this test exists to forbid.
+    """
+
+    stand, client = pinned_pull
+    fake = stand.tmp_path / "fake-gh-bin" / "gh"
+    assert fake.is_file()
+    slow = stand.tmp_path / "slow-gh"
+    slow.mkdir()
+    (slow / "gh").write_text(
+        "#!/bin/sh\n"
+        f'case "$*" in *pulls/8*|*issues/8*) sleep {_SLOW_S};; esac\n'
+        f'exec "{fake}" "$@"\n',
+        encoding="utf-8",
+    )
+    (slow / "gh").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{slow}:{os.environ['PATH']}")
+
+    started = time.monotonic()
+    assert (
+        client.post(_REFRESH_ROUTE, json={"number": 10, "retry": True}, headers=_JSON).status_code
+        == 202
+    )
+    baseline = _until(client, 10) - started
+    settle(client)
+
+    ask = client.post(_PREFETCH_ROUTE, json={"records": [8]}, headers=_JSON)
+    assert (ask.status_code, ask.json()["prefetch"]) == (202, "started")
+    deadline = time.monotonic() + 10
+    while (client.get(_PREFETCH_ROUTE).json()["running"] or {}).get("number") != 8:
+        assert time.monotonic() < deadline, client.get(_PREFETCH_ROUTE).json()["recent"]
+        time.sleep(0.01)
+    time.sleep(0.2)  # well inside its first slow request
+    started = time.monotonic()
+    assert (
+        client.post(_REFRESH_ROUTE, json={"number": 9, "retry": True}, headers=_JSON).status_code
+        == 202
+    )
+    behind = _until(client, 9) - started
+    print(f"foreground refresh: {baseline:.2f} s alone, {behind:.2f} s behind a prefetch")
+    settle(client)
+    report = client.get(_PREFETCH_ROUTE).json()
+    assert [(entry["number"], entry["outcome"]) for entry in report["recent"]] == [(8, "preempted")]
+    assert _read(client, 8).json()["record"] is None
+    # Unpreempted, 9 would wait for 8's refresh: at least two slow requests in sequence.
+    assert behind < baseline + _SLOW_S, (behind, baseline)

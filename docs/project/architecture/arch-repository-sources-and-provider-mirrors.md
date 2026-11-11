@@ -716,8 +716,11 @@ Its record’s age counts toward status `stale`, and the source’s refresh star
 of the two jobs is stale, so serve mode’s refresh of a stale source at startup and the
 page’s refresh when a stale page becomes visible keep it fresh without fetching a fresh
 mirror for it (a one-shot command refreshes the mirror it asked for).
-A pull request with no record is fetched only by a reader’s own request, and one with a
-record refreshes when its page asks and it is due.
+A pull request with no record is fetched by a reader’s own request or a visible page’s
+prefetch, and one with a record refreshes when its page asks and it is due, by the
+catalog’s verdict on it
+([background prefetch](#background-prefetch-and-the-rate-limit-governor)), or when a
+prefetch names it and the catalog says it changed.
 A pin the mirror lacks fetches the mirror, and a commit pin also refreshes the attended
 pull request, whose `refs/pull/<n>/head` may bring it; a branch or tag pin never runs
 `gh`. Within one server these jobs take turns before the store’s fetch lock
@@ -1092,6 +1095,53 @@ file-list job does not retain a slot between requests.
 It takes no turn at the store.
 At most `MAX_PULL_JOBS` file lists may be queued or running, since the numbers are
 request text; past it a request is refused `too_many`.
+
+A list read from GitHub names the head commit and base branch it was read for, `head`
+and `base_ref`, observed from the newer of the record and the catalog row just before
+its first page; a push during the read can only make it look older than it is.
+It is current while those are the newest known, so a comment, review, or label leaves it
+current, and one read for a head that has since moved is due again at once after a
+success. A list or newest source that names no head falls back to `updated_at`.
+
+### Background prefetch and the rate-limit governor
+
+Records and file lists are judged by events (`pull_freshness.py`): the catalog’s delta
+scan reads pull requests by `UPDATED_AT`, and each row carries `head_oid`. A record is
+current while a scan within the window of the same source and reader has not seen it
+change, changed when its row is newer, and otherwise judged by the window.
+An open pull request with pending checks, a pending status, or unknown mergeability is
+not vouched for, since `updated_at` does not move for those; it ages by its own fetch.
+A changed record is due at once unless an attempt was made since the catalog published
+the change, so a pushed head is read at once and a lagging REST answer cannot loop.
+GraphQL’s `updatedAt` and `headRefOid` equalled REST’s `updated_at` and `head.sha` on
+five public pull requests when this was built (2026-11-11).
+
+A visible page names what the reader is likely to open next with
+`POST github/pulls-prefetch` (`pull_prefetch.py`), and nothing on the server starts that
+work by itself, so a hidden or offline page spends nothing.
+Each served repository has one lane, a coordinator job that runs one item at a time and
+reads it again from disk before it runs, so a record or list another process refreshed
+meanwhile is skipped.
+Its caps are 8 record refreshes per catalog revision, 40 an hour, and 20 GitHub file
+lists an hour. A background record refresh costs at most 8 core points, two of them
+account checks, which GitHub counts, and a one-page file list 3; at the caps that is 380
+core points an hour, 7.6% of a 5,000-point limit.
+
+`gh_budget.py` keeps, per process, the newest `x-ratelimit-*` observation of each
+resource every response carries, until its reset, and holds every resource after a
+`rate_limited` refusal.
+Background work is admitted only above 25% remaining of each resource it spends, with no
+hold and no rate hold in the catalog’s persisted stamp; a reader’s own work is never
+asked.
+
+A background job never makes a reader wait.
+It takes no network slot, so the lane adds at most one job beside the coordinator’s two.
+At a store turn it waits behind every other job, is never counted for
+`MAX_FIRST_IN_A_ROW`, and is cancelled when any other job starts waiting while it holds
+the turn; a cancelled refresh leaves the record as it was and forgets its attempt.
+A reader’s request for the same pull request joins and promotes it, after which it
+counts toward `MAX_PULL_JOBS` and cannot be cancelled that way.
+Background jobs count toward neither job bound.
 
 ### Git path and blob semantics
 

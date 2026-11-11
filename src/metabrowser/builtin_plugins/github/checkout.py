@@ -34,6 +34,7 @@ event loop (:func:`resolve_served_checkout`), once per root.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import logging
 import threading
@@ -97,6 +98,8 @@ class _CheckoutPulls:
     # The revision each pull request's idle comparison last failed for, so it is not
     # tried again; as many as the pull states a set holds.
     idle_failures: OrderedDict[int, str] = field(default_factory=OrderedDict[int, str])
+    # The keys of background pull jobs not yet promoted; each removes its own.
+    background: set[str] = field(default_factory=set[str])
 
 
 _PULLS: dict[tuple[str, str, str], _CheckoutPulls] = {}
@@ -316,7 +319,14 @@ _COMPARISON_WANTED: set[str] = set()
 
 
 def _checkout_busy(coordinator: RefreshCoordinator, repository: CheckoutRepository) -> bool:
-    """Whether any pull job of this checkout is queued or running."""
+    """Whether any pull job of this checkout, a background one included, is queued or running."""
+    prefix = _job_prefix(repository)
+    jobs = (*_PULL_JOBS, *_checkout_state(repository).background)
+    return any(job.startswith(prefix) and coordinator.running(job) for job in jobs)
+
+
+def foreground_busy(coordinator: RefreshCoordinator, repository: CheckoutRepository) -> bool:
+    """Whether a reader's pull job of this checkout, or its optional comparison, is queued or running."""
     prefix = _job_prefix(repository)
     return any(job.startswith(prefix) and coordinator.running(job) for job in _PULL_JOBS)
 
@@ -342,7 +352,20 @@ def start_pull_refresh(
     *,
     comparison: bool = False,
     eager_revision: None = None,
+    background: Literal[False] = False,
 ) -> PullJobStart: ...
+
+
+@overload
+def start_pull_refresh(
+    coordinator: RefreshCoordinator,
+    repository: CheckoutRepository,
+    number: int,
+    *,
+    comparison: Literal[False] = False,
+    eager_revision: None = None,
+    background: Literal[True],
+) -> PullJobStart | Literal["not_due"]: ...
 
 
 @overload
@@ -353,6 +376,7 @@ def start_pull_refresh(
     *,
     comparison: Literal[True],
     eager_revision: str,
+    background: Literal[False] = False,
 ) -> PullJobStart | Literal["not_due"]: ...
 
 
@@ -363,6 +387,7 @@ def start_pull_refresh(
     *,
     comparison: bool = False,
     eager_revision: str | None = None,
+    background: bool = False,
 ) -> PullJobStart | Literal["not_due"]:
     """Start or join a checkout's pull refresh; only *comparison* may acquire a store.
 
@@ -371,6 +396,11 @@ def start_pull_refresh(
     the checkout is queued or running. Anything else is ``not_due``. Every other start is
     a reader's, and ends the optional job: one for the same pull request promotes it, and
     cancels its idle phase when it asks for metadata; one for another cancels it.
+
+    A *background* start, a prefetch's, is a metadata refresh that counts toward no bound,
+    takes no network slot, and gives way at the checkout's turn (:class:`StoreTurn`); it
+    is ``not_due`` while the optional comparison job runs. A reader's start that joins it
+    promotes it to the reader's, and from then on it counts.
     """
 
     key = checkout_job_key(repository, number)
@@ -393,6 +423,15 @@ def start_pull_refresh(
         return coordinator.start(
             key, partial(_pull_job, coordinator, repository, number, key), network=False
         )
+    if background:
+        if coordinator.running(key):
+            return "joined"
+        if eager is not None:
+            return "not_due"
+        state.background.add(key)
+        return coordinator.start(
+            key, partial(_pull_job, coordinator, repository, number, key), network=False
+        )
     if eager is not None:
         if eager.number == number:
             eager.mode = "foreground"
@@ -404,6 +443,9 @@ def start_pull_refresh(
             coordinator.cancel(checkout_job_key(repository, eager.number))
             state.eager = None
     if coordinator.running(key):
+        if key in state.background:
+            state.background.discard(key)
+            _PULL_JOBS.add(key)
         if comparison:
             _COMPARISON_WANTED.add(key)
         return "joined"
@@ -737,7 +779,9 @@ async def _run_foreground(
             idle = None
         if prepared == "done" and not companion.recovery_pending:
             return
-        async with coordinator.slot():
+        # A background refresh takes no network slot; a promoted one is a reader's.
+        slot = contextlib.nullcontext() if key in state.background else coordinator.slot()
+        async with slot:
             await companion.refresh()
         if key not in _COMPARISON_WANTED or state.pulls.git_dir is not None:
             return
@@ -751,8 +795,13 @@ async def _pull_job(
     try:
         # An idle job starts only on a quiet checkout, so it has the turn at once, and it
         # holds no network slot. Waiting at the store keeps none either. Promotion moves
-        # an idle job's place in the store queue without starting another producer.
-        async with state.turn(lambda: eager is None or eager.mode == "foreground"):
+        # an idle job's place in the store queue without starting another producer. A
+        # background job gives way to any other and is cancelled when one waits.
+        async with state.turn(
+            lambda: eager is None or eager.mode == "foreground",
+            background=lambda: key in state.background,
+            preempt=partial(coordinator.cancel, key),
+        ):
             companion = await state.pulls.companion(number)
             state.pulls.active = companion
             try:
@@ -766,6 +815,7 @@ async def _pull_job(
                 state.pulls.active = None
     finally:
         _COMPARISON_WANTED.discard(key)
+        state.background.discard(key)
         if eager is not None and state.eager is eager:
             state.eager = None
 
@@ -777,6 +827,7 @@ __all__ = [
     "claim_source",
     "comparison_preparing",
     "ensure_resolved",
+    "foreground_busy",
     "resolve_served_checkout",
     "served_checkout",
     "start_pull_refresh",

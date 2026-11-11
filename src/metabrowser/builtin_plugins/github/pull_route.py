@@ -62,6 +62,9 @@ from metabrowser.builtin_plugins.github.checkout import (
     served_checkout,
     start_pull_refresh,
 )
+from metabrowser.builtin_plugins.github.checkout import (
+    foreground_busy as checkout_foreground_busy,
+)
 from metabrowser.builtin_plugins.github.pull_catalog import catalog_member
 from metabrowser.builtin_plugins.github.pull_core_cache import read_cached_core
 from metabrowser.builtin_plugins.github.pull_cores import CoreAdmission, CoreWindow, preparation_key
@@ -283,7 +286,10 @@ class PullHost:
     """What the pull routes need of a server that has pull requests, and no more.
 
     ``pulls`` is the repository's set, ``running`` says whether a number's refresh is
-    running, and ``start`` starts or joins it.
+    running, and ``start`` starts or joins it. ``start_background`` starts a prefetch's
+    refresh, which gives way to a reader's (:mod:`.pull_prefetch`), ``job_key`` names a
+    number's job in the coordinator, and ``foreground_busy`` says a reader's pull job of
+    the repository is queued or running.
     """
 
     pulls: ServedPulls
@@ -293,6 +299,9 @@ class PullHost:
     coordinator: RefreshCoordinator | None = None
     prepare: Callable[[int, str], PullRefreshStart] | None = None
     preparing: Callable[[int], bool] | None = None
+    start_background: Callable[[int], PullRefreshStart] | None = None
+    job_key: Callable[[int], str] | None = None
+    foreground_busy: Callable[[], bool] | None = None
 
 
 def pull_host(app: Any) -> PullHost | None:
@@ -319,6 +328,9 @@ def pull_host(app: Any) -> PullHost | None:
                 coordinator, checkout, number, comparison=True, eager_revision=revision
             ),
             partial(comparison_preparing, coordinator, checkout),
+            partial(start_pull_refresh, coordinator, checkout, background=True),
+            partial(checkout_job_key, checkout),
+            partial(checkout_foreground_busy, coordinator, checkout),
         )
     served = session.pull_requests
     if not isinstance(served, ServedPulls):
@@ -328,6 +340,9 @@ def pull_host(app: Any) -> PullHost | None:
         session.pull_refreshing,
         session.request_pull_refresh,
         coordinator=refresh_coordinator(app),
+        start_background=partial(session.request_pull_refresh, background=True),
+        job_key=served.key,
+        foreground_busy=session.pull_jobs_busy,
     )
 
 

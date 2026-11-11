@@ -137,7 +137,7 @@ Nothing on the server starts background work by itself.
 | T0 | Catalog delta scan | Pulls panel and PR page on start, show, visibility, focus, online, page show, and at `fetched_at` + 60 s | the window passed | one per window: at most 60 an hour | 1 account check, plus 1 GraphQL point per page |
 | T1 | Changed records this server recently served | the panel, after a scan publishes | catalog says changed | shares T2’s caps | at most 8 |
 | T2 | The anchored row, its J/K neighbours, the top open PRs, the visible rows | the panel, after a walk settles | missing, or changed | 8 per catalog revision, 40 an hour, T1 and T2 together | at most 8 |
-| T3 | Changed-files lists of the selected and T2 pull requests | the panel and PR page | missing, incomplete, or head or base moved | 20 an hour | 2 account checks and 1 per page |
+| T3 | Changed-files lists of the selected and T2 pull requests | the panel and PR page | missing, incomplete, or head or base moved | 20 an hour | 1 account check, then a page and an account check per page: 3 for one page |
 | T4 | Changes | the existing idle prefetch only | — | — | — |
 | T5 | Pending checks | the visible PR page | the record’s own window | foreground: visible page only | at most 8 |
 
@@ -152,7 +152,7 @@ attached store, as now.
 
 ### The Prefetch Lane
 
-`POST /api/plugin/github/pull-prefetch` takes `records` and `files`, each at most 16
+`POST /api/plugin/github/pulls-prefetch` takes `records` and `files`, each at most 16
 distinct pull-request numbers in the page’s priority order, and `changed`, which adds
 T1: the numbers this server most recently answered `GET pull` for (at most 16), when the
 catalog says they changed.
@@ -173,13 +173,17 @@ The page asks again later.
 A job is started under the item’s ordinary key, so a reader’s request for the same pull
 request joins it.
 
-`GET /api/plugin/github/pull-prefetch` reports the lane from memory: the running item,
+`GET /api/plugin/github/pulls-prefetch` reports the lane from memory: the running item,
 the queue, the caps and their use (`scan`, the catalog revision the per-scan count
 belongs to), the governor’s observations and verdict, and the outcomes of the last 16
 items. The `POST` answers `202` with `prefetch: "started"` or `"joined"` and that route
-as its `status_route`, or `200` with `"not_due"` (nothing to queue) or `"deferred"` and
-a `reason`: `below_floor`, `rate_hold`, `hourly_cap`, `scan_cap`, or `foreground_busy`.
-A one-shot `--api` waits for the lane and prints that report.
+as its `status_route`, or `200` with `"not_due"` (nothing named) or `"deferred"` and a
+`reason`, `below_floor` or `rate_hold`, when the governor admits nothing.
+An item the lane does not run says why in the report: `skipped:current`,
+`skipped:unverified`, `skipped:not_cached`, or `skipped:not_due`, or the stop,
+`deferred:` and one of `below_floor`, `rate_hold`, `hourly_cap`, `scan_cap`, or
+`foreground_busy`; one a reader preempted is `preempted`. A one-shot `--api` waits for
+the lane and prints that report.
 
 ### The Rate-Limit Governor
 
@@ -243,7 +247,7 @@ GitHub’s account-wide `remaining`, so several servers stop together.
   record), `head_moved`, and `checks_pending`. All four are in its entity tag.
 - `GET pull-files` and its refresh answer: `head` is set for a GitHub list too, and
   `base_ref` is added.
-- New `POST` and `GET pull-prefetch`, as above, with a parity row and goldens.
+- New `POST` and `GET pulls-prefetch`, as above, with a parity row and goldens.
 - `CHANGELOG.md` records the new fields and route.
 
 ## Implementation Plan
@@ -272,7 +276,7 @@ One phase, one pull request, in this order:
 - Measurement tests against the fake `gh`: requests per scan, per background record
   refresh and files list, the cost at the caps, and the time a foreground open waits
   while background work runs.
-- Parity: rows for `pull-prefetch` and the new fields in
+- Parity: rows for `pulls-prefetch` and the new fields in
   [Views, Models, and Routes](../../architecture/arch-views-models-routes.md);
   browserless sessions for the browser prefetch policy.
 
@@ -284,6 +288,12 @@ Filled in as each budget lands, beside its constant.
 | --- | --- | --- |
 | Catalog page with `headRefOid` | 64,410 bytes vs 58,811; cost 1 | `cli/cli`, 100 rows, 2026-11-11 |
 | Account check | 1 core point | six `gh auth status`, `rate_limit` before and after |
+| Delta scan with nothing new to page | 1 account check and 1 GraphQL page | `cli-github-pulls-prefetch.txt` |
+| Background record refresh, cold or changed | 2 account checks and 6 REST reads (304s free) | the same transcript, pull requests 7, 9, and 10 |
+| Files list from the store’s comparison | no `gh` request | the same transcript, pull requests 7 and 8 |
+| Files list from GitHub | 1 account check, then a page and an account check per page | `cli-github-pull-files-refresh.txt` |
+| `catalog_member` on every `GET pull` | median 1.09 ms, at most 1.94 ms (200 runs, load 23) | the fixture’s 102-row catalog |
+| A reader’s refresh behind a running prefetch | 0.46–0.47 s, against 0.63–0.72 s alone (4 runs); 4.61–4.71 s without preemption (3 runs) | `test_a_readers_refresh_is_never_queued_behind_a_prefetch`, 2 s per prefetch request, load 16–23 |
 
 ## Risks
 

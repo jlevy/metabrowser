@@ -888,7 +888,7 @@ def test_existing_checkout_source_refuses_unknown_cache_before_writing(
         coordinator = RefreshCoordinator()
         try:
             await pull_files_route._run_files_refresh(  # pyright: ignore[reportPrivateUsage]
-                repository, 7, None, coordinator
+                repository, 7, None, coordinator.slot
             )
         finally:
             await coordinator.aclose()

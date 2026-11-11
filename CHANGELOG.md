@@ -4,6 +4,21 @@ All notable changes to Metabrowser are documented here.
 
 ## Unreleased
 
+- A cached pull request is checked against the repository’s list of pull requests, which
+  says what changed on GitHub since: one that has not changed is current however long
+  ago it was read, and one that has, or whose head moved, is refreshed at once.
+  Its checks, statuses, and mergeability keep their own age while they are pending.
+  A pull request’s list of changed files stays current across comments and reviews and
+  is read again when its head or base moves.
+  `GET /api/plugin/github/pull` adds `verified_at`, `verified_by`, `head_moved`, and
+  `checks_pending`; each row of `GET /api/plugin/github/pulls` adds `head_oid`; and
+  `GET /api/plugin/github/pull-files` sets `head` for GitHub’s list and adds `base_ref`.
+
+- A visible page can ask Metabrowser to prefetch the pull requests a reader is likely to
+  open next, through the new `/api/plugin/github/pulls-prefetch`. It runs behind
+  everything the reader asks for, within hourly caps, and stops while less than a
+  quarter of the account’s GitHub rate limit remains.
+
 - A pull request’s header leaves out an updated age that reads the same as its opened,
   merged, or closed age, and keeps the exact updated time in that age’s tooltip.
   Conversation commit hashes match the surrounding metadata size.

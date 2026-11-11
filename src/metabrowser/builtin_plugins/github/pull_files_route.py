@@ -41,13 +41,15 @@ identity, and ``display``, the same path through the display rule a pinned tree'
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import os
 import re
 import stat
 import threading
-from collections.abc import Mapping
+from collections.abc import AsyncGenerator, Callable, Mapping
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import partial
@@ -99,6 +101,8 @@ _JOB_STOPPED: Final = "the refresh stopped on an unexpected error, which the ser
 type FilesState = Literal["absent", "pending", "current", "stale"]
 type FilesAbsence = Literal["not_github"] | RecordAbsence
 type FilesRefreshStart = Literal["started", "joined", "not_due", "too_many"]
+# A network slot a file list's job takes for each request, as ``pull_files_refresh`` names it.
+type _Slot = Callable[[], AbstractAsyncContextManager[object]]
 
 
 class FilesRequestError(Exception):
@@ -550,7 +554,12 @@ _FILE_JOBS: set[str] = set()
 
 
 def start_files_refresh(
-    view: FilesView, ask: FilesRefreshRequest, *, wanted: bool, local: LocalComparison | None
+    view: FilesView,
+    ask: FilesRefreshRequest,
+    *,
+    wanted: bool,
+    local: LocalComparison | None,
+    background: bool = False,
 ) -> FilesRefreshStart:
     """Start the refresh *ask* names, join the one running, or say why it starts none.
 
@@ -559,29 +568,45 @@ def start_files_refresh(
     for each ``gh`` request alone, which keeps a long list from holding a slot between pages.
     Like the pull-request jobs, at most :data:`MAX_PULL_JOBS` may be queued or running,
     since the numbers are request text; past it a request is refused, ``too_many``, and
-    starts nothing.
+    starts nothing. A *background* job, a prefetch's, counts toward no bound and holds no
+    network slot for its requests; a reader's request that joins it makes it count.
     """
 
     repository, coordinator = view.repository, view.coordinator
     assert repository is not None and coordinator is not None
     key = _job_key(repository, ask.number)
     if coordinator.running(key):
+        if not background:
+            _FILE_JOBS.add(key)
         return "joined"
     if not wanted:
         return "not_due"
-    _FILE_JOBS.intersection_update({job for job in _FILE_JOBS if coordinator.running(job)})
-    if len(_FILE_JOBS) >= MAX_PULL_JOBS:
-        return "too_many"
-    _FILE_JOBS.add(key)
-    work = partial(_run_files_refresh, repository, ask.number, local, coordinator)
+    if not background:
+        _FILE_JOBS.intersection_update({job for job in _FILE_JOBS if coordinator.running(job)})
+        if len(_FILE_JOBS) >= MAX_PULL_JOBS:
+            return "too_many"
+        _FILE_JOBS.add(key)
+    slot: _Slot = _no_slot if background else coordinator.slot
+    work = partial(_run_files_refresh, repository, ask.number, local, slot)
     return coordinator.start(key, work, network=False)
+
+
+@contextlib.asynccontextmanager
+async def _no_slot() -> AsyncGenerator[None]:
+    yield
+
+
+def files_job_key(repository: ListedRepository, number: int) -> str:
+    """The coordinator key of one file list's refresh, for a caller that waits for it."""
+
+    return _job_key(repository, number)
 
 
 async def _run_files_refresh(
     repository: ListedRepository,
     number: int,
     local: LocalComparison | None,
-    coordinator: RefreshCoordinator,
+    slot: _Slot,
 ) -> None:
     # Here, not at the top: answering from the cache starts no gh, and loads none of it.
     from metabrowser.builtin_plugins.github.pull_files_refresh import refresh_pull_files
@@ -591,7 +616,7 @@ async def _run_files_refresh(
             repository,
             number,
             local=local,
-            slot=coordinator.slot,
+            slot=slot,
             known_head=partial(known_head, repository.home, repository.slug, number),
         )
     except PullDataError:
@@ -628,6 +653,7 @@ __all__ = [
     "display_path",
     "envelope_etag",
     "files_file_stamp",
+    "files_job_key",
     "files_refresh_request",
     "files_refresh_wanted",
     "files_view",

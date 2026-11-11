@@ -14,6 +14,7 @@ import pytest
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.mirror_refresh import (
     MAX_FIRST_IN_A_ROW,
+    MAX_PULL_JOBS,
     CommitFetchAnswer,
     MirrorDisplay,
     MirrorRef,
@@ -916,3 +917,127 @@ def test_attending_changes_the_number_and_its_refresh_together() -> None:
         await coordinator.aclose()
 
     asyncio.run(scenario())
+
+
+# ── Background jobs give way ─────────────────────────────────────
+
+
+def test_a_background_job_yields_the_store_to_a_readers_job_at_once() -> None:
+    """A reader who opens another pull request waits for a prefetch to unwind, not to end."""
+
+    async def scenario() -> list[str]:
+        stand = _Stand()
+        session = stand.session
+        assert session.request_pull_refresh(8, background=True) == "started"
+        await _spin()
+        assert stand.events == ["pull 8"] and not session.pull_jobs_busy()
+        assert session.request_pull_refresh(9) == "started"
+        await _spin()
+        assert not session.pull_refreshing(8)
+        await stand.end(9)
+        await stand.finish()
+        return stand.events
+
+    assert asyncio.run(scenario()) == ["pull 8", "pull 9"]
+
+
+def test_a_readers_request_promotes_the_background_job_it_joins() -> None:
+    """Joined by a reader, a prefetch is the reader's: it is not cancelled, and it counts."""
+
+    async def scenario() -> list[str]:
+        stand = _Stand()
+        session = stand.session
+        assert session.request_pull_refresh(8, background=True) == "started"
+        await _spin()
+        assert session.request_pull_refresh(8) == "joined"
+        assert session.pull_jobs_busy()
+        assert session.request_pull_refresh(9) == "started"
+        await _spin()
+        assert session.pull_refreshing(8)
+        await stand.end(8)
+        await stand.end(9)
+        await stand.finish()
+        return stand.events
+
+    assert asyncio.run(scenario()) == ["pull 8", "pull 9"]
+
+
+def test_a_background_job_waits_behind_every_other_and_holds_no_slot() -> None:
+    async def scenario() -> tuple[list[str], int]:
+        stand = _Stand()
+        session = stand.session
+        assert session.request_pull_refresh(7) == "started"
+        await _spin()
+        assert session.request_pull_refresh(8, background=True) == "started"
+        assert session.request_pull_refresh(9) == "started"
+        await _spin()
+        await stand.end(7)
+        await stand.end(9)
+        assert stand.events[-1] == "pull 8"
+        # Both network slots are free while the background job runs.
+        slot = stand.coordinator.slot()
+        free = 0
+        for _ in range(2):
+            await asyncio.wait_for(slot.acquire(), timeout=1)
+            free += 1
+        for _ in range(free):
+            slot.release()
+        await stand.end(8)
+        await stand.finish()
+        return stand.events, free
+
+    assert asyncio.run(scenario()) == (["pull 7", "pull 9", "pull 8"], 2)
+
+
+def test_background_jobs_count_toward_no_bound() -> None:
+    async def scenario() -> tuple[str, str]:
+        stand = _Stand()
+        session = stand.session
+        background = session.request_pull_refresh(100, background=True)
+        for number in range(1, MAX_PULL_JOBS + 1):
+            assert session.request_pull_refresh(number) == "started"
+        await _spin()
+        refused = session.request_pull_refresh(MAX_PULL_JOBS + 1)
+        await stand.finish()
+        return background, refused
+
+    assert asyncio.run(scenario()) == ("started", "too_many")
+
+
+def test_the_turn_gives_background_waiters_nothing_ahead_of_others() -> None:
+    """Background waiters go last, in order, and leave the first-in-a-row count alone."""
+
+    async def scenario() -> list[str]:
+        order: list[str] = []
+        turn = StoreTurn()
+        gate = asyncio.Event()
+
+        async def job(name: str, *, first: bool = False, background: bool = False) -> None:
+            async with turn(lambda: first, background=lambda: background):
+                order.append(name)
+                if name == "running":
+                    await gate.wait()
+
+        running = asyncio.create_task(job("running"))
+        await _spin()
+        waiting = [
+            asyncio.create_task(job("background 1", background=True)),
+            asyncio.create_task(job("other")),
+            asyncio.create_task(job("background 2", background=True)),
+            *(asyncio.create_task(job(f"first {n}", first=True)) for n in range(3)),
+        ]
+        await _spin()
+        gate.set()
+        await asyncio.gather(running, *waiting)
+        return order
+
+    # Two firsts go ahead of the other, then it goes, then the last first; background last.
+    assert asyncio.run(scenario()) == [
+        "running",
+        "first 0",
+        "first 1",
+        "other",
+        "first 2",
+        "background 1",
+        "background 2",
+    ]
