@@ -109,3 +109,41 @@ def test_a_hold_without_a_reset_lasts_a_window() -> None:
     assert held_until(NOW) == "2026-09-17T12:01:00Z"
     hold("garbled", now=NOW)
     assert held_until(NOW) == "2026-09-17T12:01:00Z"
+
+
+def test_another_account_forgets_the_last_ones_budget_and_hold() -> None:
+    """Review A7: the budget is the token's account's; a switch to another starts afresh."""
+
+    gh_budget.note_account("octo-reader")
+    observe(_headers(int(BACKGROUND_FLOOR * 5000)), resource="core")
+    hold("2026-09-17T12:10:00Z", now=NOW)
+    gh_budget.note_account("octo-reader")
+    assert admission(("core",), now=NOW) == Admission(False, "rate_hold")
+    gh_budget.note_account("someone-else")
+    assert observations(NOW) == {} and held_until(NOW) is None
+    assert admission(("core",), now=NOW) == Admission(True)
+
+
+def test_the_account_check_names_the_account_to_the_governor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+    import json
+    from types import SimpleNamespace
+
+    from metabrowser.builtin_plugins.github import gh
+
+    def hosts(login: str) -> bytes:
+        account = {"state": "success", "active": True, "host": "github.com", "login": login}
+        return json.dumps({"hosts": {"github.com": [account]}}).encode()
+
+    logins = ["octo-reader", "someone-else"]
+
+    async def run(*_args: object, **_kwargs: object) -> object:
+        return SimpleNamespace(stdout=hosts(logins.pop(0)), stderr=b"", returncode=0)
+
+    monkeypatch.setattr(gh, "_run", run)
+    assert asyncio.run(gh.gh_account()) == "octo-reader"
+    hold("2026-09-17T12:10:00Z", now=NOW)
+    assert asyncio.run(gh.gh_account()) == "someone-else"
+    assert held_until(NOW) is None

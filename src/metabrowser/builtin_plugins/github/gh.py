@@ -679,6 +679,7 @@ async def gh_account() -> str:
         login = parse_account(completed.stdout)
         if login is None:
             raise GhError(_SIGN_IN_MESSAGE, state="not_logged_in")
+        gh_budget.note_account(login)
         return login
     if b"unknown flag" in completed.stderr:
         raise GhError(

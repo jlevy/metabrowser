@@ -14,8 +14,12 @@ more than :data:`BACKGROUND_FLOOR` of its limit remaining and no hold applies
 (:func:`admission`). With nothing observed it is admitted, and its first response is
 observed. A reader's own work is never asked.
 
-The observations are per process. ``remaining`` is the account's, so several servers on
-one cache stop together.
+The observations and the hold are this process's, and belong to the account the last
+account check named (:func:`note_account`, called by :func:`~.gh.gh_account`): a switch to
+another account forgets both, since its token has its own budget. A response already in
+flight when the account changed can still be observed for the new one until its next
+check, at most one refresh's requests. ``remaining`` is the account's, so several servers
+on one account stop together.
 """
 
 from __future__ import annotations
@@ -77,6 +81,20 @@ class Admission:
 
 _OBSERVED: dict[str, RateObservation] = {}
 _held_until: str | None = None
+_account: str | None = None
+
+
+def note_account(login: str) -> None:
+    """Keep the budget for *login*, the active account an account check just named.
+
+    Another account than the last forgets every observation and the hold.
+    """
+
+    global _account, _held_until
+    if _account is not None and login != _account:
+        _OBSERVED.clear()
+        _held_until = None
+    _account = login
 
 
 def observe(headers: Mapping[str, str], *, resource: str) -> None:
@@ -153,9 +171,10 @@ def admission(
 def forget() -> None:
     """Drop every observation and hold, as a new process starts with none; for tests."""
 
-    global _held_until
+    global _account, _held_until
     _OBSERVED.clear()
     _held_until = None
+    _account = None
 
 
 __all__ = [
@@ -169,6 +188,7 @@ __all__ = [
     "forget",
     "held_until",
     "hold",
+    "note_account",
     "observations",
     "observe",
 ]
