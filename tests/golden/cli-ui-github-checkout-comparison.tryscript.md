@@ -297,13 +297,14 @@ $ node tests/dom/github-checkout-comparison-session.js
 ? 0
 ```
 
-An idle, visible Conversation can prepare the comparison from its cached record.
-A reader opening Changes promotes that job.
+An idle, visible Conversation can prepare the comparison from its cached record, but
+only where the checkout already has a store; one with no store is never asked.
+The page polls that optional job slowly, and a reader opening Changes promotes it.
 An idle refusal leaves Changes free to start its own request.
 
 ```console
 $ node tests/dom/github-pull-idle-comparison-behavior.js
-{"changesBeforeIdle":["foreground"],"hiddenUntilVisible":["idle","foreground"],"afterLateIdleReply":"Changes ready","afterIdleRefusal":["idle","foreground"],"disposed":[]}
+{"withoutStore":[],"changesBeforeIdle":["foreground"],"pollWhilePreparing":{"conversation":30000,"changes":1000},"hiddenUntilVisible":["idle","foreground"],"afterLateIdleReply":"Changes ready","afterIdleRefusal":["idle","foreground"],"disposed":[]}
 ? 0
 ```
 

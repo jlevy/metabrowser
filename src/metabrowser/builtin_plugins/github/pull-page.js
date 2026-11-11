@@ -1292,14 +1292,19 @@ export function createPullController(deps, options) {
     if (disposed || !deps.isVisible()) {
       return;
     }
-    const fast = envelope === null || envelope.refreshing || envelope.state === "pending";
     timer = deps.schedule(
       () => {
         timer = null;
         void poll();
       },
-      fast ? fastDelay : SLOW_POLL_MS,
+      pollsFast() ? fastDelay : SLOW_POLL_MS,
     );
+  }
+
+  function pollsFast() {
+    // Optional comparison work says nothing to Conversation, so it is polled slowly there.
+    const quiet = envelope?.preparing_comparison === true && tab !== "files";
+    return envelope === null || (envelope.refreshing && !quiet) || envelope.state === "pending";
   }
 
   // Every request that answers an envelope is numbered when it is sent. A slow poll sent
@@ -1566,6 +1571,11 @@ export function createPullController(deps, options) {
     );
   }
 
+  /**
+   * The record revision whose comparison this page may ask for as idle work, or null. Only
+   * a server with an attached store prepares one, and there a fresh record written without
+   * a store is `stale` (see `pull_state`), so a checkout with no store is never asked.
+   */
   function idleCandidate() {
     if (
       disposed ||
@@ -1580,6 +1590,7 @@ export function createPullController(deps, options) {
       error !== null ||
       envelope === null ||
       envelope.refreshing ||
+      envelope.state !== "stale" ||
       envelope.record?.unavailable?.comparison !== "no_store" ||
       envelope.record_revision === idleAttemptedRevision ||
       !hasFreshComparisonMetadata()
@@ -1798,12 +1809,7 @@ export function createPullController(deps, options) {
       state: envelope?.state ?? null,
       etag,
       tab,
-      timer:
-        timer === null
-          ? null
-          : envelope === null || envelope.refreshing || envelope.state === "pending"
-            ? "fast"
-            : "slow",
+      timer: timer === null ? null : pollsFast() ? "fast" : "slow",
       markdown: [...markdown.keys()],
       queued: [...queue],
       inFlight,

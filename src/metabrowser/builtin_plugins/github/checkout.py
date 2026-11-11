@@ -14,7 +14,13 @@ would have once published, and answer ``absent`` while there is no source direct
 job's first write claims the slug and publishes the source with no store, the cache's
 ``unattached`` state (:func:`claim_source`). Opening Changes may attach a store that
 borrows the checkout's objects; its lender path stays internal to the
-cache. A healthy existing store is reused without acquisition. Nothing is written to the
+cache. A healthy existing store is reused without acquisition. Only a reader's own
+comparison request acquires one: the first acquisition fetches whatever the checkout
+lacks from its origin, and every later refresh then fetches into the store. Once a store
+is attached, a Conversation page can ask for one pull request's comparison as optional
+work, which fetches only that pull request's head and base. It starts only while no other
+pull job of the checkout runs, holds no network slot, records no outcome, and a reader's
+own request promotes it or cancels it. Nothing is written to the
 checkout, no Git runs in it, and the served folder stays the same.
 
 What is resolved is remembered for the served root and the application home, so a route
@@ -31,6 +37,7 @@ import asyncio
 import hashlib
 import logging
 import threading
+from collections import OrderedDict
 from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
@@ -70,9 +77,16 @@ _RESOLVED: dict[tuple[str, str], CheckoutRepository | None] = {}
 
 @dataclass(slots=True)
 class _EagerComparison:
+    """The checkout's one optional comparison job.
+
+    *mode* is ``idle`` until a reader's own request for the same pull request promotes
+    it; only that promotion changes it. *work* is the idle phase while it runs.
+    """
+
     number: int
     revision: str
-    foreground: bool = False
+    mode: Literal["idle", "foreground"] = "idle"
+    work: asyncio.Task[None] | None = None
 
 
 @dataclass
@@ -80,6 +94,9 @@ class _CheckoutPulls:
     pulls: ServedPulls
     turn: StoreTurn = field(default_factory=StoreTurn)
     eager: _EagerComparison | None = None
+    # The revision each pull request's idle comparison last failed for, so it is not
+    # tried again; as many as the pull states a set holds.
+    idle_failures: OrderedDict[int, str] = field(default_factory=OrderedDict[int, str])
 
 
 _PULLS: dict[tuple[str, str, str], _CheckoutPulls] = {}
@@ -219,11 +236,15 @@ def checkout_pulls(repository: CheckoutRepository) -> ServedPulls:
     return _checkout_state(repository).pulls
 
 
+def _job_prefix(repository: CheckoutRepository) -> str:
+    identity = hashlib.sha256("\0".join(_checkout_key(repository)).encode()).hexdigest()
+    return f"checkout:{identity}:pull/"
+
+
 def checkout_job_key(repository: CheckoutRepository, number: int) -> str:
     """A stable internal job key while a checkout acquires its store."""
 
-    identity = hashlib.sha256("\0".join(_checkout_key(repository)).encode()).hexdigest()
-    return f"checkout:{identity}:pull/{number}"
+    return f"{_job_prefix(repository)}{number}"
 
 
 async def claim_source(repository: ListedRepository) -> ListedRepository:
@@ -294,6 +315,12 @@ _PULL_JOBS: set[str] = set()
 _COMPARISON_WANTED: set[str] = set()
 
 
+def _checkout_busy(coordinator: RefreshCoordinator, repository: CheckoutRepository) -> bool:
+    """Whether any pull job of this checkout is queued or running."""
+    prefix = _job_prefix(repository)
+    return any(job.startswith(prefix) and coordinator.running(job) for job in _PULL_JOBS)
+
+
 def comparison_preparing(
     coordinator: RefreshCoordinator, repository: CheckoutRepository, number: int
 ) -> bool:
@@ -302,7 +329,7 @@ def comparison_preparing(
     return (
         eager is not None
         and eager.number == number
-        and not eager.foreground
+        and eager.mode == "idle"
         and coordinator.running(checkout_job_key(repository, number))
     )
 
@@ -337,28 +364,53 @@ def start_pull_refresh(
     comparison: bool = False,
     eager_revision: str | None = None,
 ) -> PullJobStart | Literal["not_due"]:
-    """Start or join a checkout's pull refresh; only *comparison* may acquire a store."""
+    """Start or join a checkout's pull refresh; only *comparison* may acquire a store.
+
+    With *eager_revision* the start is optional: the comparison of that cached record
+    revision, prepared in a store already attached, and only while no other pull job of
+    the checkout is queued or running. Anything else is ``not_due``. Every other start is
+    a reader's, and ends the optional job: one for the same pull request promotes it, and
+    cancels its idle phase when it asks for metadata; one for another cancels it.
+    """
 
     key = checkout_job_key(repository, number)
     state = _checkout_state(repository)
     eager = state.eager
     if eager is not None and not coordinator.running(checkout_job_key(repository, eager.number)):
         state.eager = eager = None
+    if eager_revision is not None:
+        _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
+        if (
+            eager is not None
+            or state.pulls.git_dir is None
+            or _checkout_busy(coordinator, repository)
+            or state.idle_failures.get(number) == eager_revision
+            or len(_PULL_JOBS) >= MAX_PULL_JOBS
+        ):
+            return "not_due"
+        _PULL_JOBS.add(key)
+        state.eager = _EagerComparison(number, eager_revision)
+        return coordinator.start(
+            key, partial(_pull_job, coordinator, repository, number, key), network=False
+        )
+    if eager is not None:
+        if eager.number == number:
+            eager.mode = "foreground"
+            if not comparison and eager.work is not None:
+                # A metadata read with a store also fetches and compares, so the idle
+                # phase would only delay it.
+                eager.work.cancel()
+        else:
+            coordinator.cancel(checkout_job_key(repository, eager.number))
+            state.eager = None
     if coordinator.running(key):
-        if eager_revision is None:
-            if comparison:
-                _COMPARISON_WANTED.add(key)
-            if eager is not None and eager.number == number:
-                eager.foreground = True
+        if comparison:
+            _COMPARISON_WANTED.add(key)
         return "joined"
-    if eager_revision is not None and eager is not None:
-        return "not_due"
     _PULL_JOBS.intersection_update({job for job in _PULL_JOBS if coordinator.running(job)})
     if len(_PULL_JOBS) >= MAX_PULL_JOBS:
         return "too_many"
     _PULL_JOBS.add(key)
-    if eager_revision is not None:
-        state.eager = _EagerComparison(number, eager_revision)
     if comparison:
         _COMPARISON_WANTED.add(key)
     return coordinator.start(
@@ -412,13 +464,19 @@ async def _acquire_comparison(repository: CheckoutRepository) -> PublishedSource
         raise PullDataError("fetch_failed", "the comparison store could not be prepared") from exc
 
 
-async def _comparison_outcome(
+async def _keep_comparison_failure(
     companion: ServedPull,
     repository: CheckoutRepository,
-    error: PullDataError | None = None,
+    error: PullDataError,
     *,
     expected: PullRecord | RecordAbsence,
 ) -> None:
+    """Keep why a reader's comparison request failed beside the record.
+
+    The page holds its automatic request on it. Only a reader's request records anything:
+    a success writes no stamp, which still says how the last metadata read ended, and
+    idle work records nothing.
+    """
     from metabrowser.builtin_plugins.github import pulls
     from metabrowser.builtin_plugins.github.gh_lists import utc_stamp
     from metabrowser.builtin_plugins.github.pull_record import PullRefreshStamp, write_pull_refresh
@@ -427,9 +485,7 @@ async def _comparison_outcome(
     from metabrowser.home import PrivateStorageError
 
     at = utc_stamp(pulls.utc_now())
-    outcome = "succeeded" if error is None else error.state
-    message = None if error is None else str(error)[:1000]
-    reset_at = None if error is None else error.reset_at
+    message = str(error)[:1000]
     try:
         claimed = await claim_source(repository)
         kept = await run_lock_section(
@@ -438,88 +494,172 @@ async def _comparison_outcome(
                 claimed.home,
                 claimed.slug,
                 companion.number,
-                PullRefreshStamp(outcome=outcome, message=message, reset_at=reset_at, at=at),
+                PullRefreshStamp(
+                    outcome=error.state, message=message, reset_at=error.reset_at, at=at
+                ),
                 expected=expected,
             )
         )
     except (PullDataError, PrivateStorageError, OSError):
-        log.debug("could not record checkout comparison outcome", exc_info=True)
+        log.debug("could not record checkout comparison failure", exc_info=True)
     else:
         if not kept:
             return
-    companion.last = PullRefreshOutcome(outcome=outcome, message=message, reset_at=reset_at, at=at)
+    companion.last = PullRefreshOutcome(
+        outcome=error.state, message=message, reset_at=error.reset_at, at=at
+    )
 
 
-async def _prepare_comparison(
-    state: _CheckoutPulls,
-    repository: CheckoutRepository,
-    companion: ServedPull,
-    eager: _EagerComparison | None,
-) -> bool:
-    """Return whether the current request was handled without a full PR refresh."""
-    from metabrowser.builtin_plugins.github import pulls
-    from metabrowser.builtin_plugins.github.pull_record import PullRecord, read_pull_record
-    from metabrowser.builtin_plugins.github.pull_route import comparison_preparation_record
+def _adopt(companion: ServedPull, record: PullRecord) -> None:
     from metabrowser.builtin_plugins.github.served_pull import written_without_store
 
-    publication = state.pulls.published
-    acquiring = isinstance(publication, ListedRepository)
-    record = None
-    if eager is not None and not eager.foreground:
-        reader = state.pulls.observed_reader
-        record = await asyncio.to_thread(
-            comparison_preparation_record, publication, reader, companion.number, eager.revision
-        )
-        if (
-            record is None
-            or state.pulls.published is not publication
-            or state.pulls.observed_reader != reader
-        ):
-            if not eager.foreground:
-                return not companion.recovery_pending
-            record = None
-    if record is None:
-        record = await asyncio.to_thread(
+    companion.fetched_at = record.fetched_at
+    companion.without_store = written_without_store(record)
+    if record.comparison is not None:
+        companion.note_comparison((record.comparison.base, record.comparison.head))
+
+
+def _remember_idle_failure(state: _CheckoutPulls, number: int, revision: str) -> None:
+    from metabrowser.builtin_plugins.github.served_pull import MAX_KEPT_PULLS
+
+    state.idle_failures.pop(number, None)
+    state.idle_failures[number] = revision
+    while len(state.idle_failures) > MAX_KEPT_PULLS:
+        state.idle_failures.popitem(last=False)
+
+
+async def _prepare_idle(
+    state: _CheckoutPulls, companion: ServedPull, eager: _EagerComparison
+) -> None:
+    """Prepare the named revision's comparison in the attached store, or do nothing.
+
+    It fetches only what that comparison needs, the pull request's head and observed base
+    when the store lacks them, and records nothing about how it ended. A failure is kept
+    in memory only so the same revision is not tried again, and stays quiet until the
+    reader's own Changes request.
+    """
+    from metabrowser.builtin_plugins.github import pulls
+    from metabrowser.builtin_plugins.github.served_pull import (
+        cached_comparison_record,
+        written_without_store,
+    )
+
+    published = state.pulls.published
+    reader = state.pulls.observed_reader
+    if isinstance(published, ListedRepository):
+        return
+    record = await asyncio.to_thread(
+        cached_comparison_record, published, reader, companion.number, eager.revision
+    )
+    if (
+        record is None
+        or not written_without_store(record)
+        or state.pulls.published is not published
+        or state.pulls.observed_reader != reader
+    ):
+        return
+    try:
+        prepared = await pulls.prepare_pull_comparison(published, record)
+    except pulls.PullObservationSuperseded as exc:
+        _adopt(companion, exc.current)
+    except PullDataError:
+        log.debug("idle comparison of pull request %s failed", companion.number, exc_info=True)
+        _remember_idle_failure(state, companion.number, eager.revision)
+    else:
+        if prepared is not None:
+            _adopt(companion, prepared)
+
+
+async def _idle_phase(
+    state: _CheckoutPulls, companion: ServedPull, eager: _EagerComparison
+) -> None:
+    """Run :func:`_prepare_idle` as a task a reader's metadata request can cancel."""
+    work = asyncio.get_running_loop().create_task(_prepare_idle(state, companion, eager))
+    eager.work = work
+    try:
+        await asyncio.wait((work,))
+    except asyncio.CancelledError:
+        work.cancel()
+        await asyncio.wait((work,))
+        raise
+    finally:
+        eager.work = None
+    if not work.cancelled():
+        work.result()
+
+
+type _Prepared = Literal["done", "refresh_metadata"]
+
+
+async def _prepare_foreground(
+    state: _CheckoutPulls, repository: CheckoutRepository, companion: ServedPull
+) -> _Prepared:
+    """Attach a store if there is none, then prepare the comparison from the cached record.
+
+    The cached record serves only while
+    :func:`~metabrowser.builtin_plugins.github.served_pull.cached_comparison_record` admits
+    it. A stale record, another reader's, or one with a failed refresh since is read from
+    GitHub again, as every comparison request was before this layer. A record whose head
+    has moved is too.
+    """
+    from metabrowser.builtin_plugins.github import pulls
+    from metabrowser.builtin_plugins.github.pull_record import read_pull_record
+    from metabrowser.builtin_plugins.github.served_pull import (
+        cached_comparison_record,
+        written_without_store,
+    )
+
+    if state.pulls.git_dir is None:
+        before = await asyncio.to_thread(
             read_pull_record, state.pulls.home, state.pulls.slug, companion.number
         )
-    try:
-        if acquiring:
+        try:
             state.pulls.bind(await _acquire_comparison(repository))
-        published = state.pulls.published
-        if (
-            isinstance(record, PullRecord)
-            and record.source == state.pulls.source
-            and state.pulls.observed_reader in (None, record.reader)
-            and not isinstance(published, ListedRepository)
-        ):
-            # The click may have raced the idle producer's final publication.
-            if not acquiring and record.comparison is not None:
-                return not companion.recovery_pending
-            prepared = await pulls.prepare_pull_comparison(published, record)
-            if prepared is not None:
-                companion.fetched_at = prepared.fetched_at
-                companion.without_store = written_without_store(prepared)
-                if prepared.comparison is not None:
-                    companion.note_comparison((prepared.comparison.base, prepared.comparison.head))
-                    if (
-                        prepared.fetched_at == record.fetched_at
-                        and prepared.reader == record.reader
-                    ):
-                        await _comparison_outcome(companion, repository, expected=prepared)
-                if not companion.without_store:
-                    return not companion.recovery_pending
+        except PullDataError as exc:
+            await _keep_comparison_failure(companion, repository, exc, expected=before)
+            return "done"
+    published = state.pulls.published
+    if isinstance(published, ListedRepository):
+        return "refresh_metadata"
+    reader = state.pulls.observed_reader
+    record = await asyncio.to_thread(cached_comparison_record, published, reader, companion.number)
+    if (
+        record is None
+        or state.pulls.published is not published
+        or state.pulls.observed_reader != reader
+    ):
+        return "refresh_metadata"
+    if record.comparison is not None:
+        # The request raced an idle job's publication, or another server's.
+        return "done"
+    try:
+        prepared = await pulls.prepare_pull_comparison(published, record)
     except pulls.PullObservationSuperseded as exc:
-        companion.fetched_at = exc.current.fetched_at
-        companion.without_store = written_without_store(exc.current)
-        if exc.current.comparison is not None:
-            companion.note_comparison((exc.current.comparison.base, exc.current.comparison.head))
-            return not companion.recovery_pending
+        _adopt(companion, exc.current)
+        return "done" if exc.current.comparison is not None else "refresh_metadata"
     except PullDataError as exc:
-        await _comparison_outcome(companion, repository, exc, expected=record)
-        return not companion.recovery_pending
-    # A changed head can invalidate a cached observation. Idle work ends there. A
-    # foreground reader can refresh the metadata to select the new head.
-    return eager is not None and not eager.foreground and not companion.recovery_pending
+        await _keep_comparison_failure(companion, repository, exc, expected=record)
+        return "done"
+    if prepared is None:
+        return "refresh_metadata"
+    _adopt(companion, prepared)
+    return "refresh_metadata" if written_without_store(prepared) else "done"
+
+
+async def _run_foreground(
+    state: _CheckoutPulls, repository: CheckoutRepository, companion: ServedPull, key: str
+) -> None:
+    """A reader's own work: the comparison when one was asked for, then any metadata read."""
+    while True:
+        prepared: _Prepared = "refresh_metadata"
+        if key in _COMPARISON_WANTED:
+            _COMPARISON_WANTED.discard(key)
+            prepared = await _prepare_foreground(state, repository, companion)
+        if prepared == "done" and not companion.recovery_pending:
+            return
+        await companion.refresh()
+        if key not in _COMPARISON_WANTED or state.pulls.git_dir is not None:
+            return
 
 
 async def _pull_job(
@@ -528,23 +668,19 @@ async def _pull_job(
     state = _checkout_state(repository)
     eager = state.eager if state.eager is not None and state.eager.number == number else None
     try:
-        # Waiting at the store keeps no network slot. Foreground demand can promote the
-        # existing key in the store queue without starting another producer.
-        async with (
-            state.turn(lambda: eager is None or eager.foreground),
-            coordinator.slot(),
-        ):
+        # An idle job starts only on a quiet checkout, so it has the turn at once, and it
+        # holds no network slot. Waiting at the store keeps none either. Promotion moves
+        # an idle job's place in the store queue without starting another producer.
+        async with state.turn(lambda: eager is None or eager.mode == "foreground"):
             companion = await state.pulls.companion(number)
             state.pulls.active = companion
             try:
-                while True:
-                    if key in _COMPARISON_WANTED:
-                        _COMPARISON_WANTED.discard(key)
-                        if await _prepare_comparison(state, repository, companion, eager):
-                            return
-                    await companion.refresh()
-                    if key not in _COMPARISON_WANTED or state.pulls.git_dir is not None:
+                if eager is not None and eager.mode == "idle":
+                    await _idle_phase(state, companion, eager)
+                    if eager.mode == "idle":
                         return
+                async with coordinator.slot():
+                    await _run_foreground(state, repository, companion, key)
             finally:
                 state.pulls.active = None
     finally:

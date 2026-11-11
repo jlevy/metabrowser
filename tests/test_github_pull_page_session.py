@@ -559,7 +559,9 @@ def test_failed_diff_mount_offers_retry_and_settles_readiness() -> None:
 
 def test_idle_comparison_is_route_owned_and_promotes_on_changes() -> None:
     assert run_session("github-pull-idle-comparison-behavior.js") == {
+        "withoutStore": [],
         "changesBeforeIdle": ["foreground"],
+        "pollWhilePreparing": {"conversation": 30000, "changes": 1000},
         "hiddenUntilVisible": ["idle", "foreground"],
         "afterLateIdleReply": "Changes ready",
         "afterIdleRefusal": ["idle", "foreground"],

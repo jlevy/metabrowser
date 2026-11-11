@@ -24,8 +24,8 @@ A read never starts a fetch. Only ``POST pull-refresh`` does, and :func:`start_r
 holds what it starts to the rule: a request that is not a reader's own action refreshes
 only a pull request with a record, and only when that record is stale and not tried within
 the window. A visible cold page can request the selected fetch with a separate POST.
-Idle checkout comparison preparation instead names a fresh record revision and joins the
-same comparison job that foreground Changes requests use.
+Idle checkout comparison preparation instead names a fresh record revision, only where a
+store is already attached, and a reader's Changes request promotes that job.
 
 Which pull requests a server has is :func:`pull_host`'s to say, and nothing else here
 knows whether it is a mirror or a checkout. A checkout with no attached store answers a
@@ -70,9 +70,10 @@ from metabrowser.builtin_plugins.github.served_pull import (
     PullRefreshOutcome,
     ServedPull,
     ServedPulls,
+    cached_comparison_record,
     written_without_store,
 )
-from metabrowser.cache.acquire import PublishedSource
+from metabrowser.builtin_plugins.github.served_pull import record_revision as _record_revision
 from metabrowser.cache.paths import MAX_PULL_REQUEST_NUMBER, source_pull_record
 from metabrowser.git.tree_source import GitRevisionSubject
 from metabrowser.git.wire import is_full_revision
@@ -197,15 +198,6 @@ def _file_stamp(home: Path, slug: str, number: int) -> tuple[int, int, int] | No
     if not stat.S_ISREG(status.st_mode):
         return None
     return status.st_ino, status.st_mtime_ns, status.st_size
-
-
-def _record_revision(dumped: dict[str, Any]) -> str:
-    """Reader-owned content identity, unaffected by refresh time and provider ETags."""
-
-    content = {key: value for key, value in dumped.items() if key not in {"fetched_at", "etags"}}
-    return hashlib.sha256(
-        json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
 
 
 def cached_pull_record(
@@ -577,40 +569,6 @@ def refresh_request(body: Mapping[str, object]) -> RefreshRequest:
     return RefreshRequest(number, retry, comparison, pair, wait_core, preparation)
 
 
-def comparison_preparation_record(
-    published: PublishedSource | ListedRepository,
-    reader: str | None,
-    number: int,
-    revision: str,
-) -> PullRecord | None:
-    """Recheck the exact fresh candidate before any optional Git or network work."""
-    record, _dumped, current = cached_pull_record(published.home, published.slug, number)
-    unattached = isinstance(published, ListedRepository)
-    source = published.source if unattached else published.source.normalized
-    if (
-        not isinstance(record, PullRecord)
-        or current != revision
-        or record.source != source
-        or (reader is not None and reader != record.reader)
-        or (not unattached and not written_without_store(record))
-    ):
-        return None
-    now = pulls.utc_now()
-    if pull_state(record, now=now, has_store=False)[0] != "current":
-        return None
-    last = pulls.last_refresh(published, number)
-    if (
-        last is not None
-        and last.outcome != "succeeded"
-        and (
-            now - _parse_stamp(last.at) <= timedelta(seconds=FRESHNESS_WINDOW_S)
-            or (last.reset_at is not None and now < _parse_stamp(last.reset_at))
-        )
-    ):
-        return None
-    return record
-
-
 async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart:
     if ask.prepare_comparison is not None:
         served = host.pulls
@@ -621,15 +579,23 @@ async def start_refresh(host: PullHost, ask: RefreshRequest) -> PullRefreshStart
                 and host.coordinator.running(preparation_key(served.source))
             )
 
-        if host.prepare is None or foreground_waiting():
-            return "not_due"
         publication = served.published
+        # Optional work never attaches a store. The first acquisition fetches whatever the
+        # checkout lacks from its origin, and every later refresh then fetches into the
+        # store, so only a reader's own Changes request starts one; see :mod:`.checkout`.
+        if (
+            host.prepare is None
+            or isinstance(publication, ListedRepository)
+            or foreground_waiting()
+        ):
+            return "not_due"
         reader = served.observed_reader
         record = await asyncio.to_thread(
-            comparison_preparation_record, publication, reader, ask.number, ask.prepare_comparison
+            cached_comparison_record, publication, reader, ask.number, ask.prepare_comparison
         )
         if (
             record is None
+            or not written_without_store(record)
             or served.published is not publication
             or served.observed_reader != reader
             or foreground_waiting()

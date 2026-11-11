@@ -45,6 +45,7 @@ from metabrowser.builtin_plugins.github.pull_record import (
     PullRequest,
     read_pull_record,
 )
+from metabrowser.mirror_refresh import FRESHNESS_WINDOW_S
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -131,6 +132,12 @@ def _stamp(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _source_of(published: PublishedSource | ListedRepository) -> str:
+    return (
+        published.source if isinstance(published, ListedRepository) else published.source.normalized
+    )
+
+
 def _job_prefix(published: PublishedSource | ListedRepository) -> str:
     """What a refresh's key starts with: the store a mirror fetches into, or a checkout's slug."""
 
@@ -141,6 +148,55 @@ def written_without_store(record: PullRecord) -> bool:
     """Whether *record* was written by a server with no store, so it has no Files changed."""
 
     return record.unavailable.get("comparison") == "no_store"
+
+
+def record_revision(dumped: dict[str, Any]) -> str:
+    """Reader-owned content identity, unaffected by refresh time and provider ETags."""
+
+    content = {key: value for key, value in dumped.items() if key not in {"fetched_at", "etags"}}
+    return hashlib.sha256(
+        json.dumps(content, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def cached_comparison_record(
+    published: PublishedSource | ListedRepository,
+    reader: str | None,
+    number: int,
+    revision: str | None = None,
+) -> PullRecord | None:
+    """The cached record a comparison may be prepared from without reading GitHub again.
+
+    That is a record of *published*'s source by the observed *reader*, fetched within the
+    freshness window, with no failed refresh recorded since, and of *revision* when one is
+    named. Without an observed reader nothing is admitted: a record another account read
+    is refreshed first. Blocking and bounded; run it off the event loop.
+    """
+
+    record = read_pull_record(published.home, published.slug, number)
+    if (
+        not isinstance(record, PullRecord)
+        or record.source != _source_of(published)
+        or reader is None
+        or record.reader != reader
+        or (revision is not None and record_revision(record.model_dump(mode="json")) != revision)
+    ):
+        return None
+    now = pulls.utc_now()
+    window = timedelta(seconds=FRESHNESS_WINDOW_S)
+    if now - _parse_stamp(record.fetched_at) > window:
+        return None
+    last = pulls.last_refresh(published, number)
+    if (
+        last is not None
+        and last.outcome != "succeeded"
+        and (
+            now - _parse_stamp(last.at) <= window
+            or (last.reset_at is not None and now < _parse_stamp(last.reset_at))
+        )
+    ):
+        return None
+    return record
 
 
 @dataclass(eq=False)
@@ -501,10 +557,7 @@ class ServedPulls:
 
     @property
     def source(self) -> str:
-        published = self.published
-        if isinstance(published, ListedRepository):
-            return published.source
-        return published.source.normalized
+        return _source_of(self.published)
 
     @property
     def git_dir(self) -> Path | None:
@@ -522,7 +575,11 @@ class ServedPulls:
                 window.cancel()
             self.core_hold_until = None
             self.core_failure = None
-            self.observed_reader = None
+            # The reader is the gh account this server observed for the source, not a
+            # property of the store: attaching one, or a claimed slug, keeps it, so the
+            # reader-scoped checks go on applying where no refresh follows the bind.
+            if _source_of(published) != self.source:
+                self.observed_reader = None
             self.core_catalog_identity = None
         self.published = published
         for held in self._kept.values():
@@ -630,7 +687,9 @@ __all__ = [
     "PullRefreshOutcome",
     "ServedPull",
     "ServedPulls",
+    "cached_comparison_record",
     "last_refresh",
+    "record_revision",
     "served_pull",
     "written_without_store",
 ]
