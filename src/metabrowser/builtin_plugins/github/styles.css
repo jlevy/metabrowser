@@ -604,14 +604,6 @@
 .github-pull-file-muted {
   color: var(--muted);
 }
-/* A file the comparison does not hold is muted ink, which cannot dim and keep 4.5:1, so while
-   its list refreshes its name breathes as a muted line does (docs/design-system.md,
-   "Refreshing Content"): primary ink at muted's contrast, lifting toward full ink. */
-.github-pull-files.mb-refreshing-group .github-pull-file-muted > .github-pull-file-name {
-  --mb-refreshing-to: var(--refreshing-muted-lift-opacity);
-  color: var(--text);
-  opacity: var(--refreshing-muted-rest-opacity);
-}
 .github-pull-file-name {
   flex: 0 1 auto;
   min-width: 0;
@@ -640,6 +632,14 @@
   > :is(.github-pull-file-badge, .github-pull-file-name, .github-pull-file-stats),
 .github-pull-folder-row > .github-pull-file-name {
   align-self: baseline;
+}
+/* A file the comparison does not hold is muted ink, which cannot dim and keep 4.5:1, so while
+   its list refreshes its name breathes as a muted line does (docs/design-system.md,
+   "Refreshing Content"): primary ink at muted's contrast, lifting toward full ink. */
+.github-pull-files.mb-refreshing-group .github-pull-file-muted > .github-pull-file-name {
+  --mb-refreshing-to: var(--refreshing-muted-lift-opacity);
+  color: var(--text);
+  opacity: var(--refreshing-muted-rest-opacity);
 }
 .github-pull-files-line {
   margin: 0;
