@@ -1038,7 +1038,7 @@ def test_one_git_diff_hydrates_the_markdown_files_after_the_one_asked_for() -> N
     from metabrowser.builtin_plugins.github import pull_rendered_diff
     from metabrowser.diff.format import Availability, ContentRefKind, EntryType, FilePatch
 
-    def change(file_id: str, path: str) -> Any:
+    def change(file_id: str, path: str, changed: int | None = 4) -> Any:
         side = SimpleNamespace(
             entry_type=EntryType.file,
             content=SimpleNamespace(kind=ContentRefKind.git_object),
@@ -1051,10 +1051,15 @@ def test_one_git_diff_hydrates_the_markdown_files_after_the_one_asked_for() -> N
             binary=False,
             old=side,
             new=side,
+            additions=changed,
+            deletions=None if changed is None else 0,
         )
 
     files = [change(f"f{index}", f"docs/{index}.md") for index in range(20)]
     files.insert(3, change("code", "src/app.py"))
+    # A rewrite past what a projection answers, and a file whose lines nobody counted.
+    files.insert(5, change("rewrite", "docs/rewrite.md", changed=8_000))
+    files.insert(6, change("uncounted", "docs/uncounted.md", changed=None))
     asked: list[list[str]] = []
 
     class Source:
@@ -1075,8 +1080,11 @@ def test_one_git_diff_hydrates_the_markdown_files_after_the_one_asked_for() -> N
             assert patch is not None and patch.file_id == file_id
 
     asyncio.run(run())
-    assert asked[0] == [f"f{index}" for index in range(16)], "sixteen Markdown files, code skipped"
+    assert asked[0] == [f"f{index}" for index in range(16)], (
+        "sixteen small Markdown files; code, a large rewrite and an uncounted file skipped"
+    )
     assert asked[1:] == [["f16", "f17", "f18", "f19"]]
+    assert "rewrite" not in {file_id for batch in asked for file_id in batch}
 
 
 def test_a_request_ahead_of_changes_starts_the_projection_process(
@@ -1105,3 +1113,95 @@ def test_a_request_ahead_of_changes_starts_the_projection_process(
     assert starts == [], "one request does not start a child"
     assert client.get(f"{address}&prefetch=1").json()["status"] == "ready"
     assert starts == ["start"]
+
+
+def test_the_rendered_route_answers_an_undecided_pair_and_a_busy_slot(
+    pinned_pull: tuple[_Stand, TestClient], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+
+    stand, client = pinned_pull
+    stand.refresh(8)
+    envelope = client.get("/api/plugin/github/pull", params={"number": 8}).json()
+    file = next(
+        change
+        for change in client.get(envelope["comparison_route"]).json()["manifest"]["files"]
+        if change["new"]["path"] == "docs/guide.md"
+    )
+    address = f"{envelope['rendered_route']}&file={file['id']}"
+    with monkeypatch.context() as patch:
+        patch.setattr(pull_snapshot, "_ADMITTED", OrderedDict())
+        patch.setattr(pull_snapshot, "read_pull_record", lambda *_a, **_k: "unreadable")
+        undecided = client.get(address)
+    assert undecided.status_code == 409
+    assert undecided.json() == {"code": "snapshot_unavailable"}
+    assert undecided.headers["cache-control"] == "no-store"
+
+    class Busy:
+        async def run(self, _load: object) -> object:
+            raise pull_rendered_diff._Busy  # pyright: ignore[reportPrivateUsage]
+
+    application: Any = client.app
+    application.state.pull_rendered_diff_slot = Busy()
+    busy = client.get(address)
+    assert busy.status_code == 429
+    assert busy.json() == {"code": "rendered_diff_busy"}
+
+
+def test_the_projection_slot_runs_one_load_keeps_four_waiting_and_refuses_the_rest() -> None:
+    import asyncio
+
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+
+    slot = pull_rendered_diff._Slot()  # pyright: ignore[reportPrivateUsage]
+    busy = pull_rendered_diff._Busy  # pyright: ignore[reportPrivateUsage]
+
+    async def run() -> None:
+        gate = asyncio.Event()
+        running: list[int] = []
+        finished: list[int] = []
+
+        async def load(index: int) -> int:
+            running.append(index)
+            assert len(running) - len(finished) == 1, "one load at a time"
+            await gate.wait()
+            finished.append(index)
+            return index
+
+        tasks = [
+            asyncio.create_task(slot.run(lambda index=index: load(index))) for index in range(5)
+        ]
+        await asyncio.sleep(0.01)
+        assert running == [0], "one runs and four wait"
+        with pytest.raises(busy):
+            await slot.run(lambda: load(99))
+        tasks[2].cancel()
+        await asyncio.sleep(0.01)
+        late = asyncio.create_task(slot.run(lambda: load(5)))
+        await asyncio.sleep(0.01)
+        assert not late.done(), "a cancelled waiter's place goes to the next"
+        gate.set()
+        results = await asyncio.gather(*tasks, late, return_exceptions=True)
+        assert results[:2] == [0, 1] and results[3:] == [3, 4, 5]
+        assert isinstance(results[2], asyncio.CancelledError)
+        assert finished == [0, 1, 3, 4, 5]
+
+    asyncio.run(run())
+
+
+def test_kept_patches_are_bounded_by_their_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+    from metabrowser.builtin_plugins.github import pull_rendered_diff
+    from metabrowser.diff.format import FilePatch, Hunk, LineOp, LineRecord
+
+    monkeypatch.setattr(pull_rendered_diff, "_KEPT_LINES", 10)
+    patches = pull_rendered_diff._Patches()  # pyright: ignore[reportPrivateUsage]
+
+    def patch(lines: int) -> FilePatch:
+        records = tuple(LineRecord(op=LineOp.add, text="x") for _ in range(lines))
+        hunk = Hunk(old_start=0, old_count=0, new_start=1, new_count=lines, lines=records)
+        return FilePatch(file_id="f", hunks=(hunk,), truncated=False)
+
+    for index in range(5):
+        patches._keep(("k", str(index)), patch(4))  # pyright: ignore[reportPrivateUsage]
+    assert list(patches._kept) == [("k", "3"), ("k", "4")]  # pyright: ignore[reportPrivateUsage]
+    assert patches._lines == 8  # pyright: ignore[reportPrivateUsage]
