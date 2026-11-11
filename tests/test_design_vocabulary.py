@@ -1370,6 +1370,30 @@ def test_the_pulls_tab_carries_the_shells_primitives() -> None:
     assert '"mb-delayed-loading"' in panel
     assert 'class: "spinner spinner-sm"' in panel
     assert 'class: "btn github-pulls-more"' in panel
+    # A pull request's title is bold in normal text ink wherever it appears. A row and a
+    # stack menu item are links, so the title sets both itself; in headless Chrome its
+    # computed weight is 700 in the text ink for a normal, visited, hovered, focused and
+    # selected row, and for a stack member at rest, hovered and current.
+    assert "A pull request’s title is always bold in normal text ink" in doc
+    assert 'h("span", { class: "github-pulls-title" }, [row.title])' in panel
+    assert 'h("span", { class: "github-pull-stack-member-title" })' in page
+    titles = (".github-pulls-title", ".github-pull-stack-member-title")
+    for title in titles:
+        assert github[title]["color"] == "var(--text)", title
+        assert github[title]["font-weight"] == "var(--weight-bold)", title
+    for selector, declarations in _rules_of(REPO_ROOT / BUILTIN_PLUGINS / "github/styles.css"):
+        if selector not in titles and any(title in selector for title in titles):
+            assert not {"color", "font-weight"} & declarations.keys(), selector
+    # The page's heading and a search result's label already are; the number beside a
+    # title keeps its regular weight.
+    assert 'class: "page-heading github-pull-title' in page
+    shell = dict(_rules_of(STATIC / "styles.css"))
+    assert shell[".page-heading"]["font-weight"] == "var(--weight-bold)"
+    label = shell[".search-palette-label"]
+    assert (label["color"], label["font-weight"]) == ("var(--text)", "var(--weight-bold)")
+    assert github[".github-pull-number"]["font-weight"] == "var(--weight-normal)"
+    for number in (".github-pulls-number", ".github-pull-stack-member-number"):
+        assert "font-weight" not in github[number], number
 
 
 def test_the_pull_request_page_carries_the_shells_primitives() -> None:

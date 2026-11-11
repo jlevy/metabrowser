@@ -11,6 +11,8 @@ All notable changes to Metabrowser are documented here.
   **View action on GitHub**, **View on GitHub**, or **View details** on the check’s own
   site. The pull request’s **View on GitHub**, a check’s link to GitHub, and a
   conversation commit hash are muted, with a leading GitHub mark.
+  A pull request’s title is bold in normal text ink in the Pulls list and the stack
+  menu, as it is in its page’s heading, whatever the row’s state.
 
 - Opening a pull request’s **Changes** tab fetches a missing comparison automatically.
   A served checkout reuses a healthy cached store or borrows Git objects without

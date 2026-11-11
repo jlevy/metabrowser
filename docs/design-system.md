@@ -1149,7 +1149,7 @@ Until its render arrives a text shows as plain text in the same face and size.
 
 | Element | Primitive | Why |
 | --- | --- | --- |
-| Title | `--page-title-font-size`, `--weight-bold`, sans | The number beside it uses normal text ink and regular weight at the same size |
+| Title | `--page-title-font-size`, `--weight-bold` in normal text ink, sans | A pull request’s title is bold in normal text ink wherever it appears ([The Pulls Tab](#the-pulls-tab)). The number beside it uses normal text ink and regular weight at the same size |
 | State, review, and check badge | `.file-header-badge`, in the state’s status ink | A pill means a filter, and a badge is not one. Sentence case, like all chrome |
 | Username | `.actor-name`, bold in normal text ink at the surface’s normal text size | Applies to the author, merger, comments, and reviews; a small circular avatar belongs to that same actor |
 | Base and head branch | `.git-ref.git-ref-remote`, at `--ui-small-font-size` | The [ref chip](#branch-chips), smaller than the actor and action; the list uses the same remote-ref ink |
@@ -1198,6 +1198,11 @@ An address naming a changed file opens its owner’s tree if needed.
 Moving to another PR closes a tree opened only for that address; trees the reader opened
 stay open.
 
+A pull request’s title is always bold in normal text ink, wherever it appears: the
+page’s heading, a Pulls row, the page’s stack menu, and a search result.
+A row or menu item is a link, so the title sets its own ink and weight, and no visited,
+hover, focus, selected, or current state changes them.
+The PR number beside a title keeps its regular weight.
 The metadata line gives the PR number normal row size and text ink.
 Usernames and the repository summary use the same small metadata size and bold normal
 text ink. Branch names use the small shared remote-ref chip.
@@ -1252,7 +1257,7 @@ state. Everything goes through `pullStateIcon` and `displayState` in
 | Tab | `.tab-btn` in the nav’s `.tab-bar` | [The Tab Bar](#the-tab-bar) |
 | Row | `min-height: --ui-row-height`, `--hover-bg`, `--highlight-bg` and `--highlight-bar` when current | [One Row Contract](#one-chevron-one-row-contract) |
 | State icon | The 16px alignment box around `--icon-glyph` | [One Glyph Size](#one-glyph-size) |
-| Title | `--nav-font-size`, full contrast, cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity |
+| Title | `--nav-font-size`, `--weight-bold` in `--text`, set on the title itself; cut with an ellipsis, the whole of it in the tooltip | It is the row’s identity, and a pull request’s title is bold wherever it appears |
 | Updated time | `metabrowser.formatAge`, exact time in the tooltip | [Age](#age) |
 | PR number | `--nav-font-size`, text ink | Shares the title’s primary navigation size |
 | Username and repository summary | `--ui-small-font-size`; username uses `.actor-name` | Secondary context stays the same size; usernames remain bold in normal text ink |
