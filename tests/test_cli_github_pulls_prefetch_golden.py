@@ -239,7 +239,7 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
 
     session.say(
         "Pull requests 7 and 8 are read, then the catalog. A record the catalog has not seen "
-        "change is current; 7's docs check is still running, so its checks keep its own age."
+        "change is current; 7 is open, and its docs check is still running."
     )
     first = session.run(f"{CANONICAL}/pull/7", "--api", f"{PULL}?number=7")
     assert first.exit_code == 0, first.stderr
@@ -261,16 +261,20 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
         "catalog",
         _stamp(session.now),
     )
+    session.say(
+        "The catalog vouches for open 7's conversation and head, not for its checks, statuses, "
+        "or mergeability, which do not move `updated_at`: read two hours ago, it is stale."
+    )
     pending = session.run(CANONICAL, "--api", f"{PULL}?number=7").payload()
     assert (pending["state"], pending["checks_pending"], pending["verified_by"]) == (
         "stale",
         True,
-        "fetch",
+        "catalog",
     )
 
     session.say(
-        "A visible page asks for 7, 8, and 10 and for 8's changed files: 7 has pending checks, "
-        "which its own page refreshes; 8 is current; 10 has no record, so it is read; 8's "
+        "A visible page asks for 7, 8, and 10 and for 8's changed files: only 7's checks are "
+        "due, which its own page reads; 8 is current; 10 has no record, so it is read; 8's "
         "files come from the store's comparison, with no request to GitHub."
     )
     prefetch = session.run(
@@ -279,12 +283,23 @@ def test_golden_records_checked_against_the_catalog_and_a_budgeted_prefetch(
     assert prefetch.exit_code == 0, prefetch.stderr
     report = json.loads(prefetch.stdout[prefetch.stdout.rindex("status: 200\n{") + 12 :])
     assert [(entry["number"], entry["outcome"]) for entry in report["recent"]] == [
-        (7, "skipped:unverified"),
+        (7, "skipped:checks"),
         (8, "skipped:current"),
         (10, "refreshed"),
         (8, "refreshed"),
     ]
     assert (report["records"]["hour_used"], report["files"]["hour_used"]) == (1, 0)
+
+    session.say(
+        "7's page asks for its automatic refresh, which reads its checks on their own: the "
+        "pull, its check runs, and its status, each with its ETag, and no fetch into the store."
+    )
+    checks = session.run(CANONICAL, "--api", f"{PULL}-refresh", body={"number": 7})
+    assert checks.exit_code == 0, checks.stderr
+    calls = session.blocks[-1].rsplit("--- gh ---\n", 1)[1].splitlines()
+    assert not any("comments" in call or "reviews" in call for call in calls), calls
+    read = session.run(CANONICAL, "--api", f"{PULL}?number=7").payload()
+    assert (read["state"], read["fetched_at"]) == ("current", _stamp(session.now))
 
     session.say(
         "Pull request 7 is force-pushed back to its earlier commit, where CI has finished. The "
