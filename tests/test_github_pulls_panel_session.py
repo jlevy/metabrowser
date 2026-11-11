@@ -815,3 +815,4 @@ def test_background_freshness_asks_only_while_visible_and_says_how_old_each_part
     assert facts["headMoved"] == "New commits were pushed; updating."
     assert facts["headStill"] is None
     assert facts["breathingWhileRead"] == [111] and facts["breathingAfter"] == []
+    assert facts["breathingOffline"] == []

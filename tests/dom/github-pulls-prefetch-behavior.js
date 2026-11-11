@@ -263,10 +263,17 @@ function pageRig(page, envelope) {
   };
   await shown.fire(FAST_POLL_MS);
   facts.breathingWhileRead = shown.model().refreshingRows ?? [];
+  // Offline, nothing breathes that cannot finish, and the panel stops following the lane.
+  shown.state.online = false;
+  shown.controller.onOffline();
+  await settle();
+  facts.breathingOffline = shown.model().refreshingRows ?? [];
+  shown.state.online = true;
   shown.state.report = { running: null, queued: [] };
   await shown.fire(FAST_POLL_MS);
   facts.breathingAfter = shown.model().refreshingRows ?? [];
   assert.deepEqual(facts.breathingWhileRead, [111]);
+  assert.deepEqual(facts.breathingOffline, []);
   assert.deepEqual(facts.breathingAfter, []);
   shown.controller.dispose();
 

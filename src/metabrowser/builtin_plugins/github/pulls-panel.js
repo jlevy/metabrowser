@@ -1196,7 +1196,7 @@ export function createPullsController(deps, options = {}) {
       checkout,
       online: online(),
       requesting: refreshReads.size > 0,
-      refreshingRows: [...new Set([...coreRefreshing(), ...prefetchRows])],
+      refreshingRows: [...new Set([...coreRefreshing(), ...prefetchRefreshing()])],
     });
   }
 
@@ -1833,7 +1833,7 @@ export function createPullsController(deps, options = {}) {
    * report is read again while the lane runs or holds a queue, and only while shown.
    */
   async function readPrefetch() {
-    if (!live()) {
+    if (!coreLive() || !shown) {
       setPrefetchRows([]);
       return;
     }
@@ -1863,6 +1863,14 @@ export function createPullsController(deps, options = {}) {
       prefetchRows = rows;
       render();
     }
+  }
+
+  /**
+   * The rows the lane is reading, under the rule a core batch's rows breathe by: only while
+   * the panel is live and online, so an offline panel breathes nothing it cannot finish.
+   */
+  function prefetchRefreshing() {
+    return coreLive() ? prefetchRows : [];
   }
 
   function stopPrefetchWatch() {
@@ -2408,6 +2416,7 @@ export function createPullsController(deps, options = {}) {
     onOffline() {
       cancelWarmTimer();
       cancelCoreRetry();
+      stopPrefetchWatch();
       warmRead?.abort();
       warmRead = null;
       arrivalBaseline = null;
