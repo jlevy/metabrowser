@@ -381,7 +381,10 @@ async function main() {
   const c = file("c", { lead: true });
   const d = file("d");
   assert.equal(a.source.hidden, true, "a file waits for Rendered before showing Source");
-  assert.ok(a.bar.classList.contains("diff-file-bar-markdown"), "a chooser lays the bar out for it");
+  assert.ok(
+    a.bar.classList.contains("diff-file-bar-markdown"),
+    "a chooser lays the bar out for it",
+  );
   assert.equal(a.control.hidden, false);
   assert.equal(a.progress.hidden, false);
   view.observe(root, null);
