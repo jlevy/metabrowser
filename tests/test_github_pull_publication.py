@@ -95,3 +95,31 @@ def test_the_served_pull_request_adopts_the_winner_and_its_stamp(
         "reset_at": _WINNER_STAMP.reset_at,
         "at": _WINNER_STAMP.at,
     }
+
+
+def test_an_open_with_no_usable_record_refuses_a_winner_whose_head_it_lacks(
+    stand: _Stand, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The third outcome of ``open_pull_request``'s lost publication: ``head_mismatch``.
+
+    #347's swap tests pin the other two: the winner when the store has its head, and the
+    usable cached record when it does not.
+    """
+    real = pulls.write_pull_record
+    winners: list[PullRecord] = []
+
+    def first_writer_wins(home: Any, slug: str, record: PullRecord, **kwargs: Any) -> Any:
+        if record.number == 7 and not winners:
+            head = record.pull.head.model_copy(update={"sha": "e" * 40})
+            winner = record.model_copy(
+                update={"pull": record.pull.model_copy(update={"head": head}), "comparison": None}
+            )
+            write_pull_record(home, slug, winner, store_id=kwargs.get("store_id"))
+            winners.append(winner)
+        return real(home, slug, record, **kwargs)
+
+    monkeypatch.setattr(pulls, "write_pull_record", first_writer_wins)
+    assert stand.record(7) == "not_cached"
+    with pytest.raises(pulls.PullDataError) as refused:
+        asyncio.run(pulls.open_pull_request(stand.published, 7, fetch="always"))
+    assert winners and refused.value.state == "head_mismatch"
