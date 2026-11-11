@@ -1,8 +1,22 @@
 """Project authoritative Git hunks onto bounded, inert KPress Markdown.
 
-MarkdownIt's top-level source ranges are a witness, checked against the complete KPress
-render of each side before any range can label output. Features that change the block
-shape without a reliable witness use the exact source diff.
+Each side is parsed once, by the MarkdownIt core KPress itself builds, so a block's
+source range is the map of the very token that renders it. Every top-level block is
+rendered from its own tokens, and the blocks pass KPress's post-processing, its
+sanitizer and :func:`metabrowser.inert_html.harden` together, separated by a character
+the source may not contain, so a rendered block is known to come from its range and
+heading anchors are numbered across the document exactly as the Document view numbers
+them. ``tests/test_markdown_diff_projection.py`` checks that the joined blocks equal
+KPress's own ``parse_markdown`` render, so a KPress release that changes this pipeline
+fails there rather than here. Features that change the block shape without a reliable
+range use the exact source diff.
+
+Whatever a block's source says that its render does not show -- a link or image
+destination, a title, alt text under a shown image, an HTML comment, an attribute or a
+fence's info string -- is its *hidden* signature. A changed block whose hidden signature
+differs from the other side's carries ``source_only``, and so does the whole projection
+when any source change has no visible counterpart, so the Rendered view never presents
+a change as complete while the source says more.
 """
 
 from __future__ import annotations
@@ -11,36 +25,86 @@ import hashlib
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
+from difflib import SequenceMatcher
 from html import escape
 from html.parser import HTMLParser
 from typing import Literal, TypedDict
 from urllib.parse import unquote
 
 from frontmatter_format import fmf_split_frontmatter
-from kpress.format import parse_markdown
-from markdown_it import MarkdownIt
+from kpress.format.markdown import (
+    _mark_standalone_image_figures,
+    _markdown_it,
+    _postprocess_html,
+)
+from kpress.format.sanitize import sanitize_raw_html
+from markdown_it.token import Token
 
-from metabrowser.diff.format import FilePatch, LineOp, LineRecord
-from metabrowser.inert_html import ANCHOR_PREFIX, harden, is_inside
+from metabrowser.diff.format import FilePatch, Hunk, LineOp, LineRecord
+from metabrowser.inert_html import ALLOWED_TAGS, ANCHOR_PREFIX, harden, is_inside
 
 MARKDOWN_DIFF_VERSION = "markdown-diff-v1"
-# A 48 KiB real documentation pair projected in 72 ms warm on the development
-# Mac. Bytes alone do not bound MarkdownIt's link-label scan: a 45 KiB nested
-# bracket pair took 2.17 s. At 256 openers the slowest measured parse was 16 ms.
-# Bound parsing, source-range work, and browser mounting independently.
+# Measured on the development Mac (Python 3.14, warm, minimum of three runs, load
+# average 2-5 from other agents) over the 434 Markdown pairs this repository's last 200
+# Markdown-touching first-parent commits made, each at most this many combined bytes:
+# p50 12 ms, p90 31-33 ms, max 49-51 ms, against p50 26-27 ms, p90 52-54 ms and max
+# 87-89 ms in adjacent runs of the earlier two-parse pipeline with highlighting.
+# The slowest input found inside every budget is a 48 KiB side of `<`, 222 ms; `&#`
+# took 188 ms and `<!-` 167 ms, the same at 128-byte, 1 KiB and 4 KiB lines, and in a
+# worker process they delay no other request. Line length changed no measured cost
+# (tables, prose and code at 1-23 KiB lines are linear in bytes), so lines are not
+# bounded on their own. Bytes alone do not bound MarkdownIt's link-label scan: a 45 KiB
+# nested bracket pair took 2.17 s.
 MARKDOWN_DIFF_MAX_BYTES = 48 * 1024
-_MAX_LINE_BYTES = 4 * 1024
+# A side's `[` count: nested openers parsed in 15 ms at 256, 31 ms at 512, 62 ms at 1,024.
 _MAX_LINK_OPENERS = 256
+# Tokens plus inline children per side. Dense inline Markdown costs about 11 us a token:
+# 2,324 took 26 ms, 4,662 took 52 ms and 9,324 took 103 ms. Of the 434 real pairs, 6
+# exceed it, generated tables and reference lists.
 _MAX_TOKENS = 2_000
+# Rendered elements and text nodes, both sides together. The 383 real pairs that project
+# hold p50 478, p90 1,355 and at most 2,355; 6 more exceed it. Highlighting, now gone,
+# added 34% to a render's nodes. In headless Chrome a 1,426-node answer built in
+# 1.6-1.7 ms with 4.3-4.6 ms of layout (review C of #349), so the server's parse, which
+# the token budget bounds first, is the binding cost, and this bounds the page.
 _MAX_NODES = 2_400
-_MAX_CODE_BLOCKS = 16
+# The changed span of one text node, in words, spaces and punctuation runs, after the
+# shared ends are trimmed. difflib is quadratic: 256 tokens diffed in 1.6 ms of prose
+# and 2.9 ms of one repeated token, 512 in 6.4-13 ms, 1,024 in 26-58 ms. The products of
+# the spans compared, summed over a projection, stop at four such diffs.
 _MAX_INLINE_WORDS = 256
+_MAX_INLINE_WORK = 4 * _MAX_INLINE_WORDS * _MAX_INLINE_WORDS
 
 _VOID = frozenset({"br", "hr", "img"})
-_HEADINGS = frozenset(f"h{level}" for level in range(1, 7))
-_PROSE = _HEADINGS | {"p"}
+_CONTAINERS = frozenset({"bullet_list_open", "ordered_list_open", "blockquote_open"})
+# Native attributes the render shows; every other token attribute is source-only.
+_SHOWN_ATTRIBUTES = frozenset({"start", "style"})
+# The attributes MarkdownIt writes itself; an attribute outside these came from KPress's
+# attribute syntax and is content the reader cannot see.
+_NATIVE_ATTRIBUTES = {
+    "link_open": frozenset({"href", "title"}),
+    "image": frozenset({"src", "alt", "title"}),
+    "ordered_list_open": frozenset({"start"}),
+    "th_open": frozenset({"style"}),
+    "td_open": frozenset({"style"}),
+}
 _COMMENT = re.compile(r"<!--(?:(?!-->).)*-->", re.DOTALL)
 _WORDS = re.compile(r"\w+(?:[-’']\w+)*|[^\w\s]+|\s+")
+_SPACE = re.compile(r"\s+")
+# Separates rendered blocks through KPress's post-processing, sanitizer and the hardener.
+# A source containing it is refused, so every occurrence is the projection's own.
+_SPLIT = "\ue000"
+_REFERENCE = re.compile("\x00(\\d+)\x00")
+_SOURCE_MARK = "\x00src\x00"
+_INFO = "metabrowser_info"
+# Built once: the same core and plugins KPress's parse_markdown builds per call.
+_KPRESS = _markdown_it(trust_mode="sanitized", diagrams="off", math="off")
+# MarkdownIt stops parsing blocks at this depth, so a side that reaches it is refused
+# rather than shown without its rest. KPress's own limit is 100: 48 KiB of `1. ` lines
+# nest 85 deep and parsed in 243 ms; at 32 the same input parsed in 3.0 ms. The render
+# tree is held to the same depth.
+_MAX_NESTING = 32
+_KPRESS.options["maxNesting"] = _MAX_NESTING
 _RewriteLocal = Callable[[str, bool], str | None]
 
 
@@ -48,6 +112,8 @@ class MarkdownDiffBlock(TypedDict):
     kind: Literal["context", "removed", "added"]
     side: Literal["old", "new"]
     html: str
+    # This block's source differs from its counterpart in something no render shows.
+    source_only: bool
 
 
 class MarkdownDiffProjection(TypedDict):
@@ -55,6 +121,25 @@ class MarkdownDiffProjection(TypedDict):
     status: Literal["ready", "unsupported", "too_large"]
     blocks: list[MarkdownDiffBlock]
     source_only: bool
+
+
+@dataclass(frozen=True, slots=True)
+class LocalReference:
+    """A live-side destination inside the repository, bound by the caller."""
+
+    href: str
+    image: bool
+    # For an image, its tag with ``\\0src\\0`` for the bound address, and its alt text.
+    template: str = ""
+    fallback: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedMarkdownDiff:
+    """A projection whose local references are still placeholders; it pickles."""
+
+    projection: MarkdownDiffProjection
+    references: tuple[LocalReference, ...]
 
 
 class _Unsupported(ValueError):
@@ -75,21 +160,20 @@ class _Element:
 class _Html(HTMLParser):
     """Read the small already hardened HTML subset without repairing its structure."""
 
-    def __init__(self, html: str) -> None:
+    def __init__(self, html: str, budget: int) -> None:
         super().__init__()
         self.root = _Element("")
         self.stack = [self.root]
         self.nodes = 0
+        self.budget = budget
         self.feed(html)
         self.close()
-        if len(self.stack) != 1 or any(
-            isinstance(node, str) and node.strip() for node in self.root.children
-        ):
+        if len(self.stack) != 1:
             raise _Unsupported("incomplete render tree")
 
     def _count(self) -> None:
         self.nodes += 1
-        if self.nodes > _MAX_NODES or len(self.stack) > 32:
+        if self.nodes > self.budget or len(self.stack) > _MAX_NESTING:
             raise _OverBudget("render tree")
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -112,16 +196,22 @@ class _Html(HTMLParser):
             self._count()
             children.append(data)
 
-    def blocks(self) -> list[_Element]:
-        return [node for node in self.root.children if isinstance(node, _Element)]
-
 
 @dataclass(frozen=True, slots=True)
 class _Block:
     start: int
     end: int
     node: _Element
+    # The node without heading ids, for matching blocks across the two sides.
     shape: _Element
+    # The shape with whitespace runs collapsed outside preformatted text: what the
+    # reader actually sees, so a rewrap or a trailing space compares equal.
+    seen: _Element
+    hidden: tuple[tuple[str, ...], ...]
+    # Comments or attribute syntax: content of this block that no render shows at all.
+    concealed: bool
+    # The items of a list, or the blocks of a quote, when each maps to one element.
+    children: tuple[_Block, ...] | None = None
 
 
 def _text(node: _Element) -> str:
@@ -130,75 +220,239 @@ def _text(node: _Element) -> str:
     )
 
 
-def _shape(node: _Element, *, top: bool = True) -> _Element:
-    # KPress wraps tables, treats a standalone image as a figure, and highlights code.
-    # These transformations preserve the witness's one top-level source block.
-    if len(node.children) == 1 and isinstance(child := node.children[0], _Element):
-        if top and (node.tag, child.tag) in {("div", "table"), ("p", "img")}:
-            return _shape(child)
-        if node.tag == "pre" and child.tag == "code":
-            return _Element(
-                "pre", children=[_Element("code", children=[_text(child).rstrip("\n")])]
-            )
+def _shape(node: _Element, *, collapse: bool) -> _Element:
+    collapse = collapse and node.tag != "pre"
     return _Element(
         node.tag,
         tuple((name, value) for name, value in node.attrs if name != "id"),
         [
-            _shape(child, top=False) if isinstance(child, _Element) else child
+            _shape(child, collapse=collapse)
+            if isinstance(child, _Element)
+            else (_SPACE.sub(" ", child) if collapse else child)
             for child in node.children
         ],
     )
 
 
-def _blocks(source: str) -> tuple[list[_Block], int]:
+def _hidden(tokens: Sequence[Token]) -> tuple[tuple[tuple[str, ...], ...], bool]:
+    """What these tokens' source says that their render does not show."""
+
+    found: list[tuple[str, ...]] = []
+    concealed = False
+    for token in tokens:
+        for member in (token, *(token.children or ())):
+            if member.type in {"html_block", "html_inline"}:
+                found.append(("comment", member.content.strip()))
+                concealed = True
+            attrs = {
+                name: str(value)
+                for name, value in (member.attrs or {}).items()
+                if name not in _SHOWN_ATTRIBUTES
+            }
+            if attrs:
+                found.append((member.type, *(f"{name}={attrs[name]}" for name in sorted(attrs))))
+                concealed |= not attrs.keys() <= _NATIVE_ATTRIBUTES.get(member.type, frozenset())
+            # A list item's info is the number its source wrote, which no render shows
+            # in place of the list's own count; anything else with an info is a fence or
+            # a container, whose info is source-only.
+            info = (member.meta or {}).get(_INFO, member.info)
+            if info and member.type != "list_item_open":
+                found.append(("info", str(info)))
+            if member.type == "image":
+                found.append(("alt", member.content))
+    return tuple(found), concealed
+
+
+def _close(tokens: Sequence[Token], index: int) -> int:
+    """The index after the block that starts at *index*."""
+
+    token = tokens[index]
+    if token.nesting == 0:
+        return index + 1
+    for end in range(index + 1, len(tokens)):
+        if tokens[end].level == token.level and tokens[end].nesting == -1:
+            return end + 1
+    raise _Unsupported("unclosed Markdown block")
+
+
+def _slices(tokens: Sequence[Token], start: int, stop: int, level: int) -> list[tuple[int, int]]:
+    slices: list[tuple[int, int]] = []
+    index = start
+    while index < stop:
+        token = tokens[index]
+        if token.level != level or token.nesting < 0:
+            index += 1
+            continue
+        end = _close(tokens, index)
+        # KPress removes comments in inert output. They have no rendered range, so a
+        # changed one reaches the projection's notice as an unmapped source line.
+        if token.type != "html_block":
+            slices.append((index, end))
+        index = end
+    return slices
+
+
+def _map(token: Token, offset: int, after: int) -> tuple[int, int]:
+    span = token.map
+    if span is None or span[0] >= span[1] or span[0] + offset < after:
+        raise _Unsupported("unmapped Markdown block")
+    return span[0] + offset, span[1] + offset
+
+
+def _segments(root: _Element, count: int) -> list[_Element]:
+    """Split the hardened document at the separators between blocks."""
+
+    if count == 0:
+        if root.children and any(
+            not isinstance(child, str) or child.strip() for child in root.children
+        ):
+            raise _Unsupported("render without a block")
+        return []
+    parts: list[list[_Element | str]] = [[]]
+    for child in root.children:
+        if isinstance(child, str):
+            for index, piece in enumerate(child.split(_SPLIT)):
+                if index:
+                    parts.append([])
+                if piece.strip():
+                    parts[-1].append(piece)
+        else:
+            parts[-1].append(child)
+    if len(parts) != count:
+        raise _Unsupported("rendered blocks differ from source blocks")
+    return [
+        nodes[0] if len(nodes) == 1 and isinstance(nodes[0], _Element) else _Element("", (), nodes)
+        for nodes in parts
+    ]
+
+
+def _elements(node: _Element) -> list[_Element] | None:
+    """A container's child elements, or None when it holds text of its own."""
+
+    if any(isinstance(child, str) and child.strip() for child in node.children):
+        return None
+    return [child for child in node.children if isinstance(child, _Element)]
+
+
+def _block(
+    tokens: Sequence[Token],
+    span: tuple[int, int],
+    node: _Element,
+    offset: int,
+    after: int,
+    *,
+    descend: bool,
+) -> _Block:
+    first, stop = span
+    start, end = _map(tokens[first], offset, after)
+    hidden, concealed = _hidden(tokens[first:stop])
+    children: tuple[_Block, ...] | None = None
+    if descend and tokens[first].type in _CONTAINERS:
+        inner = _slices(tokens, first + 1, stop - 1, tokens[first].level + 1)
+        elements = _elements(node)
+        if elements is not None and len(elements) == len(inner):
+            items: list[_Block] = []
+            for child_span, child in zip(inner, elements, strict=True):
+                items.append(
+                    _block(
+                        tokens,
+                        child_span,
+                        child,
+                        offset,
+                        items[-1].end if items else start,
+                        descend=False,
+                    )
+                )
+            if items and items[-1].end <= end:
+                children = tuple(items)
+    return _Block(
+        start,
+        end,
+        node,
+        _shape(node, collapse=False),
+        _shape(node, collapse=True),
+        hidden,
+        concealed,
+        children,
+    )
+
+
+@dataclass(slots=True)
+class _Side:
+    source: str
+    offset: int
+    tokens: list[Token]
+    blocks: list[tuple[int, int]]
+    # Elements the tokens must render, which bounds the render tree before building it.
+    elements: int
+
+
+def _parse(text: str) -> _Side:
     offset = 0
+    source = text
     if source.startswith(("---\n", "---\r\n")):
         _, body_start, _ = fmf_split_frontmatter(source, strict=False)
         offset = source.count("\n", 0, body_start)
         source = source[body_start:]
-    parser = MarkdownIt("js-default", {"html": True})
+    if _SPLIT in source:
+        raise _Unsupported("source contains the block separator")
     env: dict[str, object] = {}
-    tokens = parser.parse(source, env)
-    work = sum(1 + len(token.children or ()) for token in tokens)
-    if (
-        work > _MAX_TOKENS
-        or sum(token.type in {"fence", "code_block"} for token in tokens) > _MAX_CODE_BLOCKS
-    ):
+    tokens = _KPRESS.parse(source, env)
+    if sum(1 + len(token.children or ()) for token in tokens) > _MAX_TOKENS:
         raise _OverBudget("Markdown tokens")
-    ranges: list[tuple[int, int]] = []
+    if any(
+        member.level >= _MAX_NESTING - 1
+        for token in tokens
+        for member in (token, *(token.children or ()))
+    ):
+        raise _OverBudget("Markdown nesting")
+    # A standalone image's paragraph renders as a figure, which the hardener unwraps.
+    _mark_standalone_image_figures(tokens)
+    elements = 0
     for token in tokens:
-        # KPress removes comments in inert output. They have no rendered range;
-        # raw markup is outside the versioned Markdown block contract.
-        for member in [token, *(token.children or ())]:
+        for member in (token, *(token.children or ())):
+            if member.type.startswith("footnote"):
+                raise _Unsupported("footnotes render away from their source")
+            # Raw markup is outside the versioned Markdown block contract.
             if member.type in {"html_block", "html_inline"} and not _COMMENT.fullmatch(
                 member.content.strip()
             ):
                 raise _Unsupported("raw HTML has no reliable Markdown projection")
-        if token.type == "html_block" or token.level != 0 or token.nesting < 0:
-            continue
-        span = token.map
-        if span is None or span[0] >= span[1] or (ranges and span[0] < ranges[-1][1]):
-            raise _Unsupported("unmapped Markdown block")
-        ranges.append((span[0], span[1]))
-    witness = _Html(harden(parser.renderer.render(tokens, parser.options, env)))
-    document_title = ""
-    rendered = _Html(
-        harden(
-            parse_markdown(
-                source, title=document_title, trust_mode="sanitized", diagrams="off", math="off"
-            ).html
-        )
-    )
-    witness_nodes, rendered_nodes = witness.blocks(), rendered.blocks()
-    if len(witness_nodes) != len(ranges) or len(rendered_nodes) != len(ranges):
-        raise _Unsupported("KPress block count differs from the range witness")
+            if (
+                member.nesting == 1
+                and not member.hidden
+                and member.tag in ALLOWED_TAGS
+                and not member.meta.get("kpress_figure_image")
+            ):
+                elements += 1
+    return _Side(source, offset, tokens, _slices(tokens, 0, len(tokens), 0), elements)
+
+
+def _render(side: _Side, budget: int) -> tuple[list[_Block], int]:
+    if side.elements > budget:
+        raise _OverBudget("Markdown elements")
+    tokens = side.tokens
+    for token in tokens:
+        if token.type == "fence":
+            # Highlighting is discarded with its classes, so KPress renders plain code;
+            # the info string stays in the block's hidden signature.
+            token.meta[_INFO] = token.info
+            token.info = ""
+    pieces = [
+        _KPRESS.renderer.render(tokens[start:stop], _KPRESS.options, {})
+        for start, stop in side.blocks
+    ]
+    sanitized, _ = sanitize_raw_html(_postprocess_html(_SPLIT.join(pieces)), "sanitized")
+    hardened = harden(sanitized)
+    if hardened.count(_SPLIT) != max(len(pieces) - 1, 0):
+        raise _Unsupported("a block separator moved inside a block")
+    tree = _Html(hardened, budget)
     blocks: list[_Block] = []
-    for (start, end), candidate, actual in zip(ranges, witness_nodes, rendered_nodes, strict=True):
-        shape = _shape(actual)
-        if _shape(candidate) != shape:
-            raise _Unsupported("KPress block structure differs from the range witness")
-        blocks.append(_Block(start + offset, end + offset, actual, shape))
-    return blocks, rendered.nodes
+    for span, node in zip(side.blocks, _segments(tree.root, len(side.blocks)), strict=True):
+        blocks.append(
+            _block(tokens, span, node, side.offset, blocks[-1].end if blocks else 0, descend=True)
+        )
+    return blocks, tree.nodes
 
 
 def _lines(data: bytes | None) -> list[bytes]:
@@ -264,6 +518,7 @@ def _matches(
 ) -> list[tuple[int, int]]:
     right_by_start = {block.start: index for index, block in enumerate(new)}
     matches: list[tuple[int, int]] = []
+    floor = -1
     for left, block in enumerate(old):
         start = unchanged.get(block.start)
         if start is None or start not in right_by_start:
@@ -271,7 +526,8 @@ def _matches(
         right = right_by_start[start]
         other = new[right]
         if (
-            other.end - start == block.end - block.start
+            right > floor
+            and other.end - start == block.end - block.start
             and block.shape == other.shape
             and all(
                 unchanged.get(line) == start + line - block.start
@@ -279,19 +535,127 @@ def _matches(
             )
         ):
             matches.append((left, right))
+            floor = right
     return matches
 
 
-def _inline_change(
-    old: _Element, new: _Element, old_source: str, new_source: str
-) -> tuple[_Element, _Element] | None:
-    """Mark only a single uniquely located text run in compatible prose blocks."""
+def _runs(
+    left: list[str], right: list[str], *, exact: bool
+) -> tuple[list[tuple[str, int, int, int, int]], int] | None:
+    """Word edits and their diff work, or None past the inline budget.
 
-    if old.tag not in _PROSE or old.tag != new.tag:
+    Outside preformatted text whitespace compares as one space, and two edits a space
+    apart join into one changed phrase. The shared ends are trimmed before the
+    quadratic diff, so its cost follows the changed span, not the paragraph.
+    """
+
+    def key(word: str) -> str:
+        return " " if word.isspace() and not exact else word
+
+    left_keys, right_keys = [key(word) for word in left], [key(word) for word in right]
+    shortest = min(len(left), len(right))
+    prefix = 0
+    while prefix < shortest and left_keys[prefix] == right_keys[prefix]:
+        prefix += 1
+    suffix = 0
+    while (
+        suffix < shortest - prefix
+        and left_keys[len(left) - 1 - suffix] == right_keys[len(right) - 1 - suffix]
+    ):
+        suffix += 1
+    middle_left = left_keys[prefix : len(left) - suffix]
+    middle_right = right_keys[prefix : len(right) - suffix]
+    if max(len(middle_left), len(middle_right)) > _MAX_INLINE_WORDS:
         return None
-    changes: list[tuple[tuple[int, ...], str, str]] = []
+    opcodes = [("equal", 0, prefix, 0, prefix)] if prefix else []
+    opcodes.extend(
+        (tag, prefix + i1, prefix + i2, prefix + j1, prefix + j2)
+        for tag, i1, i2, j1, j2 in SequenceMatcher(
+            None, middle_left, middle_right, autojunk=False
+        ).get_opcodes()
+    )
+    if suffix:
+        opcodes.append(("equal", len(left) - suffix, len(left), len(right) - suffix, len(right)))
+    runs: list[tuple[str, int, int, int, int]] = []
+    for tag, i1, i2, j1, j2 in opcodes:
+        if (
+            tag != "equal"
+            and not exact
+            and len(runs) >= 2
+            and runs[-2][0] != "equal"
+            and runs[-1][0] == "equal"
+            and all(word.isspace() for word in left[runs[-1][1] : runs[-1][2]])
+        ):
+            # Two edits a space apart read as one changed phrase.
+            runs.pop()
+            _, start_left, _, start_right, _ = runs.pop()
+            runs.append(("replace", start_left, i2, start_right, j2))
+        elif runs and runs[-1][0] == tag == "equal":
+            runs[-1] = ("equal", runs[-1][1], i2, runs[-1][3], j2)
+        else:
+            runs.append((tag, i1, i2, j1, j2))
+    return runs, max(len(middle_left) * len(middle_right), 1)
 
-    def compare(left: _Element, right: _Element, at: tuple[int, ...]) -> bool:
+
+def _marked(words: list[str], tag: str, *, exact: bool) -> list[_Element | str]:
+    """A changed run; outside preformatted text its edge whitespace stays unmarked."""
+
+    lead = 0
+    trail = len(words)
+    if not exact:
+        while lead < len(words) and words[lead].isspace():
+            lead += 1
+        while trail > lead and words[trail - 1].isspace():
+            trail -= 1
+    pieces: list[_Element | str] = []
+    if lead:
+        pieces.append("".join(words[:lead]))
+    if trail > lead:
+        pieces.append(_Element(tag, children=["".join(words[lead:trail])]))
+    if trail < len(words):
+        pieces.append("".join(words[trail:]))
+    return pieces
+
+
+def _joined(pieces: list[_Element | str]) -> list[_Element | str]:
+    result: list[_Element | str] = []
+    for piece in pieces:
+        if isinstance(piece, str) and result and isinstance(result[-1], str):
+            result[-1] += piece
+        elif not isinstance(piece, str) or piece:
+            result.append(piece)
+    return result
+
+
+def _occurs_once(text: str, source: str, *, exact: bool) -> bool:
+    if exact:
+        return source.replace("\r\n", "\n").count(text) == 1
+    text = _SPACE.sub(" ", text).strip()
+    return not text or _SPACE.sub(" ", source).count(text) == 1
+
+
+@dataclass(frozen=True, slots=True)
+class _Inline:
+    old: _Element
+    new: _Element
+    nodes: int
+    work: int
+
+
+def _inline_change(
+    old: _Element, new: _Element, old_source: str, new_source: str, work: int
+) -> _Inline | None:
+    """Mark the changed words of a block whose only change is within one text node.
+
+    Each side's changed span must occur exactly once in that side's changed source
+    lines, so a mark can never sit on a repeated phrase the source did not touch.
+    """
+
+    if old.tag != new.tag:
+        return None
+    changes: list[tuple[tuple[int, ...], str, str, bool]] = []
+
+    def compare(left: _Element, right: _Element, at: tuple[int, ...], pre: bool) -> bool:
         if (
             left.tag != right.tag
             or tuple(pair for pair in left.attrs if pair[0] != "id")
@@ -299,64 +663,53 @@ def _inline_change(
             or len(left.children) != len(right.children)
         ):
             return False
+        pre = pre or left.tag == "pre"
         for index, (before, after) in enumerate(zip(left.children, right.children, strict=True)):
             address = (*at, index)
             if isinstance(before, _Element) and isinstance(after, _Element):
                 # A link is shown independently on each side and never redlined as
                 # though a removed label belonged to the live link.
-                if before.tag in {"a", "code", "img"}:
+                if before.tag in {"a", "img"}:
                     if before != after:
                         return False
-                elif not compare(before, after, address):
+                elif not compare(before, after, address, pre):
                     return False
             elif isinstance(before, str) and isinstance(after, str):
                 if before != after:
-                    changes.append((address, before, after))
+                    changes.append((address, before, after, pre))
             else:
                 return False
         return True
 
-    if not compare(old, new, ()) or len(changes) != 1:
+    if not compare(old, new, (), False) or len(changes) != 1:
         return None
-    address, before, after = changes[0]
+    address, before, after, exact = changes[0]
     left, right = _WORDS.findall(before), _WORDS.findall(after)
-    if max(len(left), len(right)) > _MAX_INLINE_WORDS:
+    diff = _runs(left, right, exact=exact)
+    if diff is None or diff[1] > work:
         return None
-    prefix = 0
-    for a, b in zip(left, right, strict=False):
-        if a != b:
-            break
-        prefix += 1
-    suffix = 0
-    for a, b in zip(reversed(left), reversed(right), strict=False):
-        if a != b:
-            break
-        suffix += 1
-    if prefix + suffix > min(len(left), len(right)):
-        # The unchanged words could have come from either end of a repeated run.
+    runs, cost = diff
+    edits = [run for run in runs if run[0] != "equal"]
+    if not edits or not (
+        _occurs_once("".join(left[edits[0][1] : edits[-1][2]]), old_source, exact=exact)
+        and _occurs_once("".join(right[edits[0][3] : edits[-1][4]]), new_source, exact=exact)
+    ):
         return None
-
-    old_middle = left[prefix : len(left) - suffix]
-    new_middle = right[prefix : len(right) - suffix]
-    if {word for word in old_middle if not word.isspace()} & set(new_middle):
-        # Multiple or ambiguous edits belong in complete before/after blocks.
-        return None
-
-    def pieces(words: list[str], source: str, tag: str) -> list[_Element | str] | None:
-        end = len(words) - suffix
-        middle = "".join(words[prefix:end])
-        if middle and source.count(middle) != 1:
-            return None
-        result: list[_Element | str] = ["".join(words[:prefix])]
-        if middle:
-            result.append(_Element(tag, children=[middle]))
-        result.append("".join(words[end:]))
-        return result
-
-    old_pieces = pieces(left, old_source, "del")
-    new_pieces = pieces(right, new_source, "ins")
-    if old_pieces is None or new_pieces is None:
-        return None
+    old_pieces: list[_Element | str] = []
+    new_pieces: list[_Element | str] = []
+    for tag, i1, i2, j1, j2 in runs:
+        if tag == "equal":
+            old_pieces.append("".join(left[i1:i2]))
+            new_pieces.append("".join(right[j1:j2]))
+            continue
+        old_pieces.extend(_marked(left[i1:i2], "del", exact=exact))
+        new_pieces.extend(_marked(right[j1:j2], "ins", exact=exact))
+    old_pieces, new_pieces = _joined(old_pieces), _joined(new_pieces)
+    # Each piece is a node, each mark also holds a text node, and one text node goes.
+    nodes = sum(
+        len(pieces) + sum(isinstance(piece, _Element) for piece in pieces) - 1
+        for pieces in (old_pieces, new_pieces)
+    )
 
     def replace_run(
         node: _Element, path: tuple[int, ...], content: list[_Element | str]
@@ -371,7 +724,9 @@ def _inline_change(
             children[index] = replace_run(child, path[1:], content)
         return replace(node, children=children)
 
-    return replace_run(old, address, old_pieces), replace_run(new, address, new_pieces)
+    return _Inline(
+        replace_run(old, address, old_pieces), replace_run(new, address, new_pieces), nodes, cost
+    )
 
 
 def _namespace_ids(blocks: Sequence[_Block], namespace: str, side: str) -> dict[str, str]:
@@ -391,12 +746,26 @@ def _namespace_ids(blocks: Sequence[_Block], namespace: str, side: str) -> dict[
 
 
 def _html(
-    node: _Element, ids: dict[str, str], *, removed: bool, rewrite_local: _RewriteLocal | None
+    node: _Element, ids: dict[str, str], *, removed: bool, references: list[LocalReference]
 ) -> str:
+    """Serialize a block; a live local destination becomes a numbered placeholder."""
+
+    def inner() -> str:
+        return "".join(
+            _html(child, ids, removed=removed, references=references)
+            if isinstance(child, _Element)
+            else escape(child, quote=False)
+            for child in node.children
+        )
+
+    if not node.tag:
+        return inner()
+    alt = escape(dict(node.attrs).get("alt") or "image", quote=False)
     if removed and node.tag == "img":
-        return escape(dict(node.attrs).get("alt") or "image", quote=False)
+        return alt
     tag = "span" if removed and node.tag == "a" else node.tag
     attrs: list[str] = []
+    local_image = ""
     for name, value in node.attrs:
         if removed and node.tag == "a":
             continue
@@ -408,116 +777,309 @@ def _html(
                 continue
             value = "#" + target
         elif name in {"href", "src"} and is_inside(value):
-            rewritten = None if rewrite_local is None else rewrite_local(value, name == "src")
-            if rewritten is None:
-                if node.tag == "img":
-                    return escape(dict(node.attrs).get("alt") or "image", quote=False)
-                continue
-            value = rewritten
+            if node.tag == "img":
+                local_image = value
+                attrs.append(f' {name}="{_SOURCE_MARK}"')
+            else:
+                references.append(LocalReference(value, image=False))
+                attrs.append(f"\x00{len(references) - 1}\x00")
+            continue
         attrs.append(f' {name}="{escape(value)}"')
     start = f"<{tag}{''.join(attrs)}>"
+    if local_image:
+        references.append(LocalReference(local_image, True, start, alt))
+        return f"\x00{len(references) - 1}\x00"
     if tag in _VOID:
         return start
-    body = "".join(
-        _html(child, ids, removed=removed, rewrite_local=rewrite_local)
-        if isinstance(child, _Element)
-        else escape(child, quote=False)
-        for child in node.children
-    )
-    return f"{start}{body}</{tag}>"
+    return f"{start}{inner()}</{tag}>"
+
+
+@dataclass(slots=True)
+class _Projector:
+    old_lines: list[bytes]
+    new_lines: list[bytes]
+    unchanged: dict[int, int]
+    removed: set[int]
+    added: set[int]
+    old_ids: dict[str, str]
+    new_ids: dict[str, str]
+    nodes: int
+    # The inline word diffs' quadratic work so far, against _MAX_INLINE_WORK.
+    work: int = 0
+    blocks: list[MarkdownDiffBlock] = field(default_factory=list)
+    references: list[LocalReference] = field(default_factory=list)
+    # A source change with no visible counterpart in the blocks around it.
+    notice: bool = False
+
+    def emit(
+        self,
+        kind: Literal["context", "removed", "added"],
+        node: _Element,
+        *,
+        source_only: bool = False,
+    ) -> None:
+        old = kind == "removed"
+        self.blocks.append(
+            {
+                "kind": kind,
+                "side": "old" if old else "new",
+                "html": _html(
+                    node,
+                    self.old_ids if old else self.new_ids,
+                    removed=old,
+                    references=self.references,
+                ),
+                "source_only": source_only,
+            }
+        )
+
+    def spend(self, nodes: int) -> bool:
+        if self.nodes + nodes > _MAX_NODES:
+            return False
+        self.nodes += nodes
+        return True
+
+    def consume(self, old: Sequence[_Block], new: Sequence[_Block]) -> None:
+        for block in old:
+            self.removed.difference_update(range(block.start, block.end))
+        for block in new:
+            self.added.difference_update(range(block.start, block.end))
+
+    def changed(self, block: _Block, lines: set[int]) -> set[int]:
+        return lines.intersection(range(block.start, block.end))
+
+    def covered(self, block: _Block, lines: set[int]) -> bool:
+        assert block.children is not None
+        return all(
+            any(child.start <= line < child.end for child in block.children)
+            for line in self.changed(block, lines)
+        )
+
+    def walk(
+        self,
+        old: Sequence[_Block],
+        new: Sequence[_Block],
+        wrap: Callable[[_Element, bool, int], _Element] | None = None,
+    ) -> None:
+        """Emit unchanged blocks as context and each run of changes between them."""
+
+        def wrapped(node: _Element, old_side: bool, index: int) -> _Element:
+            return node if wrap is None else wrap(node, old_side, index)
+
+        def offset(left: int, right: int) -> Callable[[_Element, bool, int], _Element]:
+            def at(node: _Element, old_side: bool, index: int) -> _Element:
+                return wrapped(node, old_side, (left if old_side else right) + index)
+
+            return at
+
+        left = right = 0
+        for stop_left, stop_right in (
+            *_matches(old, new, self.unchanged),
+            (len(old), len(new)),
+        ):
+            self.group(old[left:stop_left], new[right:stop_right], offset(left, right))
+            if stop_right < len(new):
+                self.emit("context", wrapped(new[stop_right].node, False, stop_right))
+            left, right = stop_left + 1, stop_right + 1
+
+    def group(
+        self,
+        old: Sequence[_Block],
+        new: Sequence[_Block],
+        wrap: Callable[[_Element, bool, int], _Element],
+    ) -> None:
+        if not old and not new:
+            return
+        if len(old) == len(new) and all(a.seen == b.seen for a, b in zip(old, new, strict=True)):
+            # Rendered alike once whitespace collapses: a rewrap, a trailing space, a
+            # renumbered item, or a change only the source shows.
+            self.consume(old, new)
+            self.notice = True
+            for index, (before, after) in enumerate(zip(old, new, strict=True)):
+                self.emit(
+                    "context",
+                    wrap(after.node, False, index),
+                    source_only=before.hidden != after.hidden,
+                )
+            return
+        if len(old) == len(new) == 1 and self.pair(old[0], new[0], wrap):
+            return
+        if old and new:
+            source_only = [block.hidden for block in old] != [block.hidden for block in new]
+            if " ".join(" ".join(_text(block.node).split()) for block in old) == " ".join(
+                " ".join(_text(block.node).split()) for block in new
+            ):
+                # The same words in a different structure, such as emphasis: visible,
+                # yet named in the notice in case a structure renders alike.
+                self.notice = True
+        else:
+            source_only = any(block.concealed for block in (*old, *new))
+        self.consume(old, new)
+        for index, block in enumerate(old):
+            self.emit("removed", wrap(block.node, True, index), source_only=source_only)
+        for index, block in enumerate(new):
+            self.emit("added", wrap(block.node, False, index), source_only=source_only)
+
+    def pair(
+        self, old: _Block, new: _Block, wrap: Callable[[_Element, bool, int], _Element]
+    ) -> bool:
+        if (
+            old.children is not None
+            and new.children is not None
+            # A list that starts at another number renumbers every item visibly.
+            and old.node.tag == new.node.tag
+            and old.node.attrs == new.node.attrs
+            and self.covered(old, self.removed)
+            and self.covered(new, self.added)
+        ):
+            old_items, new_items = old.children, new.children
+            if not self.spend(len(old_items) + len(new_items)):
+                return False
+
+            def item(node: _Element, old_side: bool, index: int) -> _Element:
+                # One list or quote per item keeps its numbering and its marker.
+                parent = old.node if old_side else new.node
+                attrs = tuple(pair for pair in parent.attrs if pair[0] != "start")
+                number = int(dict(parent.attrs).get("start") or "1") + index
+                if parent.tag == "ol" and number != 1:
+                    attrs = (("start", str(number)), *attrs)
+                return wrap(_Element(parent.tag, attrs, [node]), old_side, 0)
+
+            self.walk(old_items, new_items, item)
+            self.consume([old], [new])
+            return True
+        old_changed = sorted(self.changed(old, self.removed))
+        new_changed = sorted(self.changed(new, self.added))
+        if not (old_changed or new_changed) or any(
+            lines and lines[-1] - lines[0] != len(lines) - 1 for lines in (old_changed, new_changed)
+        ):
+            # Marks are witnessed against one contiguous run of changed lines a side.
+            return False
+        inline = _inline_change(
+            old.node,
+            new.node,
+            b"".join(self.old_lines[line] for line in old_changed).decode(),
+            b"".join(self.new_lines[line] for line in new_changed).decode(),
+            _MAX_INLINE_WORK - self.work,
+        )
+        if inline is None or not self.spend(inline.nodes):
+            return False
+        self.work += inline.work
+        source_only = old.hidden != new.hidden
+        self.consume([old], [new])
+        self.emit("removed", wrap(inline.old, True, 0), source_only=source_only)
+        self.emit("added", wrap(inline.new, False, 0), source_only=source_only)
+        return True
 
 
 def _project(
-    old: bytes | None,
-    new: bytes | None,
-    patch: FilePatch,
-    namespace: str,
-    rewrite_local: _RewriteLocal | None,
-) -> tuple[list[MarkdownDiffBlock], bool]:
+    old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
+) -> PreparedMarkdownDiff:
     before, after = old or b"", new or b""
     if len(before) + len(after) > MARKDOWN_DIFF_MAX_BYTES:
         raise _OverBudget("Markdown input bytes")
     if max(before.count(b"["), after.count(b"[")) > _MAX_LINK_OPENERS:
         raise _OverBudget("Markdown link-label work")
     old_lines, new_lines = _lines(old), _lines(new)
-    if max((len(line) for line in (*old_lines, *new_lines)), default=0) > _MAX_LINE_BYTES:
-        raise _OverBudget("Markdown line bytes")
     if patch.truncated or any(
         b"\0" in data or b"\r" in data.replace(b"\r\n", b"") for data in (before, after)
     ):
         raise _Unsupported("unmapped Markdown source")
     unchanged, removed, added = _correspondence(old_lines, new_lines, patch)
-    old_blocks, old_nodes = _blocks(before.decode())
-    new_blocks, new_nodes = _blocks(after.decode())
-    nodes = old_nodes + new_nodes
-    if nodes > _MAX_NODES:
-        raise _OverBudget("combined render tree")
-    old_ids = _namespace_ids(old_blocks, namespace, "old")
-    new_ids = _namespace_ids(new_blocks, namespace, "new")
-    blocks: list[MarkdownDiffBlock] = []
-    source_only = False
-    left = right = 0
-    matches = _matches(old_blocks, new_blocks, unchanged)
-    for stop_left, stop_right in (*matches, (len(old_blocks), len(new_blocks))):
-        old_group = old_blocks[left:stop_left]
-        new_group = new_blocks[right:stop_right]
-        old_content = [block.node for block in old_group]
-        new_content = [block.node for block in new_group]
-        visible_change = [_text(node) for node in old_content] != [
-            _text(node) for node in new_content
-        ]
-        if old_group or new_group:
-            source_only |= not visible_change
-        if len(old_group) == len(new_group) == 1 and visible_change:
-            old_block, new_block = old_group[0], new_group[0]
-            old_changed = removed.intersection(range(old_block.start, old_block.end))
-            new_changed = added.intersection(range(new_block.start, new_block.end))
-            if len(old_changed) == len(new_changed) == 1:
-                inline = _inline_change(
-                    old_block.node,
-                    new_block.node,
-                    old_lines[old_changed.pop()].decode(),
-                    new_lines[new_changed.pop()].decode(),
-                )
-                if inline is not None and nodes + 6 <= _MAX_NODES:
-                    # Each wrapper can add one element and two text siblings.
-                    nodes += 6
-                    old_content, new_content = [inline[0]], [inline[1]]
-        for block, node in zip(old_group, old_content, strict=True):
-            removed.difference_update(range(block.start, block.end))
-            blocks.append(
-                {
-                    "kind": "removed",
-                    "side": "old",
-                    "html": _html(node, old_ids, removed=True, rewrite_local=None),
-                }
-            )
-        for block, node in zip(new_group, new_content, strict=True):
-            added.difference_update(range(block.start, block.end))
-            blocks.append(
-                {
-                    "kind": "added",
-                    "side": "new",
-                    "html": _html(node, new_ids, removed=False, rewrite_local=rewrite_local),
-                }
-            )
-        if stop_right < len(new_blocks):
-            node = new_blocks[stop_right].node
-            blocks.append(
-                {
-                    "kind": "context",
-                    "side": "new",
-                    "html": _html(node, new_ids, removed=False, rewrite_local=rewrite_local),
-                }
-            )
-        left, right = stop_left + 1, stop_right + 1
+    old_side, new_side = _parse(before.decode()), _parse(after.decode())
+    if old_side.elements + new_side.elements > _MAX_NODES:
+        raise _OverBudget("combined Markdown elements")
+    old_blocks, old_nodes = _render(old_side, _MAX_NODES - new_side.elements)
+    new_blocks, new_nodes = _render(new_side, _MAX_NODES - old_nodes)
+    projector = _Projector(
+        old_lines,
+        new_lines,
+        unchanged,
+        removed,
+        added,
+        _namespace_ids(old_blocks, namespace, "old"),
+        _namespace_ids(new_blocks, namespace, "new"),
+        old_nodes + new_nodes,
+    )
+    projector.walk(old_blocks, new_blocks)
     # A blank separator beside an already visible addition or deletion adds no
     # information to the notice. Standalone whitespace changes still point to Source.
-    has_visual_change = any(block["kind"] != "context" for block in blocks)
-    unmapped = any(old_lines[i].strip() for i in removed) or any(
-        new_lines[i].strip() for i in added
+    has_visual_change = any(block["kind"] != "context" for block in projector.blocks)
+    unmapped = any(old_lines[i].strip() for i in projector.removed) or any(
+        new_lines[i].strip() for i in projector.added
     )
-    return blocks, source_only or unmapped or (not has_visual_change and bool(removed or added))
+    source_only = (
+        projector.notice
+        or unmapped
+        or any(block["source_only"] for block in projector.blocks)
+        or (not has_visual_change and bool(projector.removed or projector.added))
+    )
+    return PreparedMarkdownDiff(
+        {
+            "version": MARKDOWN_DIFF_VERSION,
+            "status": "ready",
+            "blocks": projector.blocks,
+            "source_only": source_only,
+        },
+        tuple(projector.references),
+    )
+
+
+def unavailable_markdown_diff(status: Literal["unsupported", "too_large"]) -> PreparedMarkdownDiff:
+    """A projection that refuses, with no partial HTML."""
+
+    return PreparedMarkdownDiff(
+        {"version": MARKDOWN_DIFF_VERSION, "status": status, "blocks": [], "source_only": False},
+        (),
+    )
+
+
+def prepare_markdown_diff(
+    *, old: bytes | None, new: bytes | None, patch: FilePatch, namespace: str
+) -> PreparedMarkdownDiff:
+    """The projection with its live local destinations still unbound.
+
+    It holds only plain data, so a worker process can compute it and the server bind it.
+    """
+
+    try:
+        return _project(old, new, patch, namespace)
+    except _OverBudget:
+        return unavailable_markdown_diff("too_large")
+    except (UnicodeError, _Unsupported):
+        return unavailable_markdown_diff("unsupported")
+
+
+def bind_markdown_diff(
+    prepared: PreparedMarkdownDiff, rewrite_local: _RewriteLocal | None
+) -> MarkdownDiffProjection:
+    """Bind each live local destination; one *rewrite_local* refuses goes inert."""
+
+    def bound(match: re.Match[str]) -> str:
+        reference = prepared.references[int(match.group(1))]
+        target = None if rewrite_local is None else rewrite_local(reference.href, reference.image)
+        if reference.image:
+            if target is None:
+                return reference.fallback
+            return reference.template.replace(_SOURCE_MARK, escape(target))
+        return "" if target is None else f' href="{escape(target)}"'
+
+    projection = prepared.projection
+    blocks: list[MarkdownDiffBlock] = [
+        {
+            "kind": block["kind"],
+            "side": block["side"],
+            "html": _REFERENCE.sub(bound, block["html"]),
+            "source_only": block["source_only"],
+        }
+        for block in projection["blocks"]
+    ]
+    return {
+        "version": projection["version"],
+        "status": projection["status"],
+        "blocks": blocks,
+        "source_only": projection["source_only"],
+    }
 
 
 def project_markdown_diff(
@@ -533,18 +1095,32 @@ def project_markdown_diff(
     Local destinations are inert unless the caller binds them to the head snapshot.
     """
 
-    status: Literal["ready", "unsupported", "too_large"] = "ready"
-    blocks: list[MarkdownDiffBlock] = []
-    source_only = False
-    try:
-        blocks, source_only = _project(old, new, patch, namespace, rewrite_local)
-    except _OverBudget:
-        status = "too_large"
-    except (UnicodeError, _Unsupported):
-        status = "unsupported"
-    return {
-        "version": MARKDOWN_DIFF_VERSION,
-        "status": status,
-        "blocks": blocks,
-        "source_only": source_only,
-    }
+    return bind_markdown_diff(
+        prepare_markdown_diff(old=old, new=new, patch=patch, namespace=namespace), rewrite_local
+    )
+
+
+def warm_markdown_projection() -> None:
+    """Import and exercise the projection once, as a worker process's first job."""
+
+    text = b"# Warm\n\nA [link](a.md) and `code`.\n"
+    prepare_markdown_diff(
+        old=None,
+        new=text,
+        patch=FilePatch(
+            file_id="warm",
+            hunks=(
+                Hunk(
+                    old_start=0,
+                    old_count=0,
+                    new_start=1,
+                    new_count=3,
+                    lines=tuple(
+                        LineRecord(op=LineOp.add, text=line) for line in text.decode().splitlines()
+                    ),
+                ),
+            ),
+            truncated=False,
+        ),
+        namespace="warm",
+    )

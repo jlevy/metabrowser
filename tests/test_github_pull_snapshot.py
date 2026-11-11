@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 from starlette.testclient import TestClient
@@ -11,6 +12,7 @@ from metabrowser.builtin_plugins.github.pull_record import write_pull_record
 from metabrowser.builtin_plugins.github.pull_snapshot import Snapshot, _render_markdown
 from metabrowser.git.tree_source import GitPath
 from tests.git_pin_harness import git_env
+from tests.github_pull_fixture import Origin
 from tests.test_github_pulls import _Stand
 from tests.test_github_pulls import pinned_pull as pinned_pull
 from tests.test_github_pulls import stand as stand
@@ -203,3 +205,62 @@ def test_revision_source_offset_is_bounded_below_eof(
     assert preview.status_code == 200 and "Next bytes" not in preview.text
     refused = client.get(address + "&offset=5", headers={"accept": "application/json"})
     assert refused.status_code == 416 and refused.json()["code"] == "invalid_offset"
+
+
+def test_rendered_markdown_in_a_checkout_reads_the_head_blob_not_the_working_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pull_origin: Origin
+) -> None:
+    """A served checkout's comparison renders the admitted head, whatever is on disk."""
+
+    import json
+
+    from metabrowser.builtin_plugins.github import checkout as checkout_module
+    from metabrowser.builtin_plugins.github import pulls
+    from metabrowser.cache.urls import GitSource
+    from tests.github_pull_fixture import (
+        CANONICAL,
+        FETCHED_AT,
+        clone_checkout,
+        files_scenario,
+        install_fake_gh,
+    )
+    from tests.golden_harness import isolate_cli, run_metab
+    from tests.test_cli_github_checkout_golden import _after  # pyright: ignore[reportPrivateUsage]
+
+    isolate_cli(tmp_path, monkeypatch)
+    checkout_module._RESOLVED.clear()  # pyright: ignore[reportPrivateUsage]
+    checkout_module._PULLS.clear()  # pyright: ignore[reportPrivateUsage]
+    for name, value in install_fake_gh(tmp_path, files_scenario(pull_origin)).items():
+        monkeypatch.setenv(name, value)
+
+    def remote_url_for(source: GitSource) -> str:
+        return pull_origin.url if source.normalized == CANONICAL else source.normalized
+
+    monkeypatch.setattr("metabrowser.cache.acquire.remote_url_for", remote_url_for)
+    monkeypatch.setattr(pulls, "utc_now", lambda: FETCHED_AT)
+    checkout = clone_checkout(pull_origin, tmp_path / "checkout")
+    live = checkout / "docs" / "draft.md"
+    assert live.read_bytes() == b"# Draft\n", "the checkout is on pull request 10's head"
+    live.write_bytes(b"# Draft\n\nOnly the working tree says this.\n")
+    request = tmp_path / "request.json"
+    request.write_text(json.dumps({"number": 10, "retry": True, "comparison": True}) + "\n")
+    fetched = run_metab(
+        [str(checkout), "--api", "/api/plugin/github/pull-refresh", "--data", str(request)]
+    )
+    assert fetched.exit_code == 0, fetched.stderr
+    route = _after(fetched)["comparison_route"]
+    manifest = run_metab([str(checkout), "--api", route]).payload()["manifest"]
+    draft = next(
+        change
+        for change in manifest["files"]
+        if (change["new"] or {}).get("path") == "docs/draft.md"
+    )
+    rendered = run_metab([str(checkout), "--api", f"{route}&rendered_file={draft['id']}"])
+    assert rendered.exit_code == 0, rendered.stderr
+    answer = rendered.payload()
+    assert answer["status"] == "ready", answer
+    assert [block["kind"] for block in answer["blocks"]] == ["added"]
+    assert answer["blocks"][0]["html"].startswith("<h1 ")
+    assert "Draft" in answer["blocks"][0]["html"]
+    assert "working tree" not in json.dumps(answer)
+    assert live.read_bytes() == b"# Draft\n\nOnly the working tree says this.\n"
