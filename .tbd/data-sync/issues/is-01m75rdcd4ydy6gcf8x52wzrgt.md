@@ -5,7 +5,7 @@ title: "PR 2: event-based PR freshness, budgeted prefetch, rate-limit governor"
 kind: feature
 status: in_progress
 priority: 1
-version: 11
+version: 12
 spec_path: docs/project/specs/active/plan-2026-11-11-pr-freshness-and-prefetch.md
 delegate: claude-code@spud10.local
 labels: []
@@ -23,6 +23,10 @@ child_order_hints:
 hold: null
 hold_until: null
 created_at: 2026-11-11T16:52:44.579Z
-updated_at: 2026-11-11T20:21:59.727Z
+updated_at: 2026-11-11T21:48:23.792Z
 started_at: 2026-11-11T16:54:12.366Z
 ---
+
+## Notes
+
+Coordinator 2026-11-11: PR #355 draft at 0d54e865b14db692e36cbfc807046b66e963750a, CI run 43103585466 green, in native stack #356 (#354 -> #355). Reviews A senior (review-5864867991) -> reply issuecomment-6807804640 and B performance (review-5864864824) -> reply issuecomment-6807805016; all 16 findings fixed, including High A1 (checks-only revalidation for open PRs on screen). Not merged; awaiting the user.

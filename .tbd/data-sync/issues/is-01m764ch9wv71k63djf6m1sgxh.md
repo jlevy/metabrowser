@@ -3,9 +3,9 @@ type: is
 id: is-01m764ch9wv71k63djf6m1sgxh
 title: "Address PR #355 reviews A and B: freshness verdict, lane, governor"
 kind: task
-status: open
+status: closed
 priority: 1
-version: 17
+version: 18
 spec_path: docs/project/specs/active/plan-2026-11-11-pr-freshness-and-prefetch.md
 labels: []
 dependencies: []
@@ -28,5 +28,9 @@ child_order_hints:
   - is-01m764d4bgbqz90j8ygdhwh7jr
   - is-01m764d4tm76e0dapnjvdk05a3
 created_at: 2026-11-11T20:21:59.727Z
-updated_at: 2026-11-11T20:22:19.731Z
+updated_at: 2026-11-11T21:46:52.811Z
+closed_at: 2026-11-11T21:46:52.810Z
+close_reason: "every finding of reviews A and B fixed and dispositioned on PR #355 at 0d54e865"
+resolution: null
+duplicate_of: null
 ---
